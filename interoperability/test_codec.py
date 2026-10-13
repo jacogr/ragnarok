@@ -7,6 +7,7 @@ import platform
 import random
 import subprocess
 import struct
+from bounded_checks import verify_bounded
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -314,6 +315,7 @@ def main():
             outputs.append(output)
         assert outputs[0] == outputs[1]
         verify_fixed(build, nim_flags, linker)
+        verify_bounded(build, nim_flags, linker, run, reference_encode, reference_decode)
         print(f'PASS: {len(requests)} shared requests per implementation; '
               f'{official_count} official prefix checks; {len(fixtures)} boundary fixtures; '
               'native tests and negative compilation checks', flush=True)

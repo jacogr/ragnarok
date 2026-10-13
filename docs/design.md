@@ -1,6 +1,6 @@
 # JAM Ragnarök — Design and Evaluation Plan
 
-**Status:** General-natural and fixed-width unsigned codec slices implemented; evaluation ongoing  
+**Status:** Natural, fixed-unsigned and bounded-container slices implemented; evaluation ongoing  
 **Date:** 2026-10-13  
 **Candidates:** Nim and Odin  
 **Decision:** Open; no preferred winner by policy
@@ -143,15 +143,14 @@ The exact directory names and tooling can evolve by an explicit decision.
 - Is future JAM Implementer's Prize eligibility a goal? Verify rules separately; do not assume eligibility.
 
 ## 11. Immediate next task
-The **JAM general-natural** and **fixed-width unsigned integer** slices are
-implemented in both languages, with pinned specification/vector revisions and
-a shared test runner. See the [natural report](../results/natural-codec.md) and
-[fixed-width report](../results/fixed-unsigned-codec.md).
+The general-natural, fixed-width unsigned, and bounded byte-string/fixed-unsigned
+sequence slices are implemented independently in both languages. Specification
+and vector revisions remain pinned. See [the latest verification
+report](../results/bounded-containers.md).
 
-Wait for the maintainer's go-ahead for the bounded byte-string/sequence round.
-That round must report completion and wait again before subsequent codec work.
-The remaining **M0** work (Linux reproducibility and CI) remains open; full
-composite official vectors are a later **M1** step.
+Wait for the maintainer's next go-ahead before nested/composite codec work.
+Generic element schemas, options/variants and complete official composite
+vectors remain later M1 work. Linux reproducibility/CI remains open in M0.
 
 Do not begin PVM, state transitions, or validator networking until the relevant
 gates are met.

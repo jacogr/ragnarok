@@ -5,7 +5,8 @@ See [the design](docs/design.md), [the pinned codec specification](spec/codec.md
 and [the macOS toolchains](docs/toolchains-macos.md).
 
 The implemented primitives are canonical JAM general naturals and fixed-width
-unsigned integers (0..8 bytes), with checked prefix decoding. They have no
+unsigned integers (0..8 bytes), bounded byte strings, and homogeneous
+fixed-unsigned sequences, with checked prefix decoding. They have no
 third-party language packages and no heap allocations in either codec.
 
 ## Format the sources
@@ -63,6 +64,10 @@ including empty hex for zero-width decoding. Errors are `invalidwidth`,
 `outofrange`, `truncated`, or `inputerror`; successful encoding may be an empty
 line for width zero. See [the verification report](results/fixed-unsigned-codec.md).
 
-Fixed-width work is complete. Bounded byte strings/sequences await the
-maintainer's go-ahead; that next round will report and wait again before any
-subsequent codec round.
+The bounded byte-string/fixed-unsigned-sequence round is complete. See
+[its API notes](spec/bounded-containers.md) and
+[verification report](results/bounded-containers.md) for caller-owned buffers,
+resource limits, errors and adapter requests. All checks remain part of the
+same shared test command.
+
+Wait for the maintainer's next go-ahead before nested/composite codec work.

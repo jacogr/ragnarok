@@ -65,8 +65,10 @@ negative compilation fixtures verify this in both languages.
 
 The general-natural and fixed-width unsigned APIs are now public. See
 [fixed-width specification notes](fixed-unsigned.md) for the additional APIs and
-checked width/range behavior. Byte strings, sequence cursors and composite
-structures remain subsequent work and require the maintainer's go-ahead.
+checked width/range behavior. Bounded byte strings
+and fixed-unsigned sequences are now implemented; see
+[the container notes](bounded-containers.md). Nested/composite codecs remain
+subsequent work and require the maintainer's next go-ahead.
 
 ## Test fixtures
 
