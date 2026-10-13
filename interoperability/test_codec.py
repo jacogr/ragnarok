@@ -6,6 +6,7 @@ from pathlib import Path
 import platform
 import random
 import subprocess
+import struct
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +91,146 @@ def official_prefix_cases():
     return requests, expected
 
 
+# Model fixed-width encoding with Python's integer byte conversion, separately from the native loops.
+def reference_fixed_encode(value, width):
+    # Unsupported widths must be rejected before trying any conversion or range calculation.
+    if width < 0 or width > 8:
+        return 'invalidwidth'
+    # The exclusive upper bound also makes zero the only permitted zero-width value.
+    if value >= 2**(8 * width):
+        return 'outofrange'
+    return value.to_bytes(width, 'little').hex()
+
+
+# Interpret exactly the requested prefix; every full-width byte pattern has a valid unsigned value.
+def reference_fixed_decode(data, width):
+    # Width errors take priority over an empty or otherwise short buffer.
+    if width < 0 or width > 8:
+        return 'invalidwidth'
+    # Short input must not be partially read or accepted as an implicitly padded value.
+    if len(data) < width:
+        return 'truncated'
+    return f'{int.from_bytes(data[:width], "little")} {width}'
+
+
+# Locate official fixed-width fields directly in the already pinned ticket/preimage fixtures.
+def official_fixed_cases():
+    requests, expected = [], []
+    # Both chains provide independent fixture provenance even where these primitive fields coincide.
+    for chain in ('tiny', 'full'):
+        folder = ROOT / 'vectors/official/codec' / chain
+        # A ticket attempt is one byte; a preimage requester/service index is four bytes (GP C.2).
+        for name, field, width in [('tickets_extrinsic', 'attempt', 1),
+                                   ('preimages_extrinsic', 'requester', 4)]:
+            items = json.loads((folder / f'{name}.json').read_text())
+            data = (folder / f'{name}.bin').read_bytes()
+            offset = len(reference_encode(len(items)))
+            # Walk the fixed field and use the remaining known JSON sizes to locate the next item.
+            for item in items:
+                value = item[field]
+                encoded = data[offset:offset + width]
+                assert encoded == value.to_bytes(width, 'little')
+                requests.extend([f'FE {width} {value}', f'FD {width} {encoded.hex()}'])
+                expected.extend([encoded.hex(), f'{value} {width}'])
+                offset += width
+                # Ticket signatures have a fixed length; preimage blobs include a natural length prefix.
+                if name == 'tickets_extrinsic':
+                    payload = bytes.fromhex(item['signature'][2:])
+                else:
+                    # Check the blob-length prefix without implementing a native sequence decoder.
+                    payload = bytes.fromhex(item['blob'][2:])
+                    length = reference_encode(len(payload))
+                    assert data[offset:offset + len(length)] == length
+                    offset += len(length)
+                assert data[offset:offset + len(payload)] == payload
+                offset += len(payload)
+            assert offset == len(data)
+    return requests, expected
+
+
+# Build the fixed-width adapters and compare valid, malformed and overflowing cases across languages.
+def verify_fixed(build, nim_flags, linker):
+    run(['nim', 'check', '--mm:arc', ROOT / 'nim/src/fixed_unsigned.nim'])
+    run(['nim', 'c', *nim_flags, f'--out:{build / "nim-fixed-tests"}', '-r',
+         ROOT / 'nim/tests/test_fixed_unsigned.nim'])
+    # Domain distinctions must reject raw values, raw widths and general naturals in both languages.
+    for name in ('fixed_raw_value', 'fixed_raw_width', 'natural_as_fixed'):
+        commands = [
+            ['nim', 'check', '--mm:arc', ROOT / f'nim/tests/compile_fail/{name}.nim'],
+            ['odin', 'check', ROOT / f'odin/tests/compile_fail/{name}.odin', '-file'],
+        ]
+        # Require an encoder type-mismatch diagnostic rather than accepting any unrelated compiler failure.
+        for command in commands:
+            result = subprocess.run(list(map(str, command)), capture_output=True, text=True)
+            assert result.returncode != 0, command
+            assert 'encodeFixed' in result.stderr or 'encode_fixed' in result.stderr, result.stderr
+    nim_driver, odin_driver = build / 'nim-fixed-driver', build / 'odin-fixed-driver'
+    run(['nim', 'c', *nim_flags, f'--out:{nim_driver}', ROOT / 'nim/tests/fixed_driver.nim'])
+    run(['odin', 'build', ROOT / 'odin/fixed_driver', f'-out:{odin_driver}', *linker])
+    requests, expected = official_fixed_cases()
+    official_count = len(requests)
+    fixtures = json.loads((ROOT / 'vectors/fixed-unsigned-boundaries.json').read_text())
+    # Saved endian and width boundaries must match the independent reference before native checks.
+    for item in fixtures:
+        width, value, encoded = item['width'], int(item['value']), item['hex']
+        assert reference_fixed_encode(value, width) == encoded
+        requests.extend([f'FE {width} {value}', f'FD {width} {encoded}'])
+        expected.extend([encoded, f'{value} {width}'])
+    rng = random.Random(0x4649584544)
+    # Test all supported widths, including non-machine widths and zero's empty representation.
+    for width in range(9):
+        values = [0, 2**(8 * width) - 1] + [rng.getrandbits(8 * width) for _ in range(1000)]
+        # Every value has a round-trip, a trailing-byte check, and all its incomplete prefixes checked.
+        for value in values:
+            encoded = value.to_bytes(width, 'little')
+            requests.extend([f'FE {width} {value}', f'FD {width} {encoded.hex()}',
+                             f'FD {width} {(encoded + b"\x42").hex()}'])
+            expected.extend([encoded.hex(), f'{value} {width}', f'{value} {width}'])
+            # Any prefix missing even the highest byte must fail, irrespective of that byte's value.
+            for length in range(width):
+                requests.append(f'FD {width} {encoded[:length].hex()}')
+                expected.append('truncated')
+        # All bits above a requested width must trigger an encode error instead of being masked away.
+        for value in [2**(8 * width), 2**64 - 1]:
+            # The eight-byte upper bound exceeds the native value domain, so it is an adapter error.
+            if value >= 2**64:
+                wanted = 'inputerror'
+            else:
+                wanted = reference_fixed_encode(value, width)
+            requests.append(f'FE {width} {value}')
+            expected.append(wanted)
+    # Fuzz lengths and widths together; invalid widths must take precedence over missing bytes.
+    for _ in range(10000):
+        data = rng.randbytes(rng.randrange(33))
+        width = rng.randrange(-3, 13)
+        requests.append(f'FD {width} {data.hex()}')
+        expected.append(reference_fixed_decode(data, width))
+    # Host-int extremes exercise width validation without allowing oversized shifts or narrowing casts.
+    host_max = (1 << (8 * struct.calcsize('P') - 1)) - 1
+    for width in (-host_max - 1, -1, 9, host_max):
+        requests.extend([f'FE {width} 0', f'FD {width} ', f'FD {width} ffffffffffffffff'])
+        expected.extend(['invalidwidth'] * 3)
+    # Malformed or out-of-domain textual numbers are adapter errors before the native codec is called.
+    requests.extend(['FE 1 -1', 'FE 8 18446744073709551616',
+                     'FE 999999999999999999999999 0', 'FD -999999999999999999999999 '])
+    expected.extend(['inputerror'] * 4)
+    request_file = build / 'fixed-requests.txt'
+    request_file.write_text('\n'.join(requests) + '\n')
+    outputs = []
+    # Each native implementation must match the same independent results, including empty output lines.
+    for driver in (nim_driver, odin_driver):
+        output = run([driver, request_file], capture_output=True).stdout.splitlines()
+        assert len(output) == len(expected), (driver, len(output), len(expected))
+        # Keep the exact failing request and observed/expected response in the diagnostic.
+        for index, (actual, wanted) in enumerate(zip(output, expected)):
+            assert actual == wanted, (driver, index, requests[index], actual, wanted)
+        outputs.append(output)
+    assert outputs[0] == outputs[1]
+    print(f'PASS fixed unsigned: {len(requests)} shared requests per implementation; '
+          f'{official_count} official field checks; {len(fixtures)} boundary fixtures; '
+          '6 negative compilation checks', flush=True)
+
+
 # Build and check both languages, then compare the same request corpus with the reference results.
 def main():
     nim_version = run(['nim', '--version'], capture_output=True).stdout
@@ -172,6 +313,7 @@ def main():
                 assert actual == wanted, (driver, index, requests[index], actual, wanted)
             outputs.append(output)
         assert outputs[0] == outputs[1]
+        verify_fixed(build, nim_flags, linker)
         print(f'PASS: {len(requests)} shared requests per implementation; '
               f'{official_count} official prefix checks; {len(fixtures)} boundary fixtures; '
               'native tests and negative compilation checks', flush=True)

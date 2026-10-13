@@ -1,4 +1,4 @@
-# Natural-number codec baseline
+# Primitive codec baseline
 
 ## Normative references
 
@@ -63,8 +63,10 @@ express more than 64 bits, so there is no additional decode-overflow case.
 Raw integer variables require an explicit conversion to the domain type;
 negative compilation fixtures verify this in both languages.
 
-Only the general-natural API is public in this increment. Fixed-width integers,
-byte strings, sequence cursors and composite structures remain subsequent work.
+The general-natural and fixed-width unsigned APIs are now public. See
+[fixed-width specification notes](fixed-unsigned.md) for the additional APIs and
+checked width/range behavior. Byte strings, sequence cursors and composite
+structures remain subsequent work and require the maintainer's go-ahead.
 
 ## Test fixtures
 
