@@ -9,6 +9,7 @@ import subprocess
 import struct
 from bounded_checks import verify_bounded
 from composite_checks import verify_composite
+from digest_checks import verify_digest
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -318,6 +319,7 @@ def main():
         verify_fixed(build, nim_flags, linker)
         verify_bounded(build, nim_flags, linker, run, reference_encode, reference_decode)
         verify_composite(build, nim_flags, linker, run, reference_encode, reference_decode)
+        verify_digest(build, nim_flags, linker, run, reference_encode, reference_decode)
         print(f'PASS: {len(requests)} shared requests per implementation; '
               f'{official_count} official prefix checks; {len(fixtures)} boundary fixtures; '
               'native tests and negative compilation checks', flush=True)

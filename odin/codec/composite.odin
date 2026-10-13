@@ -111,6 +111,29 @@ valid_blob_span :: proc(span: Blob_Span, size: int) -> bool {
 	)
 }
 
+// Validate and measure a work variant without mutation, enabling atomic enclosing-tuple preflight.
+measure_work :: proc(value: Work_Output, pool_size: int, limit: Byte_Limit) -> Composite_Write {
+	// The active union member selects the only fields that have wire meaning.
+	switch item in value {
+	case Blob_Span:
+		// Validate signed endpoints before narrowing length or adding headers.
+		if !valid_blob_span(item, pool_size) {return {error = .Invalid_Span}}
+		// Blob policy applies only to the successful branch.
+		if u64(item.length) > u64(limit) {return {error = .Limit_Exceeded}}
+		length := encode(Natural(item.length))
+		// A complete extent must be representable in the host integer.
+		if item.length > max(int) - 1 - length.length {return {error = .Length_Overflow}}
+		return {written = 1 + length.length + item.length}
+	case Work_Error:
+		// Explicit enum casts cannot impersonate success or an undefined wire tag.
+		if int(item) < 1 || int(item) > 6 {return {error = .Invalid_Tag}}
+		return {written = 1}
+	case:
+		// Nil unions are not work-output values.
+		return {error = .Invalid_Tag}
+	}
+}
+
 // Write a validated discriminator plus optional bounded blob, committing nothing until all checks pass.
 write_composite_tag :: proc(
 	tag: int,

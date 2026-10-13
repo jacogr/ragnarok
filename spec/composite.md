@@ -98,5 +98,6 @@ assert exact successful re-encoding and unchanged failed destinations.
 The shared runner uses an independent Python reference and unmodified official
 fixtures. Tiny/full preimage frames are encoded and decoded **in full**. Official
 work-result fixtures validate only the `O` field; surrounding fields establish
-its exact offset/extent. Full work digests are subsequent work.
+its exact offset/extent. Full work digests are now implemented in the [next slice](work-digest.md);
+its suite verifies these fixtures as complete tuples.
 See [the executed verification report](../results/composite.md).

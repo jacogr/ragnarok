@@ -90,27 +90,49 @@ proc blobError(error: ContainerError): CompositeError {.raises: [].} =
 proc validSpan(span: BlobSpan, size: int): bool {.raises: [].} =
   span.offset >= 0 and span.length >= 0 and span.offset <= size and span.length <= size - span.offset
 
-# Emit a checked one-octet tag and optional bounded blob only after complete span/capacity/alias preflight.
+# Measure a validated tag/blob without writing, so enclosing tuples can preflight all their fields.
+proc tagSize(tag: int, hasBlob: bool, span: BlobSpan, poolSize: int,
+             limit: ByteLimit): CompositeWrite {.raises: [].} =
+  # Reject discriminators before narrowing or interpreting payloads.
+  if tag < 0 or tag > 6: return CompositeWrite(error: CompositeError.InvalidTag)
+  # Payload-free values borrow no pool and contain exactly one tag byte.
+  if not hasBlob: return CompositeWrite(written: 1)
+  # Prove source endpoints before converting the signed length.
+  if not validSpan(span, poolSize): return CompositeWrite(error: CompositeError.InvalidSpan)
+  # Apply caller policy before calculating encoded extent.
+  if uint64(span.length) > uint64(limit): return CompositeWrite(error: CompositeError.LimitExceeded)
+  let length = natural.encode(JamNatural(uint64(span.length)))
+  # Headers must fit in the host extent without overflowing the sum.
+  if span.length > high(int) - 1 - length.len: return CompositeWrite(
+      error: CompositeError.LengthOverflow)
+  CompositeWrite(written: 1 + int(length.len) + span.length)
+
+# Emit checked bytes only after size, capacity and whole borrowed-pool overlap checks.
 proc writeTag(tag: int, hasBlob: bool, span: BlobSpan, pool: openArray[byte], limit: ByteLimit,
               output: var openArray[byte]): CompositeWrite {.raises: [].} =
-  if tag < 0 or tag > 6: return CompositeWrite(error: CompositeError.InvalidTag) # Before byte narrowing.
-  if not hasBlob:
-    if output.len == 0: return CompositeWrite(error: CompositeError.OutputTooSmall) # Tag capacity.
-    output[0] = byte(tag)
-    return CompositeWrite(written: 1) # Payload-free branch reads no source data.
-  if not validSpan(span, pool.len): return CompositeWrite(error: CompositeError.InvalidSpan) # Safe pool bounds.
-  if uint64(span.length) > uint64(limit): return CompositeWrite(
-      error: CompositeError.LimitExceeded) # Blob policy.
-  let length = natural.encode(JamNatural(uint64(span.length)))
-  if output.len < 1 + length.len or span.length > output.len - 1 - length.len:
-    return CompositeWrite(error: CompositeError.OutputTooSmall) # Prove total extent by subtraction.
-  let total = 1 + length.len + span.length
-  if pool.len > 0 and alias(unsafeAddr pool[0], pool.len, addr output[0], total):
-    return CompositeWrite(error: CompositeError.AliasedBuffers) # Protect all borrowed pool bytes.
+  let size = tagSize(tag, hasBlob, span, pool.len, limit)
+  # Invalid source or policy cannot produce even a discriminator byte.
+  if size.error != CompositeError.None: return size
+  # The destination must hold the complete variant.
+  if output.len < size.written: return CompositeWrite(error: CompositeError.OutputTooSmall)
+  # Only payload-bearing variants borrow the pool; protect unused source bytes too.
+  if hasBlob and pool.len > 0 and alias(unsafeAddr pool[0], pool.len, addr output[0], size.written):
+    return CompositeWrite(error: CompositeError.AliasedBuffers)
   output[0] = byte(tag)
-  for i in 0..<length.len: output[1 + i] = length.bytes[i] # Commit the canonical nested length.
-  for i in 0..<span.length: output[1 + length.len + i] = pool[span.offset + i] # Blob identity encoding.
-  CompositeWrite(written: total)
+  # Present/success values append the canonical length and identity payload.
+  if hasBlob:
+    let length = natural.encode(JamNatural(uint64(span.length)))
+    # Copy the complete canonical length before the blob.
+    for i in 0..<length.len: output[1 + i] = length.bytes[i]
+    # Span bounds and output capacity were proved above.
+    for i in 0..<span.length: output[1 + length.len + i] = pool[span.offset + i]
+  size
+
+# Validate and measure a work output without mutation; enclosing codecs use this for atomic preflight.
+proc measureWork*(value: WorkOutput, poolSize: int, limit: ByteLimit): CompositeWrite {.raises: [].} =
+  # Only success contains a borrowed payload descriptor.
+  if value.kind == WorkKind.Success: return tagSize(0, true, value.blob, poolSize, limit)
+  tagSize(ord(value.kind), false, BlobSpan(), poolSize, limit)
 
 # Read a canonical discriminator, accepting only the defined schema tags before any enum conversion.
 proc readTag(input: openArray[byte], maximum, blobTag: uint64,

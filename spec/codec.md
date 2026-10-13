@@ -68,7 +68,8 @@ The general-natural and fixed-width unsigned APIs are now public. See
 checked width/range behavior. Bounded byte strings
 and fixed-unsigned sequences are now implemented; see
 [the container notes](bounded-containers.md). Optional variable blobs, work-output variants and full preimage extrinsics
-are also implemented; see [the composite notes](composite.md). Further codec
+are also implemented; see [the composite notes](composite.md). Complete work
+digests now have [dedicated notes](work-digest.md). Further codec
 increments require the maintainer's next go-ahead.
 
 ## Test fixtures
@@ -86,7 +87,8 @@ those prefixes. This is **20 primitive prefix checks**, not a complete decode
 of any composite structure by the natural-only checks. No standalone
 general-natural vectors exist in that revision's codec directory. The composite
 suite now separately verifies full preimage frames and official work-output
-fields; full blocks and other composite types remain open.
+fields; the work-digest suite now verifies complete official work-result tuples.
+Full blocks and other composite types remain open.
 
 The Python reference is a test-only evaluation of the paper's piecewise formula.
 Neither native implementation delegates codec behavior to it or to C.

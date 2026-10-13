@@ -1,6 +1,6 @@
 # JAM Ragnarök — Design and Evaluation Plan
 
-**Status:** Natural, fixed-unsigned and bounded-container slices implemented; evaluation ongoing  
+**Status:** Natural, scalar, bounded and composite codec slices implemented; evaluation ongoing
 **Date:** 2026-10-13  
 **Candidates:** Nim and Odin  
 **Decision:** Open; no preferred winner by policy
@@ -144,12 +144,12 @@ The exact directory names and tooling can evolve by an explicit decision.
 
 ## 11. Immediate next task
 General naturals, fixed-width unsigned integers, bounded blobs/scalar sequences,
-optional variable blobs, work-output variants and full nested preimage extrinsics
-are implemented independently in both languages. Specification and vector
-revisions remain pinned. See [the latest verification report](../results/composite.md).
+optional variable blobs, work-output variants, full nested preimage extrinsics
+and complete work digests are implemented independently in both languages. Specification and vector
+revisions remain pinned. See [the latest verification report](../results/work-digest.md).
 
 Wait for the maintainer's next go-ahead before the next codec increment.
-Complete work digests, other extrinsics, generic element schemas and full blocks
+Complete work reports, other extrinsics, generic element schemas and full blocks
 remain later M1 work. Linux reproducibility/CI remains open in M0.
 
 Do not begin PVM, state transitions, or validator networking until the relevant

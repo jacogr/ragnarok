@@ -7,7 +7,8 @@ and [the macOS toolchains](docs/toolchains-macos.md).
 The implemented primitives are canonical JAM general naturals and fixed-width
 unsigned integers (0..8 bytes), bounded byte strings, and homogeneous
 fixed-unsigned sequences, optional variable blobs, work-output variants and
-full nested preimage extrinsics, with checked prefix decoding. They have no
+full nested preimage extrinsics and complete work digests, with checked prefix
+decoding. They have no
 third-party language packages and no heap allocations in either codec.
 
 ## Format the sources
@@ -74,5 +75,9 @@ same shared test command.
 The first composite round is complete. See [its API notes](spec/composite.md)
 and [verification report](results/composite.md) for exact optional/work tags,
 full official preimage checks and nested failure handling.
+
+Complete work digests are now implemented. See [their API notes](spec/work-digest.md)
+and [verification report](results/work-digest.md) for full official vector checks
+and nominal hash/gas/metric types.
 
 Wait for the maintainer's next go-ahead before the next codec increment.
