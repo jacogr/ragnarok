@@ -67,8 +67,9 @@ The general-natural and fixed-width unsigned APIs are now public. See
 [fixed-width specification notes](fixed-unsigned.md) for the additional APIs and
 checked width/range behavior. Bounded byte strings
 and fixed-unsigned sequences are now implemented; see
-[the container notes](bounded-containers.md). Nested/composite codecs remain
-subsequent work and require the maintainer's next go-ahead.
+[the container notes](bounded-containers.md). Optional variable blobs, work-output variants and full preimage extrinsics
+are also implemented; see [the composite notes](composite.md). Further codec
+increments require the maintainer's next go-ahead.
 
 ## Test fixtures
 
@@ -82,8 +83,10 @@ JSON/binary files from the pinned official repository, plus its CC0 license.
 The runner checks file hashes, tests outer sequence lengths and all preimage
 blob length prefixes, and verifies the JSON/binary offsets used to locate
 those prefixes. This is **20 primitive prefix checks**, not a complete decode
-of any composite structure. No standalone general-natural vectors exist in
-that revision's codec directory; full composite vector conformance remains open.
+of any composite structure by the natural-only checks. No standalone
+general-natural vectors exist in that revision's codec directory. The composite
+suite now separately verifies full preimage frames and official work-output
+fields; full blocks and other composite types remain open.
 
 The Python reference is a test-only evaluation of the paper's piecewise formula.
 Neither native implementation delegates codec behavior to it or to C.

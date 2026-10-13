@@ -143,14 +143,14 @@ The exact directory names and tooling can evolve by an explicit decision.
 - Is future JAM Implementer's Prize eligibility a goal? Verify rules separately; do not assume eligibility.
 
 ## 11. Immediate next task
-The general-natural, fixed-width unsigned, and bounded byte-string/fixed-unsigned
-sequence slices are implemented independently in both languages. Specification
-and vector revisions remain pinned. See [the latest verification
-report](../results/bounded-containers.md).
+General naturals, fixed-width unsigned integers, bounded blobs/scalar sequences,
+optional variable blobs, work-output variants and full nested preimage extrinsics
+are implemented independently in both languages. Specification and vector
+revisions remain pinned. See [the latest verification report](../results/composite.md).
 
-Wait for the maintainer's next go-ahead before nested/composite codec work.
-Generic element schemas, options/variants and complete official composite
-vectors remain later M1 work. Linux reproducibility/CI remains open in M0.
+Wait for the maintainer's next go-ahead before the next codec increment.
+Complete work digests, other extrinsics, generic element schemas and full blocks
+remain later M1 work. Linux reproducibility/CI remains open in M0.
 
 Do not begin PVM, state transitions, or validator networking until the relevant
 gates are met.
