@@ -1,0 +1,38 @@
+{
+  "graypaper": {
+    "repository": "https://github.com/gavofyork/graypaper",
+    "tag": "v0.7.1",
+    "commit": "1c979cb59bb800f92ffff083a2701004dfc6cd33",
+    "serialization_source_sha256": "9ac6108b7a78305568d45f6b91a43356793fe302bb98ebf6d70a974a440f328d"
+  },
+  "vectors": {
+    "repository": "https://github.com/w3f/jamtestvectors",
+    "commit": "1dc503af37ae8ecc7b6e24a393f6102801c0c80c",
+    "protocol_version": "0.7.1",
+    "files": {
+      "vectors/official/codec/tiny/tickets_extrinsic.bin": "69d59e7ec8933d92a202d7a439b05f5f69ae3c0a4bf00bc08bf68dcaa256bde3",
+      "vectors/official/codec/tiny/tickets_extrinsic.json": "dcc62a0579a818c20eed315518a9ad1ead71000baca10deec9099d8daa407db6",
+      "vectors/official/codec/tiny/preimages_extrinsic.bin": "874f3bed57dab9927170d5344b8489ad0662d5ee0c22a58ca25a362415cc8c90",
+      "vectors/official/codec/tiny/preimages_extrinsic.json": "9680a6ba66168f2a001cc7332a34614fbbb7768068b7e9d8684e19edbf0e201c",
+      "vectors/official/codec/full/tickets_extrinsic.bin": "29050e72326273a7963cb15834e5eb14d2c6e756382d7234df4afc52cb5a4548",
+      "vectors/official/codec/full/tickets_extrinsic.json": "1f671b47562c70d51f5da02f9adf19b59102fe6fa4057a31f30dcab93ff1310f",
+      "vectors/official/codec/full/preimages_extrinsic.bin": "874f3bed57dab9927170d5344b8489ad0662d5ee0c22a58ca25a362415cc8c90",
+      "vectors/official/codec/full/preimages_extrinsic.json": "9680a6ba66168f2a001cc7332a34614fbbb7768068b7e9d8684e19edbf0e201c"
+    }
+  },
+  "toolchains": {
+    "nim": "2.2.12",
+    "nim_mm": "arc",
+    "odin": "dev-2026-10:84bc3fc21"
+  },
+  "formatters": {
+    "odinfmt": {
+      "homebrew_package": "2026-08",
+      "repository": "https://github.com/DanielGavin/ols"
+    },
+    "nimpretty": {
+      "version": "0.2",
+      "bundled_with_nim": "2.2.12"
+    }
+  }
+}
