@@ -92,7 +92,7 @@ def fixtures():
     openssl = shutil.which('openssl')
     assert openssl
     # Structured OpenSSL arguments avoid shell expansion; escaped dollars are needed in OpenSSL's config syntax.
-    for identity in ('a', 'b', 'wrong-san', 'no-san', 'multi-san', 'ecdsa'):
+    for identity in ('a', 'b', 'c', 'd', 'e', 'wrong-san', 'no-san', 'multi-san', 'ecdsa'):
         key, cert = folder / f'{identity}.key.pem', folder / f'{identity}.cert.pem'
         algorithm = ['-algorithm', 'EC', '-pkeyopt', 'ec_paramgen_curve:P-256'] if identity == 'ecdsa' else ['-algorithm', 'ED25519']
         subprocess.run([openssl, 'genpkey', *algorithm, '-out', key], check=True, capture_output=True)

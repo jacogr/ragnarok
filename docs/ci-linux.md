@@ -32,6 +32,7 @@ python3 interoperability/test_bandersnatch.py --fetch
 python3 interoperability/test_quic.py --fetch
 python3 interoperability/test_quic_soak_harness.py
 python3 interoperability/test_quic_soak.py --skip-build
+python3 interoperability/test_quic_service.py --skip-build
 ```
 
 The codec command covers both native implementations, negative compilation
@@ -93,3 +94,9 @@ resource limits. Full Linux verification still awaits the rerun.
 The [explicit-adapter migration](quic-adapters.md) adds Nim's standard-selector
 I/O selftest alongside Odin's cancellation selftest. The workflow commands are
 unchanged; the maintainer has reported passing Linux CI for this adapter revision.
+
+The persistent-service step now follows the lifecycle soak, reusing the freshly built native
+binaries. It retains one listener engine per language across sixteen mixed-language multi-peer
+waves, with fully retired idle resource observations and final application/I/O cleanup checks.
+See [the workload](quic-service.md). Its JSON and logs are included in the diagnostic upload;
+verification on Linux awaits the pushed run for this increment.

@@ -113,6 +113,10 @@ The bounded same-process QUIC soak now exercises backpressure, cancellation,
 stream-local deadlines and continued service after malformed requests. See
 [run instructions and resource budgets](docs/quic-soak.md).
 
+The [persistent multi-peer service](docs/quic-service.md) now keeps one listener engine alive across
+mixed Nim/Odin peers and reconnect waves, including blocked/failed peers and idle resource checks.
+See [its verification results](results/quic-service.md); the new Linux CI step awaits a pushed run.
+
 [Codec result safety](docs/codec-results.md) now separates completed values and
 metadata from typed failures in both languages.
 

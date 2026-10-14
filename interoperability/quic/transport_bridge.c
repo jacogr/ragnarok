@@ -11,6 +11,10 @@
 struct rq_transport {
     lsquic_engine_t *engine;
     lsquic_conn_t *connection;
+    /* Stable bounded handles belong to the engine until on_conn_closed; no application payload lives here. */
+    lsquic_conn_t *connections[16];
+    unsigned active, accepted, closed, peak;
+    int multi;
     SSL_CTX *tls;
     struct sockaddr_in local;
     struct lsquic_engine_settings settings;
@@ -74,23 +78,39 @@ static int packets_out(void *ctx, const struct lsquic_out_spec *packets, unsigne
     }
     return (int)count;
 }
-/* Accept only one connection in this initial proof; server callback runs after TLS handshake completion. */
+/* Retain bounded connection handles; service mode isolates connection lifecycle from endpoint status. */
 static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
     struct rq_transport *t = ctx;
-    if (t->connection && t->connection != connection) { lsquic_conn_abort(connection); return NULL; }
-    t->connection = connection;
-    if (t->server) t->status = 1; /* Authenticated accept; client still waits for handshake callback. */
+    /* Single-peer proofs retain their original ceiling; service admits at most sixteen authenticated peers. */
+    if ((!t->multi && t->active) || t->active == 16) {
+        lsquic_conn_abort(connection); return NULL;
+    }
+    /* A vacant slot remains valid until this connection's final close callback. */
+    for (unsigned i = 0; i < 16; ++i) {
+        if (!t->connections[i]) { t->connections[i] = connection; break; }
+    }
+    ++t->active; ++t->accepted;
+    if (t->active > t->peak) t->peak = t->active; /* Observe actual overlap, not process concurrency alone. */
+    if (!t->multi) t->connection = connection; /* Legacy outgoing stream API names the sole dialed peer. */
+    if (t->server) t->status = 1; /* Acceptor callback follows authenticated handshake promotion. */
     return (lsquic_conn_ctx_t *)t;
 }
-/* Capture handshake completion without confusing a newly allocated client connection with authenticated success. */
+/* Capture client authentication; a failed service connection never poisons the listener. */
 static void handshake_done(lsquic_conn_t *connection, enum lsquic_hsk_status status) {
     struct rq_transport *t = (struct rq_transport *)lsquic_conn_get_ctx(connection);
-    if (t) t->status = status == LSQ_HSK_OK ? 1 : -1; /* Resumption is not enabled in this proof. */
+    if (t && !t->multi) t->status = status == LSQ_HSK_OK ? 1 : -1; /* Resumption remains disabled. */
 }
-/* Mark rejected/prematurely closed attempts and release the live native connection handle. */
+/* Retire exactly one retained handle; TLS rejects before promotion do not consume an authenticated slot. */
 static void connection_closed(lsquic_conn_t *connection) {
     struct rq_transport *t = (struct rq_transport *)lsquic_conn_get_ctx(connection);
-    if (t) { if (t->status == 0) t->status = -1; t->connection = NULL; }
+    if (!t) return; /* Over-capacity attempts have no retained native owner. */
+    /* Release only the slot belonging to this close; other peers keep their contexts and streams. */
+    for (unsigned i = 0; i < 16; ++i) {
+        if (t->connections[i] == connection) {
+            t->connections[i] = NULL; --t->active; ++t->closed; break;
+        }
+    }
+    if (!t->multi) { if (t->status == 0) t->status = -1; t->connection = NULL; } /* Preserve one-shot outcomes. */
 }
 /* Forward new stream handles to the native protocol owner without interpreting any stream bytes. */
 static lsquic_stream_ctx_t *new_stream(void *ctx, lsquic_stream_t *stream) {
@@ -120,10 +140,10 @@ static const struct lsquic_stream_if callbacks = {
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
     size_t length = strlen(alpn);
-    if (!verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
+    if (soak < 0 || soak > 2 || (soak == 2 && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
     struct rq_transport *t = calloc(1, sizeof(*t));
     if (!t) return NULL; /* Typed null failure, never an application panic. */
-    t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
+    t->multi = soak == 2; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
     t->alpn[0] = (uint8_t)length; memcpy(t->alpn + 1, alpn, length); t->alpn_length = (unsigned)length + 1;
     if (lsquic_global_init(LSQUIC_GLOBAL_CLIENT | LSQUIC_GLOBAL_SERVER)) goto fail;
     t->tls = SSL_CTX_new(TLS_method());
@@ -146,6 +166,8 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
         t->settings.es_init_max_stream_data_bidi_local = 65536;
         t->settings.es_init_max_stream_data_bidi_remote = 65536;
     }
+    /* Service streams have bounded transport credit as well as native application slots. */
+    if (t->multi) { t->settings.es_init_max_streams_bidi = 8; t->settings.es_idle_timeout = 2; } /* Bounded crashed-peer retirement. */
     t->settings.es_versions = 1u << LSQVER_I001; t->settings.es_support_srej = 0;
     t->api.ea_settings = &t->settings; t->api.ea_stream_if = &callbacks; t->api.ea_stream_if_ctx = t;
     t->api.ea_packets_out = packets_out; t->api.ea_packets_out_ctx = t; t->api.ea_get_ssl_ctx = get_tls;
@@ -175,7 +197,7 @@ int rq_status(rq_transport *t) { return t->status; }
 /* Destruction invokes final callbacks while the native caller-owned context is still alive. */
 void rq_transport_free(rq_transport *t) {
     if (!t) return;
-    if (t->engine) { if (t->connection) lsquic_conn_close(t->connection); lsquic_engine_destroy(t->engine); }
+    if (t->engine) lsquic_engine_destroy(t->engine); /* Final callbacks retire all retained connections before free. */
     SSL_CTX_free(t->tls); free(t); lsquic_global_cleanup();
 }
 
@@ -197,3 +219,20 @@ void rq_stream_want_read(void *s, int want) { lsquic_stream_wantread(s, want); }
 
 /* Flush accepted application bytes even when a test deliberately withholds FIN. */
 int rq_stream_flush(void *s) { return lsquic_stream_flush(s); }
+
+/* Queue a graceful close while UDP and callback owners still live; destruction alone cannot send packets. */
+void rq_disconnect(rq_transport *t) { if (t->connection) lsquic_conn_close(t->connection); }
+/* Endpoint-owned counters avoid exposing raw connection handles to application code. */
+uint64_t rq_peer_metric(rq_transport *t, int metric) {
+    /* Invalid trusted metric selectors have no meaningful observation. */
+    switch (metric) {
+    case 0: return t->active; /* Currently retained authenticated server peers (client slots may still handshake). */
+    case 1: return t->accepted; /* Lifetime promoted connections, including later reconnects. */
+    case 2: return t->closed; /* Retired promoted connections. */
+    case 3: return t->peak; /* Maximum real connection overlap. */
+    default: return 0;
+    }
+}
+
+/* Compare the owning connections of two live stream handles; retain no connection pointer after this call. */
+int rq_stream_same_peer(void *a, void *b) { return lsquic_stream_conn(a) == lsquic_stream_conn(b); }

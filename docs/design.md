@@ -163,8 +163,8 @@ budgets. See [the architecture](quic-adapters.md),
 [verification report](../results/quic-adapters.md), [proof instructions](quic-proof.md)
 and [soak workload](quic-soak.md). Native/compiler/protocol revisions are unchanged;
 the dependency set is reduced to four native source trees. The maintainer has reported that Linux CI passes for this adapter revision. This does not pass M3 or select a language:
-persistent-engine multi-peer service, IPv6, independent-peer interoperability
-and deeper C/TLS allocation instrumentation remain open.
+At that revision, persistent-engine multi-peer service, IPv6, independent-peer interoperability
+and deeper C/TLS allocation instrumentation remained open. The service round is recorded below.
 
 Complete work reports, other extrinsics, generic element schemas and full blocks
 remain later M1 work. [Linux CI](ci-linux.md) is configured for Ubuntu 24.04
@@ -207,3 +207,17 @@ M2 remains open for audit/side-channel and exceptional-point review of the
 historical backend/dependency closure, the Ed25519 verifier policy gate, wider
 JAM domain integration and BEEFY/BLS. The compatibility evidence does not select
 a production backend or a winning client language.
+
+The persistent multi-peer service round now retains one listener engine in each language across
+simultaneous independent identities and reconnect waves. The mixed Nim/Odin workload checks
+healthy progress across connections, malformed/TLS rejection, cancellation, incomplete-request
+deadlines, killed-peer expiry and fully retired idle resource samples. See [the workload and
+ownership limits](quic-service.md) and [verification results](../results/quic-service.md). Fresh
+client engines are deliberate; persistent outgoing reconnect, IPv6 and independent JAM peers
+remain open. The Linux CI step awaits verification of this increment.
+
+Remaining bounded decision rounds are one integrated networking/owned-codec/crypto slice, then
+controlled optimized measurements and maintainer ergonomics review. The maintainer explicitly
+requests M1 speed comparisons: encode/decode representative scalar, bounded and nested codecs,
+separating allocation-free borrowed APIs from owned snapshots on the same Linux host/corpus.
+Resource use and latency accompany throughput. Do not start either round without the next go-ahead.

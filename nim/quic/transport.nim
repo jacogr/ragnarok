@@ -52,6 +52,12 @@ proc transportNew(soak, server: cint, port: uint16, cert, key, alpn: cstring, us
 # Dial one loopback peer through the retained native engine.
 proc nativeConnect(engine: pointer, port: uint16): cint {.importc: "rq_connect",
     header: BridgeHeader, cdecl, raises: [].}
+# Queue close while the socket still sends transport packets; callers then poll a short drain interval.
+proc nativeDisconnect(engine: pointer) {.importc: "rq_disconnect", header: BridgeHeader, cdecl,
+    raises: [].}
+# Observe connection lifecycle without retaining a raw native connection pointer.
+proc nativeMetric(engine: pointer, metric: cint): uint64 {.importc: "rq_peer_metric",
+    header: BridgeHeader, cdecl, raises: [].}
 # Consume one borrowed complete UDP datagram synchronously.
 proc packetIn(engine: pointer, bytes: ptr byte, length: csize_t,
     port: uint16): cint {.importc: "rq_packet_in", header: BridgeHeader, cdecl, raises: [].}
@@ -82,6 +88,9 @@ proc wantWrite*(stream: NativeStream, want: cint) {.importc: "rq_stream_want_wri
     header: BridgeHeader, cdecl, raises: [].}
 # Flush accepted bytes independently of application FIN.
 proc streamFlush*(stream: NativeStream): cint {.importc: "rq_stream_flush", header: BridgeHeader,
+    cdecl, raises: [].}
+# Compare live stream owners synchronously, proving isolation across different connections without borrowing a connection handle.
+proc samePeer*(a, b: NativeStream): cint {.importc: "rq_stream_same_peer", header: BridgeHeader,
     cdecl, raises: [].}
 # Half-close writing while keeping response reads available.
 proc streamFin*(stream: NativeStream) {.importc: "rq_stream_fin", header: BridgeHeader, cdecl,
@@ -149,7 +158,8 @@ proc closeTransport*(owner: var Transport) =
 
 # Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
 proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
-    cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback): bool =
+    cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
+        multi = false): bool =
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socketOpen or owner.selector != nil: return false
   owner = Transport()
@@ -175,8 +185,9 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     owner.selector = newSelector[int]()
     owner.selector.registerHandle(owner.socket, {Event.Read}, 0)
     owner.registered = true
-    owner.engine = transportNew(cint(soak), cint(server), posix.ntohs(local.sin_port), cert.cstring,
-        key.cstring, alpn.cstring, addr owner, verifyForward, sendPacket, streamForward)
+    owner.engine = transportNew((if multi: 2.cint else: cint(soak)), cint(server), posix.ntohs(
+        local.sin_port), cert.cstring, key.cstring, alpn.cstring, addr owner, verifyForward,
+            sendPacket, streamForward)
     # Failed TLS/native setup must release the already-bound I/O resources as well.
     if owner.engine == nil:
       closeTransport(owner)
@@ -200,6 +211,14 @@ proc connectTransport*(owner: var Transport, port: uint16): bool {.raises: [].} 
 # Open a bidirectional stream; callbacks populate native-language framing state synchronously.
 proc openStream*(owner: var Transport) {.raises: [].} =
   nativeOpen(owner.engine)
+
+# Close the sole dialed peer without destroying this endpoint or its readiness owner.
+proc disconnectTransport*(owner: var Transport) {.raises: [].} =
+  nativeDisconnect(owner.engine)
+
+# Copy bounded endpoint counters; no native handle or TLS storage escapes this observation.
+proc peerMetric*(owner: Transport, metric: int): uint64 {.raises: [].} =
+  nativeMetric(owner.engine, cint(metric))
 
 # Progress one timer/readiness cycle; receive buffers and callback owners stay alive through all native calls.
 proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
