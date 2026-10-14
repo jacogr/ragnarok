@@ -70,3 +70,7 @@ The fixed peer expectation avoids introducing a general per-connection TLS ident
 in this increment. Disruption/overload testing, bounded Bandersnatch offload and deeper C/TLS
 allocation instrumentation remain separate rounds. No language decision or production networking
 claim follows from this test.
+
+The subsequent [resilience round](quic-resilience.md) addresses controlled peer death/restart and
+authenticated admission saturation. The broader networking and crypto-offload limits above remain
+open; the earlier mesh workload and profile settings remain unchanged.

@@ -9,6 +9,13 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 
+// Explicit transport proof settings prevent experiment deadlines from silently changing normal peer behavior.
+IPv6_Profile :: enum i32 {
+	Retained_Peer     = 3,
+	Crash_Recovery    = 4,
+	Saturated_Service = 5,
+}
+
 // Apply JAMNP-S Required connectivity to full lexicographic key bytes, with final-byte high-bit parity.
 preferred :: proc(local, remote: [32]u8) -> bool {
 	less := false
@@ -49,6 +56,24 @@ mesh_live :: proc(peer: ^Peer) -> int {
 	// Nil handles identify only slots whose final close has released their buffers.
 	for state in peer.streams { if state.handle != nil { count += 1 } }
 	return count
+}
+
+// Require four sent requests and four complete incoming CE query prefixes, all awaiting FIN/peer recovery.
+mesh_pending :: proc(peer: ^Peer) -> bool {
+	local, remote := 0, 0
+	// Every retained owner must be unsettled; completed streams cannot substitute for the loss test.
+	for state in peer.streams {
+		if state.handle == nil { continue } 	// Final close has already released this slot.
+		if state.counted || state.read_fin { return false }
+		if state.responder {
+			if state.received_length != 37 { return false } 	// A full CE query prefix must have arrived without FIN.
+			remote += 1
+		} else {
+			if state.send_offset != 37 || state.write_fin { return false } 	// All query bytes have actually been sent.
+			local += 1
+		}
+	}
+	return local == 4 && remote == 4
 }
 
 // Dispatch both endpoints on the one thread event loop, surfacing any native framing or UDP failure.
@@ -102,6 +127,10 @@ run_mesh :: proc(tracking: ^mem.Tracking_Allocator) -> bool {
 	copy(a[:], local_key); copy(b[:], remote_key)
 	if a == b { return false } 	// Reject self-dial and ambiguous preferred selection.
 	initiator := preferred(a, b)
+	disruption_text := os.get_env("RAGNAROK_MESH_DISRUPT", context.allocator)
+	defer delete(disruption_text)
+	disrupted := disruption_text == "1"
+	profile := IPv6_Profile.Crash_Recovery if disrupted else IPv6_Profile.Retained_Peer
 	incoming_socket, incoming_error := nbio.create_udp_socket(.IP6)
 	if incoming_error != nil { return false } 	// No socket exists to bind or register.
 	defer net.close(incoming_socket)
@@ -141,7 +170,8 @@ run_mesh :: proc(tracking: ^mem.Tracking_Allocator) -> bool {
 		strings.clone_to_cstring(os.args[5]),
 		strings.clone_to_cstring(os.args[8])
 	defer delete(cert); defer delete(key); defer delete(alpn)
-	incoming.transport = rq_transport_new_ipv6(
+	incoming.transport = rq_transport_new_ipv6_profile(
+		i32(profile),
 		1,
 		u16(local_port),
 		cert,
@@ -153,7 +183,8 @@ run_mesh :: proc(tracking: ^mem.Tracking_Allocator) -> bool {
 		on_stream,
 	)
 	if incoming.transport == nil { return false }
-	outgoing.transport = rq_transport_new_ipv6(
+	outgoing.transport = rq_transport_new_ipv6_profile(
+		i32(profile),
 		0,
 		u16(local.port),
 		cert,
@@ -171,12 +202,16 @@ run_mesh :: proc(tracking: ^mem.Tracking_Allocator) -> bool {
 	defer delete(fallback_text)
 	fmt.println("MESH_READY", int(initiator))
 	authenticated_in, authenticated_out: u64
+	final_path := fmt.aprintf("%s/healthy-final", os.args[9])
+	defer delete(final_path)
 	// The same two stable owners and dispatcher live across every independently gated connection round.
 	for round in 0 ..< rounds {
 		start_path := fmt.aprintf("%s/start-%d", os.args[9], round)
 		start_ok := mesh_gate(&incoming, &outgoing, start_path)
 		delete(start_path)
 		if !start_ok { return false }
+		// The final healthy generation exercises reconnect after the last crash and then closes gracefully.
+		loss_round := disrupted && !os.exists(final_path)
 		fallback := round == 0 && fallback_text == "1"
 		started := time.now()
 		// First-round fallback deliberately suppresses the preferred dial for the spec's example five seconds.
@@ -225,11 +260,28 @@ run_mesh :: proc(tracking: ^mem.Tracking_Allocator) -> bool {
 			   time.since(started) > 10 * time.Second { return false }
 		}
 		fmt.println("MESH_EXCHANGED", round, kept.healthy)
+		// Crash rounds retain incomplete request buffers before the external harness kills the other process.
+		if loss_round {
+			// Healthy stream owners must retire on both peers before new incomplete requests enter that phase.
+			pending_path := fmt.aprintf("%s/pending-%d", os.args[9], round)
+			pending_ok := mesh_gate(&incoming, &outgoing, pending_path)
+			delete(pending_path)
+			if !pending_ok { return false }
+			kept.recovering = true; kept.attack = "no-fin"
+			for _ in 0 ..< 4 { rq_open_stream(kept.transport) } 	// Four local queries accompany the peer's four pending requests.
+			started = time.now()
+			for !mesh_pending(kept) {
+				if !mesh_step(&incoming, &outgoing) ||
+				   time.since(started) > 10 * time.Second { return false }
+			}
+			fmt.println("MESH_PENDING", round, 8)
+		}
 		close_path := fmt.aprintf("%s/close-%d", os.args[9], round)
 		close_ok := mesh_gate(&incoming, &outgoing, close_path)
 		delete(close_path)
 		if !close_ok { return false }
-		rq_disconnect(kept.transport)
+		// The crash proof observes negotiated expiry; graceful rounds still explicitly queue close.
+		if !loss_round { rq_disconnect(kept.transport) }
 		started = time.now()
 		// Reconnect is released only after both connections and all stream buffer owners have retired.
 		for rq_peer_metric(incoming.transport, 0) != 0 ||
@@ -239,7 +291,13 @@ run_mesh :: proc(tracking: ^mem.Tracking_Allocator) -> bool {
 			if !mesh_step(&incoming, &outgoing) ||
 			   time.since(started) > 10 * time.Second { return false }
 		}
-		kept.healthy = 0; kept.completed = 0
+		// Exactly eight pending operations must settle while their native close callbacks release buffer owners.
+		if loss_round {
+			if kept.rejected != 8 { return false }
+			fmt.println("MESH_RECOVERED", round, kept.rejected)
+		}
+		kept.healthy = 0; kept.completed = 0; kept.rejected = 0
+		kept.recovering = false; kept.attack = "valid" // The next healthy phase still treats malformed work as a failure.
 		fmt.println(
 			"MESH_IDLE",
 			round,

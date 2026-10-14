@@ -7,6 +7,9 @@ const BridgeHeader = "../../interoperability/quic/transport_bridge.h"
 const CertHeader = "../../interoperability/quic/cert_fields.h"
 
 type
+  # Explicit proof profiles keep short test deadlines and load admission separate from normal peer settings.
+  Ipv6Profile* = enum
+    RetainedPeer = 3, CrashRecovery = 4, SaturatedService = 5
   # Read-only C byte element makes callback signatures match the shared const uint8_t ABI exactly.
   ConstByte* {.importc: "const uint8_t", header: BridgeHeader, pure, final.} = object
   # Opaque LSQUIC stream handle; its lifetime ends at the native close callback.
@@ -50,8 +53,8 @@ proc transportNew(soak, server: cint, port: uint16, cert, key, alpn: cstring, us
     verify: VerifyCallback, send: SendCallback, stream: StreamCallback): pointer {.importc: "rq_transport_new",
         header: BridgeHeader, cdecl, raises: [].}
 # Retain an IPv6 engine across reconnects; the native caller still owns UDP readiness and TLS identity policy.
-proc transportNew6(server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
-    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): pointer {.importc: "rq_transport_new_ipv6",
+proc transportNew6(profile, server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
+    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): pointer {.importc: "rq_transport_new_ipv6_profile",
         header: BridgeHeader, cdecl, raises: [].}
 # Inspect a live stream's initiator without retaining any connection pointer.
 proc nativeLocal(engine: pointer, stream: NativeStream): cint {.importc: "rq_stream_local",
@@ -189,7 +192,8 @@ proc closeTransport*(owner: var Transport) =
 # Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
 proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
-        multi = false, ipv6 = false, dispatcher: Selector[int] = nil): bool =
+        multi = false, ipv6 = false, dispatcher: Selector[int] = nil,
+            profile = RetainedPeer): bool =
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socketOpen or owner.selector != nil: return false
   owner = Transport()
@@ -222,8 +226,8 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
         ptr Sockaddr_in](addr local).sin_port)
     # IPv6 mesh owners retain single-peer engines; legacy IPv4/service modes keep their original limits.
     if ipv6:
-      owner.engine = transportNew6(cint(server), actualPort, cert.cstring, key.cstring,
-          alpn.cstring, addr owner, verifyForward, sendPacket, streamForward)
+      owner.engine = transportNew6(cint(profile), cint(server), actualPort, cert.cstring,
+          key.cstring, alpn.cstring, addr owner, verifyForward, sendPacket, streamForward)
     else:
       owner.engine = transportNew((if multi: 2.cint else: cint(soak)), cint(server), actualPort,
           cert.cstring, key.cstring, alpn.cstring, addr owner, verifyForward, sendPacket, streamForward)

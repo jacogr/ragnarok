@@ -13,7 +13,7 @@ struct rq_transport {
     lsquic_conn_t *connection;
     /* Stable bounded handles belong to the engine until on_conn_closed; no application payload lives here. */
     lsquic_conn_t *connections[16];
-    unsigned active, accepted, closed, peak, authenticated;
+    unsigned active, accepted, closed, peak, authenticated, capacity_rejected;
     int multi, persistent, ipv6, global_owned;
     SSL_CTX *tls;
     struct sockaddr_in local;
@@ -101,7 +101,7 @@ static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
     struct rq_transport *t = ctx;
     /* Single-peer proofs retain their original ceiling; service admits at most sixteen authenticated peers. */
     if ((!t->multi && t->active) || t->active == 16) {
-        lsquic_conn_abort(connection); return NULL;
+        ++t->capacity_rejected; lsquic_conn_abort(connection); return NULL;
     }
     /* A vacant slot remains valid until this connection's final close callback. */
     for (unsigned i = 0; i < 16; ++i) {
@@ -160,10 +160,10 @@ static const struct lsquic_stream_if callbacks = {
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
     size_t length = strlen(alpn);
-    if (soak < 0 || soak > 3 || (soak == 2 && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
+    if (soak < 0 || soak > 5 || ((soak == 2 || soak == 5) && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
     struct rq_transport *t = calloc(1, sizeof(*t));
     if (!t) return NULL; /* Typed null failure, never an application panic. */
-    t->persistent = soak == 3; t->multi = soak == 2; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
+    t->persistent = soak >= 3; t->multi = soak == 2 || soak == 5; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
     t->alpn[0] = (uint8_t)length; memcpy(t->alpn + 1, alpn, length); t->alpn_length = (unsigned)length + 1;
     /* Initialize once, so constructing a second engine cannot reseed state used by the first. */
     if (!global_owners && lsquic_global_init(LSQUIC_GLOBAL_CLIENT | LSQUIC_GLOBAL_SERVER)) goto fail;
@@ -190,6 +190,8 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
     }
     /* Service streams have bounded transport credit as well as native application slots. */
     if (t->multi) { t->settings.es_init_max_streams_bidi = 8; t->settings.es_idle_timeout = 2; } /* Bounded crashed-peer retirement. */
+    /* Recovery/load profiles use a two-second crash expiry and one-second liveness probes, solely for bounded experiments. */
+    if (soak >= 4) { t->settings.es_idle_timeout = 2; t->settings.es_ping_period = 1; t->settings.es_init_max_streams_bidi = 8; }
     t->settings.es_versions = 1u << LSQVER_I001; t->settings.es_support_srej = 0;
     t->api.ea_settings = &t->settings; t->api.ea_stream_if = &callbacks; t->api.ea_stream_if_ctx = t;
     t->api.ea_packets_out = packets_out; t->api.ea_packets_out_ctx = t; t->api.ea_get_ssl_ctx = get_tls;
@@ -260,6 +262,7 @@ uint64_t rq_peer_metric(rq_transport *t, int metric) {
     case 2: return t->closed; /* Retired promoted connections. */
     case 3: return t->peak; /* Maximum real connection overlap. */
     case 4: return t->authenticated; /* Lifetime successful handshakes, retained after close. */
+    case 5: return t->capacity_rejected; /* Authenticated attempts refused at the fixed connection ceiling. */
     default: return 0;
     }
 }
@@ -279,3 +282,13 @@ int rq_stream_local(rq_transport *t, void *stream) { return (lsquic_stream_id(st
 
 /* Release the application read half after native framing has validated FIN; writing may still hold a reply. */
 void rq_stream_read_done(void *stream) { lsquic_stream_shutdown(stream, 0); }
+
+/* Select only documented IPv6 proof profiles: 3 retained pair, 4 crash recovery, 5 bounded multi-peer load service. */
+rq_transport *rq_transport_new_ipv6_profile(int profile, int server, uint16_t port,
+ const char *cert, const char *key, const char *alpn, void *user, rq_verify_cb verify,
+ rq_send_cb send, rq_stream_cb stream) {
+    if (profile < 3 || profile > 5 || (profile == 5 && !server)) return NULL; /* No silent profile or role coercion. */
+    rq_transport *t = rq_transport_new(profile, server, port, cert, key, alpn, user, verify, send, stream);
+    if (t) { t->ipv6 = 1; t->local6 = address6(port); } /* Stable address precedes packet processing. */
+    return t;
+}

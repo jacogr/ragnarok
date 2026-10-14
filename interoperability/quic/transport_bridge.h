@@ -7,14 +7,14 @@ typedef struct rq_transport rq_transport;
 typedef int (*rq_verify_cb)(void *, const uint8_t *, size_t);
 typedef void (*rq_stream_cb)(void *, void *, int);
 typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, uint16_t);
-/* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3 reserved for the retained IPv6 constructor. Strings need only live during this call. */
+/* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3..5 reserved for IPv6 proof profiles. Strings need only live during this call. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);
 /* Initiate one loopback connection; server receives through packet_in instead. */
 int rq_connect(rq_transport *, uint16_t remote_port);
 /* Queue graceful single-connection close before stopping UDP readiness. */
 void rq_disconnect(rq_transport *);
-/* Read endpoint counters: 0 active, 1 accepted, 2 closed, 3 peak, 4 successful handshakes (all bounded handles, no borrowed pointers). */
+/* Read endpoint counters: 0 active, 1 accepted, 2 closed, 3 peak, 4 successful handshakes, 5 connection-capacity rejects (all bounded handles, no borrowed pointers). */
 uint64_t rq_peer_metric(rq_transport *, int);
 /* Feed borrowed datagrams synchronously; payload storage is not retained. */
 int rq_packet_in(rq_transport *, const uint8_t *, size_t, uint16_t remote_port);
@@ -44,4 +44,7 @@ rq_transport *rq_transport_new_ipv6(int server, uint16_t port, const char *cert,
 int rq_stream_local(rq_transport *, void *);
 /* Mark the read half finished only after the native caller validates its exact message and FIN. */
 void rq_stream_read_done(void *);
+/* Profile 3 retains a pair, 4 uses bounded crash expiry, 5 admits sixteen peers with eight remote streams each. */
+rq_transport *rq_transport_new_ipv6_profile(int profile, int server, uint16_t port, const char *cert,
+ const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);
 #endif

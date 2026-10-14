@@ -20,9 +20,10 @@ type
   Peer = object
     transport: Transport
     expected: seq[byte]
-    server, failed, stopping, service, mixed, integrated, mesh: bool
+    server, failed, stopping, service, mixed, integrated, mesh, recovering, overload: bool
     streams: array[64, StreamState]
     completed, opened, healthy, rejected, cancelled: int
+    capacityRejected, peakStreams: int
     attack: string
     bank: IntegrationBank
 
@@ -103,6 +104,10 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
           echo "ISOLATED_HEALTHY"
           break
     if peer.attack == "soak": echo (if peer.server: "SERVER_HEALTHY" else: "HEALTHY_OK") # Expose verified outcomes.
+  elif peer.mesh and peer.recovering:
+    # A known vanished peer settles its pending requests; buffers remain owned until final native close.
+    inc peer.completed
+    inc peer.rejected
   elif peer.attack == "soak":
     # An intentionally bad stream retires only its own buffers/callbacks.
     inc peer.completed
@@ -332,9 +337,16 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
     if state == nil:
       # At capacity a service rejects only this stream, preserving existing peers.
       if not peer.service: peer.failed = true
+      else: inc peer.capacityRejected # Only the newly arriving service stream loses admission.
       streamAbort(handle)
       return # Never grow an unbounded stream queue.
     newStream(peer, state, handle)
+    # Observe actual retained application owners, independently of transport stream-credit limits.
+    if peer.overload:
+      var live = 0
+      for slot in peer.streams:
+        if slot.handle != NativeStream(nil): inc live # Final close is the only slot release point.
+      peer.peakStreams = max(peer.peakStreams, live)
     return
   # Unknown native events cannot dereference released framing state.
   if state == nil:
@@ -369,7 +381,7 @@ proc soakTick(peer: ptr Peer) {.raises: [].} =
     let elapsed = (getMonoTime() - state.started).inMilliseconds
     if peer.server:
       # A complete hash without request FIN must not retain its handler indefinitely.
-      if not state.readFin and elapsed > 500:
+      if not state.readFin and elapsed > (if peer.overload: 30000 else: 500):
         echo "REQUEST_TIMEOUT"
         finishStream(peer, addr state, false)
         streamAbort(state.handle)
@@ -401,13 +413,15 @@ proc runPeer(): bool =
   if not server and paramStr(1) != "client": return false # Never infer an unknown role.
   let mode = if paramCount() == 8: paramStr(8) else: "valid"
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
-  if mode in ["service", "integration"] and not server: return false
+  if mode in ["service", "integration", "overload"] and not server: return false
   let integrated = mode in ["integration", "integrated"]
-  let service = mode in ["service", "integration"]
+  let service = mode in ["service", "integration", "overload"]
+  let load = mode in ["overload", "holder", "idle", "probe"]
+  let target = if mode == "probe": 1 else: 8
   let attack = if service or integrated or mode == "mixed": "soak" elif mode ==
-      "clean": "valid" else: mode
+      "clean" or mode == "probe": "valid" elif mode == "holder": "no-fin" else: mode
   var peer = Peer(server: server, service: service, integrated: integrated,
-      mixed: mode == "mixed", attack: attack)
+      mixed: mode == "mixed", attack: attack, mesh: load, overload: mode == "overload")
   # Explicitly integrated binaries load public fixtures before registering native callbacks.
   if peer.integrated and (not IntegrationEnabled or not loadBank(peer.bank, getEnv(
       "RAGNAROK_INTEGRATION_FIXTURES"))): return false
@@ -424,7 +438,8 @@ proc runPeer(): bool =
     closeTransport(peer.transport)
   if not openTransport(peer.transport, server, peer.attack == "soak", uint16(port), paramStr(3),
       paramStr(4), paramStr(6), addr peer, verifyPeer,
-          onStream, peer.service): return false # No partially initialized endpoint is used.
+          onStream, peer.service, ipv6 = load, profile = (
+              if peer.overload: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
   if server: echo "READY" # Announce only after listener binding and native setup.
   elif not connectTransport(peer.transport, uint16(port)): return false # Dial setup failed before authentication.
   let started = getMonoTime()
@@ -432,11 +447,14 @@ proc runPeer(): bool =
   # An externally gated service must have a concrete stop path before entering its bounded loop.
   if peer.service and stopFile.len == 0: return false
   var lastActive = -1
+  var lastLive, lastCapacity = -1
+  var lastLoadActive = -1
+  var lastCapacityConnections = 0
   var lastIdle = 0'u64
   var serviceStopped = false
   var authenticated, opened: bool
   # One selector loop services all streams, UDP reads and LSQUIC/application deadlines.
-  while not peer.failed and (peer.service or peer.completed < 8) and (getMonoTime() -
+  while not peer.failed and (peer.service or peer.completed < target) and (getMonoTime() -
       started).inMilliseconds < timeout:
     # Observe retirement while keeping the same socket, selector and native engine throughout every wave.
     if peer.service:
@@ -448,6 +466,14 @@ proc runPeer(): bool =
       # Only final native close releases application buffer ownership.
       for state in peer.streams:
         if state.handle != NativeStream(nil): inc live
+      # Emit state changes only, so burst input cannot create an unbounded diagnostic stream.
+      if peer.overload and (active != lastLoadActive or live != lastLive or peer.capacityRejected !=
+          lastCapacity or peerMetric(peer.transport, 5) != uint64(lastCapacityConnections)):
+        echo "LOAD_STATE ", active, " ", live, " ", peerMetric(peer.transport, 5), " ",
+            peer.capacityRejected, " ", peer.peakStreams
+        lastLoadActive = active
+        lastLive = live; lastCapacity = peer.capacityRejected; lastCapacityConnections = int(
+            peerMetric(peer.transport, 5))
       let accepted = peerMetric(peer.transport, 1)
       if active == 0 and live == 0 and accepted > lastIdle:
         echo "SERVICE_IDLE ", accepted, " ", peerMetric(peer.transport, 2), " ", getOccupiedMem()
@@ -460,10 +486,10 @@ proc runPeer(): bool =
     if status == 1 and not authenticated:
       echo "AUTH_OK"
       authenticated = true
-    if authenticated and not server and not opened:
+    if authenticated and not server and not opened and mode != "idle":
       # Open concurrent requests before waiting for replies; the soak introduces three later healthy siblings.
       opened = true
-      for index in 0..<(if peer.attack == "soak": 5 else: 8): openStream(peer.transport)
+      for index in 0..<(if peer.attack == "soak": 5 else: target): openStream(peer.transport)
     if peer.attack == "soak":
       soakTick(addr peer)
       # Late healthy requests prove continued service after malformed input, cancellation and missing FIN.
@@ -480,15 +506,15 @@ proc runPeer(): bool =
     echo "SERVICE_DONE ", peerMetric(peer.transport, 1), " ", peerMetric(peer.transport, 2), " ",
         peerMetric(peer.transport, 3)
     return serviceStopped and not peer.failed and peerMetric(peer.transport, 3) >= 3
-  result = authenticated and not peer.failed and peer.completed == 8
+  result = authenticated and not peer.failed and peer.completed == target
   # Client success counts must distinguish exactly five healthy, two rejected and one cancelled stream.
   if result and peer.attack == "soak" and not server:
     result = if peer.integrated: peer.healthy == 3 and peer.rejected == 4 and peer.cancelled ==
         1 else: peer.healthy == 5 and peer.rejected == 2 and peer.cancelled == 1
   if result:
-    echo "EXCHANGE_OK 8" # Authentication alone is insufficient without all terminal application outcomes.
-    # Mixed clients explicitly close while UDP remains active so the persistent server can retire their connection.
-    if mode in ["mixed", "clean", "integrated"]: disconnectTransport(peer.transport)
+    echo "EXCHANGE_OK ", target # Authentication alone is insufficient without all terminal application outcomes.
+    # Mixed/probe clients explicitly close while UDP remains active so the persistent server can retire their connection.
+    if mode in ["mixed", "clean", "integrated", "probe"]: disconnectTransport(peer.transport)
     let grace = getMonoTime()
     # Drain final handshake/FIN packets before removing readiness and destroying native stream state.
     while (getMonoTime() - grace).inMilliseconds < 100:
@@ -586,7 +612,7 @@ proc main(): int =
         if not runPeer(): return 2 # Deferred selector/native cleanup finishes before failure returns.
         echo "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem()
         echo "SESSION_DONE ", iteration
-    elif paramCount() == 8 and paramStr(8) in ["service", "integration"]:
+    elif paramCount() == 8 and paramStr(8) in ["service", "integration", "overload"]:
       # Final native callbacks and ARC release complete before observing the process-level application baseline.
       let baseline = getOccupiedMem()
       if not runPeer(): return 2

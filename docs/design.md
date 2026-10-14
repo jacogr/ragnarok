@@ -245,3 +245,10 @@ engine, validator-set management and independent-stack interoperability remain o
 [verification](../results/quic-mesh.md). Disruption/overload and bounded Bandersnatch offload remain
 separate increments awaiting the maintainer's next go-ahead. Speed measurements remain a baseline;
 no optimization is part of this networking round.
+
+The [disruption and overload round](quic-resilience.md) now adds controlled IPv6 peer death/restart
+with pending stream owners, and authenticated connection/stream admission saturation followed by
+healthy work after release. Short expiry/hold settings are explicitly scoped experiments. General
+network impairment, multi-target dialing and independent-stack interoperability remain open.
+[Verification](../results/quic-resilience.md) records the bounded evidence. Bandersnatch offload
+remains a separate increment awaiting the maintainer's next go-ahead.

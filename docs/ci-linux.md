@@ -121,3 +121,8 @@ freshly built native peers. It checks all four language pairings, fallback diali
 retirement, bidirectional CE exchanges and idle lifecycle resources. Only explicit summary, log
 and resource paths under `build/quic/mesh` are added to uploads. Linux verification of this new step
 awaits a pushed run. The maintainer has confirmed that the preceding benchmark CI fix passes.
+
+The [IPv6 resilience step](quic-resilience.md) follows the retained-peer proof and reuses its native
+build. It checks controlled peer death with pending operations and bounded connection/stream
+admission under mixed native load. Only explicit logs, summary and resource JSON under
+`build/quic/resilience` are added to uploads. Linux verification awaits the pushed run.

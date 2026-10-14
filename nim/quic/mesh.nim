@@ -34,6 +34,21 @@ proc liveMesh(peer: ptr Peer): int {.raises: [].} =
   for state in peer.streams:
     if state.handle != NativeStream(nil): inc result
 
+# Prove eight pending owners contain four fully sent queries and four complete request prefixes without FIN.
+proc pendingMesh(peer: ptr Peer): bool {.raises: [].} =
+  var local, remote = 0
+  # Ignore retired slots; every retained slot must still be unsettled and waiting for the missing peer/FIN.
+  for state in peer.streams:
+    if state.handle == NativeStream(nil): continue # Final close has already released this owner.
+    if state.counted or state.readFin: return false # A completed message cannot stand in for pending work.
+    if state.responder:
+      if state.receivedLength != 37: return false # Require the complete CE query prefix to have arrived.
+      inc remote
+    else:
+      if state.sendOffset != 37 or state.writeFin: return false # All request bytes must be sent without FIN.
+      inc local
+  local == 4 and remote == 4
+
 # Drive both role engines from their one selector, surfacing framing or socket failures as bounded outcomes.
 proc meshPoll(incoming, outgoing: var Peer): bool =
   pollPair(incoming.transport, outgoing.transport) and not incoming.failed and not outgoing.failed
@@ -55,6 +70,8 @@ proc runMesh(): bool =
   for index in 0..<32:
     a[index] = byte(localKey[index]); b[index] = byte(remoteKey[index]); expected[index] = b[index]
   let initiator = preferred(a, b)
+  let disrupted = getEnv("RAGNAROK_MESH_DISRUPT") == "1"
+  let profile = if disrupted: CrashRecovery else: RetainedPeer
   let gate = paramStr(9)
   let dispatcher = newSelector[int]()
   defer: dispatcher.close() # Both borrowed endpoint registrations retire first, in reverse defer order.
@@ -67,10 +84,10 @@ proc runMesh(): bool =
   # The listener is persistent; outgoing binds once to an ephemeral IPv6 port and keeps it across reconnects.
   if not openTransport(incoming.transport, true, false, uint16(localPort), paramStr(4), paramStr(5),
       paramStr(8), addr incoming, verifyPeer, onStream, ipv6 = true,
-          dispatcher = dispatcher): return false
+          dispatcher = dispatcher, profile = profile): return false
   if not openTransport(outgoing.transport, false, false, 0, paramStr(4), paramStr(5),
       paramStr(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
-          dispatcher = dispatcher): return false
+          dispatcher = dispatcher, profile = profile): return false
   echo "MESH_READY ", int(initiator)
   var authenticatedIn, authenticatedOut = 0'u64
   # All rounds retain these exact stack/socket/selector/TLS/engine owners.
@@ -79,6 +96,8 @@ proc runMesh(): bool =
     # External barriers permit both simultaneous dials and post-retirement resource observations.
     while not fileExists(gate / ("start-" & $round)):
       if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 15: return false
+    # A final healthy generation proves recovery after the last forced loss without introducing another crash.
+    let lossRound = disrupted and not fileExists(gate / "healthy-final")
     let fallback = round == 0 and getEnv("RAGNAROK_MESH_FALLBACK") == "1"
     started = getMonoTime()
     # A suppressed preferred dial lets the other peer initiate after the spec's example five-second timeout.
@@ -119,17 +138,38 @@ proc runMesh(): bool =
     while kept.healthy != 8 or liveMesh(kept) != 0:
       if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
     echo "MESH_EXCHANGED ", round, " ", kept.healthy
+    # Opt-in crash rounds retain real incomplete request owners before the harness kills the other process.
+    if lossRound:
+      started = getMonoTime()
+      # Both peers must finish and retire healthy work before either introduces incomplete streams into that phase.
+      while not fileExists(gate / ("pending-" & $round)):
+        if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds >
+            15: return false
+      kept.recovering = true
+      kept.attack = "no-fin"
+      for request in 0..<4: openStream(kept.transport) # Four outgoing requests accompany the peer's four pending queries.
+      started = getMonoTime()
+      while not pendingMesh(kept):
+        if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds >
+            10: return false
+      echo "MESH_PENDING ", round, " 8"
     started = getMonoTime()
     # Hold a live connection for resource/thread sampling until the harness permits orderly close.
     while not fileExists(gate / ("close-" & $round)):
       if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 15: return false
-    disconnectTransport(kept.transport)
+    # Crash rounds await negotiated idle expiry; graceful rounds still explicitly queue connection close.
+    if not lossRound: disconnectTransport(kept.transport)
     started = getMonoTime()
     # Connection and stream owners must all retire before the next gate releases a reconnect.
     while peerMetric(incoming.transport, 0) != 0 or peerMetric(outgoing.transport, 0) != 0 or
         liveMesh(addr incoming) != 0 or liveMesh(addr outgoing) != 0:
       if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
-    kept.healthy = 0; kept.completed = 0
+    # Every pending request must settle exactly once when the vanished connection retires.
+    if lossRound:
+      if kept.rejected != 8: return false # Retained buffers cannot disappear without terminal outcomes.
+      echo "MESH_RECOVERED ", round, " ", kept.rejected
+    kept.healthy = 0; kept.completed = 0; kept.rejected = 0
+    kept.recovering = false; kept.attack = "valid" # A malformed request in the next healthy phase remains a real failure.
     echo "MESH_IDLE ", round, " ", getOccupiedMem(), " ", peerMetric(incoming.transport, 1), " ",
         peerMetric(outgoing.transport, 1), " ", peerMetric(incoming.transport, 2), " ", peerMetric(
             outgoing.transport, 2)
