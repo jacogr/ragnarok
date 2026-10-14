@@ -186,7 +186,11 @@ explicit allocator and single-release owner contract. See
 [the ownership verification report](../results/codec-ownership.md).
 
 M2 is now the next investigation. The [pinned crypto inventory and assessment](../results/crypto-feasibility.md)
-recommends a first Blake2b-256/Ed25519 slice over the existing BoringSSL backend,
-with identical primitive C ABI and separate typed Nim/Odin adapters. Bandersnatch
-suite/proof compatibility is an early gate; Keccak and BEEFY/BLS remain later
-bounded rounds. No M2 implementation or crypto test pass is claimed yet.
+recommends a first Blake2b-256/Ed25519 slice with separate typed Nim/Odin
+adapters and identical algorithm/test contracts. Evaluate Odin's existing core
+crypto modules and Nim's existing pinned BoringSSL backend; native-library
+availability is part of the language comparison. The
+maintainer prioritizes Bandersnatch VRF/Ring-VRF next, including exact JAM
+compatibility and a pinned Rust backend behind a shared C ABI. Keccak-256 follows
+Bandersnatch, then BEEFY/BLS. No project M2 implementation is claimed yet; a limited Odin core crypto smoke
+check passed and full conformance remains next.

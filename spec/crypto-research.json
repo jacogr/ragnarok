@@ -19,7 +19,8 @@
   "initial_backend_candidate": {
     "repository": "vacp2p/boringssl",
     "commit": "88341070936d28e08f82db1326c73d67962cd043",
-    "reason": "Already pinned/built for both QUIC candidates; exposes Blake2b-256 and Ed25519 through C APIs."
+    "reason": "Already pinned/built for both QUIC candidates; exposes Blake2b-256 and Ed25519 through C APIs.",
+    "role": "Nim initial FFI candidate; optional diagnostic baseline for Odin, whose core provides native primitives."
   },
   "bandersnatch_candidate": {
     "repository": "davxy/ark-vrf",
@@ -30,5 +31,24 @@
     },
     "selected": false,
     "compatibility": "0.6.0 changes default suite keys/outputs/ring commitments; exact JAM v0.7.1 compatibility must be verified."
+  },
+  "agreed_priority": [
+    "blake2b-256 and ed25519",
+    "bandersnatch vrf and ring-vrf via rust/c abi",
+    "keccak-256",
+    "beefy/bls"
+  ],
+  "odin_native_candidate": {
+    "toolchain": "dev-2026-10:84bc3fc21",
+    "preferred_for_evaluation": [
+      "blake2b-256",
+      "ed25519",
+      "legacy/keccak-256"
+    ],
+    "sources": {
+      "core/crypto/blake2b/blake2b.odin": "195de5c6843236aa33f8b75889e5f323fdbc56ca68e07fe020aaa12fdcb54f3e",
+      "core/crypto/ed25519/ed25519.odin": "bd223d7cca05b9de4af08ffe8230f7d84732e99aa763fce42a485774593e4e20",
+      "core/crypto/legacy/keccak/keccak.odin": "c26469dc6fd4f770e712ecababdca528a3b3890ddf98116aab8f4655d94fd36c"
+    }
   }
 }

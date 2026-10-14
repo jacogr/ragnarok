@@ -1,8 +1,9 @@
 # M2 cryptography assessment
 
 Assessment date: 2026-10-14. This inventories required primitives and proposes a
-bounded first integration round. No crypto adapter has been implemented, no
-new library has been installed and no cryptographic conformance run is claimed.
+bounded first integration round. No project crypto adapter has been implemented and no new library has been
+installed. A limited native Odin smoke check is recorded below; full
+cryptographic conformance remains to be implemented.
 The maintainer has reported that Linux CI passes for the preceding explicit
 QUIC-adapter round.
 
@@ -20,9 +21,9 @@ in [crypto-research.json](../spec/crypto-research.json).
 | --- | --- | --- |
 | Blake2b-256 | 32-byte hashes of the prescribed raw/encoded octets | First slice |
 | Ed25519 | RFC 8032 signing and verification; 32-byte public keys, 64-byte signatures | First slice |
-| Keccak-256 | Ethereum-style 32-byte hashing, including BEEFY commitments | Subsequent hashing slice |
-| Bandersnatch contextual VRF | 32-byte public keys, 96-byte signatures, 32-byte extracted output | Dedicated compatibility/integration slice |
-| Bandersnatch Ring-VRF | 144-byte ring roots, 784-byte proofs, ring commitment and output extraction | Dedicated compatibility/integration slice |
+| Keccak-256 | Ethereum-style 32-byte hashing, including BEEFY commitments | After Bandersnatch |
+| Bandersnatch contextual VRF | 32-byte public keys, 96-byte signatures, 32-byte extracted output | Second priority: Rust/C ABI integration |
+| Bandersnatch Ring-VRF | 144-byte ring roots, 784-byte proofs, ring commitment and output extraction | Second priority: Rust/C ABI integration |
 | BLS12-381 signing/aggregation | BEEFY's specified aggregation mechanism; GP public-key type is 144 bytes | Later dedicated slice |
 
 Blake2b must be configured for a 32-byte digest; truncating a Blake2b-512 digest
@@ -36,7 +37,45 @@ Erasure coding is another native dependency investigation, but its Reed-Solomon
 arithmetic is separate from this cryptographic primitive inventory. This round
 does not implement erasure coding, state transitions or a validator.
 
-## Same-backend first slice
+## Agreed priority
+
+The maintainer prioritizes these bounded rounds:
+
+1. Blake2b-256 and ordinary Ed25519 integration.
+2. Bandersnatch VRF/Ring-VRF compatibility and integration through a narrow
+   shared C ABI over a pinned Rust implementation.
+3. Keccak-256.
+4. BEEFY/BLS signing and aggregation.
+
+The second round explicitly evaluates crossing the Rust boundary from both
+Nim and Odin: reproducible Rust toolchain and Cargo dependency pins, exact JAM
+suite/encoding/setup compatibility, allocation and context ownership, panic
+containment, typed failure propagation and independent vectors. Keep Rust
+limited to the cryptographic backend; protocol messages and domain construction
+remain native to each language. The inspected ark-vrf revision is still a
+candidate, not a verified-compatible backend selection.
+
+## First slice and native Odin candidates
+
+The pinned Odin compiler already includes native implementations:
+
+- [core:crypto/blake2b](https://pkg.odin-lang.org/core/crypto/blake2b/): configure
+  `init` with a 32-byte digest, then update/final.
+- [core:crypto/ed25519](https://pkg.odin-lang.org/core/crypto/ed25519/): 32-byte
+  seed import, public-key derivation, signing, verification and explicit key
+  clearing.
+- [core:crypto/legacy/keccak](https://pkg.odin-lang.org/core/crypto/legacy/keccak/):
+  `init_256` uses legacy Keccak padding, separate from SHA3.
+
+These modules were inspected in the installed compiler-pinned source, rather
+than assuming the online package listing matches our version. Prefer evaluating
+Odin's native modules for the simpler primitives; their availability is an
+actual ecosystem advantage. Nim can initially use the already-pinned BoringSSL
+C APIs. Equal algorithm contracts and independent known-answer/adversarial
+corpora make this comparison meaningful even with different backends. A shared
+BoringSSL path can be a diagnostic cross-check rather than a forced production
+backend for Odin. Audit/provenance review still applies to the native modules.
+Bandersnatch remains a comparison through the same pinned Rust backend/C ABI.
 
 The existing pinned BoringSSL source already exports:
 
@@ -52,11 +91,12 @@ Availability is not a claim of an audit of our particular pinned fork/build;
 backend provenance and audit scope must be recorded with implementation results.
 
 Recommended first round: **Blake2b-256 and ordinary Ed25519 seed-to-public-key,
-signing and verification**, through one small shared primitive C ABI and
-separate typed Nim/Odin adapters. Reuse the pinned native crypto build without
-QUIC socket/engine setup. This adds no upstream source patch or new library
-revision. Keep primitive builds/tests runnable independently from the QUIC test
-matrix, even when their dependency preparation is shared.
+signing and verification**, through separate typed Nim/Odin adapters. Evaluate
+Odin core crypto directly and Nim through a small BoringSSL primitive C ABI,
+with the same algorithm/test contract. Reuse the pinned native crypto build for
+Nim without QUIC socket/engine setup. This adds no upstream source patch or new
+library revision. Keep primitive builds/tests runnable independently from the
+QUIC test matrix, even when dependency preparation is shared.
 
 The API should have:
 
@@ -83,14 +123,40 @@ Mutated messages/keys/signatures and wrong lengths must fail as expected.
 Noncanonical/low-order verification behavior needs an explicit specification
 and conformance assessment; a provider's default acceptance policy is not
 silently the JAM consensus rule. Add negative compilation checks for type-domain
-mixups, cross-language equality and Linux CI using the same pinned backend.
+mixups, cross-language equality and Linux CI using the pinned backend/module
+revisions.
 
-Both languages using one library is not independent validation of that
-library. Published vectors and a separate oracle are essential; Nim/Odin
-agreement checks their adapters and marshaling. Existing official JAM vector
+Published vectors and a separate oracle remain essential. If both paths use
+one library, their agreement checks adapters/marshaling rather than independently
+validating that library. Different primitive backends also need explicit
+acceptance-policy comparisons, especially for Ed25519. Existing official JAM vector
 revision `1dc503af37ae8ecc7b6e24a393f6102801c0c80c` has no standalone crypto
 directory in the inspected tree. Its protocol/state vectors can support later
 message/crypto integration but do not replace primitive known-answer tests.
+
+## Inspected Odin behavior and limited smoke check
+
+The installed Ed25519 verifier rejects noncanonical public-key/R encodings and
+S values, rejects small-order public keys by default, and uses a cofactored
+verification equation. Its `allow_small_order_A` option changes that acceptance
+policy. Do not silently tune it to make providers agree: establish the pinned
+JAM semantics and classify adversarial cases explicitly. Core's key structures
+expose internal members despite being intended as opaque; our wrapper should
+construct and keep them private, and validate inputs before invoking functions
+with initialization/size assertions.
+
+A temporary standalone program compiled against the installed Odin toolchain
+with vet/strict-style checks and passed:
+
+- Empty-message Blake2b-256 against Python hashlib's 32-byte result.
+- Empty-message legacy Keccak-256 against its published known digest.
+- RFC 8032 section 7.1 test 1: seed-to-public-key, exact empty-message signature
+  and verification; an altered signature was rejected.
+
+No third-party library was linked. The check establishes API availability and
+these basic cases only. It is not full JAM conformance, a complete adversarial
+campaign or an audit. Research metadata records hashes of the three inspected
+core module files; the compiler revision also pins their internal dependencies.
 
 ## Bandersnatch is an early compatibility gate
 
