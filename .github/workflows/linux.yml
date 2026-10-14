@@ -68,6 +68,9 @@ jobs:
       - name: Build and verify Linux QUIC
         run: python3 interoperability/test_quic.py --fetch 2>&1 | tee build/ci/quic.log
 
+      - name: QUIC soak harness regression checks
+        run: python3 interoperability/test_quic_soak_harness.py
+
       - name: Bounded QUIC lifecycle soak
         run: python3 interoperability/test_quic_soak.py --skip-build 2>&1 | tee build/ci/quic-soak.log
 

@@ -21,6 +21,7 @@ After setup, the job runs:
 python3 tools/format.py --check
 python3 interoperability/test_codec.py
 python3 interoperability/test_quic.py --fetch
+python3 interoperability/test_quic_soak_harness.py
 python3 interoperability/test_quic_soak.py --skip-build
 ```
 
@@ -57,5 +58,8 @@ version and executable checksum. The current actions all use Node 24.
 Pushes and pull requests run the checks automatically. Manual runs are available
 under **Actions → Linux checks → Run workflow** on the default branch.
 
-The new soak step awaits its first Linux CI run; the linked successful run above
-predates it.
+The first soak run, [38516397033](https://github.com/jacogr/ragnarok/actions/runs/38516397033),
+passed its first session but stalled on the next readiness marker. A Linux socket
+buffer warning separated two lines the harness expected to be adjacent. The
+harness now counts exact readiness lines per session, with regression checks
+for interleaved diagnostics. Full Linux soak verification awaits the rerun.

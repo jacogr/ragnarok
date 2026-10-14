@@ -1,8 +1,8 @@
 # QUIC lifecycle soak — 2026-10-14
 
 The bounded soak passes on Apple Silicon macOS for both implementations and all
-cross-language combinations. Linux CI now includes the same test, but that new
-step has not yet executed. No language is selected and M3 remains open.
+cross-language combinations. Linux CI includes the same test; its first run stopped on a harness readiness
+check after one successful session. Full Linux soak verification awaits a rerun. No language is selected and M3 remains open.
 
 ## Executed verification
 
@@ -82,3 +82,23 @@ and the measured lifecycle budget passes, but this finite test is not a proof
 of leak freedom for all wrapper paths.
 
 Wait for the maintainer's next bounded increment before expanding the prototype.
+
+## Linux readiness follow-up
+
+[Run 38516397033](https://github.com/jacogr/ragnarok/actions/runs/38516397033)
+passed codec conformance and the original QUIC suite. Its first Nim/Nim soak
+session also completed, including the mixed stream workload and cleanup. On
+the second session, a receive-buffer warning appeared between `SESSION_DONE 0`
+and `READY`. The harness waited for those lines to be adjacent and never
+released the client's dial; the ready server eventually hit its authentication
+deadline. The warning was diagnostic output, not the transport failure.
+
+Readiness now counts exact complete `READY` lines for the requested round.
+Completion markers also match complete lines, so session 10 cannot satisfy
+session 1. Five harness regression tests cover interleaved warnings, stale
+readiness, misleading marker substrings, resource ceilings and progress
+deadlines. The budgets, native implementations and socket settings are unchanged.
+
+Verification after the harness fix: all five regression tests and the full
+160-session macOS soak pass. Formatting, actionlint and `git diff --check` also
+pass. The next Linux run remains the verification for the CI correction.

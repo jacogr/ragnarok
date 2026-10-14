@@ -28,10 +28,11 @@ def resources(pid):
 
 
 # Wait for explicit lifecycle markers, sampling live resources and preserving a hard per-session ceiling.
-def wait_marker(processes, logs, role, marker, peaks, seconds=8):
+def wait_marker(processes, logs, role, marker, peaks, seconds=8, occurrences=1):
     deadline = time.monotonic() + seconds
-    # Never interpret process exit or missing progress as a successful session.
-    while marker not in logs[role].read_text():
+    # Count complete marker lines: diagnostic output may occur between lifecycle events.
+    # A previous READY cannot release the next session's dial; each round needs its own occurrence.
+    while logs[role].read_text().splitlines().count(marker) < occurrences:
         assert time.monotonic() < deadline, (role, marker, 'deadline', logs[role].read_text()[-2000:])
         for name, process in processes.items():
             assert process.poll() is None, (name, process.returncode, logs[name].read_text()[-2000:])
@@ -90,10 +91,10 @@ def pairing(server_language, client_language, folder, rounds, warmup):
         for iteration in range(rounds):
             # Bind the server first, then release the client's dial against its announced listener.
             (gate / f'server-{iteration}').touch()
-            wait_marker(processes, logs, 'server', 'READY\n' if iteration == 0 else f'SESSION_DONE {iteration-1}\nREADY\n', peaks)
+            wait_marker(processes, logs, 'server', 'READY', peaks, occurrences=iteration + 1)
             (gate / f'client-{iteration}').touch()
             for role in logs:
-                wait_marker(processes, logs, role, f'SESSION_DONE {iteration}\n', peaks)
+                wait_marker(processes, logs, role, f'SESSION_DONE {iteration}', peaks)
             # Both transports, UDP sockets and callback owners have retired before this observation.
             for role, process in processes.items():
                 sample = resources(process.pid)

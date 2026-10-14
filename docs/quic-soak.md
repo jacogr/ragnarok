@@ -12,10 +12,16 @@ After a successful build of the current native sources, reuse its binaries:
 python3 interoperability/test_quic_soak.py --skip-build
 ```
 
-The Linux CI workflow runs this command after the original QUIC rejection suite.
+The Linux CI workflow runs this command after the original QUIC rejection suite
+and the harness regression checks:
+
+```sh
+python3 interoperability/test_quic_soak_harness.py
+```
 The default is 40 sessions per language pairing, with eight warmup sessions.
 The server/client combinations Nim/Nim, Odin/Odin, Nim/Odin and Odin/Nim each
-keep the same two native processes alive across all rounds. Engines, listeners, sockets and connections
+keep the same two native processes alive across all rounds. Engines, listeners,
+sockets and connections
 are recreated and retired within those processes. This measures retained
 resources across lifecycle churn; it does not establish multi-connection service
 within a persistent engine.
@@ -49,7 +55,9 @@ These counters exclude C/TLS allocation internals, which remain covered by the
 aggregate RSS budget. Sampling happens after each engine/socket teardown,
 while both processes wait for an external gate. Linux uses `/proc`; macOS uses
 `ps` and `lsof`. Gate waits also have a 15-second native deadline so an abandoned
-harness cannot retain a peer forever.
+harness cannot retain a peer forever. Readiness and completion use exact
+marker lines; interleaved transport diagnostics cannot hide readiness or reuse
+a previous round's readiness.
 
 These are finite regression budgets, not a proof of leak freedom or a performance
 benchmark. Results retain every idle observation and active resource peaks.
