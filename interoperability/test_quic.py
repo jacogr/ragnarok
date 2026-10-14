@@ -86,9 +86,10 @@ def peer_name(key):
 
 
 # Generate local test identities only; private keys stay inside the ignored build directory and are never committed.
-def fixtures():
-    folder = BUILD / 'fixtures'
-    folder.mkdir(exist_ok=True)
+def fixtures(folder=None):
+    # A caller may isolate retained TLS identities from other concurrently running proof harnesses.
+    folder = BUILD / 'fixtures' if folder is None else folder
+    folder.mkdir(parents=True, exist_ok=True)
     openssl = shutil.which('openssl')
     assert openssl
     # Structured OpenSSL arguments avoid shell expansion; escaped dollars are needed in OpenSSL's config syntax.

@@ -252,3 +252,12 @@ healthy work after release. Short expiry/hold settings are explicitly scoped exp
 network impairment, multi-target dialing and independent-stack interoperability remain open.
 [Verification](../results/quic-resilience.md) records the bounded evidence. Bandersnatch offload
 remains a separate increment awaiting the maintainer's next go-ahead.
+
+The [bounded Bandersnatch offload round](quic-offload.md) now puts historical RingVRF verification
+on two fixed workers per native listener, with four owned jobs including completed results.
+Mixed Nim/Odin CE lookups progress during actual crypto batches; queued/running cancellation,
+stream-generation matching, tagged failures and joined shutdown have bounded tests.
+[Verification](../results/quic-offload.md) records the observed workload and resource limits.
+This closes the proposed bounded offload POC, while full-ring scheduling/load sizing, independent
+JAM peers and crypto/backend audit gates remain open. No speed optimization or language selection
+is part of this round; the next increment awaits the maintainer's go-ahead.

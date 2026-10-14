@@ -3,6 +3,7 @@
 import std/[os, strutils, monotimes, times, selectors]
 import ./transport
 import ./integration
+import ./offload
 
 type
   # One bounded native stream owns application storage until its final close callback.
@@ -16,6 +17,7 @@ type
     verified: VerifiedDigest
     query: PreimageKey
     fixture: int
+    job: JobId
   # This stack owner outlives every synchronous native callback and its selector/engine teardown.
   Peer = object
     transport: Transport
@@ -26,10 +28,18 @@ type
     capacityRejected, peakStreams: int
     attack: string
     bank: IntegrationBank
+    offloading, light, badProof: bool
+    pool: OffloadPool
 
 # Fixture preimage key is independently checked by the shared harness; no unfinished database/state code is involved.
 const RequestHash = [17'u8, 192, 231, 155, 113, 195, 151, 108, 205, 12, 2, 209, 49, 14, 37, 22,
   192, 142, 220, 157, 139, 111, 87, 204, 214, 128, 214, 58, 77, 142, 114, 218]
+# Independent hashes name cheap and wrong-domain test preimages; CE framing remains unchanged.
+const LightHash = [10'u8, 253, 74, 4, 215, 114, 13, 169, 146, 47, 43, 64, 36, 153, 137, 250, 244,
+    255, 128, 150, 225, 237, 73, 190, 230, 21, 187, 108, 177, 238, 79, 125]
+const BadProofHash = [15'u8, 96, 93, 27, 146, 148, 195, 111, 125, 23, 196, 140, 148, 61, 162, 184,
+    119, 205, 169, 96, 186, 94, 51, 55, 231, 178, 226, 155, 206, 96, 61, 24]
+
 # Bounded one-MiB soak fixture is i mod 251, named by its independently computed Blake2b-256 digest.
 const LargeSize = 1024 * 1024
 const LargeHash = [138'u8, 90, 122, 157, 195, 207, 32, 62, 211, 116, 176, 161, 238, 169,
@@ -96,6 +106,8 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
   if good:
     inc peer.completed
     inc peer.healthy
+    if peer.offloading and state.receivedLength == 37 and state.received[5] == LightHash[0]:
+      echo "OFFLOAD_LIGHT_DONE ", busyPool(peer.pool) # Exact reply FIN progressed during actual Rust calls, or an explicitly reported hold.
     # Progress alongside a genuinely parked writer is stronger evidence than an authenticated connection count.
     if peer.service:
       for other in peer.streams:
@@ -104,6 +116,10 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
           echo "ISOLATED_HEALTHY"
           break
     if peer.attack == "soak": echo (if peer.server: "SERVER_HEALTHY" else: "HEALTHY_OK") # Expose verified outcomes.
+  elif peer.offloading:
+    # Admission, cancellation and invalid proofs reject only their own stream.
+    inc peer.completed
+    inc peer.rejected
   elif peer.mesh and peer.recovering:
     # A known vanished peer settles its pending requests; buffers remain owned until final native close.
     inc peer.completed
@@ -169,8 +185,14 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
   # Requests select only exact fixture hash keys, never a default/missing map entry.
   if accepting(peer, state):
     if length.size != 32: return (false, false) # Preimage keys have fixed width.
-    let wanted = if peer.attack == "soak" and state.received[5] == LargeHash[
-        0]: LargeHash else: RequestHash
+    var wanted = RequestHash
+    # Cheap lookup, wrong-domain policy and backpressure fixtures each retain a full exact content key.
+    if peer.offloading and state.received[5] == LightHash[0]:
+      wanted = LightHash
+    elif peer.offloading and state.received[5] == BadProofHash[0]:
+      wanted = BadProofHash
+    elif peer.attack == "soak" and state.received[5] == LargeHash[0]:
+      wanted = LargeHash
     for i, value in wanted:
       if state.received[5 + i] != value: return (false, false) # Complete hash equality.
   else:
@@ -178,7 +200,8 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
     let size = if state.attack == "slow": LargeSize else: 3
     if length.size != size: return (false, false)
     for i in 0..<size:
-      let wanted = if size == LargeSize: byte(i mod 251) else: byte(i + 1)
+      let wanted = if size == LargeSize: byte(i mod 251) else: byte(i + 1 + (
+          if peer.light: 3 elif peer.badProof: 6 else: 0))
       if state.received[4 + i] != wanted: return (false, false) # Compare every byte of the preimage.
   (true, true)
 
@@ -210,7 +233,7 @@ proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.r
       wantRead(handle, 0) # Cancellation must retire a snapshot behind real backpressure.
     wantWrite(handle, 1)
     return
-  var wanted = RequestHash
+  var wanted = if peer.light: LightHash elif peer.badProof: BadProofHash else: RequestHash
   # Five healthy requests share one connection with cancellation, bad kind and missing FIN.
   if peer.attack == "soak":
     case peer.opened
@@ -225,7 +248,7 @@ proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.r
   state.sendLength = 37
   # Malformed test bytes are introduced only after transport authentication.
   case state.attack
-  of "valid", "slow", "cancel", "no-fin": discard # Correct wire bytes with different read/FIN schedules.
+  of "valid", "slow", "cancel", "no-fin", "proof-cancel": discard # Correct wire bytes with different read/FIN schedules.
   of "bad-kind": state.sending[0] = 144 # Unsupported CE selector.
   of "oversize":
     for i in 1..4: state.sending[i] = 255 # Invalid claimed extent is rejected before payload acceptance.
@@ -237,7 +260,7 @@ proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.r
     streamAbort(handle)
     return # Unknown trusted selectors must never silently become valid requests.
   # Paused application reads exhaust flow-control credit while sibling streams continue.
-  if state.attack in ["slow", "cancel"]:
+  if state.attack in ["slow", "cancel", "proof-cancel"]:
     state.paused = true
     wantRead(handle, 0)
   wantWrite(handle, 1)
@@ -274,6 +297,15 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
       wantRead(state.handle, 0) # Stop repeated EOF callbacks after validated FIN.
       # Only a validated fixture key can select a bounded server response allocation.
       if accepting(peer, state):
+        if peer.offloading and state.received[5] != LightHash[0]:
+          state.job = submitPool(peer.pool, state.received[5] == BadProofHash[0])
+          if state.job == JobId(0):
+            echo "OFFLOAD_REJECT Capacity"
+            finishStream(peer, state, false)
+            streamAbort(state.handle)
+          else:
+            echo "OFFLOAD_ADMIT ", state.job
+          return # No reply allocation/write occurs until the I/O thread selects verified completion.
         if peer.integrated:
           let wire = state.verified.wire
           state.sending = newSeq[byte](wire.len + 4)
@@ -289,7 +321,7 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
         # Encode trusted E4 bytes before the fixture payload, independently of the C bridge.
         for i in 0..<4: state.sending[i] = byte((size shr (8 * i)) and 255)
         for i in 0..<size: state.sending[4 + i] = if size == LargeSize: byte(i mod 251) else: byte(
-            i + 1) # Fixture bytes.
+            i + 1 + (if peer.offloading and state.received[5] == LightHash[0]: 3 else: 0)) # Fixture bytes.
         state.sendLength = state.sending.len
         wantWrite(state.handle, 1)
       else:
@@ -354,6 +386,7 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
     if not (peer.service and event in [3.cint, 4.cint]): peer.failed = true
     return
   if event == 3:
+    if peer.offloading: cancelPool(peer.pool, state.job) # Final close releases only this generation.
     # A premature native close rejects unsettled work unless teardown is already retiring the owner.
     if not state.counted and not peer.stopping: finishStream(peer, state, false)
     # The cancelled large response must have reached owned capture before final close releases it.
@@ -362,6 +395,7 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
     state[] = StreamState() # ARC releases both buffers; the slot holds no closure/reference back to Peer.
     return
   if event == 4:
+    if peer.offloading: cancelPool(peer.pool, state.job) # Running Rust retains its copied input after reset.
     # A directional reset settles pending reads and writes before final native close releases their storage.
     if not peer.stopping: finishStream(peer, state, false)
     streamAbort(handle)
@@ -402,29 +436,68 @@ proc soakTick(peer: ptr Peer) {.raises: [].} =
       state.paused = false
       wantRead(state.handle, 1)
 
+# Deliver completed proof decisions on the only I/O thread, resolving generations afresh after cancellation/reuse.
+proc offloadTick(peer: ptr Peer) =
+  tickPool(peer.pool)
+  # At most four retained completions exist; no worker can grow this drain without bound.
+  for index in 0..<4:
+    let polled = collectPool(peer.pool)
+    if not polled.ready: break # Pending has no completion data.
+    let completion = polled.completion
+    var matched = false
+    for state in peer.streams.mitems:
+      if state.handle != NativeStream(nil) and state.job == completion.id and not state.counted:
+        matched = true
+        state.job = JobId(0) # The pool has retired its input; final stream close owns only application bytes.
+        if completion.outcome != Verified:
+          echo "OFFLOAD_REJECT Proof"
+          finishStream(peer, addr state, false)
+          streamAbort(state.handle)
+        else:
+          echo "OFFLOAD_VERIFIED ", completion.id
+          state.sending = @[3'u8, 0, 0, 0, 1, 2, 3]
+          state.sendLength = 7
+          wantWrite(state.handle, 1) # Only verified completion enables response readiness.
+        break
+    if not matched: echo "OFFLOAD_STALE ", completion.id # A vanished/reused stream cannot receive old completion.
+
 # Own one bounded authentication/exchange attempt and release readiness before native callback destruction.
 proc runPeer(): bool =
   # Trusted CLI inputs still have explicit shape and narrowing checks.
   if paramCount() notin [7, 8]: raise newException(ValueError, "mode port cert key expected-key alpn timeout-ms")
   let port = parseInt(paramStr(2))
   let timeout = parseInt(paramStr(7))
-  if port < 1 or port > 65535 or timeout < 1 or timeout > 120000: return false # Guard host-to-native conversions.
+  if port < 1 or port > 65535 or timeout < 1 or timeout > (if paramCount() == 8 and paramStr(8) ==
+      "offload": 300000 else: 120000): return false # Guard host-to-native conversions.
   let server = paramStr(1) == "server"
   if not server and paramStr(1) != "client": return false # Never infer an unknown role.
   let mode = if paramCount() == 8: paramStr(8) else: "valid"
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
-  if mode in ["service", "integration", "overload"] and not server: return false
+  if mode in ["service", "integration", "overload", "offload"] and not server: return false
   let integrated = mode in ["integration", "integrated"]
-  let service = mode in ["service", "integration", "overload"]
-  let load = mode in ["overload", "holder", "idle", "probe"]
-  let target = if mode == "probe": 1 else: 8
-  let attack = if service or integrated or mode == "mixed": "soak" elif mode ==
-      "clean" or mode == "probe": "valid" elif mode == "holder": "no-fin" else: mode
+  let service = mode in ["service", "integration", "overload", "offload"]
+  let load = mode in ["overload", "holder", "idle", "probe", "offload", "proof", "light",
+      "invalid-proof", "proof-cancel"]
+  let target = if mode in ["probe", "proof", "light", "invalid-proof", "proof-cancel"]: 1 else: 8
+  var attack = mode
+  # Existing service/integration workloads keep their mixed failure schedules.
+  if (service and mode != "offload") or integrated or mode == "mixed":
+    attack = "soak"
+  elif mode in ["clean", "probe", "proof", "light", "invalid-proof", "offload"]:
+    attack = "valid" # These one-query fixtures use normal request bytes and FIN.
+  elif mode == "holder":
+    attack = "no-fin" # Saturation holders keep their read direction deliberately incomplete.
   var peer = Peer(server: server, service: service, integrated: integrated,
-      mixed: mode == "mixed", attack: attack, mesh: load, overload: mode == "overload")
+      mixed: mode == "mixed", attack: attack, mesh: load, overload: mode == "overload",
+      offloading: mode == "offload", light: mode == "light", badProof: mode == "invalid-proof")
   # Explicitly integrated binaries load public fixtures before registering native callbacks.
   if peer.integrated and (not IntegrationEnabled or not loadBank(peer.bank, getEnv(
       "RAGNAROK_INTEGRATION_FIXTURES"))): return false
+  # Initialize fixed worker-owned Rust setups before exposing the listener. Join after native callbacks retire.
+  if peer.offloading:
+    if not startPool(peer.pool): return false # Explicit offload mode never silently uses the I/O thread.
+  defer:
+    if peer.offloading: stopPool(peer.pool) # Transport teardown runs first and cancels every remaining stream job.
   # Expected identity bytes remain owned by Peer across all TLS verification callbacks.
   if paramStr(5) != "-":
     let text = readFile(paramStr(5))
@@ -439,11 +512,12 @@ proc runPeer(): bool =
   if not openTransport(peer.transport, server, peer.attack == "soak", uint16(port), paramStr(3),
       paramStr(4), paramStr(6), addr peer, verifyPeer,
           onStream, peer.service, ipv6 = load, profile = (
-              if peer.overload: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
+              if peer.overload or peer.offloading: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
   if server: echo "READY" # Announce only after listener binding and native setup.
   elif not connectTransport(peer.transport, uint16(port)): return false # Dial setup failed before authentication.
   let started = getMonoTime()
   let stopFile = getEnv("RAGNAROK_SERVICE_STOP")
+  let cancelFile = getEnv("RAGNAROK_OFFLOAD_CANCEL")
   # An externally gated service must have a concrete stop path before entering its bounded loop.
   if peer.service and stopFile.len == 0: return false
   var lastActive = -1
@@ -456,6 +530,7 @@ proc runPeer(): bool =
   # One selector loop services all streams, UDP reads and LSQUIC/application deadlines.
   while not peer.failed and (peer.service or peer.completed < target) and (getMonoTime() -
       started).inMilliseconds < timeout:
+    if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, selector and native engine throughout every wave.
     if peer.service:
       let active = int(peerMetric(peer.transport, 0))
@@ -479,7 +554,9 @@ proc runPeer(): bool =
         echo "SERVICE_IDLE ", accepted, " ", peerMetric(peer.transport, 2), " ", getOccupiedMem()
         lastIdle = accepted
       if fileExists(stopFile):
-        serviceStopped = active == 0 and live == 0
+        serviceStopped = peer.offloading or (active == 0 and live == 0)
+        if peer.offloading: echo "OFFLOAD_SHUTDOWN_PENDING ",
+            live # Explicit test shutdown also exercises pending jobs.
         break
     let status = transportStatus(peer.transport)
     if status < 0: break # Authentication or persistent UDP failure settles this bounded attempt.
@@ -490,6 +567,15 @@ proc runPeer(): bool =
       # Open concurrent requests before waiting for replies; the soak introduces three later healthy siblings.
       opened = true
       for index in 0..<(if peer.attack == "soak": 5 else: target): openStream(peer.transport)
+    # The controller releases cancellation only after observing actual worker execution.
+    if mode == "proof-cancel" and fileExists(cancelFile):
+      for state in peer.streams.mitems:
+        if state.handle != NativeStream(nil): streamAbort(state.handle) # Cancel this authenticated pending query.
+      disconnectTransport(peer.transport)
+      let grace = getMonoTime()
+      while (getMonoTime() - grace).inMilliseconds < 100:
+        discard pollTransport(peer.transport) # Deliver reset/close while UDP and callbacks still own their buffers.
+      return false # The intentional cancellation has no validated reply.
     if peer.attack == "soak":
       soakTick(addr peer)
       # Late healthy requests prove continued service after malformed input, cancellation and missing FIN.
@@ -505,7 +591,8 @@ proc runPeer(): bool =
   if peer.service:
     echo "SERVICE_DONE ", peerMetric(peer.transport, 1), " ", peerMetric(peer.transport, 2), " ",
         peerMetric(peer.transport, 3)
-    return serviceStopped and not peer.failed and peerMetric(peer.transport, 3) >= 3
+    return serviceStopped and not peer.failed and (peer.offloading or peerMetric(peer.transport,
+        3) >= 3)
   result = authenticated and not peer.failed and peer.completed == target
   # Client success counts must distinguish exactly five healthy, two rejected and one cancelled stream.
   if result and peer.attack == "soak" and not server:
@@ -514,7 +601,7 @@ proc runPeer(): bool =
   if result:
     echo "EXCHANGE_OK ", target # Authentication alone is insufficient without all terminal application outcomes.
     # Mixed/probe clients explicitly close while UDP remains active so the persistent server can retire their connection.
-    if mode in ["mixed", "clean", "integrated", "probe"]: disconnectTransport(peer.transport)
+    if mode in ["mixed", "clean", "integrated", "probe", "proof", "light"]: disconnectTransport(peer.transport)
     let grace = getMonoTime()
     # Drain final handshake/FIN packets before removing readiness and destroying native stream state.
     while (getMonoTime() - grace).inMilliseconds < 100:
@@ -586,6 +673,16 @@ proc main(): int =
       if not IntegrationEnabled: return 2
       integrationSelfTest()
       return 0
+    # Completion-capacity checks create workers but no native transport.
+    if paramCount() == 1 and paramStr(1) == "--offload-selftest":
+      if not OffloadEnabled: return 2
+      offloadSelfTest()
+      return 0
+    # Held shutdown owns threads but has not entered a Rust call or started networking.
+    if paramCount() == 1 and paramStr(1) == "--offload-held-shutdown":
+      if not OffloadEnabled: return 2
+      offloadHeldShutdownTest()
+      return 0
     # Parser tests create no native transport or socket.
     if paramCount() == 1 and paramStr(1) == "--selftest":
       selfTest()
@@ -612,7 +709,7 @@ proc main(): int =
         if not runPeer(): return 2 # Deferred selector/native cleanup finishes before failure returns.
         echo "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem()
         echo "SESSION_DONE ", iteration
-    elif paramCount() == 8 and paramStr(8) in ["service", "integration", "overload"]:
+    elif paramCount() == 8 and paramStr(8) in ["service", "integration", "overload", "offload"]:
       # Final native callbacks and ARC release complete before observing the process-level application baseline.
       let baseline = getOccupiedMem()
       if not runPeer(): return 2

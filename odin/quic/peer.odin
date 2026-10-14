@@ -31,6 +31,7 @@ Stream_State :: struct {
 	paused, blocked:                         bool,
 	owner:                                   codec.Owned_Frame, // One release owner retained through final native stream close.
 	query:                                   Preimage_Key,
+	job:                                     Job_Id,
 	fixture:                                 int,
 }
 // Native owner outlives every receive/timer/C callback; buffers never refer to expired stack frames.
@@ -47,6 +48,8 @@ Peer :: struct {
 	capacity_rejected, peak_streams:                                        int,
 	attack:                                                                 string,
 	opened, healthy, rejected, cancelled, blocked:                          int,
+	offloading, light, bad_proof:                                           bool,
+	pool:                                                                   Offload_Pool,
 	bank:                                                                   Integration_Bank,
 	tracking:                                                               ^mem.Tracking_Allocator, // Borrowed from the service entry point through all callbacks.
 	receive_operation:                                                      ^nbio.Operation, // Owned until callback delivery or explicit removal; buffer stays in Peer.
@@ -182,6 +185,75 @@ REQUEST_HASH :: [32]u8 {
 }
 
 // Bounded soak fixture and independently computed Blake2b-256 map key.
+// Exact hashes name cheap and wrong-domain test preimages without changing CE 143 wire policy.
+LIGHT_HASH :: [32]u8 {
+	10,
+	253,
+	74,
+	4,
+	215,
+	114,
+	13,
+	169,
+	146,
+	47,
+	43,
+	64,
+	36,
+	153,
+	137,
+	250,
+	244,
+	255,
+	128,
+	150,
+	225,
+	237,
+	73,
+	190,
+	230,
+	21,
+	187,
+	108,
+	177,
+	238,
+	79,
+	125,
+}
+BAD_PROOF_HASH :: [32]u8 {
+	15,
+	96,
+	93,
+	27,
+	146,
+	148,
+	195,
+	111,
+	125,
+	23,
+	196,
+	140,
+	148,
+	61,
+	162,
+	184,
+	119,
+	205,
+	169,
+	96,
+	186,
+	94,
+	51,
+	55,
+	231,
+	178,
+	226,
+	155,
+	206,
+	96,
+	61,
+	24,
+}
 LARGE_SIZE :: 1024 * 1024
 LARGE_HASH :: [32]u8 {
 	138,
@@ -225,6 +297,10 @@ finish_stream :: proc(peer: ^Peer, state: ^Stream_State, good: bool) {
 	if good {
 		peer.completed += 1
 		peer.healthy += 1
+		if peer.offloading &&
+		   state.received_length == 37 &&
+		   state.received[5] ==
+			   LIGHT_HASH[0] { fmt.println("OFFLOAD_LIGHT_DONE", busy_pool(&peer.pool)) } 	// Exact reply FIN progresses while workers execute real crypto, or an explicitly reported hold.
 		// Observe progress while another stream's large application write is actually parked.
 		if peer.service {
 			for other in peer.streams {
@@ -237,6 +313,8 @@ finish_stream :: proc(peer: ^Peer, state: ^Stream_State, good: bool) {
 		}
 		if peer.attack ==
 		   "soak" { fmt.println("SERVER_HEALTHY" if peer.server else "HEALTHY_OK") } 	// Expose verified client replies.
+	} else if peer.offloading {
+		peer.completed += 1; peer.rejected += 1 // Proof/admission/cancellation failure affects only this stream.
 	} else if peer.mesh && peer.recovering {
 		peer.completed += 1; peer.rejected += 1 // Known peer loss settles work; final close still owns buffer release.
 	} else if peer.attack == "soak" {
@@ -308,13 +386,14 @@ frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, val
 	if accepting(peer, stream) {
 		if claimed != 32 { return false, false } 	// Hash is fixed width.
 		wanted :=
-			LARGE_HASH if stream.received[5] == LARGE_HASH[0] && peer.attack == "soak" else REQUEST_HASH
+			LIGHT_HASH if peer.offloading && stream.received[5] == LIGHT_HASH[0] else (BAD_PROOF_HASH if peer.offloading && stream.received[5] == BAD_PROOF_HASH[0] else (LARGE_HASH if stream.received[5] == LARGE_HASH[0] && peer.attack == "soak" else REQUEST_HASH))
 		for b, i in wanted { if stream.received[5 + i] != b { return false, false } } 	// Fixture map lookup.
 	} else {
 		size := LARGE_SIZE if stream.attack == "slow" else 3
 		if claimed != u64(size) { return false, false } 	// Fixed fixture ceiling and exact length.
 		for i in 0 ..< size {
-			wanted := u8(i % 251) if size == LARGE_SIZE else u8(i + 1)
+			wanted :=
+				u8(i % 251) if size == LARGE_SIZE else u8(i + 1 + (3 if peer.light else (6 if peer.bad_proof else 0)))
 			if stream.received[4 + i] != wanted { return false, false } 	// Validate every preimage byte.
 		} // Compare actual bytes.
 	}
@@ -364,7 +443,8 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 				rq_stream_want_write(handle, 1)
 				return
 			}
-			wanted := REQUEST_HASH
+			wanted :=
+				LIGHT_HASH if peer.light else (BAD_PROOF_HASH if peer.bad_proof else REQUEST_HASH)
 			// The soak mixes five healthy replies with cancellation, malformed kind and missing FIN.
 			if peer.attack == "soak" {
 				switch peer.opened {
@@ -385,7 +465,7 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 			for b, i in wanted { state.sending[5 + i] = b }
 			state.send_length = 37
 			switch state.attack {
-			case "valid", "no-fin", "slow", "cancel": // Valid bytes with distinct lifecycle schedules.
+			case "valid", "no-fin", "slow", "cancel", "proof-cancel": // Valid bytes with distinct lifecycle schedules.
 			case "bad-kind":
 				state.sending[0] = 144
 			case "oversize":
@@ -400,7 +480,9 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 				peer.failed = true; rq_stream_abort(handle); return // Never guess a test selector.
 			}
 			// Slow/cancelled readers leave the transport window full while other streams progress.
-			if state.attack == "slow" || state.attack == "cancel" {
+			if state.attack == "slow" ||
+			   state.attack == "cancel" ||
+			   state.attack == "proof-cancel" {
 				state.paused = true
 				rq_stream_want_read(handle, 0)
 			}
@@ -422,6 +504,7 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 		return
 	} // Never dereference stale native ownership.
 	if event == 3 {
+		if peer.offloading { cancel_pool(&peer.pool, state.job) } 	// Final close settles this generation only.
 		if !state.counted && !peer.stopping { finish_stream(peer, state, false) } 	// Premature close is a rejection.
 		if peer.integrated &&
 		   accepting(peer, state) &&
@@ -433,6 +516,7 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 		return
 	}
 	if event == 4 {
+		if peer.offloading { cancel_pool(&peer.pool, state.job) } 	// Active Rust retains copied input after reset.
 		if !peer.stopping { finish_stream(peer, state, false) } 	// STOP_SENDING/reset settles pending writes too.
 		rq_stream_abort(handle)
 		return
@@ -460,13 +544,21 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 				if peer.mesh { rq_stream_read_done(handle) } 	// Exact FIN has been checked before retiring reading.
 				rq_stream_want_read(handle, 0)
 				if accepting(peer, state) {
+					if peer.offloading && state.received[5] != LIGHT_HASH[0] {
+						state.job = submit_pool(&peer.pool, state.received[5] == BAD_PROOF_HASH[0])
+						if state.job == 0 {
+							fmt.println("OFFLOAD_REJECT Capacity")
+							finish_stream(peer, state, false); rq_stream_abort(handle)
+						} else { fmt.println("OFFLOAD_ADMIT", u64(state.job)) } 	// Fixed owned job has an explicit generation.
+						break // Reply is deferred until the I/O thread selects verified completion.
+					}
 					if peer.integrated { rq_stream_want_write(handle, 1); break } 	// Reply was built from the owned digest, with its snapshot retained.
 					size :=
 						LARGE_SIZE if state.received[5] == LARGE_HASH[0] && peer.attack == "soak" else 3
 					state.sending = make([]u8, size + 4)
 					// Encode a trusted bounded E4 length and fixture bytes in native Odin.
 					for i in 0 ..< 4 { state.sending[i] = u8((size >> uint(8 * i)) & 255) }
-					for i in 0 ..< size { state.sending[4 + i] = u8(i % 251) if size == LARGE_SIZE else u8(i + 1) }
+					for i in 0 ..< size { state.sending[4 + i] = u8(i % 251) if size == LARGE_SIZE else u8(i + 1 + (3 if peer.offloading && state.received[5] == LIGHT_HASH[0] else 0)) }
 					state.send_length = len(state.sending)
 					rq_stream_want_write(handle, 1)
 				} else { finish_stream(peer, state, true) } 	// Exact response and FIN verified.
@@ -580,7 +672,37 @@ acquire_loop :: proc() -> bool {
 	return true
 }
 
-// Run one bounded authentication attempt and drain I/O callbacks before releasing TLS/native contexts.
+// Consume bounded completed proof decisions on I/O, resolving generations after stream close/reuse.
+offload_tick :: proc(peer: ^Peer) {
+	tick_pool(&peer.pool)
+	for _ in 0 ..< 4 {
+		polled := collect_pool(&peer.pool)
+		completion, ok := polled.(Offload_Completion)
+		if !ok { break } 	// Pending contains no completion fields.
+		matched := false
+		for &state in peer.streams {
+			if state.handle != nil && state.job == completion.id && !state.counted {
+				matched = true
+				state.job = 0 // Pool input has retired; stream retains only its application bytes.
+				if completion.outcome != .Verified {
+					fmt.println("OFFLOAD_REJECT Proof")
+					finish_stream(peer, &state, false); rq_stream_abort(state.handle)
+				} else {
+					fmt.println("OFFLOAD_VERIFIED", u64(completion.id))
+					state.sending = make([]u8, 7)
+					state.sending[0] = 3
+					for i in 0 ..< 3 { state.sending[4 + i] = u8(i + 1) } 	// Exact tiny preimage, authorized only after proof success.
+					state.send_length = 7
+					rq_stream_want_write(state.handle, 1)
+				}
+				break
+			}
+		}
+		if !matched { fmt.println("OFFLOAD_STALE", u64(completion.id)) } 	// Old completion cannot be delivered to a reused owner.
+	}
+}
+
+// Own one endpoint and its optional fixed worker pool through callback cancellation and teardown.
 run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	if len(os.args) != 8 &&
 	   len(os.args) !=
@@ -592,7 +714,8 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	   port > 65535 ||
 	   !timeout_ok ||
 	   timeout < 1 ||
-	   timeout > 120000 { return false } 	// Guard all narrowing.
+	   timeout >
+		   (300000 if len(os.args) == 9 && os.args[8] == "offload" else 120000) { return false } 	// Guard all narrowing.
 	server := os.args[1] == "server"
 	if !server && os.args[1] != "client" { return false } 	// No guessed role.
 	expected: []u8
@@ -607,8 +730,18 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	if !acquire_loop() { return false } 	// One event loop owns every operation.
 	defer nbio.release_thread_event_loop()
 	mode := os.args[8] if len(os.args) == 9 else "valid"
-	load := mode == "overload" || mode == "holder" || mode == "idle" || mode == "probe"
-	target := 1 if mode == "probe" else 8
+	load :=
+		mode == "overload" ||
+		mode == "holder" ||
+		mode == "idle" ||
+		mode == "probe" ||
+		mode == "offload" ||
+		mode == "proof" ||
+		mode == "light" ||
+		mode == "invalid-proof" ||
+		mode == "proof-cancel"
+	target :=
+		1 if mode == "probe" || mode == "proof" || mode == "light" || mode == "invalid-proof" || mode == "proof-cancel" else 8
 	socket, socket_err := nbio.create_udp_socket(.IP6 if load else .IP4)
 	if socket_err != nil { return false } 	// Cannot start a transport without nonblocking UDP.
 	defer net.close(socket)
@@ -621,21 +754,28 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	local, local_err := net.bound_endpoint(socket)
 	if local_err != nil { return false } 	// Native engine needs the actual ephemeral client port.
 	// Mixed clients retain the soak workload without the old per-session gate; service is listener-only.
-	if (mode == "service" || mode == "integration" || mode == "overload") &&
+	if (mode == "service" || mode == "integration" || mode == "overload" || mode == "offload") &&
 	   !server { return false }
 	peer := Peer {
 		tracking      = tracking,
 		mixed         = mode == "mixed",
-		service       = mode == "service" || mode == "integration" || mode == "overload",
+		service       = mode ==
+			"service" || mode == "integration" || mode == "overload" || mode == "offload",
 		mesh          = load,
 		overload      = mode == "overload",
 		integrated    = mode == "integration" || mode == "integrated",
+		offloading    = mode == "offload",
+		light         = mode == "light",
+		bad_proof     = mode == "invalid-proof",
 		socket        = socket,
 		expected      = expected,
 		saved_context = context,
 		server        = server,
-		attack        = "soak" if mode == "service" || mode == "mixed" || mode == "integration" || mode == "integrated" || mode == "overload" else ("valid" if mode == "clean" || mode == "probe" else ("no-fin" if mode == "holder" else mode)),
+		attack        = "soak" if mode == "service" || mode == "mixed" || mode == "integration" || mode == "integrated" || mode == "overload" else ("valid" if mode == "clean" || mode == "probe" || mode == "proof" || mode == "light" || mode == "invalid-proof" || mode == "offload" else ("no-fin" if mode == "holder" else mode)),
 	}
+	if peer.offloading { peer.attack = "valid" } 	// Offload workload uses one-query clients rather than soak fault schedules.
+	if peer.offloading && !start_pool(&peer.pool) { return false } 	// No worker-free fallback for explicit mode.
+	defer { if peer.offloading { stop_pool(&peer.pool) } } 	// Engine destruction cancels stream jobs before worker join.
 	// The fixture bank outlives engine destruction; each stream snapshot is destroyed by its final close callback first.
 	defer destroy_bank(&peer.bank)
 	if peer.integrated {
@@ -650,7 +790,8 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	defer delete(cert); defer delete(key); defer delete(alpn)
 	// Explicit load profiles use IPv6 and liveness probes; all existing proof modes retain their constructor.
 	if load {
-		profile := IPv6_Profile.Saturated_Service if peer.overload else IPv6_Profile.Crash_Recovery
+		profile :=
+			IPv6_Profile.Saturated_Service if peer.overload || peer.offloading else IPv6_Profile.Crash_Recovery
 		peer.transport = rq_transport_new_ipv6_profile(
 			i32(profile),
 			i32(int(server)),
@@ -687,6 +828,8 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	started := time.now()
 	stop_file := os.get_env("RAGNAROK_SERVICE_STOP", context.allocator)
 	defer delete(stop_file)
+	cancel_file := os.get_env("RAGNAROK_OFFLOAD_CANCEL", context.allocator)
+	defer delete(cancel_file)
 	last_active := -1
 	last_live, last_capacity := -1, -1
 	last_load_active := -1
@@ -700,6 +843,7 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	    !peer.failed &&
 	    (peer.service || peer.completed < target) &&
 	    time.since(started) < time.Duration(timeout) * time.Millisecond {
+		if peer.offloading { offload_tick(&peer) } 	// Bounded completion polling never blocks nbio/native timers.
 		// Connection and stream retirement is observed without replacing the engine or the event loop.
 		if peer.service {
 			active := int(rq_peer_metric(peer.transport, 0))
@@ -740,7 +884,7 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 			if len(stop_file) == 0 ||
 			   os.exists(
 				   stop_file,
-			   ) { service_stopped = len(stop_file) > 0 && active == 0 && live == 0; break } 	// Require explicit idle shutdown.
+			   ) { service_stopped = len(stop_file) > 0 && (peer.offloading || active == 0 && live == 0); if peer.offloading { fmt.println("OFFLOAD_SHUTDOWN_PENDING", live) }; break } 	// Require explicit idle shutdown.
 		}
 		status := rq_status(peer.transport)
 		if status < 0 { break } 	// TLS rejection is distinct from successful authentication.
@@ -749,6 +893,15 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 			opened = true
 			for _ in 0 ..< (5 if peer.attack == "soak" else target) { rq_open_stream(peer.transport) } 	// Open all requests before waiting for replies.
 			rq_process(peer.transport)
+		}
+		// Cancel only after the controller observes actual Rust work, keeping UDP alive for reset delivery.
+		if mode == "proof-cancel" && os.exists(cancel_file) {
+			for state in peer.streams { if state.handle != nil { rq_stream_abort(state.handle) } } 	// Only this client's query is cancelled.
+			rq_disconnect(peer.transport); rq_process(peer.transport)
+			grace := time.now()
+			for time.since(grace) <
+			    100 * time.Millisecond { _ = nbio.tick(10 * time.Millisecond) } 	// Drain reset/close before buffer teardown.
+			break // This intentional cancellation cannot become a validated reply.
 		}
 		if peer.attack == "soak" {
 			soak_tick(&peer) // Local deadlines never abort the whole connection.
@@ -766,7 +919,7 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	   !authenticated { fmt.println("AUTH_OK"); authenticated = true } 	// A receive tick may complete all requests before the loop checks status again.
 	success := authenticated && !peer.failed && peer.completed == target
 	// The service ends at an external idle barrier, never at the first completed client's stream count.
-	if peer.service { success = service_stopped && !peer.failed && rq_peer_metric(peer.transport, 3) >= 3 }
+	if peer.service { success = service_stopped && !peer.failed && (peer.offloading || rq_peer_metric(peer.transport, 3) >= 3) }
 	if success && peer.attack == "soak" && !server {
 		success =
 			peer.healthy == 3 && peer.rejected == 4 && peer.cancelled == 1 if peer.integrated else peer.healthy == 5 && peer.rejected == 2 && peer.cancelled == 1 // Intentional failures are exact.
@@ -778,7 +931,9 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 		if mode == "mixed" ||
 		   mode == "clean" ||
 		   (mode == "integrated" ||
-				   mode == "probe") { rq_disconnect(peer.transport); rq_process(peer.transport) }
+				   mode == "probe" ||
+				   mode == "proof" ||
+				   mode == "light") { rq_disconnect(peer.transport); rq_process(peer.transport) }
 		grace := time.now()
 		for time.since(grace) < 100 * time.Millisecond { _ = nbio.tick(10 * time.Millisecond) } 	// Keep processing final handshake packets.
 	}
@@ -902,12 +1057,23 @@ main :: proc() {
 	   os.args[1] ==
 		   "--integration-selftest" { if !INTEGRATION { os.exit(2) }; integration_self_test(); return }
 
+	// Completed-owner capacity is tested without a native transport or I/O callbacks.
+	if len(os.args) == 2 &&
+	   os.args[1] ==
+		   "--offload-selftest" { if !OFFLOAD { os.exit(2) }; offload_self_test(); return }
+	// Held shutdown owns workers but no native transport or FFI borrower.
+	if len(os.args) == 2 &&
+	   os.args[1] ==
+		   "--offload-held-shutdown" { if !OFFLOAD { os.exit(2) }; offload_held_shutdown_test(); return }
 	// Parser fuzz tests do not create an engine or require socket permission.
 	if len(os.args) == 2 && os.args[1] == "--selftest" { self_test(); return }
 	// This regression probes cancellation ownership on the actual host backend before opening TLS sessions.
 	if len(os.args) == 2 && os.args[1] == "--io-selftest" { io_self_test(); return }
 	if len(os.args) == 9 &&
-	   (os.args[8] == "service" || os.args[8] == "integration" || os.args[8] == "overload") {
+	   (os.args[8] == "service" ||
+			   os.args[8] == "integration" ||
+			   os.args[8] == "overload" ||
+			   os.args[8] == "offload") {
 		// A process-lived dispatcher keeps its allocations outside the application ownership baseline.
 		if !acquire_loop() { os.exit(2) }
 		defer nbio.release_thread_event_loop()

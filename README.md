@@ -153,3 +153,8 @@ separate from the same-CPU Linux CI results, which await a pushed run.
 The [IPv6 resilience proof](docs/quic-resilience.md) checks retained-engine recovery after peer
 death with pending requests, connection/stream saturation, and healthy work after admission slots
 are released. See [verification](results/quic-resilience.md) for the finite workload and limits.
+
+The [bounded Bandersnatch offload proof](docs/quic-offload.md) verifies official ticket proofs on
+two fixed native workers alongside QUIC, with four total owned job slots, cancellation and joined
+shutdown. Run `python3 interoperability/test_quic_offload.py --fetch`; see
+[verification](results/quic-offload.md). Linux CI includes the new workload.

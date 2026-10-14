@@ -104,6 +104,9 @@ jobs:
       - name: Integrated owned codec, crypto and QUIC
         run: python3 interoperability/test_integration.py --reuse-native 2>&1 | tee build/ci/integration.log
 
+      - name: Bounded Bandersnatch offload alongside QUIC
+        run: python3 interoperability/test_quic_offload.py --reuse-native 2>&1 | tee build/ci/quic-offload.log
+
       - name: Benchmark evidence integrity checks
         run: python3 interoperability/test_benchmark_harness.py
 
@@ -146,6 +149,10 @@ jobs:
             build/integration/results.json
             build/integration/*/*.log
             build/integration/*/resources.json
+            build/offload/*.log
+            build/offload/results.json
+            build/offload/*/*.log
+            build/offload/*/resources.json
             build/bench/build.log
             build/bench/corpus.json
             build/bench/results.json

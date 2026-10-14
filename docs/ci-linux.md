@@ -126,3 +126,10 @@ The [IPv6 resilience step](quic-resilience.md) follows the retained-peer proof a
 build. It checks controlled peer death with pending operations and bounded connection/stream
 admission under mixed native load. Only explicit logs, summary and resource JSON under
 `build/quic/resilience` are added to uploads. Linux verification awaits the pushed run.
+
+The [bounded Bandersnatch offload step](quic-offload.md) follows the integrated slice. It compiles
+separately labelled peers against the already built pinned Rust/QUIC libraries, then checks fixed
+worker/job limits, mixed-language networking during actual verification, cancellation, failures,
+and worker-joined shutdown. Only explicit summary/build/native logs and resource JSON under
+`build/offload` are uploaded; fixture binaries, source trees and TLS private keys are excluded.
+Linux verification of this increment awaits a pushed run.
