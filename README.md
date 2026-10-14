@@ -81,3 +81,8 @@ and [verification report](results/work-digest.md) for full official vector check
 and nominal hash/gas/metric types.
 
 Wait for the maintainer's next go-ahead before the next codec increment.
+
+QUIC/JAMNP-S is now the priority investigation. See [the feasibility assessment](results/quic-feasibility.md)
+for the maintained Nim LSQUIC route, Odin event-loop/binding requirements and
+the proposed authenticated networking proof. No transport runtime gate has
+passed yet.

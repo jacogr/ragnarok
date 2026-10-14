@@ -142,13 +142,21 @@ The exact directory names and tooling can evolve by an explicit decision.
 - What are the exact current JAM networking protocol requirements?
 - Is future JAM Implementer's Prize eligibility a goal? Verify rules separately; do not assume eligibility.
 
-## 11. Immediate next task
+## 11. Current progress and immediate next task
 General naturals, fixed-width unsigned integers, bounded blobs/scalar sequences,
 optional variable blobs, work-output variants, full nested preimage extrinsics
 and complete work digests are implemented independently in both languages. Specification and vector
 revisions remain pinned. See [the latest verification report](../results/work-digest.md).
 
-Wait for the maintainer's next go-ahead before the next codec increment.
+The maintainer has prioritized QUIC/JAMNP-S investigation before more codec work.
+See [the feasibility assessment](../results/quic-feasibility.md) and
+[research revision pins](../spec/networking-research.json). The recommended
+first proof is authenticated CE 143 preimage exchange using the same pinned
+LSQUIC engine with Nim's maintained Chronos wrapper and Odin's core:nbio plus
+C bindings. Authentication, ARC ownership, bounded queues, cancellation and
+Linux interoperability are still unproved. This research does not pass M3 or
+select a language or installed transport dependency.
+
 Complete work reports, other extrinsics, generic element schemas and full blocks
 remain later M1 work. Linux reproducibility/CI remains open in M0.
 
