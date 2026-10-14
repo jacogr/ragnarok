@@ -59,8 +59,9 @@ eight octets reconstruct at most uint64 max.
 
 Nim results are tagged objects: check `ok` before reading the encoded output
 or decoded value/consumed count. Failure exposes only the typed error.
-Both functions declare `raises: []`. Odin results have an error field; `.None`
-means success, while failures return zeroed output/value/consumed fields.
+Both functions declare `raises: []`. Odin results are tagged unions: select the success struct, or check
+`error_of(result) == .None` before `success_of(result)`. Failures contain only
+their error reason, without output/value/consumed fields.
 No decoder modifies a cursor: callers advance only after success, by exactly
 `consumed`. Trailing bytes remain with the caller.
 
@@ -104,3 +105,7 @@ parsing, and print hex, `value consumed`, `invalidwidth`, `outofrange`,
 Byte strings, sequences, composite types and new domain-specific indices
 remain outside this increment. The next bounded byte-string/sequence round
 requires the maintainer's go-ahead.
+
+The current [result API and migration examples](../docs/codec-results.md)
+separate success data from failure reasons and preserve the borrowed-buffer
+contract. This changes API access, not the normative wire formats above.

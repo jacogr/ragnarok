@@ -9,25 +9,45 @@ type
   ElementLimit* = distinct uint64
   # Typed failure reasons shared by the bounded container operations; None denotes success.
   ContainerError* {.pure.} = enum
-    None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
+    Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
     InvalidWidth, ValueOutOfRange, AliasedBuffers, LengthOverflow
-  # Encoder output is stored in the caller's buffer; written counts only the completed prefix.
+  # Encoder output is stored in the caller's buffer; only successful results carry written.
   WriteResult* = object
-    written*: int
-    error*: ContainerError
+    case error*: ContainerError
+    of ContainerError.None:
+      # Only success carries decoded/committed data and its completed extent.
+      written*: int
+    else:
+      # Failure has no value, span, count or consumed/written metadata.
+      discard
   # A validated span in the original input, not a retained pointer or an allocated byte string.
   BlobResult* = object
-    offset*, length*, consumed*: int
-    error*: ContainerError
+    case error*: ContainerError
+    of ContainerError.None:
+      # Only success carries decoded/committed data and its completed extent.
+      offset*, length*, consumed*: int
+    else:
+      # Failure has no value, span, count or consumed/written metadata.
+      discard
   # Values are copied into caller-owned typed storage; count selects the initialized prefix.
   SequenceResult* = object
-    count*, consumed*: int
-    error*: ContainerError
+    case error*: ContainerError
+    of ContainerError.None:
+      # Only success carries decoded/committed data and its completed extent.
+      count*, consumed*: int
+    else:
+      # Failure has no value, span, count or consumed/written metadata.
+      discard
   # Internal frame proof: count remains uint64 until a caller proves it fits host indexing.
   FrameResult = object
-    count: uint64
-    offset, consumed: int
-    error: ContainerError
+    case error: ContainerError
+    of ContainerError.None:
+      # Only success carries decoded/committed data and its completed extent.
+      count: uint64
+      offset, consumed: int
+    else:
+      # Failure has no value, span, count or consumed/written metadata.
+      discard
 
 # Check address-range intersection without adding a length to a possibly large pointer value.
 proc overlaps(a: pointer, aLen: int, b: pointer, bLen: int): bool {.raises: [].} =
@@ -62,14 +82,16 @@ proc readFrame(input: openArray[byte], stride: int, limit: uint64): FrameResult 
   var payload = 0
   # A positive stride proves count fits host int; zero-width items occupy no payload bytes.
   if stride > 0: payload = int(count) * stride
-  FrameResult(count: count, offset: prefix.consumed, consumed: prefix.consumed + payload)
+  FrameResult(error: ContainerError.None, count: count, offset: prefix.consumed,
+      consumed: prefix.consumed + payload)
 
 # Return a span for one bounded byte string; caller retains the original input and advances on success only.
 proc decodeBytes*(input: openArray[byte], limit: ByteLimit): BlobResult {.raises: [].} =
   let frame = readFrame(input, 1, uint64(limit))
   # Failure exposes no span and consumes nothing.
   if frame.error != ContainerError.None: return BlobResult(error: frame.error)
-  BlobResult(offset: frame.offset, length: int(frame.count), consumed: frame.consumed)
+  BlobResult(error: ContainerError.None, offset: frame.offset, length: int(frame.count),
+      consumed: frame.consumed)
 
 # Encode a canonical byte count and payload into a separate caller-owned output buffer, without allocation.
 proc encodeBytes*(value: openArray[byte], limit: ByteLimit,
@@ -87,7 +109,7 @@ proc encodeBytes*(value: openArray[byte], limit: ByteLimit,
   # All failure checks have passed; emit the canonical prefix followed by exactly the borrowed payload.
   for i in 0..<prefix.len: output[i] = prefix.bytes[i]
   for i in 0..<value.len: output[prefix.len + i] = value[i]
-  WriteResult(written: total)
+  WriteResult(error: ContainerError.None, written: total)
 
 # Encode a homogeneous fixed-width unsigned sequence after validating every element and all capacity.
 proc encodeSequence*(values: openArray[FixedUnsigned], width: ByteWidth, limit: ElementLimit,
@@ -121,7 +143,7 @@ proc encodeSequence*(values: openArray[FixedUnsigned], width: ByteWidth, limit: 
     let encoded = encodeFixed(value, width)
     # Each element uses the already validated stride, so this destination stays inside the proved capacity.
     for i in 0..<stride: output[prefix.len + index * stride + i] = encoded.encoded.bytes[i]
-  WriteResult(written: total)
+  WriteResult(error: ContainerError.None, written: total)
 
 # Decode fixed-width elements into separate caller-owned storage, with no partial writes on any failure.
 proc decodeSequence*(input: openArray[byte], width: ByteWidth, limit: ElementLimit,
@@ -147,4 +169,4 @@ proc decodeSequence*(input: openArray[byte], width: ByteWidth, limit: ElementLim
     let start = frame.offset + index * stride
     let value = decodeFixed(input.toOpenArray(start, start + stride - 1), width)
     output[index] = value.value
-  SequenceResult(count: count, consumed: frame.consumed)
+  SequenceResult(error: ContainerError.None, count: count, consumed: frame.consumed)

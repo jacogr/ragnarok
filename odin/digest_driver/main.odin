@@ -77,6 +77,8 @@ parse_capacity :: proc(text: string, maximum: int) -> (int, bool) {
 // Stable shared error labels; None is never passed here by a successful operation.
 print_error :: proc(error: codec.Composite_Error) {
 	switch error {
+	case .Uninitialized:
+		fmt.println("uninitialized") // An unvalidated result has no payload to print.
 	case .Truncated:
 		fmt.println("truncated") // Missing count, field or payload bytes.
 	case .Non_Canonical:
@@ -100,7 +102,7 @@ print_error :: proc(error: codec.Composite_Error) {
 
 // Check native decode/encode correspondence without aliasing source bytes or omitting nested fields.
 same_prefix :: proc(wire: []u8, encoded: codec.Composite_Write, output: []u8, consumed: int) {
-	assert(encoded.error == .None && encoded.written == consumed)
+	assert(codec.error_of(encoded) == .None && codec.success_of(encoded).written == consumed)
 	for i in 0 ..< consumed {assert(wire[i] == output[i])} 	// Every field, count and discriminator must agree.
 }
 
@@ -205,27 +207,32 @@ main :: proc() {
 				},
 			}
 			written := codec.encode_digest(value, pool, codec.Byte_Limit(limit), output[:cap])
-			if written.error == .None {print_hex(output[:written.written]); fmt.println()} else // Print only completed bytes.
+			if codec.error_of(written) ==
+			   .None {print_hex(output[:codec.success_of(written).written]); fmt.println()} else // Print only completed bytes.
 			{
 				// Every byte must remain untouched after any failure, including late suffix errors.
 				for b in output {assert(b == 77)}
-				print_error(written.error)
+				print_error(codec.error_of(written))
 			}
 		} else if n == 3 && parts[0] == "D" {
 			limit, limit_ok := parse_decimal(parts[1])
 			wire, hex_ok := parse_hex(parts[2], storage[:])
 			if !limit_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Parse text before production decoding.
 			parsed := codec.decode_digest(wire, codec.Byte_Limit(limit))
-			if parsed.error != .None {print_error(parsed.error)} else // Failed tuple yields no public value.
+			if codec.error_of(parsed) != .None {print_error(codec.error_of(parsed))} else // Failed tuple yields no public value.
 			{
 				written := codec.encode_digest(
-					parsed.value,
+					codec.success_of(parsed).value,
 					wire,
 					codec.Byte_Limit(limit),
 					output[:],
 				)
-				same_prefix(wire, written, output[:], parsed.consumed)
-				print_digest(parsed.value, wire, parsed.consumed)
+				same_prefix(wire, written, output[:], codec.success_of(parsed).consumed)
+				print_digest(
+					codec.success_of(parsed).value,
+					wire,
+					codec.success_of(parsed).consumed,
+				)
 			}
 		} else {fmt.println("inputerror")} 	// Unknown operation or incorrect field count.
 	}

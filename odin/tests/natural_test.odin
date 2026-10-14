@@ -6,18 +6,24 @@ import "core:testing"
 check :: proc(t: ^testing.T, x: u64) {
 	encoded := codec.encode(codec.Natural(x))
 	decoded := codec.decode(encoded.bytes[:encoded.length])
-	testing.expect(t, decoded.error == .None && u64(decoded.value) == x)
-	testing.expect(t, decoded.consumed == encoded.length)
+	testing.expect(
+		t,
+		codec.error_of(decoded) == .None && u64(codec.success_of(decoded).value) == x,
+	)
+	testing.expect(t, codec.success_of(decoded).consumed == encoded.length)
 	// Every shorter slice must fail without reporting any bytes consumed.
 	for size in 0 ..< encoded.length {
 		short := codec.decode(encoded.bytes[:size])
-		testing.expect(t, short.error == .Truncated && short.consumed == 0)
+		testing.expect(t, codec.error_of(short) == .Truncated)
 	}
 	padded: [10]u8
 	copy(padded[:], encoded.bytes[:encoded.length])
 	padded[encoded.length] = 42
 	prefix := codec.decode(padded[:encoded.length + 1])
-	testing.expect(t, prefix.error == .None && prefix.consumed == encoded.length)
+	testing.expect(
+		t,
+		codec.error_of(prefix) == .None && codec.success_of(prefix).consumed == encoded.length,
+	)
 }
 
 // Deterministic fuzz entry point. Storage is borrowed, no allocation.
@@ -25,16 +31,16 @@ check :: proc(t: ^testing.T, x: u64) {
 fuzz_one :: proc(t: ^testing.T, input: []u8) {
 	decoded := codec.decode(input)
 	// A successful result must have the same wire bytes when encoded again.
-	if decoded.error == .None {
-		encoded := codec.encode(decoded.value)
-		testing.expect(t, encoded.length == decoded.consumed)
+	if codec.error_of(decoded) == .None {
+		encoded := codec.encode(codec.success_of(decoded).value)
+		testing.expect(t, encoded.length == codec.success_of(decoded).consumed)
 		// Compare all used bytes, which also detects acceptance of overlong representations.
 		for i in 0 ..< encoded.length {
 			testing.expect(t, encoded.bytes[i] == input[i])
 		}
 	} else {
 		// A failed decode must not report any bytes consumed.
-		testing.expect(t, decoded.consumed == 0)
+		testing.expect(t, codec.error_of(decoded) != .None)
 	}
 }
 
@@ -65,11 +71,11 @@ naturals :: proc(t: ^testing.T) {
 		   first == 252 ||
 		   first == 254 ||
 		   first == 255 {
-			testing.expect(t, decoded.error == .Non_Canonical)
+			testing.expect(t, codec.error_of(decoded) == .Non_Canonical)
 		} else {
 			// The remaining headers are valid here; verify their canonical bytes are preserved.
-			testing.expect(t, decoded.error == .None)
-			encoded := codec.encode(decoded.value)
+			testing.expect(t, codec.error_of(decoded) == .None)
+			encoded := codec.encode(codec.success_of(decoded).value)
 			// Compare all used bytes, which also detects acceptance of overlong representations.
 			for i in 0 ..< encoded.length {
 				testing.expect(t, encoded.bytes[i] == bytes[i])

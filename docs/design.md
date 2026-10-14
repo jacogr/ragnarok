@@ -174,3 +174,9 @@ the initial Linux reproducibility target for M0.
 
 Do not begin PVM, state transitions, or validator networking until the relevant
 gates are met.
+
+The codec result-safety round introduces checked success/failure alternatives
+in both implementations; see [the API notes](codec-results.md). Default results
+are failures and failed results contain no success metadata. Wire definitions
+and allocation-free decoding remain unchanged. Blob-buffer ownership remains
+the next bounded codec round.

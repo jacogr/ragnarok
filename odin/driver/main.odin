@@ -63,10 +63,15 @@ main :: proc() {
 			if !ok {fmt.println("inputerror"); continue}
 			decoded := codec.decode(input)
 			// Translate the typed decoder outcome into the stable text protocol expected by the harness.
-			switch decoded.error {
+			switch codec.error_of(decoded) {
+			case .Uninitialized:
+				fmt.println("uninitialized") // Expose a missing native outcome rather than a zero value.
 			// Success reports both the value and its consumed prefix length.
 			case .None:
-				fmt.println(u64(decoded.value), decoded.consumed)
+				fmt.println(
+					u64(codec.success_of(decoded).value),
+					codec.success_of(decoded).consumed,
+				)
 			// The header or its announced payload is incomplete.
 			case .Truncated:
 				fmt.println("truncated")

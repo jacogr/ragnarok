@@ -68,6 +68,8 @@ print_hex :: proc(bytes: []u8) {
 // Give typed failures stable labels shared by both native test adapters.
 print_error :: proc(error: codec.Container_Error) {
 	switch error {
+	case .Uninitialized:
+		fmt.println("uninitialized") // An unvalidated result has no payload to print.
 	// Wire does not include the complete prefix/payload.
 	case .Truncated:
 		fmt.println("truncated")
@@ -143,22 +145,23 @@ main :: proc() {
 				codec.Byte_Limit(limit),
 				output_storage[:capacity],
 			)
-			if encoded.error != .None {
+			if codec.error_of(encoded) != .None {
 				// Preserve the destination even when limits, capacity or alias policy reject encoding.
 				for b in output_storage {assert(b == 77)}
-				print_error(encoded.error); continue
+				print_error(codec.error_of(encoded)); continue
 			}
-			print_hex(output_storage[:encoded.written]); fmt.println()
+			print_hex(output_storage[:codec.success_of(encoded).written]); fmt.println()
 		} else if n == 3 && parts[0] == "BD" {
 			// Byte decode returns indices into retained stack input, without copying or allocating a payload.
 			limit, ok := parse_decimal(parts[1])
 			wire, hex_ok := parse_hex(parts[2], input_storage[:])
 			if !ok || !hex_ok {fmt.println("inputerror"); continue} 	// Reject textual errors before binary decoding.
 			decoded := codec.decode_bytes(wire, codec.Byte_Limit(limit))
-			if decoded.error != .None {print_error(decoded.error); continue} 	// A failed span has no payload to print.
+			if codec.error_of(decoded) != .None {print_error(codec.error_of(decoded)); continue} 	// A failed span has no payload to print.
 			print_hex(
-				wire[decoded.offset:decoded.offset + decoded.length],
-			); fmt.println("", decoded.consumed)
+				wire[codec.success_of(decoded).offset:codec.success_of(decoded).offset +
+				codec.success_of(decoded).length],
+			); fmt.println("", codec.success_of(decoded).consumed)
 		} else if n == 5 && parts[0] == "SE" {
 			// Fixed-width sequence values are checked individually; the adapter supplies bounded stack storage.
 			width, width_ok := parse_width(parts[1])
@@ -187,12 +190,12 @@ main :: proc() {
 				codec.Element_Limit(limit),
 				output_storage[:capacity],
 			)
-			if encoded.error != .None {
+			if codec.error_of(encoded) != .None {
 				// Late element range failures must not leave even the length prefix in output.
 				for b in output_storage {assert(b == 77)}
-				print_error(encoded.error); continue
+				print_error(codec.error_of(encoded)); continue
 			}
-			print_hex(output_storage[:encoded.written]); fmt.println()
+			print_hex(output_storage[:codec.success_of(encoded).written]); fmt.println()
 		} else if n == 5 && parts[0] == "SD" {
 			// The wire count limit and the caller's typed output capacity are intentionally separate.
 			width, width_ok := parse_width(parts[1])
@@ -207,17 +210,17 @@ main :: proc() {
 				codec.Element_Limit(limit),
 				values[:capacity],
 			)
-			if decoded.error != .None {
+			if codec.error_of(decoded) != .None {
 				// All destinations must remain unchanged if the complete container was rejected.
 				for item in values {assert(u64(item) == 999)}
-				print_error(decoded.error); continue
+				print_error(codec.error_of(decoded)); continue
 			}
-			if decoded.count == 0 {fmt.print("-")} 	// An empty initialized prefix needs an explicit token.
-			for i in 0 ..< decoded.count {
+			if codec.success_of(decoded).count == 0 {fmt.print("-")} 	// An empty initialized prefix needs an explicit token.
+			for i in 0 ..< codec.success_of(decoded).count {
 				if i > 0 {fmt.print(",")} 	// Delimit each initialized value without including unused capacity.
 				fmt.print(u64(values[i]))
 			}
-			fmt.println("", decoded.consumed)
+			fmt.println("", codec.success_of(decoded).consumed)
 		} else {
 			// Unknown commands or token counts must not select a production operation accidentally.
 			fmt.println("inputerror")

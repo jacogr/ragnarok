@@ -96,3 +96,7 @@ for the pinned native dependencies, ARC patches and remaining M3 gates.
 The bounded same-process QUIC soak now exercises backpressure, cancellation,
 stream-local deadlines and continued service after malformed requests. See
 [run instructions and resource budgets](docs/quic-soak.md).
+
+[Codec result safety](docs/codec-results.md) now separates completed values and
+metadata from typed failures in both languages. Buffer ownership is the next
+separate round.

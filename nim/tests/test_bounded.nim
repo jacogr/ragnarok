@@ -17,7 +17,7 @@ proc checkBlob(size: int) =
   # All incomplete container prefixes must fail without returning a span.
   for cut in 0..<encoded.written:
     let short = decodeBytes(wire.toOpenArray(0, cut - 1), ByteLimit(uint64(size)))
-    doAssert short.error == ContainerError.Truncated and short.consumed == 0
+    doAssert short.error == ContainerError.Truncated
   var small: array[1, byte]
   small[0] = 77
   # Nonempty values cannot fit just a header; a failed write must preserve the sentinel.
@@ -51,7 +51,7 @@ proc checkSequence(count, stride: int) =
     output[0] = FixedUnsigned(777)
     let short = decodeSequence(wire.toOpenArray(0, cut - 1), ByteWidth(stride),
                                ElementLimit(uint64(count)), output)
-    doAssert short.error == ContainerError.Truncated and short.consumed == 0
+    doAssert short.error == ContainerError.Truncated
     doAssert uint64(output[0]) == 777
 
 # Arbitrary-byte entry point checks both decoders, including unchanged typed output on errors.
@@ -79,7 +79,7 @@ proc fuzzBounded*(input: openArray[byte], stride: int, limit: uint64) =
     for i in 0..<decoded.consumed: doAssert wire[i] == input[i]
   else:
     # On any failure, output and consumption must remain unchanged.
-    doAssert decoded.consumed == 0 and decoded.count == 0
+    doAssert decoded.error != typeof(decoded.error).None
     for item in output: doAssert uint64(item) == 999
 
 # Natural length transitions are shared by byte strings and sequences.

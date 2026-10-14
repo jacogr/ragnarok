@@ -28,7 +28,7 @@ proc fuzzComposite*(input: openArray[byte]) =
     for i in 0..<decoded.consumed: doAssert wire[i] == input[i] # Include all tuple fields and lengths.
   else:
     # No failing nested record may initialize even an earlier valid record.
-    doAssert decoded.count == 0 and decoded.consumed == 0
+    doAssert decoded.error != typeof(decoded.error).None
     # Check every descriptor field, including records beyond any valid prefix.
     for item in output: doAssert uint32(item.service) == 777 and item.blob.offset == 333 and
         item.blob.length == 444

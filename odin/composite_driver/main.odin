@@ -77,6 +77,8 @@ parse_capacity :: proc(text: string, maximum: int) -> (int, bool) {
 // Stable shared error labels; None is never passed here by a successful operation.
 print_error :: proc(error: codec.Composite_Error) {
 	switch error {
+	case .Uninitialized:
+		fmt.println("uninitialized") // An unvalidated result has no payload to print.
 	case .Truncated:
 		fmt.println("truncated") // Missing count, field or payload bytes.
 	case .Non_Canonical:
@@ -100,7 +102,7 @@ print_error :: proc(error: codec.Composite_Error) {
 
 // Check native decode/encode correspondence without aliasing source bytes or omitting nested fields.
 same_prefix :: proc(wire: []u8, encoded: codec.Composite_Write, output: []u8, consumed: int) {
-	assert(encoded.error == .None && encoded.written == consumed)
+	assert(codec.error_of(encoded) == .None && codec.success_of(encoded).written == consumed)
 	for i in 0 ..< consumed {assert(wire[i] == output[i])} 	// Every field, count and discriminator must agree.
 }
 
@@ -155,11 +157,11 @@ main :: proc() {
 					output[:capacity],
 				)
 			}
-			if encoded.error != .None {
+			if codec.error_of(encoded) != .None {
 				for b in output {assert(b == 77)} 	// No failed operation may modify its destination.
-				print_error(encoded.error); continue
+				print_error(codec.error_of(encoded)); continue
 			}
-			print_hex(output[:encoded.written]); fmt.println()
+			print_hex(output[:codec.success_of(encoded).written]); fmt.println()
 		} else if n == 3 && (parts[0] == "OD" || parts[0] == "WD") {
 			// Decoded views refer only to this retained wire array; reconstruction uses separate output.
 			limit, limit_ok := parse_decimal(parts[1])
@@ -167,34 +169,46 @@ main :: proc() {
 			if !limit_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Request syntax is not a binary-codec error.
 			if parts[0] == "OD" {
 				decoded := codec.decode_optional(wire, codec.Byte_Limit(limit))
-				if decoded.error != .None {print_error(decoded.error); continue} 	// No usable optional view on failure.
+				if codec.error_of(decoded) !=
+				   .None {print_error(codec.error_of(decoded)); continue} 	// No usable optional view on failure.
 				same_prefix(
 					wire,
-					codec.encode_optional(decoded.value, wire, codec.Byte_Limit(limit), output[:]),
+					codec.encode_optional(
+						codec.success_of(decoded).value,
+						wire,
+						codec.Byte_Limit(limit),
+						output[:],
+					),
 					output[:],
-					decoded.consumed,
+					codec.success_of(decoded).consumed,
 				)
-				if decoded.value.present {
-					span := decoded.value.blob
+				if codec.success_of(decoded).value.present {
+					span := codec.success_of(decoded).value.blob
 					fmt.print(
 						"present:",
-					); print_hex(wire[span.offset:span.offset + span.length]); fmt.println("", decoded.consumed)
-				} else {fmt.println("absent", decoded.consumed)} 	// Absence carries no payload bytes.
+					); print_hex(wire[span.offset:span.offset + span.length]); fmt.println("", codec.success_of(decoded).consumed)
+				} else {fmt.println("absent", codec.success_of(decoded).consumed)} 	// Absence carries no payload bytes.
 			} else {
 				decoded := codec.decode_work(wire, codec.Byte_Limit(limit))
-				if decoded.error != .None {print_error(decoded.error); continue} 	// Invalid wire cannot be read as a union.
+				if codec.error_of(decoded) !=
+				   .None {print_error(codec.error_of(decoded)); continue} 	// Invalid wire cannot be read as a union.
 				same_prefix(
 					wire,
-					codec.encode_work(decoded.value, wire, codec.Byte_Limit(limit), output[:]),
+					codec.encode_work(
+						codec.success_of(decoded).value,
+						wire,
+						codec.Byte_Limit(limit),
+						output[:],
+					),
 					output[:],
-					decoded.consumed,
+					codec.success_of(decoded).consumed,
 				)
-				switch value in decoded.value {
+				switch value in codec.success_of(decoded).value {
 				case codec.Blob_Span:
 					fmt.print("0:"); print_hex(wire[value.offset:value.offset + value.length])
-					fmt.println("", decoded.consumed) // Success bytes.
+					fmt.println("", codec.success_of(decoded).consumed) // Success bytes.
 				case codec.Work_Error:
-					fmt.printf("%d:- %d\n", u8(value), decoded.consumed) // Payload-free error.
+					fmt.printf("%d:- %d\n", u8(value), codec.success_of(decoded).consumed) // Payload-free error.
 				case:
 					assert(false) // A successful decoder cannot return a nil/unknown union.
 				}
@@ -243,11 +257,11 @@ main :: proc() {
 					limits,
 					output[:capacity],
 				)
-				if encoded.error != .None {
+				if codec.error_of(encoded) != .None {
 					for b in output {assert(b == 77)} 	// Even late nested failures preserve every output byte.
-					print_error(encoded.error); continue
+					print_error(codec.error_of(encoded)); continue
 				}
-				print_hex(output[:encoded.written]); fmt.println()
+				print_hex(output[:codec.success_of(encoded).written]); fmt.println()
 			} else {
 				// Caller record capacity is a separate constraint from its explicit maximum permitted count.
 				capacity, cap_ok := parse_capacity(parts[4], len(records))
@@ -258,24 +272,29 @@ main :: proc() {
 						blob = {offset = 333, length = 444},
 					}} // Failure sentinels.
 				decoded := codec.decode_preimages(wire, limits, records[:capacity])
-				if decoded.error != .None {
+				if codec.error_of(decoded) != .None {
 					for record in records {assert(u32(record.service) == 999 && record.blob.offset == 333 && record.blob.length == 444)} 	// Atomic nested failures.
-					print_error(decoded.error); continue
+					print_error(codec.error_of(decoded)); continue
 				}
 				same_prefix(
 					wire,
-					codec.encode_preimages(records[:decoded.count], wire, limits, output[:]),
+					codec.encode_preimages(
+						records[:codec.success_of(decoded).count],
+						wire,
+						limits,
+						output[:],
+					),
 					output[:],
-					decoded.consumed,
+					codec.success_of(decoded).consumed,
 				)
-				if decoded.count == 0 {fmt.print("-")} 	// Explicit empty record prefix.
-				for i in 0 ..< decoded.count {
+				if codec.success_of(decoded).count == 0 {fmt.print("-")} 	// Explicit empty record prefix.
+				for i in 0 ..< codec.success_of(decoded).count {
 					if i > 0 {fmt.print(";")} 	// Delimit actual decoded tuples only.
 					fmt.printf("%d:", u32(records[i].service))
 					span := records[i].blob
 					print_hex(wire[span.offset:span.offset + span.length])
 				}
-				fmt.println("", decoded.consumed)
+				fmt.println("", codec.success_of(decoded).consumed)
 			}
 		} else {fmt.println("inputerror")} 	// Unknown commands/token counts never select a production decoder.
 	}

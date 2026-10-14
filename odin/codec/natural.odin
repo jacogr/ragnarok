@@ -10,17 +10,19 @@ Encoded_Natural :: struct {
 }
 // None indicates success; the other tags distinguish missing bytes from an overlong representation.
 Decode_Error :: enum {
+	Uninitialized, // A default result is a failure with no validated payload.
 	None,
 	Truncated,
 	Non_Canonical,
 }
 // Carries the decoded value and consumed count; check error before using them.
-// On failure both fields remain zero, so no input has been consumed.
-Decode_Result :: struct {
+// These fields exist only in the successful alternative.
+Decode_Success :: struct {
 	value:    Natural,
 	consumed: int,
-	error:    Decode_Error,
 }
+// The failure alternative contains no success payload or metadata; nil is not an outcome.
+Decode_Result :: Codec_Result(Decode_Success, Decode_Error)
 
 // Returned storage belongs to the caller; no allocator is used.
 // Encode the shortest JAM representation without using an allocator.
@@ -49,12 +51,12 @@ encode :: proc(value: Natural) -> (out: Encoded_Natural) {
 }
 
 // Borrows input only for this call. Decode one canonical prefix; trailing bytes
-// belong to the caller. Errors return zero consumed/value and never allocate.
+// belong to the caller. Errors carry no consumed/value fields and never allocate.
 // Decode one canonical prefix from borrowed storage; leave any following bytes to the caller.
 decode :: proc(input: []u8) -> Decode_Result {
 	// Even zero requires a header byte, so an empty slice is truncated.
 	if len(input) == 0 {
-		return {error = .Truncated}
+		return Decode_Error.Truncated
 	}
 	first := input[0]
 	n := 0
@@ -65,7 +67,7 @@ decode :: proc(input: []u8) -> Decode_Result {
 	}
 	// Validate the complete announced length before reading any payload byte.
 	if len(input) < n + 1 {
-		return {error = .Truncated}
+		return Decode_Error.Truncated
 	}
 	x: u64
 	// Compact headers contain the value bits above the payload; ff contains only the size marker.
@@ -78,7 +80,7 @@ decode :: proc(input: []u8) -> Decode_Result {
 	}
 	// Reject a value below this size threshold because a shorter encoding would suffice.
 	if n != 0 && x < u64(1) << uint(7 * n) {
-		return {error = .Non_Canonical}
+		return Decode_Error.Non_Canonical
 	}
-	return {value = Natural(x), consumed = n + 1}
+	return Decode_Success{value = Natural(x), consumed = n + 1}
 }

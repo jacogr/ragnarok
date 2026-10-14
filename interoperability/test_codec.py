@@ -252,6 +252,15 @@ def main():
         nim_flags = ['--mm:arc', f'--nimcache:{build / "nimcache"}']
         run(['nim', 'check', '--mm:arc', ROOT / 'nim/src/natural.nim'])
         run(['nim', 'c', *nim_flags, f'--out:{build / "nim-tests"}', '-r', ROOT / 'nim/tests/test_natural.nim'])
+        # Result misuse is rejected even when a caller omits its success check; verify debug and release field guards.
+        for mode in ([], ['-d:release']):
+            run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-result-tests"}', '-r', ROOT / 'nim/tests/test_result_safety.nim'])
+        # These public result APIs must reject payload construction/access from a failure or an unselected union.
+        for language, fixture, flags in (('nim', 'failed_digest_payload.nim', ['check', '--mm:arc']),
+                                         ('odin', 'unchecked_digest_result.odin', ['check'])):
+            result = subprocess.run([language, *flags, str(ROOT / language / 'tests/compile_fail' / fixture),
+                                     *(['-file'] if language == 'odin' else [])], capture_output=True, text=True)
+            assert result.returncode != 0 and 'value' in result.stderr, result.stderr
         run(['odin', 'check', ROOT / 'odin/codec', '-no-entry-point', '-vet', '-strict-style'])
         run(['odin', 'test', ROOT / 'odin/tests', f'-out:{build / "odin-tests"}', *linker])
         negatives = [

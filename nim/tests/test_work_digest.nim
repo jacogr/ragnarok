@@ -5,7 +5,7 @@ proc fuzzDigest*(input: openArray[byte]) =
   let parsed = decodeDigest(input, ByteLimit(64))
   # Failed tuples must not advance a caller cursor, including a malformed final metric.
   if parsed.error != CompositeError.None:
-    doAssert parsed.consumed == 0
+    doAssert parsed.error != typeof(parsed.error).None
     return
   var bytes: array[256, byte]
   let written = encodeDigest(parsed.value, input, ByteLimit(64), bytes)
@@ -36,11 +36,11 @@ fuzzDigest(wire.toOpenArray(0, encoded.written - 1))
 # Every incomplete tuple prefix, including every suffix byte, must fail atomically.
 for cut in 0..<encoded.written:
   let short = decodeDigest(wire.toOpenArray(0, cut - 1), ByteLimit(3))
-  doAssert short.error == CompositeError.Truncated and short.consumed == 0
+  doAssert short.error == CompositeError.Truncated
 # A short final suffix destination must preserve the fixed prefix as well as the rest of storage.
 for b in wire.mitems: b = 77
 let shortWrite = encodeDigest(value, pool, ByteLimit(3), wire.toOpenArray(0, encoded.written - 2))
-doAssert shortWrite.error == CompositeError.OutputTooSmall and shortWrite.written == 0
+doAssert shortWrite.error == CompositeError.OutputTooSmall
 # Verify the whole sentinel buffer after the failed write.
 for b in wire: doAssert b == 77
 # A present empty blob still borrows its pool; later metric writes must not overwrite any pool bytes.

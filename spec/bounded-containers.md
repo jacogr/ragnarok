@@ -41,8 +41,8 @@ container. Passing a raw uint64 limit, an element limit to the byte API, or raw
 uint64 sequence elements is rejected by the compiler in both languages.
 
 All operations return a typed `ContainerError` / `Container_Error`; `None`
-means success. Failed operations return zero metadata and leave destination
-storage unchanged. Successful encoders report `written`. The byte decoder
+means success. Failed operations have no metadata fields and leave destination storage
+unchanged. Successful encoders report `written`. The byte decoder
 reports `offset`, `length` and `consumed` into the original input. The sequence
 decoder reports initialized output `count` and wire `consumed`.
 
@@ -131,3 +131,7 @@ lists with consumed counts, or stable lowercase error labels.
 
 See [the verification report](../results/bounded-containers.md). The next round
 requires the maintainer's go-ahead before any nested or composite codec work.
+
+The current [result API and migration examples](../docs/codec-results.md)
+separate success data from failure reasons and preserve the borrowed-buffer
+contract. This changes API access, not the normative wire formats above.

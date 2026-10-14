@@ -18,6 +18,7 @@ Never guess protocol semantics. When the specification is ambiguous, add a docum
 - Production-capable **nonblocking asynchronous networking** is a gate for choosing the final client language. Threads-per-stream/connection are not an acceptable substitute.
 - C interoperability is allowed for mature cryptographic primitives, QUIC transport and OS interfaces, but **not** as a disguised implementation of JAM's codec, PVM or state transitions.
 - Validate all untrusted inputs, integer conversions, offsets and lengths. Never silently truncate or coerce protocol values.
+- Use tagged success/failure codec results. Failure alternatives must contain only their reason, never a decoded value, span, count or consumed/written metadata. Default results must be failures. Select/check the success branch before accessing its fields; preserve Nim variant field checks and Odin union assertion checks.
 - Explicit, typed failure paths for decoding and network errors. Never panic/crash on malformed external input unless the process is intentionally fail-stop for a documented invariant.
 - Do not introduce dependencies or change the language/compiler/toolchain versions without explaining the rationale.
 

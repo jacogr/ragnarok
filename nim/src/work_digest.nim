@@ -31,11 +31,16 @@ type
     accumulateGas*: Gas
     output*: WorkOutput
     refine*: RefineLoad
-  # Check error before reading value; errors expose zero consumed and no usable digest.
+  # Check error before reading value; failures have no consumed count or digest fields.
   DigestResult* = object
-    value*: WorkDigest
-    consumed*: int
-    error*: CompositeError
+    case error*: CompositeError
+    of CompositeError.None:
+      # Only success carries decoded/committed data and its completed extent.
+      value*: WorkDigest
+      consumed*: int
+    else:
+      # Failure has no value, span, count or consumed/written metadata.
+      discard
 
 # Compare pointer differences without overflowing endpoint addition; empty spans never overlap.
 proc digestAlias(a: pointer, alen: int, b: pointer, blen: int): bool {.raises: [].} =
@@ -94,7 +99,7 @@ proc encodeDigest*(source: WorkDigest, pool: openArray[byte], limit: ByteLimit,
   for field in suffix:
     for i in 0..<field.len: output[cursor + i] = field.bytes[i] # Commit each measured field byte.
     cursor += field.len
-  CompositeWrite(written: required)
+  CompositeWrite(error: CompositeError.None, written: required)
 
 # Decode one complete digest prefix; returned successful blob coordinates refer to the original input.
 proc decodeDigest*(input: openArray[byte], limit: ByteLimit): DigestResult {.raises: [].} =
@@ -130,4 +135,4 @@ proc decodeDigest*(input: openArray[byte], limit: ByteLimit): DigestResult {.rai
   value.refine = RefineLoad(gasUsed: Gas(numbers[0]), imports: ImportCount(numbers[1]),
       extrinsicCount: ExtrinsicCount(numbers[2]), extrinsicSize: ExtrinsicBytes(numbers[3]),
           exports: ExportCount(numbers[4]))
-  DigestResult(value: value, consumed: cursor)
+  DigestResult(error: CompositeError.None, value: value, consumed: cursor)

@@ -10,36 +10,44 @@ check_blob :: proc(t: ^testing.T, size: int) {
 	for i in 0 ..< size {value[i] = u8(i % 256)}
 	wire: [16394]u8
 	encoded := codec.encode_bytes(value[:size], codec.Byte_Limit(size), wire[:])
-	testing.expect(t, encoded.error == .None)
-	wire[encoded.written] = 42
-	decoded := codec.decode_bytes(wire[:encoded.written + 1], codec.Byte_Limit(size))
+	testing.expect(t, codec.error_of(encoded) == .None)
+	wire[codec.success_of(encoded).written] = 42
+	decoded := codec.decode_bytes(
+		wire[:codec.success_of(encoded).written + 1],
+		codec.Byte_Limit(size),
+	)
 	testing.expect(
 		t,
-		decoded.error == .None && decoded.length == size && decoded.consumed == encoded.written,
+		codec.error_of(decoded) == .None &&
+		codec.success_of(decoded).length == size &&
+		codec.success_of(decoded).consumed == codec.success_of(encoded).written,
 	)
 	// The decoder's indices must identify the exact original payload rather than its prefix or trailing byte.
-	for i in 0 ..< size {testing.expect(t, wire[decoded.offset + i] == value[i])}
+	for i in 0 ..< size {testing.expect(t, wire[codec.success_of(decoded).offset + i] == value[i])}
 	// Every incomplete container must fail without exposing a valid span or consumed count.
-	for cut in 0 ..< encoded.written {
+	for cut in 0 ..< codec.success_of(encoded).written {
 		short := codec.decode_bytes(wire[:cut], codec.Byte_Limit(size))
-		testing.expect(t, short.error == .Truncated && short.consumed == 0)
+		testing.expect(t, codec.error_of(short) == .Truncated)
 	}
 	small := [1]u8{77}
 	// A nonempty payload cannot fit a single header byte; policy failures take priority too.
 	if size > 0 {
 		testing.expect(
 			t,
-			codec.encode_bytes(value[:size], codec.Byte_Limit(size), small[:]).error ==
+			codec.error_of(codec.encode_bytes(value[:size], codec.Byte_Limit(size), small[:])) ==
 			.Output_Too_Small,
 		)
 		testing.expect(t, small[0] == 77)
 		testing.expect(
 			t,
-			codec.decode_bytes(wire[:], codec.Byte_Limit(size - 1)).error == .Limit_Exceeded,
+			codec.error_of(codec.decode_bytes(wire[:], codec.Byte_Limit(size - 1))) ==
+			.Limit_Exceeded,
 		)
 		testing.expect(
 			t,
-			codec.encode_bytes(value[:size], codec.Byte_Limit(size - 1), small[:]).error ==
+			codec.error_of(
+				codec.encode_bytes(value[:size], codec.Byte_Limit(size - 1), small[:]),
+			) ==
 			.Limit_Exceeded,
 		)
 	}
@@ -59,25 +67,27 @@ check_sequence :: proc(t: ^testing.T, count, stride: int) {
 		codec.Element_Limit(count),
 		wire[:],
 	)
-	testing.expect(t, encoded.error == .None)
+	testing.expect(t, codec.error_of(encoded) == .None)
 	output: [129]codec.Fixed_Unsigned
 	output[count] = codec.Fixed_Unsigned(999)
-	wire[encoded.written] = 42
+	wire[codec.success_of(encoded).written] = 42
 	decoded := codec.decode_sequence(
-		wire[:encoded.written + 1],
+		wire[:codec.success_of(encoded).written + 1],
 		codec.Byte_Width(stride),
 		codec.Element_Limit(count),
 		output[:],
 	)
 	testing.expect(
 		t,
-		decoded.error == .None && decoded.count == count && decoded.consumed == encoded.written,
+		codec.error_of(decoded) == .None &&
+		codec.success_of(decoded).count == count &&
+		codec.success_of(decoded).consumed == codec.success_of(encoded).written,
 	)
 	testing.expect(t, u64(output[count]) == 999)
 	// Only the initialized result prefix may change, and it must match the original values.
 	for i in 0 ..< count {testing.expect(t, output[i] == values[i])}
 	// All wire truncations fail before overwriting the first caller-owned output element.
-	for cut in 0 ..< encoded.written {
+	for cut in 0 ..< codec.success_of(encoded).written {
 		output[0] = codec.Fixed_Unsigned(777)
 		short := codec.decode_sequence(
 			wire[:cut],
@@ -85,10 +95,7 @@ check_sequence :: proc(t: ^testing.T, count, stride: int) {
 			codec.Element_Limit(count),
 			output[:],
 		)
-		testing.expect(
-			t,
-			short.error == .Truncated && short.consumed == 0 && u64(output[0]) == 777,
-		)
+		testing.expect(t, codec.error_of(short) == .Truncated && u64(output[0]) == 777)
 	}
 }
 
@@ -96,14 +103,16 @@ check_sequence :: proc(t: ^testing.T, count, stride: int) {
 fuzz_bounded :: proc(t: ^testing.T, input: []u8, stride: int, limit: u64) {
 	blob := codec.decode_bytes(input, codec.Byte_Limit(limit))
 	// Every successful span must be bounded by both input size and the caller's resource limit.
-	if blob.error == .None {
+	if codec.error_of(blob) == .None {
 		testing.expect(
 			t,
-			blob.offset + blob.length == blob.consumed && blob.consumed <= len(input),
+			codec.success_of(blob).offset + codec.success_of(blob).length ==
+				codec.success_of(blob).consumed &&
+			codec.success_of(blob).consumed <= len(input),
 		)
-		testing.expect(t, u64(blob.length) <= limit)
-		prefix := codec.encode(codec.Natural(blob.length))
-		testing.expect(t, prefix.length == blob.offset)
+		testing.expect(t, u64(codec.success_of(blob).length) <= limit)
+		prefix := codec.encode(codec.Natural(codec.success_of(blob).length))
+		testing.expect(t, prefix.length == codec.success_of(blob).offset)
 		// The returned span must begin immediately after the exact canonical encoding of its length.
 		for i in 0 ..< prefix.length {testing.expect(t, input[i] == prefix.bytes[i])}
 	}
@@ -117,20 +126,24 @@ fuzz_bounded :: proc(t: ^testing.T, input: []u8, stride: int, limit: u64) {
 		output[:],
 	)
 	// Successful results must re-encode to the complete canonical container prefix they consumed.
-	if decoded.error == .None {
+	if codec.error_of(decoded) == .None {
 		wire: [73]u8
 		encoded := codec.encode_sequence(
-			output[:decoded.count],
+			output[:codec.success_of(decoded).count],
 			codec.Byte_Width(stride),
 			codec.Element_Limit(limit),
 			wire[:],
 		)
-		testing.expect(t, encoded.error == .None && encoded.written == decoded.consumed)
+		testing.expect(
+			t,
+			codec.error_of(encoded) == .None &&
+			codec.success_of(encoded).written == codec.success_of(decoded).consumed,
+		)
 		// Compare header and every element byte, leaving unrelated trailing data out of the comparison.
-		for i in 0 ..< decoded.consumed {testing.expect(t, wire[i] == input[i])}
+		for i in 0 ..< codec.success_of(decoded).consumed {testing.expect(t, wire[i] == input[i])}
 	} else {
 		// Failed decodes have no initialized result prefix and must preserve every output sentinel.
-		testing.expect(t, decoded.count == 0 && decoded.consumed == 0)
+		testing.expect(t, codec.error_of(decoded) != .None)
 		for item in output {testing.expect(t, u64(item) == 999)}
 	}
 }
@@ -149,23 +162,45 @@ bounded :: proc(t: ^testing.T) {
 	noncanonical := [2]u8{128, 0}
 	testing.expect(
 		t,
-		codec.decode_bytes(noncanonical[:], codec.Byte_Limit(max(u64))).error == .Non_Canonical,
+		codec.error_of(codec.decode_bytes(noncanonical[:], codec.Byte_Limit(max(u64)))) ==
+		.Non_Canonical,
 	)
 	huge := codec.encode(codec.Natural(max(u64)))
 	values := [2]codec.Fixed_Unsigned{77, 0}
 	testing.expect(
 		t,
-		codec.decode_sequence(huge.bytes[:], codec.Byte_Width(0), codec.Element_Limit(max(u64)), values[:]).error ==
+		codec.error_of(
+			codec.decode_sequence(
+				huge.bytes[:],
+				codec.Byte_Width(0),
+				codec.Element_Limit(max(u64)),
+				values[:],
+			),
+		) ==
 		.Output_Too_Small,
 	)
 	testing.expect(
 		t,
-		codec.decode_sequence(huge.bytes[:], codec.Byte_Width(8), codec.Element_Limit(max(u64)), values[:]).error ==
+		codec.error_of(
+			codec.decode_sequence(
+				huge.bytes[:],
+				codec.Byte_Width(8),
+				codec.Element_Limit(max(u64)),
+				values[:],
+			),
+		) ==
 		.Truncated,
 	)
 	testing.expect(
 		t,
-		codec.decode_sequence(huge.bytes[:], codec.Byte_Width(0), codec.Element_Limit(2), values[:]).error ==
+		codec.error_of(
+			codec.decode_sequence(
+				huge.bytes[:],
+				codec.Byte_Width(0),
+				codec.Element_Limit(2),
+				values[:],
+			),
+		) ==
 		.Limit_Exceeded,
 	)
 	wire: [32]u8
@@ -174,18 +209,24 @@ bounded :: proc(t: ^testing.T) {
 	bad := [2]codec.Fixed_Unsigned{1, 256}
 	testing.expect(
 		t,
-		codec.encode_sequence(bad[:], codec.Byte_Width(1), codec.Element_Limit(2), wire[:]).error ==
+		codec.error_of(
+			codec.encode_sequence(bad[:], codec.Byte_Width(1), codec.Element_Limit(2), wire[:]),
+		) ==
 		.Value_Out_Of_Range,
 	)
 	for b in wire {testing.expect(t, b == 77)}
 	testing.expect(
 		t,
-		codec.encode_sequence(bad[:], codec.Byte_Width(0), codec.Element_Limit(2), wire[:]).error ==
+		codec.error_of(
+			codec.encode_sequence(bad[:], codec.Byte_Width(0), codec.Element_Limit(2), wire[:]),
+		) ==
 		.Value_Out_Of_Range,
 	)
 	testing.expect(
 		t,
-		codec.encode_sequence(nil, codec.Byte_Width(-1), codec.Element_Limit(0), wire[:]).error ==
+		codec.error_of(
+			codec.encode_sequence(nil, codec.Byte_Width(-1), codec.Element_Limit(0), wire[:]),
+		) ==
 		.Invalid_Width,
 	)
 	alias: [16]u8
@@ -193,26 +234,48 @@ bounded :: proc(t: ^testing.T) {
 	for &b in alias {b = 77}
 	testing.expect(
 		t,
-		codec.encode_bytes(alias[:4], codec.Byte_Limit(4), alias[:]).error == .Aliased_Buffers,
+		codec.error_of(codec.encode_bytes(alias[:4], codec.Byte_Limit(4), alias[:])) ==
+		.Aliased_Buffers,
 	)
 	for b in alias {testing.expect(t, b == 77)}
 	typed_bytes := slice.bytes_from_ptr(raw_data(values[:]), 16)
 	testing.expect(
 		t,
-		codec.encode_sequence(values[:], codec.Byte_Width(1), codec.Element_Limit(2), typed_bytes).error ==
+		codec.error_of(
+			codec.encode_sequence(
+				values[:],
+				codec.Byte_Width(1),
+				codec.Element_Limit(2),
+				typed_bytes,
+			),
+		) ==
 		.Aliased_Buffers,
 	)
 	typed_bytes[0] = 1
 	typed_bytes[1] = 42
 	testing.expect(
 		t,
-		codec.decode_sequence(typed_bytes, codec.Byte_Width(1), codec.Element_Limit(2), values[:]).error ==
+		codec.error_of(
+			codec.decode_sequence(
+				typed_bytes,
+				codec.Byte_Width(1),
+				codec.Element_Limit(2),
+				values[:],
+			),
+		) ==
 		.Aliased_Buffers,
 	)
 	// Output that overlaps only a trailing field must not destroy that field on success.
 	testing.expect(
 		t,
-		codec.decode_sequence(typed_bytes, codec.Byte_Width(1), codec.Element_Limit(2), values[1:]).error ==
+		codec.error_of(
+			codec.decode_sequence(
+				typed_bytes,
+				codec.Byte_Width(1),
+				codec.Element_Limit(2),
+				values[1:],
+			),
+		) ==
 		.Aliased_Buffers,
 	)
 	testing.expect(t, u64(values[1]) == 0)

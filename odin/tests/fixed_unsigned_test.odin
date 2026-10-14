@@ -5,22 +5,34 @@ import "core:testing"
 // Check round-trip value/length, every short prefix, and preservation of an unrelated next byte.
 check_fixed :: proc(t: ^testing.T, x: u64, count: int) {
 	encoded := codec.encode_fixed(codec.Fixed_Unsigned(x), codec.Byte_Width(count))
-	testing.expect(t, encoded.error == .None && encoded.encoded.length == count)
-	decoded := codec.decode_fixed(encoded.encoded.bytes[:count], codec.Byte_Width(count))
 	testing.expect(
 		t,
-		decoded.error == .None && u64(decoded.value) == x && decoded.consumed == count,
+		codec.error_of(encoded) == .None && codec.success_of(encoded).encoded.length == count,
+	)
+	// Keep the successful fixed value addressable while lending its byte slices.
+	encoded_storage := codec.success_of(encoded).encoded
+	decoded := codec.decode_fixed(encoded_storage.bytes[:count], codec.Byte_Width(count))
+	testing.expect(
+		t,
+		codec.error_of(decoded) == .None &&
+		u64(codec.success_of(decoded).value) == x &&
+		codec.success_of(decoded).consumed == count,
 	)
 	// A valid positive-width field cannot be decoded from any proper prefix.
 	for size in 0 ..< count {
-		short := codec.decode_fixed(encoded.encoded.bytes[:size], codec.Byte_Width(count))
-		testing.expect(t, short.error == .Truncated && short.consumed == 0)
+		short := codec.decode_fixed(encoded_storage.bytes[:size], codec.Byte_Width(count))
+		testing.expect(t, codec.error_of(short) == .Truncated)
 	}
 	padded: [9]u8
-	copy(padded[:], encoded.encoded.bytes[:count])
+	copy(padded[:], encoded_storage.bytes[:count])
 	padded[count] = 42
 	prefix := codec.decode_fixed(padded[:count + 1], codec.Byte_Width(count))
-	testing.expect(t, prefix.error == .None && prefix.consumed == count && u64(prefix.value) == x)
+	testing.expect(
+		t,
+		codec.error_of(prefix) == .None &&
+		codec.success_of(prefix).consumed == count &&
+		u64(codec.success_of(prefix).value) == x,
+	)
 }
 
 // Fuzz entry point: all complete patterns are valid, while width/length failures consume nothing.
@@ -29,18 +41,24 @@ fuzz_fixed :: proc(t: ^testing.T, input: []u8, width: codec.Byte_Width) {
 	count := int(width)
 	// Invalid widths take priority over missing input and must never reach a shift or access.
 	if count < 0 || count > 8 {
-		testing.expect(t, decoded.error == .Invalid_Width && decoded.consumed == 0)
+		testing.expect(t, codec.error_of(decoded) == .Invalid_Width)
 	} else if len(input) < count {
 		// For supported widths, require all bytes before returning a value.
-		testing.expect(t, decoded.error == .Truncated && decoded.consumed == 0)
+		testing.expect(t, codec.error_of(decoded) == .Truncated)
 	} else {
 		// All full-width byte patterns, including high zero bytes, must round-trip unchanged.
-		testing.expect(t, decoded.error == .None && decoded.consumed == count)
-		encoded := codec.encode_fixed(decoded.value, width)
-		testing.expect(t, encoded.error == .None && encoded.encoded.length == count)
+		testing.expect(
+			t,
+			codec.error_of(decoded) == .None && codec.success_of(decoded).consumed == count,
+		)
+		encoded := codec.encode_fixed(codec.success_of(decoded).value, width)
+		testing.expect(
+			t,
+			codec.error_of(encoded) == .None && codec.success_of(encoded).encoded.length == count,
+		)
 		// Compare only the consumed bytes; trailing bytes are a subsequent caller-owned field.
 		for i in 0 ..< count {
-			testing.expect(t, encoded.encoded.bytes[i] == input[i])
+			testing.expect(t, codec.success_of(encoded).encoded.bytes[i] == input[i])
 		}
 	}
 }
@@ -65,10 +83,7 @@ fixed_unsigned :: proc(t: ^testing.T) {
 				codec.Fixed_Unsigned(maximum + 1),
 				codec.Byte_Width(count),
 			)
-			testing.expect(
-				t,
-				overflow.error == .Value_Out_Of_Range && overflow.encoded.length == 0,
-			)
+			testing.expect(t, codec.error_of(overflow) == .Value_Out_Of_Range)
 		}
 		// Check both sides of every internal power of two to exercise byte placement.
 		for bits in 1 ..< 8 * count {
@@ -82,7 +97,7 @@ fixed_unsigned :: proc(t: ^testing.T) {
 	invalid_widths := [4]int{min(int), -1, 9, max(int)}
 	for count in invalid_widths {
 		encoded := codec.encode_fixed(codec.Fixed_Unsigned(0), codec.Byte_Width(count))
-		testing.expect(t, encoded.error == .Invalid_Width && encoded.encoded.length == 0)
+		testing.expect(t, codec.error_of(encoded) == .Invalid_Width)
 		fuzz_fixed(t, nil, codec.Byte_Width(count))
 	}
 	state := u64(0x4a414d)

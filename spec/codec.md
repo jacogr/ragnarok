@@ -92,3 +92,7 @@ Full blocks and other composite types remain open.
 
 The Python reference is a test-only evaluation of the paper's piecewise formula.
 Neither native implementation delegates codec behavior to it or to C.
+
+The current [result API and migration examples](../docs/codec-results.md)
+separate success data from failure reasons and preserve the borrowed-buffer
+contract. This changes API access, not the normative wire formats above.

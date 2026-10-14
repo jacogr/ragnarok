@@ -6,15 +6,24 @@ import "core:testing"
 fuzz_digest :: proc(t: ^testing.T, input: []u8) {
 	parsed := codec.decode_digest(input, codec.Byte_Limit(64))
 	// Failed nested variants or metrics cannot advance the caller cursor.
-	if parsed.error != .None {
-		testing.expect(t, parsed.consumed == 0)
+	if codec.error_of(parsed) != .None {
+		testing.expect(t, codec.error_of(parsed) != .None)
 		return
 	}
 	bytes: [256]u8
-	written := codec.encode_digest(parsed.value, input, codec.Byte_Limit(64), bytes[:])
-	testing.expect(t, written.error == .None && written.written == parsed.consumed)
+	written := codec.encode_digest(
+		codec.success_of(parsed).value,
+		input,
+		codec.Byte_Limit(64),
+		bytes[:],
+	)
+	testing.expect(
+		t,
+		codec.error_of(written) == .None &&
+		codec.success_of(written).written == codec.success_of(parsed).consumed,
+	)
 	// Check fixed fields, translated blob coordinates, and all five metrics.
-	for i in 0 ..< written.written {testing.expect(t, bytes[i] == input[i])}
+	for i in 0 ..< codec.success_of(written).written {testing.expect(t, bytes[i] == input[i])}
 }
 
 // Test the full C.2 tuple, exact nominal fields, every truncation, overlap, late output failure and fuzz reconstruction.
@@ -40,20 +49,25 @@ work_digest :: proc(t: ^testing.T) {
 	}
 	wire: [256]u8
 	encoded := codec.encode_digest(value, pool[:], codec.Byte_Limit(3), wire[:])
-	testing.expect(t, encoded.error == .None)
-	decoded := codec.decode_digest(wire[:encoded.written], codec.Byte_Limit(3))
-	testing.expect(t, decoded.error == .None && decoded.consumed == encoded.written)
-	span := decoded.value.output.(codec.Blob_Span)
+	testing.expect(t, codec.error_of(encoded) == .None)
+	decoded := codec.decode_digest(wire[:codec.success_of(encoded).written], codec.Byte_Limit(3))
+	testing.expect(
+		t,
+		codec.error_of(decoded) == .None &&
+		codec.success_of(decoded).consumed == codec.success_of(encoded).written,
+	)
+	span := codec.success_of(decoded).value.output.(codec.Blob_Span)
 	testing.expect(t, span.offset == 78 && span.length == 3)
 	testing.expect(
 		t,
-		u64(decoded.value.refine.imports) == 128 && u64(decoded.value.refine.exports) == max(u64),
+		u64(codec.success_of(decoded).value.refine.imports) == 128 &&
+		u64(codec.success_of(decoded).value.refine.exports) == max(u64),
 	)
-	fuzz_digest(t, wire[:encoded.written])
+	fuzz_digest(t, wire[:codec.success_of(encoded).written])
 	// Every incomplete prefix, including each suffix byte, must fail without consuming input.
-	for cut in 0 ..< encoded.written {
+	for cut in 0 ..< codec.success_of(encoded).written {
 		short := codec.decode_digest(wire[:cut], codec.Byte_Limit(3))
-		testing.expect(t, short.error == .Truncated && short.consumed == 0)
+		testing.expect(t, codec.error_of(short) == .Truncated)
 	}
 	// Refill the entire destination to detect a premature fixed-prefix commit.
 	for &b in wire {b = 77}
@@ -61,23 +75,24 @@ work_digest :: proc(t: ^testing.T) {
 		value,
 		pool[:],
 		codec.Byte_Limit(3),
-		wire[:encoded.written - 1],
+		wire[:codec.success_of(encoded).written - 1],
 	)
-	testing.expect(t, short_write.error == .Output_Too_Small && short_write.written == 0)
+	testing.expect(t, codec.error_of(short_write) == .Output_Too_Small)
 	// Include unused output storage in the atomic-failure check.
 	for b in wire {testing.expect(t, b == 77)}
 	value.output = codec.Blob_Span{0, 0}
 	before := wire
 	testing.expect(
 		t,
-		codec.encode_digest(value, wire[:], codec.Byte_Limit(0), wire[:]).error ==
+		codec.error_of(codec.encode_digest(value, wire[:], codec.Byte_Limit(0), wire[:])) ==
 		.Aliased_Buffers,
 	)
 	testing.expect(t, wire == before)
 	value.output = codec.Blob_Span{max(int), 1}
 	testing.expect(
 		t,
-		codec.encode_digest(value, pool[:], codec.Byte_Limit(3), wire[:]).error == .Invalid_Span,
+		codec.error_of(codec.encode_digest(value, pool[:], codec.Byte_Limit(3), wire[:])) ==
+		.Invalid_Span,
 	)
 	testing.expect(t, wire == before)
 	state := u64(0x444947455354)

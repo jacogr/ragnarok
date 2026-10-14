@@ -42,8 +42,7 @@ uses ARC; all fixed fields are plain values with no reference cycles. Odin
 uses no allocator. Encoders copy fixed fields into a local value snapshot and
 accept a borrowed blob pool, caller-owned destination and explicit `ByteLimit`.
 The work output and all metrics are measured before the first destination write;
-checked sums reject an unrepresentable host extent. Failed encodes report zero
-written and leave the entire destination unchanged, including a failure caused
+checked sums reject an unrepresentable host extent. Failed encodes write no bytes and leave the entire destination unchanged, including a failure caused
 by the final metric not fitting.
 
 Success blobs protect the entire borrowed pool against any overlap with the
@@ -53,8 +52,8 @@ errors ignore unused pool data. The new nonmutating `measureWork` /
 pool size and blob limit; it neither accesses bytes nor checks output aliasing.
 The complete encoder then performs its own capacity and whole-frame alias checks.
 
-Decoders return `DigestResult` / `Digest_Result`. Check `error == None` before
-using `value`; failures expose zero consumed and no usable digest. Fixed hashes
+Decoders return `DigestResult` / `Digest_Result`. Select the success alternative before using `value` or `consumed`; failure
+alternatives contain neither field. Fixed hashes
 are owned copies. Successful output spans refer to **the original full input**,
 not to its work-output subframe. Keep that input alive and stable while using
 the span. Every suffix metric must be complete and canonical before a result is
@@ -87,3 +86,7 @@ All four existing unmodified tiny/full `work_result_0` and `work_result_1`
 JSON/binary fixture pairs are now verified **as complete work digests** in both
 directions. Their hashes remain in `pins.json`. No fixture or protocol revision
 was changed. See [the verification report](../results/work-digest.md).
+
+The current [result API and migration examples](../docs/codec-results.md)
+separate success data from failure reasons and preserve the borrowed-buffer
+contract. This changes API access, not the normative wire formats above.

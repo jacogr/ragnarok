@@ -46,6 +46,8 @@ parse_width :: proc(text: string) -> (codec.Byte_Width, bool) {
 // Print a stable codec error label; valid results are printed by the request handler instead.
 print_error :: proc(error: codec.Fixed_Error) {
 	switch error {
+	case .Uninitialized:
+		fmt.println("uninitialized") // An unvalidated result has no payload to print.
 	// Invalid widths take precedence over short input or values that do not fit.
 	case .Invalid_Width:
 		fmt.println("invalidwidth")
@@ -87,15 +89,15 @@ main :: proc() {
 			if !value_ok {fmt.println("inputerror"); continue}
 			encoded := codec.encode_fixed(codec.Fixed_Unsigned(x), width)
 			// Native codec errors are separate from request syntax errors.
-			if encoded.error != .None {print_error(encoded.error); continue}
+			if codec.error_of(encoded) != .None {print_error(codec.error_of(encoded)); continue}
 			digits := "0123456789abcdef"
 			output: [16]u8
 			// Convert only the used octets; zero-width output is a successful empty line.
-			for i in 0 ..< encoded.encoded.length {
-				output[2 * i] = digits[encoded.encoded.bytes[i] >> 4]
-				output[2 * i + 1] = digits[encoded.encoded.bytes[i] & 15]
+			for i in 0 ..< codec.success_of(encoded).encoded.length {
+				output[2 * i] = digits[codec.success_of(encoded).encoded.bytes[i] >> 4]
+				output[2 * i + 1] = digits[codec.success_of(encoded).encoded.bytes[i] & 15]
 			}
-			fmt.println(string(output[:2 * encoded.encoded.length]))
+			fmt.println(string(output[:2 * codec.success_of(encoded).encoded.length]))
 		} else if command == "FD" {
 			// Decode a bounded hex payload into stack storage before borrowing it for the codec.
 			bytes: [64]u8
@@ -107,8 +109,8 @@ main :: proc() {
 			if !hex_ok {fmt.println("inputerror"); continue}
 			decoded := codec.decode_fixed(input, width)
 			// A native failure has no value or consumed prefix to report.
-			if decoded.error != .None {print_error(decoded.error); continue}
-			fmt.println(u64(decoded.value), decoded.consumed)
+			if codec.error_of(decoded) != .None {print_error(codec.error_of(decoded)); continue}
+			fmt.println(u64(codec.success_of(decoded).value), codec.success_of(decoded).consumed)
 		} else {
 			// Unknown commands must not accidentally select either codec operation.
 			fmt.println("inputerror")

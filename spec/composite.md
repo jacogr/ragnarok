@@ -60,10 +60,10 @@ Claimed counts are checked before host conversion and memory-size multiplication
 the minimum five-byte preimage record proves a count cannot exceed input extent.
 Blob sizes use subtraction checks and remaining aggregate budgets.
 
-Check `error == None` before using any result. Errors include truncation,
+Select the success alternative before reading completed result fields. Errors include truncation,
 noncanonical prefixes, unknown tags, invalid source spans, policy violations,
 insufficient output, aliasing and unrepresentable typed memory sizes. Failures
-report zero consumed/count/written and preserve **all** destination contents.
+contain no consumed/count/written fields and preserve **all** destination contents.
 Preimage decode performs complete validation before its second, committing pass;
 source input must remain stable throughout the call.
 
@@ -101,3 +101,7 @@ work-result fixtures validate only the `O` field; surrounding fields establish
 its exact offset/extent. Full work digests are now implemented in the [next slice](work-digest.md);
 its suite verifies these fixtures as complete tuples.
 See [the executed verification report](../results/composite.md).
+
+The current [result API and migration examples](../docs/codec-results.md)
+separate success data from failure reasons and preserve the borrowed-buffer
+contract. This changes API access, not the normative wire formats above.
