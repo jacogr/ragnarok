@@ -89,6 +89,7 @@
   },
   "patches": [
     "interoperability/quic/chronos-address-errors.patch",
-    "interoperability/quic/lsquic-arc-stream-callback.patch"
+    "interoperability/quic/lsquic-arc-stream-callback.patch",
+    "interoperability/quic/lsquic-arc-context-cleanup.patch"
   ]
 }

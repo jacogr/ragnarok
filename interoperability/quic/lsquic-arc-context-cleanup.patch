@@ -1,0 +1,23 @@
+--- a/lsquic/context/context.nim
++++ b/lsquic/context/context.nim
+@@ -209,6 +209,9 @@
+   if not ctx.sslCtx.isNil:
+     SSL_CTX_free(ctx.sslCtx)
+     ctx.sslCtx = nil
++
++  # The timeout closure owns ctx; drop ctx's timeout only after stop and native destruction.
++  ctx.tickTimeout = nil
+ 
+ type PendingStream = object
+   stream: Stream
+--- a/lsquic/endpoint.nim
++++ b/lsquic/endpoint.nim
+@@ -520,6 +520,8 @@
+     endpoint.serverContext.stop()
+ 
+   await noCancel endpoint.udp.closeWait()
++  # The UDP receive callback owns endpoint; release the closed transport to break that ARC cycle.
++  endpoint.udp = nil
+ 
+   if not endpoint.clientContext.isNil:
+     endpoint.clientContext.destroy()

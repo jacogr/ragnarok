@@ -128,7 +128,7 @@ pinned language compilers are required. The local run used Python 3.14.
 BoringSSL assembly is disabled in both builds; these results are correctness
 checks, not representative optimized performance measurements.
 
-Two local dependency patches are required for this proof:
+The original proof required two local dependency patches:
 
 1. Chronos: four address helpers now explicitly convert failed results to their
    declared `TransportOsError`; Nim 2.2.12 otherwise inferred an unlisted
@@ -170,3 +170,8 @@ bounded and verify unaffected streams survive individual request failures.
 
 The initial authenticated transport/exchange proof is complete. Wait for the
 maintainer's next bounded networking increment before expanding the prototype.
+
+The subsequent [lifecycle soak](quic-soak.md) adds a third reviewed Nim ARC
+cleanup patch for quiesced timer and closed UDP callback cycles. It also tests
+healthy stream isolation, backpressure and cancellation in a separate soak mode.
+The original one-shot rejection matrix remains part of regression verification.

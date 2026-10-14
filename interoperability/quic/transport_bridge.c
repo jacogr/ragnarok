@@ -104,14 +104,20 @@ static void stream_read(lsquic_stream_t *s, lsquic_stream_ctx_t *ctx) { struct r
 static void stream_write(lsquic_stream_t *s, lsquic_stream_ctx_t *ctx) { struct rq_transport *t = (void *)ctx; t->stream(t->user, s, 2); }
 static void stream_close(lsquic_stream_t *s, lsquic_stream_ctx_t *ctx) { struct rq_transport *t = (void *)ctx; if (t) t->stream(t->user, s, 3); }
 
+/* Forward directional reset/STOP_SENDING so a parked native write can release its owner. */
+static void stream_reset(lsquic_stream_t *s, lsquic_stream_ctx_t *ctx, int how) {
+    (void)how; struct rq_transport *t = (void *)ctx;
+    if (t) t->stream(t->user, s, 4); /* This proof retires the whole affected stream, preserving sibling streams. */
+}
+
 /* Callback storage has static lifetime and contains no language-owned closure. */
 static const struct lsquic_stream_if callbacks = {
     .on_new_conn = new_connection, .on_conn_closed = connection_closed,
     .on_new_stream = new_stream, .on_hsk_done = handshake_done,
-    .on_read = stream_read, .on_write = stream_write, .on_close = stream_close,
+    .on_read = stream_read, .on_write = stream_write, .on_close = stream_close, .on_reset = stream_reset,
 };
 /* Own TLS/engine resources and install native policy callbacks, with complete cleanup on setup failure. */
-rq_transport *rq_transport_new(int server, uint16_t local_port, const char *certificate,
+rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
     size_t length = strlen(alpn);
     if (!verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
@@ -133,6 +139,13 @@ rq_transport *rq_transport_new(int server, uint16_t local_port, const char *cert
     if (server) SSL_CTX_set_alpn_select_cb(t->tls, choose_alpn, t); /* Acceptor selects from offered protocols. */
     else if (SSL_CTX_set_alpn_protos(t->tls, t->alpn, t->alpn_length)) goto fail; /* Initiator offers exact bytes. */
     lsquic_engine_init_settings(&t->settings, server ? LSENG_SERVER : 0);
+    /* Small bounded credit makes opt-in soak writers park until native readers resume. */
+    if (soak) {
+        t->settings.es_sfcw = 65536;
+        t->settings.es_max_sfcw = 65536;
+        t->settings.es_init_max_stream_data_bidi_local = 65536;
+        t->settings.es_init_max_stream_data_bidi_remote = 65536;
+    }
     t->settings.es_versions = 1u << LSQVER_I001; t->settings.es_support_srej = 0;
     t->api.ea_settings = &t->settings; t->api.ea_stream_if = &callbacks; t->api.ea_stream_if_ctx = t;
     t->api.ea_packets_out = packets_out; t->api.ea_packets_out_ctx = t; t->api.ea_get_ssl_ctx = get_tls;
@@ -181,3 +194,6 @@ void rq_stream_abort(void *s) { lsquic_stream_close(s); }
 
 /* Disable read readiness once the native protocol validates FIN; avoid repeated EOF callbacks. */
 void rq_stream_want_read(void *s, int want) { lsquic_stream_wantread(s, want); }
+
+/* Flush accepted application bytes even when a test deliberately withholds FIN. */
+int rq_stream_flush(void *s) { return lsquic_stream_flush(s); }

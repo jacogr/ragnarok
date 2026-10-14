@@ -68,6 +68,9 @@ jobs:
       - name: Build and verify Linux QUIC
         run: python3 interoperability/test_quic.py --fetch 2>&1 | tee build/ci/quic.log
 
+      - name: Bounded QUIC lifecycle soak
+        run: python3 interoperability/test_quic_soak.py --skip-build 2>&1 | tee build/ci/quic-soak.log
+
       # Upload only explicit diagnostics; dependency trees, certificates and private keys are excluded.
       - name: Retain verification logs
         if: always()
@@ -81,3 +84,6 @@ jobs:
             build/quic/build.log
             build/quic/results.json
             build/quic/cases/*.server.log
+            build/quic/soak/results.json
+            build/quic/soak/*/*.log
+            build/quic/soak/*/resources.json

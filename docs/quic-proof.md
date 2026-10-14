@@ -43,9 +43,11 @@ expected server key; acceptors may use a dash to discover a consistent peer.
 The script handles peer startup, deadlines and teardown. `--selftest` instead
 runs each native parser fuzz entry point without opening network sockets.
 
-This is an experiment with bounded buffers, eight concurrent streams and one
-connection per process. The Linux code path exists but has not been executed.
-It is not a reusable client networking API or a completed M3 gate. The existing
+The original proof uses bounded buffers, eight concurrent streams and one
+connection per process. It passes on macOS and Linux. The new
+[bounded lifecycle soak](quic-soak.md) reuses each native process across repeated
+sessions with mixed healthy and adversarial streams. This remains an experiment,
+not a reusable client networking API or a completed M3 gate. The existing
 codec test command remains independent:
 
 ```sh

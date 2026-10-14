@@ -21,13 +21,16 @@ After setup, the job runs:
 python3 tools/format.py --check
 python3 interoperability/test_codec.py
 python3 interoperability/test_quic.py --fetch
+python3 interoperability/test_quic_soak.py --skip-build
 ```
 
 The codec command covers both native implementations, negative compilation
 fixtures, official vectors and shared conformance cases. The QUIC command fetches
 pinned dependencies, builds them from scratch, and runs the authenticated
 cross-language CE 143 proof and rejection cases. Dependencies are not cached.
-Python 3.12 supports the safe archive extraction used during setup.
+The new bounded soak follows the original proof using those freshly built peers;
+see [its workload and budgets](quic-soak.md). Python 3.12 supports safe archive
+extraction during setup.
 
 Odin's Linux `core:nbio` backend uses io_uring. The workflow enables it through
 optional kernel policy settings on this temporary runner before testing.
@@ -53,3 +56,6 @@ version and executable checksum. The current actions all use Node 24.
 
 Pushes and pull requests run the checks automatically. Manual runs are available
 under **Actions → Linux checks → Run workflow** on the default branch.
+
+The new soak step awaits its first Linux CI run; the linked successful run above
+predates it.

@@ -2,6 +2,7 @@
 package main
 import "base:runtime"
 import "core:fmt"
+import "core:mem"
 import "core:nbio"
 import "core:net"
 import "core:os"
@@ -19,24 +20,28 @@ Cert_Fields :: struct {
 // One bounded CE stream owns its framing buffers through read/write/close callbacks.
 Stream_State :: struct {
 	handle:                       rawptr,
-	received:                     [1050]u8,
+	received:                     []u8,
 	received_length:              int,
-	sending:                      [64]u8,
+	sending:                      []u8,
 	send_length, send_offset:     int,
 	read_fin, write_fin, counted: bool,
+	started:                      time.Time,
+	attack:                       string,
+	paused, blocked:              bool,
 }
 // Native owner outlives every receive/timer/C callback; buffers never refer to expired stack frames.
 Peer :: struct {
-	transport:      rawptr,
-	socket:         net.UDP_Socket,
-	expected:       []u8,
-	buffer:         [2048]u8,
-	stopping:       bool,
-	saved_context:  runtime.Context,
-	server, failed: bool,
-	streams:        [16]Stream_State,
-	completed:      int,
-	attack:         string,
+	transport:                                     rawptr,
+	socket:                                        net.UDP_Socket,
+	expected:                                      []u8,
+	buffer:                                        [2048]u8,
+	stopping:                                      bool,
+	saved_context:                                 runtime.Context,
+	server, failed:                                bool,
+	streams:                                       [16]Stream_State,
+	completed:                                     int,
+	attack:                                        string,
+	opened, healthy, rejected, cancelled, blocked: int,
 }
 // Explicit library build path supplied by the reproducible proof runner.
 when ODIN_OS == .Darwin {
@@ -47,7 +52,7 @@ when ODIN_OS == .Darwin {
 // Opaque C API wraps transport/TLS layouts, leaving all JAM identity and I/O policy in Odin.
 foreign quic {
 	rq_parse_cert :: proc "c" (der: [^]u8, length: uintptr, fields: ^Cert_Fields) -> i32 ---
-	rq_transport_new :: proc "c" (server: i32, port: u16, cert, key, alpn: cstring, user: rawptr, verify: proc "c" (_: rawptr, _: [^]u8, _: uintptr) -> i32, send: proc "c" (_: rawptr, _: [^]u8, _: uintptr, _: u16) -> i32, stream: proc "c" (_: rawptr, _: rawptr, _: i32)) -> rawptr ---
+	rq_transport_new :: proc "c" (soak, server: i32, port: u16, cert, key, alpn: cstring, user: rawptr, verify: proc "c" (_: rawptr, _: [^]u8, _: uintptr) -> i32, send: proc "c" (_: rawptr, _: [^]u8, _: uintptr, _: u16) -> i32, stream: proc "c" (_: rawptr, _: rawptr, _: i32)) -> rawptr ---
 	rq_connect :: proc "c" (_: rawptr, _: u16) -> i32 ---
 	rq_packet_in :: proc "c" (_: rawptr, _: [^]u8, _: uintptr, _: u16) -> i32 ---
 	rq_process :: proc "c" (_: rawptr) ---
@@ -58,6 +63,7 @@ foreign quic {
 	rq_stream_write :: proc "c" (_: rawptr, _: [^]u8, _: uintptr) -> i64 ---
 	rq_stream_want_read :: proc "c" (_: rawptr, _: i32) ---
 	rq_stream_want_write :: proc "c" (_: rawptr, _: i32) ---
+	rq_stream_flush :: proc "c" (_: rawptr) -> i32 ---
 	rq_stream_fin :: proc "c" (_: rawptr) ---
 	rq_stream_abort :: proc "c" (_: rawptr) ---
 	rq_transport_free :: proc "c" (_: rawptr) ---
@@ -152,6 +158,60 @@ REQUEST_HASH :: [32]u8 {
 	218,
 }
 
+// Bounded soak fixture and independently computed Blake2b-256 map key.
+LARGE_SIZE :: 1024 * 1024
+LARGE_HASH :: [32]u8 {
+	138,
+	90,
+	122,
+	157,
+	195,
+	207,
+	32,
+	62,
+	211,
+	116,
+	176,
+	161,
+	238,
+	169,
+	48,
+	96,
+	26,
+	210,
+	172,
+	191,
+	226,
+	180,
+	188,
+	98,
+	207,
+	131,
+	222,
+	78,
+	229,
+	54,
+	82,
+	139,
+}
+
+// Retire one terminal stream exactly once; malformed input stays local in the soak.
+finish_stream :: proc(peer: ^Peer, state: ^Stream_State, good: bool) {
+	if state.counted {return} 	// Close/reset callbacks may repeat terminal observations.
+	state.counted = true
+	if good {
+		peer.completed += 1
+		peer.healthy += 1
+		if peer.attack == "soak" {fmt.println("SERVER_HEALTHY" if peer.server else "HEALTHY_OK")} 	// Expose verified client replies.
+	} else if peer.attack == "soak" {
+		peer.completed += 1
+		peer.rejected += 1
+		fmt.println("STREAM_REJECTED" if peer.server else "EXPECTED_REJECT") // A failed request must not fail the transport owner.
+	} else {
+		peer.failed = true // Preserve the original single-attempt rejection behaviour.
+	}
+}
+
 // Check an incremental E4 frame before accepting its payload; no untrusted length chooses an allocation.
 frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, valid: bool) {
 	start := 1 if peer.server else 0
@@ -162,7 +222,7 @@ frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, val
 	if stream.received_length < start + 4 {return false, !stream.read_fin} 	// Partial length waits for more bytes.
 	claimed: u64
 	for i in 0 ..< 4 {claimed |= u64(stream.received[start + i]) << uint(8 * i)} 	// E4 network frame header.
-	maximum := u64(32) if peer.server else u64(1024)
+	maximum := u64(32) if peer.server else u64(LARGE_SIZE if peer.attack == "soak" else 1024)
 	if claimed > maximum {return false, false} 	// Reject before allocation or indexing.
 	extent := start + 4 + int(claimed)
 	if stream.received_length > extent {return false, false} 	// Exactly one message is allowed in this direction.
@@ -170,103 +230,176 @@ frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, val
 	if stream.received_length != extent {return false, false} 	// Premature FIN is truncation.
 	if peer.server {
 		if claimed != 32 {return false, false} 	// Hash is fixed width.
-		for b, i in REQUEST_HASH {if stream.received[5 + i] != b {return false, false}} 	// Fixture map lookup.
+		wanted :=
+			LARGE_HASH if stream.received[5] == LARGE_HASH[0] && peer.attack == "soak" else REQUEST_HASH
+		for b, i in wanted {if stream.received[5 + i] != b {return false, false}} 	// Fixture map lookup.
 	} else {
-		if claimed != 3 {return false, false} 	// Exact expected preimage size.
-		for i in 0 ..< 3 {if stream.received[4 + i] != u8(i + 1) {return false, false}} 	// Compare actual bytes.
+		size := LARGE_SIZE if stream.attack == "slow" else 3
+		if claimed != u64(size) {return false, false} 	// Fixed fixture ceiling and exact length.
+		for i in 0 ..< size {
+			wanted := u8(i % 251) if size == LARGE_SIZE else u8(i + 1)
+			if stream.received[4 + i] != wanted {return false, false} 	// Validate every preimage byte.
+		} // Compare actual bytes.
 	}
 	return true, true
 }
 
-// Stream callback preserves owned buffers and native CE framing while the bridge exposes only opaque transport handles.
+// Stream callback retains bounded owned buffers until native close; soak failures are isolated per stream.
 on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 	peer := (^Peer)(user)
 	context = peer.saved_context
 	state: ^Stream_State
-	// Locate the callback's live owner; no stream memory survives its close event.
+	// Resolve only the live handle owned by this endpoint.
 	for &slot in peer.streams {if slot.handle == handle {state = &slot; break}}
 	if event == 0 {
-		// Bound simultaneous streams before assigning application buffers.
+		// A fixed slot ceiling bounds all application allocations, including malformed concurrent requests.
 		for &slot in peer.streams {if slot.handle == nil {state = &slot; break}}
-		if state == nil {peer.failed = true; rq_stream_abort(handle); return} 	// No unbounded per-stream allocation.
+		if state == nil {peer.failed = true; rq_stream_abort(handle); return} 	// No unbounded queue.
 		state^ = Stream_State {
-			handle = handle,
+			handle  = handle,
+			started = time.now(),
+			attack  = peer.attack,
 		}
+		state.received = make(
+			[]u8,
+			1050 if peer.server || peer.attack != "soak" else LARGE_SIZE + 5,
+		)
 		if !peer.server {
+			state.sending = make([]u8, 64)
 			state.sending[0] = 143; state.sending[1] = 32
-			for b, i in REQUEST_HASH {state.sending[5 + i] = b} 	// Kind + E4 length + fixture hash.
+			wanted := REQUEST_HASH
+			// The soak mixes five healthy replies with cancellation, malformed kind and missing FIN.
+			if peer.attack == "soak" {
+				switch peer.opened {
+				case 1:
+					state.attack = "slow"; wanted = LARGE_HASH
+				case 2:
+					state.attack = "cancel"; wanted = LARGE_HASH
+				case 3:
+					state.attack = "bad-kind"
+				case 4:
+					state.attack = "no-fin"
+				case:
+					state.attack = "valid" // All remaining streams must complete normally.
+				}
+				peer.opened += 1
+			}
+			// Request framing remains kind + E4 + exact Blake2b fixture key.
+			for b, i in wanted {state.sending[5 + i] = b}
 			state.send_length = 37
-			// Controlled adversarial fixtures exercise the authenticated server's framing/resource checks.
-			switch peer.attack {
-			case "valid", "no-fin": // Valid bytes; no-fin withholds clean request termination.
+			switch state.attack {
+			case "valid", "no-fin", "slow", "cancel": // Valid bytes with distinct lifecycle schedules.
 			case "bad-kind":
-				state.sending[0] = 144 // Unsupported protocol selector.
+				state.sending[0] = 144
 			case "oversize":
-				for i in 1 ..= 4 {state.sending[i] = 255} 	// Reject declared length before allocation.
+				for i in 1 ..= 4 {state.sending[i] = 255} 	// Untrusted extent must fail.
 			case "unknown":
-				state.sending[5] ~= 1 // Missing fixture map entry.
+				state.sending[5] ~= 1
 			case "truncated":
-				state.send_length = 36 // FIN before the last declared hash byte.
+				state.send_length = 36
 			case "trailing":
-				state.send_length = 38 // Extra data after the single framed message.
+				state.send_length = 38
 			case:
-				peer.failed = true; rq_stream_abort(handle); return // Unknown trusted test selector.
+				peer.failed = true; rq_stream_abort(handle); return // Never guess a test selector.
+			}
+			// Slow/cancelled readers leave the transport window full while other streams progress.
+			if state.attack == "slow" || state.attack == "cancel" {
+				state.paused = true
+				rq_stream_want_read(handle, 0)
 			}
 			rq_stream_want_write(handle, 1)
 		}
 		return
 	}
-	if state == nil {peer.failed = true; return} 	// Unexpected callback cannot dereference expired ownership.
+	if state == nil {fmt.eprintln("unexpected stream event", event); peer.failed = true; return} 	// Never dereference stale native ownership.
 	if event == 3 {
-		if !state.counted && !peer.stopping {peer.failed = true} 	// Premature reset/close is not CE success.
-		state.handle = nil
+		if !state.counted && !peer.stopping {finish_stream(peer, state, false)} 	// Premature close is a rejection.
+		delete(state.received); delete(state.sending)
+		state^ = {} // Slot reuse cannot retain old buffers or timers.
 		return
 	}
-	if peer.stopping {return} 	// Native transport destruction can issue final close callbacks.
+	if event == 4 {
+		if !peer.stopping {finish_stream(peer, state, false)} 	// STOP_SENDING/reset settles pending writes too.
+		rq_stream_abort(handle)
+		return
+	}
+	if peer.stopping || state.counted && !peer.server {return} 	// Final callbacks have no new application work.
 	if event == 1 {
-		// Consume partial or coalesced reads into fixed storage and check the length as soon as it arrives.
+		if state.paused {return} 	// Application consumption resumes from the single event loop's deadline.
+		// Partial and coalesced payloads stay in bounded storage until their exact FIN is checked.
 		for {
 			if state.received_length ==
-			   len(state.received) {peer.failed = true; rq_stream_abort(handle); return} 	// Bounded receive extent.
+			   len(
+				   state.received,
+			   ) {finish_stream(peer, state, false); rq_stream_abort(handle); return}
 			got := rq_stream_read(
 				handle,
 				raw_data(state.received[state.received_length:]),
 				uintptr(len(state.received) - state.received_length),
 			)
-			if got == -2 {break} 	// Await more transport credit/data.
-			if got < 0 {peer.failed = true; rq_stream_abort(handle); return} 	// Reset/fatal read failure.
-			if got == 0 {state.read_fin = true} else // A clean FIN completes the read direction.
-			{state.received_length += int(got)} 	// Accepted bytes stay owned until close.
+			if got == -2 {break} 	// No readable transport bytes yet.
+			if got < 0 {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Reset settles this stream.
+			if got == 0 {state.read_fin = true} else {state.received_length += int(got)} 	// FIN is not fabricated padding.
 			complete, valid := frame_extent(peer, state)
-			if !valid {peer.failed = true; rq_stream_abort(handle); return} 	// Malformed or unknown request is rejected.
+			if !valid {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Malformed request/reply.
 			if complete {
-				rq_stream_want_read(handle, 0) // FIN has been validated; no more read callbacks belong to this direction.
+				rq_stream_want_read(handle, 0)
 				if peer.server {
-					state.sending[0] = 3; state.sending[4] = 1; state.sending[5] = 2; state.sending[6] = 3
-					state.send_length = 7
-					rq_stream_want_write(handle, 1) // Only send after request FIN validates.
-				} else if !state.counted {
-					state.counted = true; peer.completed += 1 // Exact response plus both FIN directions completes CE.
-				}
+					size :=
+						LARGE_SIZE if state.received[5] == LARGE_HASH[0] && peer.attack == "soak" else 3
+					state.sending = make([]u8, size + 4)
+					// Encode a trusted bounded E4 length and fixture bytes in native Odin.
+					for i in 0 ..< 4 {state.sending[i] = u8((size >> uint(8 * i)) & 255)}
+					for i in 0 ..< size {state.sending[4 + i] = u8(i % 251) if size == LARGE_SIZE else u8(i + 1)}
+					state.send_length = len(state.sending)
+					rq_stream_want_write(handle, 1)
+				} else {finish_stream(peer, state, true)} 	// Exact response and FIN verified.
 				break
 			}
 		}
 	} else if event == 2 {
-		// Preserve unsent bytes through would-block/partial writes, never freeing storage at enqueue time.
+		// Preserve unsent bytes across partial writes and flow-control stalls.
 		for state.send_offset < state.send_length {
 			sent := rq_stream_write(
 				handle,
 				raw_data(state.sending[state.send_offset:state.send_length]),
 				uintptr(state.send_length - state.send_offset),
 			)
-			if sent == -2 || sent == 0 {return} 	// Await stream flow-control credit.
-			if sent < 0 {peer.failed = true; rq_stream_abort(handle); return} 	// Failed response/request is not successful.
+			if sent == -2 || sent == 0 {return} 	// Keep storage until credit resumes or native close.
+			if sent < 0 {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Failed write settles only its stream.
 			state.send_offset += int(sent)
 		}
+		if rq_stream_flush(handle) !=
+		   0 {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Missing FIN still transmits its request bytes.
 		rq_stream_want_write(handle, 0)
-		if !state.write_fin && (peer.server || peer.attack != "no-fin") {
-			rq_stream_fin(handle); state.write_fin = true // Half-close writing while response reads remain active.
-			if peer.server && !state.counted {state.counted = true; peer.completed += 1} 	// Request FIN and queued response FIN.
+		if !state.write_fin && (peer.server || state.attack != "no-fin") {
+			rq_stream_fin(handle); state.write_fin = true
+			if peer.server {finish_stream(peer, state, true)} 	// Request and queued reply FIN complete server work.
+		}
+	}
+}
+
+// Deadline work shares the existing I/O loop, with no timer thread per stream.
+soak_tick :: proc(peer: ^Peer) {
+	// Check only live, unsettled streams; close callbacks may immediately recycle their slot.
+	for &state in peer.streams {
+		if state.handle == nil || state.counted {continue} 	// Retired stream owns no deadline work.
+		elapsed := time.since(state.started)
+		if peer.server {
+			if !state.read_fin && elapsed > 500 * time.Millisecond {
+				fmt.println("REQUEST_TIMEOUT") // A complete hash without FIN cannot retain a handler.
+				finish_stream(peer, &state, false); rq_stream_abort(state.handle) // Bound missing request FIN.
+			} else if state.send_length > 65536 &&
+			   state.send_offset < state.send_length &&
+			   !state.blocked &&
+			   elapsed > 100 * time.Millisecond {
+				state.blocked = true; peer.blocked += 1; fmt.println("BACKPRESSURE") // Observe a genuinely pending large write.
+			}
+		} else if state.attack == "cancel" && elapsed > 150 * time.Millisecond {
+			state.counted = true; peer.completed += 1; peer.cancelled += 1
+			fmt.println("CANCEL_OK"); rq_stream_abort(state.handle) // Cancel with a server write still pending.
+		} else if state.attack == "slow" && state.paused && elapsed > 350 * time.Millisecond {
+			state.paused = false; rq_stream_want_read(state.handle, 1) // Resume consumption and transport credit.
 		}
 	}
 }
@@ -358,6 +491,7 @@ run_peer :: proc() -> bool {
 		strings.clone_to_cstring(os.args[6])
 	defer delete(cert); defer delete(key); defer delete(alpn)
 	peer.transport = rq_transport_new(
+		1 if peer.attack == "soak" else 0,
 		1 if server else 0,
 		u16(local.port),
 		cert,
@@ -388,23 +522,44 @@ run_peer :: proc() -> bool {
 		if status == 1 && !authenticated {fmt.println("AUTH_OK"); authenticated = true} 	// Only after the handshake callback.
 		if authenticated && !server && !opened {
 			opened = true
-			for _ in 0 ..< 8 {rq_open_stream(peer.transport)} 	// Open all requests before waiting for replies.
+			for _ in 0 ..< (5 if peer.attack == "soak" else 8) {rq_open_stream(peer.transport)} 	// Open all requests before waiting for replies.
 			rq_process(peer.transport)
+		}
+		if peer.attack == "soak" {
+			soak_tick(&peer) // Local deadlines never abort the whole connection.
+			if !server &&
+			   opened &&
+			   peer.opened == 5 &&
+			   time.since(started) > 650 * time.Millisecond {
+				for _ in 0 ..< 3 {rq_open_stream(peer.transport)} 	// Prove continued service after rejection.
+				rq_process(peer.transport)
+			}
 		}
 		if nbio.tick(10 * time.Millisecond) != nil {peer.stopping = true} 	// Bounded I/O failure.
 	}
 	if rq_status(peer.transport) == 1 &&
 	   !authenticated {fmt.println("AUTH_OK"); authenticated = true} 	// A receive tick may complete all requests before the loop checks status again.
 	success := authenticated && !peer.failed && peer.completed == 8
+	if success && peer.attack == "soak" && !server {
+		success = peer.healthy == 5 && peer.rejected == 2 && peer.cancelled == 1 // Intentional failures are exact.
+	}
 	if success {fmt.println("EXCHANGE_OK 8")} 	// Application success requires all eight framed exchanges.
 	// Briefly drain final handshake packets before closing an authenticated connection.
 	if success {
 		grace := time.now()
 		for time.since(grace) < 100 * time.Millisecond {_ = nbio.tick(10 * time.Millisecond)} 	// Keep processing final handshake packets.
 	}
+	// Failure diagnostics show unsettled owners without exposing any identity private-key bytes.
+	if peer.attack == "soak" && !success {
+		// Empty slots have already released their application buffers.
+		for state in peer.streams {
+			if state.handle !=
+			   nil {fmt.eprintln("LIVE", state.received_length, state.send_length, state.send_offset, state.read_fin, state.counted, state.attack, time.since(state.started))}
+		}
+	}
 	peer.stopping = true
 	_ = nbio.run() // Existing callbacks retire without rearming; their owner is still alive.
-	if !success {fmt.eprintln("proof rejected or timed out")} 	// Distinguish rejection from successful handshake.
+	if !success {fmt.eprintln("proof rejected or timed out", peer.completed, peer.healthy, peer.rejected, peer.cancelled, peer.failed)} 	// Distinguish rejection from successful handshake.
 	// The exit code is set after deferred native/socket cleanup by returning through the normal stack.
 	return success
 }
@@ -420,6 +575,8 @@ fuzz_peer :: proc(input: []u8, server, fin: bool) {
 		received_length = len(input),
 		read_fin        = fin,
 	}
+	stream.received = make([]u8, len(input))
+	defer delete(stream.received)
 	copy(stream.received[:], input)
 	complete, valid := frame_extent(&peer, &stream)
 	// Complete frames are bounded, exact and cleanly terminated.
@@ -447,5 +604,40 @@ self_test :: proc() {
 main :: proc() {
 	// Parser fuzz tests do not create an engine or require socket permission.
 	if len(os.args) == 2 && os.args[1] == "--selftest" {self_test(); return}
-	if !run_peer() {os.exit(2)} 	// A rejected or timed-out peer is not successful authentication.
+	if len(os.args) == 9 && os.args[8] == "soak" {
+		tracking: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&tracking, context.allocator)
+		defer mem.tracking_allocator_destroy(&tracking)
+		context.allocator = mem.tracking_allocator(&tracking) // Track all native application ownership across sessions.
+		rounds_text := os.get_env("RAGNAROK_SOAK_ROUNDS", context.allocator)
+		gate := os.get_env("RAGNAROK_SOAK_GATE", context.allocator)
+		defer delete(rounds_text); defer delete(gate)
+		rounds, ok := strconv.parse_int(rounds_text)
+		if !ok || rounds < 1 || rounds > 1000 || len(gate) == 0 {os.exit(2)} 	// Trusted controls still have hard ceilings.
+		baseline := tracking.current_memory_allocated // Only the round/gate controls remain owned between sessions.
+		// Keep the same allocator/process while repeatedly rebuilding and retiring native transport resources.
+		for iteration in 0 ..= rounds {
+			control := fmt.aprintf("%s/%s-%d", gate, os.args[1], iteration)
+			started := time.now()
+			for !os.exists(control) {
+				if time.since(started) > 15 * time.Second {os.exit(2)} 	// A dead harness cannot retain peers indefinitely.
+				time.sleep(10 * time.Millisecond)
+			}
+			delete(control)
+			if iteration == rounds {break} 	// Final idle snapshot precedes normal process exit.
+			if !run_peer() {os.exit(2)} 	// Every deferred cleanup completes before the idle snapshot.
+			if tracking.current_memory_allocated != baseline {
+				fmt.eprintln(
+					"application allocations retained",
+					tracking.current_memory_allocated,
+					baseline,
+				)
+				// Source locations identify leaked ownership without printing buffer contents.
+				for _, entry in tracking.allocation_map {fmt.eprintln(entry.location, entry.size)}
+				os.exit(2)
+			}
+			fmt.println("ALLOC_BYTES", tracking.current_memory_allocated)
+			fmt.println("SESSION_DONE", iteration)
+		}
+	} else if !run_peer() {os.exit(2)} 	// A rejected or timed-out peer is not successful authentication.
 }

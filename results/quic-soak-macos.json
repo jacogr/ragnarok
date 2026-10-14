@@ -1,0 +1,2079 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "rounds": 40,
+  "warmup": 8,
+  "complete": true,
+  "limits": {
+    "active_rss_bytes": 268435456,
+    "idle_rss_range_bytes": 16777216,
+    "idle_descriptor_range": 2,
+    "idle_allocation_range_bytes": 65536,
+    "threads": 1
+  },
+  "pairings": [
+    {
+      "server": "nim",
+      "client": "nim",
+      "rounds": 40,
+      "elapsed_seconds": 53.664251959184185,
+      "peaks": {
+        "server": {
+          "rss_bytes": 9977856,
+          "threads": 1,
+          "descriptors": 7
+        },
+        "client": {
+          "rss_bytes": 9715712,
+          "threads": 1,
+          "descriptors": 7
+        }
+      },
+      "idle": {
+        "server": [
+          {
+            "rss_bytes": 9355264,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9584640,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9633792,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9732096,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9764864,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9797632,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9928704,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9928704,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          }
+        ],
+        "client": [
+          {
+            "rss_bytes": 9125888,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9355264,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9437184,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9469952,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9551872,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9601024,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9617408,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9633792,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14240
+          }
+        ]
+      },
+      "growth": {
+        "server": {
+          "idle_rss_range_bytes": 212992,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 0
+        },
+        "client": {
+          "idle_rss_range_bytes": 65536,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 0
+        }
+      }
+    },
+    {
+      "server": "odin",
+      "client": "odin",
+      "rounds": 40,
+      "elapsed_seconds": 40.62354729208164,
+      "peaks": {
+        "server": {
+          "rss_bytes": 11403264,
+          "threads": 1,
+          "descriptors": 5
+        },
+        "client": {
+          "rss_bytes": 9273344,
+          "threads": 1,
+          "descriptors": 5
+        }
+      },
+      "idle": {
+        "server": [
+          {
+            "rss_bytes": 7127040,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 7290880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 7356416,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8519680,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8568832,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8798208,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8814592,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8830976,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8880128,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8929280,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8978432,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8994816,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9027584,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9027584,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9027584,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 10240000,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 10272768,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 10272768,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11223040,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11354112,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11370496,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11370496,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11370496,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11370496,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 11386880,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          }
+        ],
+        "client": [
+          {
+            "rss_bytes": 6111232,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6340608,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6422528,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6438912,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6537216,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6602752,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6651904,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6684672,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6717440,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6750208,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6766592,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6815744,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6848512,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6848512,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 6848512,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8093696,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8110080,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8110080,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8126464,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 8126464,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9224192,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9224192,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9224192,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9224192,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9224192,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9240576,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9240576,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9240576,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9240576,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9240576,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9240576,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9240576,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 91
+          }
+        ]
+      },
+      "growth": {
+        "server": {
+          "idle_rss_range_bytes": 2506752,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 0
+        },
+        "client": {
+          "idle_rss_range_bytes": 2539520,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 0
+        }
+      }
+    },
+    {
+      "server": "nim",
+      "client": "odin",
+      "rounds": 40,
+      "elapsed_seconds": 54.66823691688478,
+      "peaks": {
+        "server": {
+          "rss_bytes": 9977856,
+          "threads": 1,
+          "descriptors": 7
+        },
+        "client": {
+          "rss_bytes": 10747904,
+          "threads": 1,
+          "descriptors": 5
+        }
+      },
+      "idle": {
+        "server": [
+          {
+            "rss_bytes": 9338880,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9568256,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9682944,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9699328,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9715712,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9748480,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9764864,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9830400,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9863168,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9912320,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9912320,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14192
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9945088,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9977856,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          }
+        ],
+        "client": [
+          {
+            "rss_bytes": 5898240,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 6225920,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 6340608,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 6373376,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 6717440,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7913472,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7929856,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7962624,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 8060928,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 8077312,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9256960,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9289728,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9437184,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9437184,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9437184,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9437184,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9469952,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9469952,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9469952,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10682368,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10682368,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10698752,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10698752,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10715136,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10715136,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10715136,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10715136,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10731520,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10731520,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10731520,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10731520,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10731520,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10731520,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          }
+        ]
+      },
+      "growth": {
+        "server": {
+          "idle_rss_range_bytes": 147456,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 64
+        },
+        "client": {
+          "idle_rss_range_bytes": 2670592,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 0
+        }
+      }
+    },
+    {
+      "server": "odin",
+      "client": "nim",
+      "rounds": 40,
+      "elapsed_seconds": 54.9541995418258,
+      "peaks": {
+        "server": {
+          "rss_bytes": 10305536,
+          "threads": 1,
+          "descriptors": 5
+        },
+        "client": {
+          "rss_bytes": 9666560,
+          "threads": 1,
+          "descriptors": 7
+        }
+      },
+      "idle": {
+        "server": [
+          {
+            "rss_bytes": 7225344,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7585792,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7667712,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7684096,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7766016,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 7815168,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 8896512,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9846784,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9912320,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 9961472,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10174464,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10174464,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10190848,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10190848,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10190848,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10190848,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10223616,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10240000,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10240000,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10256384,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10256384,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10256384,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10256384,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10256384,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10256384,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10272768,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          },
+          {
+            "rss_bytes": 10289152,
+            "threads": 1,
+            "descriptors": 3,
+            "allocated_bytes": 90
+          }
+        ],
+        "client": [
+          {
+            "rss_bytes": 9158656,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9404416,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9437184,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9453568,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9502720,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9519104,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9519104,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9535488,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9584640,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9601024,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9617408,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9617408,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9617408,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9617408,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9617408,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14256
+          },
+          {
+            "rss_bytes": 9617408,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9633792,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9650176,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          },
+          {
+            "rss_bytes": 9666560,
+            "threads": 1,
+            "descriptors": 6,
+            "allocated_bytes": 14384
+          }
+        ]
+      },
+      "growth": {
+        "server": {
+          "idle_rss_range_bytes": 376832,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 0
+        },
+        "client": {
+          "idle_rss_range_bytes": 81920,
+          "idle_descriptor_range": 0,
+          "idle_allocation_range_bytes": 128
+        }
+      }
+    }
+  ]
+}

@@ -89,6 +89,35 @@ proc streamProcessor(ctx: QuicContext): proc(urgent: bool) {.gcsafe, raises: [].
     path.write_text(text)
 
 
+# Break quiesced timer and UDP callback cycles after shutdown, never during live processing.
+def patch_context_lifetime(source):
+    path = source / 'lsquic/context/context.nim'
+    text = path.read_text()
+    original = """  if not ctx.sslCtx.isNil:
+    SSL_CTX_free(ctx.sslCtx)
+    ctx.sslCtx = nil
+"""
+    replacement = original + """
+  # The timeout closure owns ctx; drop ctx's timeout only after stop and native destruction.
+  ctx.tickTimeout = nil
+"""
+    # Accept exactly the pinned original or this reviewed patch; never append cleanup to guessed upstream code.
+    if replacement not in text:
+        assert original in text, path
+        text = text.replace(original, replacement)
+    path.write_text(text)
+
+    path = source / 'lsquic/endpoint.nim'
+    text = path.read_text()
+    original = '  await noCancel endpoint.udp.closeWait()\n'
+    replacement = original + '  # The UDP receive callback owns endpoint; release the closed transport to break that ARC cycle.\n  endpoint.udp = nil\n'
+    # This assignment follows awaited close, so no socket callback can borrow released storage.
+    if replacement not in text:
+        assert original in text, path
+        text = text.replace(original, replacement)
+    path.write_text(text)
+
+
 # Prepare a closed dependency set from committed pins, including each native submodule's own exact revision.
 def dependencies(fetch):
     sources = BUILD / 'sources'
@@ -125,6 +154,7 @@ def dependencies(fetch):
     assert link.resolve() == paths['lsquic'].resolve()
     patch_chronos(paths['chronos'])
     patch_stream_callbacks(paths['nim-lsquic'])
+    patch_context_lifetime(paths['nim-lsquic'])
     return paths
 
 
