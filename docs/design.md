@@ -162,8 +162,7 @@ stream-local deadlines, healthy sibling isolation and post-cleanup resource
 budgets. See [the architecture](quic-adapters.md),
 [verification report](../results/quic-adapters.md), [proof instructions](quic-proof.md)
 and [soak workload](quic-soak.md). Native/compiler/protocol revisions are unchanged;
-the dependency set is reduced to four native source trees. Linux CI verification
-of this adapter revision is pending. This does not pass M3 or select a language:
+the dependency set is reduced to four native source trees. The maintainer has reported that Linux CI passes for this adapter revision. This does not pass M3 or select a language:
 persistent-engine multi-peer service, IPv6, independent-peer interoperability
 and deeper C/TLS allocation instrumentation remain open.
 
@@ -185,3 +184,9 @@ Allocation-free span/pool APIs now have explicit borrowed names. Owned decoding
 adds copying/allocation; Nim retains storage through ARC, while Odin uses an
 explicit allocator and single-release owner contract. See
 [the ownership verification report](../results/codec-ownership.md).
+
+M2 is now the next investigation. The [pinned crypto inventory and assessment](../results/crypto-feasibility.md)
+recommends a first Blake2b-256/Ed25519 slice over the existing BoringSSL backend,
+with identical primitive C ABI and separate typed Nim/Odin adapters. Bandersnatch
+suite/proof compatibility is an early gate; Keccak and BEEFY/BLS remain later
+bounded rounds. No M2 implementation or crypto test pass is claimed yet.

@@ -84,6 +84,6 @@ adapters remains our responsibility; this does not select a language or pass M3.
 The proof still uses IPv4 loopback and one connection per recreated engine.
 Persistent-engine multi-peer operation, IPv6, independent JAM peer testing,
 broader protocol coverage and deeper C/TLS allocation instrumentation remain.
-The Linux workflow runs the same commands with fresh sources; verification of
-this adapter revision awaits its next CI run. Earlier Linux results describe
+The Linux workflow runs the same commands with fresh sources; the maintainer reported on 2026-10-14 that Linux CI passes for
+this adapter revision (no run URL was supplied). Earlier Linux results describe
 the historical wrapper implementation, not this replacement.

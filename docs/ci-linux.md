@@ -79,4 +79,4 @@ resource limits. Full Linux verification still awaits the rerun.
 
 The [explicit-adapter migration](quic-adapters.md) adds Nim's standard-selector
 I/O selftest alongside Odin's cancellation selftest. The workflow commands are
-unchanged; Linux verification of this adapter revision awaits its next run.
+unchanged; the maintainer has reported passing Linux CI for this adapter revision.

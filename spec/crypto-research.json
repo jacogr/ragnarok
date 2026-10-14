@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "reviewed_on": "2026-10-14",
+  "graypaper": {
+    "repository": "gavofyork/graypaper",
+    "commit": "1c979cb59bb800f92ffff083a2701004dfc6cd33",
+    "sources": {
+      "text/notation.tex": "d71dd706dc3376b3860cc83cd06ecbf5efa1aa40a3eded06bce5516a7e7f5130",
+      "text/definitions.tex": "39d3a82fdca9b6bb8969bf99b2307b35d946bb77c820bcf7a6147ab80e9f7cee",
+      "text/bandersnatch.tex": "283a0982705e8ffc9f894f5f3b7ef996155b1619b34349de40fc71c3e3f48c65",
+      "text/beefy.tex": "e3236f377de1a22952ada264fc0538b8a2faf44aa52ca85fa72782d2adb5f4b6"
+    }
+  },
+  "official_vectors": {
+    "repository": "w3f/jamtestvectors",
+    "commit": "1dc503af37ae8ecc7b6e24a393f6102801c0c80c",
+    "standalone_crypto_directory_found": false
+  },
+  "initial_backend_candidate": {
+    "repository": "vacp2p/boringssl",
+    "commit": "88341070936d28e08f82db1326c73d67962cd043",
+    "reason": "Already pinned/built for both QUIC candidates; exposes Blake2b-256 and Ed25519 through C APIs."
+  },
+  "bandersnatch_candidate": {
+    "repository": "davxy/ark-vrf",
+    "commit": "a49e44efc73868ca9a60dfd1ccb0367f425a2809",
+    "sources": {
+      "README.md": "d9ff06a0b25ecda46e4e7628a0c181b896ea1dd095b06a63da7b7ee270395fa2",
+      "CHANGELOG.md": "966f35abda9bb04dafa12dd2f582de29596805417bffea9c6d6afde1db89f8be"
+    },
+    "selected": false,
+    "compatibility": "0.6.0 changes default suite keys/outputs/ring commitments; exact JAM v0.7.1 compatibility must be verified."
+  }
+}

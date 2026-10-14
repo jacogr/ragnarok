@@ -47,7 +47,7 @@ runs each native parser fuzz entry point without opening network sockets.
 
 The original proof uses bounded buffers, eight concurrent streams and one
 connection per process. The explicit-adapter implementation passes locally on
-macOS; its Linux CI result is pending. The
+macOS, and the maintainer has reported that Linux CI also passes. The
 [bounded lifecycle soak](quic-soak.md) reuses each native process across repeated
 sessions with mixed healthy and adversarial streams. This remains an experiment,
 not a reusable client networking API or a completed M3 gate. The existing

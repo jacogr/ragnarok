@@ -87,5 +87,5 @@ This is a bounded IPv4 loopback proof and finite lifecycle regression. The
 adapters are explicitly ours to maintain; passing these tests does not certify
 all LSQUIC paths or a full reusable client transport. Persistent-engine
 multi-peer service, IPv6, independent JAM peers and deeper C/TLS allocation
-instrumentation remain M3 work. The latest adapter change needs its own Linux
-CI result; earlier Linux passes exercised the older wrapper implementation.
+instrumentation remain M3 work. The maintainer reported on 2026-10-14 that Linux CI passes for this adapter
+revision. Earlier Linux reports still describe the older wrapper implementation.
