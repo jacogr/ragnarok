@@ -111,4 +111,8 @@ languages. See [the APIs and ownership](docs/crypto.md), [specification notes](s
 and [verification report](results/crypto-primitives.md). Run
 `python3 interoperability/test_crypto.py --fetch`; Linux CI runs it before QUIC.
 An explicit small-order Ed25519 acceptance-policy difference remains a JAM gate.
-Bandersnatch compatibility and the Rust ABI are the next bounded round.
+Bandersnatch contextual VRF and RingVRF now run through a shared maintained Rust
+ABI. See [the APIs](docs/bandersnatch.md), [pinned contract](spec/bandersnatch.md)
+and [verification](results/bandersnatch.md). Run
+`python3 interoperability/test_bandersnatch.py --fetch`. Historical backend
+audit/policy gates and BEEFY/BLS remain open.

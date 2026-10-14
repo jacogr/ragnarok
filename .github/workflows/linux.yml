@@ -60,6 +60,14 @@ jobs:
       - name: Pinned Nim, Odin and odinfmt
         run: python3 tools/setup_ci_linux.py --destination "$RUNNER_TEMP/ragnarok-tools"
 
+      - name: Pinned Rust for Bandersnatch
+        run: |
+          # Use official rustup component checksums; do not change the runner's default toolchain.
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
+          echo "RUSTUP_TOOLCHAIN=1.99.0" >> "$GITHUB_ENV"
+          rustup run 1.99.0 rustc --version
+          rustup run 1.99.0 cargo --version
+
       - name: Formatting
         run: python3 tools/format.py --check
 
@@ -68,6 +76,9 @@ jobs:
 
       - name: Crypto vectors, ownership and cross-language checks
         run: python3 interoperability/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
+
+      - name: Bandersnatch Rust ABI and JAM proof checks
+        run: python3 interoperability/test_bandersnatch.py --fetch 2>&1 | tee build/ci/bandersnatch.log
 
       - name: Build and verify Linux QUIC
         run: python3 interoperability/test_quic.py --fetch 2>&1 | tee build/ci/quic.log
@@ -91,6 +102,10 @@ jobs:
             build/crypto/build.log
             build/crypto/type-checks.log
             build/crypto/results.json
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/bandersnatch/type-checks.log
+            build/bandersnatch/results.json
             build/quic/build.log
             build/quic/results.json
             build/quic/cases/*.server.log

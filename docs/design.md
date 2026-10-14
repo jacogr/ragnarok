@@ -193,7 +193,17 @@ contract](crypto.md), [pinned interpretation](../spec/crypto.md) and
 [verification results](../results/crypto-primitives.md). Linux CI now includes
 the crypto runner; its new step awaits a pushed run.
 
-Bandersnatch contextual VRF/Ring-VRF remains the next bounded round: establish
-exact JAM suite, encoding and setup compatibility before selecting a pinned
-Rust backend and shared C ABI. BEEFY/BLS follows. Primitive test success does
-not complete M2 or its audit and consensus acceptance-policy assessment.
+The [Bandersnatch round](../results/bandersnatch.md) now provides contextual
+signing/verification, ring commitments, anonymous proving/verification and
+verified output extraction through typed native adapters over a maintained
+Rust ABI. The historical original IETF profile is pinned and builds unmodified:
+the newer ark-vrf v1/v2 profiles are not substitutes for GP v0.7.1's scheme.
+Independent official tiny/full tickets and the padding epoch-change root pass
+locally in both languages, alongside published vectors and malformed-input
+checks. Linux CI includes the new pinned Rust build/test step and awaits a
+pushed run.
+
+M2 remains open for audit/side-channel and exceptional-point review of the
+historical backend/dependency closure, the Ed25519 verifier policy gate, wider
+JAM domain integration and BEEFY/BLS. The compatibility evidence does not select
+a production backend or a winning client language.

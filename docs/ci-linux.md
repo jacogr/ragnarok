@@ -15,12 +15,18 @@ the pinned SHA-256. Existing full revision checks remain. GitHub Actions are
 pinned to the latest verified releases: checkout 7.0.1, setup-python 7.0.0 and
 upload-artifact 7.0.2, all using Node 24.
 
+Bandersnatch additionally uses pinned Rust/Cargo 1.99.0 and rustfmt, installed
+through official rustup component verification in this temporary runner. The
+Rust ABI's pristine historical backend/spec sources, Cargo.lock closure and
+public SRS are independently pinned; no dependency source patches are applied.
+
 After setup, the job runs:
 
 ```sh
 python3 tools/format.py --check
 python3 interoperability/test_codec.py
 python3 interoperability/test_crypto.py --fetch
+python3 interoperability/test_bandersnatch.py --fetch
 python3 interoperability/test_quic.py --fetch
 python3 interoperability/test_quic_soak_harness.py
 python3 interoperability/test_quic_soak.py --skip-build
@@ -31,7 +37,7 @@ fixtures, official vectors and shared conformance cases. The crypto command
 checks both debug/release implementations, pinned RFC/Wycheproof fixtures,
 independent hashes, ownership and concurrent native calls. It fetches pristine
 BoringSSL/XKCP sources and shares the identical BoringSSL build with QUIC.
-The new crypto step awaits a pushed Linux run. The QUIC command fetches
+The new Bandersnatch step awaits a pushed Linux run. The QUIC command fetches
 four pinned native source trees, builds both explicit adapters without Nim
 packages/source patches, and runs the authenticated
 cross-language CE 143 proof and rejection cases. Dependencies are not cached.

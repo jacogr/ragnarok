@@ -51,8 +51,9 @@ Nim and Odin: reproducible Rust toolchain and Cargo dependency pins, exact JAM
 suite/encoding/setup compatibility, allocation and context ownership, panic
 containment, typed failure propagation and independent vectors. Keep Rust
 limited to the cryptographic backend; protocol messages and domain construction
-remain native to each language. The inspected ark-vrf revision is still a
-candidate, not a verified-compatible backend selection.
+remain native to each language. The newer inspected ark-vrf revision remains incompatible; the subsequent
+[Bandersnatch report](bandersnatch.md) records the original historical profile
+with independent JAM evidence and the remaining audit gates.
 
 ## First slice and native Odin candidates
 
@@ -170,7 +171,9 @@ ring commitments. It retains an older suite option. This is evidence that
 matching the curve name or choosing the newest crate is insufficient, not a
 selection of a compatible suite.
 
-Before selecting that backend, establish the exact compatible specification,
+The subsequent round selects a different historical research profile; see
+[its report](bandersnatch.md). Before selecting a production backend, establish
+the exact compatible specification,
 suite/transcript/hash-to-curve behavior, proof/output encodings, padding point,
 ring size and setup parameters against pinned independent/JAM vectors. Review
 its audit/provenance and dependency lockfile. If a Rust implementation is used,
@@ -180,8 +183,8 @@ codec or state-transition implementation belongs behind the crypto ABI.
 
 BLS likewise needs the exact BEEFY aggregation/encoding scheme from the cited
 paper; generic BLS12-381 support alone does not establish compatibility with
-its 144-byte public-key type or aggregate construction. No backend is selected
-for Bandersnatch or BLS; the subsequent implementation selects XKCP for Nim
+its 144-byte public-key type or aggregate construction. A historical research Bandersnatch backend is now integrated with further
+audit/policy gates; no production Bandersnatch or BLS backend is selected; the subsequent implementation selects XKCP for Nim
 Keccak and Odin core for Odin Keccak.
 
 The first slice establishes ordinary crypto FFI correctness and ergonomics.

@@ -1,0 +1,14 @@
+[package]
+name = "ragnarok-bandersnatch"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ark-vrf = { path = "../../build/bandersnatch/sources/ark-vrf-jam", features = ["bandersnatch", "ring", "secret-split"] }
+
+[profile.release]
+panic = "unwind"

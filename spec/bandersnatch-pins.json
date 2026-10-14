@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "graypaper_commit": "1c979cb59bb800f92ffff083a2701004dfc6cd33",
+  "rust": "1.99.0",
+  "nim": "2.2.12",
+  "odin": "dev-2026-10:84bc3fc21",
+  "suite": "Bandersnatch_SHA-512_ELL2",
+  "challenge_bytes": 32,
+  "source_patches": [],
+  "sources": {
+    "ark-vrf-jam": {
+      "repository": "davxy/ark-vrf",
+      "commit": "29e53a0e642b1ccf95bdf881df5b0eaf3bbb8d04",
+      "tree_sha256": "831b2201c0dc533da65c6acf958bbfedc064357d2ebd014ccd6aae2c5415269d"
+    },
+    "spec-jam": {
+      "repository": "davxy/bandersnatch-vrf-spec",
+      "commit": "38cf32d33d9d860feccd1f56b3bf6633c05669b0",
+      "tree_sha256": "9c2bf10c91bd0f77b9b4d87a4430d46df3a78624208dd666ba83be4df30ee525"
+    }
+  },
+  "cargo_features": [
+    "std",
+    "bandersnatch",
+    "ring",
+    "secret-split"
+  ],
+  "fixture_files": {
+    "vectors/official/bandersnatch/ietf.json": "c9e2f87bde118b4c5edcde479f7285fd07c3bece13fa47d44a346a83d36ac5c8",
+    "vectors/official/bandersnatch/ring.json": "40c31ff3340e4ea04b426271c36827b086a71dd57998403772f12042ce10a052",
+    "vectors/official/bandersnatch/jam-tiny.json": "ba1dc86511e8002c317839319b15f8f1395c02777d8e33092fd51b19e0f751df",
+    "vectors/official/bandersnatch/jam-full.json": "bb62bcd509eeca33d026abdccd088f4e8d7fad7f56db95a1866579b3aaae11a4",
+    "vectors/official/bandersnatch/jam-padding.json": "76dacb18d0ca8befff369e5c3e649e23030d09132d574f4ed0ce26daddd429c2"
+  },
+  "srs": {
+    "path": "assets/srs/zcash-srs-2-11-uncompressed.bin",
+    "sha256": "1d7d27e4f5f3c6190989bea58803180d3e19f725a57069392a405ac78b233c7d",
+    "provenance": "Specification public SRS derived from the Zcash Powers of Tau ceremony; 6145 G1 and 2 G2 points; no insecure seed-generated setup."
+  },
+  "cargo_lock_sha256": "99b03577ce6152734118b78e5f0af1e49005c728f17f9e95d0ab14be01c2160e",
+  "official_jam": {
+    "repository": "w3f/jamtestvectors",
+    "commit": "1dc503af37ae8ecc7b6e24a393f6102801c0c80c",
+    "files": {
+      "vectors/official/bandersnatch/jam-tiny.json": "stf/safrole/tiny/publish-tickets-no-mark-2.json",
+      "vectors/official/bandersnatch/jam-full.json": "stf/safrole/full/publish-tickets-no-mark-2.json",
+      "vectors/official/bandersnatch/jam-padding.json": "stf/safrole/tiny/enact-epoch-change-with-padding-1.json"
+    },
+    "source_sha256": {
+      "vectors/official/bandersnatch/jam-tiny.json": "280dddc715c8065b21dbddc7a477ef0c16f3c9aee1fc50a5bc752970d9a15bb9",
+      "vectors/official/bandersnatch/jam-full.json": "48431179ca0c69d9c170931c1cd02306a26ac87613059681720467c7427037c1",
+      "vectors/official/bandersnatch/jam-padding.json": "ab6ec9b6a02d3d7cbeedf2bb4218464df023ce21f92b755af6ef407a368d7578"
+    }
+  },
+  "padding_point": "92ca79e61dd90c1573a8693f199bf6e1e86835cc715cdcf93f5ef222560023aa",
+  "rust_distribution": {
+    "manifest": "https://static.rust-lang.org/dist/channel-rust-1.99.0.toml",
+    "date": "2026-10-01",
+    "manifest_sha256": "ce6dddc886364f8d786514771212cebe9b731ba82d6b859951c6b0ccc516b6a2",
+    "linux_x86_64_available": true
+  }
+}
