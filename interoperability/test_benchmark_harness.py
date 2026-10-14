@@ -30,6 +30,14 @@ class MeasurementIntegrity(unittest.TestCase):
         self.assertEqual(data['batch_ns_per_operation'], [10, 12, 14])
         self.assertEqual(data['single_operation_ns'], [99])
 
+    # A clean CI checkout has no raw parent directory; retain the first transcript without prior runs.
+    def test_fresh_nested_log_directory(self):
+        benchmark.RAW = Path(self.directory.name) / 'missing-parent' / 'raw' / 'first-run'
+        transcript = 'VERIFY 17\nBATCH 2 20\nEND 0 4096\n'
+        with patch.object(benchmark.subprocess, 'check_output', return_value=transcript):
+            benchmark.native(self.case, 'nim', 2, 1, 0, None)
+        self.assertEqual((benchmark.RAW / 'integrity-control-nim-probe.log').read_text(), transcript)
+
     # A plausible timing cannot rescue a result that disagrees with the independent operation oracle.
     def test_wrong_result_rejected(self):
         with patch.object(benchmark.subprocess, 'check_output', return_value='VERIFY 18\nEND 0 4096\n'):

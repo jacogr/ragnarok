@@ -127,7 +127,8 @@ def native(case, language, iterations, samples, latency, cpu, instrumented=False
         command = ['taskset', '-c', str(cpu), *command]
     output = subprocess.check_output(command, text=True, timeout=120)
     folder = RAW
-    folder.mkdir(exist_ok=True)
+    # Fresh checkouts have no raw-log parent; create the complete per-run path before retaining evidence.
+    folder.mkdir(parents=True, exist_ok=True)
     (folder / f'{case["name"]}-{case["operation"]}-{language}-{label}.log').write_text(output)
     lines = [line.split() for line in output.splitlines()]
     verify = [int(parts[1]) for parts in lines if parts[0] == 'VERIFY']
