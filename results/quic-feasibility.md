@@ -142,3 +142,7 @@ Additional primary sources:
 [MsQuic execution](https://microsoft.github.io/msquic/msquicdocs/docs/Execution.html),
 [MsQuic platforms](https://microsoft.github.io/msquic/msquicdocs/docs/Platforms.html),
 [archived ngtcp2 wrapper](https://github.com/vacp2p/nim-ngtcp2).
+
+Follow-up: the [initial macOS transport proof](quic-proof.md) now runs
+authentication and concurrent CE 143 exchange in both languages. Its measured
+results supersede this document's research-only status for that bounded slice.

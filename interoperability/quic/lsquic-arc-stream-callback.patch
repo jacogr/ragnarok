@@ -1,0 +1,43 @@
+--- a/lsquic/connection.nim
++++ b/lsquic/connection.nim
+@@ -125,6 +125,14 @@
+ 
+   raise newException(ConnectionClosedError, "connection closed")
+ 
++# Capture only the retained transport context, never an async frame containing the stream itself.
++proc streamProcessor(ctx: QuicContext): proc(urgent: bool) {.gcsafe, raises: [].} =
++  result = proc(urgent: bool) {.gcsafe, raises: [].} =
++    if urgent:
++      ctx.processWhenReady()
++    else:
++      ctx.processSoon()
++
+ proc incomingStream*(
+     connection: Connection
+ ): Future[Stream] {.async: (raises: [CancelledError, ConnectionError]).} =
+@@ -139,11 +147,7 @@
+       raise newException(ConnectionClosedError, "connection closed")
+     else:
+       await connection.waitForIncomingStream()
+-  stream.doProcess = proc(urgent: bool) {.gcsafe, raises: [].} =
+-    if urgent:
+-      connection.quicContext.processWhenReady()
+-    else:
+-      connection.quicContext.processSoon()
++  stream.doProcess = streamProcessor(connection.quicContext)
+   stream
+ 
+ proc openStream*(
+@@ -153,11 +157,7 @@
+     raise newException(ConnectionClosedError, "connection closed")
+ 
+   let s = Stream.new()
+-  s.doProcess = proc(urgent: bool) {.gcsafe, raises: [].} =
+-    if urgent:
+-      connection.quicContext.processWhenReady()
+-    else:
+-      connection.quicContext.processSoon()
++  s.doProcess = streamProcessor(connection.quicContext)
+   let created = connection.quicConn.addPendingStream(s)
+   connection.quicContext.makeStream(connection.quicConn)
+   connection.quicContext.processWhenReady()

@@ -84,5 +84,9 @@ Wait for the maintainer's next go-ahead before the next codec increment.
 
 QUIC/JAMNP-S is now the priority investigation. See [the feasibility assessment](results/quic-feasibility.md)
 for the maintained Nim LSQUIC route, Odin event-loop/binding requirements and
-the proposed authenticated networking proof. No transport runtime gate has
-passed yet.
+the proposed authenticated networking proof. The follow-up below records
+the completed local experiment; the full M3 gate remains open.
+
+The first authenticated QUIC/CE 143 proof now runs in both languages. See
+[run instructions](docs/quic-proof.md) and [the verification report](results/quic-proof.md)
+for the pinned native dependencies, ARC patches and remaining M3 gates.

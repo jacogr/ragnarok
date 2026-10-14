@@ -1,3 +1,6 @@
 .DS_Store
 .idea
 .vscode
+
+# Isolated QUIC dependency sources, generated test keys, native binaries and logs.
+/build/quic/

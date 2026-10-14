@@ -153,9 +153,14 @@ See [the feasibility assessment](../results/quic-feasibility.md) and
 [research revision pins](../spec/networking-research.json). The recommended
 first proof is authenticated CE 143 preimage exchange using the same pinned
 LSQUIC engine with Nim's maintained Chronos wrapper and Odin's core:nbio plus
-C bindings. Authentication, ARC ownership, bounded queues, cancellation and
-Linux interoperability are still unproved. This research does not pass M3 or
-select a language or installed transport dependency.
+C bindings. The initial macOS IPv4 authentication and eight-stream CE 143 proof now passes
+in both languages, including cross-language exchange and rejection cases. See
+[the proof report](../results/quic-proof.md) and [run instructions](quic-proof.md).
+The isolated dependency pins and two local Nim compatibility/ownership patches
+are recorded in `spec/quic-proof-pins.json`. This does not pass M3 or select a
+language: Linux/IPv6, independent-peer interoperability, sustained backpressure
+and allocation/leak measurements remain open. Wait for the maintainer's next
+bounded networking increment.
 
 Complete work reports, other extrinsics, generic element schemas and full blocks
 remain later M1 work. Linux reproducibility/CI remains open in M0.
