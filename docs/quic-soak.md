@@ -22,7 +22,9 @@ The default is 40 sessions per language pairing, with eight warmup sessions.
 The server/client combinations Nim/Nim, Odin/Odin, Nim/Odin and Odin/Nim each
 keep the same two native processes alive across all rounds. Engines, listeners,
 sockets and connections
-are recreated and retired within those processes. This measures retained
+are recreated and retired within those processes. Odin holds one dispatcher
+per process; session-level acquisitions borrow that dispatcher and release their
+reference after draining operations. This measures retained
 resources across lifecycle churn; it does not establish multi-connection service
 within a persistent engine.
 

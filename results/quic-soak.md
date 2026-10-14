@@ -128,3 +128,31 @@ Local verification after explicit cancellation: all 256 native cancellation
 cases, the original 64-case QUIC suite, the full 160-session soak, five harness
 regression tests, formatting and `git diff --check` pass on macOS. The Linux
 backend will execute the native cancellation regression in the next CI run.
+
+## Linux dispatcher ownership follow-up
+
+[Run 38518614775](https://github.com/jacogr/ragnarok/actions/runs/38518614775)
+failed in the new cancellation selftest at event-loop acquisition. The assertion
+did not include its iteration or the returned error, so the precise kernel or
+allocator failure cannot be identified from that log. It failed before the
+network matrix and soak ran.
+
+The selftest had initialized and destroyed 256 event loops in rapid succession,
+with the tracking allocator installed before initialization. It now acquires
+one process-lived dispatcher using the normal allocator, then repeats the
+256 socket/receive cancellation cases within that loop. Odin's soak also holds
+one dispatcher for its process lifetime; each session's nested acquisition
+borrows it. Engines, connections, sockets and operation owners still retire
+between sessions, while dispatcher pools remain process-owned and are covered
+by the RSS and descriptor budgets. Application ownership remains tracked.
+
+Initialization failures now print their actual platform error and return failure
+rather than hiding it behind an assertion. Cancellation checks also require
+zero pending user operations after every case. CI retains process resource
+limits in the platform log. No initialization retry, kernel limit increase or
+resource-budget relaxation is added. Linux confirmation awaits the rerun.
+
+Local verification after dispatcher lifetime changes passes: 256 cancellation
+cases, the original 64-case QUIC suite, the full 160-session soak, five harness
+regression tests, formatting, actionlint and `git diff --check`. Linux startup
+and the full soak still require confirmation in the next CI run.

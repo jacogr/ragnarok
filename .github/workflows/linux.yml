@@ -43,6 +43,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y build-essential clang cmake zlib1g-dev openssl patch
           mkdir -p build/ci
           uname -a | tee build/ci/platform.log
+          ulimit -a | tee -a build/ci/platform.log
           clang --version | tee -a build/ci/platform.log
           cmake --version | tee -a build/ci/platform.log
           openssl version | tee -a build/ci/platform.log

@@ -443,6 +443,16 @@ arm_timer :: proc(peer: ^Peer) {
 	nbio.timeout_poly(time.Duration(delay) * time.Microsecond, peer, on_timer)
 }
 
+// Acquire the current thread's shared I/O loop, preserving the actual platform error for CI diagnostics.
+acquire_loop :: proc() -> bool {
+	err := nbio.acquire_thread_event_loop()
+	if err != nil {
+		fmt.eprintln("event-loop acquisition failed:", err)
+		return false // Never hide a kernel/backend setup failure behind an assertion.
+	}
+	return true
+}
+
 // Run one bounded authentication attempt and drain I/O callbacks before releasing TLS/native contexts.
 run_peer :: proc() -> bool {
 	if len(os.args) != 8 &&
@@ -467,7 +477,7 @@ run_peer :: proc() -> bool {
 	defer delete(expected)
 	// Dialers pin the server key; only acceptors may discover a consistent previously unknown peer.
 	if !server && len(expected) != 32 {return false}
-	if nbio.acquire_thread_event_loop() != nil {return false} 	// One event loop owns every operation.
+	if !acquire_loop() {return false} 	// One event loop owns every operation.
 	defer nbio.release_thread_event_loop()
 	socket, socket_err := nbio.create_udp_socket(.IP4)
 	if socket_err != nil {return false} 	// Cannot start a transport without nonblocking UDP.
@@ -582,13 +592,15 @@ on_cancel_probe :: proc(op: ^nbio.Operation, probe: ^Cancellation_Probe) {
 
 // Exercise idle and ready receive cancellation directly on the host I/O backend.
 io_self_test :: proc() {
+	// The event-loop owner is process-lived; repeated cancellation must not create a fresh kernel ring each iteration.
+	if !acquire_loop() {os.exit(2)}
+	defer nbio.release_thread_event_loop()
 	tracking: mem.Tracking_Allocator
 	mem.tracking_allocator_init(&tracking, context.allocator)
 	defer mem.tracking_allocator_destroy(&tracking)
 	context.allocator = mem.tracking_allocator(&tracking)
-	// Every iteration retires the same kinds of socket/event-loop owners as a soak session.
+	// Retire each socket and operation while reusing the same asynchronous dispatcher, as the soak does.
 	for iteration in 0 ..< 256 {
-		assert(nbio.acquire_thread_event_loop() == nil)
 		socket, err := nbio.create_udp_socket(.IP4)
 		assert(err == nil)
 		assert(net.bind(socket, {net.IP4_Loopback, 0}) == nil)
@@ -612,8 +624,8 @@ io_self_test :: proc() {
 		assert(nbio.run() == nil) // Drain kernel completions before stack buffer storage goes out of scope.
 		assert(probe.callbacks == before) // Removal is final and suppresses queued callback delivery.
 		net.close(socket)
-		nbio.release_thread_event_loop()
-		assert(tracking.current_memory_allocated == 0) // No event-loop/application ownership accumulates.
+		assert(nbio.num_waiting() == 0) // No user operation can borrow the retiring stack buffer or socket.
+		assert(tracking.current_memory_allocated == 0) // Application ownership returns to baseline; loop storage is process-lived.
 	}
 	fmt.println("Odin I/O selftest: 256 idle/ready receive cancellations passed")
 }
@@ -661,6 +673,9 @@ main :: proc() {
 	// This regression probes cancellation ownership on the actual host backend before opening TLS sessions.
 	if len(os.args) == 2 && os.args[1] == "--io-selftest" {io_self_test(); return}
 	if len(os.args) == 9 && os.args[8] == "soak" {
+		// Hold one dispatcher across sessions; run_peer's nested acquire/release borrows this process-lived owner.
+		if !acquire_loop() {os.exit(2)}
+		defer nbio.release_thread_event_loop()
 		tracking: mem.Tracking_Allocator
 		mem.tracking_allocator_init(&tracking, context.allocator)
 		defer mem.tracking_allocator_destroy(&tracking)

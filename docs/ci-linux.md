@@ -69,3 +69,9 @@ subsequently completed the Nim/Nim soak, then exposed an Odin linked-receive
 timeout panic. Odin now uses explicit receive cancellation and a native
 idle/ready cancellation regression test. The complete Linux soak remains
 pending verification of this change.
+
+[Run 38518614775](https://github.com/jacogr/ragnarok/actions/runs/38518614775)
+failed at dispatcher acquisition in the cancellation selftest, without exposing
+the returned error. The selftest and Odin soak now reuse one process-lived
+dispatcher. Setup failures preserve their error, and platform diagnostics include
+resource limits. Full Linux verification still awaits the rerun.
