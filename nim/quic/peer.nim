@@ -2,6 +2,7 @@
 ## One synchronous owner drives nonblocking UDP readiness and deadlines without external Nim dependencies.
 import std/[os, strutils, monotimes, times]
 import ./transport
+import ./integration
 
 type
   # One bounded native stream owns application storage until its final close callback.
@@ -12,14 +13,18 @@ type
     readFin, writeFin, counted, paused, blocked: bool
     started: MonoTime
     attack: string
+    verified: VerifiedDigest
+    query: PreimageKey
+    fixture: int
   # This stack owner outlives every synchronous native callback and its selector/engine teardown.
   Peer = object
     transport: Transport
     expected: seq[byte]
-    server, failed, stopping, service, mixed: bool
+    server, failed, stopping, service, mixed, integrated: bool
     streams: array[64, StreamState]
     completed, opened, healthy, rejected, cancelled: int
     attack: string
+    bank: IntegrationBank
 
 # Fixture preimage key is independently checked by the shared harness; no unfinished database/state code is involved.
 const RequestHash = [17'u8, 192, 231, 155, 113, 195, 151, 108, 205, 12, 2, 209, 49, 14, 37, 22,
@@ -114,7 +119,8 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
   if peer.server and state.receivedLength > 0 and state.received[0] != 143: return (false, false)
   # A partial header remains pending only while the peer has not ended its direction.
   if state.receivedLength < start + 4: return (false, not state.readFin)
-  let maximum = if peer.server: 32 elif peer.attack == "soak": LargeSize else: 1024
+  let maximum = if peer.server: 32 elif peer.integrated: WireCap elif peer.attack ==
+      "soak": LargeSize else: 1024
   let length = checkedLength(state.received.toOpenArray(start, start + 3), maximum)
   # Reject impossible declared payloads before any narrowing/indexing.
   if not length.ok: return (false, false)
@@ -123,6 +129,33 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
   if state.receivedLength > extent: return (false, false)
   if not state.readFin: return (false, true) # Complete bytes without FIN are still pending.
   if state.receivedLength != extent: return (false, false) # FIN before the declared payload is truncation.
+  # The integration corpus deliberately uses complete C.2 digests as otherwise opaque CE preimages.
+  if peer.integrated:
+    if peer.server:
+      if length.size != 32: return (false, false) # CE query hash width remains normative.
+      let index = findFixture(peer.bank, state.received.toOpenArray(5, 36))
+      if index < 0:
+        echo "INTEGRATION_REJECT Lookup"
+        return (false, false) # A missing database key cannot select a default record.
+      state.fixture = index
+      var scratch = newSeq[byte](peer.bank.wires[index].len)
+      for i, value in peer.bank.wires[index]: scratch[
+          i] = value # Keep the bank immutable while the receive/scratch owner is reused.
+      let checked = captureDigest(scratch, peer.bank.keys[index])
+      if checked.error != IntegrationError.None:
+        echo "INTEGRATION_REJECT ", checked.error
+        return (false, false) # Codec/ownership/crypto failure settles only this stream.
+      state.verified = checked.value
+      echo "OWNED_VERIFIED"
+    else:
+      # Capture the actual received preimage; its query key is retained independently of source storage.
+      let checked = captureDigest(state.received.toOpenArray(4, extent - 1), state.query)
+      if checked.error != IntegrationError.None:
+        echo "INTEGRATION_REJECT ", checked.error
+        return (false, false)
+      state.verified = checked.value
+      echo "OWNED_VERIFIED"
+    return (true, true)
   # Requests select only exact fixture hash keys, never a default/missing map entry.
   if peer.server:
     if length.size != 32: return (false, false) # Preimage keys have fixed width.
@@ -142,12 +175,29 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
 # Initialize bounded request/reply storage on a new native stream; no network length chooses an allocation.
 proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.raises: [].} =
   state[] = StreamState(handle: handle, started: getMonoTime(), attack: peer.attack)
-  state.received = newSeq[byte](if peer.server or peer.attack != "soak": 1050 else: LargeSize + 5)
+  state.received = newSeq[byte](if peer.server: 1050 elif peer.integrated: WireCap +
+      5 elif peer.attack != "soak": 1050 else: LargeSize + 5)
   # The acceptor waits for one exact request before allocating its trusted fixture response.
   if peer.server: return
   state.sending = newSeq[byte](64)
   state.sending[0] = 143
   state.sending[1] = 32
+  # The integrated query corpus keeps eight independent stream owners and exact typed request keys.
+  if peer.integrated:
+    let index = peer.opened
+    if index >= 8: peer.failed = true; streamAbort(handle); return # Trusted workload ceiling.
+    inc peer.opened
+    state.fixture = index
+    state.query = peer.bank.keys[index]
+    state.attack = if index == 6: "cancel" else: "valid"
+    for i, value in array[32, byte](state.query): state.sending[5 + i] = value
+    if index == 4: state.sending[5] = state.sending[5] xor 1 # Deliberately request an absent key.
+    state.sendLength = 37
+    if index == 6:
+      state.paused = true
+      wantRead(handle, 0) # Cancellation must retire a snapshot behind real backpressure.
+    wantWrite(handle, 1)
+    return
   var wanted = RequestHash
   # Five healthy requests share one connection with cancellation, bad kind and missing FIN.
   if peer.attack == "soak":
@@ -211,6 +261,16 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
       wantRead(state.handle, 0) # Stop repeated EOF callbacks after validated FIN.
       # Only a validated fixture key can select a bounded server response allocation.
       if peer.server:
+        if peer.integrated:
+          let wire = state.verified.wire
+          state.sending = newSeq[byte](wire.len + 4)
+          for i in 0..<4: state.sending[i] = byte((wire.len shr (8 * i)) and 255) # Native E4 response header.
+          for i, value in wire: state.sending[4 + i] = value # Serialize from the validated owner, not the overwritten scratch.
+          if state.fixture == 5: state.sending[8] = state.sending[
+              8] xor 1 # Test-only corrupt response remains a valid digest with the wrong preimage hash.
+          state.sendLength = state.sending.len
+          wantWrite(state.handle, 1)
+          return # The snapshot and write storage remain retained until native stream close.
         let size = if peer.attack == "soak" and state.received[5] == LargeHash[0]: LargeSize else: 3
         state.sending = newSeq[byte](size + 4)
         # Encode trusted E4 bytes before the fixture payload, independently of the C bridge.
@@ -275,6 +335,9 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
   if event == 3:
     # A premature native close rejects unsettled work unless teardown is already retiring the owner.
     if not state.counted and not peer.stopping: finishStream(peer, state, false)
+    # The cancelled large response must have reached owned capture before final close releases it.
+    if peer.integrated and peer.server and state.fixture == 6 and state.verified.wire.len >
+        0: echo "OWNED_CANCEL_RELEASE"
     state[] = StreamState() # ARC releases both buffers; the slot holds no closure/reference back to Peer.
     return
   if event == 4:
@@ -306,7 +369,7 @@ proc soakTick(peer: ptr Peer) {.raises: [].} =
         # The pending large write proves real flow-control backpressure, not an artificial sleep alone.
         state.blocked = true
         echo "BACKPRESSURE"
-    elif state.attack == "cancel" and elapsed > (if peer.mixed: 700 else: 150):
+    elif state.attack == "cancel" and elapsed > (if peer.integrated: 500 elif peer.mixed: 700 else: 150):
       # Cancel while the remote large write is parked behind withheld receive credit.
       state.counted = true
       inc peer.completed
@@ -329,9 +392,16 @@ proc runPeer(): bool =
   if not server and paramStr(1) != "client": return false # Never infer an unknown role.
   let mode = if paramCount() == 8: paramStr(8) else: "valid"
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
-  if mode == "service" and not server: return false
-  var peer = Peer(server: server, service: mode == "service", mixed: mode == "mixed",
-      attack: if mode in ["service", "mixed"]: "soak" elif mode == "clean": "valid" else: mode)
+  if mode in ["service", "integration"] and not server: return false
+  let integrated = mode in ["integration", "integrated"]
+  let service = mode in ["service", "integration"]
+  let attack = if service or integrated or mode == "mixed": "soak" elif mode ==
+      "clean": "valid" else: mode
+  var peer = Peer(server: server, service: service, integrated: integrated,
+      mixed: mode == "mixed", attack: attack)
+  # Explicitly integrated binaries load public fixtures before registering native callbacks.
+  if peer.integrated and (not IntegrationEnabled or not loadBank(peer.bank, getEnv(
+      "RAGNAROK_INTEGRATION_FIXTURES"))): return false
   # Expected identity bytes remain owned by Peer across all TLS verification callbacks.
   if paramStr(5) != "-":
     let text = readFile(paramStr(5))
@@ -404,11 +474,12 @@ proc runPeer(): bool =
   result = authenticated and not peer.failed and peer.completed == 8
   # Client success counts must distinguish exactly five healthy, two rejected and one cancelled stream.
   if result and peer.attack == "soak" and not server:
-    result = peer.healthy == 5 and peer.rejected == 2 and peer.cancelled == 1
+    result = if peer.integrated: peer.healthy == 3 and peer.rejected == 4 and peer.cancelled ==
+        1 else: peer.healthy == 5 and peer.rejected == 2 and peer.cancelled == 1
   if result:
     echo "EXCHANGE_OK 8" # Authentication alone is insufficient without all terminal application outcomes.
     # Mixed clients explicitly close while UDP remains active so the persistent server can retire their connection.
-    if mode in ["mixed", "clean"]: disconnectTransport(peer.transport)
+    if mode in ["mixed", "clean", "integrated"]: disconnectTransport(peer.transport)
     let grace = getMonoTime()
     # Drain final handshake/FIN packets before removing readiness and destroying native stream state.
     while (getMonoTime() - grace).inMilliseconds < 100:
@@ -465,6 +536,11 @@ proc selfTest() =
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
   try:
+    # The composition selftest needs only codec/crypto, with no TLS session or filesystem fixture.
+    if paramCount() == 1 and paramStr(1) == "--integration-selftest":
+      if not IntegrationEnabled: return 2
+      integrationSelfTest()
+      return 0
     # Parser tests create no native transport or socket.
     if paramCount() == 1 and paramStr(1) == "--selftest":
       selfTest()
@@ -491,7 +567,7 @@ proc main(): int =
         if not runPeer(): return 2 # Deferred selector/native cleanup finishes before failure returns.
         echo "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem()
         echo "SESSION_DONE ", iteration
-    elif paramCount() == 8 and paramStr(8) == "service":
+    elif paramCount() == 8 and paramStr(8) in ["service", "integration"]:
       # Final native callbacks and ARC release complete before observing the process-level application baseline.
       let baseline = getOccupiedMem()
       if not runPeer(): return 2

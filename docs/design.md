@@ -221,3 +221,11 @@ controlled optimized measurements and maintainer ergonomics review. The maintain
 requests M1 speed comparisons: encode/decode representative scalar, bounded and nested codecs,
 separating allocation-free borrowed APIs from owned snapshots on the same Linux host/corpus.
 Resource use and latency accompany throughput. Do not start either round without the next go-ahead.
+
+The integrated slice now composes owned C.2 digest capture, Blake2b-256 content verification and
+persistent CE 143 service in each native language. See [the contract and workload](integration.md)
+and [verification results](../results/integration.md). Test preimages deliberately contain serialized
+digests; this imposes no new normative CE schema or work-output hash relationship. Malformed,
+trailing, missing-key and wrong-hash failures remain stream-local, while cancellation retains and
+then releases an owned snapshot behind backpressure. Optimized codec/resource measurements and
+maintainer ergonomics remain the next proposed bounded decision round, awaiting go-ahead.

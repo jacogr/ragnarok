@@ -1,5 +1,6 @@
 // Isolated JAMNP-S authentication proof using a single core:nbio loop and pinned LSQUIC/TLS.
 package main
+import codec "../codec"
 import "base:runtime"
 import "core:fmt"
 import "core:mem"
@@ -28,6 +29,9 @@ Stream_State :: struct {
 	started:                      time.Time,
 	attack:                       string,
 	paused, blocked:              bool,
+	owner:                        codec.Owned_Frame, // One release owner retained through final native stream close.
+	query:                        Preimage_Key,
+	fixture:                      int,
 }
 // Native owner outlives every receive/timer/C callback; buffers never refer to expired stack frames.
 Peer :: struct {
@@ -37,11 +41,12 @@ Peer :: struct {
 	buffer:                                        [2048]u8,
 	stopping:                                      bool,
 	saved_context:                                 runtime.Context,
-	server, failed, service, mixed:                bool,
+	server, failed, service, mixed, integrated:    bool,
 	streams:                                       [64]Stream_State,
 	completed:                                     int,
 	attack:                                        string,
 	opened, healthy, rejected, cancelled, blocked: int,
+	bank:                                          Integration_Bank,
 	tracking:                                      ^mem.Tracking_Allocator, // Borrowed from the service entry point through all callbacks.
 	receive_operation:                             ^nbio.Operation, // Owned until callback delivery or explicit removal; buffer stays in Peer.
 }
@@ -240,12 +245,48 @@ frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, val
 	if stream.received_length < start + 4 { return false, !stream.read_fin } 	// Partial length waits for more bytes.
 	claimed: u64
 	for i in 0 ..< 4 { claimed |= u64(stream.received[start + i]) << uint(8 * i) } 	// E4 network frame header.
-	maximum := u64(32) if peer.server else u64(LARGE_SIZE if peer.attack == "soak" else 1024)
+	maximum :=
+		u64(32) if peer.server else u64(INTEGRATION_WIRE_CAP if peer.integrated else (LARGE_SIZE if peer.attack == "soak" else 1024))
 	if claimed > maximum { return false, false } 	// Reject before allocation or indexing.
 	extent := start + 4 + int(claimed)
 	if stream.received_length > extent { return false, false } 	// Exactly one message is allowed in this direction.
 	if !stream.read_fin { return false, true } 	// CE success requires FIN, not only enough payload bytes.
 	if stream.received_length != extent { return false, false } 	// Premature FIN is truncation.
+	// Integrated fixtures are full work digests; CE itself still transports opaque preimage bytes.
+	if peer.integrated {
+		if peer.server {
+			if claimed != 32 { return false, false } 	// Query width stays normative.
+			index := find_fixture(&peer.bank, stream.received[5:37])
+			if index < 0 { fmt.println("INTEGRATION_REJECT Lookup"); return false, false } 	// No default record after a miss.
+			stream.fixture = index
+			scratch := make([]u8, len(peer.bank.wires[index]))
+			defer delete(scratch)
+			copy(scratch, peer.bank.wires[index])
+			checked := capture_digest(scratch, peer.bank.keys[index])
+			switch value in checked {
+			case Integration_Error:
+				fmt.println("INTEGRATION_REJECT", value); return false, false // Failed capture retains no resources.
+			case Verified_Digest:
+				stream.owner = value.owner // Transfer exactly one snapshot release owner to the stream.
+				defer delete(value.wire)
+				stream.sending = make([]u8, len(value.wire) + 4)
+				for i in 0 ..< 4 { stream.sending[i] = u8((len(value.wire) >> uint(8 * i)) & 255) } 	// Native E4 header.
+				copy(stream.sending[4:], value.wire)
+				if index == 5 { stream.sending[8] ~= 1 } 	// Test-only wrong-hash response remains codec-valid.
+				stream.send_length = len(stream.sending)
+			}
+		} else {
+			checked := capture_digest(stream.received[4:extent], stream.query)
+			switch value in checked {
+			case Integration_Error:
+				fmt.println("INTEGRATION_REJECT", value); return false, false // Hash/codec failure is stream-local.
+			case Verified_Digest:
+				stream.owner = value.owner; delete(value.wire) // The snapshot survives receive-buffer reuse until final close.
+			}
+		}
+		fmt.println("OWNED_VERIFIED")
+		return true, true
+	}
 	if peer.server {
 		if claimed != 32 { return false, false } 	// Hash is fixed width.
 		wanted :=
@@ -281,11 +322,26 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 		}
 		state.received = make(
 			[]u8,
-			1050 if peer.server || peer.attack != "soak" else LARGE_SIZE + 5,
+			1050 if peer.server else (INTEGRATION_WIRE_CAP + 5 if peer.integrated else (1050 if peer.attack != "soak" else LARGE_SIZE + 5)),
 		)
 		if !peer.server {
 			state.sending = make([]u8, 64)
 			state.sending[0] = 143; state.sending[1] = 32
+			// Select the exact integration key before any read/write callback starts.
+			if peer.integrated {
+				index := peer.opened
+				if index >= 8 { peer.failed = true; rq_stream_abort(handle); return } 	// Bound trusted workload indexing.
+				peer.opened += 1
+				state.fixture = index
+				state.query = peer.bank.keys[index]
+				state.attack = "cancel" if index == 6 else "valid"
+				for value, i in state.query { state.sending[5 + i] = value } 	// Exact public preimage query.
+				if index == 4 { state.sending[5] ~= 1 } 	// Missing-key fixture request.
+				state.send_length = 37
+				if index == 6 { state.paused = true; rq_stream_want_read(handle, 0) } 	// Cancel a retained snapshot behind transport backpressure.
+				rq_stream_want_write(handle, 1)
+				return
+			}
 			wanted := REQUEST_HASH
 			// The soak mixes five healthy replies with cancellation, malformed kind and missing FIN.
 			if peer.attack == "soak" {
@@ -339,6 +395,11 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 	} // Never dereference stale native ownership.
 	if event == 3 {
 		if !state.counted && !peer.stopping { finish_stream(peer, state, false) } 	// Premature close is a rejection.
+		if peer.integrated &&
+		   peer.server &&
+		   state.fixture == 6 &&
+		   state.owner != nil { fmt.println("OWNED_CANCEL_RELEASE") } 	// Prove cancellation reached an owned snapshot.
+		codec.destroy_owned(&state.owner) // Final close, including cancellation, is the sole release owner.
 		delete(state.received); delete(state.sending)
 		state^ = {} // Slot reuse cannot retain old buffers or timers.
 		return
@@ -370,6 +431,7 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 			if complete {
 				rq_stream_want_read(handle, 0)
 				if peer.server {
+					if peer.integrated { rq_stream_want_write(handle, 1); break } 	// Reply was built from the owned digest, with its snapshot retained.
 					size :=
 						LARGE_SIZE if state.received[5] == LARGE_HASH[0] && peer.attack == "soak" else 3
 					state.sending = make([]u8, size + 4)
@@ -421,7 +483,8 @@ soak_tick :: proc(peer: ^Peer) {
 				state.blocked = true; peer.blocked += 1; fmt.println("BACKPRESSURE") // Observe a genuinely pending large write.
 			}
 		} else if state.attack == "cancel" &&
-		   elapsed > (700 if peer.mixed else 150) * time.Millisecond {
+		   elapsed >
+			   (500 if peer.integrated else (700 if peer.mixed else 150)) * time.Millisecond {
 			state.counted = true; peer.completed += 1; peer.cancelled += 1
 			fmt.println("CANCEL_OK"); rq_stream_abort(state.handle) // Cancel with a server write still pending.
 		} else if state.attack == "slow" &&
@@ -515,16 +578,24 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	if local_err != nil { return false } 	// Native engine needs the actual ephemeral client port.
 	mode := os.args[8] if len(os.args) == 9 else "valid"
 	// Mixed clients retain the soak workload without the old per-session gate; service is listener-only.
-	if mode == "service" && !server { return false }
+	if (mode == "service" || mode == "integration") && !server { return false }
 	peer := Peer {
 		tracking      = tracking,
 		mixed         = mode == "mixed",
-		service       = mode == "service",
+		service       = mode == "service" || mode == "integration",
+		integrated    = mode == "integration" || mode == "integrated",
 		socket        = socket,
 		expected      = expected,
 		saved_context = context,
 		server        = server,
-		attack        = "soak" if mode == "service" || mode == "mixed" else ("valid" if mode == "clean" else mode),
+		attack        = "soak" if mode == "service" || mode == "mixed" || mode == "integration" || mode == "integrated" else ("valid" if mode == "clean" else mode),
+	}
+	// The fixture bank outlives engine destruction; each stream snapshot is destroyed by its final close callback first.
+	defer destroy_bank(&peer.bank)
+	if peer.integrated {
+		directory := os.get_env("RAGNAROK_INTEGRATION_FIXTURES", context.allocator)
+		defer delete(directory)
+		if !INTEGRATION || !load_bank(&peer.bank, directory) { return false } 	// Ordinary binaries cannot silently claim integration coverage.
 	}
 	cert, key, alpn :=
 		strings.clone_to_cstring(os.args[3]),
@@ -612,14 +683,16 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 	// The service ends at an external idle barrier, never at the first completed client's stream count.
 	if peer.service { success = service_stopped && !peer.failed && rq_peer_metric(peer.transport, 3) >= 3 }
 	if success && peer.attack == "soak" && !server {
-		success = peer.healthy == 5 && peer.rejected == 2 && peer.cancelled == 1 // Intentional failures are exact.
+		success =
+			peer.healthy == 3 && peer.rejected == 4 && peer.cancelled == 1 if peer.integrated else peer.healthy == 5 && peer.rejected == 2 && peer.cancelled == 1 // Intentional failures are exact.
 	}
 	if success && !peer.service { fmt.println("EXCHANGE_OK 8") } 	// Application success requires all eight framed exchanges.
 	// Briefly drain final handshake packets before closing an authenticated connection.
 	if success && !peer.service {
 		// Close before stopping UDP, allowing the listener to observe connection retirement between waves.
 		if mode == "mixed" ||
-		   mode == "clean" { rq_disconnect(peer.transport); rq_process(peer.transport) }
+		   mode == "clean" ||
+		   mode == "integrated" { rq_disconnect(peer.transport); rq_process(peer.transport) }
 		grace := time.now()
 		for time.since(grace) < 100 * time.Millisecond { _ = nbio.tick(10 * time.Millisecond) } 	// Keep processing final handshake packets.
 	}
@@ -735,11 +808,16 @@ self_test :: proc() {
 
 // Exit only after the attempt returns through all deferred transport/socket/event-loop cleanup.
 main :: proc() {
+	// Composition tests own no transport; tracking asserts every decode/hash outcome releases its storage.
+	if len(os.args) == 2 &&
+	   os.args[1] ==
+		   "--integration-selftest" { if !INTEGRATION { os.exit(2) }; integration_self_test(); return }
+
 	// Parser fuzz tests do not create an engine or require socket permission.
 	if len(os.args) == 2 && os.args[1] == "--selftest" { self_test(); return }
 	// This regression probes cancellation ownership on the actual host backend before opening TLS sessions.
 	if len(os.args) == 2 && os.args[1] == "--io-selftest" { io_self_test(); return }
-	if len(os.args) == 9 && os.args[8] == "service" {
+	if len(os.args) == 9 && (os.args[8] == "service" || os.args[8] == "integration") {
 		// A process-lived dispatcher keeps its allocations outside the application ownership baseline.
 		if !acquire_loop() { os.exit(2) }
 		defer nbio.release_thread_event_loop()

@@ -134,3 +134,8 @@ ABI. See [the APIs](docs/bandersnatch.md), [pinned contract](spec/bandersnatch.m
 and [verification](results/bandersnatch.md). Run
 `python3 interoperability/test_bandersnatch.py --fetch`. Historical backend
 audit/policy gates and BEEFY/BLS remain open.
+
+The [integrated decision slice](docs/integration.md) composes owned work-digest decoding,
+Blake2b-256 content checks and persistent CE 143 networking, including cancellation and failed
+siblings. Run `python3 interoperability/test_integration.py --fetch`; see
+[its verification report](results/integration.md). Linux CI includes the new workload.

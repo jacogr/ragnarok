@@ -33,6 +33,7 @@ python3 interoperability/test_quic.py --fetch
 python3 interoperability/test_quic_soak_harness.py
 python3 interoperability/test_quic_soak.py --skip-build
 python3 interoperability/test_quic_service.py --skip-build
+python3 interoperability/test_integration.py --reuse-native
 ```
 
 The codec command covers both native implementations, negative compilation
@@ -100,3 +101,9 @@ binaries. It retains one listener engine per language across sixteen mixed-langu
 waves, with fully retired idle resource observations and final application/I/O cleanup checks.
 See [the workload](quic-service.md). Its JSON and logs are included in the diagnostic upload;
 verification on Linux awaits the pushed run for this increment.
+
+The [integrated slice](integration.md) now follows the persistent-service step. It recompiles the
+integrated native peers against the already verified crypto/QUIC libraries, then runs composition
+fuzzing and the bounded multi-peer owned-codec/hash workload. Only explicit build/results/resource
+and peer logs are uploaded from `build/integration`; fixtures and TLS private keys are excluded.
+Linux verification for this increment awaits its pushed run.

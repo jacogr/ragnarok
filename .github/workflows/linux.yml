@@ -95,6 +95,9 @@ jobs:
       - name: Persistent multi-peer QUIC service
         run: python3 interoperability/test_quic_service.py --skip-build 2>&1 | tee build/ci/quic-service.log
 
+      - name: Integrated owned codec, crypto and QUIC
+        run: python3 interoperability/test_integration.py --reuse-native 2>&1 | tee build/ci/integration.log
+
       # Upload only explicit diagnostics; dependency trees, certificates and private keys are excluded.
       - name: Retain verification logs
         if: always()
@@ -121,3 +124,7 @@ jobs:
             build/quic/service/results.json
             build/quic/service/*/*.log
             build/quic/service/*/resources.json
+            build/integration/build.log
+            build/integration/results.json
+            build/integration/*/*.log
+            build/integration/*/resources.json
