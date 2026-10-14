@@ -185,12 +185,15 @@ adds copying/allocation; Nim retains storage through ARC, while Odin uses an
 explicit allocator and single-release owner contract. See
 [the ownership verification report](../results/codec-ownership.md).
 
-M2 is now the next investigation. The [pinned crypto inventory and assessment](../results/crypto-feasibility.md)
-recommends a first Blake2b-256/Ed25519 slice with separate typed Nim/Odin
-adapters and identical algorithm/test contracts. Evaluate Odin's existing core
-crypto modules and Nim's existing pinned BoringSSL backend; native-library
-availability is part of the language comparison. The
-maintainer prioritizes Bandersnatch VRF/Ring-VRF next, including exact JAM
-compatibility and a pinned Rust backend behind a shared C ABI. Keccak-256 follows
-Bandersnatch, then BEEFY/BLS. No project M2 implementation is claimed yet; a limited Odin core crypto smoke
-check passed and full conformance remains next.
+The first M2 primitive slice now implements Blake2b-256, ordinary Ed25519 and
+legacy Keccak-256 in both languages. Odin uses compiler-pinned core modules;
+Nim uses the existing pinned BoringSSL source for Blake2b/Ed25519 and pristine
+XKCP for Keccak through a narrow maintained C ABI. See [the API and ownership
+contract](crypto.md), [pinned interpretation](../spec/crypto.md) and
+[verification results](../results/crypto-primitives.md). Linux CI now includes
+the crypto runner; its new step awaits a pushed run.
+
+Bandersnatch contextual VRF/Ring-VRF remains the next bounded round: establish
+exact JAM suite, encoding and setup compatibility before selecting a pinned
+Rust backend and shared C ABI. BEEFY/BLS follows. Primitive test success does
+not complete M2 or its audit and consensus acceptance-policy assessment.

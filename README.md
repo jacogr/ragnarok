@@ -105,3 +105,10 @@ metadata from typed failures in both languages.
 Use [owned snapshots](docs/codec-ownership.md) when decoded blobs may outlive
 or be used after changes to their input. Span/pool APIs now have explicit borrowed
 names. See [the ownership verification](results/codec-ownership.md).
+
+The first M2 slice implements Blake2b-256, Ed25519 and legacy Keccak-256 in both
+languages. See [the APIs and ownership](docs/crypto.md), [specification notes](spec/crypto.md)
+and [verification report](results/crypto-primitives.md). Run
+`python3 interoperability/test_crypto.py --fetch`; Linux CI runs it before QUIC.
+An explicit small-order Ed25519 acceptance-policy difference remains a JAM gate.
+Bandersnatch compatibility and the Rust ABI are the next bounded round.

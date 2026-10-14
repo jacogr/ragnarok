@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "graypaper_commit": "1c979cb59bb800f92ffff083a2701004dfc6cd33",
+  "nim": "2.2.12",
+  "nim_memory_manager": "arc",
+  "odin": "dev-2026-10:84bc3fc21",
+  "sources": {
+    "boringssl": {
+      "repository": "vacp2p/boringssl",
+      "commit": "88341070936d28e08f82db1326c73d67962cd043"
+    },
+    "xkcp": {
+      "repository": "XKCP/XKCP",
+      "commit": "4affab454735d54e78156880b3b44e38dcbf765c"
+    }
+  },
+  "patches": [],
+  "wycheproof": {
+    "repository": "C2SP/wycheproof",
+    "commit": "7a325932231bd7a724c791c8b0d65ea4d6d2f435",
+    "path": "testvectors_v1/ed25519_test.json",
+    "sha256": "752d2ea7d7c6cf4736381b6cbacb61f8182b126ab7cd9b058f00c50084975536",
+    "license_sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+  },
+  "rfc8032": {
+    "url": "https://www.rfc-editor.org/rfc/rfc8032.txt",
+    "section": "7.1",
+    "fixture_sha256": "114e556112ad977567acf5e2a6a0ddc2c5a686d259b9126730ec1e4fccc45a6d"
+  }
+}

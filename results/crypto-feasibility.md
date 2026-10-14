@@ -1,9 +1,9 @@
 # M2 cryptography assessment
 
 Assessment date: 2026-10-14. This inventories required primitives and proposes a
-bounded first integration round. No project crypto adapter has been implemented and no new library has been
-installed. A limited native Odin smoke check is recorded below; full
-cryptographic conformance remains to be implemented.
+bounded first integration round. The subsequent [primitive implementation report](crypto-primitives.md) now
+covers Blake2b-256, Ed25519 and legacy Keccak-256 in both languages. The smoke
+check below records the preceding research stage.
 The maintainer has reported that Linux CI passes for the preceding explicit
 QUIC-adapter round.
 
@@ -21,7 +21,7 @@ in [crypto-research.json](../spec/crypto-research.json).
 | --- | --- | --- |
 | Blake2b-256 | 32-byte hashes of the prescribed raw/encoded octets | First slice |
 | Ed25519 | RFC 8032 signing and verification; 32-byte public keys, 64-byte signatures | First slice |
-| Keccak-256 | Ethereum-style 32-byte hashing, including BEEFY commitments | After Bandersnatch |
+| Keccak-256 | Ethereum-style 32-byte hashing, including BEEFY commitments | First slice (expanded by maintainer) |
 | Bandersnatch contextual VRF | 32-byte public keys, 96-byte signatures, 32-byte extracted output | Second priority: Rust/C ABI integration |
 | Bandersnatch Ring-VRF | 144-byte ring roots, 784-byte proofs, ring commitment and output extraction | Second priority: Rust/C ABI integration |
 | BLS12-381 signing/aggregation | BEEFY's specified aggregation mechanism; GP public-key type is 144 bytes | Later dedicated slice |
@@ -41,11 +41,10 @@ does not implement erasure coding, state transitions or a validator.
 
 The maintainer prioritizes these bounded rounds:
 
-1. Blake2b-256 and ordinary Ed25519 integration.
+1. Blake2b-256, ordinary Ed25519 and legacy Keccak-256 integration.
 2. Bandersnatch VRF/Ring-VRF compatibility and integration through a narrow
    shared C ABI over a pinned Rust implementation.
-3. Keccak-256.
-4. BEEFY/BLS signing and aggregation.
+3. BEEFY/BLS signing and aggregation.
 
 The second round explicitly evaluates crossing the Rust boundary from both
 Nim and Odin: reproducible Rust toolchain and Cargo dependency pins, exact JAM
@@ -182,7 +181,8 @@ codec or state-transition implementation belongs behind the crypto ABI.
 BLS likewise needs the exact BEEFY aggregation/encoding scheme from the cited
 paper; generic BLS12-381 support alone does not establish compatibility with
 its 144-byte public-key type or aggregate construction. No backend is selected
-for Bandersnatch, Keccak or BLS by this assessment.
+for Bandersnatch or BLS; the subsequent implementation selects XKCP for Nim
+Keccak and Odin core for Odin Keccak.
 
 The first slice establishes ordinary crypto FFI correctness and ergonomics.
 It does not complete M2, and its success must not hide the remaining

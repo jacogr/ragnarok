@@ -20,13 +20,18 @@ After setup, the job runs:
 ```sh
 python3 tools/format.py --check
 python3 interoperability/test_codec.py
+python3 interoperability/test_crypto.py --fetch
 python3 interoperability/test_quic.py --fetch
 python3 interoperability/test_quic_soak_harness.py
 python3 interoperability/test_quic_soak.py --skip-build
 ```
 
 The codec command covers both native implementations, negative compilation
-fixtures, official vectors and shared conformance cases. The QUIC command fetches
+fixtures, official vectors and shared conformance cases. The crypto command
+checks both debug/release implementations, pinned RFC/Wycheproof fixtures,
+independent hashes, ownership and concurrent native calls. It fetches pristine
+BoringSSL/XKCP sources and shares the identical BoringSSL build with QUIC.
+The new crypto step awaits a pushed Linux run. The QUIC command fetches
 four pinned native source trees, builds both explicit adapters without Nim
 packages/source patches, and runs the authenticated
 cross-language CE 143 proof and rejection cases. Dependencies are not cached.
@@ -40,7 +45,7 @@ See [the QUIC proof instructions](quic-proof.md) for native dependencies,
 protocol pins, proof limits and remaining M3 work.
 
 The job has read-only repository permissions. On success or failure it retains
-platform/build/test logs and QUIC results for seven days. The upload explicitly
+platform/build/test logs and crypto/QUIC results for seven days. The upload explicitly
 selects diagnostic files; generated TLS private keys are excluded.
 
 ## Verification status

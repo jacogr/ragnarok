@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   linux:
-    name: Codec and QUIC (Ubuntu 24.04 x86-64)
+    name: Codec, crypto and QUIC (Ubuntu 24.04 x86-64)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -66,6 +66,9 @@ jobs:
       - name: Codec conformance and native tests
         run: python3 interoperability/test_codec.py 2>&1 | tee build/ci/codec.log
 
+      - name: Crypto vectors, ownership and cross-language checks
+        run: python3 interoperability/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
+
       - name: Build and verify Linux QUIC
         run: python3 interoperability/test_quic.py --fetch 2>&1 | tee build/ci/quic.log
 
@@ -85,6 +88,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/crypto/build.log
+            build/crypto/type-checks.log
+            build/crypto/results.json
             build/quic/build.log
             build/quic/results.json
             build/quic/cases/*.server.log
