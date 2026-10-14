@@ -2,5 +2,5 @@
 .idea
 .vscode
 
-# Isolated QUIC dependency sources, generated test keys, native binaries and logs.
-/build/quic/
+# Generated build output, dependency sources, test keys and logs.
+/build/

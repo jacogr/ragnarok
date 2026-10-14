@@ -13,6 +13,7 @@ import subprocess
 import tarfile
 import time
 import urllib.request
+from toolchain_checks import odin_matches
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'build/quic'
@@ -131,7 +132,7 @@ def dependencies(fetch):
 def build_peers(paths):
     nim_version = subprocess.check_output(['nim', '--version'], text=True)
     odin_version = subprocess.check_output(['odin', 'version'], text=True)
-    assert PINS['nim'] in nim_version and PINS['odin'] in odin_version
+    assert PINS['nim'] in nim_version and odin_matches(odin_version, PINS['odin'])
     bssl = paths['boringssl'] / 'boringssl'
     system = platform.system()
     assert system in ('Darwin', 'Linux'), system

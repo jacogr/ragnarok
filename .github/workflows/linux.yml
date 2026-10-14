@@ -1,0 +1,83 @@
+name: Linux checks
+
+"on":
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Test code only needs to read the checkout, including on fork pull requests.
+permissions:
+  contents: read
+
+# Retire obsolete runs for the same branch/PR without interrupting unrelated checks.
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Codec and QUIC (Ubuntu 24.04 x86-64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Native Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential clang cmake zlib1g-dev openssl patch
+          mkdir -p build/ci
+          uname -a | tee build/ci/platform.log
+          clang --version | tee -a build/ci/platform.log
+          cmake --version | tee -a build/ci/platform.log
+          openssl version | tee -a build/ci/platform.log
+
+      - name: Permit Odin's io_uring backend on this temporary runner
+        run: |
+          # These optional kernel policies can prevent core:nbio from opening its ring.
+          for setting in kernel.io_uring_disabled kernel.apparmor_restrict_unprivileged_io_uring; do
+            if sysctl "$setting" >/dev/null 2>&1; then
+              sudo sysctl -w "$setting=0"
+            fi
+          done
+
+      - name: Pinned Nim, Odin and odinfmt
+        run: python3 tools/setup_ci_linux.py --destination "$RUNNER_TEMP/ragnarok-tools"
+
+      - name: Formatting
+        run: python3 tools/format.py --check
+
+      - name: Codec conformance and native tests
+        run: python3 interoperability/test_codec.py 2>&1 | tee build/ci/codec.log
+
+      - name: Build and verify Linux QUIC
+        run: python3 interoperability/test_quic.py --fetch 2>&1 | tee build/ci/quic.log
+
+      # Upload only explicit diagnostics; dependency trees, certificates and private keys are excluded.
+      - name: Retain verification logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-verification-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/quic/build.log
+            build/quic/results.json
+            build/quic/cases/*.server.log

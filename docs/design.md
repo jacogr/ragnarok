@@ -163,7 +163,9 @@ and allocation/leak measurements remain open. Wait for the maintainer's next
 bounded networking increment.
 
 Complete work reports, other extrinsics, generic element schemas and full blocks
-remain later M1 work. Linux reproducibility/CI remains open in M0.
+remain later M1 work. [Linux CI](ci-linux.md) is configured for Ubuntu 24.04
+x86-64 with formatting, codec and QUIC checks. Its first GitHub run is pending;
+Linux reproducibility remains open in M0 until that succeeds.
 
 Do not begin PVM, state transitions, or validator networking until the relevant
 gates are met.

@@ -1,0 +1,27 @@
+{
+  "runner": "ubuntu-24.04",
+  "architecture": "x86_64",
+  "python": "3.12",
+  "nim_version": "2.2.12",
+  "odin_version": "dev-2026-10:84bc3fc21",
+  "odinfmt_version": "dev-2026-08 with Homebrew AST compatibility backport",
+  "downloads": {
+    "nim": {
+      "url": "https://github.com/nim-lang/nightlies/releases/download/2026-09-08-version-2-2-8e8fbf60693418dc95bb0d762fd660231d08a583/nim-2.2.12-linux_x64.tar.xz",
+      "sha256": "7df1611449a6842af69322aa2c1206942982650a5f6bc0d37bc8ec109932f638"
+    },
+    "odin": {
+      "url": "https://github.com/odin-lang/Odin/releases/download/dev-2026-10/odin-linux-amd64-dev-2026-10.tar.gz",
+      "sha256": "c3c8b095621fd0c75f7f73e3a0829f1b4d45324225f20ba11ed8dc4da310a8ab"
+    },
+    "odinfmt_source": {
+      "url": "https://github.com/DanielGavin/ols/archive/refs/tags/dev-2026-08.tar.gz",
+      "sha256": "e8d368f35b6833efa7e840753881d01f76607f3c0872c614e536f2b7e939f800"
+    },
+    "odinfmt_patch": {
+      "url": "https://github.com/DanielGavin/ols/commit/5f1b4d773b05d98dc9533521490096cf1a06a6d3.patch?full_index=1",
+      "sha256": "e76914e29a26bca835d115111c1017ec0e6f7d51edc93a8c0e1f9a1fbd7c6368"
+    }
+  },
+  "odin_binary_sha256": "49e21d51855d60a618c493e929fe2b236d44de3daeb3a2c2f03f4c8aef566644"
+}

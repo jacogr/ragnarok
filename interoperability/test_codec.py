@@ -10,6 +10,7 @@ import struct
 from bounded_checks import verify_bounded
 from composite_checks import verify_composite
 from digest_checks import verify_digest
+from toolchain_checks import odin_matches
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -239,7 +240,7 @@ def main():
     nim_version = run(['nim', '--version'], capture_output=True).stdout
     odin_version = run(['odin', 'version'], capture_output=True).stdout
     assert 'Version 2.2.12 ' in nim_version, nim_version
-    assert 'dev-2026-10:84bc3fc21' in odin_version, odin_version
+    assert odin_matches(odin_version, 'dev-2026-10:84bc3fc21'), odin_version
     linker = []
     # On macOS, select the active Xcode SDK explicitly; other hosts use their system linker.
     if platform.system() == 'Darwin':

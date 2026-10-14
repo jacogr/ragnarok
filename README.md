@@ -3,6 +3,7 @@
 Independent Nim and Odin JAM codec experiments. Language selection remains open.
 See [the design](docs/design.md), [the pinned codec specification](spec/codec.md)
 and [the macOS toolchains](docs/toolchains-macos.md).
+[Linux CI](docs/ci-linux.md) runs formatting, codec and QUIC checks on GitHub Actions.
 
 The implemented primitives are canonical JAM general naturals and fixed-width
 unsigned integers (0..8 bytes), bounded byte strings, and homogeneous
@@ -43,7 +44,8 @@ verifies negative compilation fixtures, checks pinned official length prefixes,
 and compares both implementations with independent primitive test references.
 Build output lives in an automatically cleaned temporary directory.
 On macOS it locates the active Xcode SDK; on Linux it uses the system linker.
-Linux execution is not yet verified.
+Linux execution is not yet verified; the new GitHub Actions workflow will
+exercise it when pushed.
 
 For manual fuzzing, build `nim/tests/driver.nim` or the `odin/driver` package and
 pass a request-file path. Each line is `E <decimal uint64>` or `D <hex bytes>`.
