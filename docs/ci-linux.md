@@ -34,6 +34,8 @@ python3 interoperability/test_quic_soak_harness.py
 python3 interoperability/test_quic_soak.py --skip-build
 python3 interoperability/test_quic_service.py --skip-build
 python3 interoperability/test_integration.py --reuse-native
+python3 interoperability/test_benchmark_harness.py
+python3 interoperability/benchmark.py --reuse-native
 ```
 
 The codec command covers both native implementations, negative compilation
@@ -107,3 +109,9 @@ integrated native peers against the already verified crypto/QUIC libraries, then
 fuzzing and the bounded multi-peer owned-codec/hash workload. Only explicit build/results/resource
 and peer logs are uploaded from `build/integration`; fixtures and TLS private keys are excluded.
 Linux verification for this increment awaits its pushed run.
+
+The [optimized checked comparison](benchmark.md) follows correctness checks. Both candidates run
+sequentially on the same allowed Linux CPU, with identical corpora/iteration counts and separate
+allocation instrumentation. Results, build flags, hardware/binary/source hashes and raw logs are
+uploaded. Speed has no CI pass/fail threshold; invalid outputs or unbalanced ownership fail the
+measurement. The new Linux measurement awaits its pushed run.

@@ -229,3 +229,10 @@ digests; this imposes no new normative CE schema or work-output hash relationshi
 trailing, missing-key and wrong-hash failures remain stream-local, while cancellation retains and
 then releases an owned snapshot behind backpressure. Optimized codec/resource measurements and
 maintainer ergonomics remain the next proposed bounded decision round, awaiting go-ahead.
+
+The measurement round now adds 69 optimized checked M1/M2 case/operation pairs, separate allocation
+runs and real operation latency samples. See [the methodology](benchmark.md) and [local results](../results/benchmark.md).
+Linux CI executes both candidates sequentially on the same allowed CPU after correctness checks.
+Local Mac results are exploratory; a profile identifies the current Nim bulk-copy loops as an
+implementation hotspot to evaluate before a language conclusion. Production algorithms and
+source/toolchain pins are unchanged. Any optimization or next increment awaits go-ahead.

@@ -139,3 +139,8 @@ The [integrated decision slice](docs/integration.md) composes owned work-digest 
 Blake2b-256 content checks and persistent CE 143 networking, including cancellation and failed
 siblings. Run `python3 interoperability/test_integration.py --fetch`; see
 [its verification report](results/integration.md). Linux CI includes the new workload.
+
+The [optimized codec/hash comparison](docs/benchmark.md) measures encode/decode, borrowed/owned
+allocation costs and operation latency on identical inputs. Run
+`python3 interoperability/benchmark.py --fetch`; [local observations](results/benchmark.md) are
+separate from the same-CPU Linux CI results, which await a pushed run.
