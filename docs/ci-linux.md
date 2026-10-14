@@ -63,3 +63,9 @@ passed its first session but stalled on the next readiness marker. A Linux socke
 buffer warning separated two lines the harness expected to be adjacent. The
 harness now counts exact readiness lines per session, with regression checks
 for interleaved diagnostics. Full Linux soak verification awaits the rerun.
+
+[Run 38517282183](https://github.com/jacogr/ragnarok/actions/runs/38517282183)
+subsequently completed the Nim/Nim soak, then exposed an Odin linked-receive
+timeout panic. Odin now uses explicit receive cancellation and a native
+idle/ready cancellation regression test. The complete Linux soak remains
+pending verification of this change.

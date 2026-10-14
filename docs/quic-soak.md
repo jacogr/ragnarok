@@ -55,7 +55,11 @@ These counters exclude C/TLS allocation internals, which remain covered by the
 aggregate RSS budget. Sampling happens after each engine/socket teardown,
 while both processes wait for an external gate. Linux uses `/proc`; macOS uses
 `ps` and `lsof`. Gate waits also have a 15-second native deadline so an abandoned
-harness cannot retain a peer forever. Readiness and completion use exact
+harness cannot retain a peer forever. Odin's UDP receive has no linked timeout:
+its standalone QUIC timer wakes deadline checks, and shutdown explicitly
+removes the pending receive and drains cancellation before releasing its buffer.
+The native `--io-selftest` covers 256 idle/ready receive cancellations before the
+original peer matrix runs. Readiness and completion use exact
 marker lines; interleaved transport diagnostics cannot hide readiness or reuse
 a previous round's readiness.
 

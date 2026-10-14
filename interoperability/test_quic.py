@@ -327,6 +327,7 @@ def main():
         build_peers(dependencies(args.fetch))
     run([BUILD / 'nim-peer', '--selftest'])
     run([BUILD / 'odin-peer', '--selftest'])
+    run([BUILD / 'odin-peer', '--io-selftest'])
     folder = fixtures()
     scenarios = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',
                  'wrong-server-key', 'wrong-alpn', 'bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')

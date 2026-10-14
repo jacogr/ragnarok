@@ -102,3 +102,29 @@ deadlines. The budgets, native implementations and socket settings are unchanged
 Verification after the harness fix: all five regression tests and the full
 160-session macOS soak pass. Formatting, actionlint and `git diff --check` also
 pass. The next Linux run remains the verification for the CI correction.
+
+## Linux receive-cancellation follow-up
+
+[Run 38517282183](https://github.com/jacogr/ragnarok/actions/runs/38517282183)
+passed the full 40-session Nim/Nim pairing and its resource budgets. Odin/Odin
+then failed during its eighth session with
+`core:nbio/impl_linux.odin` reporting `unexpected nbio.link_timeout() error`.
+The diagnostic does not include the underlying errno; no specific kernel error
+is assumed.
+
+The proof used a 20 ms linked timeout on every UDP receive only to bound shutdown
+latency. It now retains an untimed receive operation explicitly. Standalone QUIC
+timers and the event-loop tick still drive session/stream deadlines. Shutdown
+removes the outstanding receive, suppresses any queued callback, and drains
+cancellation while the owning buffer remains alive. Compiler and dependency
+pins, protocol deadlines and resource budgets are unchanged.
+
+A native regression test exercises 256 idle/ready receive cancellations with
+exact callback suppression and allocator cleanup checks. It runs in the shared
+QUIC suite on both macOS and Linux CI. Full Linux soak confirmation awaits the
+next run.
+
+Local verification after explicit cancellation: all 256 native cancellation
+cases, the original 64-case QUIC suite, the full 160-session soak, five harness
+regression tests, formatting and `git diff --check` pass on macOS. The Linux
+backend will execute the native cancellation regression in the next CI run.

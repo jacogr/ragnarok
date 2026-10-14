@@ -42,6 +42,7 @@ Peer :: struct {
 	completed:                                     int,
 	attack:                                        string,
 	opened, healthy, rejected, cancelled, blocked: int,
+	receive_operation:                             ^nbio.Operation, // Owned until callback delivery or explicit removal; buffer stays in Peer.
 }
 // Explicit library build path supplied by the reproducible proof runner.
 when ODIN_OS == .Darwin {
@@ -406,7 +407,10 @@ soak_tick :: proc(peer: ^Peer) {
 
 // Process one owned receive buffer, then rearm only while the native owner remains active.
 on_receive :: proc(op: ^nbio.Operation, peer: ^Peer) {
-	// Timeout wakes lifecycle checks; only received UDP bytes enter the transport.
+	peer.receive_operation = nil // This callback retires the old operation before another receive is armed.
+	// Receives have no linked timeout; standalone timers already wake lifecycle and QUIC deadline checks.
+	if op.recv.err != nil {peer.failed = true; return} 	// Surface an I/O failure through the bounded session result.
+	// Only completed UDP bytes enter the transport.
 	if op.recv.err == nil && op.recv.received > 0 {
 		_ = rq_packet_in(
 			peer.transport,
@@ -417,18 +421,12 @@ on_receive :: proc(op: ^nbio.Operation, peer: ^Peer) {
 		rq_process(peer.transport)
 	}
 	// Stop before destruction and let pending callbacks drain with their buffers still alive.
-	if !peer.stopping {arm_receive(peer)}
+	if !peer.stopping && !peer.failed {arm_receive(peer)}
 }
 
-// Keep the receive buffer in the owner until completion; a short timeout bounds shutdown latency.
+// Keep one untimed receive owned by Peer; shutdown removes it before releasing its borrowed buffer.
 arm_receive :: proc(peer: ^Peer) {
-	nbio.recv_poly(
-		peer.socket,
-		{peer.buffer[:]},
-		peer,
-		on_receive,
-		timeout = 20 * time.Millisecond,
-	)
+	peer.receive_operation = nbio.recv_poly(peer.socket, {peer.buffer[:]}, peer, on_receive)
 }
 
 // Schedule QUIC deadlines on the same I/O thread; each callback owns no borrowed TLS buffers.
@@ -558,10 +556,66 @@ run_peer :: proc() -> bool {
 		}
 	}
 	peer.stopping = true
-	_ = nbio.run() // Existing callbacks retire without rearming; their owner is still alive.
+	// remove suppresses a pending receive callback, including a completion already queued for delivery.
+	// The kernel may still borrow buffer storage until cancellation is drained by run below.
+	nbio.remove(peer.receive_operation)
+	peer.receive_operation = nil
+	_ = nbio.run() // Drain cancellation and standalone timers while Peer and its buffer are still alive.
 	if !success {fmt.eprintln("proof rejected or timed out", peer.completed, peer.healthy, peer.rejected, peer.cancelled, peer.failed)} 	// Distinguish rejection from successful handshake.
 	// The exit code is set after deferred native/socket cleanup by returning through the normal stack.
 	return success
+}
+
+// Test-only operation owner keeps stack buffer storage alive through cancellation completion.
+Cancellation_Probe :: struct {
+	operation: ^nbio.Operation,
+	buffer:    [1]u8,
+	callbacks: int,
+}
+
+// A delivered receive retires its handle before recording completion; removed handles must never callback.
+on_cancel_probe :: proc(op: ^nbio.Operation, probe: ^Cancellation_Probe) {
+	probe.operation = nil
+	probe.callbacks += 1
+	assert(op.recv.err == nil && op.recv.received == 1 && probe.buffer[0] == 99) // Exact self-sent test datagram.
+}
+
+// Exercise idle and ready receive cancellation directly on the host I/O backend.
+io_self_test :: proc() {
+	tracking: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&tracking, context.allocator)
+	defer mem.tracking_allocator_destroy(&tracking)
+	context.allocator = mem.tracking_allocator(&tracking)
+	// Every iteration retires the same kinds of socket/event-loop owners as a soak session.
+	for iteration in 0 ..< 256 {
+		assert(nbio.acquire_thread_event_loop() == nil)
+		socket, err := nbio.create_udp_socket(.IP4)
+		assert(err == nil)
+		assert(net.bind(socket, {net.IP4_Loopback, 0}) == nil)
+		local, local_err := net.bound_endpoint(socket)
+		assert(local_err == nil)
+		probe: Cancellation_Probe
+		probe.operation = nbio.recv_poly(socket, {probe.buffer[:]}, &probe, on_cancel_probe)
+		// Half the cases also put a completion in flight before removal; the callback may have already retired it.
+		if iteration % 2 == 0 {
+			payload := [1]u8{99}
+			sent, send_err := net.send_udp(socket, payload[:], local)
+			assert(send_err == nil && sent == 1)
+			assert(nbio.tick(0) == nil)
+		}
+		before := probe.callbacks
+		// Never remove a handle after its callback: nil denotes already retired ownership.
+		if probe.operation != nil {
+			nbio.remove(probe.operation)
+			probe.operation = nil
+		}
+		assert(nbio.run() == nil) // Drain kernel completions before stack buffer storage goes out of scope.
+		assert(probe.callbacks == before) // Removal is final and suppresses queued callback delivery.
+		net.close(socket)
+		nbio.release_thread_event_loop()
+		assert(tracking.current_memory_allocated == 0) // No event-loop/application ownership accumulates.
+	}
+	fmt.println("Odin I/O selftest: 256 idle/ready receive cancellations passed")
 }
 
 // Arbitrary-input entry point exercises strict DER and incremental frames without native stream handles.
@@ -604,6 +658,8 @@ self_test :: proc() {
 main :: proc() {
 	// Parser fuzz tests do not create an engine or require socket permission.
 	if len(os.args) == 2 && os.args[1] == "--selftest" {self_test(); return}
+	// This regression probes cancellation ownership on the actual host backend before opening TLS sessions.
+	if len(os.args) == 2 && os.args[1] == "--io-selftest" {io_self_test(); return}
 	if len(os.args) == 9 && os.args[8] == "soak" {
 		tracking: mem.Tracking_Allocator
 		mem.tracking_allocator_init(&tracking, context.allocator)
