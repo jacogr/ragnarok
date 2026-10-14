@@ -44,8 +44,8 @@ verifies negative compilation fixtures, checks pinned official length prefixes,
 and compares both implementations with independent primitive test references.
 Build output lives in an automatically cleaned temporary directory.
 On macOS it locates the active Xcode SDK; on Linux it uses the system linker.
-Linux execution is not yet verified; the new GitHub Actions workflow will
-exercise it when pushed.
+Formatting, codec and QUIC checks also passed on Ubuntu 24.04 x86-64 in
+[GitHub Actions run 38512012802](https://github.com/jacogr/ragnarok/actions/runs/38512012802).
 
 For manual fuzzing, build `nim/tests/driver.nim` or the `odin/driver` package and
 pass a request-file path. Each line is `E <decimal uint64>` or `D <hex bytes>`.

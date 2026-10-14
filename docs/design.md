@@ -158,16 +158,15 @@ in both languages, including cross-language exchange and rejection cases. See
 [the proof report](../results/quic-proof.md) and [run instructions](quic-proof.md).
 The isolated dependency pins and two local Nim compatibility/ownership patches
 are recorded in `spec/quic-proof-pins.json`. This does not pass M3 or select a
-language: Linux/IPv6, independent-peer interoperability, sustained backpressure
+language: IPv6, independent-peer interoperability, sustained backpressure
 and allocation/leak measurements remain open. Wait for the maintainer's next
 bounded networking increment.
 
 Complete work reports, other extrinsics, generic element schemas and full blocks
 remain later M1 work. [Linux CI](ci-linux.md) is configured for Ubuntu 24.04
-x86-64 with formatting, codec and QUIC checks. Its first run passed setup and
-formatting but failed compiler identity validation; the release version check
-has been corrected. Linux reproducibility remains open in M0 until a full run
-succeeds.
+x86-64 with formatting, codec and QUIC checks. All steps passed in
+[run 38512012802](https://github.com/jacogr/ragnarok/actions/runs/38512012802), establishing
+the initial Linux reproducibility target for M0.
 
 Do not begin PVM, state transitions, or validator networking until the relevant
 gates are met.

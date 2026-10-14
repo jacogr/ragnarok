@@ -40,14 +40,16 @@ selects diagnostic files; generated TLS private keys are excluded.
 
 ## Verification status
 
-The workflow passes actionlint validation. Download checksums, archive layout,
-formatter patch application and the Linux Odin identity check were verified
-locally. Formatting and the full codec and QUIC regression checks passed on
-macOS; this does not demonstrate Linux execution.
+[Linux run 38512012802](https://github.com/jacogr/ragnarok/actions/runs/38512012802) passed on 2026-10-14
+at commit `dd90bb6c56e150d896910594e7bc83474ec678f4`. Ubuntu 24.04 x86-64
+completed toolchain setup, formatting, the full codec suite, a fresh QUIC build
+and the authenticated cross-language QUIC proof. Diagnostic upload also passed.
+This establishes the initial Linux reproducibility target for M0; M3 remains
+open for IPv6, independent-peer interoperability and sustained operation tests.
 
-The [first Linux run](https://github.com/jacogr/ragnarok/actions/runs/38511417305)
-passed toolchain setup and formatting, then failed the Odin version check before
-compilation. Its actual version string is now pinned alongside the verified
-executable checksum. Push this fix to run the suite again, or use **Actions →
-Linux checks → Run workflow** after it reaches the default branch. Linux
-reproducibility remains pending until the complete run succeeds; M3 remains open.
+The first run failed before compilation because the official Linux Odin version
+string differed from Homebrew. The corrected check pins its exact reported
+version and executable checksum. The current actions all use Node 24.
+
+Pushes and pull requests run the checks automatically. Manual runs are available
+under **Actions → Linux checks → Run workflow** on the default branch.

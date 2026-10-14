@@ -6,8 +6,17 @@ Odin uses LSQUIC through a narrow C adapter and one core:nbio event loop.
 Both use the same pinned LSQUIC fork and BoringSSL source revisions.
 
 This establishes a working local transport route for both candidates. It does
-**not** complete M3: Linux, independent-peer interoperability, sustained load,
+**not** complete M3: IPv6, independent-peer interoperability, sustained load,
 backpressure and allocation/leak measurements remain unverified.
+
+## Linux CI follow-up
+
+On 2026-10-14, [GitHub Actions run 38512012802](https://github.com/jacogr/ragnarok/actions/runs/38512012802)
+at commit `dd90bb6c56e150d896910594e7bc83474ec678f4` passed a fresh native
+QUIC build and the full proof on Ubuntu 24.04 x86-64, alongside formatting and
+codec conformance. This extends the initial IPv4 proof to Linux; the remaining
+M3 tests below are still open. See [Linux CI](../docs/ci-linux.md) for toolchains
+and reproducible commands.
 
 ## Executed results
 
@@ -153,7 +162,7 @@ an application failure; continued service to other streams after one malformed
 request is not established. Production UP stream replacement, builder ALPN
 negotiation, resumption/early-data policy and validator connectivity are absent.
 
-Before calling M3 passed, run IPv6/Linux and an independent pinned JAMNP-S peer;
+Before calling M3 passed, run IPv6 and an independent pinned JAMNP-S peer;
 exercise slow readers and actual flow-control pressure, reset/cancellation during
 pending writes, many connections, repeated in-process reconnect/teardown and
 allocation/latency/thread measurements. Keep application queues explicitly
