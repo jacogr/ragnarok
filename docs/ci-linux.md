@@ -20,7 +20,9 @@ through official rustup component verification in this temporary runner. The
 Rust ABI's pristine historical backend/spec sources, Cargo.lock closure and
 public SRS are independently pinned; no dependency source patches are applied.
 
-After setup, the job runs:
+After checkout, `python3 tools/setup_submodules.py` initializes the recorded
+upstream source submodules and a focused JAM-vector checkout. Compiler setup
+then proceeds as before. The job runs:
 
 ```sh
 python3 tools/format.py --check
@@ -35,10 +37,10 @@ python3 interoperability/test_quic_soak.py --skip-build
 The codec command covers both native implementations, negative compilation
 fixtures, official vectors and shared conformance cases. The crypto command
 checks both debug/release implementations, pinned RFC/Wycheproof fixtures,
-independent hashes, ownership and concurrent native calls. It fetches pristine
-BoringSSL/XKCP sources and shares the identical BoringSSL build with QUIC.
-The new Bandersnatch step awaits a pushed Linux run. The QUIC command fetches
-four pinned native source trees, builds both explicit adapters without Nim
+independent hashes, ownership and concurrent native calls. It uses pristine
+BoringSSL/XKCP submodules and shares the identical BoringSSL build with QUIC.
+The new Bandersnatch step awaits a pushed Linux run. The QUIC command uses
+pinned native submodules, builds both explicit adapters without Nim
 packages/source patches, and runs the authenticated
 cross-language CE 143 proof and rejection cases. Dependencies are not cached.
 The new bounded soak follows the original proof using those freshly built peers;

@@ -3,17 +3,15 @@
 import argparse
 import concurrent.futures
 import hashlib
-import io
 import json
 from pathlib import Path
 import platform
 import shutil
 import socket
 import subprocess
-import tarfile
 import time
-import urllib.request
 from toolchain_checks import odin_matches
+from dependencies import require_submodule
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'build/quic'
@@ -26,51 +24,15 @@ def run(args, log=None):
     return subprocess.run(list(map(str, args)), check=True, stdout=log, stderr=log)
 
 
-# Fetch an exact immutable source commit, stripping only the archive root and checking extraction safety.
-def fetch_source(entry, destination):
-    archive = urllib.request.urlopen(
-        f'https://codeload.github.com/{entry["repository"]}/tar.gz/{entry["commit"]}', timeout=60).read()
-    destination.mkdir(parents=True, exist_ok=True)
-    # Safe tar extraction rejects escaping paths/links; no upstream package hook is run.
-    with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tar:
-        for member in tar.getmembers():
-            parts = Path(member.name).parts
-            if len(parts) > 1:
-                member.name = str(Path(*parts[1:]))
-                tar.extract(member, destination, filter='data')
-    (destination / '.ragnarok-source.json').write_text(json.dumps(
-        {**entry, 'archive_sha256': hashlib.sha256(archive).hexdigest()}, indent=2) + '\n')
-
-
-# Prepare a closed dependency set from committed pins, including each native submodule's own exact revision.
+# Resolve pinned native Git submodules, including LSQUIC's own recorded QPACK/HPACK children.
 def dependencies(fetch):
     assert PINS['patches'] == [], 'QUIC must build without source patches'
-    sources = BUILD / 'native-sources'
     paths = {}
-    # Parent packages must exist before placing their native source submodules.
-    for name, entry in PINS['sources'].items():
-        if '/' in name:
-            continue
-        path = sources / name
-        marker = path / '.ragnarok-source.json'
-        if fetch and not marker.exists():
-            fetch_source(entry, path)
-        assert marker.exists(), f'Run with --fetch to obtain {name}'
-        recorded = json.loads(marker.read_text())
-        assert recorded['commit'] == entry['commit'] and recorded['repository'] == entry['repository'], name
-        paths[name] = path
-    # Keep submodule layouts identical to the package's reviewed include/compile paths.
-    for name, entry in PINS['sources'].items():
+    # Child revisions are checked separately without rewriting the parent dependency's gitlinks.
+    for name,entry in PINS['sources'].items():
+        path = require_submodule(entry, fetch)
         if '/' not in name:
-            continue
-        parent, child = name.split('/', 1)
-        path = paths[parent] / child
-        marker = path / '.ragnarok-source.json'
-        if fetch and not marker.exists():
-            fetch_source(entry, path)
-        assert marker.exists(), name
-        recorded = json.loads(marker.read_text())
-        assert recorded['commit'] == entry['commit'] and recorded['repository'] == entry['repository'], name
+            paths[name] = path
     return paths
 
 
@@ -86,21 +48,21 @@ def build_peers(paths):
     native = ROOT / 'interoperability/quic'
     # The exact native configure/build output is retained instead of hidden behind a success claim.
     with (BUILD / 'build.log').open('w') as log:
-        run(['cmake', '-S', bssl, '-B', BUILD / 'native-bssl', '-DCMAKE_BUILD_TYPE=Release',
+        run(['cmake', '-S', bssl, '-B', ROOT / 'build/native/boringssl', '-DCMAKE_BUILD_TYPE=Release',
              '-DBUILD_TESTING=OFF', '-DOPENSSL_NO_ASM=ON', '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'], log)
-        run(['cmake', '--build', BUILD / 'native-bssl', '--target', 'ssl', 'crypto', '-j', '4'], log)
-        run(['cmake', '-S', paths['lsquic'], '-B', BUILD / 'native-lsquic', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+        run(['cmake', '--build', ROOT / 'build/native/boringssl', '--target', 'ssl', 'crypto', '-j', '4'], log)
+        run(['cmake', '-S', paths['lsquic'], '-B', ROOT / 'build/native/lsquic', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
              '-DCMAKE_BUILD_TYPE=Release', '-DLSQUIC_BIN=OFF', '-DLSQUIC_TESTS=OFF', '-DLSQUIC_SHARED_LIB=OFF',
              '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', f'-DBORINGSSL_INCLUDE={bssl / "include"}',
-             f'-DBORINGSSL_LIB_ssl={BUILD / "native-bssl/libssl.a"}', f'-DBORINGSSL_LIB_crypto={BUILD / "native-bssl/libcrypto.a"}'], log)
-        run(['cmake', '--build', BUILD / 'native-lsquic', '-j', '4'], log)
+             f'-DBORINGSSL_LIB_ssl={ROOT / "build/native/boringssl/libssl.a"}', f'-DBORINGSSL_LIB_crypto={ROOT / "build/native/boringssl/libcrypto.a"}'], log)
+        run(['cmake', '--build', ROOT / 'build/native/lsquic', '-j', '4'], log)
         # The bridge contains transport/TLS field extraction only; identity/framing policy is independently native.
         for name in ('cert_fields', 'transport_bridge'):
             run(['clang', '-fPIC', '-O2', '-Wall', '-Wextra', '-Werror', f'-I{bssl / "include"}',
                  f'-I{paths["lsquic"] / "include"}', '-c', native / f'{name}.c', '-o', BUILD / f'{name}.o'], log)
         run(['clang++', '-dynamiclib' if system == 'Darwin' else '-shared', BUILD / 'cert_fields.o',
-             BUILD / 'transport_bridge.o', BUILD / 'native-lsquic/src/liblsquic/liblsquic.a',
-             BUILD / 'native-bssl/libssl.a', BUILD / 'native-bssl/libcrypto.a', '-lz', '-o', library], log)
+             BUILD / 'transport_bridge.o', ROOT / 'build/native/lsquic/src/liblsquic/liblsquic.a',
+             ROOT / 'build/native/boringssl/libssl.a', ROOT / 'build/native/boringssl/libcrypto.a', '-lz', '-o', library], log)
         run(['nim', 'c', '--mm:arc', '--cc:clang', '--clang.linkerexe:clang++', '--skipParentCfg', '--skipUserCfg',
              f'--passL:{library}', f'--nimcache:{BUILD / "nim-adapter-cache"}',
              f'--out:{BUILD / "nim-peer"}', ROOT / 'nim/quic/peer.nim'], log)

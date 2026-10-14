@@ -49,7 +49,7 @@ encode_digest_borrowed :: proc(
 	value := source
 	work := measure_work(value.output, len(pool), limit)
 	// Reject a bad union, span or resource policy before committing a fixed field.
-	if error_of(work) != .None {return work}
+	if error_of(work) != .None { return work }
 	numbers := [5]u64 {
 		u64(value.refine.gas_used),
 		u64(value.refine.imports),
@@ -60,17 +60,17 @@ encode_digest_borrowed :: proc(
 	suffix: [5]Encoded_Natural
 	required := 76
 	// Prove the fixed-prefix/work-output sum before adding it.
-	if success_of(work).written > max(int) - required {return Composite_Error.Length_Overflow}
+	if success_of(work).written > max(int) - required { return Composite_Error.Length_Overflow }
 	required += success_of(work).written
 	// Measure all five metrics before any destination write.
 	for metric, index in numbers {
 		suffix[index] = encode(Natural(metric))
 		// Each bounded header still needs a checked host-size sum.
-		if required > max(int) - suffix[index].length {return Composite_Error.Length_Overflow}
+		if required > max(int) - suffix[index].length { return Composite_Error.Length_Overflow }
 		required += suffix[index].length
 	}
 	// Even a missing final suffix byte must preserve the entire destination.
-	if len(output) < required {return Composite_Error.Output_Too_Small}
+	if len(output) < required { return Composite_Error.Output_Too_Small }
 	// Only the successful union member borrows the pool; error variants have no payload.
 	if _, success := value.output.(Blob_Span); success {
 		// Protect unused/trailing pool bytes as well as the selected blob.
@@ -79,7 +79,7 @@ encode_digest_borrowed :: proc(
 			len(pool),
 			raw_data(output),
 			required,
-		) {return Composite_Error.Aliased_Buffers}
+		) { return Composite_Error.Aliased_Buffers }
 	}
 	service := encode_fixed(Fixed_Unsigned(value.service), Byte_Width(4))
 	gas := encode_fixed(Fixed_Unsigned(value.accumulate_gas), Byte_Width(8))
@@ -106,10 +106,10 @@ encode_digest_borrowed :: proc(
 // Decode one complete prefix with owned fixed fields and successful blob coordinates in the original input.
 decode_digest_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Digest_Result {
 	// All fixed fields must be present before slicing their storage.
-	if len(input) < 76 {return Composite_Error.Truncated}
+	if len(input) < 76 { return Composite_Error.Truncated }
 	work := decode_work_borrowed(input[76:], limit)
 	// Invalid or incomplete variants expose no usable digest.
-	if error_of(work) != .None {return error_of(work)}
+	if error_of(work) != .None { return error_of(work) }
 	cursor := 76 + success_of(work).consumed
 	numbers: [5]u64
 	// Validate all suffix metrics, including the last one, before constructing public output.

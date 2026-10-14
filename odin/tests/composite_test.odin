@@ -20,7 +20,7 @@ fuzz_composite :: proc(t: ^testing.T, input: []u8) {
 			codec.error_of(encoded) == .None &&
 			codec.success_of(encoded).written == codec.success_of(optional).consumed,
 		)
-		for i in 0 ..< codec.success_of(optional).consumed {testing.expect(t, wire[i] == input[i])} 	// Includes nested count.
+		for i in 0 ..< codec.success_of(optional).consumed { testing.expect(t, wire[i] == input[i]) } 	// Includes nested count.
 	}
 	work := codec.decode_work_borrowed(input, codec.Byte_Limit(64))
 	if codec.error_of(work) == .None {
@@ -36,7 +36,7 @@ fuzz_composite :: proc(t: ^testing.T, input: []u8) {
 			codec.error_of(encoded) == .None &&
 			codec.success_of(encoded).written == codec.success_of(work).consumed,
 		)
-		for i in 0 ..< codec.success_of(work).consumed {testing.expect(t, wire[i] == input[i])} 	// Trailing bytes are excluded.
+		for i in 0 ..< codec.success_of(work).consumed { testing.expect(t, wire[i] == input[i]) } 	// Trailing bytes are excluded.
 	}
 	output: [4]codec.Preimage
 	for &item in output {item = {
@@ -62,12 +62,12 @@ fuzz_composite :: proc(t: ^testing.T, input: []u8) {
 			codec.error_of(encoded) == .None &&
 			codec.success_of(encoded).written == codec.success_of(decoded).consumed,
 		)
-		for i in 0 ..< codec.success_of(decoded).consumed {testing.expect(t, wire[i] == input[i])} 	// All records and lengths.
+		for i in 0 ..< codec.success_of(decoded).consumed { testing.expect(t, wire[i] == input[i]) } 	// All records and lengths.
 	} else {
 		// A malformed last record must not expose an earlier partially initialized record.
 		testing.expect(t, codec.error_of(decoded) != .None)
 		// Check every field of every sentinel descriptor after a failure.
-		for item in output {testing.expect(t, u32(item.service) == 777 && item.blob.offset == 333 && item.blob.length == 444)}
+		for item in output { testing.expect(t, u32(item.service) == 777 && item.blob.offset == 333 && item.blob.length == 444) }
 	}
 }
 
@@ -102,11 +102,11 @@ composite :: proc(t: ^testing.T) {
 	)
 	for cut in 0 ..< 14 {
 		// Every truncation, including the final record's length, leaves all caller-owned records unchanged.
-		for &item in output {item.service = codec.Service_Index(999)}
+		for &item in output { item.service = codec.Service_Index(999) }
 		short := codec.decode_preimages_borrowed(wire[:cut], limits, output[:])
 		testing.expect(t, codec.error_of(short) == .Truncated)
 		// Even records preceding the truncation must retain their original service.
-		for item in output {testing.expect(t, u32(item.service) == 999)}
+		for item in output { testing.expect(t, u32(item.service) == 999) }
 	}
 	tighter := codec.Preimage_Limits {
 		codec.Element_Limit(2),
@@ -118,7 +118,7 @@ composite :: proc(t: ^testing.T) {
 		codec.error_of(codec.decode_preimages_borrowed(wire[:], tighter, output[:])) ==
 		.Limit_Exceeded,
 	)
-	for &b in wire {b = 77} 	// Preserve encoder output even when a late input descriptor is invalid.
+	for &b in wire { b = 77 } 	// Preserve encoder output even when a late input descriptor is invalid.
 	bad := records
 	bad[1].blob.offset = max(int)
 	bad[1].blob.length = 1
@@ -128,7 +128,7 @@ composite :: proc(t: ^testing.T) {
 		.Invalid_Span,
 	)
 	// Check the entire destination for a forbidden partial encoder commit.
-	for b in wire {testing.expect(t, b == 77)}
+	for b in wire { testing.expect(t, b == 77) }
 	for tag in 1 ..= 6 {
 		// All declared errors are payload-free and must not interpret unrelated trailing bytes.
 		value := codec.Work_Output(codec.Work_Error(tag))
@@ -189,7 +189,7 @@ composite :: proc(t: ^testing.T) {
 		)
 	}
 	raw := slice.bytes_from_ptr(raw_data(output[:]), size_of(output))
-	for &b in raw {b = 0} 	// Create a valid frame inside overlapping typed destination storage.
+	for &b in raw { b = 0 } 	// Create a valid frame inside overlapping typed destination storage.
 	raw[0] = 1
 	snapshot := output
 	testing.expect(

@@ -9,8 +9,8 @@ from pathlib import Path
 import platform
 import random
 import subprocess
-import urllib.request
-from test_quic import fetch_source, run
+from test_quic import run
+from dependencies import require_submodule
 from toolchain_checks import odin_matches
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,46 +19,41 @@ PINS = json.loads((ROOT / 'spec/bandersnatch-pins.json').read_text())
 FIXTURES = ROOT / 'vectors/official/bandersnatch'
 
 
+# Unmodified published vectors belong to their source submodule; small project reductions remain local fixtures.
+def fixture_path(name):
+    if name in ('ietf.json','ring.json'):
+        scheme=Path(name).stem
+        return ROOT/PINS['sources']['spec-jam']['path']/f'assets/vectors/bandersnatch_sha-512_ell2_{scheme}.json'
+    return FIXTURES/name
+
+
 # Check fixed source identities, public SRS and the whole registry dependency lock before executing any build.
 def sources(fetch):
     assert PINS['source_patches'] == []
-    # Only the compatible historical backend/spec are required; newer suites are research comparisons.
-    for name, entry in PINS['sources'].items():
-        destination = BUILD / 'sources' / name
-        marker = destination / '.ragnarok-source.json'
-        # Fetch missing immutable archives, never apply patches or run fetched install scripts.
-        if fetch and not marker.exists():
-            fetch_source({'repository':entry['repository'],'commit':entry['commit']}, destination)
-        assert marker.exists(), f'Use --fetch for {name}'
-        recorded = json.loads(marker.read_text())
-        assert recorded['repository']==entry['repository'] and recorded['commit']==entry['commit']
+    # Git submodules pin pristine upstream checkouts; hashes retain the existing content-integrity contract.
+    for name,entry in PINS['sources'].items():
+        destination=require_submodule(entry,fetch)
         digest=hashlib.sha256()
-        # Verify all pristine source bytes, not just a mutable cache marker; no compiler output belongs here.
+        # Git's local metadata replaces the old archive marker and is not upstream source content.
         for path in sorted(destination.rglob('*')):
-            # The local provenance marker is checked separately; only upstream file contents define the tree.
-            if path.is_file() and path.name!='.ragnarok-source.json':
+            if path.is_file() and '.git' not in path.relative_to(destination).parts:
                 digest.update(path.relative_to(destination).as_posix().encode()+b'\0'+hashlib.sha256(path.read_bytes()).digest())
-        assert digest.hexdigest()==entry['tree_sha256'], f'Modified dependency source: {name}' 
-    assert hashlib.sha256((BUILD / 'sources/spec-jam' / PINS['srs']['path']).read_bytes()).hexdigest()==PINS['srs']['sha256']
+        assert digest.hexdigest()==entry['tree_sha256'], name
+    source=ROOT/PINS['sources']['spec-jam']['path']
+    assert hashlib.sha256((source/PINS['srs']['path']).read_bytes()).hexdigest()==PINS['srs']['sha256']
     assert hashlib.sha256((ROOT / 'native/bandersnatch/Cargo.lock').read_bytes()).hexdigest()==PINS['cargo_lock_sha256']
-    # Committed fixtures include public spec vectors and reduced independent official JAM cases.
+    # Check upstream published vectors and project-owned reduced official JAM cases.
     for filename, expected in PINS['fixture_files'].items():
-        assert hashlib.sha256((ROOT / filename).read_bytes()).hexdigest()==expected
+        assert hashlib.sha256((ROOT/filename).read_bytes()).hexdigest()==expected
 
 
 # Check reduced official fixtures against the complete immutable upstream JSON, without copying full STF states into Git.
 def official_sources(fetch):
     entry=PINS['official_jam']
-    cache=BUILD/'official'
-    cache.mkdir(exist_ok=True)
+    upstream=require_submodule({'path':'vendor/jamtestvectors','repository':entry['repository'],'commit':entry['commit']},fetch)
     # Each reduced fixture retains only cryptographic inputs and independent expected outputs/roots.
     for local,remote in entry['files'].items():
-        original=cache/Path(local).name
-        # Only explicit fetch mode obtains a missing original; cached originals remain hash checked.
-        if fetch and not original.exists():
-            url=f"https://raw.githubusercontent.com/{entry['repository']}/{entry['commit']}/{remote}"
-            original.write_bytes(urllib.request.urlopen(url,timeout=60).read())
-        assert original.exists(), 'Use --fetch to obtain official source fixtures'
+        original=upstream/remote
         assert hashlib.sha256(original.read_bytes()).hexdigest()==entry['source_sha256'][local]
         v=json.loads(original.read_text());reduced=json.loads((ROOT/local).read_text())
         # Epoch-change padding checks the posterior pending ring rather than tickets from the prior epoch.
@@ -144,8 +139,8 @@ def suite(binary):
     diagnostic = failed.stdout+failed.stderr
     assert failed.returncode!=0
     assert ('FieldDefect' in diagnostic if binary.name.startswith('nim') else 'assert' in diagnostic.lower())
-    ietf = json.loads((FIXTURES / 'ietf.json').read_text())
-    rings = json.loads((FIXTURES / 'ring.json').read_text())
+    ietf = json.loads(fixture_path('ietf.json').read_text())
+    rings = json.loads(fixture_path('ring.json').read_text())
     # Ordinary contextual signatures must reproduce every published field exactly, not just verify themselves.
     for v in ietf:
         sk,pk,context,ad = [octets(v[k]) for k in ('sk','pk','alpha','ad')]
@@ -204,7 +199,7 @@ def suite(binary):
 # Cross-check proof creation and output/context binding with the two language owners over the same backend.
 def cross():
     nim,odin = BUILD / 'nim-release', BUILD / 'odin-release'
-    v = json.loads((FIXTURES / 'ring.json').read_text())[0]
+    v = json.loads(fixture_path('ring.json').read_text())[0]
     members,sk,root = octets(v['ring_pks']),octets(v['sk']),octets(v['ring_pks_com'])
     # A safe fresh ring proof need not equal non-ZK deterministic publication vectors.
     for prover,verifier in ((nim,odin),(odin,nim)):
@@ -245,7 +240,7 @@ def bridge_checks():
             assert lib.bs_ring_verify(None,None,None,width,None,0,None,0,output)==1
     assert bytes(output)==bytes([0xa5])*32
     owner=p();assert lib.bs_setup_new(8,ctypes.byref(owner))==0
-    v = json.loads((FIXTURES / 'ring.json').read_text())[0];proof = ring_proof(v);root = octets(v['ring_pks_com'])
+    v = json.loads(fixture_path('ring.json').read_text())[0];proof = ring_proof(v);root = octets(v['ring_pks_com'])
     rng = random.Random(784)
     # Mutated fixed encodings must reject normally, without unwinding across FFI or publishing a hash.
     for _ in range(64):

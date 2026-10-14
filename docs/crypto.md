@@ -68,8 +68,9 @@ python3 tools/format.py --check
 python3 interoperability/test_crypto.py --fetch
 ```
 
-`--fetch` obtains only missing pinned BoringSSL/XKCP sources inside ignored
-`build/`; it installs no global package and applies no source patches. Subsequent
+`--fetch` initializes missing pinned BoringSSL/XKCP/Wycheproof submodules under
+`vendor/`; it installs no global package and applies no source patches. See
+[the source guide](dependencies.md). Subsequent
 runs can omit the flag. The runner compiles debug and optimized binaries and
 executes all tests. BoringSSL sources/build are shared with the identical QUIC
 pin. No LSQUIC dependency or UDP service is needed for crypto tests. The Nim

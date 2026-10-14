@@ -12,6 +12,7 @@ from composite_checks import verify_composite
 from digest_checks import verify_digest
 from toolchain_checks import odin_matches
 import tempfile
+from dependencies import codec_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,12 +62,12 @@ def official_prefix_cases():
     """Only the natural length prefixes; no claim of full structure conformance."""
     requests, expected = [], []
     pins = json.loads((ROOT / 'spec/pins.json').read_text())
-    # Check every copied fixture against the recorded hash before trusting it as test evidence.
+    # Check every upstream fixture against the recorded hash before trusting it as test evidence.
     for path, digest in pins['vectors']['files'].items():
         assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest, path
     # Exercise both official chain parameter sets, even where their fixture contents happen to agree.
     for chain in ('tiny', 'full'):
-        folder = ROOT / 'vectors/official/codec' / chain
+        folder = ROOT / 'vendor/jamtestvectors/codec' / chain
         # Locate each structure's outer sequence-length prefix from its matching JSON entry count.
         for name in ('tickets_extrinsic', 'preimages_extrinsic'):
             items = json.loads((folder / f'{name}.json').read_text())
@@ -122,7 +123,7 @@ def official_fixed_cases():
     requests, expected = [], []
     # Both chains provide independent fixture provenance even where these primitive fields coincide.
     for chain in ('tiny', 'full'):
-        folder = ROOT / 'vectors/official/codec' / chain
+        folder = ROOT / 'vendor/jamtestvectors/codec' / chain
         # A ticket attempt is one byte; a preimage requester/service index is four bytes (GP C.2).
         for name, field, width in [('tickets_extrinsic', 'attempt', 1),
                                    ('preimages_extrinsic', 'requester', 4)]:
@@ -237,6 +238,7 @@ def verify_fixed(build, nim_flags, linker):
 
 # Build and check both languages, then compare the same request corpus with the reference results.
 def main():
+    codec_sources()
     nim_version = run(['nim', '--version'], capture_output=True).stdout
     odin_version = run(['odin', 'version'], capture_output=True).stdout
     assert 'Version 2.2.12 ' in nim_version, nim_version

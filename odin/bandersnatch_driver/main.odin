@@ -10,7 +10,7 @@ import "core:thread"
 // Own decoded fixture bytes; dash is the empty context/additional-data value.
 bytes :: proc(text: string) -> []u8 {
 	// Empty contexts have no input element address.
-	if text == "-" {return nil}
+	if text == "-" { return nil }
 	output := make([]u8, len(text) / 2)
 	_, ok := hex.decode_into_buffer(transmute([]u8)text, output)
 	assert(ok && len(text) % 2 == 0)
@@ -20,7 +20,7 @@ bytes :: proc(text: string) -> []u8 {
 output :: proc(value: bs.Bs_Result($T)) {
 	// Checked status precedes union selection and hex formatting.
 	if bs.error_of(value) !=
-	   .None {fmt.println("error:", int(bs.error_of(value)), sep = ""); return}
+	   .None { fmt.println("error:", int(bs.error_of(value)), sep = ""); return }
 	raw := bs.success_of(value)
 	text := hex.encode(raw[:]); defer delete(text)
 	fmt.println(string(text))
@@ -43,7 +43,7 @@ ownership :: proc() {
 	bs.destroy_setup(&setup); assert(setup == nil)
 	bs.destroy_setup(&setup)
 	// Setup arithmetic must reject negative, empty and unsupported capacities.
-	for size in ([]int{-1, 0, 1024}) {assert(bs.error_of(bs.new_setup(size)) == .Invalid_Length)}
+	for size in ([]int{-1, 0, 1024}) { assert(bs.error_of(bs.new_setup(size)) == .Invalid_Length) }
 	initial: bs.Bs_Result(bs.Bs_Output)
 	assert(bs.error_of(initial) == .Uninitialized)
 	fmt.println("ok")
@@ -64,24 +64,24 @@ worker :: proc(t: ^thread.Thread) {
 concurrent :: proc() {
 	threads: [4]^thread.Thread
 	// Assign fixture identity before starting each independent native owner.
-	for i in 0 ..< 4 {threads[i] = thread.create(worker); assert(threads[i] != nil); threads[i].user_index = i; thread.start(threads[i])}
+	for i in 0 ..< 4 { threads[i] = thread.create(worker); assert(threads[i] != nil); threads[i].user_index = i; thread.start(threads[i]) }
 	// Joined workers have finished all Rust calls and owner destruction.
-	for t in threads {thread.join(t); thread.destroy(t)}
+	for t in threads { thread.join(t); thread.destroy(t) }
 	fmt.println("ok")
 }
 // Load bounded trusted arguments into scoped arrays and dispatch one operation.
 main :: proc() {
 	a := os.args[1:]; assert(len(a) >= 1)
 	// Lifetime/concurrency probes require no payload arguments.
-	if a[0] == "O" {ownership(); return}
-	if a[0] == "T" {concurrent(); return} 	// Same-process Rust ABI thread safety.
+	if a[0] == "O" { ownership(); return }
+	if a[0] == "T" { concurrent(); return } 	// Same-process Rust ABI thread safety.
 	if a[0] == "F" {
 		failed: bs.Bs_Result(bs.Bs_Output)
 		fmt.println(bs.success_of(failed)); return // Deliberate checked failed-result selection must trap.
 	}
 	text := "-"
 	// Public-only derivation has no context argument; all other requests supply argument two.
-	if len(a) > 2 {text = a[2]}
+	if len(a) > 2 { text = a[2] }
 	input := bytes(text); defer delete(input)
 	switch a[0] {
 	// This branch owns a canonical scalar until public derivation/signing finishes.
@@ -90,9 +90,9 @@ main :: proc() {
 		scalar := bytes(a[1]); defer delete(scalar)
 		loaded := bs.import_scalar(scalar)
 		if bs.error_of(loaded) !=
-		   .None {fmt.println("error:", int(bs.error_of(loaded)), sep = ""); return} 	// No default key on failure.
+		   .None { fmt.println("error:", int(bs.error_of(loaded)), sep = ""); return } 	// No default key on failure.
 		key := bs.success_of(loaded); defer bs.destroy_key(&key)
-		if a[0] == "P" {output(bs.public_key(key))} else {
+		if a[0] == "P" { output(bs.public_key(key)) } else {
 			// Signing borrows raw context and additional data separately.
 			ad := bytes(a[3]); defer delete(ad); output(bs.sign(key, input, ad))
 		}
@@ -101,9 +101,9 @@ main :: proc() {
 		encoded := bytes(a[1]); defer delete(encoded)
 		pub := bs.import_public_key(encoded); sig := bs.import_signature(input)
 		if bs.error_of(pub) !=
-		   .None {fmt.println("error:", int(bs.error_of(pub)), sep = ""); return} 	// No invalid point payload.
+		   .None { fmt.println("error:", int(bs.error_of(pub)), sep = ""); return } 	// No invalid point payload.
 		if bs.error_of(sig) !=
-		   .None {fmt.println("error:", int(bs.error_of(sig)), sep = ""); return} 	// No truncated proof payload.
+		   .None { fmt.println("error:", int(bs.error_of(sig)), sep = ""); return } 	// No truncated proof payload.
 		context_bytes := bytes(a[3]); defer delete(context_bytes)
 		ad := bytes(a[4]); defer delete(ad)
 		output(bs.verify(bs.success_of(pub), bs.success_of(sig), context_bytes, ad))
@@ -112,16 +112,16 @@ main :: proc() {
 		capacity, ok := strconv.parse_int(a[1]); assert(ok)
 		loaded := bs.new_setup(capacity)
 		if bs.error_of(loaded) !=
-		   .None {fmt.println("error:", int(bs.error_of(loaded)), sep = ""); return} 	// Invalid setup has no owner.
+		   .None { fmt.println("error:", int(bs.error_of(loaded)), sep = ""); return } 	// Invalid setup has no owner.
 		setup := bs.success_of(loaded); defer bs.destroy_setup(&setup)
-		if a[0] == "R" {output(bs.commit_ring(setup, input))} else if a[0] == "W" {
+		if a[0] == "R" { output(bs.commit_ring(setup, input)) } else if a[0] == "W" {
 			// Root and anonymous proof imports validate their own exact widths.
 			proof_bytes := bytes(a[3]); defer delete(proof_bytes)
 			root := bs.import_ring_root(input); proof := bs.import_ring_proof(proof_bytes)
 			if bs.error_of(root) !=
-			   .None {fmt.println("error:", int(bs.error_of(root)), sep = ""); return} 	// No default root.
+			   .None { fmt.println("error:", int(bs.error_of(root)), sep = ""); return } 	// No default root.
 			if bs.error_of(proof) !=
-			   .None {fmt.println("error:", int(bs.error_of(proof)), sep = ""); return} 	// No default proof.
+			   .None { fmt.println("error:", int(bs.error_of(proof)), sep = ""); return } 	// No default proof.
 			context_bytes := bytes(a[4]); defer delete(context_bytes)
 			ad := bytes(a[5]); defer delete(ad)
 			output(
@@ -137,7 +137,7 @@ main :: proc() {
 			// A matching scalar/index must be supplied before membership proving can begin.
 			key_result := bs.import_scalar(input)
 			if bs.error_of(key_result) !=
-			   .None {fmt.println("error:", int(bs.error_of(key_result)), sep = ""); return}
+			   .None { fmt.println("error:", int(bs.error_of(key_result)), sep = ""); return }
 			key := bs.success_of(key_result); defer bs.destroy_key(&key)
 			index, index_ok := strconv.parse_int(a[3]); assert(index_ok)
 			members := bytes(a[4]); defer delete(members)

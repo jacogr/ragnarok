@@ -5,10 +5,10 @@
 32-byte seed, public key, raw message and 64-byte signature. The original RFC is
 subject to the [IETF Trust terms](https://trustee.ietf.org/license-info).
 
-`ed25519-wycheproof.json` is the unmodified 151-case file from the commit/path in
-[crypto-pins.json](../../../spec/crypto-pins.json), with the upstream Apache-2.0
-license in `LICENSE-wycheproof`. Both fixture SHA-256 values and the license hash
-are checked by the runner. Test seeds/messages are public fixtures.
+The unmodified 151-case Wycheproof file and Apache-2.0 license now live in
+`vendor/wycheproof`. Both fixture and license hashes remain checked by the runner;
+[crypto-pins.json](../../../spec/crypto-pins.json) records the revision/path.
+No duplicate upstream corpus is committed here.
 
 Blake2b-256 cases use independent Python hashlib configured for a 32-byte digest.
 Keccak uses a test-only integer oracle of the Keccak-f round equations and legacy

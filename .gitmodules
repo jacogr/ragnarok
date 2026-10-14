@@ -1,0 +1,27 @@
+[submodule "vendor/lsquic"]
+	path = vendor/lsquic
+	url = https://github.com/iftech/lsquic.git
+[submodule "vendor/boringssl"]
+	path = vendor/boringssl
+	url = https://github.com/vacp2p/boringssl.git
+[submodule "vendor/xkcp"]
+	path = vendor/xkcp
+	url = https://github.com/XKCP/XKCP.git
+[submodule "vendor/ark-vrf"]
+	path = vendor/ark-vrf
+	url = https://github.com/davxy/ark-vrf.git
+[submodule "vendor/bandersnatch-vrf-spec"]
+	path = vendor/bandersnatch-vrf-spec
+	url = https://github.com/davxy/bandersnatch-vrf-spec.git
+[submodule "vendor/graypaper"]
+	path = vendor/graypaper
+	url = https://github.com/gavofyork/graypaper.git
+[submodule "vendor/jamtestvectors"]
+	path = vendor/jamtestvectors
+	url = https://github.com/w3f/jamtestvectors.git
+[submodule "vendor/wycheproof"]
+	path = vendor/wycheproof
+	url = https://github.com/C2SP/wycheproof.git
+[submodule "vendor/jam-np"]
+	path = vendor/jam-np
+	url = https://github.com/zdave-parity/jam-np.git

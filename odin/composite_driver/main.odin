@@ -10,15 +10,15 @@ import "core:strings"
 // Accumulate unsigned decimal digits, rejecting overflow before multiplication or addition.
 parse_decimal :: proc(text: string) -> (u64, bool) {
 	// Empty input is not a number, even when the requested wire width is zero.
-	if len(text) == 0 {return 0, false}
+	if len(text) == 0 { return 0, false }
 	x: u64
 	// Accept decimal digits only and accumulate them without silently wrapping.
 	for c in text {
 		// Signs and other parser conveniences are not part of the unsigned value protocol.
-		if c < '0' || c > '9' {return 0, false}
+		if c < '0' || c > '9' { return 0, false }
 		digit := u64(c - '0')
 		// Check the next arithmetic operation against the full unsigned maximum.
-		if x > (max(u64) - digit) / 10 {return 0, false}
+		if x > (max(u64) - digit) / 10 { return 0, false }
 		x = x * 10 + digit
 	}
 	return x, true
@@ -29,30 +29,30 @@ parse_width :: proc(text: string) -> (codec.Byte_Width, bool) {
 	negative := strings.has_prefix(text, "-")
 	digits := text
 	// Strip only an explicit minus; the unsigned parser handles the remaining digit validation.
-	if negative {digits = text[1:]}
+	if negative { digits = text[1:] }
 	magnitude, ok := parse_decimal(digits)
 	limit := u64(max(int))
 	// The most negative signed integer has one more unit of magnitude than the positive maximum.
-	if negative {limit += 1}
+	if negative { limit += 1 }
 	// Reject a magnitude that cannot be converted to a host int without truncation.
-	if !ok || magnitude > limit {return 0, false}
+	if !ok || magnitude > limit { return 0, false }
 	// Handle the signed minimum before the ordinary unsigned-to-signed conversion.
-	if negative && magnitude == limit {return codec.Byte_Width(min(int)), true}
+	if negative && magnitude == limit { return codec.Byte_Width(min(int)), true }
 	count := int(magnitude)
 	// Remaining negative magnitudes fit a positive host int and can be negated safely.
-	if negative {count = -count}
+	if negative { count = -count }
 	return codec.Byte_Width(count), true
 }
 
 // Convert a bounded lowercase-hex request into supplied stack storage; dash represents an empty payload.
 parse_hex :: proc(text: string, storage: []u8) -> ([]u8, bool) {
 	// The empty token avoids ambiguous missing fields in the batch protocol.
-	if text == "-" {return storage[:0], true}
+	if text == "-" { return storage[:0], true }
 	// Whole pairs must fit actual adapter capacity before the standard parser writes into storage.
-	if len(text) % 2 != 0 || len(text) / 2 > len(storage) {return nil, false}
+	if len(text) % 2 != 0 || len(text) / 2 > len(storage) { return nil, false }
 	// Match the Nim adapter's strict lowercase alphabet before conversion.
 	for c in text {
-		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {return nil, false}
+		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') { return nil, false }
 	}
 	return hex.decode_into_buffer(transmute([]u8)text, storage)
 }
@@ -60,10 +60,10 @@ parse_hex :: proc(text: string, storage: []u8) -> ([]u8, bool) {
 // Print just a validated payload or frame; dash represents zero bytes and no heap string is needed.
 print_hex :: proc(bytes: []u8) {
 	// Keep empty payloads explicit in decode responses.
-	if len(bytes) == 0 {fmt.print("-"); return}
+	if len(bytes) == 0 { fmt.print("-"); return }
 	digits := "0123456789abcdef"
 	// Emit each byte's two nibbles in order; callers add a newline or consumed count afterward.
-	for b in bytes {fmt.printf("%c%c", digits[b >> 4], digits[b & 15])}
+	for b in bytes { fmt.printf("%c%c", digits[b >> 4], digits[b & 15]) }
 }
 
 // Parse bounded test-utility capacities, which are separate from uint64 production resource ceilings.
@@ -71,7 +71,7 @@ parse_capacity :: proc(text: string, maximum: int) -> (int, bool) {
 	value, ok := parse_width(text)
 	count := int(value)
 	// Never let an adapter request choose an unbounded allocation or unsafe slice endpoint.
-	if !ok || count < 0 || count > maximum {return 0, false}
+	if !ok || count < 0 || count > maximum { return 0, false }
 	return count, true
 }
 
@@ -104,42 +104,42 @@ print_error :: proc(error: codec.Composite_Error) {
 // Check native decode/encode correspondence without aliasing source bytes or omitting nested fields.
 same_prefix :: proc(wire: []u8, encoded: codec.Composite_Write, output: []u8, consumed: int) {
 	assert(codec.error_of(encoded) == .None && codec.success_of(encoded).written == consumed)
-	for i in 0 ..< consumed {assert(wire[i] == output[i])} 	// Every field, count and discriminator must agree.
+	for i in 0 ..< consumed { assert(wire[i] == output[i]) } 	// Every field, count and discriminator must agree.
 }
 
 // Trusted local batch parser with fixed storage; production codecs themselves never allocate.
 main :: proc() {
-	if len(os.args) != 2 {os.exit(1)} 	// Require one batch-file path.
+	if len(os.args) != 2 { os.exit(1) } 	// Require one batch-file path.
 	data, err := os.read_entire_file(os.args[1], context.allocator)
-	if err != nil {os.exit(1)} 	// No requests exist on read failure.
+	if err != nil { os.exit(1) } 	// No requests exist on read failure.
 	defer delete(data)
 	lines := string(data)
 	for line in strings.split_lines_iterator(&lines) {
-		if len(line) == 0 {continue} 	// Ignore the file's final newline.
+		if len(line) == 0 { continue } 	// Ignore the file's final newline.
 		parts: [6]string
 		remaining := line
 		n: int
 		for field in strings.split_by_byte_iterator(&remaining, ' ') {
-			if n >= len(parts) {n += 1; break} 	// Never silently drop extra fields.
+			if n >= len(parts) { n += 1; break } 	// Never silently drop extra fields.
 			parts[n] = field
 			n += 1
 		}
 		wire_storage: [32768]u8
 		output: [32768]u8
-		for &b in output {b = 77} 	// Sentinel detects every failed encode's partial writes.
+		for &b in output { b = 77 } 	// Sentinel detects every failed encode's partial writes.
 		if n == 5 && (parts[0] == "OE" || parts[0] == "WE") {
 			tag, tag_ok := parse_width(parts[1])
 			limit, limit_ok := parse_decimal(parts[2])
 			capacity, cap_ok := parse_capacity(parts[3], len(output))
 			pool, hex_ok := parse_hex(parts[4], wire_storage[:])
-			if !tag_ok || !limit_ok || !cap_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Textual ranges checked first.
+			if !tag_ok || !limit_ok || !cap_ok || !hex_ok { fmt.println("inputerror"); continue } 	// Textual ranges checked first.
 			span := codec.Blob_Span {
 				offset = 0,
 				length = len(pool),
 			}
 			encoded: codec.Composite_Write
 			if parts[0] == "OE" {
-				if int(tag) < 0 || int(tag) > 1 {fmt.println("inputerror"); continue} 	// Only bool states can be constructed.
+				if int(tag) < 0 || int(tag) > 1 { fmt.println("inputerror"); continue } 	// Only bool states can be constructed.
 				encoded = codec.encode_optional_borrowed(
 					{present = int(tag) == 1, blob = span},
 					pool,
@@ -148,9 +148,9 @@ main :: proc() {
 				)
 			} else {
 				// Reject unsupported textual enum states before constructing the native work union.
-				if int(tag) < 0 || int(tag) > 6 {fmt.println("invalidtag"); continue}
+				if int(tag) < 0 || int(tag) > 6 { fmt.println("invalidtag"); continue }
 				value: codec.Work_Output
-				if int(tag) == 0 {value = span} else {value = codec.Work_Error(tag)} 	// Success carries a span, errors only a tag.
+				if int(tag) == 0 { value = span } else { value = codec.Work_Error(tag) } 	// Success carries a span, errors only a tag.
 				encoded = codec.encode_work_borrowed(
 					value,
 					pool,
@@ -159,7 +159,7 @@ main :: proc() {
 				)
 			}
 			if codec.error_of(encoded) != .None {
-				for b in output {assert(b == 77)} 	// No failed operation may modify its destination.
+				for b in output { assert(b == 77) } 	// No failed operation may modify its destination.
 				print_error(codec.error_of(encoded)); continue
 			}
 			print_hex(output[:codec.success_of(encoded).written]); fmt.println()
@@ -167,11 +167,11 @@ main :: proc() {
 			// Decoded views refer only to this retained wire array; reconstruction uses separate output.
 			limit, limit_ok := parse_decimal(parts[1])
 			wire, hex_ok := parse_hex(parts[2], wire_storage[:])
-			if !limit_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Request syntax is not a binary-codec error.
+			if !limit_ok || !hex_ok { fmt.println("inputerror"); continue } 	// Request syntax is not a binary-codec error.
 			if parts[0] == "OD" {
 				decoded := codec.decode_optional_borrowed(wire, codec.Byte_Limit(limit))
 				if codec.error_of(decoded) !=
-				   .None {print_error(codec.error_of(decoded)); continue} 	// No usable optional view on failure.
+				   .None { print_error(codec.error_of(decoded)); continue } 	// No usable optional view on failure.
 				// Match the owned snapshot to this independently checked conformance response.
 				ownership_checks.check_optional(wire, codec.Byte_Limit(limit), decoded)
 				same_prefix(
@@ -190,11 +190,11 @@ main :: proc() {
 					fmt.print(
 						"present:",
 					); print_hex(wire[span.offset:span.offset + span.length]); fmt.println("", codec.success_of(decoded).consumed)
-				} else {fmt.println("absent", codec.success_of(decoded).consumed)} 	// Absence carries no payload bytes.
+				} else { fmt.println("absent", codec.success_of(decoded).consumed) } 	// Absence carries no payload bytes.
 			} else {
 				decoded := codec.decode_work_borrowed(wire, codec.Byte_Limit(limit))
 				if codec.error_of(decoded) !=
-				   .None {print_error(codec.error_of(decoded)); continue} 	// Invalid wire cannot be read as a union.
+				   .None { print_error(codec.error_of(decoded)); continue } 	// Invalid wire cannot be read as a union.
 				// Match the owned snapshot to this independently checked conformance response.
 				ownership_checks.check_work(wire, codec.Byte_Limit(limit), decoded)
 				same_prefix(
@@ -222,7 +222,7 @@ main :: proc() {
 			items, items_ok := parse_decimal(parts[1])
 			per_blob, per_ok := parse_decimal(parts[2])
 			total, total_ok := parse_decimal(parts[3])
-			if !items_ok || !per_ok || !total_ok {fmt.println("inputerror"); continue} 	// Preserve all policy bits.
+			if !items_ok || !per_ok || !total_ok { fmt.println("inputerror"); continue } 	// Preserve all policy bits.
 			limits := codec.Preimage_Limits {
 				codec.Element_Limit(items),
 				codec.Byte_Limit(per_blob),
@@ -255,7 +255,7 @@ main :: proc() {
 					}
 				}
 				capacity, cap_ok := parse_capacity(parts[4], len(output))
-				if !ok || !cap_ok {fmt.println("inputerror"); continue} 	// No partial source descriptor list reaches production.
+				if !ok || !cap_ok { fmt.println("inputerror"); continue } 	// No partial source descriptor list reaches production.
 				encoded := codec.encode_preimages_borrowed(
 					records[:count],
 					wire_storage[:used],
@@ -263,7 +263,7 @@ main :: proc() {
 					output[:capacity],
 				)
 				if codec.error_of(encoded) != .None {
-					for b in output {assert(b == 77)} 	// Even late nested failures preserve every output byte.
+					for b in output { assert(b == 77) } 	// Even late nested failures preserve every output byte.
 					print_error(codec.error_of(encoded)); continue
 				}
 				print_hex(output[:codec.success_of(encoded).written]); fmt.println()
@@ -271,14 +271,14 @@ main :: proc() {
 				// Caller record capacity is a separate constraint from its explicit maximum permitted count.
 				capacity, cap_ok := parse_capacity(parts[4], len(records))
 				wire, hex_ok := parse_hex(parts[5], wire_storage[:])
-				if !cap_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Checked utility endpoints.
+				if !cap_ok || !hex_ok { fmt.println("inputerror"); continue } 	// Checked utility endpoints.
 				for &record in records {record = {
 						service = codec.Service_Index(999),
 						blob = {offset = 333, length = 444},
 					}} // Failure sentinels.
 				decoded := codec.decode_preimages_borrowed(wire, limits, records[:capacity])
 				if codec.error_of(decoded) != .None {
-					for record in records {assert(u32(record.service) == 999 && record.blob.offset == 333 && record.blob.length == 444)} 	// Atomic nested failures.
+					for record in records { assert(u32(record.service) == 999 && record.blob.offset == 333 && record.blob.length == 444) } 	// Atomic nested failures.
 					print_error(codec.error_of(decoded)); continue
 				}
 				// Compare every owned service ID, nested payload and complete canonical frame.
@@ -294,15 +294,15 @@ main :: proc() {
 					output[:],
 					codec.success_of(decoded).consumed,
 				)
-				if codec.success_of(decoded).count == 0 {fmt.print("-")} 	// Explicit empty record prefix.
+				if codec.success_of(decoded).count == 0 { fmt.print("-") } 	// Explicit empty record prefix.
 				for i in 0 ..< codec.success_of(decoded).count {
-					if i > 0 {fmt.print(";")} 	// Delimit actual decoded tuples only.
+					if i > 0 { fmt.print(";") } 	// Delimit actual decoded tuples only.
 					fmt.printf("%d:", u32(records[i].service))
 					span := records[i].blob
 					print_hex(wire[span.offset:span.offset + span.length])
 				}
 				fmt.println("", codec.success_of(decoded).consumed)
 			}
-		} else {fmt.println("inputerror")} 	// Unknown commands/token counts never select a production decoder.
+		} else { fmt.println("inputerror") } 	// Unknown commands/token counts never select a production decoder.
 	}
 }

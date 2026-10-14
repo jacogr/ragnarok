@@ -45,21 +45,21 @@ error_of :: proc(outcome: Crypto_Result($T)) -> Crypto_Error {
 	case T:
 		return .None // This branch alone carries completed data.
 	case Crypto_Error:
-		if value == .None {return .Uninitialized} 	// A reason-only alternative is not success.
+		if value == .None { return .Uninitialized } 	// A reason-only alternative is not success.
 		return value
 	}
 	unreachable() // The no-nil union exhausts both alternatives.
 }
 // Select completed data after checking status; a checked assertion traps on caller misuse rather than returning defaults.
-success_of :: proc(outcome: Crypto_Result($T)) -> T {return outcome.(T)}
+success_of :: proc(outcome: Crypto_Result($T)) -> T { return outcome.(T) }
 
 // Own a seed copy using the chosen allocator; its state must outlive the returned owner and all borrowed aliases.
 import_seed :: proc(input: []u8, allocator := context.allocator) -> Crypto_Result(Ed_Seed) {
 	// Exact RFC width is required, including when all bytes are zero.
-	if len(input) != 32 {return Crypto_Error.Invalid_Length}
+	if len(input) != 32 { return Crypto_Error.Invalid_Length }
 	storage, error := mem.new(Seed_Storage, allocator)
 	// Allocators can refuse storage with either an error or a nil pointer.
-	if error != .None || storage == nil {return Crypto_Error.Allocation_Failure}
+	if error != .None || storage == nil { return Crypto_Error.Allocation_Failure }
 	copy(storage.bytes[:], input)
 	storage.alive = true
 	storage.allocator = allocator
@@ -69,7 +69,7 @@ import_seed :: proc(input: []u8, allocator := context.allocator) -> Crypto_Resul
 // Erase retained seed bytes and invalidate all aliases without freeing the still-owned storage.
 clear_seed :: proc(seed: Ed_Seed) {
 	// A default owner has no secret allocation to clear.
-	if seed == nil {return}
+	if seed == nil { return }
 	storage := cast(^Seed_Storage)seed
 	corecrypto.zero_explicit(&storage.bytes, size_of(storage.bytes))
 	storage.alive = false
@@ -78,7 +78,7 @@ clear_seed :: proc(seed: Ed_Seed) {
 // Release exactly one seed owner through its original allocator and clear the passed handle; aliases must stop being used.
 destroy_seed :: proc(seed: ^Ed_Seed) {
 	// Clearing/releasing a nil owner again is harmless.
-	if seed == nil || seed^ == nil {return}
+	if seed == nil || seed^ == nil { return }
 	storage := cast(^Seed_Storage)seed^
 	allocator := storage.allocator
 	corecrypto.zero_explicit(storage, size_of(Seed_Storage))
@@ -89,7 +89,7 @@ destroy_seed :: proc(seed: ^Ed_Seed) {
 // Import fixed public-key bytes without exposing core's mutable internal group/validation fields.
 import_public_key :: proc(input: []u8) -> Crypto_Result(Ed_Public_Key) {
 	// Wrong widths have no usable success payload.
-	if len(input) != 32 {return Crypto_Error.Invalid_Length}
+	if len(input) != 32 { return Crypto_Error.Invalid_Length }
 	value: [32]u8
 	copy(value[:], input)
 	return Ed_Public_Key(value)
@@ -97,7 +97,7 @@ import_public_key :: proc(input: []u8) -> Crypto_Result(Ed_Public_Key) {
 // Import exact signature bytes; cryptographic validity is decided separately by verification.
 import_signature :: proc(input: []u8) -> Crypto_Result(Ed_Signature) {
 	// No truncation or padding is permitted for external signature encodings.
-	if len(input) != 64 {return Crypto_Error.Invalid_Length}
+	if len(input) != 64 { return Crypto_Error.Invalid_Length }
 	value: [64]u8
 	copy(value[:], input)
 	return Ed_Signature(value)
@@ -125,17 +125,17 @@ keccak256 :: proc(input: []u8) -> Crypto_Result(Keccak_Hash) {
 // Derive public bytes from a live retained seed; expanded core key state is private and cleared before return.
 public_key :: proc(seed: Ed_Seed) -> Crypto_Result(Ed_Public_Key) {
 	// Default or cleared owners cannot silently become an initialized zero seed.
-	if seed == nil {return Crypto_Error.Invalid_Seed}
+	if seed == nil { return Crypto_Error.Invalid_Seed }
 	storage := cast(^Seed_Storage)seed
 	// A cleared retained allocation is still owned, but no longer a signing identity.
-	if !storage.alive {return Crypto_Error.Invalid_Seed}
+	if !storage.alive { return Crypto_Error.Invalid_Seed }
 	private: ed25519.Private_Key
 	defer ed25519.private_key_clear(&private)
 	// Construct fresh core key state from retained seed bytes rather than allowing callers to mutate its internals.
 	if !ed25519.private_key_set_bytes(
 		&private,
 		storage.bytes[:],
-	) {return Crypto_Error.Backend_Failure}
+	) { return Crypto_Error.Backend_Failure }
 	output: [32]u8
 	ed25519.private_key_public_bytes(&private, output[:])
 	return Ed_Public_Key(output)
@@ -144,16 +144,16 @@ public_key :: proc(seed: Ed_Seed) -> Crypto_Result(Ed_Public_Key) {
 // Sign an exact raw message with ordinary deterministic Ed25519; no implicit prehash or domain is selected.
 sign :: proc(seed: Ed_Seed, message: []u8) -> Crypto_Result(Ed_Signature) {
 	// All seed state/width invariants are established before any core function with initialization assertions.
-	if seed == nil {return Crypto_Error.Invalid_Seed}
+	if seed == nil { return Crypto_Error.Invalid_Seed }
 	storage := cast(^Seed_Storage)seed
 	// A cleared retained allocation is still owned, but no longer a signing identity.
-	if !storage.alive {return Crypto_Error.Invalid_Seed}
+	if !storage.alive { return Crypto_Error.Invalid_Seed }
 	private: ed25519.Private_Key
 	defer ed25519.private_key_clear(&private)
 	if !ed25519.private_key_set_bytes(
 		&private,
 		storage.bytes[:],
-	) {return Crypto_Error.Backend_Failure} 	// Failed key construction exposes no signature.
+	) { return Crypto_Error.Backend_Failure } 	// Failed key construction exposes no signature.
 	output: [64]u8
 	ed25519.sign(&private, message, output[:])
 	return Ed_Signature(output)
@@ -165,7 +165,7 @@ verify :: proc(key: Ed_Public_Key, signature: Ed_Signature, message: []u8) -> bo
 	public: ed25519.Public_Key
 	bytes := cast([32]u8)key
 	// Decode invalid public encodings as a normal false verdict before signature processing.
-	if !ed25519.public_key_set_bytes(&public, bytes[:]) {return false}
+	if !ed25519.public_key_set_bytes(&public, bytes[:]) { return false }
 	signature_bytes := cast([64]u8)signature
 	return ed25519.verify(&public, message, signature_bytes[:])
 }

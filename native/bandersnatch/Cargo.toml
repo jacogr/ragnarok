@@ -8,7 +8,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-ark-vrf = { path = "../../build/bandersnatch/sources/ark-vrf-jam", features = ["bandersnatch", "ring", "secret-split"] }
+ark-vrf = { path = "../../vendor/ark-vrf", features = ["bandersnatch", "ring", "secret-split"] }
 
 [profile.release]
 panic = "unwind"

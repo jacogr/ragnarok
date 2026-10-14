@@ -8,19 +8,23 @@
   "sources": {
     "lsquic": {
       "repository": "iftech/lsquic",
-      "commit": "fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52"
+      "commit": "fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52",
+      "path": "vendor/lsquic"
     },
     "boringssl": {
       "repository": "vacp2p/boringssl",
-      "commit": "88341070936d28e08f82db1326c73d67962cd043"
+      "commit": "88341070936d28e08f82db1326c73d67962cd043",
+      "path": "vendor/boringssl"
     },
     "lsquic/src/liblsquic/ls-qpack": {
       "repository": "litespeedtech/ls-qpack",
-      "commit": "91567706c41c0d97ab8dc576873ecd472d7869fa"
+      "commit": "91567706c41c0d97ab8dc576873ecd472d7869fa",
+      "path": "vendor/lsquic/src/liblsquic/ls-qpack"
     },
     "lsquic/src/lshpack": {
       "repository": "litespeedtech/ls-hpack",
-      "commit": "cf0f70dd10b352194c97448eb5d00b4aa484f531"
+      "commit": "cf0f70dd10b352194c97448eb5d00b4aa484f531",
+      "path": "vendor/lsquic/src/lshpack"
     }
   },
   "patches": [],

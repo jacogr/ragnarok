@@ -113,7 +113,7 @@ def verify_digest(build, nim_flags, linker, run, encode, decode):
     # Tiny/full success and panic fixtures are unmodified complete work-digest JSON/binary pairs.
     for chain in ('tiny', 'full'):
         for name in ('work_result_0', 'work_result_1'):
-            folder = ROOT / 'vectors/official/codec' / chain
+            folder = ROOT / 'vendor/jamtestvectors/codec' / chain
             item = json.loads((folder / f'{name}.json').read_text())
             tag, blob = (0, bytes.fromhex(item['result']['ok'][2:])) if 'ok' in item['result'] else (2, b'')
             metrics = [item['refine_load'][key] for key in ('gas_used', 'imports', 'extrinsic_count', 'extrinsic_size', 'exports')]

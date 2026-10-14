@@ -140,7 +140,7 @@ def verify_composite(build, nim_flags, linker, run, encode, decode):
     full_vector_checks = field_checks = 0
     for chain in ('tiny', 'full'):
         # Full preimage JSON and entire binary vectors are consumed and re-encoded by the native APIs.
-        folder = ROOT / 'vectors/official/codec' / chain
+        folder = ROOT / 'vendor/jamtestvectors/codec' / chain
         data = json.loads((folder / 'preimages_extrinsic.json').read_text())
         records = [(item['requester'], bytes.fromhex(item['blob'][2:])) for item in data]
         wire = (folder / 'preimages_extrinsic.bin').read_bytes()

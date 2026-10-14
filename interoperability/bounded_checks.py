@@ -120,7 +120,7 @@ def verify_bounded(build, nim_flags, linker, run, reference_encode, reference_de
 
     # Official preimage blob spans include both the exact natural length and the complete raw payload.
     for chain in ('tiny', 'full'):
-        folder = ROOT / 'vectors/official/codec' / chain
+        folder = ROOT / 'vendor/jamtestvectors/codec' / chain
         items = json.loads((folder / 'preimages_extrinsic.json').read_text())
         wire = (folder / 'preimages_extrinsic.bin').read_bytes()
         offset = len(reference_encode(len(items)))

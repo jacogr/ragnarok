@@ -84,13 +84,13 @@ error_of :: proc(result: Bs_Result($T)) -> Bs_Error {
 		return .None // Only completed data is success.
 	case Bs_Error:
 		// Default/error-only alternatives cannot expose a value.
-		if item == .None {return .Uninitialized}
+		if item == .None { return .Uninitialized }
 		return item
 	}
 	unreachable()
 }
 // Checked selection traps on programmer misuse even in the optimized tested build.
-success_of :: proc(result: Bs_Result($T)) -> T {return result.(T)}
+success_of :: proc(result: Bs_Result($T)) -> T { return result.(T) }
 // Preserve explicit ABI errors; unknown native statuses are failures.
 reason :: proc(code: u32) -> Bs_Error {
 	switch code {
@@ -111,42 +111,42 @@ reason :: proc(code: u32) -> Bs_Error {
 	}
 }
 // Borrow a stable input address synchronously; nil is the empty-context representation.
-data :: proc(input: []u8) -> rawptr {return raw_data(input)}
+data :: proc(input: []u8) -> rawptr { return raw_data(input) }
 // Import exact canonical nonzero scalar bytes (not a seed), retained privately by Rust.
 import_scalar :: proc(input: []u8) -> Bs_Result(Bs_Key) {
 	owner: rawptr
 	error := reason(key_new(data(input), uintptr(len(input)), &owner))
 	// Failed validation/allocation setup cannot expose a default key.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Key(owner)
 }
 // Validate bounded capacity before passing it to Rust's unsigned domain arithmetic.
 new_setup :: proc(capacity: int) -> Bs_Result(Bs_Setup) {
 	// Unsupported/negative capacities cannot wrap, truncate or silently change domains.
-	if capacity < 1 || capacity > 1023 {return Bs_Error.Invalid_Length}
+	if capacity < 1 || capacity > 1023 { return Bs_Error.Invalid_Length }
 	owner: rawptr
 	error := reason(setup_new(uintptr(capacity), &owner))
 	// Failed native initialization has no owner payload.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Setup(owner)
 }
 // Destroy one Rust key allocation and nil its release owner's handle; borrowed aliases must stop being used.
 destroy_key :: proc(key: ^Bs_Key) {
 	// Nil owners are harmless; a copied live alias is never independently released.
-	if key == nil || key^ == nil {return}
+	if key == nil || key^ == nil { return }
 	key_free(rawptr(key^)); key^ = nil
 }
 // Destroy one setup allocation; its original allocator/lifetime are entirely within Rust.
 destroy_setup :: proc(setup: ^Bs_Setup) {
 	// Absent owners contain no native allocation.
-	if setup == nil || setup^ == nil {return}
+	if setup == nil || setup^ == nil { return }
 	setup_free(rawptr(setup^)); setup^ = nil
 }
 // Import canonical prime-subgroup public bytes; verifier identity guards are assessed separately.
 import_public_key :: proc(input: []u8) -> Bs_Result(Bs_Public_Key) {
 	error := reason(native_validate(data(input), uintptr(len(input))))
 	// Invalid encoding/width yields no typed public key.
-	if error != .None {return error}
+	if error != .None { return error }
 	output: [32]u8; copy(output[:], input)
 	return Bs_Public_Key(output)
 }
@@ -156,24 +156,24 @@ normalize_ring :: proc(input: []u8) -> Bs_Result([]u8) {
 	// Complete bounded members are required before allocating copied storage.
 	if len(input) == 0 ||
 	   len(input) % 32 != 0 ||
-	   len(input) > 1023 * 32 {return Bs_Error.Invalid_Length}
+	   len(input) > 1023 * 32 { return Bs_Error.Invalid_Length }
 	padding: [32]u8
 	error := reason(native_padding(&padding[0]))
 	// A backend failure must never silently substitute zeros.
-	if error != .None {return error}
+	if error != .None { return error }
 	output, alloc_error := make([]u8, len(input))
 	// Refused native-language storage has no array payload.
-	if alloc_error != .None || output == nil {return Bs_Error.Backend_Failure}
+	if alloc_error != .None || output == nil { return Bs_Error.Backend_Failure }
 	// Retain every valid point in order; invalid canonical/subgroup encodings become suite padding.
 	for index := 0; index < len(input); index += 32 {
 		status := reason(native_validate(&input[index], 32))
 		// Only bad encodings become padding; native failure/panic is not invalid-member policy.
-		if status != .None && status != .Invalid_Encoding {delete(output); return status}
+		if status != .None && status != .Invalid_Encoding { delete(output); return status }
 		valid := status == .None
 		// Copy the full member rather than truncating or modifying the original buffer.
 		for i in 0 ..< 32 {
 			// Canonical points remain unchanged, including identities that the separate adapter guard rejects.
-			if valid {output[index + i] = input[index + i]} else {
+			if valid { output[index + i] = input[index + i] } else {
 				// An invalid encoding has no usable subgroup point; substitute the exact suite padding.
 				output[index + i] = padding[i]
 			}
@@ -187,7 +187,7 @@ public_key :: proc(key: Bs_Key) -> Bs_Result(Bs_Public_Key) {
 	output: [32]u8
 	error := reason(native_public(rawptr(key), &output[0]))
 	// Failed operations return a reason-only alternative, never default scratch bytes.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Public_Key(output)
 }
 
@@ -205,7 +205,7 @@ sign :: proc(key: Bs_Key, context_bytes, additional: []u8) -> Bs_Result(Bs_Signa
 		),
 	)
 	// Failed operations return a reason-only alternative, never default scratch bytes.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Signature(output)
 }
 
@@ -230,7 +230,7 @@ verify :: proc(
 		),
 	)
 	// Failed operations return a reason-only alternative, never default scratch bytes.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Output(output)
 }
 
@@ -238,14 +238,14 @@ verify :: proc(
 commit_ring :: proc(setup: Bs_Setup, members: []u8) -> Bs_Result(Bs_Ring_Root) {
 	loaded := normalize_ring(members)
 	// Select normalized bytes only after size/encoding policy succeeds.
-	if error_of(loaded) != .None {return error_of(loaded)}
+	if error_of(loaded) != .None { return error_of(loaded) }
 	normalized := success_of(loaded); defer delete(normalized)
 	output: [144]u8
 	error := reason(
 		native_commit(rawptr(setup), data(normalized), uintptr(len(normalized)), &output[0]),
 	)
 	// Failed operations return a reason-only alternative, never default scratch bytes.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Ring_Root(output)
 }
 
@@ -258,10 +258,10 @@ sign_ring :: proc(
 ) -> Bs_Result(Bs_Ring_Proof) {
 	loaded := normalize_ring(members)
 	// Select normalized bytes only after size/encoding policy succeeds.
-	if error_of(loaded) != .None {return error_of(loaded)}
+	if error_of(loaded) != .None { return error_of(loaded) }
 	normalized := success_of(loaded); defer delete(normalized)
 	// Reject negative positions before conversion to unsigned native size.
-	if index < 0 {return Bs_Error.Invalid_Length}
+	if index < 0 { return Bs_Error.Invalid_Length }
 	output: [784]u8
 	error := reason(
 		native_ring_sign(
@@ -278,7 +278,7 @@ sign_ring :: proc(
 		),
 	)
 	// Failed operations return a reason-only alternative, never default scratch bytes.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Ring_Proof(output)
 }
 
@@ -305,14 +305,14 @@ verify_ring :: proc(
 		),
 	)
 	// Failed operations return a reason-only alternative, never default scratch bytes.
-	if error != .None {return error}
+	if error != .None { return error }
 	return Bs_Output(output)
 }
 
 // Own a complete fixed encoding; cryptographic validity is checked during verification.
 import_signature :: proc(input: []u8) -> Bs_Result(Bs_Signature) {
 	// Wrong widths have no typed payload and never discard trailing bytes.
-	if len(input) != 96 {return Bs_Error.Invalid_Length}
+	if len(input) != 96 { return Bs_Error.Invalid_Length }
 	output: [96]u8; copy(output[:], input)
 	return Bs_Signature(output)
 }
@@ -320,7 +320,7 @@ import_signature :: proc(input: []u8) -> Bs_Result(Bs_Signature) {
 // Own a complete fixed encoding; cryptographic validity is checked during verification.
 import_ring_proof :: proc(input: []u8) -> Bs_Result(Bs_Ring_Proof) {
 	// Wrong widths have no typed payload and never discard trailing bytes.
-	if len(input) != 784 {return Bs_Error.Invalid_Length}
+	if len(input) != 784 { return Bs_Error.Invalid_Length }
 	output: [784]u8; copy(output[:], input)
 	return Bs_Ring_Proof(output)
 }
@@ -328,7 +328,7 @@ import_ring_proof :: proc(input: []u8) -> Bs_Result(Bs_Ring_Proof) {
 // Own a complete fixed encoding; cryptographic validity is checked during verification.
 import_ring_root :: proc(input: []u8) -> Bs_Result(Bs_Ring_Root) {
 	// Wrong widths have no typed payload and never discard trailing bytes.
-	if len(input) != 144 {return Bs_Error.Invalid_Length}
+	if len(input) != 144 { return Bs_Error.Invalid_Length }
 	output: [144]u8; copy(output[:], input)
 	return Bs_Ring_Root(output)
 }

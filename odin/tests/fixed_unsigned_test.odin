@@ -67,13 +67,13 @@ fuzz_fixed :: proc(t: ^testing.T, input: []u8, width: codec.Byte_Width) {
 @(test)
 fixed_unsigned :: proc(t: ^testing.T) {
 	// These loops cover every possible one-byte and two-byte value.
-	for x in u64(0) ..< 256 {check_fixed(t, x, 1)}
-	for x in u64(0) ..< 65536 {check_fixed(t, x, 2)}
+	for x in u64(0) ..< 256 { check_fixed(t, x, 1) }
+	for x in u64(0) ..< 65536 { check_fixed(t, x, 2) }
 	// Cover all widths rather than restricting the API to machine-size fields.
 	for count in 0 ..= 8 {
 		maximum := max(u64)
 		// Avoid a shift by 64: eight bytes use the native maximum directly.
-		if count < 8 {maximum = (u64(1) << uint(8 * count)) - 1}
+		if count < 8 { maximum = (u64(1) << uint(8 * count)) - 1 }
 		check_fixed(t, 0, count)
 		check_fixed(t, maximum, count)
 		check_fixed(t, maximum / 2, count)

@@ -9,7 +9,8 @@ from pathlib import Path
 import platform
 import random
 import subprocess
-from test_quic import fetch_source, run
+from test_quic import run
+from dependencies import require_submodule
 from toolchain_checks import odin_matches
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,17 +22,11 @@ PINS = json.loads((ROOT / 'spec/crypto-pins.json').read_text())
 def dependencies(fetch):
     assert PINS['patches'] == [], 'Crypto dependencies must remain unmodified'
     paths = {}
-    # Reuse QUIC's identical BoringSSL revision/build without requiring any transport sources.
-    for name, entry in PINS['sources'].items():
-        destination = ROOT / 'build/quic/native-sources/boringssl' if name == 'boringssl' else BUILD / 'sources' / name
-        marker = destination / '.ragnarok-source.json'
-        # Fetch missing pinned source archives, never executable installers.
-        if fetch and not marker.exists():
-            fetch_source(entry, destination)
-        assert marker.exists(), f'Run with --fetch for {name}'
-        actual = json.loads(marker.read_text())
-        assert actual['repository'] == entry['repository'] and actual['commit'] == entry['commit']
-        paths[name] = destination
+    # BoringSSL is shared with QUIC; Git submodules own exact source revisions.
+    for name,entry in PINS['sources'].items():
+        paths[name]=require_submodule(entry,fetch)
+    entry=PINS['wycheproof']
+    require_submodule({'path':entry['submodule_path'],'repository':entry['repository'],'commit':entry['commit']},fetch)
     return paths
 
 
@@ -43,7 +38,7 @@ def build(paths):
     assert system in ('Darwin', 'Linux')
     library = BUILD / ('libragnarok_crypto.dylib' if system == 'Darwin' else 'libragnarok_crypto.so')
     bssl, xkcp = paths['boringssl'], paths['xkcp']
-    native = ROOT / 'build/quic/native-bssl'
+    native = ROOT / 'build/native/boringssl'
     config = BUILD / 'config'
     config.mkdir(exist_ok=True)
     (config / 'config.h').write_text('#define XKCP_has_KeccakP1600 1\n')
@@ -168,8 +163,8 @@ def test(binary):
     assert query(binary, 'T') == 'ok'
     fixture = ROOT / 'vectors/official/crypto'
     assert hashlib.sha256((fixture / 'rfc8032.json').read_bytes()).hexdigest() == PINS['rfc8032']['fixture_sha256']
-    assert hashlib.sha256((fixture / 'ed25519-wycheproof.json').read_bytes()).hexdigest() == PINS['wycheproof']['sha256']
-    assert hashlib.sha256((fixture / 'LICENSE-wycheproof').read_bytes()).hexdigest() == PINS['wycheproof']['license_sha256']
+    assert hashlib.sha256((ROOT / PINS['wycheproof']['submodule_path'] / PINS['wycheproof']['path']).read_bytes()).hexdigest() == PINS['wycheproof']['sha256']
+    assert hashlib.sha256((ROOT / PINS['wycheproof']['submodule_path'] / 'LICENSE').read_bytes()).hexdigest() == PINS['wycheproof']['license_sha256']
     vectors = json.loads((fixture / 'rfc8032.json').read_text())
     # Every RFC pure-Ed25519 seed/public/message/signature tuple is tested byte for byte.
     for v in vectors:
@@ -181,7 +176,7 @@ def test(binary):
         assert query(binary, 'V', public, altered, message) == '0'
         assert query(binary, 'V', public, signature, message+b'!') == '0'
     verdicts = {}
-    wycheproof = json.loads((fixture / 'ed25519-wycheproof.json').read_text())
+    wycheproof = json.loads((ROOT / PINS['wycheproof']['submodule_path'] / PINS['wycheproof']['path']).read_text())
     # Preserve every corpus label; backend disagreements cannot be silently skipped.
     for group in wycheproof['testGroups']:
         public = bytes.fromhex(group['publicKey']['pk'])

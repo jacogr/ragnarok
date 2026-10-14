@@ -13,7 +13,7 @@ error_of :: proc(outcome: Codec_Result($T, $E)) -> E {
 	case T:
 		return E.None // Only the completed-data alternative has successful status.
 	case E:
-		if item == E.None {return E.Uninitialized} 	// A fabricated empty failure cannot masquerade as the success alternative.
+		if item == E.None { return E.Uninitialized } 	// A fabricated empty failure cannot masquerade as the success alternative.
 		return item // Failed operations expose their reason without default payload fields.
 	}
 	unreachable() // The no-nil union exhausts both alternatives above.
@@ -21,4 +21,4 @@ error_of :: proc(outcome: Codec_Result($T, $E)) -> E {
 
 // Extract completed data after checking the result or switching on its success type.
 // The checked union assertion fails on API misuse; it never fabricates a zero value on decoder failure.
-success_of :: proc(outcome: Codec_Result($T, $E)) -> T {return outcome.(T)}
+success_of :: proc(outcome: Codec_Result($T, $E)) -> T { return outcome.(T) }

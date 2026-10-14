@@ -48,7 +48,7 @@ fuzz_one :: proc(t: ^testing.T, input: []u8) {
 // Run the deterministic native boundary, malformed-input and fuzz checks for this codec.
 naturals :: proc(t: ^testing.T) {
 	// Exhaust small values rather than relying only on a handful of examples.
-	for x in u64(0) ..< 65536 {check(t, x)}
+	for x in u64(0) ..< 65536 { check(t, x) }
 	// Test below, at and above each power of two, including every encoded-size transition.
 	for bits in 1 ..< 64 {
 		pivot := u64(1) << uint(bits)

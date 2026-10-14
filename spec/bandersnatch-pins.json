@@ -11,12 +11,14 @@
     "ark-vrf-jam": {
       "repository": "davxy/ark-vrf",
       "commit": "29e53a0e642b1ccf95bdf881df5b0eaf3bbb8d04",
-      "tree_sha256": "831b2201c0dc533da65c6acf958bbfedc064357d2ebd014ccd6aae2c5415269d"
+      "tree_sha256": "831b2201c0dc533da65c6acf958bbfedc064357d2ebd014ccd6aae2c5415269d",
+      "path": "vendor/ark-vrf"
     },
     "spec-jam": {
       "repository": "davxy/bandersnatch-vrf-spec",
       "commit": "38cf32d33d9d860feccd1f56b3bf6633c05669b0",
-      "tree_sha256": "9c2bf10c91bd0f77b9b4d87a4430d46df3a78624208dd666ba83be4df30ee525"
+      "tree_sha256": "9c2bf10c91bd0f77b9b4d87a4430d46df3a78624208dd666ba83be4df30ee525",
+      "path": "vendor/bandersnatch-vrf-spec"
     }
   },
   "cargo_features": [
@@ -26,8 +28,8 @@
     "secret-split"
   ],
   "fixture_files": {
-    "vectors/official/bandersnatch/ietf.json": "c9e2f87bde118b4c5edcde479f7285fd07c3bece13fa47d44a346a83d36ac5c8",
-    "vectors/official/bandersnatch/ring.json": "40c31ff3340e4ea04b426271c36827b086a71dd57998403772f12042ce10a052",
+    "vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_ietf.json": "c9e2f87bde118b4c5edcde479f7285fd07c3bece13fa47d44a346a83d36ac5c8",
+    "vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_ring.json": "40c31ff3340e4ea04b426271c36827b086a71dd57998403772f12042ce10a052",
     "vectors/official/bandersnatch/jam-tiny.json": "ba1dc86511e8002c317839319b15f8f1395c02777d8e33092fd51b19e0f751df",
     "vectors/official/bandersnatch/jam-full.json": "bb62bcd509eeca33d026abdccd088f4e8d7fad7f56db95a1866579b3aaae11a4",
     "vectors/official/bandersnatch/jam-padding.json": "76dacb18d0ca8befff369e5c3e649e23030d09132d574f4ed0ce26daddd429c2"

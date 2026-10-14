@@ -54,8 +54,7 @@ is applied. The new native dependency is needed only by Nim's Keccak backend.
 
 Upstream licensing remains with the source trees (BoringSSL's component notices,
 XKCP's component/SPDX notices, Odin's distribution license). Wycheproof's public
-fixture is copied unmodified under its Apache-2.0 license; RFC vectors originate
+fixture is read unmodified from its pinned submodule under its Apache-2.0 license; RFC vectors originate
 in RFC 8032 section 7.1 under the RFC's IETF Trust terms. Source identities and
-fixture SHA-256 digests are pinned. The original Wycheproof license accompanies
-the committed fixture. Tests establish functionality; they do not establish an
+fixture SHA-256 digests are pinned. The original Wycheproof license remains with its source submodule. Tests establish functionality; they do not establish an
 audit of every selected module or a production suitability certification.

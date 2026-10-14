@@ -204,7 +204,7 @@ pub unsafe extern "C" fn bs_setup_new(size: usize, out: *mut *mut c_void) -> u32
         }
         const SRS: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../build/bandersnatch/sources/spec-jam/assets/srs/zcash-srs-2-11-uncompressed.bin"
+            "/../../vendor/bandersnatch-vrf-spec/assets/srs/zcash-srs-2-11-uncompressed.bin"
         ));
         // The runner checks the embedded trusted file's immutable hash; validate its curve points too.
         let pcs = bs::PcsParams::deserialize_uncompressed(SRS).map_err(|_| 5u32)?;

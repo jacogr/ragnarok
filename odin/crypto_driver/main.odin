@@ -10,7 +10,7 @@ import "core:thread"
 // Decode fixture hex into owned bytes; a dash represents an empty message.
 bytes :: proc(text: string) -> []u8 {
 	// Empty fixture messages need no allocation.
-	if text == "-" {return nil}
+	if text == "-" { return nil }
 	result := make([]u8, len(text) / 2)
 	_, ok := hex.decode_into_buffer(transmute([]u8)text, result)
 	assert(ok && len(text) % 2 == 0)
@@ -19,7 +19,7 @@ bytes :: proc(text: string) -> []u8 {
 // Print only the completed fixed array; failures have no default payload to encode.
 output :: proc(value: primitives.Crypto_Result($T)) {
 	// Check the tagged result before selecting its array alternative.
-	if primitives.error_of(value) != .None {fmt.println("error"); return}
+	if primitives.error_of(value) != .None { fmt.println("error"); return }
 	raw := primitives.success_of(value)
 	encoded := hex.encode(raw[:])
 	defer delete(encoded)
@@ -104,7 +104,7 @@ concurrent :: proc() {
 		thread.start(threads[i])
 	}
 	// Joining establishes completion before releasing each OS thread handle.
-	for t in threads {thread.join(t); thread.destroy(t)}
+	for t in threads { thread.join(t); thread.destroy(t) }
 	fmt.println("ok")
 }
 // Handle one request with scoped input buffers and exactly one seed release owner.
@@ -117,9 +117,9 @@ main :: proc() {
 		return
 	}
 	// The ownership probe needs no fixture arguments.
-	if os.args[1] == "O" {ownership(); return}
+	if os.args[1] == "O" { ownership(); return }
 	// Same-process workers test that no global mutable crypto context is used.
-	if os.args[1] == "T" {concurrent(); return}
+	if os.args[1] == "T" { concurrent(); return }
 	assert(len(os.args) >= 3)
 	input := bytes(os.args[2])
 	defer delete(input)
@@ -136,7 +136,7 @@ main :: proc() {
 		key := primitives.import_public_key(input)
 		sig := primitives.import_signature(signature_bytes)
 		if primitives.error_of(key) != .None ||
-		   primitives.error_of(sig) != .None {fmt.println("error")} else {
+		   primitives.error_of(sig) != .None { fmt.println("error") } else {
 			// Completed encodings produce a normal true/false verification verdict.
 			fmt.println(
 				int(
@@ -151,9 +151,9 @@ main :: proc() {
 	// Seed import owns a private copy, released even after printing an error from derivation/signing.
 	case "P", "S":
 		loaded := primitives.import_seed(input)
-		if primitives.error_of(loaded) != .None {fmt.println("error"); return} 	// No seed payload exists on failure.
+		if primitives.error_of(loaded) != .None { fmt.println("error"); return } 	// No seed payload exists on failure.
 		seed := primitives.success_of(loaded); defer primitives.destroy_seed(&seed)
-		if os.args[1] == "P" {output(primitives.public_key(seed))} else {
+		if os.args[1] == "P" { output(primitives.public_key(seed)) } else {
 			// Signing applies no codec, domain prefix or prehash to the fixture.
 			message := bytes(os.args[3]); defer delete(message)
 			output(primitives.sign(seed, message))

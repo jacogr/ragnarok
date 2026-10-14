@@ -27,12 +27,14 @@ Never guess protocol semantics. When the specification is ambiguous, add a docum
 - Do not introduce dependencies or change the language/compiler/toolchain versions without explaining the rationale.
 
 ## Working style for coding agents
+- Complete and report the current authorized increment, then wait for the maintainer's explicit go-ahead before starting any next increment.
 - Read `design.md` before making architectural changes.
 - Before each task, state scope, relevant spec references, and tests that will demonstrate completion.
 - Make the smallest coherent change. Avoid speculative abstractions and premature full-client scaffolding.
 - Document every type/structure and function with comments explaining its purpose and the relevant inputs, outputs, errors and ownership. Write for a maintainer learning the language.
 - Comment every control-flow block and alternative branch (`if`/`elif`/`else`, loops, `case`/`switch`, and exception handling). Explain what is being checked or done and why, especially bounds checks, encoding thresholds and failure paths; do not merely restate the syntax. Apply this to implementation code, tests and tooling in both languages.
 - Prefer idiomatic Nim and idiomatic Odin over literal line-by-line ports. Preserve **semantic equivalence**, not syntactic similarity.
+- Keep upstream sources and unmodified published vectors in pinned Git submodules under `vendor/`; initialize with `python3 tools/setup_submodules.py`. Never modify dependency sources or advance their gitlinks without an authorized upgrade. Keep project-owned reductions, Cargo.lock and toolchain hashes where appropriate.
 - Pin the Gray Paper revision, test-vector revision, compiler versions and dependency revisions. Record reproducible commands.
 - Run formatting, static checks, unit tests and official vectors for the affected implementation; report exact commands and results. Never claim tests passed if they were not executed.
 - Use `odinfmt` for Odin and `nimpretty` for Nim, including tests and tooling sources. Run `python3 tools/format.py` to apply project settings, then `python3 tools/format.py --check` to verify. Keep `odinfmt.json` and the formatter settings in the shared runner consistent; preserve explanatory comments when formatting.

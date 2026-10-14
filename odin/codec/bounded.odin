@@ -50,10 +50,10 @@ Frame_Result :: Codec_Result(Frame_Success, Container_Error)
 // Determine intersection using address differences, avoiding pointer-end overflow. Empty ranges do not alias.
 container_overlaps :: proc(a: rawptr, a_len: int, b: rawptr, b_len: int) -> bool {
 	// Empty buffers may have nil pointers and no bytes to overlap.
-	if a_len == 0 || b_len == 0 {return false}
+	if a_len == 0 || b_len == 0 { return false }
 	left, right := uintptr(a), uintptr(b)
 	// Measure from the earlier address so subtraction stays nonnegative without address-end addition.
-	if left <= right {return right - left < uintptr(a_len)}
+	if left <= right { return right - left < uintptr(a_len) }
 	return left - right < uintptr(b_len)
 }
 
@@ -75,13 +75,13 @@ read_frame :: proc(input: []u8, stride: int, limit: u64) -> Frame_Result {
 	}
 	count := u64(success_of(prefix).value)
 	// Enforce policy before converting to int or allocating/writing any output.
-	if count > limit {return Container_Error.Limit_Exceeded}
+	if count > limit { return Container_Error.Limit_Exceeded }
 	remaining := len(input) - success_of(prefix).consumed
 	// Division prevents an attacker-controlled multiplication from overflowing before validation.
-	if stride > 0 && count > u64(remaining / stride) {return Container_Error.Truncated}
+	if stride > 0 && count > u64(remaining / stride) { return Container_Error.Truncated }
 	payload: int
 	// Positive stride proves count fits available host-indexed input; zero-width items occupy no payload.
-	if stride > 0 {payload = int(count) * stride}
+	if stride > 0 { payload = int(count) * stride }
 	return Frame_Success {
 		count = count,
 		offset = success_of(prefix).consumed,
@@ -93,7 +93,7 @@ read_frame :: proc(input: []u8, stride: int, limit: u64) -> Frame_Result {
 decode_bytes_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Blob_Result {
 	frame := read_frame(input, 1, u64(limit))
 	// Wire/policy failures expose no usable span and consume no bytes.
-	if error_of(frame) != .None {return error_of(frame)}
+	if error_of(frame) != .None { return error_of(frame) }
 	return Blob_Success {
 		offset = success_of(frame).offset,
 		length = int(success_of(frame).count),
@@ -104,7 +104,7 @@ decode_bytes_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Blob_Result {
 // Write a bounded byte string into separate caller-owned output, using no allocator.
 encode_bytes :: proc(value: []u8, limit: Byte_Limit, output: []u8) -> Write_Result {
 	// Resource policy precedes copying and host arithmetic.
-	if u64(len(value)) > u64(limit) {return Container_Error.Limit_Exceeded}
+	if u64(len(value)) > u64(limit) { return Container_Error.Limit_Exceeded }
 	prefix := encode(Natural(len(value)))
 	// Subtraction validates prefix plus payload without summing unchecked lengths.
 	if len(output) < prefix.length || len(value) > len(output) - prefix.length {
@@ -129,9 +129,9 @@ encode_sequence :: proc(
 ) -> Write_Result {
 	stride := int(width)
 	// Width validation is required even when values is empty.
-	if stride < 0 || stride > 8 {return Container_Error.Invalid_Width}
+	if stride < 0 || stride > 8 { return Container_Error.Invalid_Width }
 	// Width-zero elements still consume count resources and must satisfy the caller's limit.
-	if u64(len(values)) > u64(limit) {return Container_Error.Limit_Exceeded}
+	if u64(len(values)) > u64(limit) { return Container_Error.Limit_Exceeded }
 	prefix := encode(Natural(len(values)))
 	// Prove output size by division before multiplying the count by stride.
 	if len(output) < prefix.length ||
@@ -139,7 +139,7 @@ encode_sequence :: proc(
 		return Container_Error.Output_Too_Small
 	}
 	// The input's typed-memory span must also have a representable byte size for alias detection.
-	if len(values) > max(int) / size_of(Fixed_Unsigned) {return Container_Error.Length_Overflow}
+	if len(values) > max(int) / size_of(Fixed_Unsigned) { return Container_Error.Length_Overflow }
 	total := prefix.length + len(values) * stride
 	// Disallow output that can overwrite input elements during the later commit pass.
 	if container_overlaps(
@@ -154,7 +154,7 @@ encode_sequence :: proc(
 	for value in values {
 		encoded := encode_fixed(value, width)
 		// Width is already valid, so failure here means a value exceeds the element's domain.
-		if error_of(encoded) != .None {return Container_Error.Value_Out_Of_Range}
+		if error_of(encoded) != .None { return Container_Error.Value_Out_Of_Range }
 	}
 	copy(output[:prefix.length], prefix.bytes[:prefix.length])
 	// Emit validated elements in order, retaining their fixed stride and required high-zero octets.
@@ -177,15 +177,15 @@ decode_sequence :: proc(
 ) -> Sequence_Result {
 	stride := int(width)
 	// Invalid width takes priority over malformed/empty input.
-	if stride < 0 || stride > 8 {return Container_Error.Invalid_Width}
+	if stride < 0 || stride > 8 { return Container_Error.Invalid_Width }
 	frame := read_frame(input, stride, u64(limit))
 	// Prefix, count and payload failures leave all output values unchanged.
-	if error_of(frame) != .None {return error_of(frame)}
+	if error_of(frame) != .None { return error_of(frame) }
 	// Prove the element count fits caller-owned host-indexed storage, even at zero stride.
-	if success_of(frame).count > u64(len(output)) {return Container_Error.Output_Too_Small}
+	if success_of(frame).count > u64(len(output)) { return Container_Error.Output_Too_Small }
 	// Guard the memory-size product separately from the wire-payload-size proof.
 	if success_of(frame).count >
-	   u64(max(int) / size_of(Fixed_Unsigned)) {return Container_Error.Length_Overflow}
+	   u64(max(int) / size_of(Fixed_Unsigned)) { return Container_Error.Length_Overflow }
 	count := int(success_of(frame).count)
 	// Protect all borrowed input, including trailing fields, from decoded-value writes.
 	if container_overlaps(

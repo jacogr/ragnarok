@@ -125,16 +125,16 @@ measure_work :: proc(value: Work_Output, pool_size: int, limit: Byte_Limit) -> C
 	switch item in value {
 	case Blob_Span:
 		// Validate signed endpoints before narrowing length or adding headers.
-		if !valid_blob_span(item, pool_size) {return Composite_Error.Invalid_Span}
+		if !valid_blob_span(item, pool_size) { return Composite_Error.Invalid_Span }
 		// Blob policy applies only to the successful branch.
-		if u64(item.length) > u64(limit) {return Composite_Error.Limit_Exceeded}
+		if u64(item.length) > u64(limit) { return Composite_Error.Limit_Exceeded }
 		length := encode(Natural(item.length))
 		// A complete extent must be representable in the host integer.
-		if item.length > max(int) - 1 - length.length {return Composite_Error.Length_Overflow}
+		if item.length > max(int) - 1 - length.length { return Composite_Error.Length_Overflow }
 		return Composite_Write_Success{written = 1 + length.length + item.length}
 	case Work_Error:
 		// Explicit enum casts cannot impersonate success or an undefined wire tag.
-		if int(item) < 1 || int(item) > 6 {return Composite_Error.Invalid_Tag}
+		if int(item) < 1 || int(item) > 6 { return Composite_Error.Invalid_Tag }
 		return Composite_Write_Success{written = 1}
 	case:
 		// Nil unions are not work-output values.
@@ -151,14 +151,14 @@ write_composite_tag :: proc(
 	limit: Byte_Limit,
 	output: []u8,
 ) -> Composite_Write {
-	if tag < 0 || tag > 6 {return Composite_Error.Invalid_Tag} 	// Guard enum casts before byte narrowing.
+	if tag < 0 || tag > 6 { return Composite_Error.Invalid_Tag } 	// Guard enum casts before byte narrowing.
 	if !has_blob {
-		if len(output) == 0 {return Composite_Error.Output_Too_Small} 	// The tag alone must fit.
+		if len(output) == 0 { return Composite_Error.Output_Too_Small } 	// The tag alone must fit.
 		output[0] = u8(tag)
 		return Composite_Write_Success{written = 1} // Payload-free variants never inspect pool contents.
 	}
-	if !valid_blob_span(span, len(pool)) {return Composite_Error.Invalid_Span} 	// Safe source endpoints.
-	if u64(span.length) > u64(limit) {return Composite_Error.Limit_Exceeded} 	// Caller payload policy.
+	if !valid_blob_span(span, len(pool)) { return Composite_Error.Invalid_Span } 	// Safe source endpoints.
+	if u64(span.length) > u64(limit) { return Composite_Error.Limit_Exceeded } 	// Caller payload policy.
 	length := encode(Natural(span.length))
 	if len(output) < 1 + length.length || span.length > len(output) - 1 - length.length {
 		return Composite_Error.Output_Too_Small // Prove the complete sum by subtraction before computing it.
@@ -190,11 +190,11 @@ read_composite_tag :: proc(
 	case .None: // A canonical count can now be checked against the schema tag set.
 	}
 	value := u64(success_of(tag).value)
-	if value > maximum {return Composite_Error.Invalid_Tag} 	// Reject before narrowing into an enum.
+	if value > maximum { return Composite_Error.Invalid_Tag } 	// Reject before narrowing into an enum.
 	if value !=
-	   blob_tag {return Tagged_Success{tag = value, consumed = success_of(tag).consumed}} 	// This variant has no payload.
+	   blob_tag { return Tagged_Success{tag = value, consumed = success_of(tag).consumed} } 	// This variant has no payload.
 	blob := decode_bytes_borrowed(input[success_of(tag).consumed:], limit)
-	if error_of(blob) != .None {return composite_blob_error(error_of(blob))} 	// Nested payload preflight.
+	if error_of(blob) != .None { return composite_blob_error(error_of(blob)) } 	// Nested payload preflight.
 	return Tagged_Success {
 		tag = value,
 		blob = {
@@ -212,14 +212,14 @@ encode_optional_borrowed :: proc(
 	limit: Byte_Limit,
 	output: []u8,
 ) -> Composite_Write {
-	if value.present {return write_composite_tag(1, true, value.blob, pool, limit, output)} 	// Present span.
+	if value.present { return write_composite_tag(1, true, value.blob, pool, limit, output) } 	// Present span.
 	return write_composite_tag(0, false, {}, pool, limit, output) // Absence ignores all blob fields.
 }
 
 // Decode a typed optional view without copying or retaining the source bytes.
 decode_optional_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Optional_Result {
 	parsed := read_composite_tag(input, 1, 1, limit)
-	if error_of(parsed) != .None {return error_of(parsed)} 	// No usable value on failure.
+	if error_of(parsed) != .None { return error_of(parsed) } 	// No usable value on failure.
 	return Optional_Success {
 		value = {present = success_of(parsed).tag == 1, blob = success_of(parsed).blob},
 		consumed = success_of(parsed).consumed,
@@ -237,7 +237,7 @@ encode_work_borrowed :: proc(
 	case Blob_Span:
 		return write_composite_tag(0, true, item, pool, limit, output) // Success payload.
 	case Work_Error:
-		if int(item) < 1 || int(item) > 6 {return Composite_Error.Invalid_Tag} 	// Explicit enum casts must not impersonate success.
+		if int(item) < 1 || int(item) > 6 { return Composite_Error.Invalid_Tag } 	// Explicit enum casts must not impersonate success.
 		return write_composite_tag(int(item), false, {}, pool, limit, output) // Checked error tag.
 	case:
 		return Composite_Error.Invalid_Tag // An uninitialized/nil union is not a work-output value.
@@ -247,9 +247,9 @@ encode_work_borrowed :: proc(
 // Decode C.2's exact variant set, constructing a native union only after tag and payload validation.
 decode_work_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Work_Result {
 	parsed := read_composite_tag(input, 6, 0, limit)
-	if error_of(parsed) != .None {return error_of(parsed)} 	// No enum cast on invalid wire values.
+	if error_of(parsed) != .None { return error_of(parsed) } 	// No enum cast on invalid wire values.
 	if success_of(parsed).tag ==
-	   0 {return Work_Success{value = success_of(parsed).blob, consumed = success_of(parsed).consumed}} 	// Success blob.
+	   0 { return Work_Success{value = success_of(parsed).blob, consumed = success_of(parsed).consumed} } 	// Success blob.
 	return Work_Success {
 		value = Work_Error(success_of(parsed).tag),
 		consumed = success_of(parsed).consumed,
@@ -268,14 +268,14 @@ walk_preimages :: proc(
 	budget := u64(limits.total_blob_bytes)
 	// Traverse in wire order, charging each payload to the remaining aggregate budget.
 	for index in 0 ..< count {
-		if len(input) - cursor < 4 {return Composite_Error.Truncated} 	// Complete service field required.
+		if len(input) - cursor < 4 { return Composite_Error.Truncated } 	// Complete service field required.
 		service := decode_fixed(input[cursor:cursor + 4], Byte_Width(4))
 		cursor += 4
 		blob := decode_bytes_borrowed(
 			input[cursor:],
 			Byte_Limit(min(u64(limits.per_blob), budget)),
 		)
-		if error_of(blob) != .None {return composite_blob_error(error_of(blob))} 	// Nested and aggregate policy before payload.
+		if error_of(blob) != .None { return composite_blob_error(error_of(blob)) } 	// Nested and aggregate policy before payload.
 		if commit {
 			// The validation pass makes no writes; an invalid last record cannot leave earlier partial views.
 			output[index] = {
@@ -309,11 +309,11 @@ decode_preimages_borrowed :: proc(
 	case .None: // Continue only after the count is canonical.
 	}
 	claimed := u64(success_of(prefix).value)
-	if claimed > u64(limits.items) {return Composite_Error.Limit_Exceeded} 	// Outer policy precedes traversal.
+	if claimed > u64(limits.items) { return Composite_Error.Limit_Exceeded } 	// Outer policy precedes traversal.
 	if claimed >
-	   u64((len(input) - success_of(prefix).consumed) / 5) {return Composite_Error.Truncated} 	// Minimum record size, no product overflow.
-	if claimed > u64(len(output)) {return Composite_Error.Output_Too_Small} 	// Caller record storage/host conversion proof.
-	if claimed > u64(max(int) / size_of(Preimage)) {return Composite_Error.Length_Overflow} 	// Typed memory span proof.
+	   u64((len(input) - success_of(prefix).consumed) / 5) { return Composite_Error.Truncated } 	// Minimum record size, no product overflow.
+	if claimed > u64(len(output)) { return Composite_Error.Output_Too_Small } 	// Caller record storage/host conversion proof.
+	if claimed > u64(max(int) / size_of(Preimage)) { return Composite_Error.Length_Overflow } 	// Typed memory span proof.
 	count := int(claimed)
 	if container_overlaps(
 		raw_data(input),
@@ -324,7 +324,7 @@ decode_preimages_borrowed :: proc(
 		return Composite_Error.Aliased_Buffers // Protect even later input fields from record initialization.
 	}
 	checked := walk_preimages(input, success_of(prefix).consumed, count, limits, output, false)
-	if error_of(checked) != .None {return checked} 	// Entire-frame validation before any typed output write.
+	if error_of(checked) != .None { return checked } 	// Entire-frame validation before any typed output write.
 	return walk_preimages(input, success_of(prefix).consumed, count, limits, output, true)
 }
 
@@ -335,14 +335,14 @@ encode_preimages_borrowed :: proc(
 	limits: Preimage_Limits,
 	output: []u8,
 ) -> Composite_Write {
-	if u64(len(values)) > u64(limits.items) {return Composite_Error.Limit_Exceeded} 	// Bounded outer count.
+	if u64(len(values)) > u64(limits.items) { return Composite_Error.Limit_Exceeded } 	// Bounded outer count.
 	prefix := encode(Natural(len(values)))
-	if len(output) < prefix.length {return Composite_Error.Output_Too_Small} 	// Complete count header required.
+	if len(output) < prefix.length { return Composite_Error.Output_Too_Small } 	// Complete count header required.
 	required := prefix.length
 	budget := u64(limits.total_blob_bytes)
 	// Validate all records before writing even the outer header.
 	for value in values {
-		if !valid_blob_span(value.blob, len(pool)) {return Composite_Error.Invalid_Span} 	// Source span proof before indexing.
+		if !valid_blob_span(value.blob, len(pool)) { return Composite_Error.Invalid_Span } 	// Source span proof before indexing.
 		if u64(value.blob.length) > min(u64(limits.per_blob), budget) {
 			return Composite_Error.Limit_Exceeded // Apply both blob budgets before copying.
 		}
@@ -354,7 +354,7 @@ encode_preimages_borrowed :: proc(
 		required += 4 + length.length + value.blob.length
 		budget -= u64(value.blob.length)
 	}
-	if len(values) > max(int) / size_of(Preimage) {return Composite_Error.Length_Overflow} 	// Source typed-memory extent.
+	if len(values) > max(int) / size_of(Preimage) { return Composite_Error.Length_Overflow } 	// Source typed-memory extent.
 	if container_overlaps(raw_data(pool), len(pool), raw_data(output), required) ||
 	   container_overlaps(
 		   raw_data(values),

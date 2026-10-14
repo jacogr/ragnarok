@@ -23,7 +23,7 @@ fuzz_digest :: proc(t: ^testing.T, input: []u8) {
 		codec.success_of(written).written == codec.success_of(parsed).consumed,
 	)
 	// Check fixed fields, translated blob coordinates, and all five metrics.
-	for i in 0 ..< codec.success_of(written).written {testing.expect(t, bytes[i] == input[i])}
+	for i in 0 ..< codec.success_of(written).written { testing.expect(t, bytes[i] == input[i]) }
 }
 
 // Test the full C.2 tuple, exact nominal fields, every truncation, overlap, late output failure and fuzz reconstruction.
@@ -31,7 +31,7 @@ fuzz_digest :: proc(t: ^testing.T, input: []u8) {
 work_digest :: proc(t: ^testing.T) {
 	code, payload: [32]u8
 	// Different patterns catch swapped or reversed hash fields.
-	for i in 0 ..< 32 {code[i] = u8(i); payload[i] = u8(255 - i)}
+	for i in 0 ..< 32 { code[i] = u8(i); payload[i] = u8(255 - i) }
 	pool := [3]u8{1, 2, 3}
 	value := codec.Work_Digest {
 		service        = codec.Service_Index(max(u32)),
@@ -73,7 +73,7 @@ work_digest :: proc(t: ^testing.T) {
 		testing.expect(t, codec.error_of(short) == .Truncated)
 	}
 	// Refill the entire destination to detect a premature fixed-prefix commit.
-	for &b in wire {b = 77}
+	for &b in wire { b = 77 }
 	short_write := codec.encode_digest_borrowed(
 		value,
 		pool[:],
@@ -82,7 +82,7 @@ work_digest :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, codec.error_of(short_write) == .Output_Too_Small)
 	// Include unused output storage in the atomic-failure check.
-	for b in wire {testing.expect(t, b == 77)}
+	for b in wire { testing.expect(t, b == 77) }
 	value.output = codec.Blob_Span{0, 0}
 	before := wire
 	testing.expect(

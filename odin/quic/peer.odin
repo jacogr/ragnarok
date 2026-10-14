@@ -81,7 +81,7 @@ peer_name :: proc(key: [32]u8) -> [54]u8 {
 		for bit in 0 ..< 5 {
 			position := group * 5 + bit
 			if position <
-			   256 {index |= int((key[position / 8] >> uint(position % 8)) & 1) << uint(bit)} 	// Zero-extended high bits.
+			   256 { index |= int((key[position / 8] >> uint(position % 8)) & 1) << uint(bit) } 	// Zero-extended high bits.
 		}
 		name[2 + group] = alphabet[index]
 	}
@@ -94,21 +94,21 @@ verify_peer :: proc "c" (user: rawptr, der: [^]u8, length: uintptr) -> i32 {
 	context = peer.saved_context
 	fields: Cert_Fields
 	// Parse bounded complete DER before inspecting primitive observations.
-	if rq_parse_cert(der, length, &fields) != 1 {return 0}
+	if rq_parse_cert(der, length, &fields) != 1 { return 0 }
 	if fields.ed_key != 1 ||
 	   fields.ed_signature != 1 ||
 	   fields.key_length != 32 ||
 	   fields.san_extensions != 1 ||
 	   fields.san_count != 1 ||
-	   fields.san_dns != 1 {return 0} 	// Exact algorithm/name cardinality.
+	   fields.san_dns != 1 { return 0 } 	// Exact algorithm/name cardinality.
 	name := peer_name(fields.key)
-	if fields.san_length != uintptr(len(name)) {return 0} 	// Never accept a NUL-truncated name prefix.
+	if fields.san_length != uintptr(len(name)) { return 0 } 	// Never accept a NUL-truncated name prefix.
 	// Compare every supplied SAN byte with its key-derived name.
-	for b, i in name {if fields.san[i] != b {return 0}} 	// Altered SAN is a different identity.
+	for b, i in name { if fields.san[i] != b { return 0 } } 	// Altered SAN is a different identity.
 	// Client key pins and optional server fixture pins are checked independently of SAN consistency.
 	if len(peer.expected) > 0 {
-		if len(peer.expected) != 32 {return 0} 	// No narrowing of malformed identity fixtures.
-		for b, i in fields.key {if peer.expected[i] != b {return 0}} 	// Exact expected key.
+		if len(peer.expected) != 32 { return 0 } 	// No narrowing of malformed identity fixtures.
+		for b, i in fields.key { if peer.expected[i] != b { return 0 } } 	// Exact expected key.
 	}
 	return 1
 }
@@ -119,7 +119,7 @@ send_packet :: proc "c" (user: rawptr, bytes: [^]u8, length: uintptr, port: u16)
 	context = peer.saved_context
 	written, err := net.send_udp(peer.socket, bytes[:int(length)], {net.IP4_Loopback, int(port)})
 	// Would-block/error leaves the datagram with LSQUIC for a later retry.
-	if err != nil || written != int(length) {return 0}
+	if err != nil || written != int(length) { return 0 }
 	return 1
 }
 
@@ -198,12 +198,13 @@ LARGE_HASH :: [32]u8 {
 
 // Retire one terminal stream exactly once; malformed input stays local in the soak.
 finish_stream :: proc(peer: ^Peer, state: ^Stream_State, good: bool) {
-	if state.counted {return} 	// Close/reset callbacks may repeat terminal observations.
+	if state.counted { return } 	// Close/reset callbacks may repeat terminal observations.
 	state.counted = true
 	if good {
 		peer.completed += 1
 		peer.healthy += 1
-		if peer.attack == "soak" {fmt.println("SERVER_HEALTHY" if peer.server else "HEALTHY_OK")} 	// Expose verified client replies.
+		if peer.attack ==
+		   "soak" { fmt.println("SERVER_HEALTHY" if peer.server else "HEALTHY_OK") } 	// Expose verified client replies.
 	} else if peer.attack == "soak" {
 		peer.completed += 1
 		peer.rejected += 1
@@ -219,27 +220,27 @@ frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, val
 	// The initiator's first byte selects the explicit CE protocol.
 	if peer.server &&
 	   stream.received_length >= 1 &&
-	   stream.received[0] != 143 {return false, false}
-	if stream.received_length < start + 4 {return false, !stream.read_fin} 	// Partial length waits for more bytes.
+	   stream.received[0] != 143 { return false, false }
+	if stream.received_length < start + 4 { return false, !stream.read_fin } 	// Partial length waits for more bytes.
 	claimed: u64
-	for i in 0 ..< 4 {claimed |= u64(stream.received[start + i]) << uint(8 * i)} 	// E4 network frame header.
+	for i in 0 ..< 4 { claimed |= u64(stream.received[start + i]) << uint(8 * i) } 	// E4 network frame header.
 	maximum := u64(32) if peer.server else u64(LARGE_SIZE if peer.attack == "soak" else 1024)
-	if claimed > maximum {return false, false} 	// Reject before allocation or indexing.
+	if claimed > maximum { return false, false } 	// Reject before allocation or indexing.
 	extent := start + 4 + int(claimed)
-	if stream.received_length > extent {return false, false} 	// Exactly one message is allowed in this direction.
-	if !stream.read_fin {return false, true} 	// CE success requires FIN, not only enough payload bytes.
-	if stream.received_length != extent {return false, false} 	// Premature FIN is truncation.
+	if stream.received_length > extent { return false, false } 	// Exactly one message is allowed in this direction.
+	if !stream.read_fin { return false, true } 	// CE success requires FIN, not only enough payload bytes.
+	if stream.received_length != extent { return false, false } 	// Premature FIN is truncation.
 	if peer.server {
-		if claimed != 32 {return false, false} 	// Hash is fixed width.
+		if claimed != 32 { return false, false } 	// Hash is fixed width.
 		wanted :=
 			LARGE_HASH if stream.received[5] == LARGE_HASH[0] && peer.attack == "soak" else REQUEST_HASH
-		for b, i in wanted {if stream.received[5 + i] != b {return false, false}} 	// Fixture map lookup.
+		for b, i in wanted { if stream.received[5 + i] != b { return false, false } } 	// Fixture map lookup.
 	} else {
 		size := LARGE_SIZE if stream.attack == "slow" else 3
-		if claimed != u64(size) {return false, false} 	// Fixed fixture ceiling and exact length.
+		if claimed != u64(size) { return false, false } 	// Fixed fixture ceiling and exact length.
 		for i in 0 ..< size {
 			wanted := u8(i % 251) if size == LARGE_SIZE else u8(i + 1)
-			if stream.received[4 + i] != wanted {return false, false} 	// Validate every preimage byte.
+			if stream.received[4 + i] != wanted { return false, false } 	// Validate every preimage byte.
 		} // Compare actual bytes.
 	}
 	return true, true
@@ -251,11 +252,11 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 	context = peer.saved_context
 	state: ^Stream_State
 	// Resolve only the live handle owned by this endpoint.
-	for &slot in peer.streams {if slot.handle == handle {state = &slot; break}}
+	for &slot in peer.streams { if slot.handle == handle { state = &slot; break } }
 	if event == 0 {
 		// A fixed slot ceiling bounds all application allocations, including malformed concurrent requests.
-		for &slot in peer.streams {if slot.handle == nil {state = &slot; break}}
-		if state == nil {peer.failed = true; rq_stream_abort(handle); return} 	// No unbounded queue.
+		for &slot in peer.streams { if slot.handle == nil { state = &slot; break } }
+		if state == nil { peer.failed = true; rq_stream_abort(handle); return } 	// No unbounded queue.
 		state^ = Stream_State {
 			handle  = handle,
 			started = time.now(),
@@ -286,14 +287,14 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 				peer.opened += 1
 			}
 			// Request framing remains kind + E4 + exact Blake2b fixture key.
-			for b, i in wanted {state.sending[5 + i] = b}
+			for b, i in wanted { state.sending[5 + i] = b }
 			state.send_length = 37
 			switch state.attack {
 			case "valid", "no-fin", "slow", "cancel": // Valid bytes with distinct lifecycle schedules.
 			case "bad-kind":
 				state.sending[0] = 144
 			case "oversize":
-				for i in 1 ..= 4 {state.sending[i] = 255} 	// Untrusted extent must fail.
+				for i in 1 ..= 4 { state.sending[i] = 255 } 	// Untrusted extent must fail.
 			case "unknown":
 				state.sending[5] ~= 1
 			case "truncated":
@@ -312,37 +313,38 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 		}
 		return
 	}
-	if state == nil {fmt.eprintln("unexpected stream event", event); peer.failed = true; return} 	// Never dereference stale native ownership.
+	if state ==
+	   nil { fmt.eprintln("unexpected stream event", event); peer.failed = true; return } 	// Never dereference stale native ownership.
 	if event == 3 {
-		if !state.counted && !peer.stopping {finish_stream(peer, state, false)} 	// Premature close is a rejection.
+		if !state.counted && !peer.stopping { finish_stream(peer, state, false) } 	// Premature close is a rejection.
 		delete(state.received); delete(state.sending)
 		state^ = {} // Slot reuse cannot retain old buffers or timers.
 		return
 	}
 	if event == 4 {
-		if !peer.stopping {finish_stream(peer, state, false)} 	// STOP_SENDING/reset settles pending writes too.
+		if !peer.stopping { finish_stream(peer, state, false) } 	// STOP_SENDING/reset settles pending writes too.
 		rq_stream_abort(handle)
 		return
 	}
-	if peer.stopping || state.counted && !peer.server {return} 	// Final callbacks have no new application work.
+	if peer.stopping || state.counted && !peer.server { return } 	// Final callbacks have no new application work.
 	if event == 1 {
-		if state.paused {return} 	// Application consumption resumes from the single event loop's deadline.
+		if state.paused { return } 	// Application consumption resumes from the single event loop's deadline.
 		// Partial and coalesced payloads stay in bounded storage until their exact FIN is checked.
 		for {
 			if state.received_length ==
 			   len(
 				   state.received,
-			   ) {finish_stream(peer, state, false); rq_stream_abort(handle); return}
+			   ) { finish_stream(peer, state, false); rq_stream_abort(handle); return }
 			got := rq_stream_read(
 				handle,
 				raw_data(state.received[state.received_length:]),
 				uintptr(len(state.received) - state.received_length),
 			)
-			if got == -2 {break} 	// No readable transport bytes yet.
-			if got < 0 {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Reset settles this stream.
-			if got == 0 {state.read_fin = true} else {state.received_length += int(got)} 	// FIN is not fabricated padding.
+			if got == -2 { break } 	// No readable transport bytes yet.
+			if got < 0 { finish_stream(peer, state, false); rq_stream_abort(handle); return } 	// Reset settles this stream.
+			if got == 0 { state.read_fin = true } else { state.received_length += int(got) } 	// FIN is not fabricated padding.
 			complete, valid := frame_extent(peer, state)
-			if !valid {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Malformed request/reply.
+			if !valid { finish_stream(peer, state, false); rq_stream_abort(handle); return } 	// Malformed request/reply.
 			if complete {
 				rq_stream_want_read(handle, 0)
 				if peer.server {
@@ -350,11 +352,11 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 						LARGE_SIZE if state.received[5] == LARGE_HASH[0] && peer.attack == "soak" else 3
 					state.sending = make([]u8, size + 4)
 					// Encode a trusted bounded E4 length and fixture bytes in native Odin.
-					for i in 0 ..< 4 {state.sending[i] = u8((size >> uint(8 * i)) & 255)}
-					for i in 0 ..< size {state.sending[4 + i] = u8(i % 251) if size == LARGE_SIZE else u8(i + 1)}
+					for i in 0 ..< 4 { state.sending[i] = u8((size >> uint(8 * i)) & 255) }
+					for i in 0 ..< size { state.sending[4 + i] = u8(i % 251) if size == LARGE_SIZE else u8(i + 1) }
 					state.send_length = len(state.sending)
 					rq_stream_want_write(handle, 1)
-				} else {finish_stream(peer, state, true)} 	// Exact response and FIN verified.
+				} else { finish_stream(peer, state, true) } 	// Exact response and FIN verified.
 				break
 			}
 		}
@@ -366,16 +368,16 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 				raw_data(state.sending[state.send_offset:state.send_length]),
 				uintptr(state.send_length - state.send_offset),
 			)
-			if sent == -2 || sent == 0 {return} 	// Keep storage until credit resumes or native close.
-			if sent < 0 {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Failed write settles only its stream.
+			if sent == -2 || sent == 0 { return } 	// Keep storage until credit resumes or native close.
+			if sent < 0 { finish_stream(peer, state, false); rq_stream_abort(handle); return } 	// Failed write settles only its stream.
 			state.send_offset += int(sent)
 		}
 		if rq_stream_flush(handle) !=
-		   0 {finish_stream(peer, state, false); rq_stream_abort(handle); return} 	// Missing FIN still transmits its request bytes.
+		   0 { finish_stream(peer, state, false); rq_stream_abort(handle); return } 	// Missing FIN still transmits its request bytes.
 		rq_stream_want_write(handle, 0)
 		if !state.write_fin && (peer.server || state.attack != "no-fin") {
 			rq_stream_fin(handle); state.write_fin = true
-			if peer.server {finish_stream(peer, state, true)} 	// Request and queued reply FIN complete server work.
+			if peer.server { finish_stream(peer, state, true) } 	// Request and queued reply FIN complete server work.
 		}
 	}
 }
@@ -384,7 +386,7 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 soak_tick :: proc(peer: ^Peer) {
 	// Check only live, unsettled streams; close callbacks may immediately recycle their slot.
 	for &state in peer.streams {
-		if state.handle == nil || state.counted {continue} 	// Retired stream owns no deadline work.
+		if state.handle == nil || state.counted { continue } 	// Retired stream owns no deadline work.
 		elapsed := time.since(state.started)
 		if peer.server {
 			if !state.read_fin && elapsed > 500 * time.Millisecond {
@@ -409,7 +411,7 @@ soak_tick :: proc(peer: ^Peer) {
 on_receive :: proc(op: ^nbio.Operation, peer: ^Peer) {
 	peer.receive_operation = nil // This callback retires the old operation before another receive is armed.
 	// Receives have no linked timeout; standalone timers already wake lifecycle and QUIC deadline checks.
-	if op.recv.err != nil {peer.failed = true; return} 	// Surface an I/O failure through the bounded session result.
+	if op.recv.err != nil { peer.failed = true; return } 	// Surface an I/O failure through the bounded session result.
 	// Only completed UDP bytes enter the transport.
 	if op.recv.err == nil && op.recv.received > 0 {
 		_ = rq_packet_in(
@@ -421,7 +423,7 @@ on_receive :: proc(op: ^nbio.Operation, peer: ^Peer) {
 		rq_process(peer.transport)
 	}
 	// Stop before destruction and let pending callbacks drain with their buffers still alive.
-	if !peer.stopping && !peer.failed {arm_receive(peer)}
+	if !peer.stopping && !peer.failed { arm_receive(peer) }
 }
 
 // Keep one untimed receive owned by Peer; shutdown removes it before releasing its borrowed buffer.
@@ -432,7 +434,7 @@ arm_receive :: proc(peer: ^Peer) {
 // Schedule QUIC deadlines on the same I/O thread; each callback owns no borrowed TLS buffers.
 on_timer :: proc(op: ^nbio.Operation, peer: ^Peer) {
 	// Do not touch a transport after shutdown begins.
-	if peer.stopping {return}
+	if peer.stopping { return }
 	rq_process(peer.transport)
 	arm_timer(peer)
 }
@@ -457,7 +459,7 @@ acquire_loop :: proc() -> bool {
 run_peer :: proc() -> bool {
 	if len(os.args) != 8 &&
 	   len(os.args) !=
-		   9 {fmt.eprintln("mode port cert key expected-key alpn timeout-ms"); return false} 	// Trusted CLI shape.
+		   9 { fmt.eprintln("mode port cert key expected-key alpn timeout-ms"); return false } 	// Trusted CLI shape.
 	port, port_ok := strconv.parse_int(os.args[2])
 	timeout, timeout_ok := strconv.parse_int(os.args[7])
 	if !port_ok ||
@@ -465,27 +467,27 @@ run_peer :: proc() -> bool {
 	   port > 65535 ||
 	   !timeout_ok ||
 	   timeout < 1 ||
-	   timeout > 10000 {return false} 	// Guard all narrowing.
+	   timeout > 10000 { return false } 	// Guard all narrowing.
 	server := os.args[1] == "server"
-	if !server && os.args[1] != "client" {return false} 	// No guessed role.
+	if !server && os.args[1] != "client" { return false } 	// No guessed role.
 	expected: []u8
 	if os.args[5] != "-" {
 		data, err := os.read_entire_file(os.args[5], context.allocator)
-		if err != nil || len(data) != 32 {return false} 	// Bounded fixture identity before transport setup.
+		if err != nil || len(data) != 32 { return false } 	// Bounded fixture identity before transport setup.
 		expected = data
 	}
 	defer delete(expected)
 	// Dialers pin the server key; only acceptors may discover a consistent previously unknown peer.
-	if !server && len(expected) != 32 {return false}
-	if !acquire_loop() {return false} 	// One event loop owns every operation.
+	if !server && len(expected) != 32 { return false }
+	if !acquire_loop() { return false } 	// One event loop owns every operation.
 	defer nbio.release_thread_event_loop()
 	socket, socket_err := nbio.create_udp_socket(.IP4)
-	if socket_err != nil {return false} 	// Cannot start a transport without nonblocking UDP.
+	if socket_err != nil { return false } 	// Cannot start a transport without nonblocking UDP.
 	defer net.close(socket)
 	bind_port := port if server else 0
-	if net.bind(socket, {net.IP4_Loopback, bind_port}) != nil {return false} 	// Only local proof endpoints.
+	if net.bind(socket, {net.IP4_Loopback, bind_port}) != nil { return false } 	// Only local proof endpoints.
 	local, local_err := net.bound_endpoint(socket)
-	if local_err != nil {return false} 	// Native engine needs the actual ephemeral client port.
+	if local_err != nil { return false } 	// Native engine needs the actual ephemeral client port.
 	peer := Peer {
 		socket        = socket,
 		expected      = expected,
@@ -510,12 +512,12 @@ run_peer :: proc() -> bool {
 		send_packet,
 		on_stream,
 	)
-	if peer.transport == nil {fmt.eprintln("transport setup failed"); return false} 	// No partially initialized engine is used.
+	if peer.transport == nil { fmt.eprintln("transport setup failed"); return false } 	// No partially initialized engine is used.
 	// Destruction is delayed until all UDP/timer callbacks have stopped borrowing this owner.
 	defer rq_transport_free(peer.transport)
 	arm_receive(&peer); arm_timer(&peer)
-	if server {fmt.println("READY")} else // Listener is bound before orchestration starts the other peer.
-	if rq_connect(peer.transport, u16(port)) == 0 {peer.stopping = true} 	// Dial setup failure.
+	if server { fmt.println("READY") } else // Listener is bound before orchestration starts the other peer.
+	if rq_connect(peer.transport, u16(port)) == 0 { peer.stopping = true } 	// Dial setup failure.
 	rq_process(peer.transport)
 	started := time.now()
 	authenticated := false
@@ -526,11 +528,11 @@ run_peer :: proc() -> bool {
 	    peer.completed < 8 &&
 	    time.since(started) < time.Duration(timeout) * time.Millisecond {
 		status := rq_status(peer.transport)
-		if status < 0 {break} 	// TLS rejection is distinct from successful authentication.
-		if status == 1 && !authenticated {fmt.println("AUTH_OK"); authenticated = true} 	// Only after the handshake callback.
+		if status < 0 { break } 	// TLS rejection is distinct from successful authentication.
+		if status == 1 && !authenticated { fmt.println("AUTH_OK"); authenticated = true } 	// Only after the handshake callback.
 		if authenticated && !server && !opened {
 			opened = true
-			for _ in 0 ..< (5 if peer.attack == "soak" else 8) {rq_open_stream(peer.transport)} 	// Open all requests before waiting for replies.
+			for _ in 0 ..< (5 if peer.attack == "soak" else 8) { rq_open_stream(peer.transport) } 	// Open all requests before waiting for replies.
 			rq_process(peer.transport)
 		}
 		if peer.attack == "soak" {
@@ -539,30 +541,30 @@ run_peer :: proc() -> bool {
 			   opened &&
 			   peer.opened == 5 &&
 			   time.since(started) > 650 * time.Millisecond {
-				for _ in 0 ..< 3 {rq_open_stream(peer.transport)} 	// Prove continued service after rejection.
+				for _ in 0 ..< 3 { rq_open_stream(peer.transport) } 	// Prove continued service after rejection.
 				rq_process(peer.transport)
 			}
 		}
-		if nbio.tick(10 * time.Millisecond) != nil {peer.stopping = true} 	// Bounded I/O failure.
+		if nbio.tick(10 * time.Millisecond) != nil { peer.stopping = true } 	// Bounded I/O failure.
 	}
 	if rq_status(peer.transport) == 1 &&
-	   !authenticated {fmt.println("AUTH_OK"); authenticated = true} 	// A receive tick may complete all requests before the loop checks status again.
+	   !authenticated { fmt.println("AUTH_OK"); authenticated = true } 	// A receive tick may complete all requests before the loop checks status again.
 	success := authenticated && !peer.failed && peer.completed == 8
 	if success && peer.attack == "soak" && !server {
 		success = peer.healthy == 5 && peer.rejected == 2 && peer.cancelled == 1 // Intentional failures are exact.
 	}
-	if success {fmt.println("EXCHANGE_OK 8")} 	// Application success requires all eight framed exchanges.
+	if success { fmt.println("EXCHANGE_OK 8") } 	// Application success requires all eight framed exchanges.
 	// Briefly drain final handshake packets before closing an authenticated connection.
 	if success {
 		grace := time.now()
-		for time.since(grace) < 100 * time.Millisecond {_ = nbio.tick(10 * time.Millisecond)} 	// Keep processing final handshake packets.
+		for time.since(grace) < 100 * time.Millisecond { _ = nbio.tick(10 * time.Millisecond) } 	// Keep processing final handshake packets.
 	}
 	// Failure diagnostics show unsettled owners without exposing any identity private-key bytes.
 	if peer.attack == "soak" && !success {
 		// Empty slots have already released their application buffers.
 		for state in peer.streams {
 			if state.handle !=
-			   nil {fmt.eprintln("LIVE", state.received_length, state.send_length, state.send_offset, state.read_fin, state.counted, state.attack, time.since(state.started))}
+			   nil { fmt.eprintln("LIVE", state.received_length, state.send_length, state.send_offset, state.read_fin, state.counted, state.attack, time.since(state.started)) }
 		}
 	}
 	peer.stopping = true
@@ -571,7 +573,7 @@ run_peer :: proc() -> bool {
 	nbio.remove(peer.receive_operation)
 	peer.receive_operation = nil
 	_ = nbio.run() // Drain cancellation and standalone timers while Peer and its buffer are still alive.
-	if !success {fmt.eprintln("proof rejected or timed out", peer.completed, peer.healthy, peer.rejected, peer.cancelled, peer.failed)} 	// Distinguish rejection from successful handshake.
+	if !success { fmt.eprintln("proof rejected or timed out", peer.completed, peer.healthy, peer.rejected, peer.cancelled, peer.failed) } 	// Distinguish rejection from successful handshake.
 	// The exit code is set after deferred native/socket cleanup by returning through the normal stack.
 	return success
 }
@@ -593,7 +595,7 @@ on_cancel_probe :: proc(op: ^nbio.Operation, probe: ^Cancellation_Probe) {
 // Exercise idle and ready receive cancellation directly on the host I/O backend.
 io_self_test :: proc() {
 	// The event-loop owner is process-lived; repeated cancellation must not create a fresh kernel ring each iteration.
-	if !acquire_loop() {os.exit(2)}
+	if !acquire_loop() { os.exit(2) }
 	defer nbio.release_thread_event_loop()
 	tracking: mem.Tracking_Allocator
 	mem.tracking_allocator_init(&tracking, context.allocator)
@@ -646,9 +648,9 @@ fuzz_peer :: proc(input: []u8, server, fin: bool) {
 	copy(stream.received[:], input)
 	complete, valid := frame_extent(&peer, &stream)
 	// Complete frames are bounded, exact and cleanly terminated.
-	if complete {assert(valid && fin && len(input) == (37 if server else 7))}
+	if complete { assert(valid && fin && len(input) == (37 if server else 7)) }
 	// Reject premature header EOF immediately instead of repeatedly reading zero bytes.
-	if fin && len(input) < (5 if server else 4) {assert(!valid)}
+	if fin && len(input) < (5 if server else 4) { assert(!valid) }
 }
 
 // Deterministic malformed-input coverage leaves the parsers independently fuzzable.
@@ -669,12 +671,12 @@ self_test :: proc() {
 // Exit only after the attempt returns through all deferred transport/socket/event-loop cleanup.
 main :: proc() {
 	// Parser fuzz tests do not create an engine or require socket permission.
-	if len(os.args) == 2 && os.args[1] == "--selftest" {self_test(); return}
+	if len(os.args) == 2 && os.args[1] == "--selftest" { self_test(); return }
 	// This regression probes cancellation ownership on the actual host backend before opening TLS sessions.
-	if len(os.args) == 2 && os.args[1] == "--io-selftest" {io_self_test(); return}
+	if len(os.args) == 2 && os.args[1] == "--io-selftest" { io_self_test(); return }
 	if len(os.args) == 9 && os.args[8] == "soak" {
 		// Hold one dispatcher across sessions; run_peer's nested acquire/release borrows this process-lived owner.
-		if !acquire_loop() {os.exit(2)}
+		if !acquire_loop() { os.exit(2) }
 		defer nbio.release_thread_event_loop()
 		tracking: mem.Tracking_Allocator
 		mem.tracking_allocator_init(&tracking, context.allocator)
@@ -684,19 +686,19 @@ main :: proc() {
 		gate := os.get_env("RAGNAROK_SOAK_GATE", context.allocator)
 		defer delete(rounds_text); defer delete(gate)
 		rounds, ok := strconv.parse_int(rounds_text)
-		if !ok || rounds < 1 || rounds > 1000 || len(gate) == 0 {os.exit(2)} 	// Trusted controls still have hard ceilings.
+		if !ok || rounds < 1 || rounds > 1000 || len(gate) == 0 { os.exit(2) } 	// Trusted controls still have hard ceilings.
 		baseline := tracking.current_memory_allocated // Only the round/gate controls remain owned between sessions.
 		// Keep the same allocator/process while repeatedly rebuilding and retiring native transport resources.
 		for iteration in 0 ..= rounds {
 			control := fmt.aprintf("%s/%s-%d", gate, os.args[1], iteration)
 			started := time.now()
 			for !os.exists(control) {
-				if time.since(started) > 15 * time.Second {os.exit(2)} 	// A dead harness cannot retain peers indefinitely.
+				if time.since(started) > 15 * time.Second { os.exit(2) } 	// A dead harness cannot retain peers indefinitely.
 				time.sleep(10 * time.Millisecond)
 			}
 			delete(control)
-			if iteration == rounds {break} 	// Final idle snapshot precedes normal process exit.
-			if !run_peer() {os.exit(2)} 	// Every deferred cleanup completes before the idle snapshot.
+			if iteration == rounds { break } 	// Final idle snapshot precedes normal process exit.
+			if !run_peer() { os.exit(2) } 	// Every deferred cleanup completes before the idle snapshot.
 			if tracking.current_memory_allocated != baseline {
 				fmt.eprintln(
 					"application allocations retained",
@@ -704,11 +706,11 @@ main :: proc() {
 					baseline,
 				)
 				// Source locations identify leaked ownership without printing buffer contents.
-				for _, entry in tracking.allocation_map {fmt.eprintln(entry.location, entry.size)}
+				for _, entry in tracking.allocation_map { fmt.eprintln(entry.location, entry.size) }
 				os.exit(2)
 			}
 			fmt.println("ALLOC_BYTES", tracking.current_memory_allocated)
 			fmt.println("SESSION_DONE", iteration)
 		}
-	} else if !run_peer() {os.exit(2)} 	// A rejected or timed-out peer is not successful authentication.
+	} else if !run_peer() { os.exit(2) } 	// A rejected or timed-out peer is not successful authentication.
 }

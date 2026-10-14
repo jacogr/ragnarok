@@ -15,7 +15,7 @@ verify :: proc(frame: codec.Owned_Frame, wire: []u8, consumed: int, spans: []cod
 	written := codec.encode_owned(frame, encoded)
 	assert(codec.error_of(written) == .None && codec.success_of(written) == consumed)
 	// Unrelated trailing data must not enter retained storage or re-encoding.
-	for value, index in encoded {assert(value == wire[index])}
+	for value, index in encoded { assert(value == wire[index]) }
 	// Each payload must remain associated with this owner's private source bytes.
 	for span, index in spans {
 		length := codec.owned_blob_length(frame, index)
@@ -24,7 +24,7 @@ verify :: proc(frame: codec.Owned_Frame, wire: []u8, consumed: int, spans: []cod
 		copied := codec.copy_owned_blob(frame, index, payload)
 		assert(codec.error_of(copied) == .None && codec.success_of(copied) == span.length)
 		// Compare complete blobs, including zero-length successes.
-		for value, i in payload {assert(value == wire[span.offset + i])}
+		for value, i in payload { assert(value == wire[span.offset + i]) }
 		delete(payload)
 	}
 }

@@ -70,12 +70,11 @@ and compiled dependency set. The three local source patches and their build
 transformations are removed; the runner asserts that the patch list is empty.
 The compiler invokes no dependency `--path` or global Nimble installation.
 
-Fresh native archives are kept under `build/quic/native-sources`; native CMake
-builds are `native-bssl` and `native-lsquic`, and the Nim cache is
-`nim-adapter-cache`. This keeps old modified wrapper trees and caches out of the
-new build. Old ignored `build/quic/sources`, `bssl`, `lsquic` and `nimcache`
-directories are unused and may be removed when their historical diagnostics
-are no longer needed. They are not consulted by either adapter.
+Native sources now come from pinned Git submodules under `vendor/`; see
+[the source guide](dependencies.md). CMake output lives in
+`build/native/boringssl` and `build/native/lsquic`, and the Nim cache remains
+under `build/quic`. Historical ignored source/build caches are unused and are
+left available for old diagnostics; no dependency source patches are applied.
 
 Run [the proof](quic-proof.md) and [the soak](quic-soak.md) with the existing
 commands. The Linux workflow builds the same adapters from fresh native sources

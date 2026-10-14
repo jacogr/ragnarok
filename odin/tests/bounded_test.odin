@@ -7,7 +7,7 @@ import "core:testing"
 check_blob :: proc(t: ^testing.T, size: int) {
 	value: [16384]u8
 	// Recognizable payload bytes detect incorrect offsets, prefix corruption and omitted bytes.
-	for i in 0 ..< size {value[i] = u8(i % 256)}
+	for i in 0 ..< size { value[i] = u8(i % 256) }
 	wire: [16394]u8
 	encoded := codec.encode_bytes(value[:size], codec.Byte_Limit(size), wire[:])
 	testing.expect(t, codec.error_of(encoded) == .None)
@@ -23,7 +23,7 @@ check_blob :: proc(t: ^testing.T, size: int) {
 		codec.success_of(decoded).consumed == codec.success_of(encoded).written,
 	)
 	// The decoder's indices must identify the exact original payload rather than its prefix or trailing byte.
-	for i in 0 ..< size {testing.expect(t, wire[codec.success_of(decoded).offset + i] == value[i])}
+	for i in 0 ..< size { testing.expect(t, wire[codec.success_of(decoded).offset + i] == value[i]) }
 	// Every incomplete container must fail without exposing a valid span or consumed count.
 	for cut in 0 ..< codec.success_of(encoded).written {
 		short := codec.decode_bytes_borrowed(wire[:cut], codec.Byte_Limit(size))
@@ -58,7 +58,7 @@ check_sequence :: proc(t: ^testing.T, count, stride: int) {
 	values: [128]codec.Fixed_Unsigned
 	// Width zero permits only zero; other widths use changing small values that fit one byte.
 	for i in 0 ..< count {
-		if stride > 0 {values[i] = codec.Fixed_Unsigned(i % 256)}
+		if stride > 0 { values[i] = codec.Fixed_Unsigned(i % 256) }
 	}
 	wire: [1034]u8
 	encoded := codec.encode_sequence(
@@ -85,7 +85,7 @@ check_sequence :: proc(t: ^testing.T, count, stride: int) {
 	)
 	testing.expect(t, u64(output[count]) == 999)
 	// Only the initialized result prefix may change, and it must match the original values.
-	for i in 0 ..< count {testing.expect(t, output[i] == values[i])}
+	for i in 0 ..< count { testing.expect(t, output[i] == values[i]) }
 	// All wire truncations fail before overwriting the first caller-owned output element.
 	for cut in 0 ..< codec.success_of(encoded).written {
 		output[0] = codec.Fixed_Unsigned(777)
@@ -114,11 +114,11 @@ fuzz_bounded :: proc(t: ^testing.T, input: []u8, stride: int, limit: u64) {
 		prefix := codec.encode(codec.Natural(codec.success_of(blob).length))
 		testing.expect(t, prefix.length == codec.success_of(blob).offset)
 		// The returned span must begin immediately after the exact canonical encoding of its length.
-		for i in 0 ..< prefix.length {testing.expect(t, input[i] == prefix.bytes[i])}
+		for i in 0 ..< prefix.length { testing.expect(t, input[i] == prefix.bytes[i]) }
 	}
 	output: [8]codec.Fixed_Unsigned
 	// Sentinels expose partial output writes on any failing decode path.
-	for &item in output {item = codec.Fixed_Unsigned(999)}
+	for &item in output { item = codec.Fixed_Unsigned(999) }
 	decoded := codec.decode_sequence(
 		input,
 		codec.Byte_Width(stride),
@@ -140,11 +140,11 @@ fuzz_bounded :: proc(t: ^testing.T, input: []u8, stride: int, limit: u64) {
 			codec.success_of(encoded).written == codec.success_of(decoded).consumed,
 		)
 		// Compare header and every element byte, leaving unrelated trailing data out of the comparison.
-		for i in 0 ..< codec.success_of(decoded).consumed {testing.expect(t, wire[i] == input[i])}
+		for i in 0 ..< codec.success_of(decoded).consumed { testing.expect(t, wire[i] == input[i]) }
 	} else {
 		// Failed decodes have no initialized result prefix and must preserve every output sentinel.
 		testing.expect(t, codec.error_of(decoded) != .None)
-		for item in output {testing.expect(t, u64(item) == 999)}
+		for item in output { testing.expect(t, u64(item) == 999) }
 	}
 }
 
@@ -153,11 +153,11 @@ fuzz_bounded :: proc(t: ^testing.T, input: []u8, stride: int, limit: u64) {
 bounded :: proc(t: ^testing.T) {
 	sizes := [8]int{0, 1, 127, 128, 255, 256, 16383, 16384}
 	// Blob sizes include one-, two- and three-octet natural prefix boundaries.
-	for size in sizes {check_blob(t, size)}
+	for size in sizes { check_blob(t, size) }
 	counts := [4]int{0, 1, 127, 128}
 	// Counts and every width combine empty containers with multi-octet length prefixes.
 	for stride in 0 ..= 8 {
-		for count in counts {check_sequence(t, count, stride)}
+		for count in counts { check_sequence(t, count, stride) }
 	}
 	noncanonical := [2]u8{128, 0}
 	testing.expect(
@@ -205,7 +205,7 @@ bounded :: proc(t: ^testing.T) {
 	)
 	wire: [32]u8
 	// Fill the destination before deliberately rejecting a late overflowing element.
-	for &b in wire {b = 77}
+	for &b in wire { b = 77 }
 	bad := [2]codec.Fixed_Unsigned{1, 256}
 	testing.expect(
 		t,
@@ -214,7 +214,7 @@ bounded :: proc(t: ^testing.T) {
 		) ==
 		.Value_Out_Of_Range,
 	)
-	for b in wire {testing.expect(t, b == 77)}
+	for b in wire { testing.expect(t, b == 77) }
 	testing.expect(
 		t,
 		codec.error_of(
@@ -231,13 +231,13 @@ bounded :: proc(t: ^testing.T) {
 	)
 	alias: [16]u8
 	// In-place encoding is explicitly rejected before its prefix can clobber the input payload.
-	for &b in alias {b = 77}
+	for &b in alias { b = 77 }
 	testing.expect(
 		t,
 		codec.error_of(codec.encode_bytes(alias[:4], codec.Byte_Limit(4), alias[:])) ==
 		.Aliased_Buffers,
 	)
-	for b in alias {testing.expect(t, b == 77)}
+	for b in alias { testing.expect(t, b == 77) }
 	typed_bytes := slice.bytes_from_ptr(raw_data(values[:]), 16)
 	testing.expect(
 		t,

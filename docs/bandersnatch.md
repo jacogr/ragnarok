@@ -61,8 +61,9 @@ python3 tools/format.py --check
 python3 interoperability/test_bandersnatch.py --fetch
 ```
 
-The first run fetches immutable source archives, official fixture originals and
-Cargo's locked registry packages into source/build caches. Source-tree, SRS,
+The first run initializes pinned source submodules and obtains Cargo's locked
+registry packages. Official fixture originals and the SRS are read directly from
+their submodules; see [the source guide](dependencies.md). Source-tree, SRS,
 lockfile, fixture and official-reduction hashes are checked. Native builds/tests
 then run with `--locked --offline`. Subsequent runs can omit `--fetch`. No source
 patches or fetched setup/vector-generation scripts run. Dependency build scripts

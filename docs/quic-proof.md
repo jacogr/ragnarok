@@ -13,7 +13,9 @@ python3 tools/format.py --check
 python3 interoperability/test_quic.py --fetch
 ```
 
-`--fetch` downloads missing exact dependency commits into `build/quic/native-sources`.
+`--fetch` initializes missing pinned source submodules under `vendor/`.
+For a fresh checkout, run `python3 tools/setup_submodules.py` first; see
+[the source guide](dependencies.md).
 The runner builds matching LSQUIC/BoringSSL, compiles Nim with ARC and Odin with
 vet/strict-style checks, runs native parser and I/O selftests and executes the peer
 matrix over **localhost UDP**. It generates test identities inside ignored

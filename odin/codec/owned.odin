@@ -161,7 +161,7 @@ owned_capture :: proc(
 	case .Bytes:
 		parsed := decode_bytes_borrowed(input, limit)
 		// Failed framing or policy cannot create an owner.
-		if error_of(parsed) != .None {return owned_container_error(error_of(parsed))}
+		if error_of(parsed) != .None { return owned_container_error(error_of(parsed)) }
 		value := success_of(parsed)
 		consumed = value.consumed
 		data.blob = {value.offset, value.length}
@@ -169,17 +169,17 @@ owned_capture :: proc(
 	case .Optional:
 		parsed := decode_optional_borrowed(input, limit)
 		// No payload metadata is retained from a malformed optional.
-		if error_of(parsed) != .None {return owned_composite_error(error_of(parsed))}
+		if error_of(parsed) != .None { return owned_composite_error(error_of(parsed)) }
 		value := success_of(parsed)
 		consumed = value.consumed
 		data.present = value.value.present
 		data.has_blob = data.present
 		// Only a present optional refers to bytes.
-		if data.present {data.blob = value.value.blob}
+		if data.present { data.blob = value.value.blob }
 	case .Work:
 		parsed := decode_work_borrowed(input, limit)
 		// Work-error values are successful decodes, distinct from invalid framing.
-		if error_of(parsed) != .None {return owned_composite_error(error_of(parsed))}
+		if error_of(parsed) != .None { return owned_composite_error(error_of(parsed)) }
 		value := success_of(parsed)
 		consumed = value.consumed
 		// Bind the active protocol alternative without exposing its descriptor.
@@ -196,31 +196,31 @@ owned_capture :: proc(
 		// Prove the count before narrowing or allocating typed record storage.
 		if error_of(count) != .None {
 			// The natural decoder distinguishes missing and overlong prefixes.
-			if error_of(count) == .Truncated {return Ownership_Error.Truncated}
+			if error_of(count) == .Truncated { return Ownership_Error.Truncated }
 			return Ownership_Error.Non_Canonical
 		}
 		claimed := u64(success_of(count).value)
 		// Match borrowed policy precedence before the minimum record extent proof.
-		if claimed > u64(limits.items) {return Ownership_Error.Limit_Exceeded}
+		if claimed > u64(limits.items) { return Ownership_Error.Limit_Exceeded }
 		// Four service bytes and at least one length byte are required per record.
 		if claimed >
-		   u64((len(input) - success_of(count).consumed) / 5) {return Ownership_Error.Truncated}
+		   u64((len(input) - success_of(count).consumed) / 5) { return Ownership_Error.Truncated }
 		// Typed allocation sizes must remain representable on this host.
-		if claimed > u64(max(int) / size_of(Preimage)) {return Ownership_Error.Length_Overflow}
+		if claimed > u64(max(int) / size_of(Preimage)) { return Ownership_Error.Length_Overflow }
 		allocation_error: mem.Allocator_Error
 		data.records, allocation_error = make([]Preimage, int(claimed), allocator)
 		// Explicit allocators may refuse a policy-valid allocation.
 		if allocation_error != .None ||
 		   (claimed > 0 &&
-				   raw_data(data.records) == nil) {return Ownership_Error.Allocation_Failure}
+				   raw_data(data.records) == nil) { return Ownership_Error.Allocation_Failure }
 		parsed := decode_preimages_borrowed(input, limits, data.records)
 		// A failing last record cannot expose the temporary prefix or leak its storage.
-		if error_of(parsed) != .None {return owned_composite_error(error_of(parsed))}
+		if error_of(parsed) != .None { return owned_composite_error(error_of(parsed)) }
 		consumed = success_of(parsed).consumed
 	case .Digest:
 		parsed := decode_digest_borrowed(input, limit)
 		// All suffix metrics must validate before retaining the complete frame.
-		if error_of(parsed) != .None {return owned_composite_error(error_of(parsed))}
+		if error_of(parsed) != .None { return owned_composite_error(error_of(parsed)) }
 		value := success_of(parsed)
 		consumed = value.consumed
 		data.digest = value.value
@@ -238,11 +238,11 @@ owned_capture :: proc(
 	data.wire, allocation_error = make([]u8, consumed, allocator)
 	// Copy only the consumed prefix, never trailing input frames.
 	if allocation_error != .None ||
-	   raw_data(data.wire) == nil {return Ownership_Error.Allocation_Failure}
+	   raw_data(data.wire) == nil { return Ownership_Error.Allocation_Failure }
 	copy(data.wire, input[:consumed])
 	storage, header_error := mem.new(Owned_Storage, allocator)
 	// Header allocation is also fallible; the deferred cleanup owns bytes/records until commit.
-	if header_error != .None || storage == nil {return Ownership_Error.Allocation_Failure}
+	if header_error != .None || storage == nil { return Ownership_Error.Allocation_Failure }
 	storage^ = data
 	committed = true
 	return Owned_Frame(rawptr(storage))
@@ -293,7 +293,7 @@ decode_owned_digest :: proc(
 // All copied aliases become invalid on release and must not be used or released again.
 destroy_owned :: proc(frame: ^Owned_Frame) {
 	// A cleared/default owner holds no allocation to release.
-	if frame == nil || frame^ == nil {return}
+	if frame == nil || frame^ == nil { return }
 	data := cast(^Owned_Storage)frame^
 	allocator := data.allocator
 	delete(data.wire, allocator)
@@ -305,11 +305,11 @@ destroy_owned :: proc(frame: ^Owned_Frame) {
 // Report schema, consumed prefix and number of copyable payloads without returning source coordinates.
 owned_info :: proc(frame: Owned_Frame) -> Codec_Result(Owned_Info, Ownership_Error) {
 	// A default owner cannot yield default decoded data.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
 	count := int(data.has_blob)
 	// Preimage payloads are selected independently by record index.
-	if data.kind == .Preimages {count = len(data.records)}
+	if data.kind == .Preimages { count = len(data.records) }
 	return Owned_Info{data.kind, len(data.wire), count}
 }
 
@@ -318,11 +318,11 @@ owned_optional_info :: proc(
 	frame: Owned_Frame,
 ) -> Codec_Result(Owned_Optional_Info, Ownership_Error) {
 	// Missing owners and wrong schemas are typed API errors.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
-	if data.kind != .Optional {return Ownership_Error.Wrong_Schema}
+	if data.kind != .Optional { return Ownership_Error.Wrong_Schema }
 	// Absence and empty presence remain distinct native union alternatives.
-	if !data.present {return Owned_Optional_Info(Owned_Absent{})}
+	if !data.present { return Owned_Optional_Info(Owned_Absent{}) }
 	return Owned_Optional_Info(Owned_Present{data.blob.length})
 }
 
@@ -330,25 +330,25 @@ owned_optional_info :: proc(
 @(private = "file")
 owned_work_metadata :: proc(data: ^Owned_Storage) -> Owned_Work_Info {
 	// Only the successful protocol alternative has a length.
-	if data.has_blob {return Owned_Work_Blob{data.blob.length}}
+	if data.has_blob { return Owned_Work_Blob{data.blob.length} }
 	return data.work_error
 }
 
 // Read a work frame's tag and successful payload length as copied values.
 owned_work_info :: proc(frame: Owned_Frame) -> Codec_Result(Owned_Work_Info, Ownership_Error) {
 	// Validate owner and schema before interpreting private work state.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
-	if data.kind != .Work {return Ownership_Error.Wrong_Schema}
+	if data.kind != .Work { return Ownership_Error.Wrong_Schema }
 	return owned_work_metadata(data)
 }
 
 // Copy the digest's fixed fields and work tag/length, keeping every payload inside its owner.
 owned_digest_info :: proc(frame: Owned_Frame) -> Codec_Result(Owned_Digest_Info, Ownership_Error) {
 	// A missing or differently typed frame cannot expose default digest fields.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
-	if data.kind != .Digest {return Ownership_Error.Wrong_Schema}
+	if data.kind != .Digest { return Ownership_Error.Wrong_Schema }
 	value := data.digest
 	return Owned_Digest_Info {
 		value.service,
@@ -366,25 +366,25 @@ owned_service :: proc(
 	index: int,
 ) -> Codec_Result(Service_Index, Ownership_Error) {
 	// Owner, schema and index validation precede every record read.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
-	if data.kind != .Preimages {return Ownership_Error.Wrong_Schema}
-	if index < 0 || index >= len(data.records) {return Ownership_Error.Invalid_Index}
+	if data.kind != .Preimages { return Ownership_Error.Wrong_Schema }
+	if index < 0 || index >= len(data.records) { return Ownership_Error.Invalid_Index }
 	return data.records[index].service
 }
 
 // Query payload length before allocating a caller-owned copy, without exposing any source coordinate.
 owned_blob_length :: proc(frame: Owned_Frame, index: int) -> Codec_Result(int, Ownership_Error) {
 	// Default owners have no validated payload metadata.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
 	count := int(data.has_blob)
 	// Preimages provide one payload per private record, including empty blobs.
-	if data.kind == .Preimages {count = len(data.records)}
+	if data.kind == .Preimages { count = len(data.records) }
 	// Absent payloads are errors, distinct from valid zero-length blobs.
-	if index < 0 || index >= count {return Ownership_Error.Invalid_Index}
+	if index < 0 || index >= count { return Ownership_Error.Invalid_Index }
 	// Record indices stay bound to this frame's retained storage.
-	if data.kind == .Preimages {return data.records[index].blob.length}
+	if data.kind == .Preimages { return data.records[index].blob.length }
 	return data.blob.length
 }
 
@@ -395,18 +395,18 @@ copy_owned_blob :: proc(
 	output: []u8,
 ) -> Codec_Result(int, Ownership_Error) {
 	// Missing owners cannot manufacture an empty success.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
 	count := int(data.has_blob)
 	// Preimages contain one payload per initialized record, including empty blobs.
-	if data.kind == .Preimages {count = len(data.records)}
+	if data.kind == .Preimages { count = len(data.records) }
 	// Payload-free variants and invalid indices expose no default payload.
-	if index < 0 || index >= count {return Ownership_Error.Invalid_Index}
+	if index < 0 || index >= count { return Ownership_Error.Invalid_Index }
 	span := data.blob
 	// Select private record coordinates only inside their retained snapshot.
-	if data.kind == .Preimages {span = data.records[index].blob}
+	if data.kind == .Preimages { span = data.records[index].blob }
 	// Whole-payload capacity is required before mutation.
-	if len(output) < span.length {return Ownership_Error.Output_Too_Small}
+	if len(output) < span.length { return Ownership_Error.Output_Too_Small }
 	copy(output[:span.length], data.wire[span.offset:span.offset + span.length])
 	return span.length
 }
@@ -414,10 +414,10 @@ copy_owned_blob :: proc(
 // Re-emit the validated canonical frame, atomically, without any caller-supplied source pool.
 encode_owned :: proc(frame: Owned_Frame, output: []u8) -> Codec_Result(int, Ownership_Error) {
 	// Uninitialized owners cannot serialize default values.
-	if frame == nil {return Ownership_Error.Invalid_Owner}
+	if frame == nil { return Ownership_Error.Invalid_Owner }
 	data := cast(^Owned_Storage)frame
 	// The entire retained frame must fit before the first output byte is written.
-	if len(output) < len(data.wire) {return Ownership_Error.Output_Too_Small}
+	if len(output) < len(data.wire) { return Ownership_Error.Output_Too_Small }
 	copy(output[:len(data.wire)], data.wire)
 	return len(data.wire)
 }

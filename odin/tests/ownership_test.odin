@@ -36,7 +36,7 @@ budget_allocator_proc :: proc(
 	// Reject the selected allocation stage without preventing earlier allocations from being freed.
 	if size > 0 && (mode == .Alloc || mode == .Alloc_Non_Zeroed) {
 		// A zero budget models an allocator refusing this specific request.
-		if budget.remaining == 0 {return nil, .Out_Of_Memory}
+		if budget.remaining == 0 { return nil, .Out_Of_Memory }
 		budget.remaining -= 1
 	}
 	return budget.backing.procedure(
@@ -235,7 +235,7 @@ owned_fuzz :: proc(t: ^testing.T) {
 		random = random * 6364136223846793005 + 1
 		size := int(random % u64(len(fuzz) + 1))
 		// Vary each byte so tags, length prefixes, nested tuples and digest metrics are tested.
-		for index in 0 ..< size {random = random * 6364136223846793005 + 1; fuzz[index] = u8(random >> 56)}
+		for index in 0 ..< size { random = random * 6364136223846793005 + 1; fuzz[index] = u8(random >> 56) }
 		input := fuzz[:size]
 		bytes := codec.decode_bytes_borrowed(input, codec.Byte_Limit(64))
 		owned_bytes := codec.decode_owned_bytes(input, codec.Byte_Limit(64))

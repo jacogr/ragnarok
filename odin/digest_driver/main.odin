@@ -10,15 +10,15 @@ import "core:strings"
 // Accumulate unsigned decimal digits, rejecting overflow before multiplication or addition.
 parse_decimal :: proc(text: string) -> (u64, bool) {
 	// Empty input is not a number, even when the requested wire width is zero.
-	if len(text) == 0 {return 0, false}
+	if len(text) == 0 { return 0, false }
 	x: u64
 	// Accept decimal digits only and accumulate them without silently wrapping.
 	for c in text {
 		// Signs and other parser conveniences are not part of the unsigned value protocol.
-		if c < '0' || c > '9' {return 0, false}
+		if c < '0' || c > '9' { return 0, false }
 		digit := u64(c - '0')
 		// Check the next arithmetic operation against the full unsigned maximum.
-		if x > (max(u64) - digit) / 10 {return 0, false}
+		if x > (max(u64) - digit) / 10 { return 0, false }
 		x = x * 10 + digit
 	}
 	return x, true
@@ -29,30 +29,30 @@ parse_width :: proc(text: string) -> (codec.Byte_Width, bool) {
 	negative := strings.has_prefix(text, "-")
 	digits := text
 	// Strip only an explicit minus; the unsigned parser handles the remaining digit validation.
-	if negative {digits = text[1:]}
+	if negative { digits = text[1:] }
 	magnitude, ok := parse_decimal(digits)
 	limit := u64(max(int))
 	// The most negative signed integer has one more unit of magnitude than the positive maximum.
-	if negative {limit += 1}
+	if negative { limit += 1 }
 	// Reject a magnitude that cannot be converted to a host int without truncation.
-	if !ok || magnitude > limit {return 0, false}
+	if !ok || magnitude > limit { return 0, false }
 	// Handle the signed minimum before the ordinary unsigned-to-signed conversion.
-	if negative && magnitude == limit {return codec.Byte_Width(min(int)), true}
+	if negative && magnitude == limit { return codec.Byte_Width(min(int)), true }
 	count := int(magnitude)
 	// Remaining negative magnitudes fit a positive host int and can be negated safely.
-	if negative {count = -count}
+	if negative { count = -count }
 	return codec.Byte_Width(count), true
 }
 
 // Convert a bounded lowercase-hex request into supplied stack storage; dash represents an empty payload.
 parse_hex :: proc(text: string, storage: []u8) -> ([]u8, bool) {
 	// The empty token avoids ambiguous missing fields in the batch protocol.
-	if text == "-" {return storage[:0], true}
+	if text == "-" { return storage[:0], true }
 	// Whole pairs must fit actual adapter capacity before the standard parser writes into storage.
-	if len(text) % 2 != 0 || len(text) / 2 > len(storage) {return nil, false}
+	if len(text) % 2 != 0 || len(text) / 2 > len(storage) { return nil, false }
 	// Match the Nim adapter's strict lowercase alphabet before conversion.
 	for c in text {
-		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {return nil, false}
+		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') { return nil, false }
 	}
 	return hex.decode_into_buffer(transmute([]u8)text, storage)
 }
@@ -60,10 +60,10 @@ parse_hex :: proc(text: string, storage: []u8) -> ([]u8, bool) {
 // Print just a validated payload or frame; dash represents zero bytes and no heap string is needed.
 print_hex :: proc(bytes: []u8) {
 	// Keep empty payloads explicit in decode responses.
-	if len(bytes) == 0 {fmt.print("-"); return}
+	if len(bytes) == 0 { fmt.print("-"); return }
 	digits := "0123456789abcdef"
 	// Emit each byte's two nibbles in order; callers add a newline or consumed count afterward.
-	for b in bytes {fmt.printf("%c%c", digits[b >> 4], digits[b & 15])}
+	for b in bytes { fmt.printf("%c%c", digits[b >> 4], digits[b & 15]) }
 }
 
 // Parse bounded test-utility capacities, which are separate from uint64 production resource ceilings.
@@ -71,7 +71,7 @@ parse_capacity :: proc(text: string, maximum: int) -> (int, bool) {
 	value, ok := parse_width(text)
 	count := int(value)
 	// Never let an adapter request choose an unbounded allocation or unsafe slice endpoint.
-	if !ok || count < 0 || count > maximum {return 0, false}
+	if !ok || count < 0 || count > maximum { return 0, false }
 	return count, true
 }
 
@@ -104,7 +104,7 @@ print_error :: proc(error: codec.Composite_Error) {
 // Check native decode/encode correspondence without aliasing source bytes or omitting nested fields.
 same_prefix :: proc(wire: []u8, encoded: codec.Composite_Write, output: []u8, consumed: int) {
 	assert(codec.error_of(encoded) == .None && codec.success_of(encoded).written == consumed)
-	for i in 0 ..< consumed {assert(wire[i] == output[i])} 	// Every field, count and discriminator must agree.
+	for i in 0 ..< consumed { assert(wire[i] == output[i]) } 	// Every field, count and discriminator must agree.
 }
 
 // Print all decoded fields so the independent oracle verifies nominal values as well as wire reconstruction.
@@ -137,25 +137,25 @@ print_digest :: proc(value: codec.Work_Digest, wire: []u8, consumed: int) {
 // Trusted local batch adapter with explicit utility storage caps; the production codec itself allocates nothing.
 main :: proc() {
 	// Require a single readable request-file path.
-	if len(os.args) != 2 {os.exit(1)}
+	if len(os.args) != 2 { os.exit(1) }
 	data, err := os.read_entire_file(os.args[1], context.allocator)
-	if err != nil {os.exit(1)} 	// No requests exist on read failure.
+	if err != nil { os.exit(1) } 	// No requests exist on read failure.
 	defer delete(data)
 	lines := string(data)
 	// Each nonempty line describes exactly one encode or decode request.
 	for line in strings.split_lines_iterator(&lines) {
-		if len(line) == 0 {continue} 	// Ignore the final newline.
+		if len(line) == 0 { continue } 	// Ignore the final newline.
 		parts: [14]string
 		remaining := line
 		n: int
 		// Reject extra fields instead of silently dropping unparsed text.
 		for field in strings.split_by_byte_iterator(&remaining, ' ') {
-			if n >= len(parts) {n += 1; break} 	// Resource bound on textual fields.
+			if n >= len(parts) { n += 1; break } 	// Resource bound on textual fields.
 			parts[n] = field; n += 1
 		}
 		storage, output: [32768]u8
 		// Whole-output sentinels detect any partial encoder commit.
-		for &b in output {b = 77}
+		for &b in output { b = 77 }
 		if n == 14 && parts[0] == "E" {
 			limit, limit_ok := parse_decimal(parts[1])
 			cap, cap_ok := parse_capacity(parts[2], len(output))
@@ -191,8 +191,8 @@ main :: proc() {
 				fmt.println("inputerror"); continue
 			}
 			work: codec.Work_Output
-			if tag == 0 {work = codec.Blob_Span{0, len(pool)}} else // Success borrows the parsed payload.
-			{work = codec.Work_Error(tag)} 	// Errors carry only their checked tag.
+			if tag == 0 { work = codec.Blob_Span{0, len(pool)} } else // Success borrows the parsed payload.
+			{ work = codec.Work_Error(tag) } 	// Errors carry only their checked tag.
 			value := codec.Work_Digest {
 				codec.Service_Index(service),
 				codec.Code_Hash(code),
@@ -214,18 +214,18 @@ main :: proc() {
 				output[:cap],
 			)
 			if codec.error_of(written) ==
-			   .None {print_hex(output[:codec.success_of(written).written]); fmt.println()} else // Print only completed bytes.
+			   .None { print_hex(output[:codec.success_of(written).written]); fmt.println() } else // Print only completed bytes.
 			{
 				// Every byte must remain untouched after any failure, including late suffix errors.
-				for b in output {assert(b == 77)}
+				for b in output { assert(b == 77) }
 				print_error(codec.error_of(written))
 			}
 		} else if n == 3 && parts[0] == "D" {
 			limit, limit_ok := parse_decimal(parts[1])
 			wire, hex_ok := parse_hex(parts[2], storage[:])
-			if !limit_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Parse text before production decoding.
+			if !limit_ok || !hex_ok { fmt.println("inputerror"); continue } 	// Parse text before production decoding.
 			parsed := codec.decode_digest_borrowed(wire, codec.Byte_Limit(limit))
-			if codec.error_of(parsed) != .None {print_error(codec.error_of(parsed))} else // Failed tuple yields no public value.
+			if codec.error_of(parsed) != .None { print_error(codec.error_of(parsed)) } else // Failed tuple yields no public value.
 			{
 				// Verify the owned fixed fields, metrics and output against full official digest requests.
 				ownership_checks.check_digest(wire, codec.Byte_Limit(limit), parsed)
@@ -242,6 +242,6 @@ main :: proc() {
 					codec.success_of(parsed).consumed,
 				)
 			}
-		} else {fmt.println("inputerror")} 	// Unknown operation or incorrect field count.
+		} else { fmt.println("inputerror") } 	// Unknown operation or incorrect field count.
 	}
 }
