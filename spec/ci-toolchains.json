@@ -23,5 +23,6 @@
       "sha256": "e76914e29a26bca835d115111c1017ec0e6f7d51edc93a8c0e1f9a1fbd7c6368"
     }
   },
-  "odin_binary_sha256": "49e21d51855d60a618c493e929fe2b236d44de3daeb3a2c2f03f4c8aef566644"
+  "odin_binary_sha256": "49e21d51855d60a618c493e929fe2b236d44de3daeb3a2c2f03f4c8aef566644",
+  "odin_linux_version": "dev-2026-10-nightly:84bc3fc"
 }

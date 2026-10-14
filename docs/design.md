@@ -164,8 +164,10 @@ bounded networking increment.
 
 Complete work reports, other extrinsics, generic element schemas and full blocks
 remain later M1 work. [Linux CI](ci-linux.md) is configured for Ubuntu 24.04
-x86-64 with formatting, codec and QUIC checks. Its first GitHub run is pending;
-Linux reproducibility remains open in M0 until that succeeds.
+x86-64 with formatting, codec and QUIC checks. Its first run passed setup and
+formatting but failed compiler identity validation; the release version check
+has been corrected. Linux reproducibility remains open in M0 until a full run
+succeeds.
 
 Do not begin PVM, state transitions, or validator networking until the relevant
 gates are met.

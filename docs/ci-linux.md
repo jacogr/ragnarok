@@ -8,10 +8,12 @@ The job installs native build dependencies and the existing pinned Nim 2.2.12,
 Odin dev-2026-10 and odinfmt 2026-08 toolchains into temporary runner storage.
 [CI download pins](../spec/ci-toolchains.json) include SHA-256 checksums for each
 archive and the formatter compatibility patch used by the macOS Homebrew build.
-The official Odin Linux binary reports its release month without the source
-hash: the shared test runners accept that form only on Linux and only when the
-executable matches the pinned SHA-256. Existing hash-qualified checks remain.
-GitHub Actions themselves are pinned to commit IDs.
+The official Odin Linux binary reports `dev-2026-10-nightly:84bc3fc`, with a
+nightly suffix and shorter source hash than Homebrew. The shared test runners
+accept this exact version only on Linux and only when the executable matches
+the pinned SHA-256. Existing full revision checks remain. GitHub Actions are
+pinned to the latest verified releases: checkout 7.0.1, setup-python 7.0.0 and
+upload-artifact 7.0.2, all using Node 24.
 
 After setup, the job runs:
 
@@ -43,7 +45,9 @@ formatter patch application and the Linux Odin identity check were verified
 locally. Formatting and the full codec and QUIC regression checks passed on
 macOS; this does not demonstrate Linux execution.
 
-Commit and push the workflow to trigger its first Linux run, or use **Actions →
-Linux checks → Run workflow** after it is on the default branch. Linux
-reproducibility remains pending until that run succeeds; the broader M3 gate
-also remains open.
+The [first Linux run](https://github.com/jacogr/ragnarok/actions/runs/38511417305)
+passed toolchain setup and formatting, then failed the Odin version check before
+compilation. Its actual version string is now pinned alongside the verified
+executable checksum. Push this fix to run the suite again, or use **Actions →
+Linux checks → Run workflow** after it reaches the default branch. Linux
+reproducibility remains pending until the complete run succeeds; M3 remains open.

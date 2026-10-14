@@ -57,7 +57,7 @@ def main():
     for name in ('nim', 'odin', 'odinfmt_source'):
         data = download(pins['downloads'][name], destination / f'{name}.archive')
         paths[name] = extract(data, destination / name)
-    # The published Linux binary omits its source hash in version output; verify the exact executable too.
+    # The published Linux binary uses a nightly suffix and shorter source hash; verify the exact executable too.
     assert hashlib.sha256((paths['odin'] / 'odin').read_bytes()).hexdigest() == pins['odin_binary_sha256']
     patch = download(pins['downloads']['odinfmt_patch'], destination / 'odinfmt.patch')
     assert patch # An empty compatibility patch cannot be treated as a successful install.
