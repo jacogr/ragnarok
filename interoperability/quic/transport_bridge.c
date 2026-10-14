@@ -13,10 +13,11 @@ struct rq_transport {
     lsquic_conn_t *connection;
     /* Stable bounded handles belong to the engine until on_conn_closed; no application payload lives here. */
     lsquic_conn_t *connections[16];
-    unsigned active, accepted, closed, peak;
-    int multi;
+    unsigned active, accepted, closed, peak, authenticated;
+    int multi, persistent, ipv6, global_owned;
     SSL_CTX *tls;
     struct sockaddr_in local;
+    struct sockaddr_in6 local6;
     struct lsquic_engine_settings settings;
     struct lsquic_engine_api api;
     void *user;
@@ -27,6 +28,21 @@ struct rq_transport {
     unsigned alpn_length;
     int server, status;
 };
+/* All adapters currently run on one OS thread. Global TLS state outlives every engine in that process. */
+static unsigned global_owners;
+/* Construct an IPv6 loopback address; external endpoint routing remains outside this bounded proof. */
+static struct sockaddr_in6 address6(uint16_t port) {
+    struct sockaddr_in6 a; memset(&a, 0, sizeof(a));
+#ifdef __APPLE__
+    a.sin6_len = sizeof(a);
+#endif
+    a.sin6_family = AF_INET6; a.sin6_addr = in6addr_loopback; a.sin6_port = htons(port);
+    return a;
+}
+/* Borrow the endpoint's stable address in its configured socket family. */
+static const struct sockaddr *local_address(struct rq_transport *t) {
+    return t->ipv6 ? (const struct sockaddr *)&t->local6 : (const struct sockaddr *)&t->local;
+}
 /* Construct an IPv4 loopback socket address; the initial proof deliberately accepts no external endpoints. */
 static struct sockaddr_in address(uint16_t port) {
     struct sockaddr_in a; memset(&a, 0, sizeof(a));
@@ -72,9 +88,11 @@ static int packets_out(void *ctx, const struct lsquic_out_spec *packets, unsigne
             memcpy(bytes + length, packets[i].iov[j].iov_base, packets[i].iov[j].iov_len);
             length += packets[i].iov[j].iov_len;
         }
-        const struct sockaddr_in *peer = (const struct sockaddr_in *)packets[i].dest_sa;
+        const struct sockaddr *peer = packets[i].dest_sa;
+        uint16_t port = peer->sa_family == AF_INET6
+          ? ((const struct sockaddr_in6 *)peer)->sin6_port : ((const struct sockaddr_in *)peer)->sin_port;
         /* The native callback performs a nonblocking send while bytes remain valid on this stack. */
-        if (!t->send(t->user, bytes, length, ntohs(peer->sin_port))) { errno = EAGAIN; return i ? (int)i : -1; }
+        if (!t->send(t->user, bytes, length, ntohs(port))) { errno = EAGAIN; return i ? (int)i : -1; }
     }
     return (int)count;
 }
@@ -91,13 +109,15 @@ static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
     }
     ++t->active; ++t->accepted;
     if (t->active > t->peak) t->peak = t->active; /* Observe actual overlap, not process concurrency alone. */
-    if (!t->multi) t->connection = connection; /* Legacy outgoing stream API names the sole dialed peer. */
-    if (t->server) t->status = 1; /* Acceptor callback follows authenticated handshake promotion. */
+    if (!t->multi) t->connection = connection; /* Single-peer stream API names the retained connection in either role. */
+    if (t->server) { t->status = 1; ++t->authenticated; } /* Acceptor callback follows authenticated handshake promotion. */
     return (lsquic_conn_ctx_t *)t;
 }
 /* Capture client authentication; a failed service connection never poisons the listener. */
 static void handshake_done(lsquic_conn_t *connection, enum lsquic_hsk_status status) {
     struct rq_transport *t = (struct rq_transport *)lsquic_conn_get_ctx(connection);
+    /* Keep successful authentication evidence after duplicate close races the other engine. */
+    if (t && !t->server && status == LSQ_HSK_OK) ++t->authenticated;
     if (t && !t->multi) t->status = status == LSQ_HSK_OK ? 1 : -1; /* Resumption remains disabled. */
 }
 /* Retire exactly one retained handle; TLS rejects before promotion do not consume an authenticated slot. */
@@ -110,7 +130,7 @@ static void connection_closed(lsquic_conn_t *connection) {
             t->connections[i] = NULL; --t->active; ++t->closed; break;
         }
     }
-    if (!t->multi) { if (t->status == 0) t->status = -1; t->connection = NULL; } /* Preserve one-shot outcomes. */
+    if (!t->multi) { t->status = t->persistent ? 0 : (t->status == 0 ? -1 : t->status); t->connection = NULL; } /* Retained engines become idle; one-shot proofs preserve terminal outcomes. */
 }
 /* Forward new stream handles to the native protocol owner without interpreting any stream bytes. */
 static lsquic_stream_ctx_t *new_stream(void *ctx, lsquic_stream_t *stream) {
@@ -140,12 +160,14 @@ static const struct lsquic_stream_if callbacks = {
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
     size_t length = strlen(alpn);
-    if (soak < 0 || soak > 2 || (soak == 2 && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
+    if (soak < 0 || soak > 3 || (soak == 2 && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
     struct rq_transport *t = calloc(1, sizeof(*t));
     if (!t) return NULL; /* Typed null failure, never an application panic. */
-    t->multi = soak == 2; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
+    t->persistent = soak == 3; t->multi = soak == 2; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
     t->alpn[0] = (uint8_t)length; memcpy(t->alpn + 1, alpn, length); t->alpn_length = (unsigned)length + 1;
-    if (lsquic_global_init(LSQUIC_GLOBAL_CLIENT | LSQUIC_GLOBAL_SERVER)) goto fail;
+    /* Initialize once, so constructing a second engine cannot reseed state used by the first. */
+    if (!global_owners && lsquic_global_init(LSQUIC_GLOBAL_CLIENT | LSQUIC_GLOBAL_SERVER)) goto fail;
+    ++global_owners; t->global_owned = 1;
     t->tls = SSL_CTX_new(TLS_method());
     if (!t->tls || !SSL_CTX_set_ex_data(t->tls, 0, t)) goto fail;
     SSL_CTX_set_min_proto_version(t->tls, TLS1_3_VERSION); SSL_CTX_set_max_proto_version(t->tls, TLS1_3_VERSION);
@@ -179,14 +201,18 @@ fail:
 }
 /* Initiate one retained loopback connection; endpoint address bytes are synchronously consumed by LSQUIC. */
 int rq_connect(rq_transport *t, uint16_t port) {
-    struct sockaddr_in peer = address(port);
-    return lsquic_engine_connect(t->engine, LSQVER_I001, (struct sockaddr *)&t->local,
-      (struct sockaddr *)&peer, t, NULL, NULL, 0, NULL, 0, NULL, 0) != NULL;
+    /* A retained single-peer engine cannot overwrite a still-live or handshaking connection. */
+    if (t->server || t->active || t->connection) return 0;
+    t->status = 0;
+    struct sockaddr_in peer = address(port); struct sockaddr_in6 peer6 = address6(port);
+    return lsquic_engine_connect(t->engine, LSQVER_I001, local_address(t),
+      t->ipv6 ? (struct sockaddr *)&peer6 : (struct sockaddr *)&peer, t, NULL, NULL, 0, NULL, 0, NULL, 0) != NULL;
 }
 /* Deliver borrowed UDP bytes with caller-supplied source port and retained TLS peer context. */
 int rq_packet_in(rq_transport *t, const uint8_t *bytes, size_t length, uint16_t port) {
-    struct sockaddr_in peer = address(port);
-    return lsquic_engine_packet_in(t->engine, bytes, length, (struct sockaddr *)&t->local, (struct sockaddr *)&peer, t, 0);
+    struct sockaddr_in peer = address(port); struct sockaddr_in6 peer6 = address6(port);
+    return lsquic_engine_packet_in(t->engine, bytes, length, local_address(t),
+      t->ipv6 ? (struct sockaddr *)&peer6 : (struct sockaddr *)&peer, t, 0);
 }
 /* Progress packets, timers and retryable nonblocking sends on the native language's I/O thread. */
 void rq_process(rq_transport *t) { lsquic_engine_send_unsent_packets(t->engine); lsquic_engine_process_conns(t->engine); }
@@ -198,7 +224,10 @@ int rq_status(rq_transport *t) { return t->status; }
 void rq_transport_free(rq_transport *t) {
     if (!t) return;
     if (t->engine) lsquic_engine_destroy(t->engine); /* Final callbacks retire all retained connections before free. */
-    SSL_CTX_free(t->tls); free(t); lsquic_global_cleanup();
+    SSL_CTX_free(t->tls);
+    /* Cleanup occurs only after the final engine is destroyed; failed setup releases only its acquired lease. */
+    if (t->global_owned && --global_owners == 0) lsquic_global_cleanup();
+    free(t);
 }
 
 /* Open a raw bidirectional stream on the authenticated connection. */
@@ -230,9 +259,23 @@ uint64_t rq_peer_metric(rq_transport *t, int metric) {
     case 1: return t->accepted; /* Lifetime promoted connections, including later reconnects. */
     case 2: return t->closed; /* Retired promoted connections. */
     case 3: return t->peak; /* Maximum real connection overlap. */
+    case 4: return t->authenticated; /* Lifetime successful handshakes, retained after close. */
     default: return 0;
     }
 }
 
 /* Compare the owning connections of two live stream handles; retain no connection pointer after this call. */
 int rq_stream_same_peer(void *a, void *b) { return lsquic_stream_conn(a) == lsquic_stream_conn(b); }
+
+/* Retain a single-peer IPv6 engine across reconnects; role is fixed by LSQUIC, policy stays native. */
+rq_transport *rq_transport_new_ipv6(int server, uint16_t port, const char *cert, const char *key,
+ const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
+    rq_transport *t = rq_transport_new(3, server, port, cert, key, alpn, user, verify, send, stream);
+    if (t) { t->ipv6 = 1; t->local6 = address6(port); } /* Address selection happens before any engine processing. */
+    return t;
+}
+/* IETF bidirectional stream IDs encode their initiator in bit zero, independently of connection direction. */
+int rq_stream_local(rq_transport *t, void *stream) { return (lsquic_stream_id(stream) & 1) == (unsigned)t->server; }
+
+/* Release the application read half after native framing has validated FIN; writing may still hold a reply. */
+void rq_stream_read_done(void *stream) { lsquic_stream_shutdown(stream, 0); }

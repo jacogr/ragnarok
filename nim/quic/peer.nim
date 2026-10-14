@@ -1,6 +1,6 @@
 ## JAMNP-S identity and CE 143 policy in Nim, over the same small LSQUIC/TLS C bridge used by Odin.
 ## One synchronous owner drives nonblocking UDP readiness and deadlines without external Nim dependencies.
-import std/[os, strutils, monotimes, times]
+import std/[os, strutils, monotimes, times, selectors]
 import ./transport
 import ./integration
 
@@ -10,7 +10,7 @@ type
     handle: NativeStream
     received, sending: seq[byte]
     receivedLength, sendLength, sendOffset: int
-    readFin, writeFin, counted, paused, blocked: bool
+    readFin, writeFin, counted, paused, blocked, responder: bool
     started: MonoTime
     attack: string
     verified: VerifiedDigest
@@ -20,7 +20,7 @@ type
   Peer = object
     transport: Transport
     expected: seq[byte]
-    server, failed, stopping, service, mixed, integrated: bool
+    server, failed, stopping, service, mixed, integrated, mesh: bool
     streams: array[64, StreamState]
     completed, opened, healthy, rejected, cancelled: int
     attack: string
@@ -112,14 +112,19 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
     # The one-shot rejection matrix fails the attempted application exchange.
     peer.failed = true
 
+# Legacy fixtures use connection role; mesh CE streams use their independently observed initiator.
+proc accepting(peer: ptr Peer, state: ptr StreamState): bool {.raises: [].} =
+  if peer.mesh: state.responder else: peer.server
+
 # Check incremental framing and fixture payloads; success requires one exact message followed by FIN.
 proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid: bool] {.raises: [].} =
-  let start = if peer.server: 1 else: 0
+  let start = if accepting(peer, state): 1 else: 0
   # The request's first byte selects CE 143 explicitly.
-  if peer.server and state.receivedLength > 0 and state.received[0] != 143: return (false, false)
+  if accepting(peer, state) and state.receivedLength > 0 and state.received[0] != 143: return (
+    false, false)
   # A partial header remains pending only while the peer has not ended its direction.
   if state.receivedLength < start + 4: return (false, not state.readFin)
-  let maximum = if peer.server: 32 elif peer.integrated: WireCap elif peer.attack ==
+  let maximum = if accepting(peer, state): 32 elif peer.integrated: WireCap elif peer.attack ==
       "soak": LargeSize else: 1024
   let length = checkedLength(state.received.toOpenArray(start, start + 3), maximum)
   # Reject impossible declared payloads before any narrowing/indexing.
@@ -131,7 +136,7 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
   if state.receivedLength != extent: return (false, false) # FIN before the declared payload is truncation.
   # The integration corpus deliberately uses complete C.2 digests as otherwise opaque CE preimages.
   if peer.integrated:
-    if peer.server:
+    if accepting(peer, state):
       if length.size != 32: return (false, false) # CE query hash width remains normative.
       let index = findFixture(peer.bank, state.received.toOpenArray(5, 36))
       if index < 0:
@@ -157,7 +162,7 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
       echo "OWNED_VERIFIED"
     return (true, true)
   # Requests select only exact fixture hash keys, never a default/missing map entry.
-  if peer.server:
+  if accepting(peer, state):
     if length.size != 32: return (false, false) # Preimage keys have fixed width.
     let wanted = if peer.attack == "soak" and state.received[5] == LargeHash[
         0]: LargeHash else: RequestHash
@@ -175,10 +180,12 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
 # Initialize bounded request/reply storage on a new native stream; no network length chooses an allocation.
 proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.raises: [].} =
   state[] = StreamState(handle: handle, started: getMonoTime(), attack: peer.attack)
-  state.received = newSeq[byte](if peer.server: 1050 elif peer.integrated: WireCap +
+  # Connection acceptors may open queries too; native stream IDs identify the actual requester.
+  if peer.mesh: state.responder = not locallyOpened(peer.transport, handle)
+  state.received = newSeq[byte](if accepting(peer, state): 1050 elif peer.integrated: WireCap +
       5 elif peer.attack != "soak": 1050 else: LargeSize + 5)
   # The acceptor waits for one exact request before allocating its trusted fixture response.
-  if peer.server: return
+  if accepting(peer, state): return
   state.sending = newSeq[byte](64)
   state.sending[0] = 143
   state.sending[1] = 32
@@ -258,9 +265,10 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
       streamAbort(state.handle)
       return
     if extent.complete:
+      if peer.mesh: readDone(state.handle) # Retire the read half only after exact FIN validation.
       wantRead(state.handle, 0) # Stop repeated EOF callbacks after validated FIN.
       # Only a validated fixture key can select a bounded server response allocation.
-      if peer.server:
+      if accepting(peer, state):
         if peer.integrated:
           let wire = state.verified.wire
           state.sending = newSeq[byte](wire.len + 4)
@@ -304,10 +312,11 @@ proc writeStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
     return
   wantWrite(state.handle, 0)
   # FIN half-closes writing while response reads stay active.
-  if not state.writeFin and (peer.server or state.attack != "no-fin"):
+  if not state.writeFin and (accepting(peer, state) or state.attack != "no-fin"):
     streamFin(state.handle)
     state.writeFin = true
-    if peer.server: finishStream(peer, state, true) # Exact request and queued reply FIN complete server work.
+    if accepting(peer, state): finishStream(peer, state,
+        true) # Exact request and queued reply FIN complete server work.
 
 # Native callbacks borrow this peer synchronously; only native close releases application buffers.
 proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
@@ -336,8 +345,8 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
     # A premature native close rejects unsettled work unless teardown is already retiring the owner.
     if not state.counted and not peer.stopping: finishStream(peer, state, false)
     # The cancelled large response must have reached owned capture before final close releases it.
-    if peer.integrated and peer.server and state.fixture == 6 and state.verified.wire.len >
-        0: echo "OWNED_CANCEL_RELEASE"
+    if peer.integrated and accepting(peer, state) and state.fixture == 6 and
+        len(state.verified.wire) > 0: echo "OWNED_CANCEL_RELEASE"
     state[] = StreamState() # ARC releases both buffers; the slot holds no closure/reference back to Peer.
     return
   if event == 4:
@@ -346,7 +355,7 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
     streamAbort(handle)
     return
   # No new application work starts during teardown or after a completed client response.
-  if peer.stopping or (state.counted and not peer.server): return
+  if peer.stopping or (state.counted and not accepting(peer, state)): return
   case event
   of 1: readStream(peer, state) # Read readiness preserves incremental framing across callbacks.
   of 2: writeStream(peer, state) # Write readiness preserves partial-write offsets across callbacks.
@@ -533,9 +542,19 @@ proc selfTest() =
     fuzzPeer(input.toOpenArray(0, iteration mod 129 - 1), iteration mod 2 == 0, iteration mod 3 == 0)
   echo "Nim QUIC selftest: 10000 malformed DER/frame cases passed"
 
+include ./mesh
+
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
   try:
+    # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
+    if paramCount() >= 1 and paramStr(1) == "mesh":
+      let baseline = getOccupiedMem()
+      if not runMesh(): return 2 # Both engines and their borrowed selector registrations have already retired.
+      let retained = getOccupiedMem()
+      echo "MESH_CLEAN ", baseline, " ", retained
+      return (if retained <= baseline + 65536: 0 else: 2) # Fixed ARC bookkeeping is bounded after complete cleanup.
+    if paramCount() == 1 and paramStr(1) == "--mesh-selftest": meshSelfTest(); return 0
     # The composition selftest needs only codec/crypto, with no TLS session or filesystem fixture.
     if paramCount() == 1 and paramStr(1) == "--integration-selftest":
       if not IntegrationEnabled: return 2

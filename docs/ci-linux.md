@@ -115,3 +115,9 @@ sequentially on the same allowed Linux CPU, with identical corpora/iteration cou
 allocation instrumentation. Results, build flags, hardware/binary/source hashes and raw logs are
 uploaded. Speed has no CI pass/fail threshold; invalid outputs or unbalanced ownership fail the
 measurement. The new Linux measurement awaits its pushed run.
+
+The [persistent IPv6 peer proof](quic-mesh.md) follows the inbound service step, reusing the same
+freshly built native peers. It checks all four language pairings, fallback dialing, duplicate
+retirement, bidirectional CE exchanges and idle lifecycle resources. Only explicit summary, log
+and resource paths under `build/quic/mesh` are added to uploads. Linux verification of this new step
+awaits a pushed run. The maintainer has confirmed that the preceding benchmark CI fix passes.

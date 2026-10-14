@@ -20,35 +20,35 @@ Cert_Fields :: struct {
 }
 // One bounded CE stream owns its framing buffers through read/write/close callbacks.
 Stream_State :: struct {
-	handle:                       rawptr,
-	received:                     []u8,
-	received_length:              int,
-	sending:                      []u8,
-	send_length, send_offset:     int,
-	read_fin, write_fin, counted: bool,
-	started:                      time.Time,
-	attack:                       string,
-	paused, blocked:              bool,
-	owner:                        codec.Owned_Frame, // One release owner retained through final native stream close.
-	query:                        Preimage_Key,
-	fixture:                      int,
+	handle:                                  rawptr,
+	received:                                []u8,
+	received_length:                         int,
+	sending:                                 []u8,
+	send_length, send_offset:                int,
+	read_fin, write_fin, counted, responder: bool,
+	started:                                 time.Time,
+	attack:                                  string,
+	paused, blocked:                         bool,
+	owner:                                   codec.Owned_Frame, // One release owner retained through final native stream close.
+	query:                                   Preimage_Key,
+	fixture:                                 int,
 }
 // Native owner outlives every receive/timer/C callback; buffers never refer to expired stack frames.
 Peer :: struct {
-	transport:                                     rawptr,
-	socket:                                        net.UDP_Socket,
-	expected:                                      []u8,
-	buffer:                                        [2048]u8,
-	stopping:                                      bool,
-	saved_context:                                 runtime.Context,
-	server, failed, service, mixed, integrated:    bool,
-	streams:                                       [64]Stream_State,
-	completed:                                     int,
-	attack:                                        string,
-	opened, healthy, rejected, cancelled, blocked: int,
-	bank:                                          Integration_Bank,
-	tracking:                                      ^mem.Tracking_Allocator, // Borrowed from the service entry point through all callbacks.
-	receive_operation:                             ^nbio.Operation, // Owned until callback delivery or explicit removal; buffer stays in Peer.
+	transport:                                        rawptr,
+	socket:                                           net.UDP_Socket,
+	expected:                                         []u8,
+	buffer:                                           [2048]u8,
+	stopping:                                         bool,
+	saved_context:                                    runtime.Context,
+	server, failed, service, mixed, integrated, mesh: bool,
+	streams:                                          [64]Stream_State,
+	completed:                                        int,
+	attack:                                           string,
+	opened, healthy, rejected, cancelled, blocked:    int,
+	bank:                                             Integration_Bank,
+	tracking:                                         ^mem.Tracking_Allocator, // Borrowed from the service entry point through all callbacks.
+	receive_operation:                                ^nbio.Operation, // Owned until callback delivery or explicit removal; buffer stays in Peer.
 }
 // Explicit library build path supplied by the reproducible proof runner.
 when ODIN_OS == .Darwin {
@@ -58,6 +58,11 @@ when ODIN_OS == .Darwin {
 }
 // Opaque C API wraps transport/TLS layouts, leaving all JAM identity and I/O policy in Odin.
 foreign quic {
+	// Retained IPv6 loopback engines and live stream-initiator observation contain no JAM policy.
+	rq_transport_new_ipv6 :: proc "c" (server: i32, port: u16, cert, key, alpn: cstring, user: rawptr, verify: proc "c" (_: rawptr, _: [^]u8, _: uintptr) -> i32, send: proc "c" (_: rawptr, _: [^]u8, _: uintptr, _: u16) -> i32, stream: proc "c" (_: rawptr, _: rawptr, _: i32)) -> rawptr ---
+	// Validated EOF requires an explicit application read-half release before native stream close.
+	rq_stream_read_done :: proc "c" (_: rawptr) ---
+	rq_stream_local :: proc "c" (_: rawptr, _: rawptr) -> i32 ---
 	rq_parse_cert :: proc "c" (der: [^]u8, length: uintptr, fields: ^Cert_Fields) -> i32 ---
 	rq_transport_new :: proc "c" (soak, server: i32, port: u16, cert, key, alpn: cstring, user: rawptr, verify: proc "c" (_: rawptr, _: [^]u8, _: uintptr) -> i32, send: proc "c" (_: rawptr, _: [^]u8, _: uintptr, _: u16) -> i32, stream: proc "c" (_: rawptr, _: rawptr, _: i32)) -> rawptr ---
 	// Graceful close runs before receive/socket retirement; metric queries expose no borrowed connection handles.
@@ -128,7 +133,10 @@ verify_peer :: proc "c" (user: rawptr, der: [^]u8, length: uintptr) -> i32 {
 send_packet :: proc "c" (user: rawptr, bytes: [^]u8, length: uintptr, port: u16) -> i32 {
 	peer := (^Peer)(user)
 	context = peer.saved_context
-	written, err := net.send_udp(peer.socket, bytes[:int(length)], {net.IP4_Loopback, int(port)})
+	destination := net.Endpoint{net.IP4_Loopback, int(port)}
+	// The mesh sockets and C transport addresses must agree on IPv6, without mapped IPv4 endpoints.
+	if peer.mesh { destination = {net.IP6_Loopback, int(port)} }
+	written, err := net.send_udp(peer.socket, bytes[:int(length)], destination)
 	// Would-block/error leaves the datagram with LSQUIC for a later retry.
 	if err != nil || written != int(length) { return 0 }
 	return 1
@@ -235,18 +243,23 @@ finish_stream :: proc(peer: ^Peer, state: ^Stream_State, good: bool) {
 	}
 }
 
+// A CE stream's requester is independent of the connection dialer; legacy workloads keep their role policy.
+accepting :: proc(peer: ^Peer, stream: ^Stream_State) -> bool {
+	return stream.responder if peer.mesh else peer.server
+}
+
 // Check an incremental E4 frame before accepting its payload; no untrusted length chooses an allocation.
 frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, valid: bool) {
-	start := 1 if peer.server else 0
+	start := 1 if accepting(peer, stream) else 0
 	// The initiator's first byte selects the explicit CE protocol.
-	if peer.server &&
+	if accepting(peer, stream) &&
 	   stream.received_length >= 1 &&
 	   stream.received[0] != 143 { return false, false }
 	if stream.received_length < start + 4 { return false, !stream.read_fin } 	// Partial length waits for more bytes.
 	claimed: u64
 	for i in 0 ..< 4 { claimed |= u64(stream.received[start + i]) << uint(8 * i) } 	// E4 network frame header.
 	maximum :=
-		u64(32) if peer.server else u64(INTEGRATION_WIRE_CAP if peer.integrated else (LARGE_SIZE if peer.attack == "soak" else 1024))
+		u64(32) if accepting(peer, stream) else u64(INTEGRATION_WIRE_CAP if peer.integrated else (LARGE_SIZE if peer.attack == "soak" else 1024))
 	if claimed > maximum { return false, false } 	// Reject before allocation or indexing.
 	extent := start + 4 + int(claimed)
 	if stream.received_length > extent { return false, false } 	// Exactly one message is allowed in this direction.
@@ -254,7 +267,7 @@ frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, val
 	if stream.received_length != extent { return false, false } 	// Premature FIN is truncation.
 	// Integrated fixtures are full work digests; CE itself still transports opaque preimage bytes.
 	if peer.integrated {
-		if peer.server {
+		if accepting(peer, stream) {
 			if claimed != 32 { return false, false } 	// Query width stays normative.
 			index := find_fixture(&peer.bank, stream.received[5:37])
 			if index < 0 { fmt.println("INTEGRATION_REJECT Lookup"); return false, false } 	// No default record after a miss.
@@ -287,7 +300,7 @@ frame_extent :: proc(peer: ^Peer, stream: ^Stream_State) -> (complete: bool, val
 		fmt.println("OWNED_VERIFIED")
 		return true, true
 	}
-	if peer.server {
+	if accepting(peer, stream) {
 		if claimed != 32 { return false, false } 	// Hash is fixed width.
 		wanted :=
 			LARGE_HASH if stream.received[5] == LARGE_HASH[0] && peer.attack == "soak" else REQUEST_HASH
@@ -320,11 +333,13 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 			started = time.now(),
 			attack  = peer.attack,
 		}
+		// IETF stream IDs distinguish local requests from remote queries on either role engine.
+		if peer.mesh { state.responder = rq_stream_local(peer.transport, handle) == 0 }
 		state.received = make(
 			[]u8,
-			1050 if peer.server else (INTEGRATION_WIRE_CAP + 5 if peer.integrated else (1050 if peer.attack != "soak" else LARGE_SIZE + 5)),
+			1050 if accepting(peer, state) else (INTEGRATION_WIRE_CAP + 5 if peer.integrated else (1050 if peer.attack != "soak" else LARGE_SIZE + 5)),
 		)
-		if !peer.server {
+		if !accepting(peer, state) {
 			state.sending = make([]u8, 64)
 			state.sending[0] = 143; state.sending[1] = 32
 			// Select the exact integration key before any read/write callback starts.
@@ -396,7 +411,7 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 	if event == 3 {
 		if !state.counted && !peer.stopping { finish_stream(peer, state, false) } 	// Premature close is a rejection.
 		if peer.integrated &&
-		   peer.server &&
+		   accepting(peer, state) &&
 		   state.fixture == 6 &&
 		   state.owner != nil { fmt.println("OWNED_CANCEL_RELEASE") } 	// Prove cancellation reached an owned snapshot.
 		codec.destroy_owned(&state.owner) // Final close, including cancellation, is the sole release owner.
@@ -409,7 +424,7 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 		rq_stream_abort(handle)
 		return
 	}
-	if peer.stopping || state.counted && !peer.server { return } 	// Final callbacks have no new application work.
+	if peer.stopping || state.counted && !accepting(peer, state) { return } 	// Final callbacks have no new application work.
 	if event == 1 {
 		if state.paused { return } 	// Application consumption resumes from the single event loop's deadline.
 		// Partial and coalesced payloads stay in bounded storage until their exact FIN is checked.
@@ -429,8 +444,9 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 			complete, valid := frame_extent(peer, state)
 			if !valid { finish_stream(peer, state, false); rq_stream_abort(handle); return } 	// Malformed request/reply.
 			if complete {
+				if peer.mesh { rq_stream_read_done(handle) } 	// Exact FIN has been checked before retiring reading.
 				rq_stream_want_read(handle, 0)
-				if peer.server {
+				if accepting(peer, state) {
 					if peer.integrated { rq_stream_want_write(handle, 1); break } 	// Reply was built from the owned digest, with its snapshot retained.
 					size :=
 						LARGE_SIZE if state.received[5] == LARGE_HASH[0] && peer.attack == "soak" else 3
@@ -459,9 +475,9 @@ on_stream :: proc "c" (user: rawptr, handle: rawptr, event: i32) {
 		if rq_stream_flush(handle) !=
 		   0 { finish_stream(peer, state, false); rq_stream_abort(handle); return } 	// Missing FIN still transmits its request bytes.
 		rq_stream_want_write(handle, 0)
-		if !state.write_fin && (peer.server || state.attack != "no-fin") {
+		if !state.write_fin && (accepting(peer, state) || state.attack != "no-fin") {
 			rq_stream_fin(handle); state.write_fin = true
-			if peer.server { finish_stream(peer, state, true) } 	// Request and queued reply FIN complete server work.
+			if accepting(peer, state) { finish_stream(peer, state, true) } 	// Request and queued reply FIN complete server work.
 		}
 	}
 }
@@ -500,6 +516,14 @@ on_receive :: proc(op: ^nbio.Operation, peer: ^Peer) {
 	peer.receive_operation = nil // This callback retires the old operation before another receive is armed.
 	// Receives have no linked timeout; standalone timers already wake lifecycle and QUIC deadline checks.
 	if op.recv.err != nil { peer.failed = true; return } 	// Surface an I/O failure through the bounded session result.
+	// Mesh traffic must retain its full IPv6 loopback identity, rather than attributing arbitrary addresses by port.
+	if peer.mesh {
+		address, ok := op.recv.source.address.(net.IP6_Address)
+		if !ok || address != net.IP6_Loopback {
+			if !peer.stopping && !peer.failed { arm_receive(peer) } 	// Teardown must never rearm a borrowed receive buffer.
+			return
+		} // Ignore out-of-scope packets without stopping the listener.
+	}
 	// Only completed UDP bytes enter the transport.
 	if op.recv.err == nil && op.recv.received > 0 {
 		_ = rq_packet_in(
@@ -808,6 +832,9 @@ self_test :: proc() {
 
 // Exit only after the attempt returns through all deferred transport/socket/event-loop cleanup.
 main :: proc() {
+	// Mesh policy tests require no sockets; dual-role runs retain both engines on one dispatcher.
+	if len(os.args) == 2 && os.args[1] == "--mesh-selftest" { mesh_self_test(); return }
+	if len(os.args) > 1 && os.args[1] == "mesh" { mesh_main(); return }
 	// Composition tests own no transport; tracking asserts every decode/hash outcome releases its storage.
 	if len(os.args) == 2 &&
 	   os.args[1] ==

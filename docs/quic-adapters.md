@@ -88,3 +88,7 @@ all LSQUIC paths or a full reusable client transport. The subsequent [persistent
 IPv6, independent JAM peers, persistent outgoing reconnect and deeper C/TLS allocation
 instrumentation remain M3 work. The maintainer reported on 2026-10-14 that Linux CI passes for this adapter
 revision. Earlier Linux reports still describe the older wrapper implementation.
+
+The subsequent [IPv6 peer round](quic-mesh.md) adds retained client/server engines on one dispatcher
+per logical peer, bidirectional CE stream policy and sequential outgoing reconnect. It covers a
+fixed two-peer topology; the general multi-target transport and independent-peer gates remain open.

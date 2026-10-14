@@ -95,6 +95,9 @@ jobs:
       - name: Persistent multi-peer QUIC service
         run: python3 interoperability/test_quic_service.py --skip-build 2>&1 | tee build/ci/quic-service.log
 
+      - name: Persistent bidirectional IPv6 QUIC peers
+        run: python3 interoperability/test_quic_mesh.py --skip-build 2>&1 | tee build/ci/quic-mesh.log
+
       - name: Integrated owned codec, crypto and QUIC
         run: python3 interoperability/test_integration.py --reuse-native 2>&1 | tee build/ci/integration.log
 
@@ -130,6 +133,9 @@ jobs:
             build/quic/service/results.json
             build/quic/service/*/*.log
             build/quic/service/*/resources.json
+            build/quic/mesh/results.json
+            build/quic/mesh/*/*.log
+            build/quic/mesh/*/resources.json
             build/integration/build.log
             build/integration/results.json
             build/integration/*/*.log

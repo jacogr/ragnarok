@@ -236,3 +236,12 @@ Linux CI executes both candidates sequentially on the same allowed CPU after cor
 Local Mac results are exploratory; a profile identifies the current Nim bulk-copy loops as an
 implementation hotspot to evaluate before a language conclusion. Production algorithms and
 source/toolchain pins are unchanged. Any optimization or next increment awaits go-ahead.
+
+The [persistent IPv6 peer round](quic-mesh.md) now retains separate client/server role engines on one
+native I/O loop per logical peer. It checks nonpreferred fallback, preferred-direction duplicate
+arbitration, bidirectional CE queries on the same connection and outgoing reconnect without engine
+replacement. The bounded topology contains two known identities; a general multi-target outgoing
+engine, validator-set management and independent-stack interoperability remain open. See
+[verification](../results/quic-mesh.md). Disruption/overload and bounded Bandersnatch offload remain
+separate increments awaiting the maintainer's next go-ahead. Speed measurements remain a baseline;
+no optimization is part of this networking round.

@@ -117,6 +117,11 @@ The [persistent multi-peer service](docs/quic-service.md) now keeps one listener
 mixed Nim/Odin peers and reconnect waves, including blocked/failed peers and idle resource checks.
 See [its verification results](results/quic-service.md); the new Linux CI step awaits a pushed run.
 
+The [persistent IPv6 peer proof](docs/quic-mesh.md) retains client/server engines on one I/O loop per
+logical peer across fallback dialing, duplicate arbitration, bidirectional CE queries and reconnects.
+See [verification](results/quic-mesh.md). The topology is a fixed pair; general validator networking
+and independent-stack interoperability remain open.
+
 [Codec result safety](docs/codec-results.md) now separates completed values and
 metadata from typed failures in both languages.
 
