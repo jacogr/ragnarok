@@ -193,7 +193,7 @@ read_composite_tag :: proc(
 	if value > maximum {return Composite_Error.Invalid_Tag} 	// Reject before narrowing into an enum.
 	if value !=
 	   blob_tag {return Tagged_Success{tag = value, consumed = success_of(tag).consumed}} 	// This variant has no payload.
-	blob := decode_bytes(input[success_of(tag).consumed:], limit)
+	blob := decode_bytes_borrowed(input[success_of(tag).consumed:], limit)
 	if error_of(blob) != .None {return composite_blob_error(error_of(blob))} 	// Nested payload preflight.
 	return Tagged_Success {
 		tag = value,
@@ -206,7 +206,7 @@ read_composite_tag :: proc(
 }
 
 // C.1.3 optional-blob schema: absent zero or present one followed by a variable blob.
-encode_optional :: proc(
+encode_optional_borrowed :: proc(
 	value: Optional_Blob,
 	pool: []u8,
 	limit: Byte_Limit,
@@ -217,7 +217,7 @@ encode_optional :: proc(
 }
 
 // Decode a typed optional view without copying or retaining the source bytes.
-decode_optional :: proc(input: []u8, limit: Byte_Limit) -> Optional_Result {
+decode_optional_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Optional_Result {
 	parsed := read_composite_tag(input, 1, 1, limit)
 	if error_of(parsed) != .None {return error_of(parsed)} 	// No usable value on failure.
 	return Optional_Success {
@@ -227,7 +227,7 @@ decode_optional :: proc(input: []u8, limit: Byte_Limit) -> Optional_Result {
 }
 
 // Encode the C.2 work-output native union: a successful blob or one of six payload-free error tags.
-encode_work :: proc(
+encode_work_borrowed :: proc(
 	value: Work_Output,
 	pool: []u8,
 	limit: Byte_Limit,
@@ -245,7 +245,7 @@ encode_work :: proc(
 }
 
 // Decode C.2's exact variant set, constructing a native union only after tag and payload validation.
-decode_work :: proc(input: []u8, limit: Byte_Limit) -> Work_Result {
+decode_work_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Work_Result {
 	parsed := read_composite_tag(input, 6, 0, limit)
 	if error_of(parsed) != .None {return error_of(parsed)} 	// No enum cast on invalid wire values.
 	if success_of(parsed).tag ==
@@ -271,7 +271,10 @@ walk_preimages :: proc(
 		if len(input) - cursor < 4 {return Composite_Error.Truncated} 	// Complete service field required.
 		service := decode_fixed(input[cursor:cursor + 4], Byte_Width(4))
 		cursor += 4
-		blob := decode_bytes(input[cursor:], Byte_Limit(min(u64(limits.per_blob), budget)))
+		blob := decode_bytes_borrowed(
+			input[cursor:],
+			Byte_Limit(min(u64(limits.per_blob), budget)),
+		)
 		if error_of(blob) != .None {return composite_blob_error(error_of(blob))} 	// Nested and aggregate policy before payload.
 		if commit {
 			// The validation pass makes no writes; an invalid last record cannot leave earlier partial views.
@@ -290,7 +293,7 @@ walk_preimages :: proc(
 }
 
 // Full C.2 preimage extrinsic: bounded outer sequence of service-ID/variable-blob tuples.
-decode_preimages :: proc(
+decode_preimages_borrowed :: proc(
 	input: []u8,
 	limits: Preimage_Limits,
 	output: []Preimage,
@@ -326,7 +329,7 @@ decode_preimages :: proc(
 }
 
 // Encode validated source descriptors using a shared pool, preflighting each nested extent and policy.
-encode_preimages :: proc(
+encode_preimages_borrowed :: proc(
 	values: []Preimage,
 	pool: []u8,
 	limits: Preimage_Limits,

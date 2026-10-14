@@ -1,6 +1,7 @@
 // Trusted batch adapter: BE/BD for bytes, SE/SD for fixed-width sequences.
 package main
 import codec "../codec"
+import ownership_checks "../ownership_checks"
 import "core:encoding/hex"
 import "core:fmt"
 import "core:os"
@@ -156,8 +157,10 @@ main :: proc() {
 			limit, ok := parse_decimal(parts[1])
 			wire, hex_ok := parse_hex(parts[2], input_storage[:])
 			if !ok || !hex_ok {fmt.println("inputerror"); continue} 	// Reject textual errors before binary decoding.
-			decoded := codec.decode_bytes(wire, codec.Byte_Limit(limit))
+			decoded := codec.decode_bytes_borrowed(wire, codec.Byte_Limit(limit))
 			if codec.error_of(decoded) != .None {print_error(codec.error_of(decoded)); continue} 	// A failed span has no payload to print.
+			// Check owner-bound extraction and canonical bytes for every successful shared request.
+			ownership_checks.check_bytes(wire, codec.Byte_Limit(limit), decoded)
 			print_hex(
 				wire[codec.success_of(decoded).offset:codec.success_of(decoded).offset +
 				codec.success_of(decoded).length],

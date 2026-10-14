@@ -3,16 +3,16 @@ import ../src/[composite, bounded]
 # Arbitrary-byte entry point: all successful values re-encode their consumed prefix, and errors preserve records.
 proc fuzzComposite*(input: openArray[byte]) =
   var wire: array[128, byte]
-  let optional = decodeOptional(input, ByteLimit(64))
+  let optional = decodeOptionalBorrowed(input, ByteLimit(64))
   if optional.error == CompositeError.None:
     # A typed optional view must reconstruct exactly its canonical prefix and nested blob.
-    let encoded = encodeOptional(optional.value, input, ByteLimit(64), wire)
+    let encoded = encodeOptionalBorrowed(optional.value, input, ByteLimit(64), wire)
     doAssert encoded.error == CompositeError.None and encoded.written == optional.consumed
     for i in 0..<optional.consumed: doAssert wire[i] == input[i] # Compare tag, length and payload.
-  let work = decodeWork(input, ByteLimit(64))
+  let work = decodeWorkBorrowed(input, ByteLimit(64))
   if work.error == CompositeError.None:
     # Successful and payload-free error variants both preserve their precise wire representation.
-    let encoded = encodeWork(work.value, input, ByteLimit(64), wire)
+    let encoded = encodeWorkBorrowed(work.value, input, ByteLimit(64), wire)
     doAssert encoded.error == CompositeError.None and encoded.written == work.consumed
     for i in 0..<work.consumed: doAssert wire[i] == input[i] # Do not include unrelated trailing bytes.
   var output: array[4, Preimage]
@@ -20,10 +20,10 @@ proc fuzzComposite*(input: openArray[byte]) =
       length: 444)) # Failure sentinels.
   let limits = PreimageLimits(items: ElementLimit(4), perBlob: ByteLimit(32),
       totalBlobBytes: ByteLimit(64))
-  let decoded = decodePreimages(input, limits, output)
+  let decoded = decodePreimagesBorrowed(input, limits, output)
   if decoded.error == CompositeError.None:
     # A decoded nested frame must round-trip from the returned input-relative descriptors.
-    let encoded = encodePreimages(output.toOpenArray(0, decoded.count - 1), input, limits, wire)
+    let encoded = encodePreimagesBorrowed(output.toOpenArray(0, decoded.count - 1), input, limits, wire)
     doAssert encoded.error == CompositeError.None and encoded.written == decoded.consumed
     for i in 0..<decoded.consumed: doAssert wire[i] == input[i] # Include all tuple fields and lengths.
   else:
@@ -39,49 +39,49 @@ let limits = PreimageLimits(items: ElementLimit(2), perBlob: ByteLimit(3),
     totalBlobBytes: ByteLimit(3))
 let records = [Preimage(service: ServiceIndex(7), blob: BlobSpan(offset: 0, length: 3)),
                Preimage(service: ServiceIndex(high(uint32)), blob: BlobSpan(offset: 3, length: 0))]
-let encoded = encodePreimages(records, pool, limits, wire)
+let encoded = encodePreimagesBorrowed(records, pool, limits, wire)
 doAssert encoded.error == CompositeError.None and encoded.written == 14
 var output: array[2, Preimage]
-let decoded = decodePreimages(wire.toOpenArray(0, 13), limits, output)
+let decoded = decodePreimagesBorrowed(wire.toOpenArray(0, 13), limits, output)
 doAssert decoded.error == CompositeError.None and decoded.count == 2 and decoded.consumed == 14
 doAssert uint32(output[0].service) == 7 and uint32(output[1].service) == high(uint32)
 doAssert output[0].blob.offset == 6 and output[0].blob.length == 3 and output[1].blob.length == 0
 # Every truncated prefix, especially the last record, leaves the entire record destination unchanged.
 for cut in 0..<14:
   for item in output.mitems: item.service = ServiceIndex(999) # Refill sentinels before each failing decode.
-  let short = decodePreimages(wire.toOpenArray(0, cut - 1), limits, output)
+  let short = decodePreimagesBorrowed(wire.toOpenArray(0, cut - 1), limits, output)
   doAssert short.error == CompositeError.Truncated
   # Every service sentinel must survive truncation, not only the final record.
   for item in output: doAssert uint32(item.service) == 999
 # Aggregate policy can reject a later record without leaving the earlier one in output.
 let tighter = PreimageLimits(items: ElementLimit(2), perBlob: ByteLimit(3),
     totalBlobBytes: ByteLimit(2))
-doAssert decodePreimages(wire, tighter, output).error == CompositeError.LimitExceeded
+doAssert decodePreimagesBorrowed(wire, tighter, output).error == CompositeError.LimitExceeded
 for b in wire.mitems: b = 77 # Encoder failure must preserve every byte.
 let bad = [records[0], Preimage(service: ServiceIndex(8), blob: BlobSpan(offset: high(int), length: 1))]
-doAssert encodePreimages(bad, pool, limits, wire).error == CompositeError.InvalidSpan
+doAssert encodePreimagesBorrowed(bad, pool, limits, wire).error == CompositeError.InvalidSpan
 # Scan the whole destination rather than just the rejected prefix.
 for b in wire: doAssert b == 77
 # Every exact work-error tag is payload-free; trailing data is not interpreted as a blob.
 for tag in 1..6:
   let value = WorkOutput(kind: WorkKind(tag))
-  doAssert encodeWork(value, pool, ByteLimit(0), wire).written == 1
-  doAssert decodeWork(wire, ByteLimit(0)).consumed == 1
+  doAssert encodeWorkBorrowed(value, pool, ByteLimit(0), wire).written == 1
+  doAssert decodeWorkBorrowed(wire, ByteLimit(0)).consumed == 1
 # Invalid discriminators and overlong canonical-zero attempts have different typed failures.
-doAssert decodeWork([7'u8], ByteLimit(0)).error == CompositeError.InvalidTag
-doAssert decodeOptional([2'u8], ByteLimit(0)).error == CompositeError.InvalidTag
-doAssert decodeOptional([128'u8, 0], ByteLimit(0)).error == CompositeError.NonCanonical
+doAssert decodeWorkBorrowed([7'u8], ByteLimit(0)).error == CompositeError.InvalidTag
+doAssert decodeOptionalBorrowed([2'u8], ByteLimit(0)).error == CompositeError.InvalidTag
+doAssert decodeOptionalBorrowed([128'u8, 0], ByteLimit(0)).error == CompositeError.NonCanonical
 # Invalid source spans never reach indexing or endpoint addition.
 for span in [BlobSpan(offset: -1, length: 0), BlobSpan(offset: 0, length: -1), BlobSpan(
     offset: high(int), length: high(int))]:
-  doAssert encodeOptional(OptionalBlob(present: true, blob: span), pool, ByteLimit(high(uint64)),
-      wire).error == CompositeError.InvalidSpan
+  doAssert encodeOptionalBorrowed(OptionalBlob(present: true, blob: span), pool, ByteLimit(high(
+      uint64)), wire).error == CompositeError.InvalidSpan
 # Typed destination aliasing includes output inside a trailing field, not only the current record bytes.
 let raw = cast[ptr array[sizeof(Preimage) * 2, byte]](addr output[0])
 for b in raw[].mitems: b = 0 # Create a valid one-record wire frame in overlapping caller storage.
 raw[][0] = 1
 let snapshot = output
-doAssert decodePreimages(raw[], limits, output.toOpenArray(1, 1)).error ==
+doAssert decodePreimagesBorrowed(raw[], limits, output.toOpenArray(1, 1)).error ==
     CompositeError.AliasedBuffers
 doAssert output[1].blob.offset == snapshot[1].blob.offset
 var state = 0x434f4d504f'u64
@@ -100,12 +100,13 @@ echo "Nim composite: nested atomic failures, exact variants, aliasing and 10000 
 # Encoder overlap checks protect the pool and the typed descriptors during the entire commit.
 let poolBefore = pool
 let present = OptionalBlob(present: true, blob: BlobSpan(offset: 0, length: 0))
-doAssert encodeOptional(present, pool, ByteLimit(0), pool).error == CompositeError.AliasedBuffers
+doAssert encodeOptionalBorrowed(present, pool, ByteLimit(0), pool).error ==
+    CompositeError.AliasedBuffers
 doAssert pool == poolBefore
 var descriptors = records
 let descriptorBytes = cast[ptr array[sizeof(descriptors), byte]](addr descriptors[0])
 let descriptorsBefore = descriptors
-doAssert encodePreimages(descriptors, pool, limits, descriptorBytes[]).error ==
+doAssert encodePreimagesBorrowed(descriptors, pool, limits, descriptorBytes[]).error ==
     CompositeError.AliasedBuffers
 # Compare nominal service values explicitly while checking both span coordinates.
 for i in 0..<descriptors.len:

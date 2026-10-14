@@ -12,7 +12,7 @@ selects the success branch, while other statuses contain no payload/metadata.
 `Uninitialized` is the default for those new variants. For example:
 
 ```nim
-let outcome = decodeDigest(wire, ByteLimit(64))
+let outcome = decodeDigestBorrowed(wire, ByteLimit(64))
 if outcome.error == CompositeError.None:
   # The digest and consumed prefix exist only in this branch.
   useDigest(outcome.value, outcome.consumed)
@@ -36,7 +36,7 @@ nil alternative and defaults to `Uninitialized`. A decoded work-error variant
 is a valid `Work_Success`, distinct from failure to decode its frame.
 
 ```odin
-switch outcome in codec.decode_digest(wire, codec.Byte_Limit(64)) {
+switch outcome in codec.decode_digest_borrowed(wire, codec.Byte_Limit(64)) {
 case codec.Digest_Success:
     // This alternative carries the completed digest and consumed prefix.
     use_digest(outcome.value, outcome.consumed)
@@ -70,9 +70,10 @@ Keep variant field/union assertion checks enabled in caller builds. Both APIs
 still allow deliberate construction of success values and explicit unsafe casts;
 these result types do not establish provenance or input ownership.
 
-Blob spans still refer to caller-owned buffers by coordinates. This round does
-not enforce original-buffer identity, lifetime or immutability. That remains the
-next separate ownership round.
+Explicitly borrowed APIs still refer to caller-owned buffers by coordinates
+and do not enforce original-buffer identity, lifetime or immutability. The
+subsequent [owned snapshot API](codec-ownership.md) binds payload access to
+private copied storage instead.
 
 ## Verification
 

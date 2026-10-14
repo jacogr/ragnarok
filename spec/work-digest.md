@@ -30,8 +30,8 @@ four metrics are variable-width naturals. These counters use the complete
 uint64 range supported by the pinned general-natural encoder. The codec does
 not check state-dependent limits, code availability or hash validity.
 
-Public functions are `encodeDigest` / `encode_digest` and `decodeDigest` /
-`decode_digest`, in `nim/src/work_digest.nim` and `odin/codec/work_digest.odin`.
+Public functions are `encodeDigestBorrowed` / `encode_digest_borrowed` and `decodeDigestBorrowed` /
+`decode_digest_borrowed`, in `nim/src/work_digest.nim` and `odin/codec/work_digest.odin`.
 `RefineLoad` / `Refine_Load` groups the five typed metrics. The full tuple is
 `WorkDigest` / `Work_Digest`.
 
@@ -90,3 +90,7 @@ was changed. See [the verification report](../results/work-digest.md).
 The current [result API and migration examples](../docs/codec-results.md)
 separate success data from failure reasons and preserve the borrowed-buffer
 contract. This changes API access, not the normative wire formats above.
+
+The allocation-free contract above applies to explicitly borrowed APIs. For
+retained decoded data, use the [owned snapshot layer](../docs/codec-ownership.md),
+which preserves these wire definitions and policies while adding private copies.

@@ -98,5 +98,8 @@ stream-local deadlines and continued service after malformed requests. See
 [run instructions and resource budgets](docs/quic-soak.md).
 
 [Codec result safety](docs/codec-results.md) now separates completed values and
-metadata from typed failures in both languages. Buffer ownership is the next
-separate round.
+metadata from typed failures in both languages.
+
+Use [owned snapshots](docs/codec-ownership.md) when decoded blobs may outlive
+or be used after changes to their input. Span/pool APIs now have explicit borrowed
+names. See [the ownership verification](results/codec-ownership.md).

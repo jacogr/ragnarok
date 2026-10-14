@@ -1,6 +1,7 @@
 // Trusted local adapter for complete work-digest encoding and decoding.
 package main
 import codec "../codec"
+import ownership_checks "../ownership_checks"
 import "core:encoding/hex"
 import "core:fmt"
 import "core:os"
@@ -206,7 +207,12 @@ main :: proc() {
 					codec.Export_Count(metrics[4]),
 				},
 			}
-			written := codec.encode_digest(value, pool, codec.Byte_Limit(limit), output[:cap])
+			written := codec.encode_digest_borrowed(
+				value,
+				pool,
+				codec.Byte_Limit(limit),
+				output[:cap],
+			)
 			if codec.error_of(written) ==
 			   .None {print_hex(output[:codec.success_of(written).written]); fmt.println()} else // Print only completed bytes.
 			{
@@ -218,10 +224,12 @@ main :: proc() {
 			limit, limit_ok := parse_decimal(parts[1])
 			wire, hex_ok := parse_hex(parts[2], storage[:])
 			if !limit_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Parse text before production decoding.
-			parsed := codec.decode_digest(wire, codec.Byte_Limit(limit))
+			parsed := codec.decode_digest_borrowed(wire, codec.Byte_Limit(limit))
 			if codec.error_of(parsed) != .None {print_error(codec.error_of(parsed))} else // Failed tuple yields no public value.
 			{
-				written := codec.encode_digest(
+				// Verify the owned fixed fields, metrics and output against full official digest requests.
+				ownership_checks.check_digest(wire, codec.Byte_Limit(limit), parsed)
+				written := codec.encode_digest_borrowed(
 					codec.success_of(parsed).value,
 					wire,
 					codec.Byte_Limit(limit),

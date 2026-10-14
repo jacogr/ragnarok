@@ -40,7 +40,7 @@ Digest_Success :: struct {
 Digest_Result :: Codec_Result(Digest_Success, Composite_Error)
 
 // Serialize the complete C.2 tuple without allocation or partial writes, using a value snapshot of fixed fields.
-encode_digest :: proc(
+encode_digest_borrowed :: proc(
 	source: Work_Digest,
 	pool: []u8,
 	limit: Byte_Limit,
@@ -93,7 +93,7 @@ encode_digest :: proc(
 	// Retain the checked fixed encoding in addressable value storage for this copy.
 	gas_bytes := success_of(gas).encoded
 	copy(output[68:76], gas_bytes.bytes[:8])
-	_ = encode_work(value.output, pool, limit, output[76:76 + success_of(work).written])
+	_ = encode_work_borrowed(value.output, pool, limit, output[76:76 + success_of(work).written])
 	cursor := 76 + success_of(work).written
 	// Append the measured canonical metrics in their original order.
 	for &field in suffix {
@@ -104,10 +104,10 @@ encode_digest :: proc(
 }
 
 // Decode one complete prefix with owned fixed fields and successful blob coordinates in the original input.
-decode_digest :: proc(input: []u8, limit: Byte_Limit) -> Digest_Result {
+decode_digest_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Digest_Result {
 	// All fixed fields must be present before slicing their storage.
 	if len(input) < 76 {return Composite_Error.Truncated}
-	work := decode_work(input[76:], limit)
+	work := decode_work_borrowed(input[76:], limit)
 	// Invalid or incomplete variants expose no usable digest.
 	if error_of(work) != .None {return error_of(work)}
 	cursor := 76 + success_of(work).consumed

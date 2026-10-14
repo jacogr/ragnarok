@@ -6,10 +6,10 @@ import "core:testing"
 // Arbitrary-byte entry point: successful variants/records re-encode exactly and failures preserve typed storage.
 fuzz_composite :: proc(t: ^testing.T, input: []u8) {
 	wire: [128]u8
-	optional := codec.decode_optional(input, codec.Byte_Limit(64))
+	optional := codec.decode_optional_borrowed(input, codec.Byte_Limit(64))
 	if codec.error_of(optional) == .None {
 		// Successful absence/presence must reproduce the completed tag/blob prefix only.
-		encoded := codec.encode_optional(
+		encoded := codec.encode_optional_borrowed(
 			codec.success_of(optional).value,
 			input,
 			codec.Byte_Limit(64),
@@ -22,10 +22,10 @@ fuzz_composite :: proc(t: ^testing.T, input: []u8) {
 		)
 		for i in 0 ..< codec.success_of(optional).consumed {testing.expect(t, wire[i] == input[i])} 	// Includes nested count.
 	}
-	work := codec.decode_work(input, codec.Byte_Limit(64))
+	work := codec.decode_work_borrowed(input, codec.Byte_Limit(64))
 	if codec.error_of(work) == .None {
 		// The union's successful/error variant must retain its complete original wire representation.
-		encoded := codec.encode_work(
+		encoded := codec.encode_work_borrowed(
 			codec.success_of(work).value,
 			input,
 			codec.Byte_Limit(64),
@@ -48,10 +48,10 @@ fuzz_composite :: proc(t: ^testing.T, input: []u8) {
 		codec.Byte_Limit(32),
 		codec.Byte_Limit(64),
 	}
-	decoded := codec.decode_preimages(input, limits, output[:])
+	decoded := codec.decode_preimages_borrowed(input, limits, output[:])
 	if codec.error_of(decoded) == .None {
 		// Input-relative span descriptors must reconstruct the entire proved nested frame.
-		encoded := codec.encode_preimages(
+		encoded := codec.encode_preimages_borrowed(
 			output[:codec.success_of(decoded).count],
 			input,
 			limits,
@@ -85,10 +85,10 @@ composite :: proc(t: ^testing.T) {
 		{service = codec.Service_Index(7), blob = {offset = 0, length = 3}},
 		{service = codec.Service_Index(max(u32)), blob = {offset = 3, length = 0}},
 	}
-	encoded := codec.encode_preimages(records[:], pool[:], limits, wire[:])
+	encoded := codec.encode_preimages_borrowed(records[:], pool[:], limits, wire[:])
 	testing.expect(t, codec.error_of(encoded) == .None && codec.success_of(encoded).written == 14)
 	output: [2]codec.Preimage
-	decoded := codec.decode_preimages(wire[:14], limits, output[:])
+	decoded := codec.decode_preimages_borrowed(wire[:14], limits, output[:])
 	testing.expect(
 		t,
 		codec.error_of(decoded) == .None &&
@@ -103,7 +103,7 @@ composite :: proc(t: ^testing.T) {
 	for cut in 0 ..< 14 {
 		// Every truncation, including the final record's length, leaves all caller-owned records unchanged.
 		for &item in output {item.service = codec.Service_Index(999)}
-		short := codec.decode_preimages(wire[:cut], limits, output[:])
+		short := codec.decode_preimages_borrowed(wire[:cut], limits, output[:])
 		testing.expect(t, codec.error_of(short) == .Truncated)
 		// Even records preceding the truncation must retain their original service.
 		for item in output {testing.expect(t, u32(item.service) == 999)}
@@ -115,7 +115,8 @@ composite :: proc(t: ^testing.T) {
 	}
 	testing.expect(
 		t,
-		codec.error_of(codec.decode_preimages(wire[:], tighter, output[:])) == .Limit_Exceeded,
+		codec.error_of(codec.decode_preimages_borrowed(wire[:], tighter, output[:])) ==
+		.Limit_Exceeded,
 	)
 	for &b in wire {b = 77} 	// Preserve encoder output even when a late input descriptor is invalid.
 	bad := records
@@ -123,7 +124,8 @@ composite :: proc(t: ^testing.T) {
 	bad[1].blob.length = 1
 	testing.expect(
 		t,
-		codec.error_of(codec.encode_preimages(bad[:], pool[:], limits, wire[:])) == .Invalid_Span,
+		codec.error_of(codec.encode_preimages_borrowed(bad[:], pool[:], limits, wire[:])) ==
+		.Invalid_Span,
 	)
 	// Check the entire destination for a forbidden partial encoder commit.
 	for b in wire {testing.expect(t, b == 77)}
@@ -132,33 +134,36 @@ composite :: proc(t: ^testing.T) {
 		value := codec.Work_Output(codec.Work_Error(tag))
 		testing.expect(
 			t,
-			codec.success_of(codec.encode_work(value, pool[:], codec.Byte_Limit(0), wire[:])).written ==
+			codec.success_of(codec.encode_work_borrowed(value, pool[:], codec.Byte_Limit(0), wire[:])).written ==
 			1,
 		)
 		testing.expect(
 			t,
-			codec.success_of(codec.decode_work(wire[:], codec.Byte_Limit(0))).consumed == 1,
+			codec.success_of(codec.decode_work_borrowed(wire[:], codec.Byte_Limit(0))).consumed ==
+			1,
 		)
 	}
 	wire[0] = 7
 	testing.expect(
 		t,
-		codec.error_of(codec.decode_work(wire[:1], codec.Byte_Limit(0))) == .Invalid_Tag,
+		codec.error_of(codec.decode_work_borrowed(wire[:1], codec.Byte_Limit(0))) == .Invalid_Tag,
 	)
 	wire[0] = 2
 	testing.expect(
 		t,
-		codec.error_of(codec.decode_optional(wire[:1], codec.Byte_Limit(0))) == .Invalid_Tag,
+		codec.error_of(codec.decode_optional_borrowed(wire[:1], codec.Byte_Limit(0))) ==
+		.Invalid_Tag,
 	)
 	wire[0] = 128; wire[1] = 0
 	testing.expect(
 		t,
-		codec.error_of(codec.decode_optional(wire[:2], codec.Byte_Limit(0))) == .Non_Canonical,
+		codec.error_of(codec.decode_optional_borrowed(wire[:2], codec.Byte_Limit(0))) ==
+		.Non_Canonical,
 	)
 	testing.expect(
 		t,
 		codec.error_of(
-			codec.encode_work(
+			codec.encode_work_borrowed(
 				codec.Work_Output(codec.Work_Error(0)),
 				nil,
 				codec.Byte_Limit(0),
@@ -173,7 +178,7 @@ composite :: proc(t: ^testing.T) {
 		testing.expect(
 			t,
 			codec.error_of(
-				codec.encode_optional(
+				codec.encode_optional_borrowed(
 					{present = true, blob = span},
 					pool[:],
 					codec.Byte_Limit(max(u64)),
@@ -189,7 +194,8 @@ composite :: proc(t: ^testing.T) {
 	snapshot := output
 	testing.expect(
 		t,
-		codec.error_of(codec.decode_preimages(raw, limits, output[1:])) == .Aliased_Buffers,
+		codec.error_of(codec.decode_preimages_borrowed(raw, limits, output[1:])) ==
+		.Aliased_Buffers,
 	)
 	testing.expect(t, output[1].blob.offset == snapshot[1].blob.offset)
 	// Protect the borrowed pool even when the present blob is empty and only headers would be written.
@@ -197,7 +203,7 @@ composite :: proc(t: ^testing.T) {
 	testing.expect(
 		t,
 		codec.error_of(
-			codec.encode_optional(
+			codec.encode_optional_borrowed(
 				{present = true, blob = {0, 0}},
 				pool[:],
 				codec.Byte_Limit(0),
@@ -214,7 +220,7 @@ composite :: proc(t: ^testing.T) {
 	testing.expect(
 		t,
 		codec.error_of(
-			codec.encode_preimages(descriptors[:], pool[:], limits, descriptor_bytes),
+			codec.encode_preimages_borrowed(descriptors[:], pool[:], limits, descriptor_bytes),
 		) ==
 		.Aliased_Buffers,
 	)

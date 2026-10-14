@@ -170,19 +170,19 @@ proc readTag(input: openArray[byte], maximum, blobTag: uint64,
   if value > maximum: return TaggedResult(error: CompositeError.InvalidTag) # Unsupported schema value.
   if value != blobTag: return TaggedResult(error: CompositeError.None, tag: value,
       consumed: tag.consumed) # No payload for this branch.
-  let blob = decodeBytes(input.toOpenArray(tag.consumed, input.len - 1), limit)
+  let blob = decodeBytesBorrowed(input.toOpenArray(tag.consumed, input.len - 1), limit)
   if blob.error != ContainerError.None: return TaggedResult(error: blobError(blob.error)) # Nested preflight.
   TaggedResult(error: CompositeError.None, tag: value, blob: BlobSpan(offset: tag.consumed + blob.offset, length: blob.length),
                consumed: tag.consumed + blob.consumed)
 
 # C.1.3 optional-blob schema: zero for absent, or one followed by a variable blob.
-proc encodeOptional*(value: OptionalBlob, pool: openArray[byte], limit: ByteLimit,
+proc encodeOptionalBorrowed*(value: OptionalBlob, pool: openArray[byte], limit: ByteLimit,
                      output: var openArray[byte]): CompositeWrite {.raises: [].} =
   if value.present: writeTag(1, true, value.blob, pool, limit, output) # Present branch validates its span.
   else: writeTag(0, false, BlobSpan(), pool, limit, output) # Absent branch has no payload.
 
 # Return a typed optional view only after validating discriminator and any present blob completely.
-proc decodeOptional*(input: openArray[byte], limit: ByteLimit): OptionalResult {.raises: [].} =
+proc decodeOptionalBorrowed*(input: openArray[byte], limit: ByteLimit): OptionalResult {.raises: [].} =
   let parsed = readTag(input, 1, 1, limit)
   if parsed.error != CompositeError.None: return OptionalResult(error: parsed.error) # No usable value on failure.
   if parsed.tag == 0: return OptionalResult(error: CompositeError.None, value: OptionalBlob(
@@ -191,13 +191,13 @@ proc decodeOptional*(input: openArray[byte], limit: ByteLimit): OptionalResult {
       consumed: parsed.consumed)
 
 # C.2 work-output O: success zero plus a variable blob, or one of six payload-free errors.
-proc encodeWork*(value: WorkOutput, pool: openArray[byte], limit: ByteLimit,
+proc encodeWorkBorrowed*(value: WorkOutput, pool: openArray[byte], limit: ByteLimit,
                  output: var openArray[byte]): CompositeWrite {.raises: [].} =
   if value.kind == WorkKind.Success: return writeTag(0, true, value.blob, pool, limit, output) # Success payload.
   writeTag(ord(value.kind), false, BlobSpan(), pool, limit, output) # Error tag is range checked before narrowing.
 
 # Decode exactly the work-output discriminator set; preserve trailing fields in either variant.
-proc decodeWork*(input: openArray[byte], limit: ByteLimit): WorkResult {.raises: [].} =
+proc decodeWorkBorrowed*(input: openArray[byte], limit: ByteLimit): WorkResult {.raises: [].} =
   let parsed = readTag(input, 6, 0, limit)
   if parsed.error != CompositeError.None: return WorkResult(error: parsed.error) # No enum conversion on bad data.
   if parsed.tag == 0:
@@ -216,7 +216,7 @@ proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
     if input.len - cursor < 4: return PreimageResult(error: CompositeError.Truncated) # Missing service field.
     let service = decodeFixed(input.toOpenArray(cursor, cursor + 3), ByteWidth(4))
     cursor += 4
-    let blob = decodeBytes(input.toOpenArray(cursor, input.len - 1), ByteLimit(min(uint64(
+    let blob = decodeBytesBorrowed(input.toOpenArray(cursor, input.len - 1), ByteLimit(min(uint64(
         limits.perBlob), budget)))
     if blob.error != ContainerError.None: return PreimageResult(error: blobError(
         blob.error)) # Both blob policies checked early.
@@ -229,7 +229,7 @@ proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
   PreimageResult(error: CompositeError.None, count: count, consumed: cursor)
 
 # Decode the full preimage extrinsic into caller-owned records, retaining blob locations as original-input spans.
-proc decodePreimages*(input: openArray[byte], limits: PreimageLimits,
+proc decodePreimagesBorrowed*(input: openArray[byte], limits: PreimageLimits,
                       output: var openArray[Preimage]): PreimageResult {.raises: [].} =
   let prefix = natural.decode(input)
   if not prefix.ok:
@@ -253,7 +253,7 @@ proc decodePreimages*(input: openArray[byte], limits: PreimageLimits,
   walk(input, prefix.consumed, count, limits, output, true)
 
 # Encode nested tuples from a shared byte pool, preflighting every span, count, byte budget and destination extent.
-proc encodePreimages*(values: openArray[Preimage], pool: openArray[byte], limits: PreimageLimits,
+proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte], limits: PreimageLimits,
                       output: var openArray[byte]): CompositeWrite {.raises: [].} =
   if uint64(values.len) > uint64(limits.items): return CompositeWrite(
       error: CompositeError.LimitExceeded) # Count ceiling.

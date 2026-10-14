@@ -255,6 +255,19 @@ def main():
         # Result misuse is rejected even when a caller omits its success check; verify debug and release field guards.
         for mode in ([], ['-d:release']):
             run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-result-tests"}', '-r', ROOT / 'nim/tests/test_result_safety.nim'])
+        # Ownership regressions run in both caller build modes; ARC must retain isolated snapshots.
+        for mode in ([], ['-d:release']):
+            run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-ownership-tests"}', '-r', ROOT / 'nim/tests/test_ownership.nim'])
+        # Neither API exposes mutable snapshot storage or accepts an unrelated source pool.
+        for language, fixture, needle in (('nim', 'mutable_owner.nim', 'data'),
+                                          ('odin', 'mutable_owner.odin', 'Owned_Storage'),
+                                          ('nim', 'wrong_owner_pool.nim', 'copyOwnedBlob'),
+                                          ('odin', 'wrong_owner_pool.odin', 'copy_owned_blob')):
+            command = [language, 'check', *(['--mm:arc'] if language == 'nim' else []),
+                       str(ROOT / language / 'tests/compile_fail' / fixture),
+                       *(['-file'] if language == 'odin' else [])]
+            result = subprocess.run(command, capture_output=True, text=True)
+            assert result.returncode != 0 and needle in result.stderr, result.stderr
         # These public result APIs must reject payload construction/access from a failure or an unselected union.
         for language, fixture, flags in (('nim', 'failed_digest_payload.nim', ['check', '--mm:arc']),
                                          ('odin', 'unchecked_digest_result.odin', ['check'])):

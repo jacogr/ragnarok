@@ -12,7 +12,7 @@ check_blob :: proc(t: ^testing.T, size: int) {
 	encoded := codec.encode_bytes(value[:size], codec.Byte_Limit(size), wire[:])
 	testing.expect(t, codec.error_of(encoded) == .None)
 	wire[codec.success_of(encoded).written] = 42
-	decoded := codec.decode_bytes(
+	decoded := codec.decode_bytes_borrowed(
 		wire[:codec.success_of(encoded).written + 1],
 		codec.Byte_Limit(size),
 	)
@@ -26,7 +26,7 @@ check_blob :: proc(t: ^testing.T, size: int) {
 	for i in 0 ..< size {testing.expect(t, wire[codec.success_of(decoded).offset + i] == value[i])}
 	// Every incomplete container must fail without exposing a valid span or consumed count.
 	for cut in 0 ..< codec.success_of(encoded).written {
-		short := codec.decode_bytes(wire[:cut], codec.Byte_Limit(size))
+		short := codec.decode_bytes_borrowed(wire[:cut], codec.Byte_Limit(size))
 		testing.expect(t, codec.error_of(short) == .Truncated)
 	}
 	small := [1]u8{77}
@@ -40,7 +40,7 @@ check_blob :: proc(t: ^testing.T, size: int) {
 		testing.expect(t, small[0] == 77)
 		testing.expect(
 			t,
-			codec.error_of(codec.decode_bytes(wire[:], codec.Byte_Limit(size - 1))) ==
+			codec.error_of(codec.decode_bytes_borrowed(wire[:], codec.Byte_Limit(size - 1))) ==
 			.Limit_Exceeded,
 		)
 		testing.expect(
@@ -101,7 +101,7 @@ check_sequence :: proc(t: ^testing.T, count, stride: int) {
 
 // Arbitrary-input entry point checks byte spans and exact sequence re-encoding, with atomic failures.
 fuzz_bounded :: proc(t: ^testing.T, input: []u8, stride: int, limit: u64) {
-	blob := codec.decode_bytes(input, codec.Byte_Limit(limit))
+	blob := codec.decode_bytes_borrowed(input, codec.Byte_Limit(limit))
 	// Every successful span must be bounded by both input size and the caller's resource limit.
 	if codec.error_of(blob) == .None {
 		testing.expect(
@@ -162,7 +162,7 @@ bounded :: proc(t: ^testing.T) {
 	noncanonical := [2]u8{128, 0}
 	testing.expect(
 		t,
-		codec.error_of(codec.decode_bytes(noncanonical[:], codec.Byte_Limit(max(u64)))) ==
+		codec.error_of(codec.decode_bytes_borrowed(noncanonical[:], codec.Byte_Limit(max(u64)))) ==
 		.Non_Canonical,
 	)
 	huge := codec.encode(codec.Natural(max(u64)))

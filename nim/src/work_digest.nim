@@ -58,7 +58,7 @@ proc metrics(load: RefineLoad): array[5, uint64] {.raises: [].} =
    uint64(load.extrinsicSize), uint64(load.exports)]
 
 # Serialize the complete tuple into caller storage after validating every field, extent and borrowed pool.
-proc encodeDigest*(source: WorkDigest, pool: openArray[byte], limit: ByteLimit,
+proc encodeDigestBorrowed*(source: WorkDigest, pool: openArray[byte], limit: ByteLimit,
                    output: var openArray[byte]): CompositeWrite {.raises: [].} =
   # Own a value snapshot so output may overlap the original record without corrupting later fixed fields.
   var value = source
@@ -93,7 +93,7 @@ proc encodeDigest*(source: WorkDigest, pool: openArray[byte], limit: ByteLimit,
     output[36 + i] = array[32, byte](value.payloadHash)[i]
   # Accumulation gas is fixed width rather than the variable refinement-gas format.
   for i in 0..<8: output[68 + i] = gas.encoded.bytes[i]
-  discard encodeWork(value.output, pool, limit, output.toOpenArray(76, 76 + work.written - 1))
+  discard encodeWorkBorrowed(value.output, pool, limit, output.toOpenArray(76, 76 + work.written - 1))
   var cursor = 76 + work.written
   # All five canonical natural encodings were measured before the first write.
   for field in suffix:
@@ -102,10 +102,10 @@ proc encodeDigest*(source: WorkDigest, pool: openArray[byte], limit: ByteLimit,
   CompositeWrite(error: CompositeError.None, written: required)
 
 # Decode one complete digest prefix; returned successful blob coordinates refer to the original input.
-proc decodeDigest*(input: openArray[byte], limit: ByteLimit): DigestResult {.raises: [].} =
+proc decodeDigestBorrowed*(input: openArray[byte], limit: ByteLimit): DigestResult {.raises: [].} =
   # The fixed prefix must exist before reading any service, hash or gas byte.
   if input.len < 76: return DigestResult(error: CompositeError.Truncated)
-  let work = decodeWork(input.toOpenArray(76, input.len - 1), limit)
+  let work = decodeWorkBorrowed(input.toOpenArray(76, input.len - 1), limit)
   # Reject incomplete/invalid work outputs before interpreting suffix metrics.
   if work.error != CompositeError.None: return DigestResult(error: work.error)
   var cursor = 76 + work.consumed

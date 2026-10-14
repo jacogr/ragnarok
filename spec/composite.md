@@ -105,3 +105,7 @@ See [the executed verification report](../results/composite.md).
 The current [result API and migration examples](../docs/codec-results.md)
 separate success data from failure reasons and preserve the borrowed-buffer
 contract. This changes API access, not the normative wire formats above.
+
+The allocation-free contract above applies to explicitly borrowed APIs. For
+retained decoded data, use the [owned snapshot layer](../docs/codec-ownership.md),
+which preserves these wire definitions and policies while adding private copies.

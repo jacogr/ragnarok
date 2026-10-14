@@ -178,5 +178,9 @@ gates are met.
 The codec result-safety round introduces checked success/failure alternatives
 in both implementations; see [the API notes](codec-results.md). Default results
 are failures and failed results contain no success metadata. Wire definitions
-and allocation-free decoding remain unchanged. Blob-buffer ownership remains
-the next bounded codec round.
+and allocation-free borrowed decoding remain unchanged. The subsequent
+[ownership round](codec-ownership.md) adds private owned snapshots for byte strings, optionals, work outputs, preimages and digests.
+Allocation-free span/pool APIs now have explicit borrowed names. Owned decoding
+adds copying/allocation; Nim retains storage through ARC, while Odin uses an
+explicit allocator and single-release owner contract. See
+[the ownership verification report](../results/codec-ownership.md).

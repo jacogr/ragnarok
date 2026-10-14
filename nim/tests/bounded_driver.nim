@@ -1,5 +1,6 @@
 ## Trusted batch adapter: BE/BD for bytes, SE/SD for fixed-width sequences.
 import std/[os, strutils]
+import ./ownership_checks
 import ../src/[bounded, fixed_unsigned]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.
@@ -51,8 +52,10 @@ for line in readFile(paramStr(1)).splitLines():
     elif parts[0] == "BD" and parts.len == 3:
       # The byte decoder returns indices into this retained local buffer, with no output allocation.
       let wire = parseBytes(parts[2])
-      let decoded = decodeBytes(wire, ByteLimit(parseBiggestUInt(parts[1])))
+      let decoded = decodeBytesBorrowed(wire, ByteLimit(parseBiggestUInt(parts[1])))
       if decoded.error == ContainerError.None:
+        # Verify the owned snapshot against every successful shared byte-string request.
+        checkOwnedBytes(wire, ByteLimit(parseBiggestUInt(parts[1])), decoded)
         # Only the payload span belongs in the response; prefix and trailing bytes are excluded.
         echo hexText(wire.toOpenArray(decoded.offset, decoded.offset + decoded.length - 1)) & " " &
             $decoded.consumed

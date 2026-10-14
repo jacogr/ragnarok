@@ -90,7 +90,7 @@ read_frame :: proc(input: []u8, stride: int, limit: u64) -> Frame_Result {
 }
 
 // Return a validated byte span; the caller keeps its input alive and advances only after success.
-decode_bytes :: proc(input: []u8, limit: Byte_Limit) -> Blob_Result {
+decode_bytes_borrowed :: proc(input: []u8, limit: Byte_Limit) -> Blob_Result {
 	frame := read_frame(input, 1, u64(limit))
 	// Wire/policy failures expose no usable span and consume no bytes.
 	if error_of(frame) != .None {return error_of(frame)}

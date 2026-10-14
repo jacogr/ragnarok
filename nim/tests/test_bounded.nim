@@ -9,14 +9,14 @@ proc checkBlob(size: int) =
   let encoded = encodeBytes(value, ByteLimit(uint64(size)), wire)
   doAssert encoded.error == ContainerError.None
   wire[encoded.written] = 42
-  let decoded = decodeBytes(wire.toOpenArray(0, encoded.written), ByteLimit(uint64(size)))
+  let decoded = decodeBytesBorrowed(wire.toOpenArray(0, encoded.written), ByteLimit(uint64(size)))
   doAssert decoded.error == ContainerError.None and decoded.length == size
   doAssert decoded.consumed == encoded.written
   # The returned indices refer to the exact payload in the original buffer.
   for i in 0..<size: doAssert wire[decoded.offset + i] == value[i]
   # All incomplete container prefixes must fail without returning a span.
   for cut in 0..<encoded.written:
-    let short = decodeBytes(wire.toOpenArray(0, cut - 1), ByteLimit(uint64(size)))
+    let short = decodeBytesBorrowed(wire.toOpenArray(0, cut - 1), ByteLimit(uint64(size)))
     doAssert short.error == ContainerError.Truncated
   var small: array[1, byte]
   small[0] = 77
@@ -25,7 +25,8 @@ proc checkBlob(size: int) =
     doAssert encodeBytes(value, ByteLimit(uint64(size)), small).error ==
         ContainerError.OutputTooSmall
     doAssert small[0] == 77
-    doAssert decodeBytes(wire, ByteLimit(uint64(size - 1))).error == ContainerError.LimitExceeded
+    doAssert decodeBytesBorrowed(wire, ByteLimit(uint64(size - 1))).error ==
+        ContainerError.LimitExceeded
     doAssert encodeBytes(value, ByteLimit(uint64(size - 1)), small).error ==
         ContainerError.LimitExceeded
 
@@ -56,7 +57,7 @@ proc checkSequence(count, stride: int) =
 
 # Arbitrary-byte entry point checks both decoders, including unchanged typed output on errors.
 proc fuzzBounded*(input: openArray[byte], stride: int, limit: uint64) =
-  let blob = decodeBytes(input, ByteLimit(limit))
+  let blob = decodeBytesBorrowed(input, ByteLimit(limit))
   # A successful span must lie entirely within the input and the caller's bound.
   if blob.error == ContainerError.None:
     doAssert blob.offset + blob.length == blob.consumed and blob.consumed <= input.len
@@ -88,7 +89,8 @@ for stride in 0..8:
   # Zero counts and the 127/128 count transition exercise both empty and multi-octet length prefixes.
   for count in [0, 1, 127, 128]: checkSequence(count, stride)
 # A noncanonical zero and an excessive full-width count must fail before payload or output use.
-doAssert decodeBytes([128'u8, 0], ByteLimit(high(uint64))).error == ContainerError.NonCanonical
+doAssert decodeBytesBorrowed([128'u8, 0], ByteLimit(high(uint64))).error ==
+    ContainerError.NonCanonical
 let huge = natural.encode(JamNatural(high(uint64)))
 var values: array[2, FixedUnsigned]
 values[0] = FixedUnsigned(77)

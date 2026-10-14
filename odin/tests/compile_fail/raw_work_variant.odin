@@ -4,5 +4,5 @@ import codec "../../codec"
 main :: proc() {
 	value := u8(1)
 	output: [1]u8
-	_ = codec.encode_work(value, nil, codec.Byte_Limit(0), output[:])
+	_ = codec.encode_work_borrowed(value, nil, codec.Byte_Limit(0), output[:])
 }

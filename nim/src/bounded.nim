@@ -86,7 +86,7 @@ proc readFrame(input: openArray[byte], stride: int, limit: uint64): FrameResult 
       consumed: prefix.consumed + payload)
 
 # Return a span for one bounded byte string; caller retains the original input and advances on success only.
-proc decodeBytes*(input: openArray[byte], limit: ByteLimit): BlobResult {.raises: [].} =
+proc decodeBytesBorrowed*(input: openArray[byte], limit: ByteLimit): BlobResult {.raises: [].} =
   let frame = readFrame(input, 1, uint64(limit))
   # Failure exposes no span and consumes nothing.
   if frame.error != ContainerError.None: return BlobResult(error: frame.error)

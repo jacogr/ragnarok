@@ -30,7 +30,7 @@ consumes only the count prefix.
 | Operation | Nim | Odin |
 |---|---|---|
 | Byte encode | `encodeBytes(value, ByteLimit, output)` | `encode_bytes(value, Byte_Limit, output)` |
-| Byte decode | `decodeBytes(input, ByteLimit)` | `decode_bytes(input, Byte_Limit)` |
+| Byte decode | `decodeBytesBorrowed(input, ByteLimit)` | `decode_bytes_borrowed(input, Byte_Limit)` |
 | Scalar-sequence encode | `encodeSequence(values, ByteWidth, ElementLimit, output)` | `encode_sequence(values, Byte_Width, Element_Limit, output)` |
 | Scalar-sequence decode | `decodeSequence(input, ByteWidth, ElementLimit, output)` | `decode_sequence(input, Byte_Width, Element_Limit, output)` |
 
@@ -135,3 +135,7 @@ requires the maintainer's go-ahead before any nested or composite codec work.
 The current [result API and migration examples](../docs/codec-results.md)
 separate success data from failure reasons and preserve the borrowed-buffer
 contract. This changes API access, not the normative wire formats above.
+
+The allocation-free contract above applies to explicitly borrowed APIs. For
+retained decoded data, use the [owned snapshot layer](../docs/codec-ownership.md),
+which preserves these wire definitions and policies while adding private copies.

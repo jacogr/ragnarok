@@ -1,5 +1,6 @@
 ## Trusted local adapter for complete work-digest encoding and decoding.
 import std/[os, strutils]
+import ./ownership_checks
 import ../src/[composite, bounded, work_digest]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.
@@ -85,7 +86,7 @@ for line in readFile(paramStr(1)).splitLines():
               parseBiggestUInt(p[11])),
           extrinsicSize: ExtrinsicBytes(parseBiggestUInt(p[12])), exports: ExportCount(
               parseBiggestUInt(p[13]))))
-      let written = encodeDigest(value, pool, limit, output.toOpenArray(0, cap - 1))
+      let written = encodeDigestBorrowed(value, pool, limit, output.toOpenArray(0, cap - 1))
       # Only completed encodes expose bytes; failures preserve the entire sentinel destination.
       if written.error == CompositeError.None: echo hexText(output.toOpenArray(0, written.written - 1))
       else:
@@ -95,11 +96,13 @@ for line in readFile(paramStr(1)).splitLines():
       # Every decoded fixed field and metric is printed; successful blobs are read from the retained original input.
       let limit = ByteLimit(parseBiggestUInt(p[1]))
       let wire = parseBytes(p[2])
-      let parsed = decodeDigest(wire, limit)
+      let parsed = decodeDigestBorrowed(wire, limit)
       if parsed.error != CompositeError.None:
         echo ($parsed.error).toLowerAscii() # No usable digest on invalid input.
       else:
-        let encoded = encodeDigest(parsed.value, wire, limit, output)
+        # Exercise owned fixed fields, metrics and output against every full digest vector.
+        checkOwnedDigest(wire, limit, parsed)
+        let encoded = encodeDigestBorrowed(parsed.value, wire, limit, output)
         doAssert encoded.error == CompositeError.None and encoded.written == parsed.consumed
         # Confirm native reconstruction of the consumed prefix without unrelated trailing data.
         for i in 0..<parsed.consumed: doAssert output[i] == wire[i]

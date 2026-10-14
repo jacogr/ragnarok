@@ -1,6 +1,7 @@
 // Trusted local adapters for optional/work variants and complete nested preimages.
 package main
 import codec "../codec"
+import ownership_checks "../ownership_checks"
 import "core:encoding/hex"
 import "core:fmt"
 import "core:os"
@@ -139,7 +140,7 @@ main :: proc() {
 			encoded: codec.Composite_Write
 			if parts[0] == "OE" {
 				if int(tag) < 0 || int(tag) > 1 {fmt.println("inputerror"); continue} 	// Only bool states can be constructed.
-				encoded = codec.encode_optional(
+				encoded = codec.encode_optional_borrowed(
 					{present = int(tag) == 1, blob = span},
 					pool,
 					codec.Byte_Limit(limit),
@@ -150,7 +151,7 @@ main :: proc() {
 				if int(tag) < 0 || int(tag) > 6 {fmt.println("invalidtag"); continue}
 				value: codec.Work_Output
 				if int(tag) == 0 {value = span} else {value = codec.Work_Error(tag)} 	// Success carries a span, errors only a tag.
-				encoded = codec.encode_work(
+				encoded = codec.encode_work_borrowed(
 					value,
 					pool,
 					codec.Byte_Limit(limit),
@@ -168,12 +169,14 @@ main :: proc() {
 			wire, hex_ok := parse_hex(parts[2], wire_storage[:])
 			if !limit_ok || !hex_ok {fmt.println("inputerror"); continue} 	// Request syntax is not a binary-codec error.
 			if parts[0] == "OD" {
-				decoded := codec.decode_optional(wire, codec.Byte_Limit(limit))
+				decoded := codec.decode_optional_borrowed(wire, codec.Byte_Limit(limit))
 				if codec.error_of(decoded) !=
 				   .None {print_error(codec.error_of(decoded)); continue} 	// No usable optional view on failure.
+				// Match the owned snapshot to this independently checked conformance response.
+				ownership_checks.check_optional(wire, codec.Byte_Limit(limit), decoded)
 				same_prefix(
 					wire,
-					codec.encode_optional(
+					codec.encode_optional_borrowed(
 						codec.success_of(decoded).value,
 						wire,
 						codec.Byte_Limit(limit),
@@ -189,12 +192,14 @@ main :: proc() {
 					); print_hex(wire[span.offset:span.offset + span.length]); fmt.println("", codec.success_of(decoded).consumed)
 				} else {fmt.println("absent", codec.success_of(decoded).consumed)} 	// Absence carries no payload bytes.
 			} else {
-				decoded := codec.decode_work(wire, codec.Byte_Limit(limit))
+				decoded := codec.decode_work_borrowed(wire, codec.Byte_Limit(limit))
 				if codec.error_of(decoded) !=
 				   .None {print_error(codec.error_of(decoded)); continue} 	// Invalid wire cannot be read as a union.
+				// Match the owned snapshot to this independently checked conformance response.
+				ownership_checks.check_work(wire, codec.Byte_Limit(limit), decoded)
 				same_prefix(
 					wire,
-					codec.encode_work(
+					codec.encode_work_borrowed(
 						codec.success_of(decoded).value,
 						wire,
 						codec.Byte_Limit(limit),
@@ -251,7 +256,7 @@ main :: proc() {
 				}
 				capacity, cap_ok := parse_capacity(parts[4], len(output))
 				if !ok || !cap_ok {fmt.println("inputerror"); continue} 	// No partial source descriptor list reaches production.
-				encoded := codec.encode_preimages(
+				encoded := codec.encode_preimages_borrowed(
 					records[:count],
 					wire_storage[:used],
 					limits,
@@ -271,14 +276,16 @@ main :: proc() {
 						service = codec.Service_Index(999),
 						blob = {offset = 333, length = 444},
 					}} // Failure sentinels.
-				decoded := codec.decode_preimages(wire, limits, records[:capacity])
+				decoded := codec.decode_preimages_borrowed(wire, limits, records[:capacity])
 				if codec.error_of(decoded) != .None {
 					for record in records {assert(u32(record.service) == 999 && record.blob.offset == 333 && record.blob.length == 444)} 	// Atomic nested failures.
 					print_error(codec.error_of(decoded)); continue
 				}
+				// Compare every owned service ID, nested payload and complete canonical frame.
+				ownership_checks.check_preimages(wire, limits, decoded, records[:])
 				same_prefix(
 					wire,
-					codec.encode_preimages(
+					codec.encode_preimages_borrowed(
 						records[:codec.success_of(decoded).count],
 						wire,
 						limits,

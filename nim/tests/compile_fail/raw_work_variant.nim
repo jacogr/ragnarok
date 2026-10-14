@@ -2,4 +2,4 @@
 import ../../src/[composite, bounded]
 let value = 1'u8
 var output: array[1, byte]
-discard encodeWork(value, [], ByteLimit(0), output)
+discard encodeWorkBorrowed(value, [], ByteLimit(0), output)

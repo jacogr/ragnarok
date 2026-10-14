@@ -4,14 +4,14 @@ import "core:testing"
 
 // Arbitrary-input entry point verifies complete metadata and reconstruction of every successful consumed prefix.
 fuzz_digest :: proc(t: ^testing.T, input: []u8) {
-	parsed := codec.decode_digest(input, codec.Byte_Limit(64))
+	parsed := codec.decode_digest_borrowed(input, codec.Byte_Limit(64))
 	// Failed nested variants or metrics cannot advance the caller cursor.
 	if codec.error_of(parsed) != .None {
 		testing.expect(t, codec.error_of(parsed) != .None)
 		return
 	}
 	bytes: [256]u8
-	written := codec.encode_digest(
+	written := codec.encode_digest_borrowed(
 		codec.success_of(parsed).value,
 		input,
 		codec.Byte_Limit(64),
@@ -48,9 +48,12 @@ work_digest :: proc(t: ^testing.T) {
 		},
 	}
 	wire: [256]u8
-	encoded := codec.encode_digest(value, pool[:], codec.Byte_Limit(3), wire[:])
+	encoded := codec.encode_digest_borrowed(value, pool[:], codec.Byte_Limit(3), wire[:])
 	testing.expect(t, codec.error_of(encoded) == .None)
-	decoded := codec.decode_digest(wire[:codec.success_of(encoded).written], codec.Byte_Limit(3))
+	decoded := codec.decode_digest_borrowed(
+		wire[:codec.success_of(encoded).written],
+		codec.Byte_Limit(3),
+	)
 	testing.expect(
 		t,
 		codec.error_of(decoded) == .None &&
@@ -66,12 +69,12 @@ work_digest :: proc(t: ^testing.T) {
 	fuzz_digest(t, wire[:codec.success_of(encoded).written])
 	// Every incomplete prefix, including each suffix byte, must fail without consuming input.
 	for cut in 0 ..< codec.success_of(encoded).written {
-		short := codec.decode_digest(wire[:cut], codec.Byte_Limit(3))
+		short := codec.decode_digest_borrowed(wire[:cut], codec.Byte_Limit(3))
 		testing.expect(t, codec.error_of(short) == .Truncated)
 	}
 	// Refill the entire destination to detect a premature fixed-prefix commit.
 	for &b in wire {b = 77}
-	short_write := codec.encode_digest(
+	short_write := codec.encode_digest_borrowed(
 		value,
 		pool[:],
 		codec.Byte_Limit(3),
@@ -84,14 +87,18 @@ work_digest :: proc(t: ^testing.T) {
 	before := wire
 	testing.expect(
 		t,
-		codec.error_of(codec.encode_digest(value, wire[:], codec.Byte_Limit(0), wire[:])) ==
+		codec.error_of(
+			codec.encode_digest_borrowed(value, wire[:], codec.Byte_Limit(0), wire[:]),
+		) ==
 		.Aliased_Buffers,
 	)
 	testing.expect(t, wire == before)
 	value.output = codec.Blob_Span{max(int), 1}
 	testing.expect(
 		t,
-		codec.error_of(codec.encode_digest(value, pool[:], codec.Byte_Limit(3), wire[:])) ==
+		codec.error_of(
+			codec.encode_digest_borrowed(value, pool[:], codec.Byte_Limit(3), wire[:]),
+		) ==
 		.Invalid_Span,
 	)
 	testing.expect(t, wire == before)

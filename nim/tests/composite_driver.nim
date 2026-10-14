@@ -1,5 +1,6 @@
 ## Trusted local adapters for optional/work variants and complete nested preimages.
 import std/[os, strutils]
+import ./ownership_checks
 import ../src/[composite, bounded]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.
@@ -67,14 +68,14 @@ for line in readFile(paramStr(1)).splitLines():
         # A bool input has only these states.
         if tag notin [0, 1]: raise newException(ValueError, "presence")
         let value = if tag == 0: OptionalBlob(present: false) else: OptionalBlob(present: true, blob: span)
-        encoded = encodeOptional(value, pool, limit, bytes.toOpenArray(0, cap - 1))
+        encoded = encodeOptionalBorrowed(value, pool, limit, bytes.toOpenArray(0, cap - 1))
       else:
-        # Reject textual enum values before casting; unknown binary variants go through decodeWork instead.
+        # Reject textual enum values before casting; unknown binary variants go through decodeWorkBorrowed instead.
 
         if tag < 0 or tag > 6: echo "invalidtag"; continue
         let value = if tag == 0: WorkOutput(kind: WorkKind.Success, blob: span) else: WorkOutput(
             kind: WorkKind(tag))
-        encoded = encodeWork(value, pool, limit, bytes.toOpenArray(0, cap - 1))
+        encoded = encodeWorkBorrowed(value, pool, limit, bytes.toOpenArray(0, cap - 1))
       # Actual completed bytes.
       if encoded.error == CompositeError.None: echo hexText(bytes.toOpenArray(0, encoded.written - 1))
       else:
@@ -87,10 +88,13 @@ for line in readFile(paramStr(1)).splitLines():
       let limit = ByteLimit(parseBiggestUInt(p[1]))
       let wire = parseBytes(p[2])
       if p[0] == "OD":
-        let decoded = decodeOptional(wire, limit)
+        let decoded = decodeOptionalBorrowed(wire, limit)
         # No usable view.
         if decoded.error != CompositeError.None: echo ($decoded.error).toLowerAscii(); continue
-        samePrefix(wire, encodeOptional(decoded.value, wire, limit, bytes), bytes, decoded.consumed)
+        # Verify owned optional metadata and bytes on the same conformance input.
+        checkOwnedOptional(wire, limit, decoded)
+        samePrefix(wire, encodeOptionalBorrowed(decoded.value, wire, limit, bytes), bytes,
+            decoded.consumed)
         if decoded.value.present:
           let span = decoded.value.blob
           echo "present:" & hexText(wire.toOpenArray(span.offset, span.offset + span.length - 1)) &
@@ -98,10 +102,13 @@ for line in readFile(paramStr(1)).splitLines():
         # No payload belongs to absence.
         else: echo "absent " & $decoded.consumed
       else:
-        let decoded = decodeWork(wire, limit)
+        let decoded = decodeWorkBorrowed(wire, limit)
         # No active union on bad wire.
         if decoded.error != CompositeError.None: echo ($decoded.error).toLowerAscii(); continue
-        samePrefix(wire, encodeWork(decoded.value, wire, limit, bytes), bytes, decoded.consumed)
+        # Verify both owned work alternatives against independently checked responses.
+        checkOwnedWork(wire, limit, decoded)
+        samePrefix(wire, encodeWorkBorrowed(decoded.value, wire, limit, bytes), bytes,
+            decoded.consumed)
         var payload = "-"
         if decoded.value.kind == WorkKind.Success:
           let span = decoded.value.blob
@@ -134,7 +141,7 @@ for line in readFile(paramStr(1)).splitLines():
                 offset: pool.len, length: payload.len)))
             pool.add(payload)
         let cap = capacity(p[4], bytes.len)
-        let encoded = encodePreimages(records, pool, limits, bytes.toOpenArray(0, cap - 1))
+        let encoded = encodePreimagesBorrowed(records, pool, limits, bytes.toOpenArray(0, cap - 1))
         # Full extrinsic frame.
         if encoded.error == CompositeError.None: echo hexText(bytes.toOpenArray(0, encoded.written - 1))
         else:
@@ -147,15 +154,17 @@ for line in readFile(paramStr(1)).splitLines():
         # Sentinels.
         for item in records.mitems: item = Preimage(service: ServiceIndex(999), blob: BlobSpan(
             offset: 333, length: 444))
-        let decoded = decodePreimages(wire, limits, records)
+        let decoded = decodePreimagesBorrowed(wire, limits, records)
         if decoded.error != CompositeError.None:
           # Atomic failure.
           for item in records: doAssert uint32(item.service) == 999 and item.blob.offset == 333 and
               item.blob.length == 444
           echo ($decoded.error).toLowerAscii()
           continue
-        samePrefix(wire, encodePreimages(records.toOpenArray(0, decoded.count - 1), wire, limits,
-            bytes), bytes, decoded.consumed)
+        # Verify owned service IDs, all nested blobs and the complete canonical frame.
+        checkOwnedPreimages(wire, limits, decoded, records)
+        samePrefix(wire, encodePreimagesBorrowed(records.toOpenArray(0, decoded.count - 1), wire,
+            limits, bytes), bytes, decoded.consumed)
         var fields: seq[string]
         for i in 0..<decoded.count:
           # Report actual decoded tuple values, not merely a matching re-encoded byte stream.
