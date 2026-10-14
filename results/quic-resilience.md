@@ -87,3 +87,42 @@ This advances controlled peer-loss and authenticated admission evidence for M3. 
 interface changes, unauthenticated handshake floods, connection migration, general multi-target dialing,
 validator-set integration and independent-stack interoperability remain open. Bounded Bandersnatch
 offload remains the next separate proposed increment, awaiting the maintainer's go-ahead.
+
+## Post-authentication close regression (2026-10-14)
+
+[Linux run 38600975090](https://github.com/jacogr/ragnarok/actions/runs/38600975090/job/115979831415)
+reported a five-second wait expiring for the excess Nim connection against the Odin listener.
+The native single-attempt dialer had no terminal check for a reusable IPv6 engine returning to
+idle after connection close. If admission closed before any stream existed, no stream callback
+could fail its pending application exchange, so it could wait for the full sixty-second deadline.
+
+A deterministic local regression reproduced the gap before the fix: authenticate an `idle` client,
+open no streams, kill its listener, and observe the five-second exit gate fail. Both native CLI
+loops now detect a closed connection with zero active connections and terminate the attempt.
+Historical successful handshakes remain separate from application success; final observations use
+metric 4 without allowing further requests on a retired connection. The reusable C ABI, native
+engine reconnect semantics, protocol/dependency pins and all test deadlines are unchanged.
+
+The full corrected local resilience run passed all four zero-stream close pairings, all 48
+pending-work peer deaths/restarts, and all 24 overload/recovery waves, including the Odin listener
+that failed on CI. Both overload listeners retired 312 admitted connections with exactly twelve
+connection-capacity and twelve stream-capacity rejections each, and twelve healthy queries after
+release. The new zero-stream clients exited within 1.856 seconds of peer death (five-second gate).
+Timeout diagnostics for load probes now include their native transcript, and this harness owns
+its certificate folder so retained identity pins cannot be overwritten by another runner.
+
+Executed after the fix:
+
+```sh
+python3 interoperability/test_quic.py
+python3 interoperability/test_quic_resilience.py --skip-build
+python3 interoperability/test_quic_soak.py --skip-build
+python3 interoperability/test_quic_offload.py --reuse-native
+python3 tools/format.py
+python3 tools/format.py --check
+```
+
+The ordinary 64-case matrix, 20,000 parser cases and 512 I/O cancellation checks passed, alongside
+160 lifecycle-soak sessions and both ten-wave offload runs. The unchanged retained mesh path also
+passed its 512 bidirectional queries and two wrong-identity cases during this correction. Linux
+verification of the fix awaits the next pushed run; the local pass is not a claim of a CI pass.

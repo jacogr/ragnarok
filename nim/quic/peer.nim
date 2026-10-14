@@ -559,6 +559,10 @@ proc runPeer(): bool =
             live # Explicit test shutdown also exercises pending jobs.
         break
     let status = transportStatus(peer.transport)
+    # Reusable IPv6 engines become idle after close; this CLI attempt cannot reconnect or finish without a live peer.
+    if not server and peerMetric(peer.transport, 2) > 0 and peerMetric(peer.transport, 0) == 0:
+      echo "CONNECTION_CLOSED"
+      break # No stream callback exists if admission was refused before any request opened.
     if status < 0: break # Authentication or persistent UDP failure settles this bounded attempt.
     if status == 1 and not authenticated:
       echo "AUTH_OK"
@@ -583,8 +587,8 @@ proc runPeer(): bool =
           if peer.mixed: 1200 else: 650):
         for index in 0..<3: openStream(peer.transport)
     if not pollTransport(peer.transport): break # Selector/UDP failure cannot become a successful exchange.
-  # A receive cycle may complete authentication and all requests before the loop observes status again.
-  if transportStatus(peer.transport) == 1 and not authenticated:
+  # A final receive cycle can authenticate, finish requests and close; preserve handshake evidence without reopening work.
+  if peerMetric(peer.transport, 4) > 0 and not authenticated:
     echo "AUTH_OK"
     authenticated = true
   # A service succeeds only after the harness requests shutdown with every promoted connection and stream retired.

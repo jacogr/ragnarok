@@ -887,6 +887,13 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 			   ) { service_stopped = len(stop_file) > 0 && (peer.offloading || active == 0 && live == 0); if peer.offloading { fmt.println("OFFLOAD_SHUTDOWN_PENDING", live) }; break } 	// Require explicit idle shutdown.
 		}
 		status := rq_status(peer.transport)
+		// Reusable IPv6 engines return to idle after close; this CLI owns one attempt and has no reconnect policy.
+		if !server &&
+		   rq_peer_metric(peer.transport, 2) > 0 &&
+		   rq_peer_metric(peer.transport, 0) == 0 {
+			fmt.println("CONNECTION_CLOSED")
+			break // Admission may close before any stream callback can settle a request.
+		}
 		if status < 0 { break } 	// TLS rejection is distinct from successful authentication.
 		if status == 1 && !authenticated { fmt.println("AUTH_OK"); authenticated = true } 	// Only after the handshake callback.
 		if authenticated && !server && !opened && mode != "idle" {
@@ -915,8 +922,8 @@ run_peer :: proc(tracking: ^mem.Tracking_Allocator = nil) -> bool {
 		}
 		if nbio.tick(10 * time.Millisecond) != nil { peer.stopping = true } 	// Bounded I/O failure.
 	}
-	if rq_status(peer.transport) == 1 &&
-	   !authenticated { fmt.println("AUTH_OK"); authenticated = true } 	// A receive tick may complete all requests before the loop checks status again.
+	if rq_peer_metric(peer.transport, 4) > 0 &&
+	   !authenticated { fmt.println("AUTH_OK"); authenticated = true } 	// Preserve handshake evidence if the final receive tick also closes the connection; application success remains separate.
 	success := authenticated && !peer.failed && peer.completed == target
 	// The service ends at an external idle barrier, never at the first completed client's stream count.
 	if peer.service { success = service_stopped && !peer.failed && (peer.offloading || rq_peer_metric(peer.transport, 3) >= 3) }

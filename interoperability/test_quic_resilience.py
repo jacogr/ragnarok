@@ -149,6 +149,51 @@ def states(text):
     return [tuple(map(int, line.split()[1:])) for line in text.splitlines() if line.startswith('LOAD_STATE ')]
 
 
+# Reproduce connection loss after authentication but before any stream callback can report failure.
+def closed_before_request(languages, folder):
+    directory = BUILD / 'resilience' / f'closed-before-request-{"-".join(languages)}'
+    directory.mkdir(parents=True, exist_ok=True)
+    port = ports()[0]
+    logs = {role: directory / f'{role}.log' for role in ('server', 'client')}
+    processes, handles = {}, []
+    peaks = {role: {} for role in logs}
+    try:
+        # The listener uses the existing two-second crash profile; no new protocol/settings are introduced.
+        output = logs['server'].open('w'); handles.append(output)
+        processes['server'] = subprocess.Popen([str(BUILD / f'{languages[0]}-peer'), 'server', str(port),
+            str(folder / 'a.cert.pem'), str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '60000', 'overload'],
+            env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(directory / f'stop-{time.time_ns()}')},
+            stdout=output, stderr=subprocess.STDOUT)
+        watch({'server': processes['server']}, {'server': logs['server']},
+              {'server': lambda text: 'READY' in text.splitlines()}, {'server': peaks['server']})
+        output = logs['client'].open('w'); handles.append(output)
+        processes['client'] = subprocess.Popen([str(BUILD / f'{languages[1]}-peer'), 'client', str(port),
+            str(folder / 'b.cert.pem'), str(folder / 'b.key.pem'), str(folder / 'a.pub'),
+            'jamnp-s/1/00000000', '60000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
+        # Idle mode deliberately opens no streams, so only connection retirement can settle this failure.
+        watch(processes, logs, {'client': lambda text: 'AUTH_OK' in text.splitlines()}, peaks)
+        processes['server'].kill(); assert processes['server'].wait(timeout=5) == -9
+        started = time.monotonic()
+        assert processes['client'].wait(timeout=5) == 2, logs['client'].read_text()
+        text = logs['client'].read_text()
+        assert 'AUTH_OK' in text.splitlines() and 'CONNECTION_CLOSED' in text.splitlines(), text
+        assert 'EXCHANGE_OK' not in text, text # Retained handshake history cannot fabricate application success.
+        return {'server': languages[0], 'client': languages[1], 'application_streams': 0,
+                'closed_seconds': time.monotonic() - started, 'peaks': peaks}
+    finally:
+        retire(list(processes.values()), handles) # Reap only this regression's peers after success or failure.
+
+
+# Keep the five-second probe gate strict while attaching native diagnostics to any future missed retirement.
+def settle_probe(process, path, expected):
+    try:
+        code = process.wait(timeout=5)
+    except subprocess.TimeoutExpired as error:
+        # TimeoutExpired alone omits the client's lifecycle transcript, obscuring authenticated-close races.
+        raise AssertionError(f'{path.name}: probe did not retire within five seconds\n{path.read_text()[-4000:]}') from error
+    assert code == expected, (path.name, code, path.read_text())
+
+
 # A retained IPv6 listener must refuse excess admission, release interrupted slots and resume healthy CE work.
 def overload(language, folder, rounds, warmup):
     directory = BUILD / 'resilience' / f'overload-{language}'
@@ -190,7 +235,7 @@ def overload(language, folder, rounds, warmup):
             excess, excess_log = client(index, 'excess-connection', 'odin' if language == 'nim' else 'nim', 'probe')
             connection_rejects += 1
             server_state(lambda text: any(state[2] >= connection_rejects for state in states(text)))
-            assert excess.wait(timeout=5) == 2, excess_log.read_text()
+            settle_probe(excess, excess_log, 2)
             # All sixteen accepted connections must remain intact while the seventeenth is refused.
             assert all(process.poll() is None for process, _ in idle_clients)
             for process, _ in idle_clients:
@@ -203,12 +248,13 @@ def overload(language, folder, rounds, warmup):
             rejected, rejected_log = client(index, 'excess-stream', 'odin' if language == 'nim' else 'nim', 'probe')
             stream_rejects += 1
             server_state(lambda text: any(state[3] >= stream_rejects for state in states(text)))
-            assert rejected.wait(timeout=5) == 2, rejected_log.read_text()
+            settle_probe(rejected, rejected_log, 2)
             # Release one connection's eight pending owners while seven loaded connections remain active.
             holders[0][0].kill(); holders[0][0].wait()
             server_state(lambda text: bool(states(text)) and states(text)[-1][1] == 56)
             healthy, healthy_log = client(index, 'healthy-after-release', 'nim' if language == 'odin' else 'odin', 'probe')
-            assert healthy.wait(timeout=5) == 0 and 'EXCHANGE_OK 1' in healthy_log.read_text().splitlines(), healthy_log.read_text()
+            settle_probe(healthy, healthy_log, 0)
+            assert 'EXCHANGE_OK 1' in healthy_log.read_text().splitlines(), healthy_log.read_text()
             assert all(process.poll() is None for process, _ in holders[1:]), 'loaded peers were displaced by healthy work'
             for process, _ in holders[1:]:
                 process.kill(); process.wait()
@@ -249,12 +295,16 @@ def main():
     assert 12 <= args.rounds <= 16 and 0 <= args.warmup <= args.rounds - 8
     output = BUILD / 'resilience/results.json'
     output.parent.mkdir(parents=True, exist_ok=True)
-    report = {'complete': False, 'disruption': [], 'overload': []}
+    report = {'complete': False, 'closed_before_request': [], 'disruption': [], 'overload': []}
     output.write_text(json.dumps(report) + '\n')
     if not args.skip_build:
         build_peers(dependencies(args.fetch))
-    folder = fixtures()
+    folder = fixtures(BUILD / 'resilience/fixtures') # Keep retained TLS identities private to this harness.
     try:
+        for languages in (('nim', 'nim'), ('nim', 'odin'), ('odin', 'nim'), ('odin', 'odin')):
+            report['closed_before_request'].append(closed_before_request(languages, folder))
+            output.write_text(json.dumps(report, indent=2) + '\n')
+            print('PASS close before request', '-'.join(languages), flush=True)
         for languages in (('nim', 'nim'), ('nim', 'odin'), ('odin', 'nim'), ('odin', 'odin')):
             report['disruption'].append(disruption(languages, folder, args.rounds, args.warmup))
             output.write_text(json.dumps(report, indent=2) + '\n')

@@ -85,6 +85,25 @@ Diagnostics and incomplete/complete summaries live under `build/quic/resilience`
 explicit logs, result JSON and resource samples; certificate/private-key fixtures are excluded.
 There are no new dependencies, upstream patches, pin advances or source optimizations.
 
+## Connection retirement before the first request
+
+The reusable IPv6 engine returns to idle after a connection closes. The single-attempt dialer CLI must
+check active/closed counters as well as transport status: after a retained connection retires,
+there is no peer on which its unfinished exchange can complete. In particular, admission can
+close after authentication but before a stream exists, leaving no stream callback to report the
+failure. Both native CLI loops now terminate that attempt promptly.
+
+Successful handshake history remains in metric 4, separately from live connection state and
+application success. The final native-loop observation uses that history if a receive cycle also
+closes the connection; an exchange still requires all exact responses and FINs to be validated.
+Reusable mesh engines retain their existing idle/reconnect semantics and the C ABI is unchanged.
+
+The resilience runner first checks all four language pairings: authenticate a client in the
+existing no-stream `idle` mode, kill its listener, and require failure within five seconds rather
+than the CLI's sixty-second overall timeout. The existing connection/stream admission probes keep
+the same five-second gate; missed retirement now includes the native client log in the failure.
+Fixtures are isolated under `build/quic/resilience/fixtures` so other runners cannot replace pins.
+
 ## Limits
 
 This proves finite, controlled process loss and authenticated admission saturation on IPv6
