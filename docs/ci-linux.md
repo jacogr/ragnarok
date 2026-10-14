@@ -27,7 +27,8 @@ python3 interoperability/test_quic_soak.py --skip-build
 
 The codec command covers both native implementations, negative compilation
 fixtures, official vectors and shared conformance cases. The QUIC command fetches
-pinned dependencies, builds them from scratch, and runs the authenticated
+four pinned native source trees, builds both explicit adapters without Nim
+packages/source patches, and runs the authenticated
 cross-language CE 143 proof and rejection cases. Dependencies are not cached.
 The new bounded soak follows the original proof using those freshly built peers;
 see [its workload and budgets](quic-soak.md). Python 3.12 supports safe archive
@@ -75,3 +76,7 @@ failed at dispatcher acquisition in the cancellation selftest, without exposing
 the returned error. The selftest and Odin soak now reuse one process-lived
 dispatcher. Setup failures preserve their error, and platform diagnostics include
 resource limits. Full Linux verification still awaits the rerun.
+
+The [explicit-adapter migration](quic-adapters.md) adds Nim's standard-selector
+I/O selftest alongside Odin's cancellation selftest. The workflow commands are
+unchanged; Linux verification of this adapter revision awaits its next run.

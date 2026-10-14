@@ -1,5 +1,9 @@
 # QUIC lifecycle soak — 2026-10-14
 
+Historical report: this describes the earlier dependency/wrapper approach.
+The active implementation now uses [explicit adapters without Nim source
+patches](quic-adapters.md). The observations below retain their original scope.
+
 The bounded soak passes on Apple Silicon macOS for both implementations and all
 cross-language combinations. Linux CI includes the same test; its first run stopped on a harness readiness
 check after one successful session. Full Linux soak verification awaits a rerun. No language is selected and M3 remains open.
@@ -59,7 +63,7 @@ context's timer ownership, and releases the UDP transport after awaited close.
 The retained-growth pattern disappears in the final run.
 
 The dependency changes are the reviewed
-[ARC context cleanup patch](../interoperability/quic/lsquic-arc-context-cleanup.patch),
+`lsquic-arc-context-cleanup.patch` (removed from the active build; retained in Git history),
 applied idempotently by the existing build runner. Together with the two earlier
 patches, this keeps the maintained wrapper on its original pinned revision.
 Patch application and idempotence were verified. No tracing GC is introduced.

@@ -60,8 +60,11 @@ while both processes wait for an external gate. Linux uses `/proc`; macOS uses
 harness cannot retain a peer forever. Odin's UDP receive has no linked timeout:
 its standalone QUIC timer wakes deadline checks, and shutdown explicitly
 removes the pending receive and drains cancellation before releasing its buffer.
-The native `--io-selftest` covers 256 idle/ready receive cancellations before the
-original peer matrix runs. Readiness and completion use exact
+Odin's native `--io-selftest` covers 256 idle/ready receive cancellations;
+Nim's covers 256 idle/ready selector registration retirements before the peer
+matrix runs. Nim has no queued asynchronous receive operations: its
+[explicit adapter](quic-adapters.md) owns readiness and synchronous nonblocking
+syscalls. Readiness and completion use exact
 marker lines; interleaved transport diagnostics cannot hide readiness or reuse
 a previous round's readiness.
 
@@ -72,8 +75,9 @@ Longer local runs can use `--rounds 200 --warmup 20`; rounds are bounded to
 
 Logs and results live in ignored `build/quic/soak/`. CI uploads only logs and
 JSON diagnostics, excluding generated TLS private keys and gate files.
-[The verification report](../results/quic-soak.md) records executed results and
-remaining M3 work.
+[The current adapter report](../results/quic-adapters.md) records executed
+results and remaining M3 work; [the earlier report](../results/quic-soak.md)
+preserves the historical patched-wrapper results.
 
 The protocol baseline stays at JAMNP-S commit
 `439c45aad135dc654b3de6f56d7d694fd02b7aa8`, sections **Protocols and streams**,

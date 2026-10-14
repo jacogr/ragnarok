@@ -1,357 +1,455 @@
-## Isolated JAMNP-S authentication proof, using pinned LSQUIC and Chronos under ARC.
-import std/[os, strutils]
-from std/times import epochTime
-import chronos, lsquic, results
+## JAMNP-S identity and CE 143 policy in Nim, over the same small LSQUIC/TLS C bridge used by Odin.
+## One synchronous owner drives nonblocking UDP readiness and deadlines without external Nim dependencies.
+import std/[os, strutils, monotimes, times]
+import ./transport
 
-{.compile: "../../interoperability/quic/cert_fields.c".}
-# Owned primitive X.509 observations; the C helper performs no JAM policy.
-type CertFields {.importc: "rq_cert_fields", header: "../../interoperability/quic/cert_fields.h",
-    bycopy.} = object
-  edKey {.importc: "ed_key".}, edSignature {.importc: "ed_signature".}: cint
-  sanExtensions {.importc: "san_extensions".}, sanCount {.importc: "san_count".},
-      sanDns {.importc: "san_dns".}: cint
-  keyLength {.importc: "public_key_length".}, sanLength {.importc: "san_length".}: csize_t
-  key {.importc: "public_key".}: array[32, byte]
-  san: array[256, byte]
-# Borrow DER only during extraction; all returned observations own their bounded bytes.
-proc parseCert(der: ptr byte, length: csize_t, fields: ptr CertFields): cint {.importc: "rq_parse_cert",
-    header: "../../interoperability/quic/cert_fields.h", cdecl, raises: [], gcsafe.}
+type
+  # One bounded native stream owns application storage until its final close callback.
+  StreamState = object
+    handle: NativeStream
+    received, sending: seq[byte]
+    receivedLength, sendLength, sendOffset: int
+    readFin, writeFin, counted, paused, blocked: bool
+    started: MonoTime
+    attack: string
+  # This stack owner outlives every synchronous native callback and its selector/engine teardown.
+  Peer = object
+    transport: Transport
+    expected: seq[byte]
+    server, failed, stopping: bool
+    streams: array[16, StreamState]
+    completed, opened, healthy, rejected, cancelled: int
+    attack: string
 
-# Literal little-endian radix-32 formula from the pinned specification, including its unusual alphabet.
-proc peerName(key: array[32, byte]): string {.raises: [].} =
-  const alphabet = "$abcdefghijklmnopqrstuvwxyz234567"
-  result = "$e"
-  # Emit 52 groups least significant first; bits beyond the 256-bit key are zero.
-  for group in 0..<52:
-    var index = 0
-    for bit in 0..<5:
-      let position = group * 5 + bit
-      if position < 256: index = index or (int((key[position div 8] shr (position mod 8)) and
-          1) shl bit) # Zero-extend final group.
-    result.add(alphabet[index])
-
-# Validate identity entirely in Nim; self-signed PKI trust is replaced by key/SAN consistency and optional expected identity.
-proc validPeer(chain: seq[seq[byte]], expected: seq[byte]): bool {.raises: [], gcsafe.} =
-  # Enforce bounded certificate resources before passing untrusted bytes to the TLS parser.
-  if chain.len == 0 or chain.len > 8 or chain[0].len == 0: return false
-  var fields: CertFields
-  if parseCert(unsafeAddr chain[0][0], csize_t(chain[0].len), addr fields) !=
-      1: return false # Strict DER extraction.
-  # Both the key and certificate signature algorithm must be Ed25519, with exactly one DNS SAN.
-  if fields.edKey != 1 or fields.edSignature != 1 or fields.keyLength != 32 or
-      fields.sanExtensions != 1 or fields.sanCount != 1 or fields.sanDns != 1: return false
-  let name = peerName(fields.key)
-  if fields.sanLength != csize_t(name.len): return false # Exact bytes, not C-string prefix comparison.
-  for i in 0..<name.len:
-    if fields.san[i] != byte(name[i]): return false # Reject altered names and embedded NULs.
-  # Dialers require an expected server key; acceptors can also pin a fixture client key for the proof.
-  if expected.len > 0:
-    if expected.len != 32: return false # No narrowing of malformed identity input.
-    for i in 0..<32:
-      if expected[i] != fields.key[i]: return false # Exact peer identity.
-  true
-
-# Capture only the owned identity bytes, never the async main frame that also owns this verifier.
-proc peerVerifier(expected: seq[byte]): CertificateVerifier =
-  CustomCertificateVerifier.init(
-    proc(serverName: string, chain: seq[seq[byte]]): bool {.gcsafe.} =
-    validPeer(chain, expected))
-
-# Convert trusted fixture PEM text to owned bytes before the native library borrows them.
-proc bytes(text: string): seq[byte] =
-  result = newSeq[byte](text.len)
-  for i in 0..<text.len: result[i] = byte(text[i]) # Preserve PEM bytes exactly.
-
-# Fixed preimage map entry keeps this transport proof independent of unfinished state/database code.
-const RequestHash = [17'u8, 192'u8, 231'u8, 155'u8, 113'u8, 195'u8, 151'u8, 108'u8, 205'u8, 12'u8,
-    2'u8, 209'u8, 49'u8, 14'u8, 37'u8, 22'u8, 192'u8, 142'u8, 220'u8, 157'u8, 139'u8, 111'u8, 87'u8,
-    204'u8, 214'u8, 128'u8, 214'u8, 58'u8, 77'u8, 142'u8, 114'u8, 218'u8]
-
-# Soak fixture is one MiB of i mod 251, named by its independently computed Blake2b-256 digest.
+# Fixture preimage key is independently checked by the shared harness; no unfinished database/state code is involved.
+const RequestHash = [17'u8, 192, 231, 155, 113, 195, 151, 108, 205, 12, 2, 209, 49, 14, 37, 22,
+  192, 142, 220, 157, 139, 111, 87, 204, 214, 128, 214, 58, 77, 142, 114, 218]
+# Bounded one-MiB soak fixture is i mod 251, named by its independently computed Blake2b-256 digest.
 const LargeSize = 1024 * 1024
 const LargeHash = [138'u8, 90, 122, 157, 195, 207, 32, 62, 211, 116, 176, 161, 238, 169,
   48, 96, 26, 210, 172, 191, 226, 180, 188, 98, 207, 131, 222, 78, 229, 54, 82, 139]
 
-# An explicit scenario keeps existing one-shot proof behaviour separate from the opt-in soak workload.
-proc soaking(): bool =
-  paramCount() == 8 and paramStr(8) == "soak"
+# Literal least-significant-first radix-32 formula from the pinned JAMNP-S specification.
+proc peerName(key: array[32, byte]): array[54, byte] {.raises: [].} =
+  const alphabet = "$abcdefghijklmnopqrstuvwxyz234567"
+  result[0] = byte('$')
+  result[1] = byte('e')
+  # The final group zero-extends the Ed25519 key beyond 256 bits.
+  for group in 0..<52:
+    var index = 0
+    # Gather this group's five bits in little-endian order, not RFC base32 order.
+    for bit in 0..<5:
+      let position = group * 5 + bit
+      if position < 256: index = index or (int((key[position div 8] shr (position mod 8)) and
+          1) shl bit) # Only actual key bits contribute.
+    result[2 + group] = byte(alphabet[index])
 
-# Generate a bounded owned response; no untrusted request controls its allocation size.
-proc largeResponse(): seq[byte] =
-  result = newSeq[byte](LargeSize + 4)
-  result[2] = 16 # E4 length 0x00100000.
-  # The fixture pattern is validated independently by every receiving implementation.
-  for i in 0..<LargeSize: result[4 + i] = byte(i mod 251)
+# Validate copied primitive certificate observations and optional expected identity entirely in Nim.
+proc validPeer(der: ptr byte, length: csize_t, expected: openArray[byte]): bool {.raises: [].} =
+  var fields: CertFields
+  # DER is borrowed only for bounded synchronous extraction; no TLS-owned pointer is retained.
+  if parseCert(der, length, addr fields) != 1: return false
+  # Require both Ed25519 algorithms and exactly one DNS SAN.
+  if fields.edKey != 1 or fields.edSignature != 1 or fields.keyLength != 32 or
+      fields.sanExtensions != 1 or fields.sanCount != 1 or fields.sanDns != 1: return false
+  let name = peerName(fields.key)
+  # Exact byte length prevents prefix and embedded-NUL acceptance.
+  if fields.sanLength != csize_t(name.len): return false
+  # Every DNS SAN byte must be the exact key-derived identity.
+  for i, value in name:
+    if fields.san[i] != value: return false # Reject altered names.
+  # Dialers pin the server key; acceptors may discover a consistent unknown peer.
+  if expected.len > 0:
+    if expected.len != 32: return false # No narrowing of malformed trusted identity input.
+    for i in 0..<32:
+      if expected[i] != fields.key[i]: return false # Compare full public keys.
+  true
 
-# Read exactly a bounded frame component, rejecting premature FIN without inventing missing bytes.
-proc readExact(stream: Stream, size: int): Future[seq[byte]] {.async.} =
-  result = newSeq[byte](size)
-  var offset = 0
-  while offset < size:
-    let received = await stream.readOnce(result.toOpenArray(offset, size - 1))
-    if received == 0: raise newException(ValueError, "premature FIN") # Missing bytes cannot be padded.
-    offset += received
+# Native TLS verification borrows only the retained peer's expected key; no closure or async frame is captured.
+proc verifyPeer(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
+  let peer = cast[ptr Peer](user)
+  cint(validPeer(cast[ptr byte](der), length, peer.expected))
 
-# Validate a complete E4 header against a caller ceiling before host conversion or allocation.
+# Validate a complete E4 header before host conversion, indexing or accepting any payload extent.
 proc checkedLength(header: openArray[byte], maximum: int): tuple[ok: bool, size: int] {.raises: [].} =
-  if header.len != 4 or maximum < 0: return (false, 0) # Invalid headers/policies expose no extent.
+  # Partial headers and invalid policies expose no usable extent.
+  if header.len != 4 or maximum < 0: return (false, 0)
   var claimed = 0'u64
-  for i in 0..<4: claimed = claimed or (uint64(header[i]) shl (8 * i)) # Exact little-endian value.
-  if claimed > uint64(maximum): return (false, 0) # Limit proof precedes narrowing or allocation.
+  # Assemble exactly four little-endian bytes without a host-width-dependent cast.
+  for i in 0..<4: claimed = claimed or (uint64(header[i]) shl (8 * i))
+  # Prove the bounded conversion before allocation or payload access.
+  if claimed > uint64(maximum): return (false, 0)
   (true, int(claimed))
 
-# Read one framed message with an explicit resource ceiling before allocating its payload.
-proc readFrame(stream: Stream, maximum: int): Future[seq[byte]] {.async.} =
-  let header = await readExact(stream, 4)
-  let extent = checkedLength(header, maximum)
-  if not extent.ok: raise newException(ValueError, "message limit") # Never allocate an unchecked claimed size.
-  return await readExact(stream, extent.size)
-
-# Require FIN after the single message, without accepting trailing bytes as another response.
-proc requireFin(stream: Stream) {.async.} =
-  var byteBuffer: array[1, byte]
-  if (await stream.readOnce(byteBuffer)) != 0: raise newException(ValueError,
-      "trailing message") # Protocol has exactly one message per direction.
-
-# Validate one request before selecting a fixture, with a read deadline local to this stream.
-proc readRequest(stream: Stream): Future[seq[byte]] {.async.} =
-  let kind = await readExact(stream, 1)
-  if kind[0] != 143: raise newException(ValueError, "wrong stream kind") # Explicit CE selection.
-  result = await readFrame(stream, 32)
-  if result.len != 32: raise newException(ValueError, "wrong hash size") # No partial key lookup.
-  await requireFin(stream)
-
-# Serve one bounded fixture; soak errors retire only this stream and preserve sibling requests.
-proc servePreimage(stream: Stream) {.async.} =
-  var reading: Future[seq[byte]]
-  var writing: Future[void]
-  try:
-    reading = readRequest(stream)
-    # Missing FIN must release its handler while unrelated streams continue on the connection.
-    if soaking() and not await reading.withTimeout(500.milliseconds):
-      await reading.cancelAndWait()
-      echo "REQUEST_TIMEOUT"
-      raise newException(ValueError, "request timeout")
-    let requested = await reading
-    if requested == @RequestHash:
-      await stream.write(@[3'u8, 0, 0, 0, 1, 2, 3]) # The original tiny fixture remains unchanged.
-    elif soaking() and requested == @LargeHash:
-      writing = stream.write(largeResponse())
-      # An unread response exceeds 64 KiB credit; verify its write remains pending before readers resume.
-      await sleepAsync(100.milliseconds)
-      if not writing.finished:
-        echo "BACKPRESSURE"
-      await writing # Retain the owned payload until completion or cancellation.
-    else:
-      raise newException(ValueError, "unknown preimage") # No fabricated fixture response.
-    await stream.close()
-    if soaking(): echo "SERVER_HEALTHY" # Exact request, bounded reply and queued FIN complete.
-  except CatchableError:
-    stream.abort() # Reset the failed direction without freeing a live borrowed write buffer.
-    if soaking():
-      echo "STREAM_REJECTED" # The harness checks terminal counts and healthy sibling completion.
-    else:
-      raise # Preserve the original single-attempt rejection suite.
-  finally:
-    # Cancellation must settle nested tasks before their borrowed read/write storage is released.
-    if reading != nil and not reading.finished: await reading.cancelAndWait()
-    if writing != nil and not writing.finished: await writing.cancelAndWait()
-
-# Open a CE 143 request with deliberately split kind/length writes and validate the exact response plus FIN.
-proc requestPreimage(connection: Connection) {.async.} =
-  let stream = await connection.openStream()
-  let attack = if paramCount() == 8: paramStr(8) else: "valid"
-  var request = @[143'u8, 32, 0, 0, 0]
-  request.add(@RequestHash)
-  # Inject malformed application frames only after normal transport authentication.
-  case attack
-  of "valid", "no-fin": discard # Normal bytes; no-fin delays the request half-close.
-  of "bad-kind": request[0] = 144 # Unsupported protocol selector.
-  of "oversize":
-    for i in 1..4: request[i] = 255 # Claimed allocation must be rejected before payload handling.
-  of "unknown": request[5] = request[5] xor 1 # Missing fixture map entry.
-  of "truncated": request.setLen(36) # FIN before all declared hash bytes.
-  of "trailing": request.add(0) # Extra content beyond the single framed request.
-  else: raise newException(ValueError, "unknown test case") # Never silently substitute a valid scenario.
-  await stream.write(request[0..0])
-  await stream.write(request[1..2])
-  await stream.write(request[3..^1])
-  if attack != "no-fin": await stream.close() # Request FIN must not prevent reading the response direction.
-  let response = await readFrame(stream, 1024)
-  if response != @[1'u8, 2, 3]: raise newException(ValueError, "wrong preimage") # Compare actual payload bytes.
-  await requireFin(stream)
-
-# Exercise five valid streams and three intentional failures on one authenticated connection.
-proc soakRequest(connection: Connection, index: int) {.async.} =
-  # Late healthy requests prove the connection remains usable after malformed input and a timeout.
-  if index >= 5: await sleepAsync(650.milliseconds)
-  let stream = await connection.openStream()
-  var request = @[143'u8, 32, 0, 0, 0]
-  request.add(if index in [1, 2]: @LargeHash else: @RequestHash)
-  # One unsupported CE kind must reset this stream without killing the other seven.
-  if index == 3: request[0] = 144
-  await stream.write(request)
-  # The missing-FIN case must be rejected by the server's stream deadline.
-  if index != 4: await stream.close()
-  # Cancel while a large server write is parked behind receive credit.
-  if index == 2:
-    await sleepAsync(150.milliseconds)
-    stream.abort()
-    echo "CANCEL_OK"
-    return
-  # Withhold application reads long enough to exhaust the deliberately small transport window.
-  if index == 1: await sleepAsync(350.milliseconds)
-  var responseArrived = false
-  try:
-    let response = await readFrame(stream, LargeSize)
-    responseArrived = true
-    await requireFin(stream)
-    if index in [3, 4]: raise newException(ValueError, "failed stream unexpectedly succeeded")
-    # Large payload bytes are checked exactly, independent of sender chunking.
-    if index == 1:
-      if response.len != LargeSize: raise newException(ValueError, "wrong large extent")
-      for i, b in response:
-        if b != byte(i mod 251): raise newException(ValueError, "wrong large payload")
-    elif response != @[1'u8, 2, 3]:
-      raise newException(ValueError, "wrong preimage")
-    echo "HEALTHY_OK"
-  except CatchableError:
-    stream.abort()
-    if index in [3, 4] and not responseArrived:
-      echo "EXPECTED_REJECT"
-    else:
-      raise # A healthy stream failure must fail the whole soak session.
-
-# Drive eight independent CE streams concurrently, retaining all task futures until completion/cancellation.
-proc exchange(connection: Connection, server: bool) {.async.} =
-  var tasks: seq[Future[void]]
-  try:
-    for i in 0..<8:
-      if server:
-        let stream = await connection.incomingStream()
-        tasks.add(servePreimage(stream)) # Each handler can await independently of other streams.
-      else:
-        if soaking():
-          tasks.add(soakRequest(connection, i)) # Mixed tasks stay owned through cancellation.
-        else:
-          tasks.add(requestPreimage(connection)) # Original proof requests.
-    for task in tasks: await task # Complete every handler/request, not just the first stream.
-  finally:
-    for task in tasks:
-      if not task.finished: await task.cancelAndWait() # No orphan callbacks/futures after timeout or rejection.
-
-# Bound the whole exchange so a peer that never sends FIN cannot retain tasks indefinitely.
-proc runExchange(connection: Connection, server: bool, deadline: Duration) {.async.} =
-  let work = exchange(connection, server)
-  if not await work.withTimeout(deadline):
-    await work.cancelAndWait() # Retire all child tasks before closing the transport.
-    raise newException(ValueError, "exchange timeout")
-  await work
-  echo "EXCHANGE_OK 8"
-
-# Run one bounded authentication attempt, releasing transport resources before global shutdown.
-proc main() {.async.} =
-  if paramCount() notin [7, 8]: raise newException(ValueError,
-      "mode port cert key expected-key alpn timeout-ms") # Explicit trusted CLI.
-  let mode = paramStr(1)
-  let endpoint = initTAddress("127.0.0.1:" & paramStr(2))
-  let expected = if paramStr(5) == "-": @[] else: bytes(readFile(paramStr(5)))
-  # Dialers must name the server identity before authentication; acceptors may discover a consistent key.
-  if mode == "client" and expected.len != 32: raise newException(ValueError, "expected server key required")
-  let verifier = peerVerifier(expected) # The independent factory avoids an ARC frame/self-closure cycle.
-  let cert = if paramStr(3) == "-": @[] else: bytes(readFile(paramStr(3)))
-  let key = if paramStr(4) == "-": @[] else: bytes(readFile(paramStr(4)))
-  let config = TLSConfig.new(cert, key, @[paramStr(6)], Opt.some(verifier))
-  let deadline = parseInt(paramStr(7)).milliseconds
-  var engine = DefaultQuicEngineConfig
-  # Cap stream credit so the large fixture demonstrably parks writes during delayed reads.
-  if soaking():
-    engine.initialMaxStreamDataBidiLocal = Opt.some(65536'u32)
-    engine.initialMaxStreamDataBidiRemote = Opt.some(65536'u32)
-    engine.maxStreamFlowControlWindow = Opt.some(65536'u32)
-  # The acceptor opens its listener before announcing readiness to the test orchestrator.
-  if mode == "server":
-    let server = QuicServer.new(config, engineConfig = engine)
-    let listener = server.listen(endpoint)
-    defer: await listener.stop()
-    echo "READY"
-    let incoming = listener.accept()
-    if not await incoming.withTimeout(deadline):
-      await incoming.cancelAndWait() # Do not leave a pending accept retaining the listener.
-      raise newException(ValueError, "authentication timeout")
-    let connection = await incoming
-    defer: connection.close() # Retire the connection even when a framed exchange fails.
-    echo "AUTH_OK"
-    await runExchange(connection, mode == "server", deadline)
-    await sleepAsync(100.milliseconds)
-    connection.close()
-  elif mode == "client":
-    let client = QuicClient.new(config, engineConfig = engine)
-    defer: await client.stop()
-    let dialing = client.dial(endpoint)
-    if not await dialing.withTimeout(deadline):
-      await dialing.cancelAndWait() # Native callbacks must finish before temporary ownership is released.
-      raise newException(ValueError, "authentication timeout")
-    let connection = await dialing
-    defer: connection.close() # Retire the connection even when a framed exchange fails.
-    echo "AUTH_OK"
-    await runExchange(connection, mode == "server", deadline)
-    await sleepAsync(100.milliseconds)
-    connection.close()
+# Settle one stream exactly once; soak rejections preserve healthy siblings on the same connection.
+proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: [].} =
+  # Reset and close notifications may report the same terminal state more than once.
+  if state.counted: return
+  state.counted = true
+  # A healthy result means exact request/reply bytes and the required FIN were validated.
+  if good:
+    inc peer.completed
+    inc peer.healthy
+    if peer.attack == "soak": echo (if peer.server: "SERVER_HEALTHY" else: "HEALTHY_OK") # Expose verified outcomes.
+  elif peer.attack == "soak":
+    # An intentionally bad stream retires only its own buffers/callbacks.
+    inc peer.completed
+    inc peer.rejected
+    echo (if peer.server: "STREAM_REJECTED" else: "EXPECTED_REJECT")
   else:
-    raise newException(ValueError, "unknown role") # No guessed endpoint behavior.
+    # The one-shot rejection matrix fails the attempted application exchange.
+    peer.failed = true
 
-# Arbitrary-input entry point exercises strict DER policy and bounded E4 decoding without network sockets.
-proc fuzzPeer(input: openArray[byte]) {.raises: [].} =
-  discard validPeer(@[@input], @[])
-  let extent = checkedLength(input, 64)
-  if extent.ok: doAssert input.len == 4 and extent.size >= 0 and extent.size <= 64 # Exposed extents are bounded.
+# Check incremental framing and fixture payloads; success requires one exact message followed by FIN.
+proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid: bool] {.raises: [].} =
+  let start = if peer.server: 1 else: 0
+  # The request's first byte selects CE 143 explicitly.
+  if peer.server and state.receivedLength > 0 and state.received[0] != 143: return (false, false)
+  # A partial header remains pending only while the peer has not ended its direction.
+  if state.receivedLength < start + 4: return (false, not state.readFin)
+  let maximum = if peer.server: 32 elif peer.attack == "soak": LargeSize else: 1024
+  let length = checkedLength(state.received.toOpenArray(start, start + 3), maximum)
+  # Reject impossible declared payloads before any narrowing/indexing.
+  if not length.ok: return (false, false)
+  let extent = start + 4 + length.size
+  # One message per direction forbids trailing bytes, even before FIN arrives.
+  if state.receivedLength > extent: return (false, false)
+  if not state.readFin: return (false, true) # Complete bytes without FIN are still pending.
+  if state.receivedLength != extent: return (false, false) # FIN before the declared payload is truncation.
+  # Requests select only exact fixture hash keys, never a default/missing map entry.
+  if peer.server:
+    if length.size != 32: return (false, false) # Preimage keys have fixed width.
+    let wanted = if peer.attack == "soak" and state.received[5] == LargeHash[
+        0]: LargeHash else: RequestHash
+    for i, value in wanted:
+      if state.received[5 + i] != value: return (false, false) # Complete hash equality.
+  else:
+    # Replies must contain the exact expected tiny/large fixture, independently of transport chunking.
+    let size = if state.attack == "slow": LargeSize else: 3
+    if length.size != size: return (false, false)
+    for i in 0..<size:
+      let wanted = if size == LargeSize: byte(i mod 251) else: byte(i + 1)
+      if state.received[4 + i] != wanted: return (false, false) # Compare every byte of the preimage.
+  (true, true)
 
-# Deterministic malformed-input coverage makes the parsers independently testable before any TLS setup.
+# Initialize bounded request/reply storage on a new native stream; no network length chooses an allocation.
+proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.raises: [].} =
+  state[] = StreamState(handle: handle, started: getMonoTime(), attack: peer.attack)
+  state.received = newSeq[byte](if peer.server or peer.attack != "soak": 1050 else: LargeSize + 5)
+  # The acceptor waits for one exact request before allocating its trusted fixture response.
+  if peer.server: return
+  state.sending = newSeq[byte](64)
+  state.sending[0] = 143
+  state.sending[1] = 32
+  var wanted = RequestHash
+  # Five healthy requests share one connection with cancellation, bad kind and missing FIN.
+  if peer.attack == "soak":
+    case peer.opened
+    of 1: state.attack = "slow"; wanted = LargeHash # Park consumption until the window fills.
+    of 2: state.attack = "cancel"; wanted = LargeHash # Cancel a genuinely pending server write.
+    of 3: state.attack = "bad-kind" # Reject only this protocol selector.
+    of 4: state.attack = "no-fin" # Exercise the acceptor's stream-local deadline.
+    else: state.attack = "valid" # Remaining requests must complete normally.
+    inc peer.opened
+  # Populate the trusted request key after selecting this stream's lifecycle scenario.
+  for i, value in wanted: state.sending[5 + i] = value
+  state.sendLength = 37
+  # Malformed test bytes are introduced only after transport authentication.
+  case state.attack
+  of "valid", "slow", "cancel", "no-fin": discard # Correct wire bytes with different read/FIN schedules.
+  of "bad-kind": state.sending[0] = 144 # Unsupported CE selector.
+  of "oversize":
+    for i in 1..4: state.sending[i] = 255 # Invalid claimed extent is rejected before payload acceptance.
+  of "unknown": state.sending[5] = state.sending[5] xor 1 # Missing fixture key.
+  of "truncated": state.sendLength = 36 # End before all declared hash bytes exist.
+  of "trailing": state.sendLength = 38 # One extra byte violates the one-message rule.
+  else:
+    peer.failed = true
+    streamAbort(handle)
+    return # Unknown trusted selectors must never silently become valid requests.
+  # Paused application reads exhaust flow-control credit while sibling streams continue.
+  if state.attack in ["slow", "cancel"]:
+    state.paused = true
+    wantRead(handle, 0)
+  wantWrite(handle, 1)
+
+# Read all available stream bytes into stable bounded storage, preserving state across would-block events.
+proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
+  # A slow/cancelled reader deliberately withholds application consumption.
+  if state.paused: return
+  while true:
+    # A full buffer cannot accept another byte or fabricate a clean FIN.
+    if state.receivedLength == state.received.len:
+      finishStream(peer, state, false)
+      streamAbort(state.handle)
+      return
+    let available = state.received.len - state.receivedLength
+    let got = streamRead(state.handle, addr state.received[state.receivedLength], csize_t(available))
+    # Would-block keeps the frame pending, with its same owned buffers.
+    if got == -2: return
+    if got < 0 or got > int64(available):
+      finishStream(peer, state, false)
+      streamAbort(state.handle)
+      return # A reset or impossible native extent settles only this stream.
+    # Zero is real FIN, never padding for a truncated message.
+    if got == 0: state.readFin = true
+    else: state.receivedLength += int(got) # Accumulate partial reads within the proved capacity.
+    let extent = frameExtent(peer, state)
+    # Protocol failures cannot leave a read handler or reply buffer pending.
+    if not extent.valid:
+      finishStream(peer, state, false)
+      streamAbort(state.handle)
+      return
+    if extent.complete:
+      wantRead(state.handle, 0) # Stop repeated EOF callbacks after validated FIN.
+      # Only a validated fixture key can select a bounded server response allocation.
+      if peer.server:
+        let size = if peer.attack == "soak" and state.received[5] == LargeHash[0]: LargeSize else: 3
+        state.sending = newSeq[byte](size + 4)
+        # Encode trusted E4 bytes before the fixture payload, independently of the C bridge.
+        for i in 0..<4: state.sending[i] = byte((size shr (8 * i)) and 255)
+        for i in 0..<size: state.sending[4 + i] = if size == LargeSize: byte(i mod 251) else: byte(
+            i + 1) # Fixture bytes.
+        state.sendLength = state.sending.len
+        wantWrite(state.handle, 1)
+      else:
+        # The client has checked the exact payload and response FIN.
+        finishStream(peer, state, true)
+      return
+
+# Preserve unsent application bytes across partial writes and flow-control stalls; flush does not imply FIN.
+proc writeStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
+  # Keep the same owned write buffer until every byte is accepted or the native stream closes.
+  while state.sendOffset < state.sendLength:
+    let remaining = state.sendLength - state.sendOffset
+    let sent = streamWrite(state.handle, addr state.sending[state.sendOffset], csize_t(remaining))
+    # Would-block leaves this stream subscribed so transport credit can resume its write later.
+    if sent in [-2'i64, 0'i64]: return
+    if sent < 0 or sent > int64(remaining):
+      finishStream(peer, state, false)
+      streamAbort(state.handle)
+      return # A failed/invalid write settles its own stream.
+    state.sendOffset += int(sent)
+  # Explicit flush transmits a no-FIN request too, allowing the receiver to enforce its deadline.
+  if streamFlush(state.handle) != 0:
+    finishStream(peer, state, false)
+    streamAbort(state.handle)
+    return
+  wantWrite(state.handle, 0)
+  # FIN half-closes writing while response reads stay active.
+  if not state.writeFin and (peer.server or state.attack != "no-fin"):
+    streamFin(state.handle)
+    state.writeFin = true
+    if peer.server: finishStream(peer, state, true) # Exact request and queued reply FIN complete server work.
+
+# Native callbacks borrow this peer synchronously; only native close releases application buffers.
+proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
+  let peer = cast[ptr Peer](user)
+  var state: ptr StreamState
+  # Resolve a currently retained native handle before accessing its application buffers.
+  for slot in peer.streams.mitems:
+    if slot.handle == handle: state = addr slot; break # Unique live stream ownership.
+  if event == 0:
+    # The fixed slot ceiling bounds concurrent requests and all associated application storage.
+    for slot in peer.streams.mitems:
+      if slot.handle == NativeStream(nil): state = addr slot; break # Allocate only a retired slot.
+    if state == nil:
+      peer.failed = true
+      streamAbort(handle)
+      return # Never grow an unbounded stream queue.
+    newStream(peer, state, handle)
+    return
+  # Unknown native events cannot dereference released framing state.
+  if state == nil: peer.failed = true; return
+  if event == 3:
+    # A premature native close rejects unsettled work unless teardown is already retiring the owner.
+    if not state.counted and not peer.stopping: finishStream(peer, state, false)
+    state[] = StreamState() # ARC releases both buffers; the slot holds no closure/reference back to Peer.
+    return
+  if event == 4:
+    # A directional reset settles pending reads and writes before final native close releases their storage.
+    if not peer.stopping: finishStream(peer, state, false)
+    streamAbort(handle)
+    return
+  # No new application work starts during teardown or after a completed client response.
+  if peer.stopping or (state.counted and not peer.server): return
+  case event
+  of 1: readStream(peer, state) # Read readiness preserves incremental framing across callbacks.
+  of 2: writeStream(peer, state) # Write readiness preserves partial-write offsets across callbacks.
+  else: peer.failed = true # Undefined bridge events are explicit integration failures.
+
+# Stream-local lifecycle deadlines run on the same selector thread as native transport timers.
+proc soakTick(peer: ptr Peer) {.raises: [].} =
+  # Only live, unsettled streams own deadline work; close callbacks may recycle slots synchronously.
+  for state in peer.streams.mitems:
+    if state.handle == NativeStream(nil) or state.counted: continue # Retired streams have no pending timer.
+    let elapsed = (getMonoTime() - state.started).inMilliseconds
+    if peer.server:
+      # A complete hash without request FIN must not retain its handler indefinitely.
+      if not state.readFin and elapsed > 500:
+        echo "REQUEST_TIMEOUT"
+        finishStream(peer, addr state, false)
+        streamAbort(state.handle)
+      elif state.sendLength > 65536 and state.sendOffset < state.sendLength and
+          not state.blocked and elapsed > 100:
+        # The pending large write proves real flow-control backpressure, not an artificial sleep alone.
+        state.blocked = true
+        echo "BACKPRESSURE"
+    elif state.attack == "cancel" and elapsed > 150:
+      # Cancel while the remote large write is parked behind withheld receive credit.
+      state.counted = true
+      inc peer.completed
+      inc peer.cancelled
+      echo "CANCEL_OK"
+      streamAbort(state.handle)
+    elif state.attack == "slow" and state.paused and elapsed > 350:
+      # Resume application consumption so the native stream window can advance again.
+      state.paused = false
+      wantRead(state.handle, 1)
+
+# Own one bounded authentication/exchange attempt and release readiness before native callback destruction.
+proc runPeer(): bool =
+  # Trusted CLI inputs still have explicit shape and narrowing checks.
+  if paramCount() notin [7, 8]: raise newException(ValueError, "mode port cert key expected-key alpn timeout-ms")
+  let port = parseInt(paramStr(2))
+  let timeout = parseInt(paramStr(7))
+  if port < 1 or port > 65535 or timeout < 1 or timeout > 10000: return false # Guard host-to-native conversions.
+  let server = paramStr(1) == "server"
+  if not server and paramStr(1) != "client": return false # Never infer an unknown role.
+  var peer = Peer(server: server, attack: if paramCount() == 8: paramStr(8) else: "valid")
+  # Expected identity bytes remain owned by Peer across all TLS verification callbacks.
+  if paramStr(5) != "-":
+    let text = readFile(paramStr(5))
+    if text.len != 32: return false # Fixture identity has exact Ed25519 width.
+    peer.expected = newSeq[byte](32)
+    for i in 0..<32: peer.expected[i] = byte(text[i]) # Copy public identity bytes, not PEM strings.
+  if not server and peer.expected.len != 32: return false # Every dialer pins the server identity.
+  # Cleanup must also run after poll/setup failures; both stack owners remain alive until final native callbacks finish.
+  defer:
+    peer.stopping = true
+    closeTransport(peer.transport)
+  if not openTransport(peer.transport, server, peer.attack == "soak", uint16(port), paramStr(3),
+      paramStr(4), paramStr(6), addr peer, verifyPeer,
+          onStream): return false # No partially initialized endpoint is used.
+  if server: echo "READY" # Announce only after listener binding and native setup.
+  elif not connectTransport(peer.transport, uint16(port)): return false # Dial setup failed before authentication.
+  let started = getMonoTime()
+  var authenticated, opened: bool
+  # One selector loop services all streams, UDP reads and LSQUIC/application deadlines.
+  while not peer.failed and peer.completed < 8 and (getMonoTime() - started).inMilliseconds < timeout:
+    let status = transportStatus(peer.transport)
+    if status < 0: break # Authentication or persistent UDP failure settles this bounded attempt.
+    if status == 1 and not authenticated:
+      echo "AUTH_OK"
+      authenticated = true
+    if authenticated and not server and not opened:
+      # Open concurrent requests before waiting for replies; the soak introduces three later healthy siblings.
+      opened = true
+      for index in 0..<(if peer.attack == "soak": 5 else: 8): openStream(peer.transport)
+    if peer.attack == "soak":
+      soakTick(addr peer)
+      # Late healthy requests prove continued service after malformed input, cancellation and missing FIN.
+      if not server and opened and peer.opened == 5 and (getMonoTime() - started).inMilliseconds > 650:
+        for index in 0..<3: openStream(peer.transport)
+    if not pollTransport(peer.transport): break # Selector/UDP failure cannot become a successful exchange.
+  # A receive cycle may complete authentication and all requests before the loop observes status again.
+  if transportStatus(peer.transport) == 1 and not authenticated:
+    echo "AUTH_OK"
+    authenticated = true
+  result = authenticated and not peer.failed and peer.completed == 8
+  # Client success counts must distinguish exactly five healthy, two rejected and one cancelled stream.
+  if result and peer.attack == "soak" and not server:
+    result = peer.healthy == 5 and peer.rejected == 2 and peer.cancelled == 1
+  if result:
+    echo "EXCHANGE_OK 8" # Authentication alone is insufficient without all terminal application outcomes.
+    let grace = getMonoTime()
+    # Drain final handshake/FIN packets before removing readiness and destroying native stream state.
+    while (getMonoTime() - grace).inMilliseconds < 100:
+      if not pollTransport(peer.transport): return false # Final I/O errors are still observable.
+  else:
+    # Print only framing counts/lifecycle state, never private-key or certificate buffer contents.
+    echo "proof rejected or timed out ", peer.completed, " ", peer.healthy, " ", peer.rejected, " ", peer.cancelled
+
+# Fuzz incremental framing and DER policy without creating a UDP endpoint or TLS engine.
+proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
+  let data = if input.len > 0: unsafeAddr input[0] else: nil
+  discard validPeer(data, csize_t(input.len), [])
+  var peer = Peer(server: server)
+  var state = StreamState(received: newSeq[byte](input.len), receivedLength: input.len, readFin: fin)
+  # Retain a distinct owned framing buffer for the parser's complete call.
+  for i, value in input: state.received[i] = value
+  let extent = frameExtent(addr peer, addr state)
+  # Complete frames are bounded, exact and cleanly terminated.
+  if extent.complete: doAssert extent.valid and fin and input.len == (if server: 37 else: 7)
+  if fin and input.len < (if server: 5 else: 4): doAssert not extent.valid # Partial-header EOF is immediate rejection.
+
+# Deterministic malformed-input coverage remains independently testable before native transport setup.
 proc selfTest() =
   doAssert checkedLength([0'u8, 0, 0, 0], 0) == (true, 0)
   doAssert not checkedLength([255'u8, 255, 255, 255], 1024).ok
+  # Known valid frames exercise every partial prefix with and without FIN, complementing random malformed inputs.
+  var request = newSeq[byte](37)
+  request[0] = 143
+  request[1] = 32
+  for i, value in RequestHash: request[5 + i] = value # Exact trusted fixture request.
+  let response = @[3'u8, 0, 0, 0, 1, 2, 3]
+  # A prefix is pending while open, rejected at premature FIN, and complete only at exact FIN.
+  for server in [true, false]:
+    let wire = if server: request else: response
+    var peer = Peer(server: server)
+    for length in 0..wire.len:
+      var frame = StreamState(received: wire, receivedLength: length)
+      doAssert frameExtent(addr peer, addr frame) == (false, true)
+      frame.readFin = true
+      let extent = frameExtent(addr peer, addr frame)
+      doAssert extent == (length == wire.len, length == wire.len)
   var state = 0x51554943'u64
+  # Xorshift produces reproducible parser coverage bytes, not cryptographic randomness.
   for iteration in 0..<10000:
     var input: array[128, byte]
-    for b in input.mitems:
+    for value in input.mitems:
       state = state xor (state shl 13)
       state = state xor (state shr 7)
       state = state xor (state shl 17)
-      b = byte(state and 255) # Reproducible fuzz bytes, not cryptographic randomness.
-    fuzzPeer(input.toOpenArray(0, iteration mod 129 - 1))
-  echo "Nim QUIC selftest: 10000 malformed DER/header cases passed"
+      value = byte(state and 255)
+    fuzzPeer(input.toOpenArray(0, iteration mod 129 - 1), iteration mod 2 == 0, iteration mod 3 == 0)
+  echo "Nim QUIC selftest: 10000 malformed DER/frame cases passed"
 
-# Standalone parser tests need no engine/global transport state or socket permission.
-if paramCount() == 1 and paramStr(1) == "--selftest":
-  selfTest()
-  quit(0)
+# CLI entry point returns through all normal ARC/native teardown before process exit.
+proc main(): int =
+  try:
+    # Parser tests create no native transport or socket.
+    if paramCount() == 1 and paramStr(1) == "--selftest":
+      selfTest()
+      return 0
+    # Probe the real selector backend independently of TLS setup.
+    if paramCount() == 1 and paramStr(1) == "--io-selftest":
+      ioSelfTest()
+      return 0
+    if paramCount() == 8 and paramStr(8) == "soak":
+      # Keep the same process and ARC allocator across all independently owned endpoint sessions.
+      let rounds = parseInt(getEnv("RAGNAROK_SOAK_ROUNDS"))
+      let gate = getEnv("RAGNAROK_SOAK_GATE")
+      # Invalid controls cannot park the process indefinitely.
+      if rounds < 1 or rounds > 1000 or gate.len == 0:
+        return 2
+      for iteration in 0..rounds:
+        let control = gate / (paramStr(1) & "-" & $iteration)
+        let started = getMonoTime()
+        # The harness samples only after complete cleanup, then releases the next session explicitly.
+        while not fileExists(control):
+          if (getMonoTime() - started).inSeconds > 15: return 2 # Bound a dead/missing harness.
+          sleep(10) # No native endpoint is live while waiting at this external observation barrier.
+        if iteration == rounds: break # Hold the final idle sample until the harness permits normal exit.
+        if not runPeer(): return 2 # Deferred selector/native cleanup finishes before failure returns.
+        echo "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem()
+        echo "SESSION_DONE ", iteration
+    elif not runPeer():
+      return 2 # The one-shot rejection suite must distinguish failed exchange from successful authentication.
+    0
+  except CatchableError as error:
+    # Setup/OS/control errors become bounded process failures after all native owners have retired.
+    stderr.writeLine(error.msg)
+    2
 
-initializeLsquic()
-var exitCode = 0
-try:
-  # The same process and ARC allocator survive every engine/socket lifecycle in the soak.
-  if soaking():
-    let rounds = parseInt(getEnv("RAGNAROK_SOAK_ROUNDS"))
-    let gate = getEnv("RAGNAROK_SOAK_GATE")
-    if rounds < 1 or rounds > 1000 or gate.len == 0: raise newException(ValueError, "invalid soak controls")
-    for iteration in 0..rounds:
-      let control = gate / (paramStr(1) & "-" & $iteration)
-      let started = epochTime()
-      # The external harness samples only after cleanup and releases each new session explicitly.
-      while not fileExists(control):
-        if epochTime() - started > 15: raise newException(ValueError, "soak gate timeout")
-        waitFor sleepAsync(10.milliseconds)
-      if iteration == rounds: break # Hold the final idle snapshot until the harness releases it.
-      waitFor main()
-      echo "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem() # Distinguish live ARC storage from arena reserve.
-      echo "SESSION_DONE ", iteration
-  else:
-    waitFor main() # Original one-shot proof.
-except CatchableError as error:
-  stderr.writeLine(error.msg) # Harness failures are visible and distinguishable from successful authentication.
-  exitCode = 2
-finally:
-  cleanupLsquic() # Global cleanup follows all deferred client/listener shutdown.
-
-quit(exitCode) # Exit only after native global cleanup on both success and rejection.
+quit(main()) # Never exit while a selector or native callback still borrows a retiring Peer.

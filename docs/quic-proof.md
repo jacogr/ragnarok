@@ -1,8 +1,9 @@
 # Running the QUIC proof
 
 The proof targets the pinned JAMNP-S version-1 transport and CE 143 preimage
-exchange. [Observed results and remaining limits](../results/quic-proof.md)
-are recorded separately from the earlier feasibility assessment.
+exchange. [Current adapter results and remaining limits](../results/quic-adapters.md)
+are recorded separately from the historical wrapper proof. Both languages now
+use [explicit project-maintained adapters](quic-adapters.md) over the same C ABI.
 
 With Python 3.12+, CMake, clang/clang++, Ed25519-capable OpenSSL and the existing
 pinned Nim/Odin compilers, run from Ragnarok:
@@ -12,9 +13,9 @@ python3 tools/format.py --check
 python3 interoperability/test_quic.py --fetch
 ```
 
-`--fetch` downloads missing exact dependency commits into `build/quic/sources`.
+`--fetch` downloads missing exact dependency commits into `build/quic/native-sources`.
 The runner builds matching LSQUIC/BoringSSL, compiles Nim with ARC and Odin with
-vet/strict-style checks, runs native parser fuzz checks and executes the peer
+vet/strict-style checks, runs native parser and I/O selftests and executes the peer
 matrix over **localhost UDP**. It generates test identities inside ignored
 `build/quic/fixtures`; their private keys are local test artifacts.
 
@@ -31,7 +32,8 @@ with the current native sources. Logs and machine-readable results remain in
 `build/quic/build.log`, `build/quic/cases/` and `build/quic/results.json`.
 Build output and downloaded sources are isolated from global toolchains/packages.
 
-Native peer sources are `nim/quic/peer.nim` and `odin/quic/peer.odin`.
+Native sources are `nim/quic/transport.nim`, `nim/quic/peer.nim` and
+`odin/quic/peer.odin`. No third-party Nim package or source patch is used.
 Both accept:
 
 ```text
@@ -44,7 +46,8 @@ The script handles peer startup, deadlines and teardown. `--selftest` instead
 runs each native parser fuzz entry point without opening network sockets.
 
 The original proof uses bounded buffers, eight concurrent streams and one
-connection per process. It passes on macOS and Linux. The new
+connection per process. The explicit-adapter implementation passes locally on
+macOS; its Linux CI result is pending. The
 [bounded lifecycle soak](quic-soak.md) reuses each native process across repeated
 sessions with mixed healthy and adversarial streams. This remains an experiment,
 not a reusable client networking API or a completed M3 gate. The existing

@@ -53,7 +53,7 @@ JAM's actual networking specification, including transport and authentication, m
 ### Nim
 - Use explicit fixed-width protocol types and `distinct` wrappers where appropriate.
 - Evaluate `--mm:arc` and document any reference cycles; compare ORC only if warranted.
-- Investigate Chronos and available QUIC integration; verify version compatibility, callback lifetimes, cancellation and stream handling.
+- Use the explicit LSQUIC adapter with standard selectors and nonblocking UDP; verify callback/buffer lifetimes, deadlines and stream handling.
 - Avoid unchecked conversions and reliance on compiler configuration to hide runtime range checks.
 
 ### Odin
@@ -149,22 +149,23 @@ and complete work digests are implemented independently in both languages. Speci
 revisions remain pinned. See [the latest verification report](../results/work-digest.md).
 
 The maintainer has prioritized QUIC/JAMNP-S investigation before more codec work.
-See [the feasibility assessment](../results/quic-feasibility.md) and
-[research revision pins](../spec/networking-research.json). The recommended
-first proof is authenticated CE 143 preimage exchange using the same pinned
-LSQUIC engine with Nim's maintained Chronos wrapper and Odin's core:nbio plus
-C bindings. The initial macOS IPv4 authentication and eight-stream CE 143 proof now passes
-in both languages, including cross-language exchange and rejection cases. See
-[the proof report](../results/quic-proof.md) and [run instructions](quic-proof.md).
-The isolated dependency pins and local Nim compatibility/ownership patches
-are recorded in `spec/quic-proof-pins.json`. This does not pass M3 or select a
-language: IPv6, independent-peer interoperability, sustained backpressure
-and broader allocation/leak measurements remain open. The new
-[bounded lifecycle soak](quic-soak.md) adds same-process sessions, real transport
-backpressure, stream cancellation/deadlines, healthy stream isolation and
-resource budgets to both implementations. The 160-session macOS run passes,
-including live-allocation checks after ARC lifetime fixes; see
-[the report](../results/quic-soak.md). Its Linux CI execution is pending.
+The [initial feasibility assessment](../results/quic-feasibility.md) remains a
+historical survey. Both candidates now use explicit project-maintained adapters
+over the same pinned LSQUIC/BoringSSL engine and C ABI: Nim's standard selectors
+and nonblocking UDP, and Odin's core:nbio. JAM identity and CE 143 policy remain
+independent native-language implementations. Chronos/nim-lsquic and the three
+local Nim source patches have been removed from the active build.
+
+The 64-case authentication/rejection matrix and 160-session lifecycle soak pass
+locally with the explicit adapters, including backpressure, cancellation,
+stream-local deadlines, healthy sibling isolation and post-cleanup resource
+budgets. See [the architecture](quic-adapters.md),
+[verification report](../results/quic-adapters.md), [proof instructions](quic-proof.md)
+and [soak workload](quic-soak.md). Native/compiler/protocol revisions are unchanged;
+the dependency set is reduced to four native source trees. Linux CI verification
+of this adapter revision is pending. This does not pass M3 or select a language:
+persistent-engine multi-peer service, IPv6, independent-peer interoperability
+and deeper C/TLS allocation instrumentation remain open.
 
 Complete work reports, other extrinsics, generic element schemas and full blocks
 remain later M1 work. [Linux CI](ci-linux.md) is configured for Ubuntu 24.04

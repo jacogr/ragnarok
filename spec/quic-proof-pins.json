@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "networking_commit": "439c45aad135dc654b3de6f56d7d694fd02b7aa8",
   "alpn_version": 1,
   "nim": "2.2.12",
@@ -10,59 +10,7 @@
       "repository": "iftech/lsquic",
       "commit": "fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52"
     },
-    "chronos": {
-      "repository": "status-im/nim-chronos",
-      "commit": "7acb4b7e6ffb7fb84d864df1b1dba5bf1a5bc875"
-    },
     "boringssl": {
-      "repository": "vacp2p/nim-boringssl",
-      "commit": "3aa1c0e6ee884d961d1930bfb2c40e2de9e19522"
-    },
-    "stew": {
-      "repository": "status-im/nim-stew",
-      "commit": "b89f5c8eeb1ef7bf0e06940790eee1b9c8a5591a"
-    },
-    "results": {
-      "repository": "arnetheduck/nim-results",
-      "commit": "a3f6185d4c2bae01967da5b04ad9e98e057ddaed"
-    },
-    "chronicles": {
-      "repository": "status-im/nim-chronicles",
-      "commit": "2d6665dece83cc2e9f4435fb9a6bafb7e095b199"
-    },
-    "unittest2": {
-      "repository": "status-im/nim-unittest2",
-      "commit": "15e9962941271cf28d855120efba8626c52147ca"
-    },
-    "httputils": {
-      "repository": "status-im/nim-http-utils",
-      "commit": "c309e1566cbb0b73b58ae09598ce222fcf918cb0"
-    },
-    "zlib": {
-      "repository": "status-im/nim-zlib",
-      "commit": "274c219302b418be32fd5df7f4cd99f8a6546e62"
-    },
-    "serialization": {
-      "repository": "status-im/nim-serialization",
-      "commit": "fba899844919674c80ede27a4e96eaa9e26fac2f"
-    },
-    "json_serialization": {
-      "repository": "status-im/nim-json-serialization",
-      "commit": "c67f5f0155fb9c7a481fe438a1f617c0a09b9af8"
-    },
-    "faststreams": {
-      "repository": "status-im/nim-faststreams",
-      "commit": "60cfda08a858f88f7b37f1accd98ec00ab4f21bb"
-    },
-    "testutils": {
-      "repository": "status-im/nim-testutils",
-      "commit": "68c28af79e7c3b6e3467dfd99346b147942fa7b8"
-    },
-    "bearssl": {
-      "repository": "status-im/nim-bearssl",
-      "commit": "af2de21c1ae58d4c40f7b358d601e2644a17a1d2"
-    },
-    "boringssl/boringssl": {
       "repository": "vacp2p/boringssl",
       "commit": "88341070936d28e08f82db1326c73d67962cd043"
     },
@@ -73,23 +21,9 @@
     "lsquic/src/lshpack": {
       "repository": "litespeedtech/ls-hpack",
       "commit": "cf0f70dd10b352194c97448eb5d00b4aa484f531"
-    },
-    "zlib/zlib/csources": {
-      "repository": "madler/zlib",
-      "commit": "da607da739fa6047df13e66a2af6b8bec7c2a498"
-    },
-    "bearssl/bearssl/csources": {
-      "repository": "status-im/BearSSL",
-      "commit": "7bea48e5e850ab4cafbe68d3765cdaba13a86d6f"
-    },
-    "nim-lsquic": {
-      "repository": "iftech/nim-lsquic",
-      "commit": "e57027b73cbd6d9a805b93297dd7e24638db2d99"
     }
   },
-  "patches": [
-    "interoperability/quic/chronos-address-errors.patch",
-    "interoperability/quic/lsquic-arc-stream-callback.patch",
-    "interoperability/quic/lsquic-arc-context-cleanup.patch"
-  ]
+  "patches": [],
+  "nim_adapter": "nim/quic/transport.nim",
+  "shared_bridge": "interoperability/quic/transport_bridge.c"
 }

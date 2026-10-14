@@ -1,5 +1,9 @@
 # QUIC feasibility for JAMNP-S — 2026-10-13
 
+Historical report: this describes the earlier dependency/wrapper approach.
+The active implementation now uses [explicit adapters without Nim source
+patches](quic-adapters.md). The observations below retain their original scope.
+
 Both languages have credible routes to nonblocking QUIC. **Nim currently has
 less integration work through the maintained `iftech/nim-lsquic` wrapper;
 Odin has the necessary event loop but needs a transport binding.** This is a

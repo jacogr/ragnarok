@@ -1,5 +1,9 @@
 # JAMNP-S QUIC proof — 2026-10-14
 
+Historical report: this describes the earlier dependency/wrapper approach.
+The active implementation now uses [explicit adapters without Nim source
+patches](quic-adapters.md). The observations below retain their original scope.
+
 **Both Nim and Odin now run authenticated QUIC and concurrent CE 143 preimage
 exchanges on this Mac.** Nim uses ARC and the maintained Chronos/LSQUIC wrapper;
 Odin uses LSQUIC through a narrow C adapter and one core:nbio event loop.

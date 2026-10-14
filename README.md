@@ -91,7 +91,9 @@ the completed local experiment; the full M3 gate remains open.
 
 The first authenticated QUIC/CE 143 proof now runs in both languages. See
 [run instructions](docs/quic-proof.md) and [the verification report](results/quic-proof.md)
-for the pinned native dependencies, ARC patches and remaining M3 gates.
+for the pinned native dependencies and remaining M3 gates. Both languages now
+use [explicit LSQUIC adapters](docs/quic-adapters.md), without Nim dependency
+patches; see [the current verification](results/quic-adapters.md).
 
 The bounded same-process QUIC soak now exercises backpressure, cancellation,
 stream-local deadlines and continued service after malformed requests. See

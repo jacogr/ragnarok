@@ -42,85 +42,10 @@ def fetch_source(entry, destination):
         {**entry, 'archive_sha256': hashlib.sha256(archive).hexdigest()}, indent=2) + '\n')
 
 
-# Apply only four explicit typed-error conversions; preserve upstream exceptions and leave version/compiler pins unchanged.
-def patch_chronos(source):
-    for name in ('datagram', 'stream'):
-        path = source / f'chronos/transports/{name}.nim'
-        text = path.read_text()
-        # Match the reviewed original or already-patched body, never guess a changed upstream function.
-        for kind in ('local', 'remote'):
-            original = f'  {kind}Address2(transp).tryGet()'
-            replacement = (f'  let checked = {kind}Address2(transp)\n'
-                           '  if checked.isErr:\n    raise getTransportOsError(checked.error)\n  checked.get()')
-            if original in text:
-                text = text.replace(original, replacement)
-            else:
-                assert replacement in text, path
-        path.write_text(text)
-
-
-# Avoid retaining an async frame containing its own stream through a scheduler closure under ARC.
-def patch_stream_callbacks(source):
-    path = source / 'lsquic/connection.nim'
-    text = path.read_text()
-    helper = """# Capture only the retained transport context, never an async frame containing the stream itself.
-proc streamProcessor(ctx: QuicContext): proc(urgent: bool) {.gcsafe, raises: [].} =
-  result = proc(urgent: bool) {.gcsafe, raises: [].} =
-    if urgent:
-      ctx.processWhenReady()
-    else:
-      ctx.processSoon()
-
-"""
-    # Match both reviewed closure sites; a changed dependency cannot silently receive a guessed patch.
-    for owner in ('stream', 's'):
-        old = f"""  {owner}.doProcess = proc(urgent: bool) {{.gcsafe, raises: [].}} =
-    if urgent:
-      connection.quicContext.processWhenReady()
-    else:
-      connection.quicContext.processSoon()"""
-        replacement = f'  {owner}.doProcess = streamProcessor(connection.quicContext)'
-        if old in text:
-            text = text.replace(old, replacement)
-        else:
-            assert replacement in text, path
-    if helper not in text:
-        text = text.replace('proc incomingStream*(', helper + 'proc incomingStream*(')
-    path.write_text(text)
-
-
-# Break quiesced timer and UDP callback cycles after shutdown, never during live processing.
-def patch_context_lifetime(source):
-    path = source / 'lsquic/context/context.nim'
-    text = path.read_text()
-    original = """  if not ctx.sslCtx.isNil:
-    SSL_CTX_free(ctx.sslCtx)
-    ctx.sslCtx = nil
-"""
-    replacement = original + """
-  # The timeout closure owns ctx; drop ctx's timeout only after stop and native destruction.
-  ctx.tickTimeout = nil
-"""
-    # Accept exactly the pinned original or this reviewed patch; never append cleanup to guessed upstream code.
-    if replacement not in text:
-        assert original in text, path
-        text = text.replace(original, replacement)
-    path.write_text(text)
-
-    path = source / 'lsquic/endpoint.nim'
-    text = path.read_text()
-    original = '  await noCancel endpoint.udp.closeWait()\n'
-    replacement = original + '  # The UDP receive callback owns endpoint; release the closed transport to break that ARC cycle.\n  endpoint.udp = nil\n'
-    # This assignment follows awaited close, so no socket callback can borrow released storage.
-    if replacement not in text:
-        assert original in text, path
-        text = text.replace(original, replacement)
-    path.write_text(text)
-
-
 # Prepare a closed dependency set from committed pins, including each native submodule's own exact revision.
 def dependencies(fetch):
-    sources = BUILD / 'sources'
+    assert PINS['patches'] == [], 'QUIC must build without source patches'
+    sources = BUILD / 'native-sources'
     paths = {}
     # Parent packages must exist before placing their native source submodules.
     for name, entry in PINS['sources'].items():
@@ -145,16 +70,7 @@ def dependencies(fetch):
             fetch_source(entry, path)
         assert marker.exists(), name
         recorded = json.loads(marker.read_text())
-        assert recorded['commit'] == entry['commit'], name
-    link = paths['nim-lsquic'] / 'libs/lsquic'
-    # Replace only the archive's empty gitlink placeholder, never an existing populated directory.
-    if not link.is_symlink():
-        link.rmdir()
-        link.symlink_to(paths['lsquic'], target_is_directory=True)
-    assert link.resolve() == paths['lsquic'].resolve()
-    patch_chronos(paths['chronos'])
-    patch_stream_callbacks(paths['nim-lsquic'])
-    patch_context_lifetime(paths['nim-lsquic'])
+        assert recorded['commit'] == entry['commit'] and recorded['repository'] == entry['repository'], name
     return paths
 
 
@@ -163,31 +79,31 @@ def build_peers(paths):
     nim_version = subprocess.check_output(['nim', '--version'], text=True)
     odin_version = subprocess.check_output(['odin', 'version'], text=True)
     assert PINS['nim'] in nim_version and odin_matches(odin_version, PINS['odin'])
-    bssl = paths['boringssl'] / 'boringssl'
+    bssl = paths['boringssl']
     system = platform.system()
     assert system in ('Darwin', 'Linux'), system
     library = BUILD / ('libquic_proof.dylib' if system == 'Darwin' else 'libquic_proof.so')
     native = ROOT / 'interoperability/quic'
     # The exact native configure/build output is retained instead of hidden behind a success claim.
     with (BUILD / 'build.log').open('w') as log:
-        run(['cmake', '-S', bssl, '-B', BUILD / 'bssl', '-DCMAKE_BUILD_TYPE=Release',
+        run(['cmake', '-S', bssl, '-B', BUILD / 'native-bssl', '-DCMAKE_BUILD_TYPE=Release',
              '-DBUILD_TESTING=OFF', '-DOPENSSL_NO_ASM=ON', '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'], log)
-        run(['cmake', '--build', BUILD / 'bssl', '--target', 'ssl', 'crypto', '-j', '4'], log)
-        run(['cmake', '-S', paths['lsquic'], '-B', BUILD / 'lsquic', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+        run(['cmake', '--build', BUILD / 'native-bssl', '--target', 'ssl', 'crypto', '-j', '4'], log)
+        run(['cmake', '-S', paths['lsquic'], '-B', BUILD / 'native-lsquic', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
              '-DCMAKE_BUILD_TYPE=Release', '-DLSQUIC_BIN=OFF', '-DLSQUIC_TESTS=OFF', '-DLSQUIC_SHARED_LIB=OFF',
              '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', f'-DBORINGSSL_INCLUDE={bssl / "include"}',
-             f'-DBORINGSSL_LIB_ssl={BUILD / "bssl/libssl.a"}', f'-DBORINGSSL_LIB_crypto={BUILD / "bssl/libcrypto.a"}'], log)
-        run(['cmake', '--build', BUILD / 'lsquic', '-j', '4'], log)
+             f'-DBORINGSSL_LIB_ssl={BUILD / "native-bssl/libssl.a"}', f'-DBORINGSSL_LIB_crypto={BUILD / "native-bssl/libcrypto.a"}'], log)
+        run(['cmake', '--build', BUILD / 'native-lsquic', '-j', '4'], log)
         # The bridge contains transport/TLS field extraction only; identity/framing policy is independently native.
         for name in ('cert_fields', 'transport_bridge'):
             run(['clang', '-fPIC', '-O2', '-Wall', '-Wextra', '-Werror', f'-I{bssl / "include"}',
                  f'-I{paths["lsquic"] / "include"}', '-c', native / f'{name}.c', '-o', BUILD / f'{name}.o'], log)
         run(['clang++', '-dynamiclib' if system == 'Darwin' else '-shared', BUILD / 'cert_fields.o',
-             BUILD / 'transport_bridge.o', BUILD / 'lsquic/src/liblsquic/liblsquic.a',
-             BUILD / 'bssl/libssl.a', BUILD / 'bssl/libcrypto.a', '-lz', '-o', library], log)
+             BUILD / 'transport_bridge.o', BUILD / 'native-lsquic/src/liblsquic/liblsquic.a',
+             BUILD / 'native-bssl/libssl.a', BUILD / 'native-bssl/libcrypto.a', '-lz', '-o', library], log)
         run(['nim', 'c', '--mm:arc', '--cc:clang', '--clang.linkerexe:clang++', '--skipParentCfg', '--skipUserCfg',
-             '-d:BORINGSSL_USE_ASM=false', '-d:chronicles_log_level=WARN', f'--nimcache:{BUILD / "nimcache"}',
-             f'--out:{BUILD / "nim-peer"}', *[f'--path:{p}' for p in paths.values()], ROOT / 'nim/quic/peer.nim'], log)
+             f'--passL:{library}', f'--nimcache:{BUILD / "nim-adapter-cache"}',
+             f'--out:{BUILD / "nim-peer"}', ROOT / 'nim/quic/peer.nim'], log)
         linker = []
         # Odin needs the active Xcode SDK on macOS; Linux uses the installed system linker.
         if system == 'Darwin':
@@ -327,6 +243,7 @@ def main():
         build_peers(dependencies(args.fetch))
     run([BUILD / 'nim-peer', '--selftest'])
     run([BUILD / 'odin-peer', '--selftest'])
+    run([BUILD / 'nim-peer', '--io-selftest'])
     run([BUILD / 'odin-peer', '--io-selftest'])
     folder = fixtures()
     scenarios = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',
