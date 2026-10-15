@@ -1,12 +1,12 @@
 # Optional blobs, work outputs and preimage extrinsics
 
-Normative basis: Gray Paper **v0.7.1**, commit
-`1c979cb59bb800f92ffff083a2701004dfc6cd33`, Appendix **C.1.3**
+Normative basis: Gray Paper **v0.8.0**, commit
+`07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix **C.1.3**
 (discriminators) and **C.2** (block serialization), specifically `maybe`,
 `encodepreimages` and the work-output operator `O` in
-[text/serialization.tex](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/serialization.tex).
+[text/serialization.tex](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/serialization.tex).
 Official fixtures retain vector commit
-`1dc503af37ae8ecc7b6e24a393f6102801c0c80c`; hashes are in `pins.json`.
+`d3c089c9a1d5352ad353626d7a2db8589f137b2a`; hashes are in `pins.json`.
 
 ## Wire formats
 

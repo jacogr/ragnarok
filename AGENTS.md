@@ -7,7 +7,7 @@ implementation. The existing codec, crypto and networking foundation is not a pr
 
 ## Source of truth
 1. Version-pinned JAM Gray Paper and its normative definitions.
-2. Official JAM conformance vectors at the recorded upstream revision.
+2. Published JAM conformance vectors at the recorded upstream revision (`davxy/jam-test-vectors`).
 3. Pinned JAMNP-S networking specification.
 4. Other implementations are cross-checks, never replacements for the specification.
 
@@ -27,10 +27,12 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   are allowed for maintained cryptographic primitives, LSQUIC/TLS and OS interfaces.
 - Keep dependency sources pristine and pinned. No compiler/private-runtime hooks or upstream
   patches to bypass unsupported configurations. Explain any dependency/toolchain upgrade.
-- Preserve the historical original IETF Bandersnatch suite required by GP v0.7.1; newer ark-vrf
-  profiles are not substitutes. Keep Rust behind the maintained primitive ABI, locked builds,
-  source/SRS hash checks and native ring/domain policy. Never enable unsafe deterministic/non-ZK
-  test-vector features in the adapter build. Passing vectors does not establish an audit.
+- Use pinned ark-vrf 0.2.2, the draft-29 release-designated IETF Bandersnatch reference. Preserve
+  its nonce separation and 96/784-byte contracts. Record the draft-text 16-byte versus reference
+  32-byte challenge discrepancy; never substitute newer suite profiles or invent proof padding.
+  Keep Rust behind the maintained primitive ABI, locked builds, source/SRS hash checks and native
+  ring/domain policy. Never enable unsafe deterministic/non-ZK test-vector features in the adapter
+  build. Passing vectors does not establish an audit.
 - Validate all untrusted sizes, offsets, counts, conversions and arithmetic before access or allocation.
   Malformed input returns typed failure rather than crashing or silently truncating.
 - Use tagged results. Failed/default alternatives carry only their reason, never values or progress.

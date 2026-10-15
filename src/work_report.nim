@@ -1,4 +1,4 @@
-## GP v0.7.1 C.1/C.2 bounded complete work-report codec; see spec/work-report.md.
+## GP v0.8.0 C.1/C.2 bounded complete work-report codec; see spec/work-report.md.
 import ./[natural, fixed_unsigned, bounded, composite, work_digest]
 
 type
@@ -21,6 +21,12 @@ type
   AuthorizerHash* = ReportHash[6]
   # Serialized auditable-bundle byte count uses E4.
   BundleLength* = distinct uint32
+  # Total erasure shards identify the assuring validator-set cardinality, encoded as E2.
+  ErasureShards* = distinct uint16
+  # Anchor timeslot uses E4 and cannot be substituted for the lookup timeslot.
+  AnchorSlot* = distinct uint32
+  # Lookup-anchor posterior state has its own nominal role.
+  LookupStateRoot* = ReportHash[7]
   # Exported segment count uses E2.
   SegmentCount* = distinct uint16
   # Historical lookup timeslot uses E4.
@@ -32,13 +38,16 @@ type
     packageHash*: PackageHash
     bundleLength*: BundleLength
     erasureRoot*: ErasureRoot
+    erasureShards*: ErasureShards
     segmentRoot*: SegmentRoot
     segmentCount*: SegmentCount
     anchor*: BlockHash
+    anchorSlot*: AnchorSlot
     stateRoot*: StateRoot
     accumulationRoot*: AccumulationRoot
     lookupAnchor*: BlockHash
     lookupSlot*: LookupSlot
+    lookupStateRoot*: LookupStateRoot
   # Dictionary entries own their package key and associated segment commitment.
   SegmentLookup* = object
     packageHash*: PackageHash
@@ -75,60 +84,82 @@ type
       # Missing fixed bytes expose only their reason.
       discard
 
+# Validate GP 0.8.0 valcount independently of state-dependent active-set equality.
+proc validErasureShards(value: ErasureShards): bool {.raises: [].} =
+  uint16(value) >= 6 and uint16(value) <= 1023 and uint16(value) mod 3 == 0
+
 # Decode all fixed availability/context fields before exposing any owned nominal values.
 proc decodeReportHeader*(input: openArray[byte]): ReportHeaderResult {.raises: [].} =
-  # Prove every fixed field extent before indexing or narrowing.
-  if input.len < 234: return ReportHeaderResult(error: CompositeError.Truncated)
+  # Prove the complete 0.8.0 fixed prefix before reading any new or retained field.
+  if input.len < 272: return ReportHeaderResult(error: CompositeError.Truncated)
   var value: ReportHeader
-  # Copy the complete packageHash into its owned nominal domain.
+  # Copy packageHash identity bytes into their owned nominal field.
   for i in 0..<32: value.packageHash.bytes[i] = input[0+i]
   value.bundleLength = BundleLength(decodeFixed(input.toOpenArray(32, 35), ByteWidth(4)).value)
-  # Copy the complete erasureRoot into its owned nominal domain.
+  # Copy erasureRoot identity bytes into their owned nominal field.
   for i in 0..<32: value.erasureRoot.bytes[i] = input[36+i]
-  # Copy the complete segmentRoot into its owned nominal domain.
-  for i in 0..<32: value.segmentRoot.bytes[i] = input[68+i]
-  value.segmentCount = SegmentCount(decodeFixed(input.toOpenArray(100, 101), ByteWidth(2)).value)
-  # Copy the complete anchor into its owned nominal domain.
-  for i in 0..<32: value.anchor.bytes[i] = input[102+i]
-  # Copy the complete stateRoot into its owned nominal domain.
-  for i in 0..<32: value.stateRoot.bytes[i] = input[134+i]
-  # Copy the complete accumulationRoot into its owned nominal domain.
-  for i in 0..<32: value.accumulationRoot.bytes[i] = input[166+i]
-  # Copy the complete lookupAnchor into its owned nominal domain.
-  for i in 0..<32: value.lookupAnchor.bytes[i] = input[198+i]
-  value.lookupSlot = LookupSlot(decodeFixed(input.toOpenArray(230, 233), ByteWidth(4)).value)
+  value.erasureShards = ErasureShards(decodeFixed(input.toOpenArray(68, 69), ByteWidth(2)).value)
+  # Copy segmentRoot identity bytes into their owned nominal field.
+  for i in 0..<32: value.segmentRoot.bytes[i] = input[70+i]
+  value.segmentCount = SegmentCount(decodeFixed(input.toOpenArray(102, 103), ByteWidth(2)).value)
+  # Copy anchor identity bytes into their owned nominal field.
+  for i in 0..<32: value.anchor.bytes[i] = input[104+i]
+  value.anchorSlot = AnchorSlot(decodeFixed(input.toOpenArray(136, 139), ByteWidth(4)).value)
+  # Copy stateRoot identity bytes into their owned nominal field.
+  for i in 0..<32: value.stateRoot.bytes[i] = input[140+i]
+  # Copy accumulationRoot identity bytes into their owned nominal field.
+  for i in 0..<32: value.accumulationRoot.bytes[i] = input[172+i]
+  # Copy lookupAnchor identity bytes into their owned nominal field.
+  for i in 0..<32: value.lookupAnchor.bytes[i] = input[204+i]
+  value.lookupSlot = LookupSlot(decodeFixed(input.toOpenArray(236, 239), ByteWidth(4)).value)
+  # Copy lookupStateRoot identity bytes into their owned nominal field.
+  for i in 0..<32: value.lookupStateRoot.bytes[i] = input[240+i]
+  # Only a protocol-supported validator-set cardinality can describe erasure shards.
+  if not validErasureShards(value.erasureShards):
+    return ReportHeaderResult(error: CompositeError.LimitExceeded)
   ReportHeaderResult(error: CompositeError.None, value: value)
 
 # Emit a fixed header value snapshot atomically, without retaining caller references.
 proc encodeReportHeader*(source: ReportHeader, output: var openArray[
     byte]): CompositeWrite {.raises: [].} =
   let value = source
+  # Reject an invalid shard domain before capacity checks or destination mutation.
+  if not validErasureShards(value.erasureShards):
+    return CompositeWrite(error: CompositeError.LimitExceeded)
   # Whole-header capacity is required before writing the first hash byte.
-  if output.len < 234: return CompositeWrite(error: CompositeError.OutputTooSmall)
-  # Preserve packageHash identity order without reversal or implicit hashing.
+  if output.len < 272: return CompositeWrite(error: CompositeError.OutputTooSmall)
+  # Preserve the supplied packageHash identity without reversal or hashing.
   for i in 0..<32: output[0+i] = value.packageHash.bytes[i]
   let bundleLength = encodeFixed(FixedUnsigned(value.bundleLength), ByteWidth(4))
-  # The nominal width proves each byte belongs to the preflighted fixed header.
+  # Commit the preflighted fixed-width bundleLength without narrowing caller data.
   for i in 0..<4: output[32+i] = bundleLength.encoded.bytes[i]
-  # Preserve erasureRoot identity order without reversal or implicit hashing.
+  # Preserve the supplied erasureRoot identity without reversal or hashing.
   for i in 0..<32: output[36+i] = value.erasureRoot.bytes[i]
-  # Preserve segmentRoot identity order without reversal or implicit hashing.
-  for i in 0..<32: output[68+i] = value.segmentRoot.bytes[i]
+  let erasureShards = encodeFixed(FixedUnsigned(value.erasureShards), ByteWidth(2))
+  # Commit the preflighted fixed-width erasureShards without narrowing caller data.
+  for i in 0..<2: output[68+i] = erasureShards.encoded.bytes[i]
+  # Preserve the supplied segmentRoot identity without reversal or hashing.
+  for i in 0..<32: output[70+i] = value.segmentRoot.bytes[i]
   let segmentCount = encodeFixed(FixedUnsigned(value.segmentCount), ByteWidth(2))
-  # The nominal width proves each byte belongs to the preflighted fixed header.
-  for i in 0..<2: output[100+i] = segmentCount.encoded.bytes[i]
-  # Preserve anchor identity order without reversal or implicit hashing.
-  for i in 0..<32: output[102+i] = value.anchor.bytes[i]
-  # Preserve stateRoot identity order without reversal or implicit hashing.
-  for i in 0..<32: output[134+i] = value.stateRoot.bytes[i]
-  # Preserve accumulationRoot identity order without reversal or implicit hashing.
-  for i in 0..<32: output[166+i] = value.accumulationRoot.bytes[i]
-  # Preserve lookupAnchor identity order without reversal or implicit hashing.
-  for i in 0..<32: output[198+i] = value.lookupAnchor.bytes[i]
+  # Commit the preflighted fixed-width segmentCount without narrowing caller data.
+  for i in 0..<2: output[102+i] = segmentCount.encoded.bytes[i]
+  # Preserve the supplied anchor identity without reversal or hashing.
+  for i in 0..<32: output[104+i] = value.anchor.bytes[i]
+  let anchorSlot = encodeFixed(FixedUnsigned(value.anchorSlot), ByteWidth(4))
+  # Commit the preflighted fixed-width anchorSlot without narrowing caller data.
+  for i in 0..<4: output[136+i] = anchorSlot.encoded.bytes[i]
+  # Preserve the supplied stateRoot identity without reversal or hashing.
+  for i in 0..<32: output[140+i] = value.stateRoot.bytes[i]
+  # Preserve the supplied accumulationRoot identity without reversal or hashing.
+  for i in 0..<32: output[172+i] = value.accumulationRoot.bytes[i]
+  # Preserve the supplied lookupAnchor identity without reversal or hashing.
+  for i in 0..<32: output[204+i] = value.lookupAnchor.bytes[i]
   let lookupSlot = encodeFixed(FixedUnsigned(value.lookupSlot), ByteWidth(4))
-  # The nominal width proves each byte belongs to the preflighted fixed header.
-  for i in 0..<4: output[230+i] = lookupSlot.encoded.bytes[i]
-  CompositeWrite(error: CompositeError.None, written: 234)
+  # Commit the preflighted fixed-width lookupSlot without narrowing caller data.
+  for i in 0..<4: output[236+i] = lookupSlot.encoded.bytes[i]
+  # Preserve the supplied lookupStateRoot identity without reversal or hashing.
+  for i in 0..<32: output[240+i] = value.lookupStateRoot.bytes[i]
+  CompositeWrite(error: CompositeError.None, written: 272)
 
 # Compare package hash bytes lexicographically; equality is not strict order and therefore rejects duplicates.
 proc reportHashLess(a, b: PackageHash): bool {.raises: [].} =
@@ -143,8 +174,11 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
   let header = decodeReportHeader(input)
   # A missing fixed header cannot construct a report with invented default fields.
   if header.error != CompositeError.None: return ReportResult(error: header.error)
+  # A chain profile cannot have more assurers than three times its configured core ceiling.
+  if uint64(header.value.erasureShards) div 3 > coreCount:
+    return ReportResult(error: CompositeError.LimitExceeded)
   var value = WorkReport(header: header.value)
-  var cursor = 234
+  var cursor = 272
   # Read a canonical natural into private parser state, never into a caller-visible partial report.
   template readNumber(target: untyped) =
     block:
@@ -223,6 +257,10 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
 
 proc measureReportBorrowed*(value: WorkReport, poolSize: int,
     coreCount: uint64): CompositeWrite {.raises: [].} =
+  # Header-domain checks precede all size measurement and preserve encoder atomicity.
+  if not validErasureShards(value.header.erasureShards) or
+      uint64(value.header.erasureShards) div 3 > coreCount:
+    return CompositeWrite(error: CompositeError.LimitExceeded)
   # Signed public counts must fit bounded metadata before any array indexing or multiplication.
   if value.prerequisiteCount < 0 or value.prerequisiteCount > 8 or value.lookupCount < 0 or
       value.lookupCount > 8 or value.lookupCount > 8-value.prerequisiteCount or value.digestCount <
@@ -243,7 +281,7 @@ proc measureReportBorrowed*(value: WorkReport, poolSize: int,
   for i in 1..<value.lookupCount:
     if not reportHashLess(value.lookup[i-1].packageHash, value.lookup[i].packageHash):
       return CompositeWrite(error: CompositeError.NonCanonical)
-  var required = 234 + natural.encode(JamNatural(value.prerequisiteCount)).len +
+  var required = 272 + natural.encode(JamNatural(value.prerequisiteCount)).len +
       32*value.prerequisiteCount + natural.encode(JamNatural(value.core)).len + 32 + natural.encode(
       JamNatural(value.authGas)).len + natural.encode(JamNatural(total)).len + total +
       natural.encode(JamNatural(value.lookupCount)).len + 64*value.lookupCount + natural.encode(
@@ -288,8 +326,8 @@ proc encodeReportBorrowed*(source: WorkReport, pool: openArray[byte], coreCount:
     let b = cast[uint](addr output[0])
     if (a <= b and b-a < uint(pool.len)) or (b < a and a-b < uint(required)):
       return CompositeWrite(error: CompositeError.AliasedBuffers)
-  discard encodeReportHeader(value.header, output.toOpenArray(0, 233))
-  var cursor = 234
+  discard encodeReportHeader(value.header, output.toOpenArray(0, 271))
+  var cursor = 272
   reportPutNatural(uint64(value.prerequisiteCount), output, cursor)
   # Commit ordered prerequisite hashes without mutating caller metadata.
   for i in 0..<value.prerequisiteCount:

@@ -9,6 +9,9 @@ def main():
     folder = ROOT/'build/report/types'
     cases = [
         ('root', ROOT/'tests/native/compile_fail/swapped_report_root.nim', ('PackageHash', 'SegmentRoot')),
+        ('slot', ROOT/'tests/native/compile_fail/swapped_report_slot.nim', ('AnchorSlot', 'LookupSlot')),
+        ('lookup-state', ROOT/'tests/native/compile_fail/swapped_lookup_state.nim', ('LookupStateRoot', 'StateRoot')),
+        ('shards', ROOT/'tests/native/compile_fail/raw_erasure_shards.nim', ('ErasureShards', 'uint16')),
     ]
     records = reject_types(cases, folder)
     (folder/'results.json').write_text(json.dumps(records, indent=2)+'\n')

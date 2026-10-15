@@ -12,11 +12,11 @@ python3 tools/setup_submodules.py
 | `vendor/lsquic` | QUIC transport, including its recorded QPACK/HPACK children |
 | `vendor/boringssl` | TLS, Blake2b-256 and Ed25519 |
 | `vendor/xkcp` | Legacy Keccak-256 and its recorded build-tool sources |
-| `vendor/ark-vrf` | Historical Bandersnatch Rust backend |
+| `vendor/ark-vrf` | Draft-29 release-reference ark-vrf 0.2.2 backend |
 | `vendor/bandersnatch-vrf-spec` | Published historical suite vectors and SRS |
 | `vendor/graypaper` | Pinned Gray Paper specification |
 | `vendor/jam-np` | JAMNP-S networking specification |
-| `vendor/jamtestvectors` | Official codec and Safrole fixtures |
+| `vendor/jamtestvectors` | Published davxy/jam-test-vectors v0.8.0 codec and Safrole fixtures |
 | `vendor/wycheproof` | Independent adversarial Ed25519 corpus and license |
 
 Setup checks recorded gitlinks and refuses local upstream edits or unexpected revisions. It does

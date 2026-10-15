@@ -1,24 +1,28 @@
-# Bandersnatch: pinned historical JAM profile
+# Bandersnatch: GP 0.8.0 release-reference profile
 
-Baseline: Gray Paper v0.7.1,
-`1c979cb59bb800f92ffff083a2701004dfc6cd33`,
-[Bandersnatch appendix](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/bandersnatch.tex)
-and [Safrole tickets](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/safrole.tex#L281).
+Target: Gray Paper v0.8.0, release-designated ark-vrf 0.2.2 (draft-text discrepancy documented below),
+`07f041dabd073f9018b418e9ee72e79dd2185401`,
+[Bandersnatch appendix](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/bandersnatch.tex)
+and [Safrole tickets](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/safrole.tex).
 [All pins](bandersnatch-pins.json) include Rust, Nim, source-tree hashes,
 Cargo.lock hash, SRS hash, published vectors and original/reduced JAM fixture
 hashes. Sources and dependencies build without local patches.
 
 ## Suite choice is a compatibility requirement
 
-The contemporaneous
-[specification](https://github.com/davxy/bandersnatch-vrf-spec/blob/38cf32d33d9d860feccd1f56b3bf6633c05669b0/specification.md)
-uses `Bandersnatch_SHA-512_ELL2`, SHA-512, Elligator2, a 32-byte challenge,
-canonical compressed prime-subgroup points and canonical little-endian scalars.
-Its IETF proof bundle is output(32) || challenge(32) || response(32).
-The corresponding pristine
-[ark-vrf revision](https://github.com/davxy/ark-vrf/tree/29e53a0e642b1ccf95bdf881df5b0eaf3bbb8d04)
-identifies itself as 0.1.0. It is selected as a historical research backend for
-this pinned protocol, not as a recommendation to deploy old code.
+The [draft-29 release](https://github.com/davxy/bandersnatch-vrf-spec/releases/tag/draft-29)
+explicitly designates **ark-vrf 0.2.2** as its reference implementation. We pin its pristine
+[release revision](https://github.com/davxy/ark-vrf/tree/1ebde144e68f17344e51c2d5ce8db217425ba0f3)
+and [draft-29 specification/vector revision](https://github.com/davxy/bandersnatch-vrf-spec/tree/bce69d059124a2bec80898912413ffef1c4e4570).
+This implementation uses `Bandersnatch_SHA-512_ELL2`, SHA-512, Elligator2, a 32-byte challenge,
+canonical compressed prime-subgroup points and canonical little-endian scalars. Its IETF proof
+bundle is output(32) || challenge(32) || response(32), matching GP's 96-byte signature contract.
+
+Version 0.2.2 binds additional data into ordinary nonce generation and cross-binds both secrets
+in Pedersen nonce generation. The adapter now uses the public scalar accessor; no upstream source
+is patched. A Rust regression signs one VRF input under different additional data and requires
+different recovered test-key nonces. The previous backend would reuse them. Published draft-29
+ordinary signatures are reproduced byte-for-byte, and RingVRF/JAM 0.8.0 tickets verify.
 
 The initially surveyed ark-vrf 0.6.0 is incompatible with this scheme. Its
 `bandersnatch_v1` preserves the much newer 0.5.3 profile, not this original IETF
@@ -78,10 +82,9 @@ ordinary verification, identity ring members and identity ring outputs. These
 are explicit research-profile guards around the historical backend, not a
 complete audit or an assertion that the Gray Paper has resolved every exceptional
 encoding/point rule. The guard does not substitute a valid identity point with
-padding. Further audit/side-channel/canonicality review of this old backend and
-its dependency closure remains an M2 gate. Migrating safely to a maintained
-backend preserving this exact historical scheme is also open; no upstream
-source patches or new project cryptographic algorithm are introduced.
+padding. Further audit/side-channel/canonicality review of this pinned backend and
+its dependency closure remains an M2 gate. The release-reference migration preserves the existing wire scheme and introduces no upstream
+source patches or project-owned cryptographic algorithm.
 
 The published specification vectors share authors/provenance with the backend
 and are not independent algorithm validation. Independent pinned official JAM
@@ -89,3 +92,17 @@ Safrole fixtures add external evidence for roots, ticket verification/output and
 invalid-member padding, but do not exercise all client sealing domains or prove
 full state-transition conformance. This remains a research integration, not a
 production consensus backend selection.
+
+## Remaining draft-text discrepancy
+
+Draft 29 section 2.1 says `cLen = 16`, whereas its explicitly designated ark-vrf 0.2.2 reference
+uses 32. The latter matches GP's 96-byte signature width, published draft-29 signature vectors
+and published JAM 0.8.0 ticket verification. The draft's Appendix B also retains a stale-vector
+warning, even though the checked ordinary vectors reproduce the release reference exactly.
+
+We implement and test the explicit release-reference profile, including nonce updates. No
+challenge padding, incompatible 80-byte signature or private compiler/dependency patch is added.
+Exact agreement with the draft's literal 16-byte challenge statement remains blocked pending an
+upstream clarification; `bandersnatch-pins.json` records both values, and `test_spec.py` reports one
+focused pending text-consistency check. This discrepancy does not justify retaining the old nonce
+implementation or claiming a full protocol/security audit. See [the migration audit](graypaper-0.8.0.md).

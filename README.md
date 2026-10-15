@@ -4,6 +4,11 @@ Ragnarök is a joint effort between the maintainer and AI coding agents, and we 
 The maintainer sets direction, steers each increment and owns decisions; AI agents help research,
 implement, test and document the work. We make that collaboration explicit.
 
+Protocol target: **Gray Paper 0.8.0**. The implemented report codec and validator-set domains
+and the release-designated ark-vrf 0.2.2 reference are migrated. Exact Bandersnatch draft-text
+parity remains gated by its 16-byte versus reference 32-byte challenge discrepancy.
+See the [migration audit](spec/graypaper-0.8.0.md) for coverage, fixture provenance and open gates.
+
 An independent **Nim** implementation of the Join-Accumulate Machine (JAM), built against pinned
 Gray Paper and JAMNP-S specifications. Language selection is complete; its sources, comparisons
 and observations are preserved in the
@@ -42,7 +47,7 @@ packages. Generated builds, temporary keys, observations and logs stay under ign
 | --- | --- |
 | `src/` | Nim codecs and owned snapshots |
 | `src/crypto/` | Blake2b-256, Ed25519, Keccak-256 and signing contexts |
-| `src/bandersnatch/` | Typed historical IETF VRF/RingVRF adapter and domain policy |
+| `src/bandersnatch/` | Typed release-reference IETF VRF/RingVRF adapter and domain policy |
 | `src/quic/` | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload |
 | `tests/` | Independent references and verification runners |
 | `tests/native/` | Nim drivers, selftests and intentional compile-failure fixtures |

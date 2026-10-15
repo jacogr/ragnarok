@@ -1,6 +1,6 @@
 # Assurance signing context
 
-Pinned GP v0.7.1 `1c979cb59bb800f92ffff083a2701004dfc6cd33`,
+Pinned GP v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `reporting_assurance.tex` equation `assurancesig`, anchors/order preceding it, and Appendix C.1/C.2.
 The existing source SHA pins in `spec/pins.json` cover these definitions.
 
@@ -19,7 +19,8 @@ pointer, allocates protocol storage or owns keys. Their success-only payloads ar
 message and verified record count respectively; defaults/failures contain only their reason.
 The count certifies this stateless context check, not successful state transition or availability.
 
-The verifier checks in this precedence: valid configuration; exact key-set length matching the
+The verifier checks in this precedence: valid configuration (2..341 cores, 6..3*cores validators in multiples of three);
+exact key-set length matching the
 configured validator count; count ceiling; each record's validator bounds, strict order, canonical
 bitfield padding and expected parent equality, in record order; then each signature in order.
 All structural/context checks finish before any signature verification. Empty records succeed

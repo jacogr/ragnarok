@@ -1,4 +1,4 @@
-## GP v0.7.1 C.2 assurances: allocation-free owned records and atomic caller-buffer operations.
+## GP v0.8.0 C.2 assurances: allocation-free owned records and atomic caller-buffer operations.
 import ./natural
 
 type
@@ -47,8 +47,10 @@ type
       discard
 
 # Validate configuration in its unsigned domain before any conversion or byte access.
-proc validConfig(config: AssuranceConfig): bool {.raises: [].} =
-  uint64(config.cores) in 1'u64..341'u64 and uint64(config.validators) in 1'u64..1023'u64
+proc validConfig*(config: AssuranceConfig): bool {.raises: [].} =
+  uint64(config.cores) in 2'u64..341'u64 and
+    uint64(config.validators) >= 6 and uint64(config.validators) <= 3*uint64(config.cores) and
+    uint64(config.validators) mod 3 == 0
 
 # Compare address distances, avoiding overflowing address-end sums and empty-span pointer access.
 proc overlaps(a: pointer, aLen: int, b: pointer, bLen: int): bool {.raises: [].} =

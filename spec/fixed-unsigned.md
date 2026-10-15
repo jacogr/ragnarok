@@ -2,9 +2,9 @@
 
 ## Normative definition and scope
 
-This increment implements Gray Paper **v0.7.1**, commit
-`1c979cb59bb800f92ffff083a2701004dfc6cd33`, Appendix **C.1.7**, Fixed-length
-Integer Encoding. [Pinned source](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/serialization.tex).
+This increment implements Gray Paper **v0.8.0**, commit
+`07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix **C.1.7**, Fixed-length
+Integer Encoding. [Pinned source](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/serialization.tex).
 The revision and official vector snapshot remain those in [pins.json](pins.json).
 
 For a requested width l, the normative encoder maps integers

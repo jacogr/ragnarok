@@ -1,4 +1,4 @@
-"""Independent GP v0.7.1 assurances encoding, semantic oracle and deterministic verification corpus."""
+"""Independent GP v0.8.0 assurances encoding, semantic oracle and deterministic verification corpus."""
 import hashlib
 import json
 import random
@@ -27,7 +27,7 @@ def wire(records, cores):
 
 # Reject invalid caller configuration before reading attacker-controlled prefixes.
 def config_error(cores, validators):
-    return 'invalidconfig' if not 1 <= cores <= 341 or not 1 <= validators <= 1023 else None
+    return 'invalidconfig' if not 2 <= cores <= 341 or not 6 <= validators <= 3*cores or validators % 3 else None
 
 
 # Check semantic order/index and all serialized/unused bitset storage without mutating any destination.
@@ -151,8 +151,8 @@ def requests():
         add_decode(cores,validators,len(records),data)
         add_encode(cores,validators,len(data),records)
     # All meaningful width boundaries include one-byte, aligned and partial final-octet shapes.
-    for cores in (1,2,7,8,9,15,16,17,255,256,257,340,341):
-        validators=1023 if cores>2 else 6
+    for cores in (2,7,8,9,15,16,17,255,256,257,340,341):
+        validators=3*cores
         # Include empty, singleton and later-record failure opportunities for every width.
         for count in (0,1,2,5):
             records=[record(i,cores,i) for i in range(count)]
@@ -193,6 +193,12 @@ def requests():
             add_encode(cores,validators,150000,records)
         records=[record(1,cores),record(1,cores,9)]
         add_decode(cores,validators,2,wire(records,cores));add_encode(cores,validators,150000,records)
+    # Smaller active validator sets leave the fixed full-chain core bitfield unchanged.
+    for validators in (6,9,1020):
+        records=[record(i,341,i) for i in range(validators)]
+        data=wire(records,341)
+        add_decode(341,validators,validators,data)
+        add_encode(341,validators,len(data),records)
     # Exercise every validator index and protocol count boundary without a guessed smaller utility limit.
     for cores,validators in profiles:
         records=[record(i,cores,i) for i in range(validators)]
@@ -207,7 +213,7 @@ def requests():
         for prefix in (b'',b'\x80\x00',b'\xff'+bytes(7),b'\xff'+bytes(8)):
             add_decode(cores,validators,0,prefix)
     # Configuration is deliberately tested before malformed counts, for both empty and nonempty source arrays.
-    for cores,validators in ((0,6),(342,6),(2,0),(2,1024),(2**64-1,6),(2,2**64-1)):
+    for cores,validators in ((0,6),(1,6),(342,6),(2,0),(2,3),(2,5),(2,7),(2,9),(341,1022),(2,1024),(2**64-1,6),(2,2**64-1)):
         add_decode(cores,validators,0,b'\x80\x00');add_encode(cores,validators,0,[])
     rng=random.Random(0x415353555245)
     # Deterministic mutations exercise structured inputs without peer-generated expectations.

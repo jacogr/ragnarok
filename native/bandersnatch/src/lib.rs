@@ -1,4 +1,4 @@
-//! Synchronous maintained primitive ABI for the historical JAM v0.7.1 research profile.
+//! Synchronous maintained primitive ABI for the GP 0.8.0 release-designated ark-vrf 0.2.2 profile.
 //! No protocol domain/codec logic or dependency source patches. All outputs commit only on success.
 use ark_vrf::{
     reexports::ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn bs_key_new(data: *const u8, len: usize, out: *mut *mut 
         }
         let secret: bs::Secret = decode(unsafe { bytes(data, len)? })?;
         // Explicit zero-scalar rejection prevents an identity signing key in this research owner API.
-        if secret.scalar == bs::ScalarField::from(0u64) {
+        if *secret.scalar() == bs::ScalarField::from(0u64) {
             return Err(2);
         }
         unsafe {
@@ -347,6 +347,23 @@ pub unsafe extern "C" fn bs_padding(out: *mut u8) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Additional data must change the nonce even when secret and VRF input are unchanged.
+    #[test]
+    fn additional_data_separates_nonces() {
+        use ark_vrf::ietf::Prover;
+        let secret = bs::Secret::from_scalar(bs::ScalarField::from(7u64));
+        let input = bs::Input::new(b"ragnarok-nonce-regression").unwrap();
+        let output = secret.output(input);
+        let first = secret.prove(input, output, b"first-additional-data");
+        let second = secret.prove(input, output, b"second-additional-data");
+        // Recover only these public test-key nonces algebraically; the old backend reused them.
+        let first_nonce = first.s - first.c * secret.scalar();
+        let second_nonce = second.s - second.c * secret.scalar();
+        assert_ne!(first_nonce, second_nonce);
+        // Proofs still expose the same VRF output, with the GP's fixed wire width.
+        assert_eq!(output.compressed_size() + first.compressed_size(), 96);
+    }
+
     /// A deliberately panicking primitive path must become an ABI reason, never unwind across C.
     #[test]
     fn catches_unwind() {

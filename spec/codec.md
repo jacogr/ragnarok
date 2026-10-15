@@ -2,20 +2,21 @@
 
 ## Normative references
 
-- Gray Paper **v0.7.1**, commit
-  `1c979cb59bb800f92ffff083a2701004dfc6cd33`:
-  [Appendix C source](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/serialization.tex).
+- Gray Paper **v0.8.0**, commit
+  `07f041dabd073f9018b418e9ee72e79dd2185401`:
+  [Appendix C source](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/serialization.tex).
   C.1.1 (Trivial Encodings, general natural-number definition),
   C.1.3 (Discriminator Encoding), C.1.7 (Fixed-length Integer Encoding),
   and C.2 (Block Serialization, ticket/preimage extrinsics).
-- [Official vectors](https://github.com/w3f/jamtestvectors/tree/1dc503af37ae8ecc7b6e24a393f6102801c0c80c/codec),
-  commit `1dc503af37ae8ecc7b6e24a393f6102801c0c80c`, advertised protocol 0.7.1.
+- [Official vectors](https://github.com/davxy/jam-test-vectors/tree/d3c089c9a1d5352ad353626d7a2db8589f137b2a/codec),
+  commit `d3c089c9a1d5352ad353626d7a2db8589f137b2a`, release v0.8.0.
 - Machine-readable revisions, compiler versions and fixture SHA-256 digests:
   [pins.json](pins.json).
 
-The current Gray Paper master was 0.8.0 when inspected. Version 0.7.1 was
-selected to match the official vector suite. Upgrading is a separate change;
-this baseline does not claim conformance to newer protocol versions.
+The normative target and published vector release are both 0.8.0. The vector gitlink now points
+to `davxy/jam-test-vectors` at its v0.8.0 tag rather than the older W3F snapshot. Unchanged
+primitive, digest and assurance bytes retain their previous content hashes; complete reports
+use the published new layout. See [the migration audit](graypaper-0.8.0.md) for scope and gates.
 
 ## Implemented behavior
 

@@ -86,6 +86,19 @@ def verify_composition(binary, folder, values):
         changed = bytearray(value['wire']); changed[0] ^= 1
         assert not check(binary,value,folder,wire=bytes(changed))
         count += 1
+        # Every newly serialized 0.8.0 field is bound by the guarantee signature.
+        for field in ('shards','anchor-slot','lookup-state'):
+            changed = bytearray(value['wire'])
+            # A different valid shard count preserves structure, isolating signed-message binding.
+            if field == 'shards':
+                shards = int.from_bytes(changed[68:70],'little')
+                changed[68:70] = (9 if shards == 6 else 6).to_bytes(2,'little')
+            elif field == 'anchor-slot':
+                changed[136] ^= 1 # Mutate one byte of the new E4 anchor timeslot.
+            else:
+                changed[240] ^= 1 # Mutate one byte of the new lookup-anchor state root.
+            assert not check(binary,value,folder,wire=bytes(changed))
+            count += 1
         # Swapping distinct credentials' public keys cannot authorize either unchanged signature.
         assert not check(binary,value,folder,[value['wrong_domain'],value['credentials'][1]])
         count += 1

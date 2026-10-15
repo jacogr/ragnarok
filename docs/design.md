@@ -3,6 +3,9 @@
 **Language:** Nim 2.2.12, ARC. **Target:** native Linux. **State:** protocol foundation;
 full JAM execution, state transitions and validator operation remain future work.
 
+Protocol target: Gray Paper 0.8.0; the Bandersnatch draft-text/reference discrepancy remains an explicit
+[parity gate](../spec/graypaper-0.8.0.md).
+
 ## Architecture
 
 Codecs and consensus-facing types live in `src/`. Protocol logic remains native Nim. Private,
@@ -10,7 +13,7 @@ acyclic ARC owners retain immutable wire snapshots; borrowed paths use explicit 
 and caller-owned storage. Default/failed tagged results carry no values or progress metadata.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
-provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The historical
+provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
 
 `src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A standard-selector
@@ -25,7 +28,7 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
 - General naturals, fixed unsigned widths, bounded bytes/sequences, optional/work variants,
   preimage extrinsics, work digests, complete reports and assurances.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
-- Blake2b-256, Ed25519, Keccak-256, historical contextual VRF/RingVRF and report/assurance transcripts.
+- Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
   backpressure, cancellation, deadlines, peer-loss/admission recovery and bounded proof offload.
 - Official/vector references, native fuzz/selftests and Linux correctness/lifecycle CI.

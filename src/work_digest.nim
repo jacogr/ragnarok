@@ -1,4 +1,4 @@
-## Full work digest, pinned Gray Paper v0.7.1 C.2 and reporting equation workdigest.
+## Full work digest, pinned Gray Paper v0.8.0 C.2 and reporting equation workdigest.
 import ./[natural, fixed_unsigned, bounded, composite]
 
 type

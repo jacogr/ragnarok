@@ -1,4 +1,4 @@
-## Composite codecs, pinned Gray Paper v0.7.1 C.1.3/C.2. No heap allocation.
+## Composite codecs, pinned Gray Paper v0.8.0 C.1.3/C.2. No heap allocation.
 import ./natural
 import ./fixed_unsigned
 import ./bounded

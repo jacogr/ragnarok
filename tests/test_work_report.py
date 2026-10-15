@@ -49,10 +49,10 @@ def main():
             assert got == wanted, (language, index, lines[index][:350], got[:350], wanted[:350])
         composition_checks = verify_composition(BUILD/language, folder, signed_values)
         report = {'composition_checks':composition_checks,'fixture_provider':provider,'language':language, 'requests':len(lines), 'request_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
-                  'binary_sha256':hashlib.sha256((BUILD/language).read_bytes()).hexdigest(), 'official_profiles':['tiny','full'],
+                  'binary_sha256':hashlib.sha256((BUILD/language).read_bytes()).hexdigest(), 'published_0_8_0_profiles':['tiny','full'],
                   'status':'passed'}
         (BUILD / f'{language}-correctness.json').write_text(json.dumps(report, indent=2)+'\n')
-        print(f'PASS {language}: {len(lines)} complete-report requests, official tiny/full, atomic encoders, owner checks and {composition_checks} independent crypto composition checks', flush=True)
+        print(f'PASS {language}: {len(lines)} complete-report requests, published 0.8.0 tiny/full, atomic encoders, owner checks and {composition_checks} independent crypto composition checks', flush=True)
 
 
 # Importing the build-command helper must never run compilers or conformance tests.

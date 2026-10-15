@@ -89,7 +89,7 @@ def requests():
     for cores in (0,342,2**64-1):
         add_message(cores,bytes(43))
     # Shared ordinary credentials cover real tiny/full profiles and intermediate wire-width edges.
-    for cores,validators in ((2,6),(341,1023),(1,6),(8,6),(9,6),(340,1023)):
+    for cores,validators in ((2,6),(341,1023),(341,6),(8,6),(9,9),(340,1020)):
         bits=record(0,cores,4)[1]
         signed=message(parent,bits,cores)
         pairs=[credential(i,signed) for i in range(3)]
@@ -135,6 +135,6 @@ def requests():
             changed=list(values);value=list(changed[-1]);signature=bytearray(value[3]);signature[position]^=1;value[3]=bytes(signature);changed[-1]=tuple(value)
             add_verify(cores,validators,parent,keys,changed,'invalidsignature')
     # Configuration rejection must precede key-set length and empty-record handling.
-    for cores,validators in ((0,6),(342,6),(2,0),(2,1024),(2**64-1,6),(2,2**64-1)):
+    for cores,validators in ((0,6),(1,6),(342,6),(2,0),(2,3),(2,5),(2,7),(2,9),(341,1022),(2,1024),(2**64-1,6),(2,2**64-1)):
         add_verify(cores,validators,parent,[],[])
     return provider,lines,expected

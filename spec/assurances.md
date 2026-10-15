@@ -1,6 +1,6 @@
 # Assurances extrinsic codec
 
-Normative source: GP v0.7.1 `1c979cb59bb800f92ffff083a2701004dfc6cd33`, Appendix C.1
+Normative source: GP v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix C.1
 (bit sequence, natural and fixed integer encoding), C.2 `encodeassurances`, and reporting/assurance
 `xtassurances`. Exact source/vector/profile hashes are retained in `spec/pins.json`.
 The official vector README defines tiny as 2 cores / 6 validators and full as 341 / 1023.
@@ -13,9 +13,10 @@ Unused high bits in the last serialized bitstring octet must be zero. Native bit
 43 bytes; an encoder also rejects nonzero unused storage octets instead of silently discarding
 caller data. Signatures are nominal byte encodings here, not cryptographic validity claims.
 
-Configuration is explicit: 1..341 cores and 1..1023 validators. Named tiny/full test profiles use
-the pinned parameters above; intermediate widths exercise byte boundaries and future compatible
-parameterization within this implementation's resource envelope. Invalid configuration fails
+Configuration is explicit: 2..341 configured cores; validator counts are multiples of three
+from 6 through three times the configured core count (GP 0.8.0 `valcount`). Named tiny/full test
+profiles use the pinned parameters above; intermediate widths exercise byte boundaries and smaller
+active sets under the configured chain ceiling. The bitfield always retains one bit per configured core; reducing the validator population does not shorten it. Invalid configuration fails
 before input access. No count may exceed the configured validator count.
 
 Encode accepts a stable borrowed array of fully owned fixed-field records and caller byte output.

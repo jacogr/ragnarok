@@ -44,7 +44,7 @@ class ContextOracleTests(unittest.TestCase):
         provider,lines,expected=requests()
         setup=json.loads((ROOT/'vectors/assurance-context.json').read_text())
         self.assertTrue(provider.startswith('OpenSSL'))
-        self.assertEqual(len(lines),2082)
+        self.assertEqual(len(lines),2087)
         self.assertEqual(len(lines),len(expected))
         self.assertEqual(hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest(),setup['request_sha256'])
         self.assertEqual(hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest(),setup['expected_sha256'])

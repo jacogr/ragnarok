@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the pinned historical JAM Bandersnatch Rust ABI and check both native-language adapters."""
+"""Build the pinned GP 0.8.0 release-reference Bandersnatch Rust ABI and check Nim."""
 import argparse
 import concurrent.futures
 import ctypes
@@ -264,7 +264,7 @@ def main():
     # Suites have independent processes/owners, so parallel fixture checks do not race destruction.
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         records=dict(zip(names,pool.map(suite,[BUILD/name for name in names])))
-    summary={'status':'passed','platform':platform.platform(),'suite':PINS['suite'],'suites':records,
+    summary={'reference_version':'0.2.2','draft_text_parity':PINS['parity_gate']['status'],'status':'passed','platform':platform.platform(),'suite':PINS['suite'],'suites':records,
              'generated_proofs':generated_proofs(),'abi_checks':bridge_checks(),'negative_type_probes':3,'source_patches':[]}
     (BUILD/'results.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary,indent=2))
 

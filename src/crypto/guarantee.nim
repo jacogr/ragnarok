@@ -1,4 +1,4 @@
-## GP v0.7.1 guarantorsig composition; callers validate and serialize complete report bytes.
+## GP v0.8.0 guarantorsig composition; callers validate and serialize complete report bytes.
 import ./primitives
 
 type

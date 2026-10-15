@@ -2,11 +2,11 @@
 
 ## Specification and scope
 
-Gray Paper **v0.7.1**, commit
-`1c979cb59bb800f92ffff083a2701004dfc6cd33`, Appendix **C.1.2** (Sequence
+Gray Paper **v0.8.0**, commit
+`07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix **C.1.2** (Sequence
 Encoding) and **C.1.3** (Discriminator Encoding) define concatenated element
 encodings prefixed by the natural count for variable-length terms.
-[Exact source](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/serialization.tex).
+[Exact source](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/serialization.tex).
 Natural counts use C.1.1; scalar elements use C.1.7. All revisions remain those
 in [pins.json](pins.json).
 

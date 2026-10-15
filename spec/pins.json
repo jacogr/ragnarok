@@ -1,15 +1,26 @@
 {
   "graypaper": {
     "repository": "https://github.com/gavofyork/graypaper",
-    "tag": "v0.7.1",
-    "commit": "1c979cb59bb800f92ffff083a2701004dfc6cd33",
-    "serialization_source_sha256": "9ac6108b7a78305568d45f6b91a43356793fe302bb98ebf6d70a974a440f328d",
-    "path": "vendor/graypaper"
+    "tag": "v0.8.0",
+    "commit": "07f041dabd073f9018b418e9ee72e79dd2185401",
+    "serialization_source_sha256": "befa8a5beb65d334fe43e4c1f7302a9918df494175c32a5d6233384a67bb0fbd",
+    "path": "vendor/graypaper",
+    "source_sha256": {
+      "text/serialization.tex": "befa8a5beb65d334fe43e4c1f7302a9918df494175c32a5d6233384a67bb0fbd",
+      "text/reporting_assurance.tex": "b291a5ac4652ea4d72c9b78140f5fe606b89afa20435be132d347e808cdee004",
+      "text/notation.tex": "5a6f602406d66a7b323f6e9b27d57e8284f782cc942deb32671082000127579f",
+      "text/bandersnatch.tex": "2a34a97345aaaeb8140d3569ced7c68f8f7febfb8a8e865c0dc5416732a2bdbc",
+      "text/safrole.tex": "77ed6694157875f0bd03eca612ca4d58f387f75ed06e05eb1e363f18fd61db34",
+      "text/work_packages_and_reports.tex": "ffbfd08f0c8263088ad5527ca34312fd48e1591e4245dd81243a1bc493d593a8",
+      "text/header.tex": "0c9ca82dfbf41dc9dbc567eac9013e36aded5c126c6464cc56589524f3361e18",
+      "text/erasure_coding.tex": "090814a6e755c36792e8831cba8db8b5cec5c05c3dba881b7c868447832c50dc",
+      "biblio.bib": "4102e993b80b941d3274fdfd7fd4b87f5df4d611bec478d8382b76044431c129"
+    }
   },
   "vectors": {
-    "repository": "https://github.com/w3f/jamtestvectors",
-    "commit": "1dc503af37ae8ecc7b6e24a393f6102801c0c80c",
-    "protocol_version": "0.7.1",
+    "repository": "https://github.com/davxy/jam-test-vectors",
+    "commit": "d3c089c9a1d5352ad353626d7a2db8589f137b2a",
+    "protocol_version": "0.8.0",
     "files": {
       "vendor/jamtestvectors/codec/tiny/tickets_extrinsic.bin": "69d59e7ec8933d92a202d7a439b05f5f69ae3c0a4bf00bc08bf68dcaa256bde3",
       "vendor/jamtestvectors/codec/tiny/tickets_extrinsic.json": "dcc62a0579a818c20eed315518a9ad1ead71000baca10deec9099d8daa407db6",
@@ -27,17 +38,19 @@
       "vendor/jamtestvectors/codec/full/work_result_0.bin": "ef9d7dcab1894c799b7c4609982f4f2b4be99980edc9abec783c6d53e7126a4f",
       "vendor/jamtestvectors/codec/full/work_result_1.json": "330a092c215cd403dbebbbbbf05ba64ff9bc8edb9b5d858d69bf2fb90dc4f583",
       "vendor/jamtestvectors/codec/full/work_result_1.bin": "9bab12a66031736bad3bde9abde8a4a62f7b199ef2a9ce93b58eba77cab2b09d",
-      "vendor/jamtestvectors/codec/tiny/work_report.json": "618920faabcb58e508d44497d647e92d552a4e953a4ee981c7dd17359a5d61da",
-      "vendor/jamtestvectors/codec/tiny/work_report.bin": "0103e669e897c8ac902ba8ff2fa41c42a822f4318e2b1e45b87efb00661c3c44",
-      "vendor/jamtestvectors/codec/full/work_report.json": "618920faabcb58e508d44497d647e92d552a4e953a4ee981c7dd17359a5d61da",
-      "vendor/jamtestvectors/codec/full/work_report.bin": "0103e669e897c8ac902ba8ff2fa41c42a822f4318e2b1e45b87efb00661c3c44",
+      "vendor/jamtestvectors/codec/tiny/work_report.json": "96cbe2ab221e97973eb5effcbec28ea2ea02c74a510bfff1cfbc097a1faba47f",
+      "vendor/jamtestvectors/codec/tiny/work_report.bin": "664a85227c6b02292e83b4575d2271fedb96880daad4b95bcd02eef1a28e5d66",
+      "vendor/jamtestvectors/codec/full/work_report.json": "75aa79ea6a253c870f1e3b76a42a9ae80c8ebe4b0a4f38af517d517235de6da6",
+      "vendor/jamtestvectors/codec/full/work_report.bin": "a10253cf6a7c1f4114ec18e9c8971f2f594f024ccb07bd223d80b9865392b2da",
       "vendor/jamtestvectors/codec/tiny/assurances_extrinsic.json": "34a45a2e453d137ef336bb95d1886c9a0548cc63ed4604c47a7f87ece8becdb6",
       "vendor/jamtestvectors/codec/tiny/assurances_extrinsic.bin": "5438827a87cfd20f1eaccd8d20858a69af88df2459172a37e6aa9d9639c506e3",
       "vendor/jamtestvectors/codec/full/assurances_extrinsic.json": "189c654a16270538b753125705e79fadc5d0e342dde367cd6122b0dac587c292",
       "vendor/jamtestvectors/codec/full/assurances_extrinsic.bin": "6c578439dc37fb9f42660e5dedaf94b0d3fd30c22a29f1ee29814b7c0b83dd0d",
-      "vendor/jamtestvectors/README.md": "42cb021ca16318fc4cfffd16093d86ee3e48c69b71eff078c320f48b00c24d5c"
+      "vendor/jamtestvectors/README.md": "bd77d9fe609a54ca2b4d86587050cea55d2a885d7ddb1367b703e8a468da8d1f",
+      "vendor/jamtestvectors/CHANGELOG.md": "b35658b7a1f0b959643f68dea9b059f43633270c9cf545e9f615fb75dcb0568c"
     },
-    "path": "vendor/jamtestvectors"
+    "path": "vendor/jamtestvectors",
+    "tag": "v0.8.0"
   },
   "toolchains": {
     "nim": "2.2.12",

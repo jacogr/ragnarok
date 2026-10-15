@@ -18,7 +18,7 @@
 	url = https://github.com/gavofyork/graypaper.git
 [submodule "vendor/jamtestvectors"]
 	path = vendor/jamtestvectors
-	url = https://github.com/w3f/jamtestvectors.git
+	url = https://github.com/davxy/jam-test-vectors.git
 [submodule "vendor/wycheproof"]
 	path = vendor/wycheproof
 	url = https://github.com/C2SP/wycheproof.git

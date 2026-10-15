@@ -1,4 +1,4 @@
-## JAM fixed-width unsigned integers, Gray Paper v0.7.1 C.1.7.
+## JAM fixed-width unsigned integers, Gray Paper v0.8.0 C.1.7.
 ## See spec/fixed-unsigned.md for domain, error and ownership details.
 type
   # An unsigned wire value, distinct from both ordinary uint64 and general JAM naturals.

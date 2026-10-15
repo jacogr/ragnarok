@@ -46,10 +46,10 @@ class AssurancesOracleTests(unittest.TestCase):
         self.assertEqual(len(official('tiny', 2)), 2)
         self.assertEqual(len(official('full', 341)), 2)
         lines, expected = requests()
-        self.assertEqual(len(lines), 21536)
+        self.assertEqual(len(lines), 20706)
         self.assertEqual(len(lines), len(expected))
         self.assertIn('XE 2 6 ', '\n'.join(lines))
-        self.assertEqual(len(report_requests()[0]), 18198)
+        self.assertEqual(len(report_requests()[0]), 18430)
 
 
 # These tests validate shared infrastructure; they are excluded from native defect metrics.

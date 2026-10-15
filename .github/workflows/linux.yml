@@ -56,6 +56,9 @@ jobs:
           echo "RUSTUP_TOOLCHAIN=1.99.0" >> "$GITHUB_ENV"
           rustup run 1.99.0 rustc --version
 
+      - name: Protocol source and migration provenance
+        run: python3 tests/test_spec.py
+
       - name: Formatting
         run: python3 tools/format.py --check
 

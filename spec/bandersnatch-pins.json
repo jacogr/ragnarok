@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "graypaper_commit": "1c979cb59bb800f92ffff083a2701004dfc6cd33",
+  "graypaper_commit": "07f041dabd073f9018b418e9ee72e79dd2185401",
   "rust": "1.99.0",
   "nim": "2.2.12",
   "suite": "Bandersnatch_SHA-512_ELL2",
@@ -9,15 +9,17 @@
   "sources": {
     "ark-vrf-jam": {
       "repository": "davxy/ark-vrf",
-      "commit": "29e53a0e642b1ccf95bdf881df5b0eaf3bbb8d04",
-      "tree_sha256": "831b2201c0dc533da65c6acf958bbfedc064357d2ebd014ccd6aae2c5415269d",
-      "path": "vendor/ark-vrf"
+      "commit": "1ebde144e68f17344e51c2d5ce8db217425ba0f3",
+      "tree_sha256": "d3cfbd4edc5fef96e67d3b0a936abddfca67a13440ef44061220db3f696c0488",
+      "path": "vendor/ark-vrf",
+      "tag": "v0.2.2"
     },
     "spec-jam": {
       "repository": "davxy/bandersnatch-vrf-spec",
-      "commit": "38cf32d33d9d860feccd1f56b3bf6633c05669b0",
-      "tree_sha256": "9c2bf10c91bd0f77b9b4d87a4430d46df3a78624208dd666ba83be4df30ee525",
-      "path": "vendor/bandersnatch-vrf-spec"
+      "commit": "bce69d059124a2bec80898912413ffef1c4e4570",
+      "tree_sha256": "be73015717a80c3d95177574566e35ec124b37fd8987572b461ad6ab25183c6f",
+      "path": "vendor/bandersnatch-vrf-spec",
+      "tag": "draft-29"
     }
   },
   "cargo_features": [
@@ -27,10 +29,10 @@
     "secret-split"
   ],
   "fixture_files": {
-    "vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_ietf.json": "c9e2f87bde118b4c5edcde479f7285fd07c3bece13fa47d44a346a83d36ac5c8",
-    "vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_ring.json": "40c31ff3340e4ea04b426271c36827b086a71dd57998403772f12042ce10a052",
-    "vectors/official/bandersnatch/jam-tiny.json": "ba1dc86511e8002c317839319b15f8f1395c02777d8e33092fd51b19e0f751df",
-    "vectors/official/bandersnatch/jam-full.json": "bb62bcd509eeca33d026abdccd088f4e8d7fad7f56db95a1866579b3aaae11a4",
+    "vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_ietf.json": "39853518d9e056d8750db50ba74f217f702c510508a8f9510e1015615407d171",
+    "vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_ring.json": "68b330bf23a70c528c3a53acf07daa348705cbeeafc5ce2cd68d340369299acc",
+    "vectors/official/bandersnatch/jam-tiny.json": "c3fabff27a65058209a67b7875ff6b27031b68aabab299e09d8e20fe24da39c3",
+    "vectors/official/bandersnatch/jam-full.json": "a2b0a01e1bd2c61f7c84126f175e62cfe1007aca8cb8e0e767834cdef419a102",
     "vectors/official/bandersnatch/jam-padding.json": "76dacb18d0ca8befff369e5c3e649e23030d09132d574f4ed0ce26daddd429c2"
   },
   "srs": {
@@ -38,19 +40,19 @@
     "sha256": "1d7d27e4f5f3c6190989bea58803180d3e19f725a57069392a405ac78b233c7d",
     "provenance": "Specification public SRS derived from the Zcash Powers of Tau ceremony; 6145 G1 and 2 G2 points; no insecure seed-generated setup."
   },
-  "cargo_lock_sha256": "99b03577ce6152734118b78e5f0af1e49005c728f17f9e95d0ab14be01c2160e",
+  "cargo_lock_sha256": "5deddfc63338641c19f6056ba7450962d569d1773be5e4ff0856479f1abbf173",
   "official_jam": {
-    "repository": "w3f/jamtestvectors",
-    "commit": "1dc503af37ae8ecc7b6e24a393f6102801c0c80c",
+    "repository": "davxy/jam-test-vectors",
+    "commit": "d3c089c9a1d5352ad353626d7a2db8589f137b2a",
     "files": {
       "vectors/official/bandersnatch/jam-tiny.json": "stf/safrole/tiny/publish-tickets-no-mark-2.json",
       "vectors/official/bandersnatch/jam-full.json": "stf/safrole/full/publish-tickets-no-mark-2.json",
       "vectors/official/bandersnatch/jam-padding.json": "stf/safrole/tiny/enact-epoch-change-with-padding-1.json"
     },
     "source_sha256": {
-      "vectors/official/bandersnatch/jam-tiny.json": "280dddc715c8065b21dbddc7a477ef0c16f3c9aee1fc50a5bc752970d9a15bb9",
-      "vectors/official/bandersnatch/jam-full.json": "48431179ca0c69d9c170931c1cd02306a26ac87613059681720467c7427037c1",
-      "vectors/official/bandersnatch/jam-padding.json": "ab6ec9b6a02d3d7cbeedf2bb4218464df023ce21f92b755af6ef407a368d7578"
+      "vectors/official/bandersnatch/jam-tiny.json": "bc410ef5c0512f116575dddf224db2fc50cca74c9fef837c172b132ba38e0c23",
+      "vectors/official/bandersnatch/jam-full.json": "4ec21fe4975b9646466cb1a12c31085dc6b2319056dbef95d996f10c6d5809a0",
+      "vectors/official/bandersnatch/jam-padding.json": "725690011a2bb0ab6fbd25c434dffbe66bd218ca3803d1446b4cf2e9c66da35c"
     }
   },
   "padding_point": "92ca79e61dd90c1573a8693f199bf6e1e86835cc715cdcf93f5ef222560023aa",
@@ -59,5 +61,21 @@
     "date": "2026-10-01",
     "manifest_sha256": "ce6dddc886364f8d786514771212cebe9b731ba82d6b859951c6b0ccc516b6a2",
     "linux_x86_64_available": true
+  },
+  "parity_gate": {
+    "status": "blocked_text_discrepancy",
+    "validated_profile_protocol": "0.8.0-release-reference",
+    "target_protocol": "0.8.0",
+    "reference_repository": "davxy/bandersnatch-vrf-spec",
+    "reference_tag": "draft-29",
+    "reference_commit": "bce69d059124a2bec80898912413ffef1c4e4570",
+    "reference_challenge_bytes": 16,
+    "reference_nonce_binds_additional_data": true,
+    "reason": "Draft-29 section 2.1 says cLen=16; its release-designated ark-vrf 0.2.2 uses 32, matching GP signature widths and published vectors. Exact draft-text parity remains unresolved.",
+    "reference_implementation_version": "0.2.2",
+    "reference_implementation_challenge_bytes": 32,
+    "reference_implementation_nonce_binds_additional_data": true,
+    "reference_text_marks_vectors_stale": true,
+    "published_vectors_verified_with_reference": true
   }
 }

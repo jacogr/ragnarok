@@ -16,7 +16,7 @@ def token(data):
     return data.hex() or '-'
 
 
-# Convert official named JSON fields into the separate oracle's complete report representation.
+# Convert published 0.8.0 named JSON fields into the separate oracle's complete report representation.
 def official(chain):
     item = json.loads((ROOT / f'vendor/jamtestvectors/codec/{chain}/work_report.json').read_text())
     spec, ctx = item['package_spec'], item['context']
@@ -24,9 +24,10 @@ def official(chain):
     def blob(value):
         return bytes.fromhex(value[2:])
     header = (blob(spec['hash']) + spec['length'].to_bytes(4, 'little') + blob(spec['erasure_root'])
-              + blob(spec['exports_root']) + spec['exports_count'].to_bytes(2, 'little')
-              + b''.join(blob(ctx[k]) for k in ('anchor', 'state_root', 'beefy_root', 'lookup_anchor'))
-              + ctx['lookup_anchor_slot'].to_bytes(4, 'little'))
+              + spec['erasure_shards'].to_bytes(2, 'little') + blob(spec['exports_root']) + spec['exports_count'].to_bytes(2, 'little')
+              + blob(ctx['anchor']) + ctx['anchor_slot'].to_bytes(4, 'little')
+              + b''.join(blob(ctx[k]) for k in ('state_root', 'beefy_root', 'lookup_anchor'))
+              + ctx['lookup_anchor_slot'].to_bytes(4, 'little') + blob(ctx['lookup_anchor_state_root']))
     digests = []
     # Work outputs retain their normative success/error discriminators and all five load metrics.
     for entry in item['results']:
@@ -86,7 +87,10 @@ def decode(data, cores):
         if any(a >= b for a, b in zip(keys, keys[1:])):
             raise Rejected('noncanonical')
     try:
-        header = take(234)
+        header = take(272)
+        shards = int.from_bytes(header[68:70], 'little')
+        if shards < 6 or shards > 1023 or shards % 3 or shards // 3 > cores:
+            raise Rejected('limitexceeded')
         prerequisites = number()
         if prerequisites > 8:
             raise Rejected('limitexceeded')
@@ -128,7 +132,7 @@ def decode(data, cores):
 # Build small, ordinary and protocol-boundary reports; identical bytes are used for every language.
 def corpus():
     base = official('full')
-    result = [('official', base)]
+    result = [('official-0.8.0', base)]
     small = copy.deepcopy(base)
     small.update(auth=b'', digests=[(0, bytes(32), bytes(32), 0, 0, b'', [0] * 5)], core=0)
     result.append(('minimal', small))
@@ -155,7 +159,7 @@ def requests():
     def add_decode(wire, cores=341):
         lines.append(f'D {cores} {token(wire)}')
         expected.append(decode(wire, cores))
-    # Official JSON/binary equality checks include both configured chain profiles and immutable file hashes.
+    # Published 0.8.0 JSON/binary pairs are independently reconstructed and verified against their frozen release hashes.
     pins = json.loads((ROOT / 'spec/pins.json').read_text())
     for chain, cores in (('tiny', 341), ('full', 341)):
         value = official(chain)
@@ -180,7 +184,7 @@ def requests():
             lines.append(f'E 341 {capacity} ' + fields(value))
             expected.append(wire.hex() if capacity >= len(wire) else 'outputtoosmall')
         # All truncations of small/ordinary and metadata-boundary structures; large blobs use targeted cuts.
-        cuts = range(len(wire)) if len(wire) < 8192 else sorted(set((0, 233, 234, 235, len(wire)//2, len(wire)-1)))
+        cuts = range(len(wire)) if len(wire) < 8192 else sorted(set((0, 67, 68, 69, 103, 135, 136, 139, 239, 240, 271, 272, 273, len(wire)//2, len(wire)-1)))
         for length in cuts:
             add_decode(wire[:length])
         # Native-only assertions additionally exercise late failures, owner lifetime and alias atomicity.
@@ -204,7 +208,7 @@ def requests():
     # Explicit noncanonical and count-overflow prefixes cannot narrow into fixed metadata arrays.
     base = encode(values[1][1])
     for prefix in (natural(9), natural(2**64-1), b'\x80\x00'):
-        add_decode(base[:234] + prefix + base[235:])
+        add_decode(base[:272] + prefix + base[273:])
     value = copy.deepcopy(values[1][1])
     value['auth'] = bytes(MAX_BLOBS)
     value['digests'][0] = (0, bytes(32), bytes(32), 0, 0, b'x', [0] * 5)
@@ -233,11 +237,24 @@ def requests():
         expected.append('limitexceeded' if kind == 'dependency-budget' else 'noncanonical')
     # Locate scalar/count fields in a minimal report independently of the native decoder's progress metadata.
     minimal = encode(values[1][1])
-    # prerequisite count 234, core 235, auth gas 268, auth length 269, lookup count 270, digest count 271.
-    for position in (234,235,268,269,270,271):
+    # prerequisite count 272, core 273, auth gas 306, auth length 307, lookup count 308, digest count 309.
+    for position in (272,273,306,307,308,309):
         add_decode(minimal[:position]+b'\x80\x00'+minimal[position+1:])
     for count in (0,17,2**64-1):
-        add_decode(minimal[:271]+natural(count)+minimal[272:])
+        add_decode(minimal[:309]+natural(count)+minimal[310:])
+    # New fields have literal known positions; every supported shard cardinality and rejected boundary is explicit.
+    for shards in (0,1,3,5,6,7,9,1020,1023,1024,65535):
+        value = copy.deepcopy(values[1][1])
+        value['header'] = value['header'][:68]+shards.to_bytes(2,'little')+value['header'][70:]
+        wire = encode(value)
+        add_decode(wire)
+        lines.append('E 341 65536 '+fields(value))
+        expected.append(wire.hex() if 6 <= shards <= 1023 and shards % 3 == 0 else 'limitexceeded')
+    # Legacy-layout negative reports are not silently upgraded by the new decoder.
+    for chain in ('tiny','full'):
+        wire = (ROOT/f'vendor/jamtestvectors/codec/{chain}/work_report.bin').read_bytes()
+        # Explicitly remove the three new fields to construct a legacy-layout negative case.
+        add_decode(wire[:68]+wire[70:136]+wire[140:240]+wire[272:])
     # The final digest metric is canonical and complete only after its entire natural payload exists.
     add_decode(minimal[:-1]+b'\x80\x00')
     add_decode(minimal[:-1]+b'\xff'+bytes(7))

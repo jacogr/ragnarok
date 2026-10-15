@@ -1,11 +1,11 @@
 # Complete work-digest codec
 
-Normative basis: Gray Paper **v0.7.1**, commit
-`1c979cb59bb800f92ffff083a2701004dfc6cd33`, Appendix **C.2**, equation
+Normative basis: Gray Paper **v0.8.0**, commit
+`07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix **C.2**, equation
 `encode(wd in workdigest)` in
-[text/serialization.tex](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/serialization.tex),
+[text/serialization.tex](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/serialization.tex),
 and the `workdigest` tuple in
-[text/reporting_assurance.tex](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/reporting_assurance.tex).
+[text/reporting_assurance.tex](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/reporting_assurance.tex).
 Gas is a uint64 domain; canonical general-natural encoding is defined over
 uint64 by C.1.1. The existing compiler/spec/vector pins remain unchanged.
 

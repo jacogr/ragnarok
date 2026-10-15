@@ -1,8 +1,8 @@
 # Primitive crypto contract
 
-Baseline: Gray Paper v0.7.1, commit
-`1c979cb59bb800f92ffff083a2701004dfc6cd33`,
-[Cryptography](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/notation.tex#L155).
+Baseline: Gray Paper v0.8.0, commit
+`07f041dabd073f9018b418e9ee72e79dd2185401`,
+[Cryptography](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/notation.tex#L155).
 Toolchain/dependency/vector revisions are in [crypto-pins.json](crypto-pins.json).
 
 | Operation | Contract |

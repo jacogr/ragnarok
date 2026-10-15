@@ -40,27 +40,73 @@ proc capacity(text: string, maximum: int): int =
   if result < 0 or result > maximum: raise newException(ValueError, "capacity")
 
 # Render declared fixed fields independently of the production header encoder, detecting field swaps.
-proc headerBytes(value: ReportHeader): array[234, byte] =
-  # Inspect packageHash directly, independently of encoder field ordering.
+proc headerBytes(value: ReportHeader): array[272, byte] =
+  # Inspect packageHash directly, independently of production field ordering.
   for i in 0..<32: result[0+i] = value.packageHash.bytes[i]
-  # Inspect bundleLength directly, independently of encoder field ordering.
+  # Inspect bundleLength directly, independently of production field ordering.
   for i in 0..<4: result[32+i] = byte((uint64(value.bundleLength) shr (8*i)) and 255)
-  # Inspect erasureRoot directly, independently of encoder field ordering.
+  # Inspect erasureRoot directly, independently of production field ordering.
   for i in 0..<32: result[36+i] = value.erasureRoot.bytes[i]
-  # Inspect segmentRoot directly, independently of encoder field ordering.
-  for i in 0..<32: result[68+i] = value.segmentRoot.bytes[i]
-  # Inspect segmentCount directly, independently of encoder field ordering.
-  for i in 0..<2: result[100+i] = byte((uint64(value.segmentCount) shr (8*i)) and 255)
-  # Inspect anchor directly, independently of encoder field ordering.
-  for i in 0..<32: result[102+i] = value.anchor.bytes[i]
-  # Inspect stateRoot directly, independently of encoder field ordering.
-  for i in 0..<32: result[134+i] = value.stateRoot.bytes[i]
-  # Inspect accumulationRoot directly, independently of encoder field ordering.
-  for i in 0..<32: result[166+i] = value.accumulationRoot.bytes[i]
-  # Inspect lookupAnchor directly, independently of encoder field ordering.
-  for i in 0..<32: result[198+i] = value.lookupAnchor.bytes[i]
-  # Inspect lookupSlot directly, independently of encoder field ordering.
-  for i in 0..<4: result[230+i] = byte((uint64(value.lookupSlot) shr (8*i)) and 255)
+  # Inspect erasureShards directly, independently of production field ordering.
+  for i in 0..<2: result[68+i] = byte((uint64(value.erasureShards) shr (8*i)) and 255)
+  # Inspect segmentRoot directly, independently of production field ordering.
+  for i in 0..<32: result[70+i] = value.segmentRoot.bytes[i]
+  # Inspect segmentCount directly, independently of production field ordering.
+  for i in 0..<2: result[102+i] = byte((uint64(value.segmentCount) shr (8*i)) and 255)
+  # Inspect anchor directly, independently of production field ordering.
+  for i in 0..<32: result[104+i] = value.anchor.bytes[i]
+  # Inspect anchorSlot directly, independently of production field ordering.
+  for i in 0..<4: result[136+i] = byte((uint64(value.anchorSlot) shr (8*i)) and 255)
+  # Inspect stateRoot directly, independently of production field ordering.
+  for i in 0..<32: result[140+i] = value.stateRoot.bytes[i]
+  # Inspect accumulationRoot directly, independently of production field ordering.
+  for i in 0..<32: result[172+i] = value.accumulationRoot.bytes[i]
+  # Inspect lookupAnchor directly, independently of production field ordering.
+  for i in 0..<32: result[204+i] = value.lookupAnchor.bytes[i]
+  # Inspect lookupSlot directly, independently of production field ordering.
+  for i in 0..<4: result[236+i] = byte((uint64(value.lookupSlot) shr (8*i)) and 255)
+  # Inspect lookupStateRoot directly, independently of production field ordering.
+  for i in 0..<32: result[240+i] = value.lookupStateRoot.bytes[i]
+
+# Build fixed fields independently, including invalid shard counts for encoder rejection probes.
+proc headerValue(fixed: openArray[byte]): ReportHeader =
+  doAssert fixed.len == 272
+  # Retain every packageHash byte in its exact nominal destination.
+  for i in 0..<32: result.packageHash.bytes[i] = fixed[0+i]
+  var bundleLength = 0'u64
+  # Read the trusted adapter's fixed-width bundleLength independently.
+  for i in 0..<4: bundleLength = bundleLength or (uint64(fixed[32+i]) shl (8*i))
+  result.bundleLength = BundleLength(bundleLength)
+  # Retain every erasureRoot byte in its exact nominal destination.
+  for i in 0..<32: result.erasureRoot.bytes[i] = fixed[36+i]
+  var erasureShards = 0'u64
+  # Read the trusted adapter's fixed-width erasureShards independently.
+  for i in 0..<2: erasureShards = erasureShards or (uint64(fixed[68+i]) shl (8*i))
+  result.erasureShards = ErasureShards(erasureShards)
+  # Retain every segmentRoot byte in its exact nominal destination.
+  for i in 0..<32: result.segmentRoot.bytes[i] = fixed[70+i]
+  var segmentCount = 0'u64
+  # Read the trusted adapter's fixed-width segmentCount independently.
+  for i in 0..<2: segmentCount = segmentCount or (uint64(fixed[102+i]) shl (8*i))
+  result.segmentCount = SegmentCount(segmentCount)
+  # Retain every anchor byte in its exact nominal destination.
+  for i in 0..<32: result.anchor.bytes[i] = fixed[104+i]
+  var anchorSlot = 0'u64
+  # Read the trusted adapter's fixed-width anchorSlot independently.
+  for i in 0..<4: anchorSlot = anchorSlot or (uint64(fixed[136+i]) shl (8*i))
+  result.anchorSlot = AnchorSlot(anchorSlot)
+  # Retain every stateRoot byte in its exact nominal destination.
+  for i in 0..<32: result.stateRoot.bytes[i] = fixed[140+i]
+  # Retain every accumulationRoot byte in its exact nominal destination.
+  for i in 0..<32: result.accumulationRoot.bytes[i] = fixed[172+i]
+  # Retain every lookupAnchor byte in its exact nominal destination.
+  for i in 0..<32: result.lookupAnchor.bytes[i] = fixed[204+i]
+  var lookupSlot = 0'u64
+  # Read the trusted adapter's fixed-width lookupSlot independently.
+  for i in 0..<4: lookupSlot = lookupSlot or (uint64(fixed[236+i]) shl (8*i))
+  result.lookupSlot = LookupSlot(lookupSlot)
+  # Retain every lookupStateRoot byte in its exact nominal destination.
+  for i in 0..<32: result.lookupStateRoot.bytes[i] = fixed[240+i]
 
 # Print every decoded field and full child digests for independent semantic comparison, not round trips alone.
 proc printReport(value: WorkReport, wire: openArray[byte], consumed: int) =
@@ -94,8 +140,8 @@ proc printReport(value: WorkReport, wire: openArray[byte], consumed: int) =
 # Construct typed report fields from the independent oracle representation, without using the new report decoder.
 proc buildReport(p: seq[string]): tuple[value: WorkReport, pool: seq[byte]] =
   let fixed = parseBytes(p[3])
-  doAssert fixed.len == 234
-  result.value.header = decodeReportHeader(fixed).value
+  doAssert fixed.len == 272
+  result.value.header = headerValue(fixed)
   let prerequisites = parseBytes(p[4])
   let authorizer = parseBytes(p[6])
   let auth = parseBytes(p[8])

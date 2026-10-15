@@ -1,4 +1,4 @@
-## GP v0.7.1 assurancesig: fixed owned transcripts and stateless validator-key/parent verification.
+## GP v0.8.0 assurancesig: fixed owned transcripts and stateless validator-key/parent verification.
 import ./primitives
 import ../assurances
 
@@ -75,8 +75,7 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
                        parent: AssuranceParent, keys: openArray[EdPublicKey]):
                        AssuranceContextResult[VerifiedAssuranceCount] {.raises: [].} =
   # Configuration has precedence over empty input and absent validator keys.
-  if uint64(config.cores) < 1 or uint64(config.cores) > 341 or
-      uint64(config.validators) < 1 or uint64(config.validators) > 1023:
+  if not validConfig(config):
     return AssuranceContextResult[VerifiedAssuranceCount](
         error: AssuranceContextError.InvalidConfig)
   # The key table is indexed by validator identity, never by a record's position in this batch.
