@@ -1,0 +1,13 @@
++ /Users/jacogr/Projects/jacogr/ragnarok/build/quic/nim-peer --selftest
+Nim QUIC selftest: 10000 malformed DER/frame cases passed
++ /Users/jacogr/Projects/jacogr/ragnarok/build/quic/nim-peer --io-selftest
+Nim I/O selftest: 256 idle/ready UDP registration retirements passed
++ /Users/jacogr/Projects/jacogr/ragnarok/build/quic/odin-peer --selftest
+Odin QUIC selftest: 10000 malformed DER/frame cases passed
++ /Users/jacogr/Projects/jacogr/ragnarok/build/quic/odin-peer --io-selftest
+Odin I/O selftest: 256 idle/ready receive cancellations passed
++ /Users/jacogr/Projects/jacogr/ragnarok/build/quic/mojo-peer --selftest
+Mojo QUIC selftest: 10000 malformed DER/frame cases passed
++ /Users/jacogr/Projects/jacogr/ragnarok/build/quic/mojo-peer --io-selftest
+Mojo I/O selftest: 256 idle/ready UDP retirements passed
+PASS QUIC: 144 cases across 9 directed peer pairings

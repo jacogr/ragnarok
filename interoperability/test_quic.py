@@ -11,6 +11,7 @@ import platform
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from toolchain_checks import odin_matches
 from dependencies import require_submodule
@@ -21,6 +22,9 @@ PINS = json.loads((ROOT / 'spec/quic-proof-pins.json').read_text())
 
 # Native callback peers create no per-stream workers; Mojo has a separately measured fixed SDK startup pool.
 THREAD_BASELINES = {"nim": 1, "odin": 1}
+
+# Serialize only UDP reservation-to-readiness handoff; authenticated exchanges still run concurrently.
+STARTUP_LOCK = threading.Lock()
 
 
 # Run structured commands without shell interpolation; append diagnostics to a retained reproducible build log.
@@ -138,13 +142,30 @@ def thread_count(pid):
     return len(list(Path(f'/proc/{pid}/task').iterdir()))
 
 
+# Require a live bound listener and an exact marker; preserve startup diagnostics on exit or timeout.
+def wait_server_ready(process, path, case, seconds=3):
+    deadline = time.monotonic() + seconds
+    # Poll a file rather than blocking on an unbounded pipe readline from a stalled child.
+    while True:
+        output = path.read_text()
+        code = process.poll()
+        # A dead listener cannot serve a client even if it printed READY just before exiting.
+        if code is not None:
+            raise AssertionError(dict(case=case, phase='server startup', reason='exited',
+                                      exit_code=code, log_path=str(path), server_output=output[-8000:]))
+        # Diagnostics containing the word READY are not the listener's lifecycle marker.
+        if 'READY' in output.splitlines():
+            return
+        # Keep the existing three-second startup deadline; a slow/hung server remains a failure.
+        if time.monotonic() >= deadline:
+            raise AssertionError(dict(case=case, phase='server startup', reason='timeout',
+                                      exit_code=code, log_path=str(path), server_output=output[-8000:]))
+        time.sleep(0.01)
+
+
 # Execute one independently bounded localhost peer pair and retain diagnostics without printing any private-key contents.
 def attempt(case, folder):
     server_language, client_language, scenario = case
-    # The reserved local port is released just before the server binds; startup errors are explicit failures.
-    with socket.socket() as sock:
-        sock.bind(('127.0.0.1', 0))
-        port = sock.getsockname()[1]
     client_identity = scenario if scenario in ('wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature') else 'b'
     server_identity = 'wrong-san' if scenario == 'bad-server-san' else 'a'
     expected = 'b' if scenario == 'wrong-server-key' else 'a'
@@ -152,8 +173,8 @@ def attempt(case, folder):
     client_alpn = 'jamnp-s/1/11111111' if scenario == 'wrong-alpn' else alpn
     cert = lambda name: str(folder / f'{name}.cert.pem')
     key = lambda name: str(folder / f'{name}.key.pem')
-    server = [str(BUILD / f'{server_language}-peer'), 'server', str(port), cert(server_identity), key(server_identity), '-', alpn, '900']
-    client = [str(BUILD / f'{client_language}-peer'), 'client', str(port),
+    server = [str(BUILD / f'{server_language}-peer'), 'server', '0', cert(server_identity), key(server_identity), '-', alpn, '900']
+    client = [str(BUILD / f'{client_language}-peer'), 'client', '0',
               '-' if scenario == 'missing-cert' else cert(client_identity),
               '-' if scenario == 'missing-cert' else key(client_identity), str(folder / f'{expected}.pub'), client_alpn, '900']
     application_failure = scenario in ('bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')
@@ -167,11 +188,16 @@ def attempt(case, folder):
     # Server readiness uses a log file plus a deadline, avoiding an unbounded pipe readline if startup hangs.
     with path.with_suffix('.server.log').open('w') as server_log:
         try:
-            process = subprocess.Popen(server, stdout=server_log, stderr=subprocess.STDOUT)
-            deadline = time.monotonic() + 3
-            while 'READY' not in path.with_suffix('.server.log').read_text():
-                assert process.poll() is None and time.monotonic() < deadline, (case, 'server startup', path)
-                time.sleep(0.01)
+            # Other workers cannot select this released port before the native listener claims it.
+            with STARTUP_LOCK:
+                # QUIC binds UDP: a TCP reservation does not exclude an existing UDP owner.
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
+                    reservation.bind(('127.0.0.1', 0))
+                    port = reservation.getsockname()[1]
+                    server[2] = client[2] = str(port)
+                # Release immediately before spawn; readiness proves the native listener owns the port.
+                process = subprocess.Popen(server, stdout=server_log, stderr=subprocess.STDOUT)
+                wait_server_ready(process, path.with_suffix('.server.log'), case)
             client_process = subprocess.Popen(client, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             observed_threads = None
             # Missing FIN keeps all eight requests pending, allowing a live thread observation before the deadline.
