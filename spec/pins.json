@@ -69,7 +69,15 @@
       "vendor/jamtestvectors/codec/full/work_item.json": "011f2caa0ab77e9a713930465ad7ab801d3896cabba0ac00808611cbb670c884",
       "vendor/jamtestvectors/codec/full/work_item.bin": "06b6df1e56735adf9bd0b3a2f7ac84e7ad2e9034e05c78a555ec9ea6f0665a7a",
       "vendor/jamtestvectors/codec/full/work_package.json": "ea0d60c66762374a95934ee28d7e2797c1a201f5ae2d9e7b6ba41dd5c6907551",
-      "vendor/jamtestvectors/codec/full/work_package.bin": "7b812b2d1412ea3b97b61c478e6a0988a9dd198043e0c53a022f56a175f11cd6"
+      "vendor/jamtestvectors/codec/full/work_package.bin": "7b812b2d1412ea3b97b61c478e6a0988a9dd198043e0c53a022f56a175f11cd6",
+      "vendor/jamtestvectors/codec/tiny/header_0.json": "6d269b4a39622c9d34c615eb5f993693659ad5f8dbd108264f6e25a2e0234f02",
+      "vendor/jamtestvectors/codec/tiny/header_0.bin": "c4f4658a9c04bca5d249c7ca5f14845bd012311213f6bb24076dcdddbb268fa2",
+      "vendor/jamtestvectors/codec/tiny/header_1.json": "5901819c2aeb8fc90d63cc09bcefaf6c7ea393c5256ee0543a4e127b4ff7614b",
+      "vendor/jamtestvectors/codec/tiny/header_1.bin": "42001be6bb98c6dde3b8352f39f6ba1122f33d71b7fda4594633343f0b4537b9",
+      "vendor/jamtestvectors/codec/full/header_0.json": "646d3f47030bfe7d2194fa3757c38e6ea4c96195986626b07237d26870db8a29",
+      "vendor/jamtestvectors/codec/full/header_0.bin": "86ec91a51bd2b629834e132488240b6f71bec02271ef2b22032fa64187425294",
+      "vendor/jamtestvectors/codec/full/header_1.json": "47ddf8e2982e70a77f5e365644127b309797e85e6c1bac47c9ae606369a976b6",
+      "vendor/jamtestvectors/codec/full/header_1.bin": "161b1a4d59b7a4f0c74e54f59a7cd232aaa78608b68bb03a86ed48584d138be2"
     },
     "path": "vendor/jamtestvectors",
     "tag": "v0.8.0"

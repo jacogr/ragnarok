@@ -27,7 +27,7 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
 
 - General naturals, fixed unsigned widths, bounded bytes/sequences, optional/work variants,
   preimage/ticket/guarantee/dispute extrinsics, work digests, complete reports, assurances,
-  refinement contexts and work-package inputs.
+  refinement contexts, work-package inputs and full/signing headers with epoch/winner markers.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,

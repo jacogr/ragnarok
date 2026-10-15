@@ -10,6 +10,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
 | `work_digest.nim`, `work_report.nim` | Complete nested work digests/reports |
 | `tickets.nim`, `guarantees.nim` | Ticket records and immutable report guarantees |
+| `header.nim` | Full/signing headers, epoch/winner markers, fixed tickets and retained views |
 | `work_package.nim` | Context, packed import references, input commitments, items and retained packages |
 | `disputes.nim` | Ordered verdicts/judgments and culprit/fault evidence with immutable snapshots |
 | `assurances.nim` | Ordered validator indices, fixed profile bitfields and signatures |
@@ -42,3 +43,6 @@ published sample ordering discrepancy and the contextual checks left to state va
 
 [Work-package inputs](../spec/work-package.md) cover standalone components, package-wide
 count/dependency/footprint/gas limits and child owners that retain their parent snapshot.
+
+[Headers and markers](../spec/header.md) cover the exact signing prefix, variable epoch validator
+counts, fixed configured winner tuples and retained views that outlive full header handles.

@@ -114,7 +114,7 @@ Work-package input framing and structural resource limits are now implemented in
 remain separate work. The disputes framing/count rules are implemented in
 [the disputes codec](disputes.md), with
 context-dependent judgments and state effects still external. The source diff also changes
-variable-validator Safrole/header/state encodings, guarantees stored in availability assignments,
+variable-validator Safrole/state encodings, guarantees stored in availability assignments,
 preimage commitments in the block extrinsic
 hash, authorizer identification, erasure coding, service statistics, accumulation, PVM gas/host
 calls and refinement context exposure. Those complete subsystems are not implemented here.
@@ -122,6 +122,10 @@ The existing preimage codec is unchanged; it is distinct from the newly defined 
 The report's opaque authorizer hash is preserved; deriving it from code hash and configuration
 belongs to future authorization work. No obsolete implementation is retained for these systems,
 and no new scaffolding is presented as parity. See `docs/design.md` for the remaining client work.
+
+Standalone full/signing header and epoch/winner marker codecs now cover the 0.8.0 header wire
+changes, including variable epoch validator counts. [Their contract](header.md) separates framing
+from marker state eligibility, header/extrinsic hashing and signature verification.
 
 ## Reproduction and observed validation
 

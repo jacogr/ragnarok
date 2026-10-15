@@ -23,6 +23,8 @@ python3 tests/test_disputes.py
 python3 tests/test_disputes_harness.py
 python3 tests/test_work_package.py
 python3 tests/test_package_harness.py
+python3 tests/test_header.py
+python3 tests/test_header_harness.py
 python3 tests/test_assurances.py
 python3 tests/test_assurances_types.py
 python3 tests/test_assurances_harness.py
