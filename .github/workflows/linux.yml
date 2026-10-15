@@ -72,6 +72,11 @@ jobs:
           python3 tests/test_tickets.py 2>&1 | tee build/ci/tickets.log
           python3 tests/test_guarantees.py 2>&1 | tee build/ci/guarantees.log
 
+      - name: Disputes extrinsic
+        run: |
+          python3 tests/test_disputes_harness.py
+          python3 tests/test_disputes.py 2>&1 | tee build/ci/disputes.log
+
       - name: Crypto vectors, ownership and ABI checks
         run: python3 tests/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
 
@@ -139,6 +144,10 @@ jobs:
             build/guarantees/results.json
             build/guarantees/types/*.log
             build/guarantees/types/results.json
+            build/disputes/*.log
+            build/disputes/results.json
+            build/disputes/types/*.log
+            build/disputes/types/results.json
             build/crypto/*.log
             build/crypto/results.json
             build/bandersnatch/*.log

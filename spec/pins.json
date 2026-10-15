@@ -14,7 +14,9 @@
       "text/work_packages_and_reports.tex": "ffbfd08f0c8263088ad5527ca34312fd48e1591e4245dd81243a1bc493d593a8",
       "text/header.tex": "0c9ca82dfbf41dc9dbc567eac9013e36aded5c126c6464cc56589524f3361e18",
       "text/erasure_coding.tex": "090814a6e755c36792e8831cba8db8b5cec5c05c3dba881b7c868447832c50dc",
-      "biblio.bib": "4102e993b80b941d3274fdfd7fd4b87f5df4d611bec478d8382b76044431c129"
+      "biblio.bib": "4102e993b80b941d3274fdfd7fd4b87f5df4d611bec478d8382b76044431c129",
+      "text/judgments.tex": "b7712190612ab78dee30134de0f233c6c028cab0f3a414c44779bf47c37e9a11",
+      "text/definitions.tex": "5e11b5f8bc983aa9b12d6e8d86463ce7c5a3f504bc4575e0944b4a941b138138"
     }
   },
   "vectors": {
@@ -51,7 +53,11 @@
       "vendor/jamtestvectors/codec/tiny/guarantees_extrinsic.json": "87d266ec06f84c880fd15203b955eaf9fe2c436d171f1e9007e0db4627c54feb",
       "vendor/jamtestvectors/codec/tiny/guarantees_extrinsic.bin": "ffb38521c3bff123a9b79bf0ac55172863e861fa5460d45bcb5207521fc27d49",
       "vendor/jamtestvectors/codec/full/guarantees_extrinsic.json": "498bdd27be7b9a6434c7aefab91ea106ee9c33b100fc487143bddc7eb87c96fc",
-      "vendor/jamtestvectors/codec/full/guarantees_extrinsic.bin": "0c24ebf222cf30c5cfcb2dc760523a24a0ade17c856372cb07fab3e5ae2a953d"
+      "vendor/jamtestvectors/codec/full/guarantees_extrinsic.bin": "0c24ebf222cf30c5cfcb2dc760523a24a0ade17c856372cb07fab3e5ae2a953d",
+      "vendor/jamtestvectors/codec/tiny/disputes_extrinsic.json": "7f47f9f0f6c00c175544b17e639656e9a81af60a122e194ba69a246e2daf1bb3",
+      "vendor/jamtestvectors/codec/tiny/disputes_extrinsic.bin": "422f368200305e021f413bd7c5491587b9d6e1e7e056af6fb85385c816006eb6",
+      "vendor/jamtestvectors/codec/full/disputes_extrinsic.json": "c8804b1967a953e2f471f95d787829f915879adcfefe2aa729264789b4cb976d",
+      "vendor/jamtestvectors/codec/full/disputes_extrinsic.bin": "406e8d9bb8e42a02858f1766950aae43b65b2c239bbd01db9563091843dd331c"
     },
     "path": "vendor/jamtestvectors",
     "tag": "v0.8.0"

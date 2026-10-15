@@ -109,8 +109,10 @@ No passing suite establishes a full consensus or security audit.
 
 ## Changes outside existing implementation
 
-The source diff also changes variable-validator Safrole/header/state encodings, guarantees stored
-in availability assignments, dispute size/count rules, preimage commitments in the block extrinsic
+The disputes framing/count rules are now implemented in [the disputes codec](disputes.md), with
+context-dependent judgments and state effects still external. The source diff also changes
+variable-validator Safrole/header/state encodings, guarantees stored in availability assignments,
+preimage commitments in the block extrinsic
 hash, authorizer identification, erasure coding, service statistics, accumulation, PVM gas/host
 calls and refinement context exposure. Those complete subsystems are not implemented here.
 The existing preimage codec is unchanged; it is distinct from the newly defined block commitment.

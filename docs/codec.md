@@ -10,6 +10,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
 | `work_digest.nim`, `work_report.nim` | Complete nested work digests/reports |
 | `tickets.nim`, `guarantees.nim` | Ticket records and immutable report guarantees |
+| `disputes.nim` | Ordered verdicts/judgments and culprit/fault evidence with immutable snapshots |
 | `assurances.nim` | Ordered validator indices, fixed profile bitfields and signatures |
 | `owned.nim`, `report_owned.nim` | Immutable ARC snapshots and owner-bound extraction |
 
@@ -34,3 +35,6 @@ See `tests/test_codec.py`, `tests/test_work_report.py` and `tests/test_assurance
 oracles, official vectors, boundary/fuzz inputs, alias probes and output atomicity checks.
 
 [M1 progress and next coherent groups](m1.md) distinguish implemented codec families from remaining work.
+
+[Disputes](../spec/disputes.md) document variable judgment counts, per-section ordering, the
+published sample ordering discrepancy and the contextual checks left to state validation.

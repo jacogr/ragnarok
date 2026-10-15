@@ -19,6 +19,8 @@ python3 tests/test_tickets.py
 python3 tests/test_tickets_harness.py
 python3 tests/test_guarantees.py
 python3 tests/test_guarantees_harness.py
+python3 tests/test_disputes.py
+python3 tests/test_disputes_harness.py
 python3 tests/test_assurances.py
 python3 tests/test_assurances_types.py
 python3 tests/test_assurances_harness.py
