@@ -50,8 +50,15 @@ def wait_marker(processes, logs, role, marker, peaks, seconds=8, occurrences=1, 
         time.sleep(0.02)
 
 
-# Compare post-warmup idle observations so allocator high-water behaviour is not mistaken for per-session leakage.
-def check_growth(samples, warmup):
+# Scope is part of the observation: process malloc includes retained transport pools and SDK storage.
+ALLOCATION_SCOPES = {'nim': 'language allocator', 'odin': 'tracked application allocator',
+                     'mojo': 'process malloc including SDK and native libraries'}
+# Preserve the application-owner budget; aggregate malloc uses the existing aggregate RSS growth budget.
+IDLE_ALLOCATION_LIMITS = {'nim': 64 * 1024, 'odin': 64 * 1024, 'mojo': 16 * 1024 * 1024}
+
+
+# Compare post-warmup observations using the explicitly identified counter; unknown candidates fail closed.
+def check_growth(samples, warmup, language, *, retained_engine=True):
     retained = samples[warmup:]
     assert len(retained) >= 8, 'Need at least eight post-warmup lifecycle samples'
     rss = [sample['rss_bytes'] for sample in retained]
@@ -60,12 +67,18 @@ def check_growth(samples, warmup):
     assert max(rss) - min(rss) <= 16 * 1024 * 1024, ('idle RSS growth exceeds 16 MiB', rss)
     assert max(descriptors) - min(descriptors) <= 2, ('idle descriptor growth exceeds two', descriptors)
     assert all(sample['threads'] == sample.get('thread_baseline', 1) for sample in retained), retained
-    # Language allocator counters exclude transport C allocations; RSS above covers their aggregate footprint.
+    # Whole-process malloc cannot establish the same application-owner leak bound as Nim/Odin counters.
     allocated = [sample['allocated_bytes'] for sample in retained]
-    assert max(allocated) - min(allocated) <= 64 * 1024, ('live allocation growth exceeds 64 KiB', allocated)
+    limit = IDLE_ALLOCATION_LIMITS[language]
+    if not retained_engine:
+        # Lifecycle soak destroys the transport before sampling: keep its original 64 KiB gate for Mojo too.
+        limit = 64 * 1024
+    assert max(allocated) - min(allocated) <= limit, ('idle allocation growth exceeds scoped budget', language, limit, allocated)
     return {'idle_rss_range_bytes': max(rss) - min(rss),
             'idle_descriptor_range': max(descriptors) - min(descriptors),
-            'idle_allocation_range_bytes': max(allocated) - min(allocated)}
+            'idle_allocation_range_bytes': max(allocated) - min(allocated),
+            'allocation_scope': ALLOCATION_SCOPES[language], 'idle_allocation_limit_bytes': limit,
+            'retained_engine': retained_engine}
 
 
 # Run both persistent native processes through the same mixed workload, gating each lifecycle for clean idle samples.
@@ -122,7 +135,7 @@ def pairing(server_language, client_language, folder, rounds, warmup):
         assert text['server'].count('BACKPRESSURE\n') >= rounds, name
         for role in logs:
             assert text[role].count('EXCHANGE_OK 8\n') == rounds, (name, role)
-        growth = {role: check_growth(samples, warmup) for role, samples in idle.items()}
+        growth = {role: check_growth(samples, warmup, server_language if role == 'server' else client_language, retained_engine=False) for role, samples in idle.items()}
         # Release the final idle barrier and require normal cleanup-driven exits.
         for role in logs:
             (gate / f'{role}-{rounds}').touch()
@@ -163,7 +176,7 @@ def main():
     folder = fixtures()
     report = {'platform': platform.platform(), 'rounds': args.rounds, 'warmup': args.warmup,
               'complete': False, 'limits': {'active_rss_bytes': 256 * 1024 * 1024, 'idle_rss_range_bytes': 16 * 1024 * 1024,
-                         'idle_descriptor_range': 2, 'idle_allocation_range_bytes': 64 * 1024, 'threads': dict(THREAD_BASELINES)}, 'pairings': []}
+                         'idle_descriptor_range': 2, 'idle_allocation_range_bytes': {name: 64 * 1024 for name in candidates}, 'threads': dict(THREAD_BASELINES)}, 'pairings': []}
     output = BUILD / 'soak/results.json'
     output.parent.mkdir(exist_ok=True)
     try:

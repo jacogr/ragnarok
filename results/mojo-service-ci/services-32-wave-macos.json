@@ -1,0 +1,789 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "rounds": 32,
+  "warmup": 4,
+  "complete": true,
+  "persistent_client_engines": false,
+  "limits": {
+    "active_rss_bytes": 268435456,
+    "threads": {
+      "nim": 1,
+      "odin": 1,
+      "mojo": 9
+    },
+    "idle_rss_range_bytes": 16777216,
+    "idle_descriptor_range": 2,
+    "idle_allocation_range_bytes": {
+      "nim": 65536,
+      "odin": 65536,
+      "mojo": 16777216
+    }
+  },
+  "servers": [
+    {
+      "language": "nim",
+      "thread_baseline": 1,
+      "persistent_server_pid": 61030,
+      "rounds": 32,
+      "accepted_and_retired_connections": 130,
+      "peak_connections": 5,
+      "isolated_healthy_outcomes": 560,
+      "elapsed_seconds": 49.278727083001286,
+      "peaks": {
+        "rss_bytes": 16662528,
+        "threads": 1,
+        "descriptors": 6
+      },
+      "idle": [
+        {
+          "rss_bytes": 16171008,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16367616,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16433152,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16531456,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16547840,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16547840,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16613376,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16613376,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16613376,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16629760,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16629760,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16629760,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16629760,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16629760,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16629760,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16646144,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16646144,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16646144,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16646144,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        },
+        {
+          "rss_bytes": 16662528,
+          "threads": 1,
+          "descriptors": 6,
+          "thread_baseline": 1,
+          "allocated_bytes": 4000304
+        }
+      ],
+      "growth": {
+        "idle_rss_range_bytes": 114688,
+        "idle_descriptor_range": 0,
+        "idle_allocation_range_bytes": 0,
+        "allocation_scope": "language allocator",
+        "idle_allocation_limit_bytes": 65536
+      },
+      "shutdown_allocated_bytes": [
+        48,
+        64
+      ]
+    },
+    {
+      "language": "odin",
+      "thread_baseline": 1,
+      "persistent_server_pid": 62493,
+      "rounds": 32,
+      "accepted_and_retired_connections": 130,
+      "peak_connections": 5,
+      "isolated_healthy_outcomes": 560,
+      "elapsed_seconds": 49.35772749991156,
+      "peaks": {
+        "rss_bytes": 21102592,
+        "threads": 1,
+        "descriptors": 5
+      },
+      "idle": [
+        {
+          "rss_bytes": 17465344,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 18677760,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 18776064,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 18808832,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19890176,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19922944,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19922944,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19939328,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19939328,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19939328,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19939328,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 19955712,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 20004864,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 20004864,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 20004864,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21086208,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21086208,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21086208,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21086208,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        },
+        {
+          "rss_bytes": 21102592,
+          "threads": 1,
+          "descriptors": 5,
+          "thread_baseline": 1,
+          "allocated_bytes": 245
+        }
+      ],
+      "growth": {
+        "idle_rss_range_bytes": 1212416,
+        "idle_descriptor_range": 0,
+        "idle_allocation_range_bytes": 0,
+        "allocation_scope": "tracked application allocator",
+        "idle_allocation_limit_bytes": 65536
+      },
+      "shutdown_allocated_bytes": [
+        0,
+        0
+      ]
+    },
+    {
+      "language": "mojo",
+      "thread_baseline": 9,
+      "persistent_server_pid": 63717,
+      "rounds": 32,
+      "accepted_and_retired_connections": 130,
+      "peak_connections": 5,
+      "isolated_healthy_outcomes": 560,
+      "elapsed_seconds": 49.20581395900808,
+      "peaks": {
+        "rss_bytes": 23461888,
+        "threads": 9,
+        "descriptors": 4
+      },
+      "idle": [
+        {
+          "rss_bytes": 23003136,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3139792
+        },
+        {
+          "rss_bytes": 23166976,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3141072
+        },
+        {
+          "rss_bytes": 23265280,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3141072
+        },
+        {
+          "rss_bytes": 23298048,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23314432,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23347200,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23347200,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23347200,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3165648
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3166928
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3166928
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3166928
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3166928
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3166928
+        },
+        {
+          "rss_bytes": 23363584,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3166928
+        },
+        {
+          "rss_bytes": 23379968,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3181264
+        },
+        {
+          "rss_bytes": 23379968,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3181264
+        },
+        {
+          "rss_bytes": 23412736,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3226320
+        },
+        {
+          "rss_bytes": 23412736,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3226320
+        },
+        {
+          "rss_bytes": 23429120,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3226320
+        },
+        {
+          "rss_bytes": 23445504,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3226320
+        },
+        {
+          "rss_bytes": 23461888,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3250640
+        },
+        {
+          "rss_bytes": 23461888,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3250640
+        },
+        {
+          "rss_bytes": 23461888,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3250640
+        },
+        {
+          "rss_bytes": 23461888,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3250640
+        },
+        {
+          "rss_bytes": 23461888,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3250640
+        },
+        {
+          "rss_bytes": 23461888,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3250640
+        },
+        {
+          "rss_bytes": 23461888,
+          "threads": 9,
+          "descriptors": 4,
+          "thread_baseline": 9,
+          "allocated_bytes": 3250640
+        }
+      ],
+      "growth": {
+        "idle_rss_range_bytes": 147456,
+        "idle_descriptor_range": 0,
+        "idle_allocation_range_bytes": 84992,
+        "allocation_scope": "process malloc including SDK and native libraries",
+        "idle_allocation_limit_bytes": 16777216
+      },
+      "shutdown_allocated_bytes": [
+        2340432,
+        2365472
+      ]
+    }
+  ],
+  "command": "PYTHONDONTWRITEBYTECODE=1 python3 interoperability/test_quic_service.py --mojo --skip-build --rounds 32",
+  "native_source_changes": false,
+  "validation_platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "source_commit": "a39965d729ef5d43b9569c05e3772e7abdf0f66c",
+  "native_binary_sha256": {
+    "nim": "04d6fa165a942fd9fc9c7486c19fa59560c3e2894041e2a831299a8dbe374f3a",
+    "odin": "f48333c2106520cc7ec0c95fb01eeb0780b90d6cf2d99f74fa8b4ab3ee5d7c66",
+    "mojo": "2ba21a2047389baf7518f91fefc589aff584ecd27877e43cfee73d484d8b3438"
+  }
+}

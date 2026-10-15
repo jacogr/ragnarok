@@ -136,7 +136,7 @@ def disruption(languages, folder, rounds, warmup):
         (final_gate / 'stop').touch()
         assert final_peer.wait(timeout=5) == 0, final_log.read_text()
         clean(languages[1], final_log.read_text())
-        budgets = check_growth(idle, warmup)
+        budgets = check_growth(idle, warmup, languages[0])
         (keeper_gate / 'stop').touch()
         assert keeper.wait(timeout=5) == 0, keeper_log.read_text()
         clean(languages[0], keeper_log.read_text())
@@ -274,7 +274,7 @@ def overload(language, folder, rounds, warmup):
             assert max(state[1] for state in states(text)) == 64 and max(state[4] for state in states(text)) == 64
             assert max(state[2] for state in states(text)) == connection_rejects, text[-2000:]
             assert max(state[3] for state in states(text)) == stream_rejects, text[-2000:]
-        budgets = check_growth(idle, warmup)
+        budgets = check_growth(idle, warmup, language)
         stop.touch()
         assert server.wait(timeout=5) == 0, server_log.read_text()
         text = server_log.read_text()

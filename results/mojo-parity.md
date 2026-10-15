@@ -33,7 +33,9 @@ The full shared Nim/Odin crypto suites also passed; source/toolchain/dependency 
 The local SDK has nine fixed startup threads; the optional proof pool adds two. Raw counts are
 retained, never normalized to one. The harness measures the platform baseline and rejects extra
 threads after native readiness. A bounded pre-endpoint quiescent window avoids comparing an
-incomplete SDK startup heap count with shutdown. The 64 KiB shutdown/idle-growth limits remain.
+incomplete SDK startup heap count with shutdown. Those runs used 64 KiB shutdown/idle-growth limits.
+The subsequent Linux service failure exposed a counter-scope mismatch; the
+[CI investigation](mojo-service-ci.md) records the correction and its sensitivity limitations.
 
 Mojo allocator call/free counts are unavailable in this adapter. Its public process malloc live
 deltas include SDK and native libraries; JSON marks call/free/requested-byte counts null. Separate

@@ -11,7 +11,7 @@ import socket
 import subprocess
 import time
 from test_quic import ROOT, BUILD as QUIC, build_peers, dependencies, fixtures, run, PINS, THREAD_BASELINES
-from test_quic_soak import resources
+from test_quic_soak import resources, check_growth
 from toolchain_checks import odin_matches
 import test_bandersnatch as bs
 
@@ -190,16 +190,14 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats, include_m
             sample = resources(server.pid)
             fields = next(line.split() for line in reversed(text.splitlines()) if line.startswith('SERVICE_IDLE '))
             sample['allocated_bytes'] = int(fields[3])
+            sample['thread_baseline'] = fixed_threads
             if language == 'odin':
                 assert int(fields[4]) == 2, fields # Only persistent listener receive/timer remain on I/O.
             idle.append(sample)
             print(f'{language} offload: {wave+1}/{rounds} waves; queue cap 4, workers 2, actual-crypto networking passed', flush=True)
-        retained = idle[warmup:]
-        # Fixed budgets intentionally describe finite observed growth, not a general proof of leak freedom.
-        growth = {f'idle_{metric}_range': max(x[metric] for x in retained)-min(x[metric] for x in retained)
-                  for metric in ('rss_bytes', 'descriptors', 'allocated_bytes')}
-        assert growth['idle_rss_bytes_range'] <= 16*1024*1024 and growth['idle_descriptors_range'] <= 2, growth
-        assert growth['idle_allocated_bytes_range'] <= 65536 and all(x['threads'] == fixed_threads for x in idle), idle
+        # Apply the same scoped heap, RSS, descriptor and fixed-worker checks as the other retained profiles.
+        growth = check_growth(idle, warmup, language)
+        assert all(x['threads'] == fixed_threads for x in idle), idle
         # Exit with two actual crypto batches running and two queued jobs. Join waits for Rust before releasing owners.
         gate.unlink()
         pending = [launch('nim' if index % 2 == 0 else 'odin', 'proof') for index in range(4)]

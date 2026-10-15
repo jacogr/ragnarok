@@ -11,7 +11,20 @@ import socket
 import subprocess
 import time
 from test_quic import BUILD, build_peers, dependencies, fixtures, THREAD_BASELINES
-from test_quic_soak import resources, check_growth
+from test_quic_soak import resources, check_growth, IDLE_ALLOCATION_LIMITS
+
+
+# Check after engine destruction: cached transport allocations must no longer inflate the live baseline.
+def check_cleanup(language, text):
+    clean = re.findall(r'^SERVICE_CLEAN (\d+) (\d+)$', text, re.M)
+    assert len(clean) == 1, ('missing or duplicate cleanup observation', clean)
+    before, after = map(int, clean[0])
+    if language == 'odin':
+        # The tracked application allocator must release every owner, including event-loop operations.
+        assert before == after == 0, clean
+    else:
+        # Nim and Mojo retain the original 64 KiB shutdown budget, independently of the live-engine limit.
+        assert language in ('nim', 'mojo') and after <= before + 65536, clean
 
 
 # Keep one listener PID/engine alive while observing bounded resource use and native application markers.
@@ -120,7 +133,7 @@ def service(language, folder, rounds, warmup, include_mojo=False):
                 assert int(matches[0][1]) == 2, ('retained event-loop operations', matches)
             idle.append(sample)
             print(f'{language} service: {iteration + 1}/{rounds} waves, {accepted} retired connections', flush=True)
-        growth = check_growth(idle, warmup)
+        growth = check_growth(idle, warmup, language)
         text = log.read_text()
         assert text.count('REQUEST_TIMEOUT\n') >= rounds * 2, text[-4000:]
         assert text.count('SERVER_HEALTHY\n') >= rounds * 26, text[-4000:]
@@ -131,11 +144,7 @@ def service(language, folder, rounds, warmup, include_mojo=False):
         assert len(summary) == 1 and tuple(map(int, summary[0][:2])) == (accepted, accepted), summary
         peak = int(summary[0][2])
         assert peak >= 3, ('no actual multi-peer overlap', summary)
-        if language == 'nim':
-            clean = re.findall(r'^SERVICE_CLEAN (\d+) (\d+)$', log.read_text(), re.M)
-            assert len(clean) == 1 and int(clean[0][1]) <= int(clean[0][0]) + 65536, clean
-        if language == 'odin':
-            assert 'SERVICE_CLEAN 0 0\n' in log.read_text(), log.read_text()[-4000:]
+        check_cleanup(language, log.read_text())
         return {'language': language, 'thread_baseline': thread_limit, 'persistent_server_pid': server.pid, 'rounds': rounds,
                 'accepted_and_retired_connections': accepted, 'peak_connections': peak,
                 'isolated_healthy_outcomes': text.count('ISOLATED_HEALTHY\n'),
@@ -172,7 +181,7 @@ def main():
               'complete': False, 'persistent_client_engines': False,
               'limits': {'active_rss_bytes': 256 * 1024 * 1024, 'threads': dict(THREAD_BASELINES),
                          'idle_rss_range_bytes': 16 * 1024 * 1024, 'idle_descriptor_range': 2,
-                         'idle_allocation_range_bytes': 65536}, 'servers': []}
+                         'idle_allocation_range_bytes': {name: IDLE_ALLOCATION_LIMITS[name] for name in candidates}}, 'servers': []}
     try:
         # Every retained listener receives the same balanced mix of enabled native clients.
         for language in candidates:

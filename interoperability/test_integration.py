@@ -142,7 +142,7 @@ def service(language, certificates, wires, rounds, warmup, include_mojo=False):
         assert text.count('OWNED_VERIFIED\n') == count * 5, text[-2000:]
         assert text.count('OWNED_CANCEL_RELEASE\n') == count, text[-2000:]
         assert text.count('BACKPRESSURE\n') >= count, text[-2000:]
-        growth = check_growth(idle, warmup)
+        growth = check_growth(idle, warmup, language)
         stop.touch() # Only fully retired connections/stream slots permit normal listener shutdown.
         assert server.wait(timeout=5) == 0, log.read_text()[-2000:]
         final = log.read_text()

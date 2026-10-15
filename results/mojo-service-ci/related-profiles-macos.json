@@ -1,0 +1,582 @@
+{
+  "destroyed_endpoints_mojo_nim": {
+    "server": "mojo",
+    "client": "nim",
+    "rounds": 16,
+    "elapsed_seconds": 16.730977250030264,
+    "thread_baselines": {
+      "server": 9,
+      "client": 1
+    },
+    "allocation_scope": {
+      "mojo": "public process malloc live bytes; SDK and native libraries included",
+      "nim": "language allocator",
+      "odin": "tracked application allocator"
+    },
+    "peaks": {
+      "server": {
+        "rss_bytes": 18808832,
+        "threads": 9,
+        "descriptors": 4
+      },
+      "client": {
+        "rss_bytes": 14942208,
+        "threads": 1,
+        "descriptors": 6
+      }
+    },
+    "idle": {
+      "server": [
+        {
+          "rss_bytes": 17825792,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2341344,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18038784,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2341440,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18317312,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2365664,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18415616,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2365760,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18481152,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2365856,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18513920,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2365952,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18530304,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366048,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18579456,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366144,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18595840,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366240,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18628608,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366336,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18661376,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366432,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18792448,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366528,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18808832,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366624,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18808832,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366720,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18808832,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366816,
+          "thread_baseline": 9
+        },
+        {
+          "rss_bytes": 18808832,
+          "threads": 9,
+          "descriptors": 3,
+          "allocated_bytes": 2366912,
+          "thread_baseline": 9
+        }
+      ],
+      "client": [
+        {
+          "rss_bytes": 13991936,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14204928,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14467072,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14565376,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14630912,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14680064,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14745600,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14778368,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14827520,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14876672,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14909440,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14909440,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14942208,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14942208,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14942208,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        },
+        {
+          "rss_bytes": 14942208,
+          "threads": 1,
+          "descriptors": 3,
+          "allocated_bytes": 432,
+          "thread_baseline": 1
+        }
+      ]
+    },
+    "growth": {
+      "server": {
+        "idle_rss_range_bytes": 212992,
+        "idle_descriptor_range": 0,
+        "idle_allocation_range_bytes": 672,
+        "allocation_scope": "process malloc including SDK and native libraries",
+        "idle_allocation_limit_bytes": 65536,
+        "retained_engine": false
+      },
+      "client": {
+        "idle_rss_range_bytes": 114688,
+        "idle_descriptor_range": 0,
+        "idle_allocation_range_bytes": 0,
+        "allocation_scope": "language allocator",
+        "idle_allocation_limit_bytes": 65536,
+        "retained_engine": false
+      }
+    }
+  },
+  "retained_mesh_nim_mojo": {
+    "pairing": "nim-mojo",
+    "rounds": 12,
+    "fallback_timeout_seconds": 5,
+    "bidirectional_queries": 96,
+    "duplicate_connections_retired": 11,
+    "retained_engines_per_peer": 2,
+    "thread_baselines": {
+      "a": 1,
+      "b": 9
+    },
+    "peaks": {
+      "a": {
+        "rss_bytes": 9306112,
+        "threads": 1,
+        "descriptors": 7
+      },
+      "b": {
+        "rss_bytes": 16400384,
+        "threads": 9,
+        "descriptors": 5
+      }
+    },
+    "idle_budgets": {
+      "a": {
+        "idle_rss_range_bytes": 229376,
+        "idle_descriptor_range": 0,
+        "idle_allocation_range_bytes": 0,
+        "allocation_scope": "language allocator",
+        "idle_allocation_limit_bytes": 65536,
+        "retained_engine": true
+      },
+      "b": {
+        "idle_rss_range_bytes": 196608,
+        "idle_descriptor_range": 0,
+        "idle_allocation_range_bytes": 0,
+        "allocation_scope": "process malloc including SDK and native libraries",
+        "idle_allocation_limit_bytes": 16777216,
+        "retained_engine": true
+      }
+    },
+    "seconds": 11.540931958006695
+  },
+  "peer_loss_mojo_odin": {
+    "pairing": "mojo-odin",
+    "peer_losses": 12,
+    "pending_operations_settled": 96,
+    "restarts": 12,
+    "healthy_queries": 104,
+    "peaks": {
+      "keeper": {
+        "rss_bytes": 16384000,
+        "threads": 9,
+        "descriptors": 5
+      },
+      "victim": {
+        "rss_bytes": 10354688,
+        "threads": 1,
+        "descriptors": 6
+      }
+    },
+    "idle_budgets": {
+      "idle_rss_range_bytes": 98304,
+      "idle_descriptor_range": 0,
+      "idle_allocation_range_bytes": 0,
+      "allocation_scope": "process malloc including SDK and native libraries",
+      "idle_allocation_limit_bytes": 16777216,
+      "retained_engine": true
+    },
+    "max_recovery_seconds": 1.9720189170911908,
+    "seconds": 31.61663437495008
+  },
+  "overload_mojo": {
+    "language": "mojo",
+    "waves": 12,
+    "connection_ceiling": 16,
+    "stream_ceiling": 64,
+    "connection_capacity_rejections": 12,
+    "stream_capacity_rejections": 12,
+    "healthy_queries_after_release": 12,
+    "retired_connections": 312,
+    "peaks": {
+      "server": {
+        "rss_bytes": 16662528,
+        "threads": 9,
+        "descriptors": 4
+      }
+    },
+    "idle_budgets": {
+      "idle_rss_range_bytes": 16384,
+      "idle_descriptor_range": 0,
+      "idle_allocation_range_bytes": 14336,
+      "allocation_scope": "process malloc including SDK and native libraries",
+      "idle_allocation_limit_bytes": 16777216,
+      "retained_engine": true
+    },
+    "seconds": 69.43688045884483
+  },
+  "integration_mojo": {
+    "language": "mojo",
+    "connections": 36,
+    "peak_connections": 3,
+    "peaks": {
+      "rss_bytes": 27033600,
+      "threads": 9,
+      "descriptors": 4
+    },
+    "idle": [
+      {
+        "rss_bytes": 26607616,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2664336
+      },
+      {
+        "rss_bytes": 26689536,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2664336
+      },
+      {
+        "rss_bytes": 26771456,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2664336
+      },
+      {
+        "rss_bytes": 26918912,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2672272
+      },
+      {
+        "rss_bytes": 26968064,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2672272
+      },
+      {
+        "rss_bytes": 26984448,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2672272
+      },
+      {
+        "rss_bytes": 26984448,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2672272
+      },
+      {
+        "rss_bytes": 27017216,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2715792
+      },
+      {
+        "rss_bytes": 27033600,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2719888
+      },
+      {
+        "rss_bytes": 27033600,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2719888
+      },
+      {
+        "rss_bytes": 27033600,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2719888
+      },
+      {
+        "rss_bytes": 27033600,
+        "threads": 9,
+        "descriptors": 4,
+        "thread_baseline": 9,
+        "allocated_bytes": 2719888
+      }
+    ],
+    "growth": {
+      "idle_rss_range_bytes": 65536,
+      "idle_descriptor_range": 0,
+      "idle_allocation_range_bytes": 47616,
+      "allocation_scope": "process malloc including SDK and native libraries",
+      "idle_allocation_limit_bytes": 16777216,
+      "retained_engine": true
+    },
+    "cancelled_snapshot_releases": 36
+  },
+  "offload_mojo": {
+    "language": "mojo",
+    "rounds": 10,
+    "runtime_thread_baseline": 9,
+    "workers": 2,
+    "job_cap": 4,
+    "verification_repeats_per_job": 128,
+    "verified_jobs": 30,
+    "wrong_domain_rejections": 10,
+    "capacity_rejections": 10,
+    "queued_cancellations": 10,
+    "held_running_cancellations": 10,
+    "actual_crypto_cancellations": 10,
+    "shutdown_pending_jobs": 4,
+    "healthy_light_queries": 70,
+    "elapsed_seconds": 62.573903374839574,
+    "idle": [
+      {
+        "rss_bytes": 21463040,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4470528,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 21512192,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4473088,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 21512192,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4473088,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 22102016,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4473088,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 22134784,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4473088,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 22233088,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4487424,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 22282240,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4487424,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 22282240,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4487424,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 22282240,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4487424,
+        "thread_baseline": 11
+      },
+      {
+        "rss_bytes": 22806528,
+        "threads": 11,
+        "descriptors": 4,
+        "allocated_bytes": 4473088,
+        "thread_baseline": 11
+      }
+    ],
+    "peaks": {
+      "rss_bytes": 22806528,
+      "threads": 11,
+      "descriptors": 4
+    },
+    "growth": {
+      "idle_rss_range_bytes": 1294336,
+      "idle_descriptor_range": 0,
+      "idle_allocation_range_bytes": 14336,
+      "allocation_scope": "process malloc including SDK and native libraries",
+      "idle_allocation_limit_bytes": 16777216,
+      "retained_engine": true
+    }
+  }
+}

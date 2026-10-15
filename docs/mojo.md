@@ -81,9 +81,12 @@ per-stream workers or replacement C protocol implementations.
 On this Mac, the SDK creates nine startup threads in the native readiness probe. The harness
 measures that baseline before each run, retains raw process counts, and rejects growth above it;
 the proof-worker build has eleven threads. Shutdown heap baselines use a bounded pre-endpoint
-quiescent window so SDK startup allocations cannot race the final comparison. The existing
-64 KiB shutdown/idle-growth limits are retained. Linux measures its own baseline rather than assuming
-Mac counts. These fixed runtime threads and their memory cost remain language-decision inputs.
+quiescent window so SDK startup allocations cannot race the final comparison. The 64 KiB shutdown
+limit remains after engine destruction and for the lifecycle soak. During retained-engine operation,
+process malloc uses the same 16 MiB aggregate growth budget as RSS; Nim/Odin application counters
+retain their 64 KiB limit. These scopes have different leak-detection sensitivity. Reports include
+the selected scope and ceiling. See the [CI investigation](../results/mojo-service-ci.md).
+Linux measures its own baseline rather than assuming Mac counts. These fixed runtime threads and their memory cost remain language-decision inputs.
 
 Mojo's public API does not provide the allocator call/free counters used by the other adapters.
 Its separate benchmark instrumentation records public process malloc live-byte deltas and RSS,

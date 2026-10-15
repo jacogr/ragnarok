@@ -109,7 +109,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
                 sample['allocated_bytes'] = allocated
                 sample['thread_baseline'] = thread_limits[role]
                 idle[role].append(sample)
-        budgets = {role: check_growth(samples, warmup) for role, samples in idle.items()}
+        budgets = {role: check_growth(samples, warmup, languages[0 if role == 'a' else 1]) for role, samples in idle.items()}
         (gate / 'stop').touch()
         # Normal process exit follows full engine/socket/callback cleanup; Odin additionally checks exact tracked ownership.
         for role, process in processes.items():
