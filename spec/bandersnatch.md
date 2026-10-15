@@ -1,10 +1,10 @@
-# Bandersnatch: pinned JAM research profile
+# Bandersnatch: pinned historical JAM profile
 
 Baseline: Gray Paper v0.7.1,
 `1c979cb59bb800f92ffff083a2701004dfc6cd33`,
 [Bandersnatch appendix](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/bandersnatch.tex)
 and [Safrole tickets](https://github.com/gavofyork/graypaper/blob/1c979cb59bb800f92ffff083a2701004dfc6cd33/text/safrole.tex#L281).
-[All pins](bandersnatch-pins.json) include Rust, Nim/Odin, source-tree hashes,
+[All pins](bandersnatch-pins.json) include Rust, Nim, source-tree hashes,
 Cargo.lock hash, SRS hash, published vectors and original/reduced JAM fixture
 hashes. Sources and dependencies build without local patches.
 
@@ -32,7 +32,7 @@ compatibility. No silent suite/toolchain/protocol upgrade is made.
 | Public derivation/import | 32-byte compressed public encoding; import validates canonical prime-subgroup encoding. |
 | Contextual signing | Borrow raw VRF input/context and separate additional data; own full 96-byte signature. |
 | Contextual verification | Reconstruct input with hash-to-curve; verify proof; return only verified first 32 output-hash bytes. |
-| Ring commitment | Ordered raw 32-byte members normalized in Nim/Odin; 144-byte compressed root. |
+| Ring commitment | Ordered raw 32-byte members normalized in Nim; 144-byte compressed root. |
 | Ring proving/verification | Complete output + Pedersen proof + ring membership proof totals 784 bytes; success yields verified 32-byte output. |
 | Ring setup | Opaque immutable owner, requested capacity 1..1023; domain is backend next-power-of-two construction, using the pinned public SRS. |
 

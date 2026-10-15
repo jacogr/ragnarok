@@ -1,185 +1,54 @@
 # JAM Ragnarök
 
 Ragnarök is a joint effort between the maintainer and AI coding agents, and we are proud of it.
-The maintainer sets the direction, steers each increment and owns the decisions; AI agents help
-research, implement, test and document the work. We make that collaboration explicit.
+The maintainer sets direction, steers each increment and owns decisions; AI agents help research,
+implement, test and document the work. We make that collaboration explicit.
 
-Independent Nim, Odin and Mojo JAM experiments. Language selection remains open.
-The [Mojo evaluation](docs/mojo.md) covers the same bounded M1 codec, M2 crypto and M3 QUIC POC.
-See [local parity verification and the three-language baseline](results/mojo-parity.md).
-The [AI development ergonomics comparison](results/ai-ergonomics.md) separates measured evidence
-from historical gaps and introduces prospective task tracking.
-See [the design](docs/design.md), [the pinned codec specification](spec/codec.md)
-and [the macOS toolchains](docs/toolchains-macos.md).
-[Linux CI](docs/ci-linux.md) runs formatting, codec, crypto and QUIC checks on GitHub Actions.
+An independent **Nim** implementation of the Join-Accumulate Machine (JAM), built against pinned
+Gray Paper and JAMNP-S specifications. Language selection is complete; its sources, comparisons
+and observations are preserved in the
+[`language-selection` release](https://github.com/jacogr/ragnarok/releases/tag/language-selection).
 
-The implemented primitives are canonical JAM general naturals and fixed-width
-unsigned integers (0..8 bytes), bounded byte strings, and homogeneous
-fixed-unsigned sequences, optional variable blobs, work-output variants and
-full nested preimage extrinsics, complete work digests and complete work reports, with checked prefix
-decoding. They have no
-third-party language packages in their borrowed codec paths; owned snapshots allocate explicitly.
+The current foundation includes canonical codecs and immutable snapshots, native crypto adapters,
+and authenticated nonblocking QUIC with bounded ownership/cancellation tests. It is not yet a full
+JAM client or production validator. [Design and remaining work](docs/design.md) describe the scope.
 
-## Initialize the upstream sources
+## Setup
+
+Pinned baseline: Nim **2.2.12**, ARC, Clang; Rust **1.99.0** for the Bandersnatch primitive bridge.
+Python **3.12+** runs verification/setup tools. Native builds also need CMake, zlib and OpenSSL.
+See [development](docs/development.md) and [upstream ownership](docs/dependencies.md).
 
 ```sh
 python3 tools/setup_submodules.py
-```
-
-Upstream code, specifications and unmodified vectors are pinned as Git submodules under `vendor/`.
-The setup command also initializes LSQUIC's nested dependencies and checks out only the codec and
-Safrole folders of the large JAM vector repository. See [source ownership](docs/dependencies.md).
-
-## Format the sources
-
-Use `odinfmt` for Odin, `nimpretty` (bundled with Nim) for Nim, and `mojo format` for Mojo:
-
-```sh
-python3 tools/format.py
 python3 tools/format.py --check
+python3 tests/test_codec.py
+python3 tests/test_crypto.py --fetch
+python3 tests/test_bandersnatch.py --fetch
+python3 tests/test_work_report.py
+python3 tests/test_assurances.py
+python3 tests/test_assurance_crypto.py
+python3 tests/test_quic.py --fetch
 ```
 
-These commands cover implementation code and test sources, including the negative
-compilation fixtures. Check mode reports differences without writing files.
-Odin uses the [Exercism configuration](https://github.com/exercism/odin/blob/main/odinfmt.json),
-which follows the [Odin examples style guide](https://github.com/odin-lang/examples/wiki/Naming-and-style-convention).
-It uses tabs displayed as four columns, configured in `odinfmt.json`; Nim uses
-two spaces; Mojo uses four spaces. All target a 100-column line width where their formatters support it.
-The formatting tool is a Python standard-library wrapper around the native tools.
+The crypto step builds the native primitive library used by report and assurance-context tests.
+`--fetch` initializes exact pinned sources; Bandersnatch also provisions missing locked Cargo
+packages. Generated builds, temporary keys, observations and logs stay under ignored `build/`.
+[Linux CI](.github/workflows/linux.yml) runs the correctness and lifecycle checks on Ubuntu 24.04.
 
-Install the selected Odin formatter with `brew install odinfmt` on macOS.
-The verified package baseline is odinfmt 2026-08 and Nim's nimpretty 0.2 from
-Nim 2.2.12. No language compiler version was changed.
+## Code and verification
 
-## Run the checks
+| Path | Purpose |
+| --- | --- |
+| `src/` | Nim codecs and owned snapshots |
+| `src/crypto/` | Blake2b-256, Ed25519, Keccak-256 and signing contexts |
+| `src/bandersnatch/` | Typed historical IETF VRF/RingVRF adapter and domain policy |
+| `src/quic/` | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload |
+| `tests/` | Independent references and verification runners |
+| `tests/native/` | Nim drivers, selftests and intentional compile-failure fixtures |
+| `native/` | Narrow maintained C/Rust primitive and transport bridges |
+| `spec/`, `vectors/`, `vendor/` | Pinned interpretations, project fixtures and upstream submodules |
 
-With Nim 2.2.12, Odin dev-2026-10:84bc3fc21, Python 3.9+ and a native linker:
-
-```sh
-python3 interoperability/test_codec.py
-```
-
-The runner checks compiler versions, builds with Nim ARC, runs native tests,
-verifies negative compilation fixtures, checks pinned official length prefixes,
-and compares both implementations with independent primitive test references.
-Build output lives in an automatically cleaned temporary directory.
-On macOS it locates the active Xcode SDK; on Linux it uses the system linker.
-Formatting, codec and QUIC checks also passed on Ubuntu 24.04 x86-64 in
-[GitHub Actions run 38512012802](https://github.com/jacogr/ragnarok/actions/runs/38512012802).
-
-For manual fuzzing, build `nim/tests/driver.nim` or the `odin/driver` package and
-pass a request-file path. Each line is `E <decimal uint64>` or `D <hex bytes>`.
-Empty hex is supported; each decode request is limited to 64 bytes by the
-adapter. The native decoder itself accepts arbitrary-length borrowed input.
-The adapters are test utilities; they load a trusted local request file into
-memory. Their output is encoded hex, `value consumed`, `truncated`,
-`noncanonical`, or `inputerror`. Encode inputs above uint64 max are rejected.
-The native `fuzzOne`/`fuzz_one` checks assert that every successful decode
-re-encodes exactly its consumed prefix; the batch drivers also expose the
-production decoders to arbitrary externally generated byte cases.
-
-See [the first codec verification report](results/natural-codec.md) for observed
-results and remaining milestone work.
-
-Fixed-width API details and examples are in [the specification notes](spec/fixed-unsigned.md).
-Its adapters (`nim/tests/fixed_driver.nim` and `odin/fixed_driver`) use
-`FE <width> <decimal uint64>` and `FD <width> <hex bytes>` with signed width text,
-including empty hex for zero-width decoding. Errors are `invalidwidth`,
-`outofrange`, `truncated`, or `inputerror`; successful encoding may be an empty
-line for width zero. See [the verification report](results/fixed-unsigned-codec.md).
-
-The bounded byte-string/fixed-unsigned-sequence round is complete. See
-[its API notes](spec/bounded-containers.md) and
-[verification report](results/bounded-containers.md) for caller-owned buffers,
-resource limits, errors and adapter requests. All checks remain part of the
-same shared test command.
-
-The first composite round is complete. See [its API notes](spec/composite.md)
-and [verification report](results/composite.md) for exact optional/work tags,
-full official preimage checks and nested failure handling.
-
-Complete work digests are now implemented. See [their API notes](spec/work-digest.md)
-and [verification report](results/work-digest.md) for full official vector checks
-and nominal hash/gas/metric types.
-
-QUIC/JAMNP-S is now the priority investigation. See [the feasibility assessment](results/quic-feasibility.md)
-for the maintained Nim LSQUIC route, Odin event-loop/binding requirements and
-the proposed authenticated networking proof. The follow-up below records
-the completed local experiment; the full M3 gate remains open.
-
-The first authenticated QUIC/CE 143 proof now runs in both languages. See
-[run instructions](docs/quic-proof.md) and [the verification report](results/quic-proof.md)
-for the pinned native dependencies and remaining M3 gates. Both languages now
-use [explicit LSQUIC adapters](docs/quic-adapters.md), without Nim dependency
-patches; see [the current verification](results/quic-adapters.md).
-
-The bounded same-process QUIC soak now exercises backpressure, cancellation,
-stream-local deadlines and continued service after malformed requests. See
-[run instructions and resource budgets](docs/quic-soak.md).
-
-The [persistent multi-peer service](docs/quic-service.md) now keeps one listener engine alive across
-mixed Nim/Odin peers and reconnect waves, including blocked/failed peers and idle resource checks.
-See [its verification results](results/quic-service.md); the new Linux CI step awaits a pushed run.
-
-The [persistent IPv6 peer proof](docs/quic-mesh.md) retains client/server engines on one I/O loop per
-logical peer across fallback dialing, duplicate arbitration, bidirectional CE queries and reconnects.
-See [verification](results/quic-mesh.md). The topology is a fixed pair; general validator networking
-and independent-stack interoperability remain open.
-
-[Codec result safety](docs/codec-results.md) now separates completed values and
-metadata from typed failures in both languages.
-
-Use [owned snapshots](docs/codec-ownership.md) when decoded blobs may outlive
-or be used after changes to their input. Span/pool APIs now have explicit borrowed
-names. See [the ownership verification](results/codec-ownership.md).
-
-The first M2 slice implements Blake2b-256, Ed25519 and legacy Keccak-256 in both
-languages. See [the APIs and ownership](docs/crypto.md), [specification notes](spec/crypto.md)
-and [verification report](results/crypto-primitives.md). Run
-`python3 interoperability/test_crypto.py --fetch`; Linux CI runs it before QUIC.
-An explicit small-order Ed25519 acceptance-policy difference remains a JAM gate.
-Bandersnatch contextual VRF and RingVRF now run through a shared maintained Rust
-ABI. See [the APIs](docs/bandersnatch.md), [pinned contract](spec/bandersnatch.md)
-and [verification](results/bandersnatch.md). Run
-`python3 interoperability/test_bandersnatch.py --fetch`. Historical backend
-audit/policy gates and BEEFY/BLS remain open.
-
-The [integrated decision slice](docs/integration.md) composes owned work-digest decoding,
-Blake2b-256 content checks and persistent CE 143 networking, including cancellation and failed
-siblings. Run `python3 interoperability/test_integration.py --fetch`; see
-[its verification report](results/integration.md). Linux CI includes the new workload.
-
-The [optimized codec/hash comparison](docs/benchmark.md) measures encode/decode, borrowed/owned
-allocation costs and operation latency on identical inputs. Run
-`python3 interoperability/benchmark.py --fetch`; [local observations](results/benchmark.md) are
-separate from the same-CPU Linux CI results, which await a pushed run.
-The [bounded three-language optimization experiment](results/checked-bulk.md) records checked
-before/after timings and a separate Nim LTO probe, including the remaining sequence-performance gap.
-
-The [IPv6 resilience proof](docs/quic-resilience.md) checks retained-engine recovery after peer
-death with pending requests, connection/stream saturation, and healthy work after admission slots
-are released. See [verification](results/quic-resilience.md) for the finite workload and limits.
-
-The [bounded Bandersnatch offload proof](docs/quic-offload.md) verifies official ticket proofs on
-two fixed native workers alongside QUIC, with four total owned job slots, cancellation and joined
-shutdown. Run `python3 interoperability/test_quic_offload.py --fetch`; see
-[verification](results/quic-offload.md). Linux CI includes the new workload.
-
-The [complete-report slice](spec/work-report.md) and [API guide](docs/work-report.md) cover report codecs
-and immutable snapshots
-in all three candidates, plus the normative guarantee signing message and two-credential verification
-workload. Run `python3 interoperability/test_work_report.py` after building the pinned native crypto
-library. The [comparison](results/work-report.md) separates complete-report codec, ownership, hash,
-Ed25519-provider and combined costs. Reproduce with
-`python3 interoperability/benchmark_report.py`; Nim uses checked ARC/Clang LTO throughout this run.
-
-The [assurances extrinsic](spec/assurances.md) now has equivalent allocation-free codecs with
-owned fixed records in all three languages. The [API guide](docs/assurances.md) and
-[verification/ergonomics evidence](results/assurances.md) cover official tiny/full vectors, malformed
-inputs, atomic output and nominal type guards. Reproduce with
-`python3 interoperability/test_assurances.py` and `python3 interoperability/test_assurances_types.py`.
-
-The [assurance signing-context slice](docs/assurance-crypto.md) adds the normative transcript,
-explicit parent binding and validator-indexed Ed25519 verification in all three languages.
-[Evidence](results/assurance-crypto.md) includes independent signatures and cumulative repair/LOC
-totals. Run `python3 interoperability/test_assurance_crypto.py` after the pinned crypto build.
+Use `python3 tools/format.py` to apply Nim's bundled formatter and `--check` to verify it.
+See [codec](docs/codec.md), [crypto](docs/crypto.md) and [networking](docs/networking.md) for APIs,
+ownership, reproduction commands and outstanding protocol/security gates.

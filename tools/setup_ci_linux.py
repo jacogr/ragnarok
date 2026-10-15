@@ -49,28 +49,14 @@ def main():
     codec_pins = json.loads((ROOT / 'spec/pins.json').read_text())
     # Reject drift between CI downloads and the versions enforced by the existing test runners.
     assert pins['nim_version'] == codec_pins['toolchains']['nim']
-    assert pins['odin_version'] == codec_pins['toolchains']['odin']
     destination = args.destination.resolve()
     destination.mkdir(parents=True, exist_ok=True)
     paths = {}
     # Each tool is extracted separately so its archive layout cannot collide with another.
-    for name in ('nim', 'odin', 'odinfmt_source'):
+    for name in ('nim',):
         data = download(pins['downloads'][name], destination / f'{name}.archive')
         paths[name] = extract(data, destination / name)
-    # The published Linux binary uses a nightly suffix and shorter source hash; verify the exact executable too.
-    assert hashlib.sha256((paths['odin'] / 'odin').read_bytes()).hexdigest() == pins['odin_binary_sha256']
-    patch = download(pins['downloads']['odinfmt_patch'], destination / 'odinfmt.patch')
-    assert patch # An empty compatibility patch cannot be treated as a successful install.
-    # Re-extraction above restores original formatter sources, so the exact Homebrew backport applies once per invocation.
-    subprocess.run(['patch', '--batch', '--forward', '-p1', '-i', str(destination / 'odinfmt.patch')],
-                   cwd=paths['odinfmt_source'], check=True)
-    binary_directory = destination / 'bin'
-    binary_directory.mkdir(exist_ok=True)
-    # Build just odinfmt with the pinned Odin compiler; no OLS install/build shell script is executed.
-    subprocess.run([str(paths['odin'] / 'odin'), 'build', 'tools/odinfmt/main.odin',
-                    f'-out:{binary_directory / "odinfmt"}', '-collection:src=src', '-o:speed', '-file'],
-                   cwd=paths['odinfmt_source'], check=True)
-    tool_paths = [paths['nim'] / 'bin', paths['odin'], binary_directory]
+    tool_paths = [paths['nim']/'bin']
     # GitHub consumes these paths in later steps; local invocation can instead use the printed directories.
     if os.environ.get('GITHUB_PATH'):
         with Path(os.environ['GITHUB_PATH']).open('a') as output:
@@ -79,7 +65,6 @@ def main():
     for path in tool_paths:
         print(path)
     subprocess.run([str(paths['nim'] / 'bin/nim'), '--version'], check=True)
-    subprocess.run([str(paths['odin'] / 'odin'), 'version'], check=True)
 
 
 # Importing helpers for archive validation never downloads or executes a compiler.

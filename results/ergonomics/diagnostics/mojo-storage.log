@@ -1,5 +1,0 @@
-Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
-/Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/compile_fail/mutable_owner.mojo:7:28: error: 'NoneType' value has no attribute 'wire'
-    owner._opaque.value()[].wire[0] = 7
-    ~~~~~~~~~~~~~~~~~~~~~~~^
-/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo: error: failed to parse the provided Mojo source module

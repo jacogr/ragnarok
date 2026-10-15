@@ -1,6 +1,0 @@
-{
-  "provider": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)",
-  "requests": 2082,
-  "request_sha256": "feafd8277b4dfdfea48aab37620010cf56020060230bb83397b760a3bb735e94",
-  "expected_sha256": "f964d4859239bb404b63bbd8ba84173ae38fbbbe8a7a353bb5f68b39a4b339cb"
-}

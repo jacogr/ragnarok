@@ -5,18 +5,17 @@ name: Linux checks
   pull_request:
   workflow_dispatch:
 
-# Test code only needs to read the checkout, including on fork pull requests.
 permissions:
   contents: read
 
-# Retire obsolete runs for the same branch/PR without interrupting unrelated checks.
+# Retire obsolete runs while keeping independent branches/PRs separate.
 concurrency:
   group: linux-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   linux:
-    name: Codec, crypto and QUIC (Ubuntu 24.04 x86-64)
+    name: Nim codec, crypto and QUIC (Ubuntu 24.04 x86-64)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -43,122 +42,76 @@ jobs:
       - name: Native Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y build-essential clang lld cmake zlib1g-dev openssl patch
+          sudo apt-get install --no-install-recommends -y build-essential clang lld cmake zlib1g-dev openssl
           mkdir -p build/ci
           uname -a | tee build/ci/platform.log
-          ulimit -a | tee -a build/ci/platform.log
           clang --version | tee -a build/ci/platform.log
-          cmake --version | tee -a build/ci/platform.log
-          openssl version | tee -a build/ci/platform.log
 
-      - name: Permit Odin's io_uring backend on this temporary runner
-        run: |
-          # These optional kernel policies can prevent core:nbio from opening its ring.
-          for setting in kernel.io_uring_disabled kernel.apparmor_restrict_unprivileged_io_uring; do
-            if sysctl "$setting" >/dev/null 2>&1; then
-              sudo sysctl -w "$setting=0"
-            fi
-          done
-
-      - name: Pinned Nim, Odin and odinfmt
+      - name: Pinned Nim and bundled formatter
         run: python3 tools/setup_ci_linux.py --destination "$RUNNER_TEMP/ragnarok-tools"
 
       - name: Pinned Rust for Bandersnatch
         run: |
-          # Use official rustup component checksums; do not change the runner's default toolchain.
           rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
           echo "RUSTUP_TOOLCHAIN=1.99.0" >> "$GITHUB_ENV"
           rustup run 1.99.0 rustc --version
-          rustup run 1.99.0 cargo --version
-
-      - name: Pinned Mojo and bundled formatter
-        run: |
-          # Keep the SDK isolated and require hashes for every compiler/formatter dependency.
-          python3 -m venv build/mojo-env
-          build/mojo-env/bin/python -m pip install --require-hashes -r tools/mojo-requirements.txt
-          build/mojo-env/bin/mojo --version
 
       - name: Formatting
         run: python3 tools/format.py --check
 
       - name: Codec conformance and native tests
-        run: python3 interoperability/test_codec.py --mojo 2>&1 | tee build/ci/codec.log
+        run: python3 tests/test_codec.py 2>&1 | tee build/ci/codec.log
 
-      - name: Crypto vectors, ownership and cross-language checks
-        run: python3 interoperability/test_crypto.py --mojo --fetch 2>&1 | tee build/ci/crypto.log
+      - name: Crypto vectors, ownership and ABI checks
+        run: python3 tests/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
 
-      # Clang LTO uses the explicit lld dependency on Linux; all Nim runtime guards remain enabled.
-      - name: Checked complete-report and guarantee workload builds
-        run: python3 interoperability/benchmark_report.py --build-only 2>&1 | tee build/ci/report-build.log
+      - name: Report codecs, ownership and independent guarantee signatures
+        run: python3 tests/test_work_report.py 2>&1 | tee build/ci/report.log
 
-      - name: Complete-report evidence and oracle integrity
-        run: python3 interoperability/test_report_harness.py
-
-      - name: Complete-report nominal type safeguards
-        run: python3 interoperability/test_report_types.py
-
-      - name: Complete-report codecs and independent guarantee signatures
-        run: python3 interoperability/test_work_report.py --skip-build 2>&1 | tee build/ci/report-codec.log
-
-      - name: Assurances oracle integrity and nominal type safeguards
+      - name: Report and assurance oracle/type safeguards
         run: |
-          python3 interoperability/test_assurances_harness.py
-          python3 interoperability/test_assurances_types.py
+          python3 tests/test_report_harness.py
+          python3 tests/test_report_types.py
+          python3 tests/test_assurances_harness.py
+          python3 tests/test_assurances_types.py
+          python3 tests/test_assurance_crypto_harness.py
+          python3 tests/test_assurance_crypto_types.py
 
-      - name: Checked assurances codecs (three languages, Nim LTO)
-        run: python3 interoperability/test_assurances.py 2>&1 | tee build/ci/assurances.log
-
-      - name: Assurance signing-context oracle and nominal safeguards
+      - name: Assurance codecs and signing contexts
         run: |
-          python3 interoperability/test_assurance_crypto_harness.py
-          python3 interoperability/test_assurance_crypto_types.py
+          python3 tests/test_assurances.py 2>&1 | tee build/ci/assurances.log
+          python3 tests/test_assurance_crypto.py 2>&1 | tee build/ci/assurance-crypto.log
 
-      - name: Assurance transcripts, parent binding and validator signatures
-        run: python3 interoperability/test_assurance_crypto.py 2>&1 | tee build/ci/assurance-crypto.log
+      - name: Bandersnatch historical vectors and JAM tickets
+        run: python3 tests/test_bandersnatch.py --fetch 2>&1 | tee build/ci/bandersnatch.log
 
-      - name: Checked complete-report and guarantee comparison (Nim LTO)
-        run: python3 interoperability/benchmark_report.py --skip-build 2>&1 | tee build/ci/report-benchmark.log
+      - name: QUIC startup and lifecycle harness regressions
+        run: |
+          python3 tests/test_quic_harness.py
+          python3 tests/test_quic_soak_harness.py
 
-      - name: Bandersnatch Rust ABI and JAM proof checks
-        run: python3 interoperability/test_bandersnatch.py --mojo --fetch 2>&1 | tee build/ci/bandersnatch.log
+      - name: Authenticated QUIC and native selftests
+        run: python3 tests/test_quic.py --fetch 2>&1 | tee build/ci/quic.log
 
-      - name: QUIC peer startup harness regression checks
-        run: python3 interoperability/test_quic_harness.py
+      - name: QUIC lifecycle soak
+        run: python3 tests/test_quic_soak.py --skip-build 2>&1 | tee build/ci/quic-soak.log
 
-      - name: Build and verify Linux QUIC
-        run: python3 interoperability/test_quic.py --mojo --fetch 2>&1 | tee build/ci/quic.log
+      - name: Retained multi-peer service
+        run: python3 tests/test_quic_service.py --skip-build 2>&1 | tee build/ci/quic-service.log
 
-      - name: QUIC soak harness regression checks
-        run: python3 interoperability/test_quic_soak_harness.py
+      - name: Bidirectional IPv6 peers
+        run: python3 tests/test_quic_mesh.py --skip-build 2>&1 | tee build/ci/quic-mesh.log
 
-      - name: Bounded QUIC lifecycle soak
-        run: python3 interoperability/test_quic_soak.py --mojo --skip-build 2>&1 | tee build/ci/quic-soak.log
+      - name: Peer-loss recovery and admission saturation
+        run: python3 tests/test_quic_resilience.py --skip-build 2>&1 | tee build/ci/quic-resilience.log
 
-      - name: Persistent multi-peer QUIC service
-        run: python3 interoperability/test_quic_service.py --mojo --skip-build 2>&1 | tee build/ci/quic-service.log
+      - name: Integrated codec, crypto and QUIC
+        run: python3 tests/test_integration.py --reuse-native 2>&1 | tee build/ci/integration.log
 
-      - name: Persistent bidirectional IPv6 QUIC peers
-        run: python3 interoperability/test_quic_mesh.py --mojo --skip-build 2>&1 | tee build/ci/quic-mesh.log
+      - name: Bounded proof offload alongside QUIC
+        run: python3 tests/test_quic_offload.py --reuse-native 2>&1 | tee build/ci/quic-offload.log
 
-      - name: IPv6 peer-loss recovery and admission saturation
-        run: python3 interoperability/test_quic_resilience.py --mojo --skip-build 2>&1 | tee build/ci/quic-resilience.log
-
-      - name: Integrated owned codec, crypto and QUIC
-        run: python3 interoperability/test_integration.py --mojo --reuse-native 2>&1 | tee build/ci/integration.log
-
-      - name: Bounded Bandersnatch offload alongside QUIC
-        run: python3 interoperability/test_quic_offload.py --mojo --reuse-native 2>&1 | tee build/ci/quic-offload.log
-
-      - name: Benchmark evidence integrity checks
-        run: python3 interoperability/test_benchmark_harness.py
-
-      - name: Ergonomics measurement integrity
-        run: python3 tools/ergonomics/test_tools.py
-
-      - name: Optimized checked codec and hash comparison
-        run: python3 interoperability/benchmark.py --mojo --reuse-native 2>&1 | tee build/ci/benchmark.log
-
-      # Upload only explicit diagnostics; dependency trees, certificates and private keys are excluded.
+      # Certificates/private keys and dependency trees are excluded from uploaded diagnostics.
       - name: Retain verification logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -168,14 +121,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
-            build/**/mojo*-build.log
-            build/codec/mojo-type-checks.log
-            build/crypto/build.log
-            build/crypto/type-checks.log
+            build/crypto/*.log
             build/crypto/results.json
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-            build/bandersnatch/type-checks.log
+            build/bandersnatch/*.log
             build/bandersnatch/results.json
             build/quic/build.log
             build/quic/results.json
@@ -192,7 +140,7 @@ jobs:
             build/quic/resilience/results.json
             build/quic/resilience/*/*.log
             build/quic/resilience/*/resources.json
-            build/integration/build.log
+            build/integration/*.log
             build/integration/results.json
             build/integration/*/*.log
             build/integration/*/resources.json
@@ -200,28 +148,17 @@ jobs:
             build/offload/results.json
             build/offload/*/*.log
             build/offload/*/resources.json
-            build/assurance-crypto/*-build.log
-            build/assurance-crypto/checks-*/results.json
-            build/assurance-crypto/checks-*/stderr.log
-            build/assurance-crypto/types/*.log
-            build/assurance-crypto/types/results.json
+            build/report/*.log
+            build/report/*correctness.json
+            build/report/types/*.log
+            build/report/types/results.json
             build/assurances/*-build.log
             build/assurances/checks-*/results.json
             build/assurances/checks-*/stderr.log
             build/assurances/types/*.log
             build/assurances/types/results.json
-            build/report/*build*.log
-            build/report/*correctness.json
-            build/report/*stderr.log
-            build/report/*report-types.log
-            build/report/type-checks.json
-            build/report/results.json
-            build/report/results.partial.json
-            build/report/results.md
-            build/report/raw/**/*.log
-            build/bench/report-observers.log
-            build/bench/build.log
-            build/bench/corpus.json
-            build/bench/results.json
-            build/bench/results.md
-            build/bench/raw/**/*.log
+            build/assurance-crypto/*-build.log
+            build/assurance-crypto/checks-*/results.json
+            build/assurance-crypto/checks-*/stderr.log
+            build/assurance-crypto/types/*.log
+            build/assurance-crypto/types/results.json

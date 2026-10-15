@@ -1,57 +1,39 @@
 # Pinned upstream sources
 
-Git submodule entries under `vendor/` pin the exact upstream commits. The parent
-repository stores Git references, not copies of their source trees or published
-fixture files. Existing revisions are unchanged.
-
-| Submodule | Purpose |
-| --- | --- |
-| `vendor/lsquic` | QUIC transport; recursively includes its pinned QPACK/HPACK children |
-| `vendor/boringssl` | Shared TLS and Nim Blake2b/Ed25519 backend |
-| `vendor/xkcp` | Nim legacy Keccak backend; recursively includes its pinned XKCBuild tooling |
-| `vendor/ark-vrf` | Original JAM Bandersnatch Rust backend |
-| `vendor/bandersnatch-vrf-spec` | Historical specification, published vectors and public SRS |
-| `vendor/graypaper` | GP v0.7.1 source specification |
-| `vendor/jam-np` | Pinned JAMNP-S source specification |
-| `vendor/jamtestvectors` | Official codec and Safrole fixtures |
-| `vendor/wycheproof` | Independent Ed25519 adversarial corpus and its license |
-
-After cloning, run:
+Git submodules under `vendor/` pin exact upstream commits. The parent repository maintains narrow
+bridges and pin metadata rather than copied dependency source trees. Initialize them with:
 
 ```sh
 python3 tools/setup_submodules.py
 ```
 
-The command initializes recorded commits and nested dependencies without executing
-upstream scripts. It refuses local source edits or unexpected checkout revisions.
-JAM vectors use a partial clone and sparse checkout of `codec` and `stf/safrole`;
-several gigabytes of unrelated traces are not materialized. Ordinary
-`git submodule update --init --recursive` also works, but creates a full checkout.
-Linux CI uses the focused setup command after checking out the parent repository.
+| Submodule | Purpose |
+| --- | --- |
+| `vendor/lsquic` | QUIC transport, including its recorded QPACK/HPACK children |
+| `vendor/boringssl` | TLS, Blake2b-256 and Ed25519 |
+| `vendor/xkcp` | Legacy Keccak-256 and its recorded build-tool sources |
+| `vendor/ark-vrf` | Historical Bandersnatch Rust backend |
+| `vendor/bandersnatch-vrf-spec` | Published historical suite vectors and SRS |
+| `vendor/graypaper` | Pinned Gray Paper specification |
+| `vendor/jam-np` | JAMNP-S networking specification |
+| `vendor/jamtestvectors` | Official codec and Safrole fixtures |
+| `vendor/wycheproof` | Independent adversarial Ed25519 corpus and license |
 
-Existing JSON pin files retain protocol/toolchain interpretation and content
-hashes; the runners cross-check their source metadata against each Git checkout.
-The source must remain clean and at its recorded revision. Bandersnatch also
-retains complete source-tree and SRS hash checks. No dependency source patches
-are introduced by this change. `--fetch` initializes missing required submodules;
-Bandersnatch additionally downloads missing locked Cargo packages. Builds then
-use the initialized local sources.
+Setup checks recorded gitlinks and refuses local upstream edits or unexpected revisions. It does
+not run upstream install scripts. JAM vectors use a sparse checkout of `codec` and `stf/safrole`;
+unrelated large trace sets are not materialized. Nested native dependencies retain their parents'
+recorded revisions.
 
-Copied upstream codec, Wycheproof and published Bandersnatch vectors/licenses
-have been removed from the parent repository and are read directly from their
-submodules. Project-authored boundary fixtures, RFC vector transcription and
-small derived JAM fixtures remain local. The derived fixtures are still checked
-against complete original cases in the official-vector submodule.
+JSON pins under `spec/` retain source identities, interpretation and vector/SRS hashes. Cargo.lock
+pins transitive registry versions/checksums; builds use locked offline dependencies after explicit
+provisioning. `--fetch` initializes required submodules and permits missing locked Cargo packages
+to be downloaded. No test runner silently advances gitlinks or patches upstream code.
 
-Cargo.lock pins registry package versions/checksums; compiler and binary-download
-checksums pin toolchains. Those mechanisms remain appropriate for packages and
-executables and are not replaced with one submodule per transitive crate.
+Project bridges live under `native/`: C handles primitive/transport integration, Rust handles
+Bandersnatch primitives, and Nim under `src/` owns JAM codec/domain/identity policy. Upstream licenses
+remain in the source submodules; project-authored boundary and derived fixtures stay under `vectors/`.
+Derived JAM fixtures are checked against their complete original upstream cases.
 
-Build products live under ignored `build/`. BoringSSL and LSQUIC CMake builds
-now use `build/native/boringssl` and `build/native/lsquic`; the Rust crate references
-its source/SRS submodules directly. Prior ignored archive caches are no longer
-consulted. They are left in place so any old diagnostics remain recoverable.
-
-For a deliberate upgrade, update the submodule checkout and its metadata/hashes,
-run the affected checks, and stage the changed gitlink together with that metadata.
-A clean source edit is never silently discarded or rewritten by a test runner.
+Generated CMake/Rust output, temporary fixture keys and logs live under ignored `build/`. For a
+deliberate dependency upgrade, update the gitlink together with its pins/hashes and run affected
+verification. Functional vector agreement does not replace dependency/security audit.

@@ -14,7 +14,7 @@ Toolchain/dependency/vector revisions are in [crypto-pins.json](crypto-pins.json
 | Ed25519 verification | Exact 32/64-byte encoded key/signature import, then backend verification. Wrong sizes fail import; correctly sized invalid encodings/signatures return false. |
 
 Domain construction and codec serialization remain caller responsibilities in
-Nim/Odin. Hashes, keys and signatures have distinct nominal types. Public-key
+Nim. Hashes, keys and signatures have distinct nominal types. Public-key
 import proves width/ownership only; it does not assert subgroup membership.
 Hash/key/signature values own bytes. Seed handles hide their private retained
 copy and cannot silently substitute a default seed. Failed results carry only
@@ -24,16 +24,10 @@ a reason; defaults fail. Checked success selection remains enabled in release.
 
 [RFC 8032 section 5.1.7](https://www.rfc-editor.org/rfc/rfc8032#section-5.1.7)
 allows a cofactored verification equation and a sufficient uncofactored check.
-Odin core uses canonical A/R/S encodings, a cofactored equation and rejects
-small-order A by default. Nim preserves pinned BoringSSL's verifier policy.
-Neither wrapper tunes provider acceptance to make a corpus pass. Both pass all
-151 pinned Wycheproof cases, including the corpus's edge encodings. Additional
-explicit probes expose a difference outside that corpus: BoringSSL accepts
-A=identity, R=identity, S=0 for both empty and `abc` messages; Odin rejects both
-because its default rejects small-order A. The regression suite records each
-provider's actual verdict. Both reject S equal to the group order and the tested
-all-zero A/R, S=0 encoding. These probes are supplementary policy evidence, not
-an exhaustive exceptional-point corpus.
+The Nim adapter preserves pinned BoringSSL's actual verifier policy. The independent RFC8032
+and 151-case Wycheproof corpus is supplemented by explicit exceptional-point probes. BoringSSL
+accepts A=identity, R=identity, S=0 for empty and `abc` messages. It rejects the tested S=group-order
+and all-zero A/R, S=0 encodings. These probes are not an exhaustive exceptional-point corpus.
 
 A complete JAM integration still needs an explicit normative decision and
 focused independent tests for every exceptional point/canonicality policy.
@@ -43,17 +37,16 @@ RFC/Wycheproof tests are supplemental primitive evidence, not JAM state tests.
 
 ## Reproducibility and provenance
 
-Odin's compiler revision pins core Blake2b, Ed25519 and legacy Keccak and their
 internal dependencies. Nim reuses QUIC's pristine BoringSSL source revision;
 this source has Blake2b-256 and Ed25519, but no legacy Keccak API. XKCP, maintained
 by the Keccak team, supplies its portable 64-bit permutation/sponge. The bridge
 selects parameters and marshals pointers only; no project production permutation
 or signature implementation is introduced. The generated XKCP config header
 selects KeccakP1600 outside upstream source storage. No dependency source patch
-is applied. The new native dependency is needed only by Nim's Keccak backend.
+is applied. XKCP supplies the maintained Keccak backend.
 
 Upstream licensing remains with the source trees (BoringSSL's component notices,
-XKCP's component/SPDX notices, Odin's distribution license). Wycheproof's public
+XKCP's component/SPDX notices). Wycheproof's public
 fixture is read unmodified from its pinned submodule under its Apache-2.0 license; RFC vectors originate
 in RFC 8032 section 7.1 under the RFC's IETF Trust terms. Source identities and
 fixture SHA-256 digests are pinned. The original Wycheproof license remains with its source submodule. Tests establish functionality; they do not establish an

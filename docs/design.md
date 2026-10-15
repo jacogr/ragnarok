@@ -1,300 +1,43 @@
-# JAM Ragnarök — Design and Evaluation Plan
+# Ragnarök design
 
-**Status:** Bounded M1/M2/M3 implementations in three candidates; shared parity verification ongoing
-**Date:** 2026-10-14
-**Candidates:** Nim, Odin, Mojo
-**Decision:** Open; no preferred winner by policy
+**Language:** Nim 2.2.12, ARC. **Target:** native Linux. **State:** protocol foundation;
+full JAM execution, state transitions and validator operation remain future work.
 
-## 1. Purpose
-Evaluate whether **Nim**, **Odin** or **Mojo** is the better foundation for an independent JAM (Join-Accumulate Machine) client. The project deliberately balances serious distributed-systems engineering with interest in an unconventional, enjoyable systems programming language.
+## Architecture
 
-The first deliverable is **not** a validator: it is reproducible, spec-conforming codecs in all candidate languages and evidence that the chosen language can support cryptography and asynchronous JAM networking.
+Codecs and consensus-facing types live in `src/`. Protocol logic remains native Nim. Private,
+acyclic ARC owners retain immutable wire snapshots; borrowed paths use explicit lifetime contracts
+and caller-owned storage. Default/failed tagged results carry no values or progress metadata.
 
-## 2. Context and prior decisions
-- The Gray Paper remains authoritative.
-- Mojo was initially deferred for immature async networking. The maintainer has reopened its evaluation; a public-FFI callback reactor qualifies under the same networking standard as Odin.
-- Nim offers static typing, ARC/ORC memory-management options, C interoperability, and an established async ecosystem. Nimbus is a relevant example of Nim in blockchain infrastructure.
-- Odin offers static typing, explicit allocators, C interoperability, native compilation, and a C-like syntax. Its event-loop and QUIC integration must be proven, not assumed.
-- Mandatory tracing GC is undesirable. All candidates must demonstrate safe and comprehensible memory ownership.
-- Language enjoyment and maintainability matter, but never override correctness or the asynchronous networking gate.
+`src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
+provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The historical
+Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
 
-## 3. Principles
-1. **Specification-first:** version-pin the Gray Paper and vectors before coding; record interpretation decisions with citations.
-2. **Independent implementations:** no common codec implementation in C; share only fixtures and test methodology.
-3. **Strong types:** model domain distinctions in the compiler, not merely in comments.
-4. **Determinism:** encoding and consensus-critical logic must be reproducible across hosts and implementations.
-5. **Security at boundaries:** bounded reads, checked arithmetic, explicit decoding failures, fuzzing and adversarial tests.
-6. **Replaceable infrastructure:** isolate native crypto and QUIC behind narrow, documented adapters.
-7. **Evidence over preference:** compare actual test outcomes, ergonomics and networking behavior.
+`src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A standard-selector
+nonblocking UDP dispatcher drives the maintained LSQUIC/TLS bridge. No stream or connection creates
+an OS thread. Optional RingVRF verification uses two workers and four total owned job slots.
 
-## 4. Architecture (provisional)
-```text
-                  JAM application / validator (later)
-                               |
-                Protocol engine (chosen language)
-            +------------------+------------------+
-            |                  |                  |
-          Codec           PVM / state         Networking
-       (native)         transitions (later)  JAM protocol (native)
-            |                                     |
-       Typed values                          Async transport API
-                                                  |
-                                        QUIC/TLS implementation
-                                        (native lib or bindings)
+All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
+integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.
 
-        Cryptographic primitives via audited native libraries
-             with narrow, explicit FFI boundaries
-```
+## Implemented foundation
 
-JAM's actual networking specification, including transport and authentication, must be verified against a pinned revision. **libp2p use in Polkadot does not imply JAM requires libp2p.** A QUIC implementation with suitable C bindings may be a better fit.
+- General naturals, fixed unsigned widths, bounded bytes/sequences, optional/work variants,
+  preimage extrinsics, work digests, complete reports and assurances.
+- Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
+- Blake2b-256, Ed25519, Keccak-256, historical contextual VRF/RingVRF and report/assurance transcripts.
+- Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
+  backpressure, cancellation, deadlines, peer-loss/admission recovery and bounded proof offload.
+- Official/vector references, native fuzz/selftests and Linux correctness/lifecycle CI.
 
-## 5. Candidate-specific design
+## Outstanding work
 
-### Nim
-- Use explicit fixed-width protocol types and `distinct` wrappers where appropriate.
-- Evaluate `--mm:arc` and document any reference cycles; compare ORC only if warranted.
-- Use the explicit LSQUIC adapter with standard selectors and nonblocking UDP; verify callback/buffer lifetimes, deadlines and stream handling.
-- Avoid unchecked conversions and reliance on compiler configuration to hide runtime range checks.
+PVM execution, complete state transitions, block import, consensus and availability processing,
+full extrinsic/state coverage and production validator operation are not implemented. Current
+network tests use bounded controlled topologies; general multi-target networking and independent
+JAM-stack interoperability remain open. Full-ring capacity sizing and dependency/security audits
+remain necessary. The exceptional-point Ed25519 acceptance policy requires an explicit normative
+decision and focused independent tests before consensus-sensitive verification is finalized.
 
-### Odin
-- Use named structs/types for domain separation, fixed-width numeric types, and explicit allocators.
-- Define clear ownership for buffers crossing C interfaces and asynchronous callbacks.
-- Investigate current nonblocking I/O facilities and external QUIC integration on Linux.
-- Verify whether the resulting concurrency model scales without one OS thread per stream.
-
-### Mojo
-- Pin the stable compiler, native SDK runtime and bundled formatter with a complete wheel hash lock.
-- Use nominal types, checked public variants and native owned values; make foreign-owner aliases explicit.
-- Maintain a public-FFI POSIX reactor over the same LSQUIC ABI, with identity/framing policy in Mojo.
-- Require no Python protocol runtime, private task/compiler hooks, source patches or per-stream workers.
-- Measure SDK startup resources separately and retain raw process thread/heap observations.
-- Stop only at a demonstrated blocker requiring major hacks or unmaintainable rework.
-
-## 6. Evaluation sequence
-
-### M0 — Environment and baseline
-- Choose Linux target(s), compiler versions and reproducible build method.
-- Pin exact Gray Paper and official vector revisions.
-- Establish Linux CI for Nim, Odin and Mojo.
-
-### M1 — Codec bake-off
-Implement in the same order in each language:
-1. Primitive fixed-width values and byte buffers.
-2. JAM natural-number encoding/decoding.
-3. Length-prefixed byte strings and sequences.
-4. Option/variant/tuple/structured values as specified.
-5. Representative nested protocol structures.
-
-**Acceptance:** byte-exact official vectors, round-trip tests, differential comparison, truncated/malformed input tests, overflow checks, and fuzzable decoder APIs. Check canonical encoding requirements from the pinned specification rather than assuming generic formats.
-
-### M2 — Native cryptography integration
-Inventory the **actual primitives required by the pinned specification** before choosing libraries. Verify independent known-answer tests, ABI correctness, thread safety, buffer lifetimes and error handling. Do not invent cryptographic implementations for the bake-off.
-
-### M3 — Async QUIC networking proof
-Build a small peer-to-peer experiment with:
-- authenticated transport consistent with the pinned JAM networking spec;
-- concurrent bidirectional streams and message framing;
-- backpressure and bounded memory;
-- deadlines, cancellation, reconnect and shutdown behavior;
-- error handling for malformed/aborted connections;
-- observability and sustained-load tests;
-- evidence that connections/streams do not require dedicated OS threads.
-
-**Hard gate:** a credible, maintainable asynchronous networking solution. If a candidate fails, do not proceed with it as the full client language merely because its codec is faster.
-
-## 7. Evaluation rubric
-Use these as discussion weights, not as a substitute for hard gates:
-
-| Criterion | Weight | Evidence |
-|---|---:|---|
-| Protocol correctness and safety | 30% | Official vectors, fuzzing, negative tests |
-| Async networking viability | 25% | M3 integration and load tests; hard gate |
-| Developer experience and maintainability | 20% | Type expressiveness, debugging, code clarity |
-| Native interoperability and ecosystem | 15% | Crypto/QUIC bindings, maintenance and ABI risk |
-| Performance and resource behavior | 10% | Throughput, allocations, peak memory, tail latency |
-
-Compare using identical inputs, optimized builds, recorded compiler flags and the same host. Track source complexity and time spent on implementation, not just runtime speed.
-
-## 8. Risks and mitigations
-| Risk | Mitigation |
-|---|---|
-| Gray Paper or vectors change | Pin revisions, track upstream changes deliberately |
-| Ambiguous protocol behavior | Record question, exact reference and regression test |
-| Unsafe FFI lifetimes | Document ownership and test callback/cancellation paths |
-| Odin async integration insufficient | Prove M3 before committing to full client |
-| Nim reference-counting cycles or overhead | Design acyclic structures, measure and document ARC behavior |
-| Cryptographic dependency gaps | Inventory primitives early; prefer audited implementations |
-| Premature performance conclusions | Correctness first, controlled benchmarks later |
-| Scope explosion | Milestone gates and no full-validator scaffolding in M1 |
-
-## 9. Proposed repository
-```text
-AGENTS.md
- design.md
- spec/
- vectors/
- nim/src/ nim/tests/ nim/bench/
- odin/src/ odin/tests/ odin/bench/
- interoperability/
- results/
-```
-The exact directory names and tooling can evolve by an explicit decision.
-
-## 10. Open decisions
-- Which Gray Paper revision and test-vector commit should be pinned?
-- Which Linux distributions/architectures are required initially?
-- Which Nim and Odin compiler versions are sufficiently stable for the trial?
-- Which native QUIC library offers the best JAM-compatible transport and FFI surface?
-- What are the exact current JAM networking protocol requirements?
-- Is future JAM Implementer's Prize eligibility a goal? Verify rules separately; do not assume eligibility.
-
-## 11. Current progress and immediate next task
-General naturals, fixed-width unsigned integers, bounded blobs/scalar sequences,
-optional variable blobs, work-output variants, full nested preimage extrinsics
-and complete work digests are implemented independently in both languages. Specification and vector
-revisions remain pinned. See [the latest verification report](../results/work-digest.md).
-
-The maintainer has prioritized QUIC/JAMNP-S investigation before more codec work.
-The [initial feasibility assessment](../results/quic-feasibility.md) remains a
-historical survey. Both candidates now use explicit project-maintained adapters
-over the same pinned LSQUIC/BoringSSL engine and C ABI: Nim's standard selectors
-and nonblocking UDP, and Odin's core:nbio. JAM identity and CE 143 policy remain
-independent native-language implementations. Chronos/nim-lsquic and the three
-local Nim source patches have been removed from the active build.
-
-The 64-case authentication/rejection matrix and 160-session lifecycle soak pass
-locally with the explicit adapters, including backpressure, cancellation,
-stream-local deadlines, healthy sibling isolation and post-cleanup resource
-budgets. See [the architecture](quic-adapters.md),
-[verification report](../results/quic-adapters.md), [proof instructions](quic-proof.md)
-and [soak workload](quic-soak.md). Native/compiler/protocol revisions are unchanged;
-the dependency set is reduced to four native source trees. The maintainer has reported that Linux CI passes for this adapter revision. This does not pass M3 or select a language:
-At that revision, persistent-engine multi-peer service, IPv6, independent-peer interoperability
-and deeper C/TLS allocation instrumentation remained open. The service round is recorded below.
-
-Complete work reports, other extrinsics, generic element schemas and full blocks
-remain later M1 work. [Linux CI](ci-linux.md) is configured for Ubuntu 24.04
-x86-64 with formatting, codec and QUIC checks. All steps passed in
-[run 38512012802](https://github.com/jacogr/ragnarok/actions/runs/38512012802), establishing
-the initial Linux reproducibility target for M0.
-
-Do not begin PVM, state transitions, or validator networking until the relevant
-gates are met.
-
-The codec result-safety round introduces checked success/failure alternatives
-in both implementations; see [the API notes](codec-results.md). Default results
-are failures and failed results contain no success metadata. Wire definitions
-and allocation-free borrowed decoding remain unchanged. The subsequent
-[ownership round](codec-ownership.md) adds private owned snapshots for byte strings, optionals, work outputs, preimages and digests.
-Allocation-free span/pool APIs now have explicit borrowed names. Owned decoding
-adds copying/allocation; Nim retains storage through ARC, while Odin uses an
-explicit allocator and single-release owner contract. See
-[the ownership verification report](../results/codec-ownership.md).
-
-The first M2 primitive slice now implements Blake2b-256, ordinary Ed25519 and
-legacy Keccak-256 in both languages. Odin uses compiler-pinned core modules;
-Nim uses the existing pinned BoringSSL source for Blake2b/Ed25519 and pristine
-XKCP for Keccak through a narrow maintained C ABI. See [the API and ownership
-contract](crypto.md), [pinned interpretation](../spec/crypto.md) and
-[verification results](../results/crypto-primitives.md). Linux CI now includes
-the crypto runner; its new step awaits a pushed run.
-
-The [Bandersnatch round](../results/bandersnatch.md) now provides contextual
-signing/verification, ring commitments, anonymous proving/verification and
-verified output extraction through typed native adapters over a maintained
-Rust ABI. The historical original IETF profile is pinned and builds unmodified:
-the newer ark-vrf v1/v2 profiles are not substitutes for GP v0.7.1's scheme.
-Independent official tiny/full tickets and the padding epoch-change root pass
-locally in both languages, alongside published vectors and malformed-input
-checks. Linux CI includes the new pinned Rust build/test step and awaits a
-pushed run.
-
-M2 remains open for audit/side-channel and exceptional-point review of the
-historical backend/dependency closure, the Ed25519 verifier policy gate, wider
-JAM domain integration and BEEFY/BLS. The compatibility evidence does not select
-a production backend or a winning client language.
-
-The persistent multi-peer service round now retains one listener engine in each language across
-simultaneous independent identities and reconnect waves. The mixed Nim/Odin workload checks
-healthy progress across connections, malformed/TLS rejection, cancellation, incomplete-request
-deadlines, killed-peer expiry and fully retired idle resource samples. See [the workload and
-ownership limits](quic-service.md) and [verification results](../results/quic-service.md). Fresh
-client engines are deliberate; persistent outgoing reconnect, IPv6 and independent JAM peers
-remain open. The Linux CI step awaits verification of this increment.
-
-Remaining bounded decision rounds are one integrated networking/owned-codec/crypto slice, then
-controlled optimized measurements and maintainer ergonomics review. The maintainer explicitly
-requests M1 speed comparisons: encode/decode representative scalar, bounded and nested codecs,
-separating allocation-free borrowed APIs from owned snapshots on the same Linux host/corpus.
-Resource use and latency accompany throughput. Do not start either round without the next go-ahead.
-
-The integrated slice now composes owned C.2 digest capture, Blake2b-256 content verification and
-persistent CE 143 service in each native language. See [the contract and workload](integration.md)
-and [verification results](../results/integration.md). Test preimages deliberately contain serialized
-digests; this imposes no new normative CE schema or work-output hash relationship. Malformed,
-trailing, missing-key and wrong-hash failures remain stream-local, while cancellation retains and
-then releases an owned snapshot behind backpressure. Optimized codec/resource measurements and
-maintainer ergonomics remain the next proposed bounded decision round, awaiting go-ahead.
-
-The measurement round now adds 69 optimized checked M1/M2 case/operation pairs, separate allocation
-runs and real operation latency samples. See [the methodology](benchmark.md) and [local results](../results/benchmark.md).
-Linux CI executes both candidates sequentially on the same allowed CPU after correctness checks.
-Local Mac results are exploratory; a profile identifies the current Nim bulk-copy loops as an
-implementation hotspot to evaluate before a language conclusion. Production algorithms and
-source/toolchain pins are unchanged. Any optimization or next increment awaits go-ahead.
-
-The [persistent IPv6 peer round](quic-mesh.md) now retains separate client/server role engines on one
-native I/O loop per logical peer. It checks nonpreferred fallback, preferred-direction duplicate
-arbitration, bidirectional CE queries on the same connection and outgoing reconnect without engine
-replacement. The bounded topology contains two known identities; a general multi-target outgoing
-engine, validator-set management and independent-stack interoperability remain open. See
-[verification](../results/quic-mesh.md). Disruption/overload and bounded Bandersnatch offload remain
-separate increments awaiting the maintainer's next go-ahead. Speed measurements remain a baseline;
-no optimization is part of this networking round.
-
-The [disruption and overload round](quic-resilience.md) now adds controlled IPv6 peer death/restart
-with pending stream owners, and authenticated connection/stream admission saturation followed by
-healthy work after release. Short expiry/hold settings are explicitly scoped experiments. General
-network impairment, multi-target dialing and independent-stack interoperability remain open.
-[Verification](../results/quic-resilience.md) records the bounded evidence. Bandersnatch offload
-remains a separate increment awaiting the maintainer's next go-ahead.
-
-The [bounded Bandersnatch offload round](quic-offload.md) now puts historical RingVRF verification
-on two fixed workers per native listener, with four owned jobs including completed results.
-Mixed Nim/Odin CE lookups progress during actual crypto batches; queued/running cancellation,
-stream-generation matching, tagged failures and joined shutdown have bounded tests.
-[Verification](../results/quic-offload.md) records the observed workload and resource limits.
-This closes the proposed bounded offload POC, while full-ring scheduling/load sizing, independent
-JAM peers and crypto/backend audit gates remain open. No speed optimization or language selection
-is part of this round; the next increment awaits the maintainer's go-ahead.
-
-The maintainer has authorized a third-language Mojo evaluation, starting with the M3 risk gate.
-Pin stable Mojo 1.1.0; reuse the exact maintained LSQUIC/BoringSSL and primitive Rust/C ABIs.
-Native public-FFI readiness/callbacks qualify; private async-runtime/compiler hooks, Python
-network execution, dependency patches and large custom-runtime work do not. Continue through
-parity with the existing codec, crypto, networking and measurement corpus, or report the first
-credible maintenance blocker. `async`/`await` is a possible later optimization, not a prerequisite
-when the existing callback standard can be met. Nim/Odin correctness and pins remain unchanged.
-
-
-The Mojo parity implementation now covers the established M1 scalar/bounded/composite/digest and
-owned snapshot APIs, M2 primitive/contextual/ring crypto, and M3 authenticated retained services,
-IPv6 peer arbitration/reconnect, disruption/admission and bounded proof offload. The common
-69-case benchmark and all directed three-language comparisons are wired into Linux CI. See
-[Mojo implementation, reproduction and measurement limits](mojo.md). This supersedes the earlier
-two-candidate scope descriptions; historical reports retain their original observed evidence.
-No language decision or optimization is part of this authorized parity increment.
-
-The [assurances codec round](assurances.md) adds native C.2 structural assurances extrinsics in all
-three candidates: ordered validator indices, fixed profile bitfields, fully owned record values
-and atomic caller-buffer operations. [Results](../results/assurances.md) retain the next matched
-compiler-repair observations. Signature/parent/assignment validation remains context-dependent
-work outside this structural codec. Tiny parameters are 2 cores / 6 validators, as pinned in the
-vector README; the earlier work-report profile label is corrected without rewriting history.
-
-The [assurance signing-context round](assurance-crypto.md) now composes fixed assurance fields with
-the normative Blake2b transcript and validator-indexed ordinary Ed25519 verification against an
-explicit parent. Full structural/context preflight precedes signature work. This adds no state
-transition, pending-report eligibility or exceptional-point verifier-policy decision. The
-[three-language evidence](../results/assurance-crypto.md) records the next measured development
-round and cumulative compiler-repair/implementation-LOC totals.
+Work proceeds in maintainer-authorized bounded increments. The language decision and its full
+evaluation are archived in the `language-selection` release; comparison code is outside the active tree.

@@ -1,7 +1,0 @@
-{
-  "language": "nim",
-  "requests": 21536,
-  "status": "passed",
-  "request_sha256": "6716107ad4caf8d30d38578dccf0f979bf3e2f143fa5667ec17934b94455699c",
-  "binary_sha256": "e03a6e4b041051e720fed47b3061f7fd96474e3d94230dd3d6ab7f4f274d8776"
-}

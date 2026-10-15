@@ -1,4 +1,0 @@
-/Users/jacogr/Projects/jacogr/ragnarok/odin/tests/compile_fail/natural_as_fixed.odin(6:25) Error: Cannot assign value 'value' of type 'Natural' to 'Fixed_Unsigned' in a procedure argument 
-	_ = codec.encode_fixed(value, codec.Byte_Width(1)) 
-	                       ^~~~^ 
-	Suggestion: The expression may be directly casted to type Fixed_Unsigned 

@@ -30,8 +30,7 @@ Encoding validates every source field, span, nested digest, aggregate payload li
 capacity and whole-pool overlap before any output write. Failed results contain only a
 reason. Owned snapshots privately retain the validated consumed prefix and metadata;
 only scalar metadata and copies of owner-bound payloads or complete wire leave the owner.
-Nim retains owners through ARC. Odin and Mojo require exactly one explicit release owner;
-handle copies are borrowed aliases, and Odin allocator lifetime must cover its owner.
+Nim retains private acyclic snapshot storage through ARC.
 
 The composed workload hashes canonical complete report bytes with Blake2b-256 and verifies
 ordinary Ed25519 over the ASCII `$jam_guarantee` concatenated with that hash. The guarantee
@@ -52,4 +51,4 @@ Profile correction (assurances follow-up): the pinned vector README specifies 2 
 it is a structural codec fixture, not a chain-eligible tiny report. The report harness exercises
 its bytes with a permissive 341-core bound and separately requires rejection under the actual
 2-core tiny bound. The earlier report's six-core profile label was incorrect; native caller-bound
-range checking is unchanged. Historical comparison artifacts retain their original source hashes.
+range checking is unchanged. The tagged selection release preserves the earlier profile-label investigation.

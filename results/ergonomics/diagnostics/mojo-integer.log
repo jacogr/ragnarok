@@ -1,9 +1,0 @@
-Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
-/Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/compile_fail/natural_as_fixed.mojo:7:32: error: invalid call to 'encode_fixed': value passed to 'value' cannot be converted from 'Quantity[Int(0)]' to 'Quantity[Int(1)]'
-    _ = encode_fixed(JamNatural(1), ByteWidth(1))
-        ~~~~~~~~~~~~ ~~~~~~~~~~^~~
-Imported from /Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/compile_fail/natural_as_fixed.mojo:1:
-/Users/jacogr/Projects/jacogr/ragnarok/mojo/codec/scalar.mojo:63:5: note: function declared here
-def encode_fixed(value: FixedUnsigned, width: ByteWidth) -> CheckedResult[Encoded]:
-    ^
-/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo: error: failed to parse the provided Mojo source module

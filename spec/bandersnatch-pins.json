@@ -3,7 +3,6 @@
   "graypaper_commit": "1c979cb59bb800f92ffff083a2701004dfc6cd33",
   "rust": "1.99.0",
   "nim": "2.2.12",
-  "odin": "dev-2026-10:84bc3fc21",
   "suite": "Bandersnatch_SHA-512_ELL2",
   "challenge_bytes": 32,
   "source_patches": [],

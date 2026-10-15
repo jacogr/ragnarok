@@ -4,3 +4,8 @@
 
 # Generated build output, dependency sources, test keys and logs.
 /build/
+
+# Python test-runner bytecode is generated, never source.
+__pycache__/
+*.pyc
+*.pyo

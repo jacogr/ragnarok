@@ -41,14 +41,9 @@
   },
   "toolchains": {
     "nim": "2.2.12",
-    "nim_mm": "arc",
-    "odin": "dev-2026-10:84bc3fc21"
+    "nim_mm": "arc"
   },
   "formatters": {
-    "odinfmt": {
-      "homebrew_package": "2026-08",
-      "repository": "https://github.com/DanielGavin/ols"
-    },
     "nimpretty": {
       "version": "0.2",
       "bundled_with_nim": "2.2.12"

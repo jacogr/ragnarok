@@ -1,4 +1,0 @@
-/Users/jacogr/Projects/jacogr/ragnarok/odin/tests/compile_fail/swapped_digest_hash.odin(8:20) Error: Cannot assign value 'wrong' of type 'Payload_Hash' to 'Code_Hash' in assignment 
-	value.code_hash = wrong 
-	                  ^~~~^ 
-	Suggestion: The expression may be directly casted to type Code_Hash 

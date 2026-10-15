@@ -1,0 +1,4 @@
+import ../../../src/[work_digest, composite]
+# A statically known failed variant cannot be constructed with a decoded value.
+let invalid = DigestResult(error: CompositeError.Truncated, value: WorkDigest())
+discard invalid

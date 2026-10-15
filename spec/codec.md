@@ -41,58 +41,7 @@ This interpretation follows the normative definition; no permissive decoder
 mode or protocol deviation has been introduced. There is no open ambiguity
 for this primitive at the pinned revision.
 
-## API and ownership
+## API and validation
 
-- Nim: `JamNatural` is distinct from uint64. `encode` returns an
-  `EncodedNatural` containing nine bytes and a length in 1..9. `decode` accepts
-  a borrowed openArray and returns a tagged `DecodeResult`: success has a
-  value and consumed count; failure has `truncated` or `nonCanonical`.
-  Both functions declare `raises: []` and allocate no heap memory. Compile
-  with `--mm:arc`. There are no references or reference cycles in this codec.
-- Odin: `Natural` is distinct from u64. `encode` returns a value struct
-  containing nine bytes and a length. `decode` accepts a borrowed slice and
-  returns `Decode_Result`. Error `.None` means success; `.Truncated` and
-  `.Non_Canonical` return zero value/consumed count. No allocator is used,
-  input never escapes, and returned storage belongs to the caller.
-
-Decoding consumes one canonical prefix and leaves trailing bytes to the caller.
-It does not cast a decoded natural to a host int or allocate a claimed sequence
-length. Future sequence decoders must check their own length/resource limits
-before such conversions or allocations. A natural's header/payload cannot
-express more than 64 bits, so there is no additional decode-overflow case.
-Raw integer variables require an explicit conversion to the domain type;
-negative compilation fixtures verify this in both languages.
-
-The general-natural and fixed-width unsigned APIs are now public. See
-[fixed-width specification notes](fixed-unsigned.md) for the additional APIs and
-checked width/range behavior. Bounded byte strings
-and fixed-unsigned sequences are now implemented; see
-[the container notes](bounded-containers.md). Optional variable blobs, work-output variants and full preimage extrinsics
-are also implemented; see [the composite notes](composite.md). Complete work
-digests now have [dedicated notes](work-digest.md). Further codec
-increments require the maintainer's next go-ahead.
-
-## Test fixtures
-
-`vectors/natural-boundaries.json` contains project fixtures derived from the
-normative formula, with decimal values stored as strings to preserve all 64
-bits. They cover the transitions between all nine encoded sizes and uint64 max.
-They are not official vectors.
-
-`vectors/official` contains unmodified tiny/full ticket and preimage extrinsic
-JSON/binary files from the pinned official repository, plus its CC0 license.
-The runner checks file hashes, tests outer sequence lengths and all preimage
-blob length prefixes, and verifies the JSON/binary offsets used to locate
-those prefixes. This is **20 primitive prefix checks**, not a complete decode
-of any composite structure by the natural-only checks. No standalone
-general-natural vectors exist in that revision's codec directory. The composite
-suite now separately verifies full preimage frames and official work-output
-fields; the work-digest suite now verifies complete official work-result tuples.
-Full blocks and other composite types remain open.
-
-The Python reference is a test-only evaluation of the paper's piecewise formula.
-Neither native implementation delegates codec behavior to it or to C.
-
-The current [result API and migration examples](../docs/codec-results.md)
-separate success data from failure reasons and preserve the borrowed-buffer
-contract. This changes API access, not the normative wire formats above.
+See [the Nim codec guide](../docs/codec.md) and source modules under `src/`.
+Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.

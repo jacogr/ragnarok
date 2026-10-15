@@ -3,7 +3,6 @@
   "networking_commit": "439c45aad135dc654b3de6f56d7d694fd02b7aa8",
   "alpn_version": 1,
   "nim": "2.2.12",
-  "odin": "dev-2026-10:84bc3fc21",
   "nim_memory_manager": "arc",
   "sources": {
     "lsquic": {
@@ -28,6 +27,6 @@
     }
   },
   "patches": [],
-  "nim_adapter": "nim/quic/transport.nim",
-  "shared_bridge": "interoperability/quic/transport_bridge.c"
+  "nim_adapter": "src/quic/transport.nim",
+  "shared_bridge": "native/quic/transport_bridge.c"
 }
