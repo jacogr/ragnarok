@@ -1,0 +1,4926 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "hardware": "Apple M1 Max",
+  "base_commit": "802f637d83b07a8ae80fefc6bc1c7065b9046853",
+  "checked": true,
+  "cases": [
+    {
+      "name": "digest-work_result_1",
+      "operation": "encode",
+      "wire_bytes": 82,
+      "languages": {
+        "nim": {
+          "before_ns": 58.28541287440013,
+          "after_ns": 44.72078538134719,
+          "speedup": 1.3033181858812048,
+          "before_process_medians_ns": [
+            73.11662253847427,
+            56.00661922885984,
+            56.89434055932484
+          ],
+          "after_process_medians_ns": [
+            57.89300004124902,
+            44.21894979994225,
+            44.62286020707008
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 40.75997021347013,
+          "after_ns": 40.44639689807367,
+          "speedup": 1.0077528121030577,
+          "before_process_medians_ns": [
+            41.27192619559821,
+            39.37233162336588,
+            40.48932649346351
+          ],
+          "after_process_medians_ns": [
+            43.058821102998806,
+            39.65577692529802,
+            39.466691416078866
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 226.9292156213801,
+          "after_ns": 224.41013900919853,
+          "speedup": 1.0112253244140557,
+          "before_process_medians_ns": [
+            228.9615257322522,
+            226.91543935131557,
+            226.1707761045838
+          ],
+          "after_process_medians_ns": [
+            224.6318524935033,
+            224.0956152291383,
+            224.16953347358
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blake2b-32",
+      "operation": "hash",
+      "wire_bytes": 32,
+      "languages": {
+        "nim": {
+          "before_ns": 140.21710290426677,
+          "after_ns": 139.2870665311194,
+          "speedup": 1.0066771193931319,
+          "before_process_medians_ns": [
+            140.09117451211392,
+            141.28848025405932,
+            139.78917174614557
+          ],
+          "after_process_medians_ns": [
+            139.30495877103806,
+            139.14209872359652,
+            139.34731729357281
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 145.92831532039133,
+          "after_ns": 145.02993335592456,
+          "speedup": 1.0061944589208494,
+          "before_process_medians_ns": [
+            146.9943656200379,
+            145.52602059109768,
+            145.94429647082927
+          ],
+          "after_process_medians_ns": [
+            145.4459957076697,
+            144.81344177115102,
+            144.93956850785045
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 160.77191005480714,
+          "after_ns": 160.20370495877103,
+          "speedup": 1.003546766263504,
+          "before_process_medians_ns": [
+            160.25329099011424,
+            161.51782512933462,
+            160.77191005480714
+          ],
+          "after_process_medians_ns": [
+            160.38253699310968,
+            160.20370495877103,
+            160.1387552242178
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-18446744073709551615",
+      "operation": "encode",
+      "wire_bytes": 9,
+      "languages": {
+        "nim": {
+          "before_ns": 11.658508206653448,
+          "after_ns": 11.586002905375633,
+          "speedup": 1.0062580082078327,
+          "before_process_medians_ns": [
+            11.669337959903062,
+            11.794196821987223,
+            11.557028323970037
+          ],
+          "after_process_medians_ns": [
+            11.686620469817141,
+            11.670699424432694,
+            11.491624669530733
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 5.790096937651465,
+          "after_ns": 5.618908694095616,
+          "speedup": 1.0304664576122646,
+          "before_process_medians_ns": [
+            5.894372039546155,
+            5.756893382352941,
+            5.872283955717118
+          ],
+          "after_process_medians_ns": [
+            5.619913871447455,
+            5.598901533928178,
+            5.679795935228023
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 16.399322193765148,
+          "after_ns": 16.136910663141663,
+          "speedup": 1.0162615717531893,
+          "before_process_medians_ns": [
+            16.382182542961004,
+            16.74657310255563,
+            16.228636538885215
+          ],
+          "after_process_medians_ns": [
+            16.1283769828156,
+            16.14709496860542,
+            16.136552654769773
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 80,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1024",
+      "operation": "encode",
+      "wire_bytes": 1131,
+      "languages": {
+        "nim": {
+          "before_ns": 1204.1115170159585,
+          "after_ns": 112.79676551459066,
+          "speedup": 10.675053593271718,
+          "before_process_medians_ns": [
+            1175.7673524322245,
+            1231.7342818688714,
+            1204.6241107479332
+          ],
+          "after_process_medians_ns": [
+            112.76719983443219,
+            112.61322177216687,
+            113.48047186825534
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 68.59257835031724,
+          "after_ns": 68.19078733406262,
+          "speedup": 1.0058921598057853,
+          "before_process_medians_ns": [
+            68.46433378196501,
+            72.13343587771583,
+            68.00769082868679
+          ],
+          "after_process_medians_ns": [
+            68.23141057860036,
+            68.31026224758301,
+            67.93084587410934
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1998.9665448952126,
+          "after_ns": 278.07879253762235,
+          "speedup": 7.188489732185401,
+          "before_process_medians_ns": [
+            1972.4893289751972,
+            2022.5996923668524,
+            2015.5579696212267
+          ],
+          "after_process_medians_ns": [
+            278.0356562102711,
+            278.1145078792538,
+            278.0455015817639
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1024",
+      "operation": "encode",
+      "wire_bytes": 1026,
+      "languages": {
+        "nim": {
+          "before_ns": 665.8896236012207,
+          "after_ns": 24.78118321679313,
+          "speedup": 26.87077601484243,
+          "before_process_medians_ns": [
+            669.598507968803,
+            660.0259409969481,
+            667.7968802984062
+          ],
+          "after_process_medians_ns": [
+            24.568246013828887,
+            24.79713144529935,
+            24.79137590683399
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 34.82824686334351,
+          "after_ns": 34.12566495252744,
+          "speedup": 1.0205880797280709,
+          "before_process_medians_ns": [
+            34.75754493048491,
+            34.149881315700235,
+            35.32282129535436
+          ],
+          "after_process_medians_ns": [
+            34.05419562451491,
+            34.08416766195426,
+            34.557153134890115
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1683.6073245167854,
+          "after_ns": 30.345048783858974,
+          "speedup": 55.482109668326636,
+          "before_process_medians_ns": [
+            1696.2317734825365,
+            1673.9501525940998,
+            1695.2073584265852
+          ],
+          "after_process_medians_ns": [
+            30.345048783858974,
+            30.323047316621953,
+            30.37192686496812
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-0",
+      "operation": "encode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 13.172588452572516,
+          "after_ns": 12.958003022569727,
+          "speedup": 1.0165600694512134,
+          "before_process_medians_ns": [
+            13.318882722884194,
+            13.091509037318147,
+            13.122601990389251
+          ],
+          "after_process_medians_ns": [
+            14.953161481240159,
+            12.893526813994317,
+            12.87665155381803
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 21.359207806587523,
+          "after_ns": 21.413261750918537,
+          "speedup": 0.9974756790927148,
+          "before_process_medians_ns": [
+            21.73791667308704,
+            21.249144255893352,
+            21.471840240554897
+          ],
+          "after_process_medians_ns": [
+            21.45841704222548,
+            21.3558532877233,
+            21.452948815406057
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 17.545047910663616,
+          "after_ns": 17.07661399793669,
+          "speedup": 1.0274313111945685,
+          "before_process_medians_ns": [
+            17.572288639460425,
+            17.900093113763887,
+            17.444154855013284
+          ],
+          "after_process_medians_ns": [
+            17.06332238330528,
+            17.07312537329641,
+            17.08651200883242
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-65536",
+      "operation": "owned-decode",
+      "wire_bytes": 65539,
+      "languages": {
+        "nim": {
+          "before_ns": 31478.7,
+          "after_ns": 1434.3663056558364,
+          "speedup": 21.946067664777562,
+          "before_process_medians_ns": [
+            31616.666666666668,
+            31399.077777777777,
+            31474.533333333333
+          ],
+          "after_process_medians_ns": [
+            1397.8438026474128,
+            1396.851263537906,
+            1479.632972322503
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 2356.9444444444443,
+          "after_ns": 2361.462093862816,
+          "speedup": 0.9980869269804871,
+          "before_process_medians_ns": [
+            2335.188888888889,
+            2372.222222222222,
+            2325.0
+          ],
+          "after_process_medians_ns": [
+            2418.100842358604,
+            2314.269795427196,
+            2318.7725631768953
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 65763.0
+          }
+        },
+        "mojo": {
+          "before_ns": 106382.41111111111,
+          "after_ns": 1509.115523465704,
+          "speedup": 70.49321901268532,
+          "before_process_medians_ns": [
+            106733.33333333333,
+            107549.53333333334,
+            105609.25555555556
+          ],
+          "after_process_medians_ns": [
+            1472.5030084235862,
+            1455.9066185318893,
+            1523.094825511432
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "fixed-0",
+      "operation": "encode",
+      "wire_bytes": 0,
+      "languages": {
+        "nim": {
+          "before_ns": 6.013513513513513,
+          "after_ns": 8.194500858217266,
+          "speedup": 0.7338474444704334,
+          "before_process_medians_ns": [
+            5.981925925925926,
+            6.00633967300634,
+            6.0296963630296965
+          ],
+          "after_process_medians_ns": [
+            8.191552783637531,
+            8.185820416399157,
+            8.265418430052017
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 5.002724057390724,
+          "after_ns": 5.004520381022261,
+          "speedup": 0.9996410597830016,
+          "before_process_medians_ns": [
+            5.005005005005005,
+            5.014291624958291,
+            4.981203870537204
+          ],
+          "after_process_medians_ns": [
+            5.018496875040945,
+            4.985139083607395,
+            5.054965212719959
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 12.537537537537538,
+          "after_ns": 12.499508654236712,
+          "speedup": 1.0030424302548835,
+          "before_process_medians_ns": [
+            12.644254921588255,
+            12.503837170503838,
+            12.52952952952953
+          ],
+          "after_process_medians_ns": [
+            12.430611496180605,
+            12.655920388883793,
+            12.446224499154885
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 98384,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1048576",
+      "operation": "decode",
+      "wire_bytes": 1048684,
+      "languages": {
+        "nim": {
+          "before_ns": 68.96343433354545,
+          "after_ns": 65.55217589155271,
+          "speedup": 1.0520388285453135,
+          "before_process_medians_ns": [
+            69.25304713887121,
+            68.57694943462725,
+            69.68953448529052
+          ],
+          "after_process_medians_ns": [
+            65.62601489713315,
+            65.53620099154551,
+            65.46236198596507
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 57.95273875373244,
+          "after_ns": 57.89603142289177,
+          "speedup": 1.0009794683581412,
+          "before_process_medians_ns": [
+            58.800210485094716,
+            57.980273141122915,
+            57.86404131381859
+          ],
+          "after_process_medians_ns": [
+            57.88506215122267,
+            58.14552247742677,
+            57.83316168898043
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 222.25042831269275,
+          "after_ns": 220.7017220319498,
+          "speedup": 1.0070171916489112,
+          "before_process_medians_ns": [
+            225.5494639972588,
+            221.8506779578051,
+            220.20779284350678
+          ],
+          "after_process_medians_ns": [
+            220.83043134625058,
+            220.6298469571049,
+            220.59095154839173
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-65536",
+      "operation": "owned-decode",
+      "wire_bytes": 65644,
+      "languages": {
+        "nim": {
+          "before_ns": 31548.527472527472,
+          "after_ns": 1558.3611310807573,
+          "speedup": 20.244683240172886,
+          "before_process_medians_ns": [
+            31520.14285714286,
+            31582.417582417584,
+            31548.527472527472
+          ],
+          "after_process_medians_ns": [
+            1606.4581835609872,
+            1310.34819075006,
+            1602.0448118859333
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 2360.3516483516482,
+          "after_ns": 2355.789120536784,
+          "speedup": 1.0019367301491844,
+          "before_process_medians_ns": [
+            2370.879120879121,
+            2362.186813186813,
+            2170.3296703296705
+          ],
+          "after_process_medians_ns": [
+            2338.635274382938,
+            2355.519530313923,
+            2357.616343158399
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 65868.0
+          }
+        },
+        "mojo": {
+          "before_ns": 107019.69230769231,
+          "after_ns": 2130.5017972681526,
+          "speedup": 50.23215302841748,
+          "before_process_medians_ns": [
+            106647.89010989011,
+            106977.56043956045,
+            107213.83516483517
+          ],
+          "after_process_medians_ns": [
+            2171.3894080996884,
+            2036.764198418404,
+            2113.966690630242
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "fixed-0",
+      "operation": "decode",
+      "wire_bytes": 0,
+      "languages": {
+        "nim": {
+          "before_ns": 5.975147524144233,
+          "after_ns": 6.1630263050329415,
+          "speedup": 0.9695151745928327,
+          "before_process_medians_ns": [
+            5.9330277135776655,
+            6.006793869093476,
+            6.002748581472438
+          ],
+          "after_process_medians_ns": [
+            6.142171804381447,
+            6.2796029636747965,
+            6.147246121479969
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 8.000740456415157,
+          "after_ns": 7.91821031680489,
+          "speedup": 1.010422827420372,
+          "before_process_medians_ns": [
+            8.029475791340108,
+            7.9376746220360195,
+            8.22687820490135
+          ],
+          "after_process_medians_ns": [
+            7.925578628975076,
+            7.921894889979996,
+            7.910564222686026
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 8.440386452914321,
+          "after_ns": 7.470812040888168,
+          "speedup": 1.1297816631872972,
+          "before_process_medians_ns": [
+            8.447192118494804,
+            8.409118502971353,
+            8.469272419904122
+          ],
+          "after_process_medians_ns": [
+            7.490867397074697,
+            7.459619847478524,
+            7.470812040888168
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1048576",
+      "operation": "owned-encode",
+      "wire_bytes": 1048579,
+      "languages": {
+        "nim": {
+          "before_ns": 671308.4,
+          "after_ns": 16843.50704225352,
+          "speedup": 39.85561904156657,
+          "before_process_medians_ns": [
+            673275.0,
+            671800.0,
+            668375.0
+          ],
+          "after_process_medians_ns": [
+            21013.889671361503,
+            16739.044600938967,
+            16322.967136150235
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 16375.0,
+          "after_ns": 16189.164319248826,
+          "speedup": 1.011479016278204,
+          "before_process_medians_ns": [
+            16591.8,
+            14750.0,
+            16416.6
+          ],
+          "after_process_medians_ns": [
+            18731.1220657277,
+            15340.279342723004,
+            16773.18075117371
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1689341.6,
+          "after_ns": 22090.8661971831,
+          "speedup": 76.47240198374001,
+          "before_process_medians_ns": [
+            1699100.0,
+            1672266.8,
+            1700850.0
+          ],
+          "after_process_medians_ns": [
+            22092.037558685446,
+            22307.60798122066,
+            22055.164319248826
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "fixed-8",
+      "operation": "decode",
+      "wire_bytes": 8,
+      "languages": {
+        "nim": {
+          "before_ns": 6.278647596009809,
+          "after_ns": 5.659979841104463,
+          "speedup": 1.1093056463580304,
+          "before_process_medians_ns": [
+            6.32436760947319,
+            6.255941086613183,
+            6.271764257683189
+          ],
+          "after_process_medians_ns": [
+            5.683734984055015,
+            5.6313682369563915,
+            5.685715804822976
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 5.295452163695969,
+          "after_ns": 5.2867144733403695,
+          "speedup": 1.001652763810049,
+          "before_process_medians_ns": [
+            5.286617128329937,
+            5.286719459886646,
+            5.308089494494439
+          ],
+          "after_process_medians_ns": [
+            5.278511771233867,
+            5.297885578470933,
+            5.283602401419946
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 11.72287011659633,
+          "after_ns": 10.738825783928768,
+          "speedup": 1.091634258015456,
+          "before_process_medians_ns": [
+            11.76443029063395,
+            11.71901850475102,
+            11.723385473110842
+          ],
+          "after_process_medians_ns": [
+            10.739532815899056,
+            10.743163000847307,
+            10.738260158352537
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-65536",
+      "operation": "decode",
+      "wire_bytes": 65539,
+      "languages": {
+        "nim": {
+          "before_ns": 13.129708015168774,
+          "after_ns": 13.441235064429788,
+          "speedup": 0.9768230339126034,
+          "before_process_medians_ns": [
+            13.129708015168774,
+            13.27970824954414,
+            13.047479761687127
+          ],
+          "after_process_medians_ns": [
+            13.583224348788045,
+            13.429708483919507,
+            13.390839673186989
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 21.37386152165863,
+          "after_ns": 20.813896584213413,
+          "speedup": 1.0269034169156932,
+          "before_process_medians_ns": [
+            21.54905710790173,
+            21.38303966099947,
+            21.021515658618217
+          ],
+          "after_process_medians_ns": [
+            20.841435689743264,
+            20.799834062240723,
+            20.801596564994632
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 33.77739496467963,
+          "after_ns": 34.73091364205256,
+          "speedup": 0.9725455342983432,
+          "before_process_medians_ns": [
+            33.71880112312675,
+            34.10064078225122,
+            33.65727758949623
+          ],
+          "after_process_medians_ns": [
+            34.821148158044,
+            34.69751515236742,
+            34.727398011559394
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-32",
+      "operation": "encode",
+      "wire_bytes": 129,
+      "languages": {
+        "nim": {
+          "before_ns": 713.7159831908419,
+          "after_ns": 458.45528942115766,
+          "speedup": 1.5567842702654267,
+          "before_process_medians_ns": [
+            714.8601651934503,
+            713.6375163019852,
+            711.4940588320533
+          ],
+          "after_process_medians_ns": [
+            458.7824351297405,
+            458.03945442448435,
+            458.5218230206254
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 54.161860599913055,
+          "after_ns": 54.69061876247505,
+          "speedup": 0.9903318306772424,
+          "before_process_medians_ns": [
+            54.21917113461817,
+            54.0863642950297,
+            54.216200550644835
+          ],
+          "after_process_medians_ns": [
+            55.02880904856953,
+            54.474384564204925,
+            54.31916167664671
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 643.7774960150703,
+          "after_ns": 638.3094477711244,
+          "speedup": 1.0085664535642382,
+          "before_process_medians_ns": [
+            655.5632517026518,
+            642.5548471236053,
+            642.5910737574264
+          ],
+          "after_process_medians_ns": [
+            638.0877578176979,
+            636.0224218230206,
+            640.9098469727212
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-65536",
+      "operation": "encode",
+      "wire_bytes": 65539,
+      "languages": {
+        "nim": {
+          "before_ns": 40740.6914893617,
+          "after_ns": 912.6496892526906,
+          "speedup": 44.64001025708079,
+          "before_process_medians_ns": [
+            40765.95744680851,
+            40741.13829787234,
+            40714.53191489362
+          ],
+          "after_process_medians_ns": [
+            916.4139760497196,
+            923.5068970744278,
+            715.6345308473549
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 824.0212765957447,
+          "after_ns": 829.8215855691981,
+          "speedup": 0.9930101734224294,
+          "before_process_medians_ns": [
+            812.936170212766,
+            832.4468085106383,
+            824.0212765957447
+          ],
+          "after_process_medians_ns": [
+            806.787175989086,
+            1083.112323783538,
+            819.0465363043808
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 104586.43617021276,
+          "after_ns": 1516.3457632257087,
+          "speedup": 68.9726833461301,
+          "before_process_medians_ns": [
+            104717.20212765958,
+            104654.25531914894,
+            104476.51063829787
+          ],
+          "after_process_medians_ns": [
+            1587.0850386539337,
+            1471.432772472336,
+            1517.8426557526147
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-32",
+      "operation": "owned-decode",
+      "wire_bytes": 33,
+      "languages": {
+        "nim": {
+          "before_ns": 67.05559085881052,
+          "after_ns": 59.062374013707306,
+          "speedup": 1.1353351770663356,
+          "before_process_medians_ns": [
+            67.02226458612817,
+            67.30271364353126,
+            66.91143590105675
+          ],
+          "after_process_medians_ns": [
+            59.18076753249247,
+            59.053581370346905,
+            59.05838084816372
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 106.4128362635035,
+          "after_ns": 105.81249400065273,
+          "speedup": 1.0056736424986548,
+          "before_process_medians_ns": [
+            106.07058297441691,
+            106.60502718350632,
+            106.68349455153098
+          ],
+          "after_process_medians_ns": [
+            107.27631553686959,
+            105.78769029929543,
+            104.88698189636968
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 257.0
+          }
+        },
+        "mojo": {
+          "before_ns": 224.9807950293017,
+          "after_ns": 177.2319299660197,
+          "speedup": 1.2694145748592638,
+          "before_process_medians_ns": [
+            225.84374779354656,
+            224.9807950293017,
+            222.97145143448893
+          ],
+          "after_process_medians_ns": [
+            176.04724605962872,
+            176.09604715007006,
+            178.71014993568699
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-work_result_1",
+      "operation": "owned-decode",
+      "wire_bytes": 82,
+      "languages": {
+        "nim": {
+          "before_ns": 117.56312255589168,
+          "after_ns": 80.70312032101575,
+          "speedup": 1.4567357753734498,
+          "before_process_medians_ns": [
+            117.12041614402715,
+            117.66155094812956,
+            117.75990555596547
+          ],
+          "after_process_medians_ns": [
+            80.79792777145595,
+            80.70312032101575,
+            80.53344912259688
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 120.16409650999779,
+          "after_ns": 119.43510810325208,
+          "speedup": 1.0061036358431183,
+          "before_process_medians_ns": [
+            119.94886740942965,
+            120.41311886667158,
+            120.44071423301114
+          ],
+          "after_process_medians_ns": [
+            119.32029705935199,
+            119.62232736419716,
+            119.69964664310955
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 306.0
+          }
+        },
+        "mojo": {
+          "before_ns": 708.6746107872796,
+          "after_ns": 582.6396358627298,
+          "speedup": 1.2163172004903622,
+          "before_process_medians_ns": [
+            713.3721685235741,
+            704.6410388843799,
+            707.8260901645392
+          ],
+          "after_process_medians_ns": [
+            588.8208660238366,
+            582.0980415643529,
+            581.4966760495897
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "baseline",
+      "operation": "control",
+      "wire_bytes": 0,
+      "languages": {
+        "nim": {
+          "before_ns": 3.540291021293982,
+          "after_ns": 3.4871230587831783,
+          "speedup": 1.0152469418527938,
+          "before_process_medians_ns": [
+            3.5217748611089004,
+            3.5920548188711483,
+            3.527412751980558
+          ],
+          "after_process_medians_ns": [
+            3.4888740158373532,
+            3.475139279158206,
+            3.4898749440314316
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 2.5800812652223053,
+          "after_ns": 2.528039001500725,
+          "speedup": 1.0205860209002655,
+          "before_process_medians_ns": [
+            2.6096801922985082,
+            2.59414879786901,
+            2.5303630271096322
+          ],
+          "after_process_medians_ns": [
+            2.53004019060342,
+            2.5154993730853077,
+            2.521143273528986
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 6.347656892553739,
+          "after_ns": 6.208396586434487,
+          "speedup": 1.0224309617113603,
+          "before_process_medians_ns": [
+            6.366339536339854,
+            6.382036751089108,
+            6.332871689563136
+          ],
+          "after_process_medians_ns": [
+            6.21459633566861,
+            6.206005035336101,
+            6.2041146156202185
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1048576",
+      "operation": "owned-encode",
+      "wire_bytes": 1048684,
+      "languages": {
+        "nim": {
+          "before_ns": 663091.8,
+          "after_ns": 18502.61659192825,
+          "speedup": 35.83773120442182,
+          "before_process_medians_ns": [
+            669700.0,
+            661750.0,
+            658616.6
+          ],
+          "after_process_medians_ns": [
+            16055.213004484305,
+            19691.704035874438,
+            18246.54260089686
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 17091.6,
+          "after_ns": 14906.856502242152,
+          "speedup": 1.1465596383401986,
+          "before_process_medians_ns": [
+            17008.4,
+            16625.0,
+            17566.6
+          ],
+          "after_process_medians_ns": [
+            14906.856502242152,
+            15782.791479820628,
+            14581.93273542601
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1686283.4,
+          "after_ns": 22105.661434977577,
+          "speedup": 76.28287463644087,
+          "before_process_medians_ns": [
+            1686283.4,
+            1690358.4,
+            1679550.0
+          ],
+          "after_process_medians_ns": [
+            22117.52466367713,
+            22105.661434977577,
+            22085.107623318385
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-0",
+      "operation": "owned-encode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 7.593218875335026,
+          "after_ns": 7.263434635484964,
+          "speedup": 1.045403346543373,
+          "before_process_medians_ns": [
+            7.589265724648342,
+            7.656920252541083,
+            7.5867337039145575
+          ],
+          "after_process_medians_ns": [
+            7.2687214947771075,
+            7.244999392315024,
+            7.271830283181199
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 10.037596509969232,
+          "after_ns": 9.953417215182316,
+          "speedup": 1.008457326058684,
+          "before_process_medians_ns": [
+            10.139099091031209,
+            10.071490406040175,
+            10.013430904085988
+          ],
+          "after_process_medians_ns": [
+            9.938803990677899,
+            10.119243784022363,
+            9.939514022597352
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 10.197202303659116,
+          "after_ns": 10.115734136756839,
+          "speedup": 1.0080536089423557,
+          "before_process_medians_ns": [
+            10.189339712959468,
+            10.212838997596979,
+            10.206131008351937
+          ],
+          "after_process_medians_ns": [
+            10.114311940689946,
+            10.118887701948642,
+            9.98162552532767
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blake2b-65536",
+      "operation": "hash",
+      "wire_bytes": 65536,
+      "languages": {
+        "nim": {
+          "before_ns": 65193.23489932886,
+          "after_ns": 65227.47972972973,
+          "speedup": 0.9994749938133014,
+          "before_process_medians_ns": [
+            65193.23489932886,
+            65174.77181208054,
+            65296.14093959732
+          ],
+          "after_process_medians_ns": [
+            65247.75,
+            65210.30405405405,
+            65177.36486486487
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 63735.18120805369,
+          "after_ns": 63468.75,
+          "speedup": 1.0041978329186205,
+          "before_process_medians_ns": [
+            63534.395973154365,
+            63854.86577181208,
+            63877.791946308724
+          ],
+          "after_process_medians_ns": [
+            63488.17567567567,
+            63433.27702702703,
+            63468.75
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 65409.395973154365,
+          "after_ns": 65195.66216216216,
+          "speedup": 1.0032783440478077,
+          "before_process_medians_ns": [
+            65593.40268456376,
+            65163.03355704698,
+            65306.4899328859
+          ],
+          "after_process_medians_ns": [
+            65239.58783783784,
+            65151.18243243243,
+            65176.23648648649
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-1024",
+      "operation": "encode",
+      "wire_bytes": 4098,
+      "languages": {
+        "nim": {
+          "before_ns": 21618.595238095237,
+          "after_ns": 13228.55206286837,
+          "speedup": 1.6342374536044,
+          "before_process_medians_ns": [
+            21531.926406926406,
+            21659.27056277056,
+            21629.238095238095
+          ],
+          "after_process_medians_ns": [
+            17543.713163064833,
+            13006.793713163064,
+            13072.609037328095
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 1159.7229437229437,
+          "after_ns": 1174.1159135559922,
+          "speedup": 0.9877414404601185,
+          "before_process_medians_ns": [
+            1175.7770562770563,
+            1155.3030303030303,
+            1155.2121212121212
+          ],
+          "after_process_medians_ns": [
+            1173.6247544204323,
+            1174.607072691552,
+            1173.8703339882122
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 19748.196969696968,
+          "after_ns": 19644.235756385067,
+          "speedup": 1.005292199431994,
+          "before_process_medians_ns": [
+            19757.93722943723,
+            19705.266233766233,
+            19741.612554112555
+          ],
+          "after_process_medians_ns": [
+            19635.724950884087,
+            19702.848722986248,
+            19620.416502946955
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blake2b-1048576",
+      "operation": "hash",
+      "wire_bytes": 1048576,
+      "languages": {
+        "nim": {
+          "before_ns": 1045504.5555555555,
+          "after_ns": 1041847.2222222222,
+          "speedup": 1.0035104315252021,
+          "before_process_medians_ns": [
+            1051972.2222222222,
+            1042847.2222222222,
+            1045745.4444444445
+          ],
+          "after_process_medians_ns": [
+            1041592.5555555555,
+            1042726.8888888889,
+            1041546.3333333334
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 1014694.4444444445,
+          "after_ns": 1014986.1111111111,
+          "speedup": 0.9997126397460283,
+          "before_process_medians_ns": [
+            1016000.0,
+            1015273.1111111111,
+            1013916.6666666666
+          ],
+          "after_process_medians_ns": [
+            1014805.5555555555,
+            1014194.4444444445,
+            1015652.7777777778
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1043037.0,
+          "after_ns": 1047064.7777777778,
+          "speedup": 0.9961532678175594,
+          "before_process_medians_ns": [
+            1043148.1111111111,
+            1042555.5555555555,
+            1043037.0
+          ],
+          "after_process_medians_ns": [
+            1048611.111111111,
+            1043152.7777777778,
+            1050486.111111111
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-16384",
+      "operation": "encode",
+      "wire_bytes": 65539,
+      "languages": {
+        "nim": {
+          "before_ns": 337550.3103448276,
+          "after_ns": 232321.2258064516,
+          "speedup": 1.4529464932577578,
+          "before_process_medians_ns": [
+            340231.3103448276,
+            336956.8965517241,
+            337472.6896551724
+          ],
+          "after_process_medians_ns": [
+            232083.32258064515,
+            231501.35483870967,
+            233797.06451612903
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 17954.03448275862,
+          "after_ns": 17987.90322580645,
+          "speedup": 0.9981171377996274,
+          "before_process_medians_ns": [
+            17932.48275862069,
+            22456.896551724138,
+            17951.137931034482
+          ],
+          "after_process_medians_ns": [
+            17932.8064516129,
+            18030.90322580645,
+            18197.58064516129
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 315347.6896551724,
+          "after_ns": 315329.29032258067,
+          "speedup": 1.00005834958298,
+          "before_process_medians_ns": [
+            314199.724137931,
+            316481.3103448276,
+            314849.1379310345
+          ],
+          "after_process_medians_ns": [
+            313974.4516129032,
+            315086.03225806454,
+            315879.03225806454
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-work_result_0",
+      "operation": "decode",
+      "wire_bytes": 86,
+      "languages": {
+        "nim": {
+          "before_ns": 47.599413326481674,
+          "after_ns": 46.90331666630276,
+          "speedup": 1.0148410967422912,
+          "before_process_medians_ns": [
+            47.599413326481674,
+            47.85367420349435,
+            47.46471394313121
+          ],
+          "after_process_medians_ns": [
+            46.87056485949475,
+            47.377322648966135,
+            46.73047446450796
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 37.85007708119219,
+          "after_ns": 37.8856525251643,
+          "speedup": 0.9990609784548785,
+          "before_process_medians_ns": [
+            37.741242720109625,
+            37.76978417266187,
+            37.88307211373758
+          ],
+          "after_process_medians_ns": [
+            37.887486626345556,
+            37.920238433153564,
+            37.812856175899036
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 205.41244861253855,
+          "after_ns": 205.69134697264133,
+          "speedup": 0.9986440928886529,
+          "before_process_medians_ns": [
+            204.9699597464885,
+            206.94782031517644,
+            205.3446385748544
+          ],
+          "after_process_medians_ns": [
+            205.72320356339657,
+            205.69134697264133,
+            205.68042970370533
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-65536",
+      "operation": "encode",
+      "wire_bytes": 65644,
+      "languages": {
+        "nim": {
+          "before_ns": 66213.2688172043,
+          "after_ns": 1037.6808937986443,
+          "speedup": 63.808892707677224,
+          "before_process_medians_ns": [
+            66213.2688172043,
+            66186.37634408602,
+            66343.63440860216
+          ],
+          "after_process_medians_ns": [
+            1038.2510670348984,
+            1099.1348229977405,
+            987.1485061511423
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 804.6666666666666,
+          "after_ns": 789.1193823750941,
+          "speedup": 1.0197020687095255,
+          "before_process_medians_ns": [
+            814.0752688172043,
+            782.6989247311828,
+            818.5483870967741
+          ],
+          "after_process_medians_ns": [
+            781.854130052724,
+            796.8344212904846,
+            810.5750690434346
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 104762.98924731182,
+          "after_ns": 1144.7768014059754,
+          "speedup": 91.51389958168748,
+          "before_process_medians_ns": [
+            104883.51612903226,
+            104694.44086021505,
+            104945.79569892473
+          ],
+          "after_process_medians_ns": [
+            1093.0621390911374,
+            1157.7380115490837,
+            1155.243158423299
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-127",
+      "operation": "decode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 5.780767028619933,
+          "after_ns": 5.7296341229039545,
+          "speedup": 1.008924288116684,
+          "before_process_medians_ns": [
+            5.739435689232691,
+            5.780767028619933,
+            5.785230384855619
+          ],
+          "after_process_medians_ns": [
+            5.702107256682522,
+            5.731135588334214,
+            5.727715250084082
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 5.139350005605471,
+          "after_ns": 5.136430155832092,
+          "speedup": 1.000568458965623,
+          "before_process_medians_ns": [
+            5.139849493105271,
+            5.148608041448454,
+            5.133677469209949
+          ],
+          "after_process_medians_ns": [
+            5.13451128301222,
+            5.134261038773843,
+            5.1493177341084895
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 9.322681937571069,
+          "after_ns": 9.342326110283636,
+          "speedup": 0.9978972931922229,
+          "before_process_medians_ns": [
+            9.314758204007111,
+            9.308626219189929,
+            9.342034825990167
+          ],
+          "after_process_medians_ns": [
+            9.495725828408526,
+            9.308209812777271,
+            9.31638479155656
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-128",
+      "operation": "encode",
+      "wire_bytes": 2,
+      "languages": {
+        "nim": {
+          "before_ns": 6.0010474473278785,
+          "after_ns": 6.003205178598302,
+          "speedup": 0.9996405701277518,
+          "before_process_medians_ns": [
+            6.001943320204422,
+            6.001283858225855,
+            5.917907729618326
+          ],
+          "after_process_medians_ns": [
+            6.01813273078072,
+            6.006153179236192,
+            5.999275634128975
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 7.3065864754867915,
+          "after_ns": 7.268974455153329,
+          "speedup": 1.005174322810668,
+          "before_process_medians_ns": [
+            7.2622826207448865,
+            10.573072459374654,
+            7.245268954158909
+          ],
+          "after_process_medians_ns": [
+            7.135284591558723,
+            7.3918538600278065,
+            7.297284245659982
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 10.561665916335427,
+          "after_ns": 10.738162514010021,
+          "speedup": 0.9835636127275668,
+          "before_process_medians_ns": [
+            10.55945111950175,
+            10.591029507247296,
+            10.56105396276698
+          ],
+          "after_process_medians_ns": [
+            10.747053683933903,
+            10.744152851306216,
+            10.658941594772886
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 80,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-32",
+      "operation": "encode",
+      "wire_bytes": 33,
+      "languages": {
+        "nim": {
+          "before_ns": 31.74670214610593,
+          "after_ns": 15.333290303443123,
+          "speedup": 2.070442906763276,
+          "before_process_medians_ns": [
+            31.64555906793112,
+            31.829792058474386,
+            31.780607685433424
+          ],
+          "after_process_medians_ns": [
+            15.48149073850278,
+            15.255240491309793,
+            15.362472808771505
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 25.6756298934283,
+          "after_ns": 25.709443870712576,
+          "speedup": 0.9986847643436273,
+          "before_process_medians_ns": [
+            25.64923372414069,
+            25.6756298934283,
+            25.69036186360423
+          ],
+          "after_process_medians_ns": [
+            25.73393520247852,
+            25.725352112676056,
+            25.66229318186812
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 62.93182212263081,
+          "after_ns": 18.64086704313243,
+          "speedup": 3.3760136788173605,
+          "before_process_medians_ns": [
+            63.7246075253758,
+            62.73703199818601,
+            62.72841556293599
+          ],
+          "after_process_medians_ns": [
+            18.872154534068688,
+            18.636519193162094,
+            18.37307464129551
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-work_result_1",
+      "operation": "decode",
+      "wire_bytes": 82,
+      "languages": {
+        "nim": {
+          "before_ns": 38.47428980400793,
+          "after_ns": 37.554526315789474,
+          "speedup": 1.0244914149757696,
+          "before_process_medians_ns": [
+            38.60735520810394,
+            38.41541877706819,
+            38.418483447111505
+          ],
+          "after_process_medians_ns": [
+            37.79099313501144,
+            37.70403661327231,
+            37.33563386727689
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 30.555696248990678,
+          "after_ns": 30.720823798627002,
+          "speedup": 0.9946248983842776,
+          "before_process_medians_ns": [
+            30.64365411436541,
+            30.58858181017397,
+            30.53813403802393
+          ],
+          "after_process_medians_ns": [
+            30.830663615560642,
+            30.805491990846683,
+            30.552237986270022
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 171.8448029068487,
+          "after_ns": 172.40274599542334,
+          "speedup": 0.9967637227275403,
+          "before_process_medians_ns": [
+            175.0578066505175,
+            171.82797474858694,
+            171.74998164868236
+          ],
+          "after_process_medians_ns": [
+            172.38520823798626,
+            172.4202837528604,
+            172.44318535469108
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1048576",
+      "operation": "owned-decode",
+      "wire_bytes": 1048684,
+      "languages": {
+        "nim": {
+          "before_ns": 497008.4,
+          "after_ns": 20709.45945945946,
+          "speedup": 23.999100554649267,
+          "before_process_medians_ns": [
+            498125.0,
+            499700.0,
+            494658.4
+          ],
+          "after_process_medians_ns": [
+            27455.658783783783,
+            20709.739864864863,
+            20333.472972972973
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 28041.6,
+          "after_ns": 28136.824324324323,
+          "speedup": 0.9966156690880711,
+          "before_process_medians_ns": [
+            27966.6,
+            28033.2,
+            28416.8
+          ],
+          "after_process_medians_ns": [
+            27500.138513513513,
+            30335.868243243243,
+            28136.824324324323
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 1048908.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1680875.0,
+          "after_ns": 31605.29054054054,
+          "speedup": 53.18334276484244,
+          "before_process_medians_ns": [
+            1681783.4,
+            1681308.4,
+            1679658.4
+          ],
+          "after_process_medians_ns": [
+            26058.41891891892,
+            31605.29054054054,
+            32287.864864864863
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-32",
+      "operation": "owned-encode",
+      "wire_bytes": 33,
+      "languages": {
+        "nim": {
+          "before_ns": 27.732071270842585,
+          "after_ns": 9.727501164172136,
+          "speedup": 2.8508936470739283,
+          "before_process_medians_ns": [
+            27.63093796954747,
+            27.75614860055844,
+            28.15257289201701
+          ],
+          "after_process_medians_ns": [
+            9.841608092576516,
+            9.612105584285418,
+            9.736263736263735
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 12.44725556157117,
+          "after_ns": 12.417836536042898,
+          "speedup": 1.0023690942816716,
+          "before_process_medians_ns": [
+            12.424443538722649,
+            12.462968482909233,
+            12.435843466940817
+          ],
+          "after_process_medians_ns": [
+            12.477980054925705,
+            12.402786789451891,
+            12.41907229992686
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 57.26958336121469,
+          "after_ns": 10.980734724836145,
+          "speedup": 5.2154600576665215,
+          "before_process_medians_ns": [
+            57.26958336121469,
+            57.19075109345629,
+            57.337763935104356
+          ],
+          "after_process_medians_ns": [
+            10.987345674632914,
+            10.851793470058524,
+            11.059526926882251
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-0",
+      "operation": "decode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 5.692346730408879,
+          "after_ns": 5.730165128033048,
+          "speedup": 0.9934001208029496,
+          "before_process_medians_ns": [
+            5.755451320488797,
+            5.690262696391678,
+            5.7039420474383
+          ],
+          "after_process_medians_ns": [
+            5.733639835636403,
+            5.7312403018428855,
+            5.729627044741328
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 5.137889580230305,
+          "after_ns": 5.13843135814407,
+          "speedup": 0.999894563559187,
+          "before_process_medians_ns": [
+            5.133468265026666,
+            5.150652036387514,
+            5.132843655407678
+          ],
+          "after_process_medians_ns": [
+            5.13843135814407,
+            5.137024597951511,
+            5.140127015454507
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 9.476541104117619,
+          "after_ns": 9.311555189773637,
+          "speedup": 1.0177184058926243,
+          "before_process_medians_ns": [
+            9.326561724242861,
+            9.479209708675667,
+            9.47950199394609
+          ],
+          "after_process_medians_ns": [
+            9.308535172479521,
+            9.312092280291756,
+            9.31639396830471
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-16384",
+      "operation": "encode",
+      "wire_bytes": 3,
+      "languages": {
+        "nim": {
+          "before_ns": 6.63665771484375,
+          "after_ns": 6.6353692381477245,
+          "speedup": 1.000194183119248,
+          "before_process_medians_ns": [
+            6.665750732421875,
+            6.63665771484375,
+            6.54271484375
+          ],
+          "after_process_medians_ns": [
+            6.6353692381477245,
+            6.6353692381477245,
+            6.633879882478988
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 8.94556640625,
+          "after_ns": 8.874026154959568,
+          "speedup": 1.0080617579936306,
+          "before_process_medians_ns": [
+            9.32195068359375,
+            8.67975830078125,
+            9.309642333984375
+          ],
+          "after_process_medians_ns": [
+            8.768972332259468,
+            8.854453703600962,
+            9.271691515974203
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 11.525064697265625,
+          "after_ns": 11.491854777959016,
+          "speedup": 1.002889865904876,
+          "before_process_medians_ns": [
+            11.482645263671875,
+            11.68487548828125,
+            11.5380859375
+          ],
+          "after_process_medians_ns": [
+            11.621002134167767,
+            11.483943192424013,
+            11.474594033453789
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1024",
+      "operation": "owned-decode",
+      "wire_bytes": 1026,
+      "languages": {
+        "nim": {
+          "before_ns": 545.5858174412145,
+          "after_ns": 78.70149655915762,
+          "speedup": 6.932343618537337,
+          "before_process_medians_ns": [
+            545.8555822995742,
+            547.0361044251065,
+            543.8344750972042
+          ],
+          "after_process_medians_ns": [
+            79.00120222203797,
+            80.16627974463145,
+            78.33960699776138
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 135.37622662469914,
+          "after_ns": 135.3147541663212,
+          "speedup": 1.0004542923553066,
+          "before_process_medians_ns": [
+            135.6539529716719,
+            135.78503980744307,
+            135.00573967783743
+          ],
+          "after_process_medians_ns": [
+            134.60308017577316,
+            137.4903200397977,
+            135.3147541663212
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 1250.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1827.539714867617,
+          "after_ns": 199.82623745958045,
+          "speedup": 9.145644426384598,
+          "before_process_medians_ns": [
+            1826.9455656359933,
+            1833.919644510276,
+            1824.500092575449
+          ],
+          "after_process_medians_ns": [
+            197.65067158610398,
+            199.9117403200398,
+            200.37811955890888
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-work_result_0",
+      "operation": "owned-decode",
+      "wire_bytes": 86,
+      "languages": {
+        "nim": {
+          "before_ns": 130.65273932376877,
+          "after_ns": 93.02768166089966,
+          "speedup": 1.4044501270064784,
+          "before_process_medians_ns": [
+            130.7785888077859,
+            132.28878261599127,
+            130.37310177028274
+          ],
+          "after_process_medians_ns": [
+            93.07377162629757,
+            93.02768166089966,
+            92.71051903114187
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 125.41597449450457,
+          "after_ns": 125.57667820069204,
+          "speedup": 0.9987202742699512,
+          "before_process_medians_ns": [
+            125.55935900662807,
+            125.10487457001426,
+            125.65022233408843
+          ],
+          "after_process_medians_ns": [
+            125.6401384083045,
+            124.74913494809688,
+            126.14186851211073
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 310.0
+          }
+        },
+        "mojo": {
+          "before_ns": 812.610118298515,
+          "after_ns": 684.4751557093425,
+          "speedup": 1.1872017728041309,
+          "before_process_medians_ns": [
+            824.8209581340717,
+            808.3207483849317,
+            809.0374192465811
+          ],
+          "after_process_medians_ns": [
+            697.3961937716263,
+            682.4855363321799,
+            683.5178546712802
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-18446744073709551615",
+      "operation": "decode",
+      "wire_bytes": 9,
+      "languages": {
+        "nim": {
+          "before_ns": 12.954813707201525,
+          "after_ns": 12.949818542216263,
+          "speedup": 1.0003857324308427,
+          "before_process_medians_ns": [
+            12.956706751804967,
+            12.959007304294744,
+            12.926401802775924
+          ],
+          "after_process_medians_ns": [
+            12.952382109120824,
+            12.772692749299999,
+            12.859266168852095
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 11.552145585845352,
+          "after_ns": 11.613986419411205,
+          "speedup": 0.994675313769741,
+          "before_process_medians_ns": [
+            11.5602616492867,
+            11.54071263550449,
+            11.559992142079004
+          ],
+          "after_process_medians_ns": [
+            11.56182763049009,
+            11.571341815938164,
+            11.770398008741715
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 15.424553405450865,
+          "after_ns": 15.489565165287717,
+          "speedup": 0.9958028673404891,
+          "before_process_medians_ns": [
+            15.473731976705485,
+            15.328764699101697,
+            15.424553405450865
+          ],
+          "after_process_medians_ns": [
+            15.482752198788987,
+            15.50805588349131,
+            15.496719832744668
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-work_result_0",
+      "operation": "owned-encode",
+      "wire_bytes": 86,
+      "languages": {
+        "nim": {
+          "before_ns": 69.03516211003276,
+          "after_ns": 7.586375353034778,
+          "speedup": 9.099887482157948,
+          "before_process_medians_ns": [
+            68.98861096653707,
+            68.97074671646817,
+            69.20100725591648
+          ],
+          "after_process_medians_ns": [
+            7.587189559369538,
+            7.592816586322508,
+            7.583439512885403
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 12.151241465878822,
+          "after_ns": 12.261373934045372,
+          "speedup": 0.9910179341435178,
+          "before_process_medians_ns": [
+            12.182484768698528,
+            10.261993693169641,
+            12.502678872118299
+          ],
+          "after_process_medians_ns": [
+            10.442456554458856,
+            12.78158915070059,
+            12.333789367169869
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 141.78377675045158,
+          "after_ns": 18.63663106471179,
+          "speedup": 7.607800801450497,
+          "before_process_medians_ns": [
+            141.78377675045158,
+            144.20942656828828,
+            141.62876955576647
+          ],
+          "after_process_medians_ns": [
+            18.645193931814134,
+            18.63867049500222,
+            18.635327551685467
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1024",
+      "operation": "owned-encode",
+      "wire_bytes": 1131,
+      "languages": {
+        "nim": {
+          "before_ns": 734.3186893648178,
+          "after_ns": 20.07511587286306,
+          "speedup": 36.578552971514746,
+          "before_process_medians_ns": [
+            733.9220208676551,
+            739.9551528464214,
+            733.2815302947099
+          ],
+          "after_process_medians_ns": [
+            20.064228637445158,
+            20.07695058383419,
+            20.088756550083207
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 22.07267069375801,
+          "after_ns": 22.12071407941245,
+          "speedup": 0.997828126818964,
+          "before_process_medians_ns": [
+            22.087863811092806,
+            22.07267069375801,
+            22.04978949295259
+          ],
+          "after_process_medians_ns": [
+            22.115900369967953,
+            22.124952894414722,
+            22.12071407941245
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1810.1546769174447,
+          "after_ns": 26.245834765984952,
+          "speedup": 68.96921713701543,
+          "before_process_medians_ns": [
+            1810.1546769174447,
+            1808.949661358228,
+            1811.1997071206297
+          ],
+          "after_process_medians_ns": [
+            26.279759039458664,
+            26.223942015431376,
+            26.25156445556946
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-0",
+      "operation": "decode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 10.735955289620211,
+          "after_ns": 11.063877241502365,
+          "speedup": 0.9703610276285364,
+          "before_process_medians_ns": [
+            10.778806199617717,
+            10.57421950746558,
+            10.651551982049364
+          ],
+          "after_process_medians_ns": [
+            11.055252029619057,
+            11.065661521991258,
+            11.119785886341333
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 18.919758857586082,
+          "after_ns": 18.960656615219914,
+          "speedup": 0.9978430199721563,
+          "before_process_medians_ns": [
+            18.7510942131361,
+            18.963908280007757,
+            18.906915704036123
+          ],
+          "after_process_medians_ns": [
+            18.898652868230887,
+            19.14354536533143,
+            18.786243197430636
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 32.65628895537272,
+          "after_ns": 32.977964135962175,
+          "speedup": 0.990245753823273,
+          "before_process_medians_ns": [
+            32.488635419263694,
+            33.12836920690324,
+            32.66855037535666
+          ],
+          "after_process_medians_ns": [
+            33.632645195824786,
+            32.68876081720046,
+            32.83953251851191
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-32",
+      "operation": "decode",
+      "wire_bytes": 33,
+      "languages": {
+        "nim": {
+          "before_ns": 10.74788902291918,
+          "after_ns": 11.062820503899971,
+          "speedup": 0.9715324423035004,
+          "before_process_medians_ns": [
+            10.767275547130794,
+            10.81150439427882,
+            10.73554023780803
+          ],
+          "after_process_medians_ns": [
+            11.066445633493135,
+            11.109060040774011,
+            11.005416820322992
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 18.69148026882647,
+          "after_ns": 18.826957465609976,
+          "speedup": 0.9928040844076388,
+          "before_process_medians_ns": [
+            18.633324142684817,
+            18.86208512838187,
+            18.650983973806653
+          ],
+          "after_process_medians_ns": [
+            18.906397205658262,
+            18.80913101260098,
+            18.893058677001648
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 32.6100017232466,
+          "after_ns": 32.72068063373667,
+          "speedup": 0.9966174630739204,
+          "before_process_medians_ns": [
+            32.587740823711876,
+            32.60755815957263,
+            32.78907461657763
+          ],
+          "after_process_medians_ns": [
+            32.68734127011738,
+            32.64631677092103,
+            32.84316965745656
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "fixed-4",
+      "operation": "decode",
+      "wire_bytes": 4,
+      "languages": {
+        "nim": {
+          "before_ns": 5.980082009396218,
+          "after_ns": 5.377812934264017,
+          "speedup": 1.1119914512635656,
+          "before_process_medians_ns": [
+            5.941115925427893,
+            6.0047534461100875,
+            5.991934082595968
+          ],
+          "after_process_medians_ns": [
+            5.377979412521158,
+            5.379390988641597,
+            5.377480974625524
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 4.678602852067666,
+          "after_ns": 4.73748571975429,
+          "speedup": 0.9875708611761941,
+          "before_process_medians_ns": [
+            4.677542595636126,
+            4.737398387480563,
+            4.664630266004837
+          ],
+          "after_process_medians_ns": [
+            4.738524464328793,
+            4.72938610395022,
+            4.732875169219666
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 10.44476207867811,
+          "after_ns": 9.4829055739313,
+          "speedup": 1.1014305686424817,
+          "before_process_medians_ns": [
+            10.44476207867811,
+            10.508999452163952,
+            10.421704268140843
+          ],
+          "after_process_medians_ns": [
+            9.493165419575051,
+            9.480413384453124,
+            9.473975560593102
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-32",
+      "operation": "decode",
+      "wire_bytes": 129,
+      "languages": {
+        "nim": {
+          "before_ns": 133.07679843686705,
+          "after_ns": 133.21422748009505,
+          "speedup": 0.9989683606186244,
+          "before_process_medians_ns": [
+            132.95863416493913,
+            133.07679843686705,
+            133.12345414254057
+          ],
+          "after_process_medians_ns": [
+            135.05942861107738,
+            132.57602039931308,
+            135.00017346354664
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 45.65291776872304,
+          "after_ns": 45.66356745130011,
+          "speedup": 0.9997667794442818,
+          "before_process_medians_ns": [
+            45.618176186050945,
+            45.65291776872304,
+            45.68372769080468
+          ],
+          "after_process_medians_ns": [
+            45.60356641051883,
+            45.65199743273951,
+            45.69463477250256
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 227.60740581885767,
+          "after_ns": 164.5034432514007,
+          "speedup": 1.3836026852703562,
+          "before_process_medians_ns": [
+            227.6560392689494,
+            227.65110682202683,
+            224.97438463554698
+          ],
+          "after_process_medians_ns": [
+            162.45511630730803,
+            165.04405974084546,
+            164.505594199379
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1024",
+      "operation": "decode",
+      "wire_bytes": 1131,
+      "languages": {
+        "nim": {
+          "before_ns": 67.60291550691136,
+          "after_ns": 64.22742169577228,
+          "speedup": 1.0525553373001313,
+          "before_process_medians_ns": [
+            67.32084728971081,
+            68.5100957682691,
+            68.68700759541444
+          ],
+          "after_process_medians_ns": [
+            63.846036799475634,
+            64.23130764548903,
+            64.51224308254132
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 57.25260650091994,
+          "after_ns": 57.521630226134185,
+          "speedup": 0.9953230858694958,
+          "before_process_medians_ns": [
+            57.17889323960938,
+            57.3675756003208,
+            57.23194319950937
+          ],
+          "after_process_medians_ns": [
+            57.309963013249686,
+            57.567465705323286,
+            58.244370054777846
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 219.98495070057083,
+          "after_ns": 220.16187555597173,
+          "speedup": 0.999196387408337,
+          "before_process_medians_ns": [
+            223.11136009812708,
+            219.4316176817474,
+            219.7873755720149
+          ],
+          "after_process_medians_ns": [
+            220.27793904209,
+            223.65473570860058,
+            219.8936513881736
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-65536",
+      "operation": "owned-encode",
+      "wire_bytes": 65539,
+      "languages": {
+        "nim": {
+          "before_ns": 41770.16129032258,
+          "after_ns": 1047.1835580687255,
+          "speedup": 39.88809886144264,
+          "before_process_medians_ns": [
+            43430.55913978495,
+            41574.81720430108,
+            41685.04301075269
+          ],
+          "after_process_medians_ns": [
+            780.2268812527186,
+            1314.9956502827317,
+            1277.8599391039581
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 804.2043010752689,
+          "after_ns": 774.3838190517616,
+          "speedup": 1.0385086584841385,
+          "before_process_medians_ns": [
+            826.6129032258065,
+            789.8709677419355,
+            788.5268817204301
+          ],
+          "after_process_medians_ns": [
+            762.9223140495868,
+            1039.16920400174,
+            774.2787298825576
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 105473.56989247311,
+          "after_ns": 833.6957807742497,
+          "speedup": 126.51325858278935,
+          "before_process_medians_ns": [
+            106082.44086021505,
+            104982.96774193548,
+            105562.27956989247
+          ],
+          "after_process_medians_ns": [
+            917.1596346237494,
+            824.7970421922575,
+            772.5315354501957
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1024",
+      "operation": "owned-encode",
+      "wire_bytes": 1026,
+      "languages": {
+        "nim": {
+          "before_ns": 668.154958326246,
+          "after_ns": 19.114355667436808,
+          "speedup": 34.95566211863024,
+          "before_process_medians_ns": [
+            668.1478142541248,
+            669.6222146623576,
+            666.3760843680898
+          ],
+          "after_process_medians_ns": [
+            19.121349012034898,
+            19.114261411313034,
+            19.112728025104314
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 20.836877019901344,
+          "after_ns": 20.864225203167926,
+          "speedup": 0.9986892308245201,
+          "before_process_medians_ns": [
+            21.48902874638544,
+            20.80864092532744,
+            20.808470828372172
+          ],
+          "after_process_medians_ns": [
+            29.250627033116086,
+            20.84918790303114,
+            20.76690460590595
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1664.703521006974,
+          "after_ns": 21.951425911238317,
+          "speedup": 75.83578067950052,
+          "before_process_medians_ns": [
+            1677.5528151046096,
+            1671.245109712536,
+            1650.5286613369622
+          ],
+          "after_process_medians_ns": [
+            21.797399910341735,
+            21.956888168557537,
+            21.95909054335207
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blake2b-1024",
+      "operation": "hash",
+      "wire_bytes": 1024,
+      "languages": {
+        "nim": {
+          "before_ns": 1030.6117077279428,
+          "after_ns": 1028.8054368080675,
+          "speedup": 1.001755697292463,
+          "before_process_medians_ns": [
+            1031.0767530006317,
+            1030.6117077279428,
+            1028.7253105917034
+          ],
+          "after_process_medians_ns": [
+            1028.3395812780884,
+            1029.1068727392305,
+            1028.823632577003
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 1007.6595072646872,
+          "after_ns": 1004.8320727830758,
+          "speedup": 1.0028138378125018,
+          "before_process_medians_ns": [
+            1010.2784796799326,
+            1007.0190566435039,
+            1007.9885238997683
+          ],
+          "after_process_medians_ns": [
+            1006.2068398553107,
+            1004.8274690343089,
+            1004.3982242683328
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1049.8175405348495,
+          "after_ns": 1051.4633344294639,
+          "speedup": 0.9984347586447154,
+          "before_process_medians_ns": [
+            1054.8141714045062,
+            1049.1287639503053,
+            1048.3347020425354
+          ],
+          "after_process_medians_ns": [
+            1049.8374438233038,
+            1067.8778910446126,
+            1051.4633344294639
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-0",
+      "operation": "owned-decode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 51.85673831895997,
+          "after_ns": 54.589807621161675,
+          "speedup": 0.9499344397553393,
+          "before_process_medians_ns": [
+            50.42016806722689,
+            51.87052939337661,
+            51.956346652446534
+          ],
+          "after_process_medians_ns": [
+            54.310802811690714,
+            55.808361080281166,
+            54.74088050314465
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 105.89169409558134,
+          "after_ns": 103.73042915279319,
+          "speedup": 1.0208353996068467,
+          "before_process_medians_ns": [
+            103.37636761487965,
+            105.89169409558134,
+            106.8233639188717
+          ],
+          "after_process_medians_ns": [
+            103.00669626341103,
+            104.90812060673326,
+            103.68571957084721
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 225.0
+          }
+        },
+        "mojo": {
+          "before_ns": 176.45065553573727,
+          "after_ns": 177.17813540510545,
+          "speedup": 0.9958940765026969,
+          "before_process_medians_ns": [
+            176.0093595425041,
+            174.61261791368625,
+            178.34924516852692
+          ],
+          "after_process_medians_ns": [
+            182.74833518312985,
+            176.74496855345913,
+            176.9738993710692
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "fixed-4",
+      "operation": "encode",
+      "wire_bytes": 4,
+      "languages": {
+        "nim": {
+          "before_ns": 8.923463959975116,
+          "after_ns": 12.15302090150693,
+          "speedup": 0.7342589165520681,
+          "before_process_medians_ns": [
+            8.943980968321739,
+            8.912572214803452,
+            8.923463959975116
+          ],
+          "after_process_medians_ns": [
+            12.151987424301419,
+            12.156042631452502,
+            12.151210763074832
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 6.6733469370386205,
+          "after_ns": 6.638210489690081,
+          "speedup": 1.0052930601406975,
+          "before_process_medians_ns": [
+            6.765968311607256,
+            6.670645784236048,
+            6.66608644904791
+          ],
+          "after_process_medians_ns": [
+            6.643301245143278,
+            6.634670985593452,
+            6.638210489690081
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 19.32778175171684,
+          "after_ns": 19.692591273227347,
+          "speedup": 0.9814747832599119,
+          "before_process_medians_ns": [
+            19.569596731868536,
+            19.260826394700633,
+            19.263274251103866
+          ],
+          "after_process_medians_ns": [
+            19.70700196339958,
+            19.61199040668053,
+            19.47486724270767
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-16384",
+      "operation": "decode",
+      "wire_bytes": 3,
+      "languages": {
+        "nim": {
+          "before_ns": 7.932694696739641,
+          "after_ns": 7.904652393793947,
+          "speedup": 1.0035475693994729,
+          "before_process_medians_ns": [
+            7.932694696739641,
+            7.942597124815005,
+            7.90748971647848
+          ],
+          "after_process_medians_ns": [
+            7.904156443656011,
+            7.917567364573423,
+            7.8998347627665435
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 9.9991021798545,
+          "after_ns": 10.181929055286519,
+          "speedup": 0.982043984549559,
+          "before_process_medians_ns": [
+            10.002802687218907,
+            9.9991021798545,
+            9.988699229050964
+          ],
+          "after_process_medians_ns": [
+            10.18202919906437,
+            10.191516629828064,
+            10.173385837285435
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 11.377040050220314,
+          "after_ns": 11.375756145132177,
+          "speedup": 1.0001128632744722,
+          "before_process_medians_ns": [
+            11.445106340074586,
+            11.277065136371439,
+            11.240205298339152
+          ],
+          "after_process_medians_ns": [
+            11.371583487721658,
+            11.38897035505738,
+            11.373371769469024
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-72057594037927936",
+      "operation": "decode",
+      "wire_bytes": 9,
+      "languages": {
+        "nim": {
+          "before_ns": 12.95258134328237,
+          "after_ns": 12.957743767132229,
+          "speedup": 0.9996015954673411,
+          "before_process_medians_ns": [
+            12.949537210665342,
+            12.96536670027389,
+            12.948725441967468
+          ],
+          "after_process_medians_ns": [
+            12.962093721446287,
+            12.965153047904973,
+            12.94740895444459
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 11.582450534874395,
+          "after_ns": 11.573431993212374,
+          "speedup": 1.0007792452288404,
+          "before_process_medians_ns": [
+            11.565539769360278,
+            11.57142346888247,
+            11.71673006580197
+          ],
+          "after_process_medians_ns": [
+            11.582813927685681,
+            11.573431993212374,
+            11.568537070878476
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 15.473934918879953,
+          "after_ns": 15.486855501892704,
+          "speedup": 0.9991657064914713,
+          "before_process_medians_ns": [
+            15.396953269723138,
+            15.487937928918285,
+            15.4731913387527
+          ],
+          "after_process_medians_ns": [
+            15.485698668581126,
+            15.478085432711135,
+            15.51649588826524
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-72057594037927936",
+      "operation": "encode",
+      "wire_bytes": 9,
+      "languages": {
+        "nim": {
+          "before_ns": 11.690062858008371,
+          "after_ns": 11.689089751574762,
+          "speedup": 1.000083249119845,
+          "before_process_medians_ns": [
+            11.698956267900419,
+            11.685546444701476,
+            11.689417410222516
+          ],
+          "after_process_medians_ns": [
+            11.690885783741164,
+            11.68765085548756,
+            11.692900928381276
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 5.688331336748182,
+          "after_ns": 5.686429346578999,
+          "speedup": 1.0003344788184747,
+          "before_process_medians_ns": [
+            5.68811618748623,
+            5.68919193379599,
+            5.6871833002864065
+          ],
+          "after_process_medians_ns": [
+            5.694120711994769,
+            5.687794054978252,
+            5.658895362579385
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 16.146306661709627,
+          "after_ns": 16.141860661719672,
+          "speedup": 1.0002754329307586,
+          "before_process_medians_ns": [
+            16.16072166226041,
+            16.15907275831681,
+            16.11891041528971
+          ],
+          "after_process_medians_ns": [
+            16.432643617874746,
+            16.13877065825183,
+            16.129281535374588
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-16384",
+      "operation": "decode",
+      "wire_bytes": 65539,
+      "languages": {
+        "nim": {
+          "before_ns": 57206.27722772277,
+          "after_ns": 57306.42361111111,
+          "speedup": 0.9982524405279948,
+          "before_process_medians_ns": [
+            57178.21782178218,
+            57224.425742574254,
+            57214.94059405941
+          ],
+          "after_process_medians_ns": [
+            57189.23611111111,
+            57214.40972222222,
+            60578.125
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 7099.425742574257,
+          "after_ns": 7118.638888888889,
+          "speedup": 0.9973010084351068,
+          "before_process_medians_ns": [
+            7099.425742574257,
+            7123.346534653465,
+            7098.60396039604
+          ],
+          "after_process_medians_ns": [
+            7153.0625,
+            7118.638888888889,
+            7116.604166666667
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 99952.97029702971,
+          "after_ns": 68340.85416666667,
+          "speedup": 1.4625654232133065,
+          "before_process_medians_ns": [
+            99947.60396039604,
+            99955.86138613861,
+            99974.0099009901
+          ],
+          "after_process_medians_ns": [
+            68349.82638888889,
+            68320.02083333333,
+            68346.63888888889
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-0",
+      "operation": "encode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 5.623568956261778,
+          "after_ns": 5.771866429321072,
+          "speedup": 0.9743068425308764,
+          "before_process_medians_ns": [
+            5.617204644027519,
+            5.60059252005202,
+            5.68538263363708
+          ],
+          "after_process_medians_ns": [
+            5.818349443068948,
+            5.783366867096131,
+            5.74635371065098
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 10.212763663561814,
+          "after_ns": 7.167961823695517,
+          "speedup": 1.4247793047391704,
+          "before_process_medians_ns": [
+            10.056284912750412,
+            10.216647163068796,
+            10.611773584566627
+          ],
+          "after_process_medians_ns": [
+            6.985508775795388,
+            9.971171787571826,
+            6.975457924308403
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 10.561188139716139,
+          "after_ns": 11.053530322445974,
+          "speedup": 0.9554583767929731,
+          "before_process_medians_ns": [
+            10.550987495985105,
+            10.552438473822878,
+            10.644481230501082
+          ],
+          "after_process_medians_ns": [
+            11.058458915825424,
+            11.055173573462135,
+            10.873153082110365
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1048576",
+      "operation": "decode",
+      "wire_bytes": 1048579,
+      "languages": {
+        "nim": {
+          "before_ns": 13.26232228487857,
+          "after_ns": 13.641232251925393,
+          "speedup": 0.9722231862892488,
+          "before_process_medians_ns": [
+            13.284981695283898,
+            13.185372164644008,
+            13.262326972385894
+          ],
+          "after_process_medians_ns": [
+            13.633615052523519,
+            13.835177867465418,
+            13.612910332672394
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 20.793782490285142,
+          "after_ns": 20.892412331894267,
+          "speedup": 0.9952791549370985,
+          "before_process_medians_ns": [
+            20.775815274711366,
+            20.79280280125438,
+            20.853745083976694
+          ],
+          "after_process_medians_ns": [
+            20.948081168876826,
+            21.05706571416518,
+            20.85647790074672
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 33.71235580055594,
+          "after_ns": 34.8252497269527,
+          "speedup": 0.9680434760662909,
+          "before_process_medians_ns": [
+            33.69028701607346,
+            34.221930034265675,
+            33.454739773030894
+          ],
+          "after_process_medians_ns": [
+            34.73032770363704,
+            34.72856988839045,
+            35.360797438746
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1024",
+      "operation": "owned-decode",
+      "wire_bytes": 1131,
+      "languages": {
+        "nim": {
+          "before_ns": 652.049860086492,
+          "after_ns": 131.6839737724916,
+          "speedup": 4.951626545026873,
+          "before_process_medians_ns": [
+            651.7636733655559,
+            652.6224879165607,
+            652.049860086492
+          ],
+          "after_process_medians_ns": [
+            130.6927416895395,
+            132.75137236962487,
+            131.6839737724916
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 176.3653014500127,
+          "after_ns": 177.48993595608417,
+          "speedup": 0.9936636716892516,
+          "before_process_medians_ns": [
+            177.14958025947595,
+            178.44288984991096,
+            175.84584075298906
+          ],
+          "after_process_medians_ns": [
+            175.67604452577004,
+            177.48993595608417,
+            179.09743824336687
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 1355.0
+          }
+        },
+        "mojo": {
+          "before_ns": 2525.194861358433,
+          "after_ns": 742.3947849954254,
+          "speedup": 3.401417833739219,
+          "before_process_medians_ns": [
+            2541.5502416687864,
+            2521.241414398372,
+            2519.5667769015517
+          ],
+          "after_process_medians_ns": [
+            734.964318389753,
+            744.0244739249771,
+            742.0930161634644
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1048576",
+      "operation": "encode",
+      "wire_bytes": 1048684,
+      "languages": {
+        "nim": {
+          "before_ns": 1060091.6,
+          "after_ns": 16305.722891566265,
+          "speedup": 65.01346840306641,
+          "before_process_medians_ns": [
+            1059208.4,
+            1062341.6,
+            1061825.0
+          ],
+          "after_process_medians_ns": [
+            19603.414457831324,
+            16359.739759036145,
+            15717.571084337349
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 15366.6,
+          "after_ns": 15647.89156626506,
+          "speedup": 0.9820236761563782,
+          "before_process_medians_ns": [
+            18258.4,
+            14766.6,
+            15366.6
+          ],
+          "after_process_medians_ns": [
+            15645.783132530121,
+            17814.959036144577,
+            15517.971084337349
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1672008.4,
+          "after_ns": 22315.561445783133,
+          "speedup": 74.92567032481952,
+          "before_process_medians_ns": [
+            1671141.8,
+            1672008.4,
+            1676200.0
+          ],
+          "after_process_medians_ns": [
+            22932.127710843375,
+            17069.37831325301,
+            16874.397590361445
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-127",
+      "operation": "encode",
+      "wire_bytes": 1,
+      "languages": {
+        "nim": {
+          "before_ns": 5.611122216806636,
+          "after_ns": 5.848916995237851,
+          "speedup": 0.9593437932826151,
+          "before_process_medians_ns": [
+            5.611122216806636,
+            5.60344730771736,
+            5.688097040319664
+          ],
+          "after_process_medians_ns": [
+            5.766822301565504,
+            6.112413240914444,
+            5.851244536097831
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 6.976887674998933,
+          "after_ns": 7.71662306406789,
+          "speedup": 0.9041374208734515,
+          "before_process_medians_ns": [
+            6.873052915769164,
+            6.978900176767733,
+            6.993359417991676
+          ],
+          "after_process_medians_ns": [
+            7.678217476107793,
+            8.924228071073788,
+            7.27875327601376
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 10.736525110227147,
+          "after_ns": 11.065225841289644,
+          "speedup": 0.970294259170386,
+          "before_process_medians_ns": [
+            10.657022305976636,
+            10.738677992978705,
+            10.673868023907444
+          ],
+          "after_process_medians_ns": [
+            11.066002076166447,
+            11.062510764876478,
+            11.063625656948409
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": -2457440,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1048576",
+      "operation": "owned-decode",
+      "wire_bytes": 1048579,
+      "languages": {
+        "nim": {
+          "before_ns": 502708.2,
+          "after_ns": 23030.989323843416,
+          "speedup": 21.827468760951515,
+          "before_process_medians_ns": [
+            504000.0,
+            502691.6,
+            502716.6
+          ],
+          "after_process_medians_ns": [
+            24676.451957295372,
+            27962.928825622777,
+            21979.836298932383
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 27933.4,
+          "after_ns": 28692.320284697507,
+          "speedup": 0.9735497067798221,
+          "before_process_medians_ns": [
+            27933.4,
+            27700.0,
+            28275.0
+          ],
+          "after_process_medians_ns": [
+            28028.76512455516,
+            28469.601423487544,
+            30149.91103202847
+          ],
+          "after_allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 1048803.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1680016.8,
+          "after_ns": 31584.66903914591,
+          "speedup": 53.19089454183592,
+          "before_process_medians_ns": [
+            1680258.4,
+            1679258.4,
+            1680958.4
+          ],
+          "after_process_medians_ns": [
+            31656.138790035588,
+            31647.836298932383,
+            31243.772241992883
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-65536",
+      "operation": "decode",
+      "wire_bytes": 65644,
+      "languages": {
+        "nim": {
+          "before_ns": 68.7302,
+          "after_ns": 66.48839884477948,
+          "speedup": 1.0337171776455936,
+          "before_process_medians_ns": [
+            68.77395,
+            68.63855,
+            68.8323
+          ],
+          "after_process_medians_ns": [
+            66.49757697390964,
+            66.40273630623133,
+            66.453742229184
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 57.927075,
+          "after_ns": 58.317832493024625,
+          "speedup": 0.9932995196096946,
+          "before_process_medians_ns": [
+            57.895825,
+            57.8625,
+            58.022925
+          ],
+          "after_process_medians_ns": [
+            57.69780703901317,
+            59.72920847814382,
+            58.75226393851877
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 223.953125,
+          "after_ns": 224.36751676538253,
+          "speedup": 0.9981530670243328,
+          "before_process_medians_ns": [
+            220.979175,
+            224.00105,
+            224.00835
+          ],
+          "after_process_medians_ns": [
+            224.57761025992463,
+            221.6446717901023,
+            224.43585099613296
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-work_result_1",
+      "operation": "owned-encode",
+      "wire_bytes": 82,
+      "languages": {
+        "nim": {
+          "before_ns": 66.56245035886032,
+          "after_ns": 7.589647927210275,
+          "speedup": 8.770163121825687,
+          "before_process_medians_ns": [
+            66.47099513336318,
+            66.65390558435745,
+            66.68820309905122
+          ],
+          "after_process_medians_ns": [
+            7.590256335300459,
+            7.584015127984945,
+            7.590102862989421
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 12.116654873135298,
+          "after_ns": 12.564631940511209,
+          "speedup": 0.964346184631837,
+          "before_process_medians_ns": [
+            10.362051785636924,
+            12.186448510404784,
+            12.173812583938654
+          ],
+          "after_process_medians_ns": [
+            12.766749492993258,
+            12.803062138015457,
+            12.134589735625674
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 135.6051525697864,
+          "after_ns": 17.369548535618364,
+          "speedup": 7.807062589549269,
+          "before_process_medians_ns": [
+            135.76882753043452,
+            135.25856715814405,
+            135.98843271188645
+          ],
+          "after_process_medians_ns": [
+            17.380434107394077,
+            17.11109750972905,
+            17.394518846034384
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "fixed-8",
+      "operation": "encode",
+      "wire_bytes": 8,
+      "languages": {
+        "nim": {
+          "before_ns": 10.755215762223182,
+          "after_ns": 14.534203451869105,
+          "speedup": 0.7399934779941488,
+          "before_process_medians_ns": [
+            10.779478925398134,
+            10.756123040954039,
+            10.745582468583294
+          ],
+          "after_process_medians_ns": [
+            14.443629103582342,
+            14.5394968432298,
+            14.534203451869105
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 7.6323558277391745,
+          "after_ns": 7.631962626642966,
+          "speedup": 1.000051520312067,
+          "before_process_medians_ns": [
+            7.632990486659077,
+            7.637079783823395,
+            7.578558124724654
+          ],
+          "after_process_medians_ns": [
+            7.647194809061375,
+            7.600035902240825,
+            7.630776101366912
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 20.780536690264636,
+          "after_ns": 20.925095666336833,
+          "speedup": 0.9930915978413061,
+          "before_process_medians_ns": [
+            20.47474668167166,
+            20.802527294695473,
+            20.900397806828146
+          ],
+          "after_process_medians_ns": [
+            20.77541178118898,
+            20.958296482456063,
+            20.969518121874973
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-65536",
+      "operation": "owned-encode",
+      "wire_bytes": 65644,
+      "languages": {
+        "nim": {
+          "before_ns": 42156.914893617024,
+          "after_ns": 792.8770246478873,
+          "speedup": 53.16955036291876,
+          "before_process_medians_ns": [
+            42066.04255319149,
+            42230.94680851064,
+            41859.936170212764
+          ],
+          "after_process_medians_ns": [
+            765.0674295774647,
+            778.8109154929577,
+            1052.442781690141
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 741.1276595744681,
+          "after_ns": 707.8968309859155,
+          "speedup": 1.046943039061597,
+          "before_process_medians_ns": [
+            747.3404255319149,
+            740.6914893617021,
+            732.7127659574468
+          ],
+          "after_process_medians_ns": [
+            698.6281690140845,
+            724.7946302816902,
+            689.9244718309859
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 105148.05319148937,
+          "after_ns": 896.0350352112677,
+          "speedup": 117.34814941326206,
+          "before_process_medians_ns": [
+            106208.32978723405,
+            104955.22340425532,
+            104871.90425531915
+          ],
+          "after_process_medians_ns": [
+            898.7786091549295,
+            868.1778169014085,
+            906.8955985915493
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-work_result_0",
+      "operation": "encode",
+      "wire_bytes": 86,
+      "languages": {
+        "nim": {
+          "before_ns": 74.8538290513834,
+          "after_ns": 65.01345446466043,
+          "speedup": 1.1513590481808953,
+          "before_process_medians_ns": [
+            74.84664031620554,
+            74.88779644268774,
+            74.80338438735178
+          ],
+          "after_process_medians_ns": [
+            64.99698817488336,
+            65.33747253561113,
+            65.00315994766336
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 51.853779644268776,
+          "after_ns": 51.78734539709186,
+          "speedup": 1.001282827815705,
+          "before_process_medians_ns": [
+            52.10289031620553,
+            51.843502964426875,
+            51.686017786561266
+          ],
+          "after_process_medians_ns": [
+            51.87784827313798,
+            51.61349890142444,
+            51.862443528279066
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 233.03174407114625,
+          "after_ns": 235.93452983434963,
+          "speedup": 0.9876966471790227,
+          "before_process_medians_ns": [
+            232.73735177865612,
+            233.32613636363635,
+            232.88661067193675
+          ],
+          "after_process_medians_ns": [
+            236.148468165996,
+            232.1584417508085,
+            236.075468437554
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1024",
+      "operation": "decode",
+      "wire_bytes": 1026,
+      "languages": {
+        "nim": {
+          "before_ns": 12.323769820916045,
+          "after_ns": 12.648014681843849,
+          "speedup": 0.974363971810275,
+          "before_process_medians_ns": [
+            12.324832029218003,
+            12.398189880647074,
+            12.17068450594582
+          ],
+          "after_process_medians_ns": [
+            12.710393942996404,
+            12.647706333402681,
+            12.631453027015782
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 20.191051986365903,
+          "after_ns": 20.375144886616933,
+          "speedup": 0.9909648298809424,
+          "before_process_medians_ns": [
+            20.1821105205912,
+            20.19302361958392,
+            20.191051986365903
+          ],
+          "after_process_medians_ns": [
+            20.375144886616933,
+            20.585353077540347,
+            20.226231164739797
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 32.519368931862246,
+          "after_ns": 33.70192736350938,
+          "speedup": 0.9649112521402102,
+          "before_process_medians_ns": [
+            32.51133325330394,
+            32.46040545800458,
+            32.744447960887456
+          ],
+          "after_process_medians_ns": [
+            33.69217537967724,
+            33.69000579546468,
+            33.92281629862989
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1048576",
+      "operation": "encode",
+      "wire_bytes": 1048579,
+      "languages": {
+        "nim": {
+          "before_ns": 651950.0,
+          "after_ns": 16250.611246943765,
+          "speedup": 40.11849093507861,
+          "before_process_medians_ns": [
+            657458.2,
+            650600.0,
+            656200.0
+          ],
+          "after_process_medians_ns": [
+            14330.9902200489,
+            16607.78239608802,
+            19779.339853300735
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 14550.0,
+          "after_ns": 15542.481662591686,
+          "speedup": 0.9361439386491004,
+          "before_process_medians_ns": [
+            15050.0,
+            14066.6,
+            14558.4
+          ],
+          "after_process_medians_ns": [
+            15549.102689486552,
+            14255.706601466993,
+            15827.322738386309
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 1672800.0,
+          "after_ns": 23898.022004889976,
+          "speedup": 69.99742487715989,
+          "before_process_medians_ns": [
+            1673800.0,
+            1675916.6,
+            1670700.0
+          ],
+          "after_process_medians_ns": [
+            23822.02444987775,
+            24086.185819070906,
+            24049.205378973104
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "natural-128",
+      "operation": "decode",
+      "wire_bytes": 2,
+      "languages": {
+        "nim": {
+          "before_ns": 6.861458199925346,
+          "after_ns": 6.953687202508516,
+          "speedup": 0.9867366765433598,
+          "before_process_medians_ns": [
+            6.946702482948407,
+            6.848139841125454,
+            6.945698707570787
+          ],
+          "after_process_medians_ns": [
+            6.955567085504598,
+            6.951001655371256,
+            6.950867378014393
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 8.50508948049972,
+          "after_ns": 10.279155105386241,
+          "speedup": 0.8274113381208814,
+          "before_process_medians_ns": [
+            8.498750480268754,
+            10.09786645737348,
+            8.486709554255865
+          ],
+          "after_process_medians_ns": [
+            10.292493680907587,
+            10.276111843370296,
+            8.93217382150135
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 10.700278364316825,
+          "after_ns": 10.241692797040312,
+          "speedup": 1.044776344727801,
+          "before_process_medians_ns": [
+            10.827665888384994,
+            10.80335635339461,
+            10.127969867035338
+          ],
+          "after_process_medians_ns": [
+            10.242855101841318,
+            10.178626482287742,
+            10.293702177119354
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-1024",
+      "operation": "decode",
+      "wire_bytes": 4098,
+      "languages": {
+        "nim": {
+          "before_ns": 3551.947040498442,
+          "after_ns": 3594.624201107797,
+          "speedup": 0.9881275042336268,
+          "before_process_medians_ns": [
+            3534.397507788162,
+            3603.1931464174454,
+            3556.7757009345796
+          ],
+          "after_process_medians_ns": [
+            3583.6527481891776,
+            3595.2812100553897,
+            3595.192586280358
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "before_ns": 477.77757009345794,
+          "after_ns": 476.03323391563697,
+          "speedup": 1.0036643159627172,
+          "before_process_medians_ns": [
+            475.49345794392525,
+            482.7102803738318,
+            473.9619937694704
+          ],
+          "after_process_medians_ns": [
+            475.67788666382614,
+            475.44737963357477,
+            477.4179804005113
+          ],
+          "after_allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "before_ns": 6274.610591900311,
+          "after_ns": 4295.731998295697,
+          "speedup": 1.460661557655301,
+          "before_process_medians_ns": [
+            6244.028660436137,
+            6277.388785046729,
+            6278.894080996884
+          ],
+          "after_process_medians_ns": [
+            4295.11077971879,
+            4296.548785683852,
+            4295.305922454197
+          ],
+          "after_allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    }
+  ],
+  "repeats": 3,
+  "batches_per_process": 15,
+  "single_operation_samples_per_process": 128,
+  "codec_sources_changed": [
+    "nim/src/composite.nim",
+    "nim/src/owned.nim",
+    "nim/src/fixed_unsigned.nim",
+    "nim/src/bounded.nim",
+    "mojo/codec/bounded.mojo",
+    "mojo/codec/composite.mojo",
+    "mojo/codec/scalar.mojo",
+    "mojo/codec/owned.mojo"
+  ],
+  "odin_median_after_before_ratio_across_cases": 1.0001054475588282,
+  "raw_report_sha256": {
+    "before": "88534e34365c43c0caa11b9fbdc455969de0ccabdc4069bc14fec0e265a905d9",
+    "after": "ab39771133500da560d396eb044d1557735d4edca077041433c9581a24d5ea9f",
+    "inline-trial": "590295b33d616188f1e0e924c7160ab2f9a54c98c47f5ce201570a4dea767448"
+  }
+}

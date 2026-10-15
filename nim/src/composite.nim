@@ -150,7 +150,9 @@ proc writeTag(tag: int, hasBlob: bool, span: BlobSpan, pool: openArray[byte], li
     # Copy the complete canonical length before the blob.
     for i in 0..<length.len: output[1 + i] = length.bytes[i]
     # Span bounds and output capacity were proved above.
-    for i in 0..<span.length: output[1 + length.len + i] = pool[span.offset + i]
+    if span.length > 0:
+      # The measured frame and valid span prove both extents; whole-pool alias rejection permits copyMem.
+      copyMem(addr output[1 + length.len], unsafeAddr pool[span.offset], span.length)
   size
 
 # Validate and measure a work output without mutation; enclosing codecs use this for atomic preflight.
@@ -288,6 +290,8 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
     let length = natural.encode(JamNatural(uint64(value.blob.length)))
     for i in 0..<length.len: output[cursor + i] = length.bytes[i] # Nested length prefix.
     cursor += length.len
-    for i in 0..<value.blob.length: output[cursor + i] = pool[value.blob.offset + i] # Raw nested payload.
+    if value.blob.length > 0:
+      # Every nested span/capacity and the whole pool were checked before committing the outer prefix.
+      copyMem(addr output[cursor], unsafeAddr pool[value.blob.offset], value.blob.length)
     cursor += value.blob.length
   CompositeWrite(error: CompositeError.None, written: required)

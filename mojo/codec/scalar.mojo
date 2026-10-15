@@ -77,6 +77,8 @@ def encode_fixed(value: FixedUnsigned, width: ByteWidth) -> CheckedResult[Encode
 
 
 # Decode exactly the requested fixed prefix; trailing bytes stay in the caller's borrowed span.
+# Let callers simplify the checked scalar result while retaining all width and input validation.
+@always_inline
 def decode_fixed(
     data: Span[mut=False, UInt8, _], width: ByteWidth
 ) -> CheckedResult[Decoded[FixedUnsigned]]:

@@ -13,6 +13,10 @@ This is an ownership-based engineering judgment, **not an empirically demonstrat
 ranking**. We lack comparable histories for five of the six requested metrics. There is no honest
 measured winner yet, and the maintainer's overall language decision remains open.
 
+The subsequent [checked performance experiment](checked-bulk.md) changes Nim/Mojo codec copies
+and scalar inlining. It supplies new performance evidence, not a matched AI-development cohort.
+The LOC and historical metric table below refer to the archived POC snapshot above.
+
 ## Reproducible metric comparison
 
 | Metric | Nim | Odin | Mojo | Evidence/status |

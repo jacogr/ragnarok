@@ -152,7 +152,9 @@ proc capture(input: openArray[byte], kind: OwnedKind, limit: ByteLimit,
     if data.hasBlob: data.blob = parsed.value.output.blob
   data.wire = newSeq[byte](consumed)
   # Deep-copy only the validated prefix; trailing frames cannot inflate retained storage.
-  for index in 0..<consumed: data.wire[index] = input[index]
+  if consumed > 0:
+    # Fresh private byte storage cannot overlap caller input; the decoder proved the complete prefix exists.
+    copyMem(addr data.wire[0], unsafeAddr input[0], consumed)
   OwnedResult[OwnedFrame](error: OwnershipError.None, value: OwnedFrame(data: data))
 
 # Own one C.1.2 variable byte string; caller input may be released or mutated after return.
@@ -255,7 +257,9 @@ proc copyOwnedBlob*(frame: OwnedFrame, index: int, output: var openArray[byte]):
   # Require the whole payload before writing any destination byte.
   if output.len < span.length: return OwnedResult[int](error: OwnershipError.OutputTooSmall)
   # Bounds were validated against the stable copied prefix; caller supplies no second source buffer.
-  for i in 0..<span.length: output[i] = data.wire[span.offset + i]
+  if span.length > 0:
+    # Safe callers cannot access private snapshot bytes; source coordinates and output capacity are proved.
+    copyMem(addr output[0], unsafeAddr data.wire[span.offset], span.length)
   OwnedResult[int](error: OwnershipError.None, value: span.length)
 
 # Emit the validated canonical frame from its private snapshot, preserving output on insufficient capacity.
@@ -265,5 +269,7 @@ proc encodeOwned*(frame: OwnedFrame, output: var openArray[byte]): OwnedResult[i
   # All required bytes must fit before the first write.
   if output.len < frame.data.wire.len: return OwnedResult[int](error: OwnershipError.OutputTooSmall)
   # The internal bytes are inaccessible to safe callers, so output cannot alias the snapshot.
-  for i, value in frame.data.wire: output[i] = value
+  if frame.data.wire.len > 0:
+    # Nonempty private byte storage and a complete destination permit an allocation-free standard copy.
+    copyMem(addr output[0], unsafeAddr frame.data.wire[0], frame.data.wire.len)
   OwnedResult[int](error: OwnershipError.None, value: frame.data.wire.len)

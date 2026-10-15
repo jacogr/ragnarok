@@ -105,8 +105,7 @@ def write_tag(
         for i in range(prefix.length):
             output[1 + i] = prefix.bytes[i]
         # Raw blobs use identity encoding in their original order.
-        for i in range(blob.length):
-            output[1 + prefix.length + i] = pool[blob.offset + i]
+        output[1 + prefix.length : size].copy_from(pool[blob.offset : blob.offset + blob.length])
     return WriteResult(Written(size))
 
 
@@ -323,7 +322,8 @@ def encode_preimages_borrowed(
             output[cursor + i] = length.bytes[i]
         cursor += length.length
         # Identity-copy precisely the selected borrowed pool bytes.
-        for i in range(blob.length):
-            output[cursor + i] = pool[blob.offset + i]
+        output[cursor : cursor + blob.length].copy_from(
+            pool[blob.offset : blob.offset + blob.length]
+        )
         cursor += blob.length
     return WriteResult(Written(required))

@@ -1,0 +1,4 @@
+VERIFY 1048761
+fatal.nim(62)            sysFatal
+Error: unhandled exception: main.nim(194, 3) `iterations in 1 .. 20000000 and samples in 1 .. 31 and
+    latencySamples in 0 .. 256`  [AssertionDefect]

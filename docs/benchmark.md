@@ -3,6 +3,8 @@
 The measurement round compares the existing M1 codecs and M2 Blake2b-256 adapters on one host.
 It complements the M3 resource/lifetime evidence from the persistent and integrated workloads.
 It does not time the soak's deliberate waits or use them as networking throughput numbers.
+See the [bounded checked optimization experiment](../results/checked-bulk.md) for a three-language
+before/after comparison and an explicitly separate Nim LTO build-policy probe.
 
 Protocol definitions remain Gray Paper v0.7.1 at
 `1c979cb59bb800f92ffff083a2701004dfc6cd33`: C.1.1 naturals, C.1.7 fixed integers,

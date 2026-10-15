@@ -1,0 +1,337 @@
++ nim --version
++ odin version
++ xcrun --sdk macosx --show-sdk-path
++ /Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo build -I /Users/jacogr/Projects/jacogr/ragnarok/mojo -O0 /Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/driver.mojo -o /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-0
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
++ /Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo build -I /Users/jacogr/Projects/jacogr/ragnarok/mojo -O3 /Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/driver.mojo -o /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-3
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+PASS Mojo: 13 negative compilation checks
++ nim check --mm:arc /Users/jacogr/Projects/jacogr/ragnarok/nim/src/natural.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+....................................................................
+Hint: 
+29110 lines; 0.121s; 30.969MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/src/natural.nim; out: unknownOutput [SuccessX]
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_natural.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.....................................................................
+CC: system/exceptions.nim
+CC: std/private/digitsutils.nim
+CC: std/assertions.nim
+CC: system/dollars.nim
+CC: std/typedthreads.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: test_natural.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+29177 lines; 0.281s; 30.898MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_natural.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-tests [Exec]
+Nim natural: boundaries, truncations, canonicality and 10000 fuzz cases passed
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-result-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_result_safety.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.........................................................................
+CC: system/exceptions.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/work_digest.nim
+CC: test_result_safety.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+29840 lines; 0.291s; 38.277MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_result_safety.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-result-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-result-tests [Exec]
+Nim result safety: failed payload/metadata inaccessible; valid zero and work-error values preserved
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache -d:release --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-result-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_result_safety.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.........................................................................
+CC: system/exceptions.nim
+CC: std/private/digitsutils.nim
+CC: std/assertions.nim
+CC: system/dollars.nim
+CC: std/typedthreads.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/work_digest.nim
+CC: test_result_safety.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: speed; options: -d:release
+29840 lines; 0.410s; 38.266MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_result_safety.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-result-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-result-tests [Exec]
+Nim result safety: failed payload/metadata inaccessible; valid zero and work-error values preserved
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-ownership-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_ownership.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+...........................................................................
+CC: system/exceptions.nim
+CC: std/private/digitsutils.nim
+CC: std/assertions.nim
+CC: system/dollars.nim
+CC: std/typedthreads.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/work_digest.nim
+CC: ../src/owned.nim
+CC: ownership_checks.nim
+CC: test_ownership.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+30256 lines; 0.323s; 38.277MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_ownership.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-ownership-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-ownership-tests [Exec]
+Nim ownership: immutable snapshots, retained lifetime, atomic copies and 10000 five-schema fuzz cases passed
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache -d:release --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-ownership-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_ownership.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+...........................................................................
+CC: system/exceptions.nim
+CC: std/private/digitsutils.nim
+CC: std/assertions.nim
+CC: system/dollars.nim
+CC: std/typedthreads.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/work_digest.nim
+CC: ../src/owned.nim
+CC: ownership_checks.nim
+CC: test_ownership.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: speed; options: -d:release
+30256 lines; 0.450s; 38.242MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_ownership.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-ownership-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-ownership-tests [Exec]
+Nim ownership: immutable snapshots, retained lifetime, atomic copies and 10000 five-schema fuzz cases passed
++ odin check /Users/jacogr/Projects/jacogr/ragnarok/odin/codec -no-entry-point -vet -strict-style
++ odin test /Users/jacogr/Projects/jacogr/ragnarok/odin/tests -out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-tests -extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk
+[INFO ] --- [2026-10-15 04:39:06] Starting test runner with 9 threads. Set with -define:ODIN_TEST_THREADS=n.
+[INFO ] --- [2026-10-15 04:39:06] The random seed sent to every test is: 28826525003494. Set with -define:ODIN_TEST_RANDOM_SEED=n.
+[INFO ] --- [2026-10-15 04:39:06] Memory tracking is enabled. Tests will log their memory usage if there's an issue.
+[INFO ] --- [2026-10-15 04:39:06] < Final Mem/ Total Mem> <  Peak Mem> (#Free/Alloc) :: [package.test_name]
+
+Finished 9 tests in 28.252ms. All tests were successful.
+
+Both raw-integer negative compilation checks passed
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-driver /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/driver.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+..................................................................................................................
+CC: system/exceptions.nim
+CC: std/private/digitsutils.nim
+CC: std/assertions.nim
+CC: system/dollars.nim
+CC: std/typedthreads.nim
+CC: std/syncio.nim
+CC: system.nim
+CC: parseutils.nim
+CC: strutils.nim
+CC: posix.nim
+CC: times.nim
+CC: std/cmdline.nim
+CC: ../src/natural.nim
+CC: driver.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+54042 lines; 0.563s; 73.191MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/driver.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-driver [SuccessX]
++ odin build /Users/jacogr/Projects/jacogr/ragnarok/odin/driver -out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-driver -extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-0 natural /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-3 natural /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/requests.txt
++ nim check --mm:arc /Users/jacogr/Projects/jacogr/ragnarok/nim/src/fixed_unsigned.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+....................................................................
+Hint: 
+29104 lines; 0.111s; 30.969MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/src/fixed_unsigned.nim; out: unknownOutput [SuccessX]
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-fixed-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_fixed_unsigned.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.....................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: ../src/fixed_unsigned.nim
+CC: test_fixed_unsigned.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+29183 lines; 0.267s; 30.898MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_fixed_unsigned.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-fixed-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-fixed-tests [Exec]
+Nim fixed unsigned: widths, overflow, truncations and 10000 fuzz cases passed
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-fixed-driver /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/fixed_driver.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+..................................................................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: parseutils.nim
+CC: strutils.nim
+CC: ../src/fixed_unsigned.nim
+CC: fixed_driver.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+54051 lines; 0.540s; 73.188MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/fixed_driver.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-fixed-driver [SuccessX]
++ odin build /Users/jacogr/Projects/jacogr/ragnarok/odin/fixed_driver -out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-fixed-driver -extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-fixed-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/fixed-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-fixed-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/fixed-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-0 fixed /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/fixed-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-3 fixed /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/fixed-requests.txt
+PASS fixed unsigned: 73278 shared requests per implementation; 24 official field checks; 47 boundary fixtures; 6 negative compilation checks
++ nim check --mm:arc /Users/jacogr/Projects/jacogr/ragnarok/nim/src/bounded.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+......................................................................
+Hint: 
+29351 lines; 0.115s; 30.969MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/src/bounded.nim; out: unknownOutput [SuccessX]
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-bounded-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_bounded.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.......................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: test_bounded.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+29496 lines; 0.305s; 38.281MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_bounded.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-bounded-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-bounded-tests [Exec]
+Nim bounded: byte/sequence boundaries, atomic errors, aliasing and 10000 fuzz cases passed
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-bounded-driver /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/bounded_driver.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+........................................................................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: parseutils.nim
+CC: strutils.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/work_digest.nim
+CC: ../src/owned.nim
+CC: ownership_checks.nim
+CC: bounded_driver.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+55141 lines; 0.592s; 90.914MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/bounded_driver.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-bounded-driver [SuccessX]
++ odin build /Users/jacogr/Projects/jacogr/ragnarok/odin/bounded_driver -out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-bounded-driver -extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-bounded-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/bounded-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-bounded-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/bounded-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-0 bounded /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/bounded-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-3 bounded /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/bounded-requests.txt
+PASS bounded: 26712 shared requests per implementation; 12 official blob checks; 13 project fixtures; 6 negative compilation checks
++ nim check --mm:arc /Users/jacogr/Projects/jacogr/ragnarok/nim/src/composite.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.......................................................................
+Hint: 
+29645 lines; 0.134s; 30.969MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/src/composite.nim; out: unknownOutput [SuccessX]
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-composite-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_composite.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+........................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: test_composite.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+29760 lines; 0.322s; 38.277MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_composite.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-composite-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-composite-tests [Exec]
+Nim composite: nested atomic failures, exact variants, aliasing and 10000 fuzz cases passed
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-composite-driver /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/composite_driver.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+........................................................................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: parseutils.nim
+CC: strutils.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/owned.nim
+CC: ownership_checks.nim
+CC: composite_driver.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+55217 lines; 0.604s; 90.934MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/composite_driver.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-composite-driver [SuccessX]
++ odin build /Users/jacogr/Projects/jacogr/ragnarok/odin/composite_driver -out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-composite-driver -extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-composite-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/composite-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-composite-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/composite-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-0 composite /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/composite-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-3 composite /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/composite-requests.txt
+PASS composite: 25890 shared requests per implementation; 4 complete official preimage checks; 8 official work-output checks; 6 negative compilation checks
++ nim check --mm:arc /Users/jacogr/Projects/jacogr/ragnarok/nim/src/work_digest.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+........................................................................
+Hint: 
+29784 lines; 0.122s; 30.969MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/src/work_digest.nim; out: unknownOutput [SuccessX]
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-digest-tests -r /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_work_digest.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.........................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: ../src/natural.nim
+CC: ../src/fixed_unsigned.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/work_digest.nim
+CC: test_work_digest.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+29853 lines; 0.294s; 38.281MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/test_work_digest.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-digest-tests [SuccessX]
+Hint: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-digest-tests [Exec]
+Nim work digest: full tuple, boundaries, atomic failures and 10000 fuzz cases passed
++ nim c --mm:arc --nimcache:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nimcache --out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-digest-driver /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/digest_driver.nim
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+........................................................................................................................
+CC: system/exceptions.nim
+CC: system/dollars.nim
+CC: system.nim
+CC: parseutils.nim
+CC: strutils.nim
+CC: ../src/natural.nim
+CC: ../src/bounded.nim
+CC: ../src/composite.nim
+CC: ../src/work_digest.nim
+CC: ../src/owned.nim
+CC: ownership_checks.nim
+CC: digest_driver.nim
+Hint:  [Link]
+Hint: mm: arc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
+55150 lines; 0.591s; 90.895MiB peakmem; proj: /Users/jacogr/Projects/jacogr/ragnarok/nim/tests/digest_driver.nim; out: /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-digest-driver [SuccessX]
++ odin build /Users/jacogr/Projects/jacogr/ragnarok/odin/digest_driver -out:/var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-digest-driver -extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/nim-digest-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/digest-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/odin-digest-driver /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/digest-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-0 digest /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/digest-requests.txt
++ /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/mojo-codec-3 digest /var/folders/0y/yrzlk95x1h1bzqvjmp7xj7yc0000gn/T/ragnarok-codec-ln9grbi8/digest-requests.txt
+PASS work digest: 14278 shared requests per implementation; 8 complete official work-digest checks; 6 negative compilation checks
+PASS: 45215 shared requests per implementation; 20 official prefix checks; 29 boundary fixtures; native tests and negative compilation checks

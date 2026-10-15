@@ -153,6 +153,8 @@ The [optimized codec/hash comparison](docs/benchmark.md) measures encode/decode,
 allocation costs and operation latency on identical inputs. Run
 `python3 interoperability/benchmark.py --fetch`; [local observations](results/benchmark.md) are
 separate from the same-CPU Linux CI results, which await a pushed run.
+The [bounded three-language optimization experiment](results/checked-bulk.md) records checked
+before/after timings and a separate Nim LTO probe, including the remaining sequence-performance gap.
 
 The [IPv6 resilience proof](docs/quic-resilience.md) checks retained-engine recovery after peer
 death with pending requests, connection/stream saturation, and healthy work after admission slots

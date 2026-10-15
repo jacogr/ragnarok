@@ -108,7 +108,10 @@ proc encodeBytes*(value: openArray[byte], limit: ByteLimit,
     return WriteResult(error: ContainerError.AliasedBuffers)
   # All failure checks have passed; emit the canonical prefix followed by exactly the borrowed payload.
   for i in 0..<prefix.len: output[i] = prefix.bytes[i]
-  for i in 0..<value.len: output[prefix.len + i] = value[i]
+  # The checked capacity and nonoverlap proof permit one standard byte copy.
+  if value.len > 0:
+    # Empty open arrays need no valid element address; copy only the validated payload extent.
+    copyMem(addr output[prefix.len], unsafeAddr value[0], value.len)
   WriteResult(error: ContainerError.None, written: total)
 
 # Encode a homogeneous fixed-width unsigned sequence after validating every element and all capacity.

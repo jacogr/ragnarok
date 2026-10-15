@@ -1,0 +1,45 @@
++ nim c --mm:arc --cc:clang --clang.linkerexe:clang++ --skipParentCfg --skipUserCfg -d:integration --passL:/Users/jacogr/Projects/jacogr/ragnarok/build/quic/libquic_proof.dylib --passL:/Users/jacogr/Projects/jacogr/ragnarok/build/crypto/libragnarok_crypto.dylib --nimcache:/Users/jacogr/Projects/jacogr/ragnarok/build/integration/nim-cache --out:/Users/jacogr/Projects/jacogr/ragnarok/build/integration/nim-peer /Users/jacogr/Projects/jacogr/ragnarok/nim/quic/peer.nim
++ odin build /Users/jacogr/Projects/jacogr/ragnarok/odin/quic -define:INTEGRATION=true -vet -strict-style -out:/Users/jacogr/Projects/jacogr/ragnarok/build/integration/odin-peer -extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
++ /Users/jacogr/Projects/jacogr/ragnarok/build/integration/nim-peer --integration-selftest
+Nim integration selftest: 10000 arbitrary digest captures passed
++ /Users/jacogr/Projects/jacogr/ragnarok/build/integration/odin-peer --integration-selftest
+Odin integration selftest: 10000 arbitrary digest captures passed
++ /Users/jacogr/Projects/jacogr/ragnarok/build/integration/mojo-peer --integration-selftest
+Mojo integration selftest: 10000 owned codec/hash cases passed
+nim integration: 1/12 waves
+nim integration: 2/12 waves
+nim integration: 3/12 waves
+nim integration: 4/12 waves
+nim integration: 5/12 waves
+nim integration: 6/12 waves
+nim integration: 7/12 waves
+nim integration: 8/12 waves
+nim integration: 9/12 waves
+nim integration: 10/12 waves
+nim integration: 11/12 waves
+nim integration: 12/12 waves
+odin integration: 1/12 waves
+odin integration: 2/12 waves
+odin integration: 3/12 waves
+odin integration: 4/12 waves
+odin integration: 5/12 waves
+odin integration: 6/12 waves
+odin integration: 7/12 waves
+odin integration: 8/12 waves
+odin integration: 9/12 waves
+odin integration: 10/12 waves
+odin integration: 11/12 waves
+odin integration: 12/12 waves
+mojo integration: 1/12 waves
+mojo integration: 2/12 waves
+mojo integration: 3/12 waves
+mojo integration: 4/12 waves
+mojo integration: 5/12 waves
+mojo integration: 6/12 waves
+mojo integration: 7/12 waves
+mojo integration: 8/12 waves
+mojo integration: 9/12 waves
+mojo integration: 10/12 waves
+mojo integration: 11/12 waves
+mojo integration: 12/12 waves
+PASS integrated codec/crypto/QUIC: 864 streams

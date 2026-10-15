@@ -131,8 +131,7 @@ def capture(
         return Result(fail["wrongschema"]())
     var wire = List[UInt8](length=consumed, fill=0)
     # Retain a deep copy so caller mutation and input lifetime cannot affect validated bytes.
-    for i in range(consumed):
-        wire[i] = data[i]
+    Span(wire).copy_from(data[:consumed])
     var opaque = external_call["malloc", Optional[OpaquePointer[mut=True, MutUntrackedOrigin]]](
         c_size_t(size_of[Storage]())
     )
@@ -173,8 +172,7 @@ def copy_owned_blob(frame: OwnedFrame, index: Int, output: Span[mut=True, UInt8,
     ):
         return WriteResult(fail["aliasedbuffers"]())
     # Coordinates were validated against the exact retained consumed-prefix owner during capture.
-    for i in range(blob.length):
-        output[i] = value.wire[blob.offset + i]
+    output[: blob.length].copy_from(Span(value.wire)[blob.offset : blob.offset + blob.length])
     return WriteResult(Written(blob.length))
 
 
@@ -193,8 +191,7 @@ def encode_owned(frame: OwnedFrame, output: Span[mut=True, UInt8, _]) -> WriteRe
     ):
         return WriteResult(fail["aliasedbuffers"]())
     # Every saved byte belongs to the validated canonical frame, excluding original trailing bytes.
-    for i in range(len(value.wire)):
-        output[i] = value.wire[i]
+    output[: len(value.wire)].copy_from(Span(value.wire))
     return WriteResult(Written(len(value.wire)))
 
 

@@ -33,7 +33,8 @@ type
       error*: FixedError
 
 # Encode exactly width little-endian bytes without allocation or silent narrowing.
-proc encodeFixed*(value: FixedUnsigned, width: ByteWidth): FixedEncodeResult {.raises: [].} =
+# Inline this small scalar operation so checked container loops can eliminate temporary result construction.
+proc encodeFixed*(value: FixedUnsigned, width: ByteWidth): FixedEncodeResult {.inline, raises: [].} =
   let count = int(width)
   # Validate the signed width before using it as a loop bound or shift amount.
   if count < 0 or count > 8:
@@ -51,7 +52,8 @@ proc encodeFixed*(value: FixedUnsigned, width: ByteWidth): FixedEncodeResult {.r
   FixedEncodeResult(ok: true, encoded: encoded)
 
 # Decode a borrowed prefix of exactly width bytes; trailing bytes remain with the caller.
-proc decodeFixed*(input: openArray[byte], width: ByteWidth): FixedDecodeResult {.raises: [].} =
+# Inline without disabling checks; enclosing loops already prove each complete scalar input extent.
+proc decodeFixed*(input: openArray[byte], width: ByteWidth): FixedDecodeResult {.inline, raises: [].} =
   let count = int(width)
   # Reject invalid widths even if the buffer is large enough; this check precedes indexing.
   if count < 0 or count > 8:

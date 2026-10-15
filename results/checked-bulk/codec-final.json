@@ -1,0 +1,30 @@
+{
+  "phase": "final",
+  "command": [
+    "python3",
+    "interoperability/test_codec.py",
+    "--mojo"
+  ],
+  "passed": true,
+  "source_sha256": {
+    "nim/src/composite.nim": "fc46eeac77cd56be4bddf207d322be3f44087d2789b0da52bec2161ff4685dfa",
+    "nim/src/natural.nim": "873bc72bf914e7e87ec2ebdb1acc09ce4efb2690377175669fb73c4d0db08a4b",
+    "nim/src/owned.nim": "ce1d529a19bd9926a3686741da826e499ef45fb94f82db49776c711dcf53ab88",
+    "nim/src/fixed_unsigned.nim": "c70c631b2c512b5e6da932734c88810c189a631fbc841f89cbf12a7773722131",
+    "nim/src/bounded.nim": "17db459b46ecae0150e6307cfa5d3fe7448cc7b06d543b0c7e257ee90c34dce4",
+    "nim/src/work_digest.nim": "451f4d3b3495e4077728c3c9a8516d9c0ab302f0c53f6190f5880608853270c0",
+    "mojo/codec/types.mojo": "4ae9e015d71094e36b892a6dd8b578eb8f3b9b75e9d2ec7ab2e19179f11fdd64",
+    "mojo/codec/bounded.mojo": "758a32aa917d66c63066d26643f608cfdd155d6bfe55d584d9084d7e954fc9e0",
+    "mojo/codec/composite.mojo": "f13113a14cd2a2062f65aadc54006fce8663e084b517f05cb9b63bcf6fdc3378",
+    "mojo/codec/digest.mojo": "d4524368130f3a4ae55b2f9272e07002534f2d3e974e90480d54caea4e15e6f6",
+    "mojo/codec/scalar.mojo": "d9679570cfb62d0e59e007dee567e9f14d7533fcdb4767a3bd33cc5db6ca0e13",
+    "mojo/codec/owned.mojo": "c7615be2bd2e9d49ddfebbc5a00b2bbadd47d9cd914644c0e74b481b1b7e2013",
+    "odin/codec/bounded.odin": "83ef6bdeac0047ecec37261ae4c9aa6faba6b950cb2da4b31f9d9b0cc441e0c7",
+    "odin/codec/composite.odin": "2b470d36361c905327f485f65dbd553ffb00d7c241d9fa8a035e8a71c8adb53a",
+    "odin/codec/natural.odin": "fafbf83b85b34f9862ef7b51893829388c1fed6f217b1ecfb25e8d2ad9989404",
+    "odin/codec/result.odin": "f9451b3aa63a9d822adf301aed4cfbc02005283810f8c74345110082fb13115e",
+    "odin/codec/fixed_unsigned.odin": "c9d8fd9393ace854f794c0dd4c64e226c33d21845ee756c89b9182239a0d0c92",
+    "odin/codec/work_digest.odin": "fde06bec42d4bc1ba0e132f5fe57cfc09cb39bbb818fa3b6340a71116c4e7621",
+    "odin/codec/owned.odin": "26bdd5828054f2ea17f068a1012e0c50713d461d2f97d0d5b168a15c8015b236"
+  }
+}

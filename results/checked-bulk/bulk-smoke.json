@@ -1,0 +1,333 @@
+{
+  "quick": true,
+  "decision_evidence": false,
+  "commands": [
+    [
+      "clang",
+      "-dynamiclib",
+      "-fPIC",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "/Users/jacogr/Projects/jacogr/ragnarok/interoperability/bench/observe.c",
+      "-o",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/libobserve.dylib"
+    ],
+    [
+      "nim",
+      "c",
+      "--mm:arc",
+      "--cc:clang",
+      "--clang.linkerexe:clang++",
+      "--skipParentCfg",
+      "--skipUserCfg",
+      "-d:release",
+      "--opt:speed",
+      "--passC:-O3",
+      "--assertions:on",
+      "--boundChecks:on",
+      "--rangeChecks:on",
+      "--fieldChecks:on",
+      "--overflowChecks:on",
+      "--passL:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/libobserve.dylib",
+      "--passL:/Users/jacogr/Projects/jacogr/ragnarok/build/crypto/libragnarok_crypto.dylib",
+      "--nimcache:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/nim-cache",
+      "--out:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/nim",
+      "/Users/jacogr/Projects/jacogr/ragnarok/nim/bench/main.nim"
+    ],
+    [
+      "odin",
+      "build",
+      "/Users/jacogr/Projects/jacogr/ragnarok/odin/bench",
+      "-o:speed",
+      "-vet",
+      "-strict-style",
+      "-out:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/odin",
+      "-extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    ],
+    [
+      "nim",
+      "c",
+      "--mm:arc",
+      "--cc:clang",
+      "--clang.linkerexe:clang++",
+      "--skipParentCfg",
+      "--skipUserCfg",
+      "-d:release",
+      "--opt:speed",
+      "--passC:-O3",
+      "--assertions:on",
+      "--boundChecks:on",
+      "--rangeChecks:on",
+      "--fieldChecks:on",
+      "--overflowChecks:on",
+      "-d:nimAllocStats",
+      "--passL:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/libobserve.dylib",
+      "--passL:/Users/jacogr/Projects/jacogr/ragnarok/build/crypto/libragnarok_crypto.dylib",
+      "--nimcache:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/nim-cache-alloc",
+      "--out:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/nim-alloc",
+      "/Users/jacogr/Projects/jacogr/ragnarok/nim/bench/main.nim"
+    ],
+    [
+      "odin",
+      "build",
+      "/Users/jacogr/Projects/jacogr/ragnarok/odin/bench",
+      "-o:speed",
+      "-vet",
+      "-strict-style",
+      "-define:ALLOCATIONS=true",
+      "-out:/Users/jacogr/Projects/jacogr/ragnarok/build/bench/odin-alloc",
+      "-extra-linker-flags:-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    ],
+    [
+      "clang",
+      "-dynamiclib",
+      "-fPIC",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "/Users/jacogr/Projects/jacogr/ragnarok/interoperability/mojo/os.c",
+      "-o",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/libmojo_os.dylib"
+    ],
+    [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo",
+      "build",
+      "-I",
+      "/Users/jacogr/Projects/jacogr/ragnarok/mojo",
+      "-O3",
+      "/Users/jacogr/Projects/jacogr/ragnarok/mojo/bench/main.mojo",
+      "-Xlinker",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/libobserve.dylib",
+      "-Xlinker",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/crypto/libragnarok_crypto.dylib",
+      "-o",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/mojo"
+    ],
+    [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo",
+      "build",
+      "-I",
+      "/Users/jacogr/Projects/jacogr/ragnarok/mojo",
+      "-O3",
+      "/Users/jacogr/Projects/jacogr/ragnarok/mojo/bench/main.mojo",
+      "-Xlinker",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/libobserve.dylib",
+      "-Xlinker",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/crypto/libragnarok_crypto.dylib",
+      "-DALLOCATIONS=true",
+      "-Xlinker",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/libmojo_os.dylib",
+      "-o",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/mojo-alloc"
+    ]
+  ],
+  "cases": [
+    {
+      "name": "blob-1048576",
+      "operation": "encode",
+      "languages": {
+        "nim": {
+          "median_ns": 20414.16,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "median_ns": 23182.08,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "median_ns": 34867.08,
+          "allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1048576",
+      "operation": "owned-encode",
+      "languages": {
+        "nim": {
+          "median_ns": 20686.66,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "median_ns": 18040.83,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "median_ns": 21761.67,
+          "allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "blob-1048576",
+      "operation": "owned-decode",
+      "languages": {
+        "nim": {
+          "median_ns": 21738.34,
+          "allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "median_ns": 28200.83,
+          "allocations": {
+            "calls_per_operation": 2.0,
+            "frees_per_operation": 2.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 1048803.0
+          }
+        },
+        "mojo": {
+          "median_ns": 31432.5,
+          "allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-16384",
+      "operation": "encode",
+      "languages": {
+        "nim": {
+          "median_ns": 326790.83,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "median_ns": 17972.92,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "median_ns": 315278.75,
+          "allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "sequence-16384",
+      "operation": "decode",
+      "languages": {
+        "nim": {
+          "median_ns": 56252.08,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "median_ns": 7191.25,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "median_ns": 98674.17,
+          "allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    },
+    {
+      "name": "digest-1048576",
+      "operation": "encode",
+      "languages": {
+        "nim": {
+          "median_ns": 14197.91,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": null
+          }
+        },
+        "odin": {
+          "median_ns": 13978.75,
+          "allocations": {
+            "calls_per_operation": 0.0,
+            "frees_per_operation": 0.0,
+            "live_delta_bytes": 0,
+            "requested_bytes_per_operation": 0.0
+          }
+        },
+        "mojo": {
+          "median_ns": 23614.17,
+          "allocations": {
+            "calls_per_operation": null,
+            "frees_per_operation": null,
+            "requested_bytes_per_operation": null,
+            "live_delta_bytes": 0,
+            "scope": "public process malloc live bytes; SDK/native libraries included; allocation calls unavailable"
+          }
+        }
+      }
+    }
+  ]
+}

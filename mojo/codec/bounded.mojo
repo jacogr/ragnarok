@@ -87,8 +87,7 @@ def encode_bytes(
     for i in range(prefix.length):
         output[i] = prefix.bytes[i]
     # Copy only the caller's borrowed payload, never its trailing storage.
-    for i in range(len(value)):
-        output[prefix.length + i] = value[i]
+    output[prefix.length : total].copy_from(value)
     return WriteResult(Written(total))
 
 

@@ -1,0 +1,98 @@
+[
+  {
+    "language": "nim",
+    "case": "digest-1048576",
+    "command": [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/nim",
+      "digest",
+      "encode",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/corpus/digest-1048576.bin",
+      "20000000",
+      "1",
+      "0"
+    ],
+    "sample_seconds": 1,
+    "sampling_only_terminated": true,
+    "binary_sha256": "a99e9660757217f8b16a8c0bf47377cc9f05a36d32fa87fd618a33c0f6d2d406"
+  },
+  {
+    "language": "nim",
+    "case": "sequence-16384",
+    "command": [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/nim",
+      "sequence",
+      "encode",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/corpus/sequence-16384.bin",
+      "20000000",
+      "1",
+      "0"
+    ],
+    "sample_seconds": 1,
+    "sampling_only_terminated": true,
+    "binary_sha256": "a99e9660757217f8b16a8c0bf47377cc9f05a36d32fa87fd618a33c0f6d2d406"
+  },
+  {
+    "language": "odin",
+    "case": "digest-1048576",
+    "command": [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/odin",
+      "digest",
+      "encode",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/corpus/digest-1048576.bin",
+      "20000000",
+      "1",
+      "0"
+    ],
+    "sample_seconds": 1,
+    "sampling_only_terminated": true,
+    "binary_sha256": "4fd911d0ef9d1a802fa8d724f7d0bfb62f9f4a265469ac09cb0d17cf262719a7"
+  },
+  {
+    "language": "odin",
+    "case": "sequence-16384",
+    "command": [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/odin",
+      "sequence",
+      "encode",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/corpus/sequence-16384.bin",
+      "20000000",
+      "1",
+      "0"
+    ],
+    "sample_seconds": 1,
+    "sampling_only_terminated": true,
+    "binary_sha256": "4fd911d0ef9d1a802fa8d724f7d0bfb62f9f4a265469ac09cb0d17cf262719a7"
+  },
+  {
+    "language": "mojo",
+    "case": "digest-1048576",
+    "command": [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/mojo",
+      "digest",
+      "encode",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/corpus/digest-1048576.bin",
+      "20000000",
+      "1",
+      "0"
+    ],
+    "sample_seconds": 1,
+    "sampling_only_terminated": true,
+    "binary_sha256": "173b98c9665c36974605393287ae3464b223942ce0cfdce71cddaf891d625f2f"
+  },
+  {
+    "language": "mojo",
+    "case": "sequence-16384",
+    "command": [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/mojo",
+      "sequence",
+      "encode",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/bench/corpus/sequence-16384.bin",
+      "20000000",
+      "1",
+      "0"
+    ],
+    "sample_seconds": 1,
+    "sampling_only_terminated": true,
+    "binary_sha256": "173b98c9665c36974605393287ae3464b223942ce0cfdce71cddaf891d625f2f"
+  }
+]
