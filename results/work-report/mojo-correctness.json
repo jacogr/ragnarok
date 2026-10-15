@@ -1,0 +1,13 @@
+{
+  "composition_checks": 42,
+  "fixture_provider": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)",
+  "language": "mojo",
+  "requests": 18197,
+  "request_sha256": "721a4a4cf52b881bb556fdc7a132c9d5c24d8a4dcd101be20a258cf7feecd1d1",
+  "binary_sha256": "60b5d292dc6b531058c8d196c7f50b27e4024eb16fbf1abc66b48426a6f4f7fa",
+  "official_profiles": [
+    "tiny",
+    "full"
+  ],
+  "status": "passed"
+}

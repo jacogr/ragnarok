@@ -43,7 +43,7 @@ jobs:
       - name: Native Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y build-essential clang cmake zlib1g-dev openssl patch
+          sudo apt-get install --no-install-recommends -y build-essential clang lld cmake zlib1g-dev openssl patch
           mkdir -p build/ci
           uname -a | tee build/ci/platform.log
           ulimit -a | tee -a build/ci/platform.log
@@ -86,6 +86,22 @@ jobs:
 
       - name: Crypto vectors, ownership and cross-language checks
         run: python3 interoperability/test_crypto.py --mojo --fetch 2>&1 | tee build/ci/crypto.log
+
+      # Clang LTO uses the explicit lld dependency on Linux; all Nim runtime guards remain enabled.
+      - name: Checked complete-report and guarantee workload builds
+        run: python3 interoperability/benchmark_report.py --build-only 2>&1 | tee build/ci/report-build.log
+
+      - name: Complete-report evidence and oracle integrity
+        run: python3 interoperability/test_report_harness.py
+
+      - name: Complete-report nominal type safeguards
+        run: python3 interoperability/test_report_types.py
+
+      - name: Complete-report codecs and independent guarantee signatures
+        run: python3 interoperability/test_work_report.py --skip-build 2>&1 | tee build/ci/report-codec.log
+
+      - name: Checked complete-report and guarantee comparison (Nim LTO)
+        run: python3 interoperability/benchmark_report.py --skip-build 2>&1 | tee build/ci/report-benchmark.log
 
       - name: Bandersnatch Rust ABI and JAM proof checks
         run: python3 interoperability/test_bandersnatch.py --mojo --fetch 2>&1 | tee build/ci/bandersnatch.log
@@ -165,6 +181,16 @@ jobs:
             build/offload/results.json
             build/offload/*/*.log
             build/offload/*/resources.json
+            build/report/*build*.log
+            build/report/*correctness.json
+            build/report/*stderr.log
+            build/report/*report-types.log
+            build/report/type-checks.json
+            build/report/results.json
+            build/report/results.partial.json
+            build/report/results.md
+            build/report/raw/**/*.log
+            build/bench/report-observers.log
             build/bench/build.log
             build/bench/corpus.json
             build/bench/results.json

@@ -17,6 +17,10 @@ The subsequent [checked performance experiment](checked-bulk.md) changes Nim/Moj
 and scalar inlining. It supplies new performance evidence, not a matched AI-development cohort.
 The LOC and historical metric table below refer to the archived POC snapshot above.
 
+The subsequent [complete-report increment](work-report/ergonomics.md) supplies prospective compiler,
+LOC and regression observations for equivalent new functionality. Shared work prevents comparable
+development-time estimates; it does not change the historical N/A entries below.
+
 ## Reproducible metric comparison
 
 | Metric | Nim | Odin | Mojo | Evidence/status |

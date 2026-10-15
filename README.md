@@ -16,7 +16,7 @@ and [the macOS toolchains](docs/toolchains-macos.md).
 The implemented primitives are canonical JAM general naturals and fixed-width
 unsigned integers (0..8 bytes), bounded byte strings, and homogeneous
 fixed-unsigned sequences, optional variable blobs, work-output variants and
-full nested preimage extrinsics and complete work digests, with checked prefix
+full nested preimage extrinsics, complete work digests and complete work reports, with checked prefix
 decoding. They have no
 third-party language packages in their borrowed codec paths; owned snapshots allocate explicitly.
 
@@ -164,3 +164,11 @@ The [bounded Bandersnatch offload proof](docs/quic-offload.md) verifies official
 two fixed native workers alongside QUIC, with four total owned job slots, cancellation and joined
 shutdown. Run `python3 interoperability/test_quic_offload.py --fetch`; see
 [verification](results/quic-offload.md). Linux CI includes the new workload.
+
+The [complete-report slice](spec/work-report.md) and [API guide](docs/work-report.md) cover report codecs
+and immutable snapshots
+in all three candidates, plus the normative guarantee signing message and two-credential verification
+workload. Run `python3 interoperability/test_work_report.py` after building the pinned native crypto
+library. The [comparison](results/work-report.md) separates complete-report codec, ownership, hash,
+Ed25519-provider and combined costs. Reproduce with
+`python3 interoperability/benchmark_report.py`; Nim uses checked ARC/Clang LTO throughout this run.

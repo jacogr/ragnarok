@@ -144,3 +144,18 @@ worker/job limits, mixed-language networking during actual verification, cancell
 and worker-joined shutdown. Only explicit summary/build/native logs and resource JSON under
 `build/offload` are uploaded; fixture binaries, source trees and TLS private keys are excluded.
 Linux verification of this increment awaits a pushed run.
+
+## Complete work reports and guarantee composition
+
+Linux CI builds and verifies complete report codecs and immutable snapshots in Nim, Odin and Mojo.
+The same independent corpus checks official tiny/full reports, canonical dependencies, aggregate
+payload limits, malformed inputs, atomic failure and owner-bound extraction. OpenSSL signs the exact
+normative guarantee message independently of the candidate providers; altered reports, keys,
+signatures and domains must fail verification.
+
+`interoperability/benchmark_report.py` measures six separate stages over seven identical report sizes,
+with three processes per candidate, seven native batches and 128 individual latency observations per
+process. Nim uses ARC, explicit runtime checks and Clang LTO; Linux explicitly links with `lld`.
+Normal and allocation-only binaries are separate. The shared observer is built without LTO.
+Reports, exact commands/source hashes and raw observations are uploaded with CI diagnostics.
+Local macOS observations do not establish Linux performance; use the uploaded Linux result table.

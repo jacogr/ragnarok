@@ -1,0 +1,177 @@
+{
+  "kind": "measured static snapshot, not development-history metrics",
+  "definition": "Physical nonblank/noncomment project-authored source lines in the new report codec, report owner and guarantee composition only. Imports, declarations and braces count. Tests, benchmark/request drivers, shared infrastructure, dependencies and existing reused implementations excluded; no embedded test exclusions.",
+  "baseline_revision": "a2d680000d5b94a0a3dec884aede48ac6cf73eb2",
+  "manifest_sha256": "fba534acf2926f8019349959369e7ab603ba35a8add493abcb47e291d13b145c",
+  "tool_sha256": "4b807b8fa8fe0486494d5607a2a3eba219b1127c015efc2cb5e5f11752f70bec",
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "python": "3.14.2 (main, Jan  3 2026, 19:07:32) [Clang 13.1.6 (clang-1316.0.21.2.5)]",
+    "tools": {
+      "nim": {
+        "command": [
+          "nim",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "Nim Compiler Version 2.2.12 [MacOSX: arm64]\nCompiled at 2026-09-08\nCopyright (c) 2006-2026 by Andreas Rumpf\n\nactive boot switches: -d:release -d:nimUseLinenoise",
+        "stderr": ""
+      },
+      "odin": {
+        "command": [
+          "odin",
+          "version"
+        ],
+        "returncode": 0,
+        "stdout": "/opt/homebrew/bin/odin version dev-2026-10:84bc3fc21",
+        "stderr": ""
+      },
+      "mojo": {
+        "command": [
+          "/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "Mojo 1.1.0 (8189361e)",
+        "stderr": ""
+      },
+      "clang": {
+        "command": [
+          "clang",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "Apple clang version 21.0.0 (clang-2100.3.34.2)\nTarget: arm64-apple-darwin27.0.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+        "stderr": ""
+      },
+      "rust": {
+        "command": [
+          "rustc",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "rustc 1.99.0 (b940084d7 2026-09-28)",
+        "stderr": ""
+      }
+    },
+    "configuration_sha256": {
+      ".editorconfig": "564b32b452eca52dbf6c818d4f52897a8bb71f340ace6ddbaaa33d6e7252a969",
+      "odinfmt.json": "6e775b94b4849c952e24f237ac3cb96357d25d1c4cb3d084b8cdf5eafa5b78ea",
+      "tools/format.py": "423a07db2689be53209bafab39471da9be1933065fbfcc7ef4495687ebb239ec",
+      "tools/mojo-requirements.txt": "0530e9c7b870b1bb2d3d1c85c49311ef2ff1629ac826d0eb51177e393dadc675",
+      "spec/ci-toolchains.json": "054af5a827611f444fefa651500af61c1c6baf742f3bf86a850e61e916bb4fc0",
+      "spec/quic-proof-pins.json": "fb95f53d6d94873fdb07ab03efe129836de45111ee16ac9a0bb01783608cea96",
+      "spec/crypto-pins.json": "04dc6dc13391a1a39bfe407f34f7402084d7ae58abe5985906ca0c1e8d5ccd4a",
+      "spec/bandersnatch-pins.json": "bc5fde67e5a687a8a3c1d681b588fcf4627f870c456819bf061b7704990f4938",
+      "spec/mojo-pins.json": "2242ea59d70fd75afa8216b0343448a23169f88220f2015d814beebef7658d66",
+      ".github/workflows/linux.yml": "7402570f0988c1cd83db234d9acb960a6a56a503a0522e98c5a6e2e9b77d617f"
+    }
+  },
+  "totals": {
+    "nim": {
+      "M1": 326,
+      "M2": 12
+    },
+    "odin": {
+      "M1": 468,
+      "M2": 12
+    },
+    "mojo": {
+      "M1": 492,
+      "M2": 21
+    }
+  },
+  "files": [
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/work_report.nim",
+      "sha256": "7d444703945509dd0f76c55fa6bed245edb558afd8acd4556e7f7ef9458c2f0c",
+      "exclude": [],
+      "physical_lines": 325,
+      "implementation_loc": 233,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/report_owned.nim",
+      "sha256": "525668bdcf0f65e6eda912b3ca89a006cf5b81c662c5a834e9d31da5ba6013d1",
+      "exclude": [],
+      "physical_lines": 128,
+      "implementation_loc": 93,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M2",
+      "path": "nim/crypto/guarantee.nim",
+      "sha256": "9fa55abf212038ff2fd93c3937bb449fdcacf7c1f453f911a2d5f1b3510be75b",
+      "exclude": [],
+      "physical_lines": 21,
+      "implementation_loc": 12,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/work_report.odin",
+      "sha256": "60e5aae2aa74ae73ba2d2dd280f90ce52941e021ebd909879e8ba6b56a732c81",
+      "exclude": [],
+      "physical_lines": 373,
+      "implementation_loc": 295,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/report_owned.odin",
+      "sha256": "6528ea7981ea709c88740623feeec83b50146190574d34e525ab3794c37c1b38",
+      "exclude": [],
+      "physical_lines": 204,
+      "implementation_loc": 173,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M2",
+      "path": "odin/crypto/guarantee.odin",
+      "sha256": "02739f81e162f35069c41f3c5658507bfe0fd43ae9a2aabd15856f1c43c1da24",
+      "exclude": [],
+      "physical_lines": 18,
+      "implementation_loc": 12,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/report.mojo",
+      "sha256": "9c58861e31b0bf1fd1a79fcb426f3e6c9d633635b16fba67e4bcc3b14997ff04",
+      "exclude": [],
+      "physical_lines": 464,
+      "implementation_loc": 350,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/report_owned.mojo",
+      "sha256": "ab420c9b6df921558576e3217d481e1c22f285a2f11118878e8c11ce1a6b1554",
+      "exclude": [],
+      "physical_lines": 195,
+      "implementation_loc": 142,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M2",
+      "path": "mojo/crypto/guarantee.mojo",
+      "sha256": "572c9f99b7e1a2d5521c2aaa223e474d4358ac1ea39951f5fc32c8be49c1b248",
+      "exclude": [],
+      "physical_lines": 31,
+      "implementation_loc": 21,
+      "excluded_code_lines": 0
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "scope": "Post-measurement inventory; candidate binary hashes and observer receipts were checked before/after measurement in the main result. Crypto bridge was reused and not rebuilt by this increment.",
+  "files": {
+    "build/crypto/libragnarok_crypto.dylib": "ae9fbe5d4e0ada822226c5a36c8ad93ddd49b139b002985f893f885903094e44",
+    "interoperability/crypto/primitive_bridge.c": "44a956f90c27db94e00ce5ab7a3b980aa6a7119be0862574d6653880b0048ab1",
+    "interoperability/crypto/primitive_bridge.h": "4605c2a2b6ff9f3bd7886658ddc22b50b4d086064eaf16f03f3c7bdacd899c63"
+  },
+  "submodules": " 29e53a0e642b1ccf95bdf881df5b0eaf3bbb8d04 vendor/ark-vrf (29e53a0)\n 38cf32d33d9d860feccd1f56b3bf6633c05669b0 vendor/bandersnatch-vrf-spec (38cf32d)\n 88341070936d28e08f82db1326c73d67962cd043 vendor/boringssl (8834107)\n 1c979cb59bb800f92ffff083a2701004dfc6cd33 vendor/graypaper (1c979cb)\n 439c45aad135dc654b3de6f56d7d694fd02b7aa8 vendor/jam-np (439c45a)\n 1dc503af37ae8ecc7b6e24a393f6102801c0c80c vendor/jamtestvectors (1dc503a)\n fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52 vendor/lsquic (fd0d75c)\n 7a325932231bd7a724c791c8b0d65ea4d6d2f435 vendor/wycheproof (7a32593)\n 4affab454735d54e78156880b3b44e38dcbf765c vendor/xkcp (4affab4)\n",
+  "cpu": "Apple M1 Max"
+}

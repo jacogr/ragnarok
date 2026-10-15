@@ -1,0 +1,13 @@
+{
+  "composition_checks": 42,
+  "fixture_provider": "OpenSSL 4.0.3 29 Sep 2026 (Library: OpenSSL 4.0.3 29 Sep 2026)",
+  "language": "odin",
+  "requests": 18197,
+  "request_sha256": "721a4a4cf52b881bb556fdc7a132c9d5c24d8a4dcd101be20a258cf7feecd1d1",
+  "binary_sha256": "40c9436984ebce1dc74f23af52d4e992fd3bdfbea6a41fda2d931dd6781622eb",
+  "official_profiles": [
+    "tiny",
+    "full"
+  ],
+  "status": "passed"
+}

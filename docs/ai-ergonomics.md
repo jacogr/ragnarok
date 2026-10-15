@@ -61,7 +61,9 @@ correctness. Do not quiet a domain/lifetime error with a cast merely to reduce t
 
 The standard-library-only [journal](../tools/ergonomics/journal.py) supports `begin`, `run`, `event`
 and `finish`. It has no native implementation effects of its own. No matched native task has been
-started solely for this audit. The prospective cohort is empty, not a dataset with zero defects.
+started solely for this audit. The original audit had an empty prospective cohort. The later
+[complete-report record](../results/work-report/ergonomics.md) captures an authorized implementation
+increment, with explicit limits on timing and causal reliability comparisons.
 
 A plan is JSON with these keys; replace descriptive placeholders before using it:
 

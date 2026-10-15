@@ -26,7 +26,11 @@
       "vendor/jamtestvectors/codec/full/work_result_0.json": "17a058bad35826b7e542220ea2b4b043d9e1dcf3bae2ee8dc95a39ebf6076787",
       "vendor/jamtestvectors/codec/full/work_result_0.bin": "ef9d7dcab1894c799b7c4609982f4f2b4be99980edc9abec783c6d53e7126a4f",
       "vendor/jamtestvectors/codec/full/work_result_1.json": "330a092c215cd403dbebbbbbf05ba64ff9bc8edb9b5d858d69bf2fb90dc4f583",
-      "vendor/jamtestvectors/codec/full/work_result_1.bin": "9bab12a66031736bad3bde9abde8a4a62f7b199ef2a9ce93b58eba77cab2b09d"
+      "vendor/jamtestvectors/codec/full/work_result_1.bin": "9bab12a66031736bad3bde9abde8a4a62f7b199ef2a9ce93b58eba77cab2b09d",
+      "vendor/jamtestvectors/codec/tiny/work_report.json": "618920faabcb58e508d44497d647e92d552a4e953a4ee981c7dd17359a5d61da",
+      "vendor/jamtestvectors/codec/tiny/work_report.bin": "0103e669e897c8ac902ba8ff2fa41c42a822f4318e2b1e45b87efb00661c3c44",
+      "vendor/jamtestvectors/codec/full/work_report.json": "618920faabcb58e508d44497d647e92d552a4e953a4ee981c7dd17359a5d61da",
+      "vendor/jamtestvectors/codec/full/work_report.bin": "0103e669e897c8ac902ba8ff2fa41c42a822f4318e2b1e45b87efb00661c3c44"
     },
     "path": "vendor/jamtestvectors"
   },

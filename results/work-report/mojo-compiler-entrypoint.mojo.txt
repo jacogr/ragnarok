@@ -1,0 +1,5 @@
+from codec.report import *
+# Instantiate the public decoder in a standalone native compile probe.
+def main():
+    var data = List[UInt8]()
+    _ = decode_report_borrowed(Span(data),UInt64(341))

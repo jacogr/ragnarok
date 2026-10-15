@@ -11,7 +11,7 @@ Evaluate whether **Nim**, **Odin** or **Mojo** is the better foundation for an i
 The first deliverable is **not** a validator: it is reproducible, spec-conforming codecs in all candidate languages and evidence that the chosen language can support cryptography and asynchronous JAM networking.
 
 ## 2. Context and prior decisions
-- The maintainer previously implemented a JAM codec in TypeScript. That implementation may support differential testing, but the Gray Paper remains authoritative.
+- The Gray Paper remains authoritative.
 - Mojo was initially deferred for immature async networking. The maintainer has reopened its evaluation; a public-FFI callback reactor qualifies under the same networking standard as Odin.
 - Nim offers static typing, ARC/ORC memory-management options, C interoperability, and an established async ecosystem. Nimbus is a relevant example of Nim in blockchain infrastructure.
 - Odin offers static typing, explicit allocators, C interoperability, native compilation, and a C-like syntax. Its event-loop and QUIC integration must be proven, not assumed.
@@ -75,7 +75,6 @@ JAM's actual networking specification, including transport and authentication, m
 ### M0 — Environment and baseline
 - Choose Linux target(s), compiler versions and reproducible build method.
 - Pin exact Gray Paper and official vector revisions.
-- Document the maintainer's TypeScript implementation/version if supplied.
 - Establish Linux CI for Nim, Odin and Mojo.
 
 ### M1 — Codec bake-off
@@ -144,7 +143,6 @@ The exact directory names and tooling can evolve by an explicit decision.
 ## 10. Open decisions
 - Which Gray Paper revision and test-vector commit should be pinned?
 - Which Linux distributions/architectures are required initially?
-- Is the existing TypeScript codec available for differential tests?
 - Which Nim and Odin compiler versions are sufficiently stable for the trial?
 - Which native QUIC library offers the best JAM-compatible transport and FFI surface?
 - What are the exact current JAM networking protocol requirements?

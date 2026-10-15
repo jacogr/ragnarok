@@ -1,0 +1,47 @@
+[
+  {
+    "language": "nim",
+    "role": "intentional diagnostic, not a compiler repair",
+    "command": [
+      "nim",
+      "check",
+      "--mm:arc",
+      "/Users/jacogr/Projects/jacogr/ragnarok/nim/tests/compile_fail/swapped_report_root.nim"
+    ],
+    "returncode": 1,
+    "fixture_sha256": "b055c631b09223c9ed784480d741c21adb59a868728f123b73b26ae4ab114609",
+    "log": "build/report/nim-report-types.log",
+    "log_sha256": "ea78f569929504d3ddf6736dea7d11180a4dacaa1f82776cf60af50e70330562"
+  },
+  {
+    "language": "odin",
+    "role": "intentional diagnostic, not a compiler repair",
+    "command": [
+      "odin",
+      "check",
+      "/Users/jacogr/Projects/jacogr/ragnarok/odin/tests/compile_fail/swapped_report_root.odin",
+      "-file"
+    ],
+    "returncode": 1,
+    "fixture_sha256": "61e3db6cb5c14656aa09eb1b51987d67ba8fce3ec2088f0dc991ea161e8bb0fa",
+    "log": "build/report/odin-report-types.log",
+    "log_sha256": "8638d76596ef91c60ca708aac5a3402838f460f1cc5c3f49a16e9b5444a8313b"
+  },
+  {
+    "language": "mojo",
+    "role": "intentional diagnostic, not a compiler repair",
+    "command": [
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo",
+      "build",
+      "-I",
+      "/Users/jacogr/Projects/jacogr/ragnarok/mojo",
+      "/Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/compile_fail/swapped_report_root.mojo",
+      "-o",
+      "/Users/jacogr/Projects/jacogr/ragnarok/build/report/wrong-report-root"
+    ],
+    "returncode": 1,
+    "fixture_sha256": "d52a1f2b154910193c664ec50969375d561b7c19f116c0730377a85542f1e417",
+    "log": "build/report/mojo-report-types.log",
+    "log_sha256": "47463e354182a1fcd8cd808881d495e8148b558cfc5382f2e0e3925deeaaa0e5"
+  }
+]
