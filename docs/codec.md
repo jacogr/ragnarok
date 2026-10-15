@@ -10,6 +10,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
 | `work_digest.nim`, `work_report.nim` | Complete nested work digests/reports |
 | `tickets.nim`, `guarantees.nim` | Ticket records and immutable report guarantees |
+| `work_package.nim` | Context, packed import references, input commitments, items and retained packages |
 | `disputes.nim` | Ordered verdicts/judgments and culprit/fault evidence with immutable snapshots |
 | `assurances.nim` | Ordered validator indices, fixed profile bitfields and signatures |
 | `owned.nim`, `report_owned.nim` | Immutable ARC snapshots and owner-bound extraction |
@@ -38,3 +39,6 @@ oracles, official vectors, boundary/fuzz inputs, alias probes and output atomici
 
 [Disputes](../spec/disputes.md) document variable judgment counts, per-section ordering, the
 published sample ordering discrepancy and the contextual checks left to state validation.
+
+[Work-package inputs](../spec/work-package.md) cover standalone components, package-wide
+count/dependency/footprint/gas limits and child owners that retain their parent snapshot.

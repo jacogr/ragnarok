@@ -57,7 +57,19 @@
       "vendor/jamtestvectors/codec/tiny/disputes_extrinsic.json": "7f47f9f0f6c00c175544b17e639656e9a81af60a122e194ba69a246e2daf1bb3",
       "vendor/jamtestvectors/codec/tiny/disputes_extrinsic.bin": "422f368200305e021f413bd7c5491587b9d6e1e7e056af6fb85385c816006eb6",
       "vendor/jamtestvectors/codec/full/disputes_extrinsic.json": "c8804b1967a953e2f471f95d787829f915879adcfefe2aa729264789b4cb976d",
-      "vendor/jamtestvectors/codec/full/disputes_extrinsic.bin": "406e8d9bb8e42a02858f1766950aae43b65b2c239bbd01db9563091843dd331c"
+      "vendor/jamtestvectors/codec/full/disputes_extrinsic.bin": "406e8d9bb8e42a02858f1766950aae43b65b2c239bbd01db9563091843dd331c",
+      "vendor/jamtestvectors/codec/tiny/refine_context.json": "77f02d23da8d78c4577728f418cdb738f6c62ba7aea235cbc13246fe24663840",
+      "vendor/jamtestvectors/codec/tiny/refine_context.bin": "06d8a7039739a432611c38f36b4650a13cce0a62bd551ba5f71fba9d36d5e0e5",
+      "vendor/jamtestvectors/codec/tiny/work_item.json": "011f2caa0ab77e9a713930465ad7ab801d3896cabba0ac00808611cbb670c884",
+      "vendor/jamtestvectors/codec/tiny/work_item.bin": "06b6df1e56735adf9bd0b3a2f7ac84e7ad2e9034e05c78a555ec9ea6f0665a7a",
+      "vendor/jamtestvectors/codec/tiny/work_package.json": "ea0d60c66762374a95934ee28d7e2797c1a201f5ae2d9e7b6ba41dd5c6907551",
+      "vendor/jamtestvectors/codec/tiny/work_package.bin": "7b812b2d1412ea3b97b61c478e6a0988a9dd198043e0c53a022f56a175f11cd6",
+      "vendor/jamtestvectors/codec/full/refine_context.json": "77f02d23da8d78c4577728f418cdb738f6c62ba7aea235cbc13246fe24663840",
+      "vendor/jamtestvectors/codec/full/refine_context.bin": "06d8a7039739a432611c38f36b4650a13cce0a62bd551ba5f71fba9d36d5e0e5",
+      "vendor/jamtestvectors/codec/full/work_item.json": "011f2caa0ab77e9a713930465ad7ab801d3896cabba0ac00808611cbb670c884",
+      "vendor/jamtestvectors/codec/full/work_item.bin": "06b6df1e56735adf9bd0b3a2f7ac84e7ad2e9034e05c78a555ec9ea6f0665a7a",
+      "vendor/jamtestvectors/codec/full/work_package.json": "ea0d60c66762374a95934ee28d7e2797c1a201f5ae2d9e7b6ba41dd5c6907551",
+      "vendor/jamtestvectors/codec/full/work_package.bin": "7b812b2d1412ea3b97b61c478e6a0988a9dd198043e0c53a022f56a175f11cd6"
     },
     "path": "vendor/jamtestvectors",
     "tag": "v0.8.0"

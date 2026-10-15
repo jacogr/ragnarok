@@ -31,6 +31,7 @@ python3 tests/test_codec.py
 python3 tests/test_tickets.py
 python3 tests/test_guarantees.py
 python3 tests/test_disputes.py
+python3 tests/test_work_package.py
 python3 tests/test_crypto.py --fetch
 python3 tests/test_bandersnatch.py --fetch
 python3 tests/test_work_report.py

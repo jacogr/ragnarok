@@ -77,6 +77,11 @@ jobs:
           python3 tests/test_disputes_harness.py
           python3 tests/test_disputes.py 2>&1 | tee build/ci/disputes.log
 
+      - name: Work-package input codecs
+        run: |
+          python3 tests/test_package_harness.py
+          python3 tests/test_work_package.py 2>&1 | tee build/ci/package.log
+
       - name: Crypto vectors, ownership and ABI checks
         run: python3 tests/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
 
@@ -148,6 +153,10 @@ jobs:
             build/disputes/results.json
             build/disputes/types/*.log
             build/disputes/types/results.json
+            build/package/*.log
+            build/package/results.json
+            build/package/types/*.log
+            build/package/types/results.json
             build/crypto/*.log
             build/crypto/results.json
             build/bandersnatch/*.log

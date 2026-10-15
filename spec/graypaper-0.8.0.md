@@ -109,7 +109,10 @@ No passing suite establishes a full consensus or security audit.
 
 ## Changes outside existing implementation
 
-The disputes framing/count rules are now implemented in [the disputes codec](disputes.md), with
+Work-package input framing and structural resource limits are now implemented in the
+[work-package codecs](work-package.md); execution, authorization and external-data resolution
+remain separate work. The disputes framing/count rules are implemented in
+[the disputes codec](disputes.md), with
 context-dependent judgments and state effects still external. The source diff also changes
 variable-validator Safrole/header/state encodings, guarantees stored in availability assignments,
 preimage commitments in the block extrinsic
