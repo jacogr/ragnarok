@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Bounded same-process QUIC lifecycle soak; share fixtures/builds, never native protocol code."""
+from mojo_support import networking_candidates
 import argparse
 import hashlib
 import json
@@ -10,7 +11,7 @@ import re
 import socket
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures, thread_count
+from test_quic import BUILD, build_peers, dependencies, fixtures, thread_count, THREAD_BASELINES
 
 
 # Observe resident memory, OS threads and open descriptors without reading their contents.
@@ -28,7 +29,7 @@ def resources(pid):
 
 
 # Wait for explicit lifecycle markers, sampling live resources and preserving a hard per-session ceiling.
-def wait_marker(processes, logs, role, marker, peaks, seconds=8, occurrences=1):
+def wait_marker(processes, logs, role, marker, peaks, seconds=8, occurrences=1, thread_limits=None):
     deadline = time.monotonic() + seconds
     # Count complete marker lines: diagnostic output may occur between lifecycle events.
     # A previous READY cannot release the next session's dial; each round needs its own occurrence.
@@ -38,7 +39,11 @@ def wait_marker(processes, logs, role, marker, peaks, seconds=8, occurrences=1):
             assert process.poll() is None, (name, process.returncode, logs[name].read_text()[-2000:])
             sample = resources(process.pid)
             # Active caps detect runaway storage and any hidden thread-per-stream substitution.
-            assert sample['threads'] == 1 and sample['rss_bytes'] < 256 * 1024 * 1024, (name, sample)
+            expected_threads = 1 if thread_limits is None else thread_limits[name]
+            assert 1 <= sample['threads'] <= expected_threads and sample['rss_bytes'] < 256 * 1024 * 1024, (name, sample, expected_threads)
+            # SDK workers may still be starting before the first native readiness/authentication marker.
+            if any(line == 'READY' or line == 'AUTH_OK' or line.startswith('MESH_READY ') for line in logs[name].read_text().splitlines()):
+                assert sample['threads'] == expected_threads, ('changed fixed runtime thread count', sample, expected_threads)
             # Retain per-role high-water observations without holding OS descriptor contents.
             for metric, value in sample.items():
                 peaks[name][metric] = max(peaks[name].get(metric, 0), value)
@@ -54,7 +59,7 @@ def check_growth(samples, warmup):
     # Fixed budgets are deliberately reported, rather than describing this finite run as leak freedom.
     assert max(rss) - min(rss) <= 16 * 1024 * 1024, ('idle RSS growth exceeds 16 MiB', rss)
     assert max(descriptors) - min(descriptors) <= 2, ('idle descriptor growth exceeds two', descriptors)
-    assert all(sample['threads'] == 1 for sample in retained), retained
+    assert all(sample['threads'] == sample.get('thread_baseline', 1) for sample in retained), retained
     # Language allocator counters exclude transport C allocations; RSS above covers their aggregate footprint.
     allocated = [sample['allocated_bytes'] for sample in retained]
     assert max(allocated) - min(allocated) <= 64 * 1024, ('live allocation growth exceeds 64 KiB', allocated)
@@ -72,6 +77,7 @@ def pairing(server_language, client_language, folder, rounds, warmup):
     gate.mkdir()
     logs = {role: directory / f'{role}.log' for role in ('server', 'client')}
     processes, handles = {}, {}
+    thread_limits = {'server': THREAD_BASELINES[server_language], 'client': THREAD_BASELINES[client_language]}
     peaks = {role: {} for role in logs}
     idle = {role: [] for role in logs}
     started = time.monotonic()
@@ -91,16 +97,17 @@ def pairing(server_language, client_language, folder, rounds, warmup):
         for iteration in range(rounds):
             # Bind the server first, then release the client's dial against its announced listener.
             (gate / f'server-{iteration}').touch()
-            wait_marker(processes, logs, 'server', 'READY', peaks, occurrences=iteration + 1)
+            wait_marker(processes, logs, 'server', 'READY', peaks, occurrences=iteration + 1, thread_limits=thread_limits)
             (gate / f'client-{iteration}').touch()
             for role in logs:
-                wait_marker(processes, logs, role, f'SESSION_DONE {iteration}', peaks)
+                wait_marker(processes, logs, role, f'SESSION_DONE {iteration}', peaks, thread_limits=thread_limits)
             # Both transports, UDP sockets and callback owners have retired before this observation.
             for role, process in processes.items():
                 sample = resources(process.pid)
                 allocation = re.findall(r'ALLOC_BYTES (\d+)', logs[role].read_text())
                 assert len(allocation) == iteration + 1, (role, 'missing allocator observation')
                 sample['allocated_bytes'] = int(allocation[-1])
+                sample['thread_baseline'] = thread_limits[role]
                 idle[role].append(sample)
             if (iteration + 1) % 10 == 0:
                 print(f'{name}: {iteration + 1}/{rounds} sessions', flush=True)
@@ -122,7 +129,8 @@ def pairing(server_language, client_language, folder, rounds, warmup):
         for role, process in processes.items():
             assert process.wait(timeout=5) == 0, (name, role, logs[role].read_text()[-2000:])
         return {'server': server_language, 'client': client_language, 'rounds': rounds,
-                'elapsed_seconds': time.monotonic() - started, 'peaks': peaks, 'idle': idle, 'growth': growth}
+                'elapsed_seconds': time.monotonic() - started, 'thread_baselines': thread_limits,
+                'allocation_scope': {'mojo': 'public process malloc live bytes; SDK and native libraries included', 'nim': 'language allocator', 'odin': 'tracked application allocator'}, 'peaks': peaks, 'idle': idle, 'growth': growth}
     finally:
         (directory / 'resources.json').write_text(json.dumps({'peaks': peaks, 'idle': idle}, indent=2) + '\n')
         # A failed assertion must not leave a UDP peer or parked event loop running.
@@ -141,24 +149,26 @@ def main():
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--rounds', type=int, default=40)
     parser.add_argument('--warmup', type=int, default=8)
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo candidate')
     args = parser.parse_args()
     assert 16 <= args.rounds <= 1000 and 0 <= args.warmup <= args.rounds - 8, 'Invalid bounded soak extent'
     BUILD.mkdir(parents=True, exist_ok=True)
     # Reuse only explicitly requested binaries; default execution recompiles the current native sources.
     if not args.skip_build:
         build_peers(dependencies(args.fetch))
+    candidates = networking_candidates(BUILD, args.mojo, args.skip_build, THREAD_BASELINES)
     # Independently verify the large fixture/map key rather than trusting duplicated native constants.
     fixture = bytes(i % 251 for i in range(1024 * 1024))
     assert hashlib.blake2b(fixture, digest_size=32).hexdigest() == '8a5a7a9dc3cf203ed374b0a1eea930601ad2acbfe2b4bc62cf83de4ee536528b'
     folder = fixtures()
     report = {'platform': platform.platform(), 'rounds': args.rounds, 'warmup': args.warmup,
               'complete': False, 'limits': {'active_rss_bytes': 256 * 1024 * 1024, 'idle_rss_range_bytes': 16 * 1024 * 1024,
-                         'idle_descriptor_range': 2, 'idle_allocation_range_bytes': 64 * 1024, 'threads': 1}, 'pairings': []}
+                         'idle_descriptor_range': 2, 'idle_allocation_range_bytes': 64 * 1024, 'threads': dict(THREAD_BASELINES)}, 'pairings': []}
     output = BUILD / 'soak/results.json'
     output.parent.mkdir(exist_ok=True)
     try:
         # Sequential pairings avoid unrelated host load confounding resource observations.
-        for server, client in (('nim', 'nim'), ('odin', 'odin'), ('nim', 'odin'), ('odin', 'nim')):
+        for server, client in [(a, b) for a in candidates for b in candidates]:
             report['pairings'].append(pairing(server, client, folder, args.rounds, args.warmup))
             output.write_text(json.dumps(report, indent=2) + '\n')
     except Exception as error:
@@ -167,7 +177,7 @@ def main():
         raise
     report['complete'] = True
     output.write_text(json.dumps(report, indent=2) + '\n')
-    print(f'PASS QUIC soak: {4 * args.rounds} same-process sessions; five healthy and three adversarial streams/session', flush=True)
+    print(f'PASS QUIC soak: {len(candidates)**2 * args.rounds} same-process sessions; five healthy and three adversarial streams/session', flush=True)
 
 
 # Importing helpers performs no build, certificate generation or network operation.

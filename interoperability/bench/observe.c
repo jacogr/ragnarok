@@ -17,3 +17,22 @@ uint64_t rb_peak_rss(void) {
     return (uint64_t)usage.ru_maxrss * 1024;
 #endif
 }
+/* Use OS nanosecond monotonic resolution when an SDK's nominal ns clock quantizes to microseconds. */
+#include <time.h>
+#ifdef __APPLE__
+#include <mach/mach_time.h>
+#endif
+uint64_t rb_now_ns(void) {
+#ifdef __APPLE__
+    mach_timebase_info_data_t scale;
+    /* macOS CLOCK_MONOTONIC can quantize short calls; mach absolute time retains hardware resolution. */
+    if (mach_timebase_info(&scale) != KERN_SUCCESS || !scale.denom) return 0;
+    uint64_t ticks = mach_absolute_time();
+    return (ticks / scale.denom) * scale.numer + (ticks % scale.denom) * scale.numer / scale.denom;
+#else
+    struct timespec value;
+    /* A failed OS clock cannot be accepted as a fabricated positive timing sample. */
+    if (clock_gettime(CLOCK_MONOTONIC, &value)) return 0;
+    return (uint64_t)value.tv_sec * UINT64_C(1000000000) + (uint64_t)value.tv_nsec;
+#endif
+}

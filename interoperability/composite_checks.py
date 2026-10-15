@@ -1,4 +1,5 @@
 """Independent optional/work/preimage references and official composite-vector checks."""
+from mojo_support import codec_commands
 import hashlib
 import json
 from pathlib import Path
@@ -217,9 +218,9 @@ def verify_composite(build, nim_flags, linker, run, encode, decode):
     request_file = build / 'composite-requests.txt'
     request_file.write_text('\n'.join(requests) + '\n')
     outputs = []
-    for driver in drivers:
+    for driver in codec_commands(build, drivers, 'composite'):
         # Each native adapter additionally asserts exact native re-encoding and failed-write atomicity.
-        output = run([driver, request_file], capture_output=True).stdout.splitlines()
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
         assert len(output) == len(expected), (driver, len(output), len(expected))
         for index, (actual, wanted) in enumerate(zip(output, expected)):
             assert actual == wanted, (driver, index, requests[index], actual, wanted)

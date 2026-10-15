@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Compose owned C.2 codec, Blake2b-256 and persistent CE 143 transport in both languages."""
+"""Compose owned C.2 codec, Blake2b-256 and persistent CE 143 transport in each enabled language."""
+from mojo_support import networking_candidates
 import argparse
+from functools import partial
 import hashlib
 import json
 import os
@@ -8,7 +10,7 @@ import platform
 import re
 import socket
 import subprocess
-from test_quic import ROOT, BUILD as QUIC, build_peers, dependencies as quic_dependencies, fixtures, run, PINS
+from test_quic import ROOT, BUILD as QUIC, build_peers, dependencies as quic_dependencies, fixtures, run, PINS, THREAD_BASELINES
 from toolchain_checks import odin_matches
 import test_crypto
 from test_codec import reference_encode
@@ -78,7 +80,8 @@ def corpus():
 
 
 # One persistent listener processes simultaneous independent clients through every composed failure/lifetime path.
-def service(language, certificates, wires, rounds, warmup):
+def service(language, certificates, wires, rounds, warmup, include_mojo=False):
+    observe = partial(wait_service, thread_limit=THREAD_BASELINES[language])
     directory = BUILD / language
     directory.mkdir(exist_ok=True)
     stop = directory / 'stop'
@@ -96,12 +99,12 @@ def service(language, certificates, wires, rounds, warmup):
                                'jamnp-s/1/00000000', '120000', 'integration'], env=environment,
                               stdout=server_output, stderr=subprocess.STDOUT)
     try:
-        wait_service(server, log, lambda text: 'READY\n' in text, peaks)
+        observe(server, log, lambda text: 'READY\n' in text, peaks)
         for iteration in range(rounds):
             active = []
             # Three concurrent identities guarantee real multi-peer service while crossing both language boundaries.
             for index, (client_language, identity) in enumerate((('nim', 'b'), ('odin', 'c'),
-                                                                ('nim' if iteration % 2 == 0 else 'odin', 'd'))):
+                                                                ('mojo' if include_mojo else 'nim' if iteration % 2 == 0 else 'odin', 'd'))):
                 path = directory / f'{iteration}-{index}.client.log'
                 output = path.open('w')
                 handles.append(output)
@@ -117,14 +120,15 @@ def service(language, certificates, wires, rounds, warmup):
                 text = path.read_text()
                 assert text.count('EXCHANGE_OK 8\n') == 1, text
                 assert text.count('HEALTHY_OK\n') == 3 and text.count('EXPECTED_REJECT\n') == 4 and text.count('CANCEL_OK\n') == 1, text
-                reason = 'HashMismatch' if implementation == 'nim' else 'Hash_Mismatch'
+                reason = 'HashMismatch' if implementation in ('nim', 'mojo') else 'Hash_Mismatch'
                 assert text.count(f'INTEGRATION_REJECT {reason}\n') == 1, text
                 assert text.count('OWNED_VERIFIED\n') == 3, text
             total = 3 * (iteration + 1)
-            text = wait_service(server, log, lambda text: f'SERVICE_IDLE {total} {total} ' in text, peaks)
+            text = observe(server, log, lambda text: f'SERVICE_IDLE {total} {total} ' in text, peaks)
             match = re.findall(rf'^SERVICE_IDLE {total} {total} (\d+)(?: (\d+))?$', text, re.M)
             assert len(match) == 1, text[-2000:]
             sample = resources(server.pid)
+            sample['thread_baseline'] = THREAD_BASELINES[language]
             sample['allocated_bytes'] = int(match[0][0])
             if language == 'odin':
                 assert int(match[0][1]) == 2, match # Only the live listener's receive and timer remain.
@@ -168,21 +172,23 @@ def main():
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--rounds', type=int, default=12)
     parser.add_argument('--warmup', type=int, default=4)
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo candidate')
     args = parser.parse_args()
     assert 12 <= args.rounds <= 24 and 0 <= args.warmup <= args.rounds - 8, 'Invalid bounded integrated extent'
     BUILD.mkdir(parents=True, exist_ok=True)
     if not args.skip_build:
         build(args.fetch, args.reuse_native)
+    candidates = networking_candidates(BUILD, args.mojo, args.skip_build, THREAD_BASELINES, 'integration')
     # Run composition fuzzing through the same compiled APIs before opening sockets.
-    for implementation in ('nim', 'odin'):
+    for implementation in candidates:
         run([BUILD / f'{implementation}-peer', '--integration-selftest'])
     wires, hashes = corpus()
     certificates = fixtures()
     report = {'complete': False, 'platform': platform.platform(), 'rounds': args.rounds,
               'fixture_hashes': hashes, 'servers': []}
     try:
-        for language in ('nim', 'odin'):
-            report['servers'].append(service(language, certificates, wires, args.rounds, args.warmup))
+        for language in candidates:
+            report['servers'].append(service(language, certificates, wires, args.rounds, args.warmup, args.mojo))
             (BUILD / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
     except Exception as error:
         report['failure'] = str(error)
@@ -190,7 +196,7 @@ def main():
         raise
     report['complete'] = True
     (BUILD / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(f'PASS integrated codec/crypto/QUIC: {rounds_total(args.rounds)} streams', flush=True)
+    print(f'PASS integrated codec/crypto/QUIC: {args.rounds * len(candidates) * 3 * 8} streams', flush=True)
 
 
 # Shared arithmetic keeps the reported workload equal to two listeners, three clients and eight streams per wave.

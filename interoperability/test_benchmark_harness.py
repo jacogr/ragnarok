@@ -22,6 +22,24 @@ class MeasurementIntegrity(unittest.TestCase):
         self.case = {'name': 'integrity', 'kind': 'baseline', 'operation': 'control',
                      'path': str(path), 'expected': 17}
 
+    # A process heap delta must not masquerade as language allocator call/free counts.
+    def test_mojo_heap_scope_is_explicit(self):
+        transcript = 'VERIFY 17\nALLOC_MOJO_HEAP 2 98384\nEND 0 4096\n'
+        with patch.object(benchmark.subprocess, 'check_output', return_value=transcript):
+            data = benchmark.native(self.case, 'mojo', 2, 1, 0, None, instrumented=True)
+        self.assertIsNone(data['calls_per_operation'])
+        self.assertIsNone(data['frees_per_operation'])
+        self.assertEqual(data['live_delta_bytes'], 98384)
+        self.assertIn('process malloc', data['scope'])
+
+    # Missing/incorrect iteration observations cannot count as successful Mojo instrumentation.
+    def test_mojo_rejects_invented_or_missing_accounting(self):
+        for record in ('ALLOC 2 0 0 0 0', 'ALLOC_MOJO_HEAP 3 0'):
+            with self.subTest(record=record), patch.object(benchmark.subprocess, 'check_output',
+                    return_value=f'VERIFY 17\n{record}\nEND 0 4096\n'):
+                with self.assertRaises(AssertionError):
+                    benchmark.native(self.case, 'mojo', 2, 1, 0, None, instrumented=True)
+
     # Batch averages and real operation latencies must remain distinct in the accepted result.
     def test_distinct_sampling_methods(self):
         transcript = 'VERIFY 17\nBATCH 2 20\nBATCH 2 24\nBATCH 2 28\nLATENCY 99\nEND 17 4096\n'

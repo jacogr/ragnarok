@@ -1,0 +1,15 @@
+{
+  "raw_natural": "encode_natural",
+  "natural_as_fixed": "encode_fixed",
+  "wrong_limit": "decode_bytes_borrowed",
+  "swapped_hash": "CodeHash",
+  "swapped_metric": "ExportCount",
+  "raw_service": "ServiceIndex",
+  "failure_value": "value",
+  "mutable_owner": "wire",
+  "wrong_owner_pool": "copy_owned_blob",
+  "swapped_crypto_hash": "Blake2bHash",
+  "swapped_crypto_key": "EdPublicKey",
+  "swapped_bs_output": "BsOutput",
+  "swapped_bs_owner": "BsSetup"
+}

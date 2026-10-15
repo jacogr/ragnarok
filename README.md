@@ -4,7 +4,9 @@ Ragnarök is a joint effort between the maintainer and AI coding agents, and we 
 The maintainer sets the direction, steers each increment and owns the decisions; AI agents help
 research, implement, test and document the work. We make that collaboration explicit.
 
-Independent Nim and Odin JAM codec experiments. Language selection remains open.
+Independent Nim, Odin and Mojo JAM experiments. Language selection remains open.
+The [Mojo evaluation](docs/mojo.md) covers the same bounded M1 codec, M2 crypto and M3 QUIC POC.
+See [local parity verification and the three-language baseline](results/mojo-parity.md).
 See [the design](docs/design.md), [the pinned codec specification](spec/codec.md)
 and [the macOS toolchains](docs/toolchains-macos.md).
 [Linux CI](docs/ci-linux.md) runs formatting, codec, crypto and QUIC checks on GitHub Actions.
@@ -14,7 +16,7 @@ unsigned integers (0..8 bytes), bounded byte strings, and homogeneous
 fixed-unsigned sequences, optional variable blobs, work-output variants and
 full nested preimage extrinsics and complete work digests, with checked prefix
 decoding. They have no
-third-party language packages and no heap allocations in either codec.
+third-party language packages in their borrowed codec paths; owned snapshots allocate explicitly.
 
 ## Initialize the upstream sources
 
@@ -28,19 +30,19 @@ Safrole folders of the large JAM vector repository. See [source ownership](docs/
 
 ## Format the sources
 
-Use `odinfmt` for Odin and `nimpretty` (bundled with Nim) for Nim:
+Use `odinfmt` for Odin, `nimpretty` (bundled with Nim) for Nim, and `mojo format` for Mojo:
 
 ```sh
 python3 tools/format.py
 python3 tools/format.py --check
 ```
 
-Both commands cover implementation code and test sources, including the negative
+These commands cover implementation code and test sources, including the negative
 compilation fixtures. Check mode reports differences without writing files.
 Odin uses the [Exercism configuration](https://github.com/exercism/odin/blob/main/odinfmt.json),
 which follows the [Odin examples style guide](https://github.com/odin-lang/examples/wiki/Naming-and-style-convention).
 It uses tabs displayed as four columns, configured in `odinfmt.json`; Nim uses
-two spaces. Both target a 100-column line width where their formatters support it.
+two spaces; Mojo uses four spaces. All target a 100-column line width where their formatters support it.
 The formatting tool is a Python standard-library wrapper around the native tools.
 
 Install the selected Odin formatter with `brew install odinfmt` on macOS.

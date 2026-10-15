@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Bounded IPv6 peer-loss recovery and connection/stream saturation; no throughput assertions."""
+from mojo_support import networking_candidates
 import argparse
 import json
 import os
 from pathlib import Path
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures
+from test_quic import BUILD, build_peers, dependencies, fixtures, THREAD_BASELINES
 from test_quic_mesh import ports
 from test_quic_soak import resources, check_growth
 
@@ -20,7 +21,12 @@ def watch(processes, logs, predicates, peaks, seconds=15):
         for role, process in processes.items():
             assert process.poll() is None, (role, process.returncode, texts[role][-4000:])
             sample = resources(process.pid)
-            assert sample['threads'] == 1 and sample['rss_bytes'] < 256 * 1024 * 1024, (role, sample, texts[role][-4000:])
+            language = Path(process.args[0]).name.split('-')[0]
+            expected_threads = THREAD_BASELINES[language]
+            assert 1 <= sample['threads'] <= expected_threads and sample['rss_bytes'] < 256 * 1024 * 1024, (role, sample, expected_threads, texts[role][-4000:])
+            # SDK workers may still be starting before the first native readiness/authentication marker.
+            if any(line == 'READY' or line == 'AUTH_OK' or line.startswith('MESH_READY ') for line in texts[role].splitlines()):
+                assert sample['threads'] == expected_threads, ('changed fixed runtime thread count', sample, expected_threads)
             for metric, value in sample.items():
                 peaks[role][metric] = max(peaks[role].get(metric, 0), value)
         if all(predicate(texts[role]) for role, predicate in predicates.items()):
@@ -107,7 +113,7 @@ def disruption(languages, folder, rounds, warmup):
             _, allocated, incoming, outgoing, closed_incoming, closed_outgoing = map(int, line.split()[1:])
             assert incoming == outgoing == closed_incoming == closed_outgoing == index + 1, line
             sample = resources(keeper.pid)
-            sample.update(allocated_bytes=allocated, recovery_seconds=time.monotonic() - lost_at)
+            sample.update(thread_baseline=THREAD_BASELINES[languages[0]], allocated_bytes=allocated, recovery_seconds=time.monotonic() - lost_at)
             assert sample['recovery_seconds'] < 10, sample
             idle.append(sample)
         # Every forced loss, including the final one, must be followed by healthy work on these same retained engines.
@@ -263,6 +269,7 @@ def overload(language, folder, rounds, warmup):
             line = next(line for line in text.splitlines() if line.startswith(f'SERVICE_IDLE {accepted} {accepted} '))
             allocated = int(line.split()[3])
             sample = resources(server.pid); sample['allocated_bytes'] = allocated
+            sample['thread_baseline'] = THREAD_BASELINES[language]
             idle.append(sample)
             assert max(state[1] for state in states(text)) == 64 and max(state[4] for state in states(text)) == 64
             assert max(state[2] for state in states(text)) == connection_rejects, text[-2000:]
@@ -291,6 +298,7 @@ def main():
     parser.add_argument('--fetch', action='store_true')
     parser.add_argument('--rounds', type=int, default=12)
     parser.add_argument('--warmup', type=int, default=4)
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo candidate')
     args = parser.parse_args()
     assert 12 <= args.rounds <= 16 and 0 <= args.warmup <= args.rounds - 8
     output = BUILD / 'resilience/results.json'
@@ -299,17 +307,18 @@ def main():
     output.write_text(json.dumps(report) + '\n')
     if not args.skip_build:
         build_peers(dependencies(args.fetch))
+    candidates = networking_candidates(BUILD, args.mojo, args.skip_build, THREAD_BASELINES)
     folder = fixtures(BUILD / 'resilience/fixtures') # Keep retained TLS identities private to this harness.
     try:
-        for languages in (('nim', 'nim'), ('nim', 'odin'), ('odin', 'nim'), ('odin', 'odin')):
+        for languages in [(a, b) for a in candidates for b in candidates]:
             report['closed_before_request'].append(closed_before_request(languages, folder))
             output.write_text(json.dumps(report, indent=2) + '\n')
             print('PASS close before request', '-'.join(languages), flush=True)
-        for languages in (('nim', 'nim'), ('nim', 'odin'), ('odin', 'nim'), ('odin', 'odin')):
+        for languages in [(a, b) for a in candidates for b in candidates]:
             report['disruption'].append(disruption(languages, folder, args.rounds, args.warmup))
             output.write_text(json.dumps(report, indent=2) + '\n')
             print('PASS disruption', '-'.join(languages), args.rounds, 'peer deaths with pending work', flush=True)
-        for language in ('nim', 'odin'):
+        for language in candidates:
             report['overload'].append(overload(language, folder, args.rounds, args.warmup))
             output.write_text(json.dumps(report, indent=2) + '\n')
             print('PASS overload', language, args.rounds, 'admission/recovery waves', flush=True)

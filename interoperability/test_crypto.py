@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reproducible native crypto build, independent vectors, ownership and type-boundary checks."""
 import argparse
+from mojo_support import build_primitives
 import concurrent.futures
 import ctypes
 import hashlib
@@ -158,7 +159,9 @@ def test(binary):
     assert invalid.returncode != 0
     # Require the expected checked-result diagnostic, not an unrelated process failure.
     diagnostic = invalid.stdout + invalid.stderr
-    assert ('FieldDefect' in diagnostic if binary.name.startswith('nim') else 'assert' in diagnostic.lower())
+    assert ('FieldDefect' in diagnostic if binary.name.startswith('nim') else
+            'wrong variant type' in diagnostic if binary.name.startswith('mojo') else
+            'assert' in diagnostic.lower())
     assert query(binary, 'O') == 'ok'
     assert query(binary, 'T') == 'ok'
     fixture = ROOT / 'vectors/official/crypto'
@@ -193,7 +196,7 @@ def test(binary):
     identity = bytes([1]) + bytes(31)
     zero = bytes(32)
     # Preserve an observed provider policy difference, rather than asserting only ordinary vectors coincide.
-    expected_identity = '1' if binary.name.startswith('nim') else '0'
+    expected_identity = '1' if binary.name.startswith(('nim', 'mojo')) else '0'
     assert query(binary, 'V', identity, identity+zero, b'') == expected_identity
     assert query(binary, 'V', identity, identity+zero, b'abc') == expected_identity
     assert query(binary, 'V', zero, zero+zero, b'') == '0'
@@ -218,18 +221,19 @@ def test(binary):
 
 
 # Cross-sign independent deterministic fixtures and stress simultaneous calls through separate native processes.
-def cross_test():
-    nim, odin = BUILD / 'nim-release', BUILD / 'odin-release'
+def cross_test(include_mojo=False):
+    names = ['nim', 'odin'] + (['mojo'] if include_mojo else [])
+    binaries = [BUILD / f'{name}-release' for name in names]
     rng = random.Random(25519)
-    # Both providers must produce the same ordinary deterministic signature and accept the other's output.
+    # Every provider produces the same deterministic pure signature and accepts all cross-provider outputs.
     for i in range(32):
-        seed, message = rng.randbytes(32), rng.randbytes(i*17)
-        key = query(nim, 'P', seed)
-        assert key == query(odin, 'P', seed)
-        signature = query(nim, 'S', seed, message)
-        assert signature == query(odin, 'S', seed, message)
-        assert query(odin, 'V', bytes.fromhex(key), bytes.fromhex(signature), message) == '1'
-        assert query(nim, 'V', bytes.fromhex(key), bytes.fromhex(signature), message) == '1'
+        seed, message = rng.randbytes(32), rng.randbytes(i * 17)
+        public = [query(binary, 'P', seed) for binary in binaries]
+        signatures = [query(binary, 'S', seed, message) for binary in binaries]
+        assert len(set(public)) == 1 and len(set(signatures)) == 1, names
+        # Verification uses completed encodings originating from the other candidates, on the identical corpus.
+        for binary in binaries:
+            assert query(binary, 'V', bytes.fromhex(public[0]), bytes.fromhex(signatures[0]), message) == '1'
     return 32
 
 
@@ -264,6 +268,7 @@ def bridge_checks():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fetch', action='store_true')
+    parser.add_argument('--mojo', action='store_true', help='include both native Mojo build modes')
     args = parser.parse_args()
     BUILD.mkdir(parents=True, exist_ok=True)
     (BUILD / 'results.json').unlink(missing_ok=True)
@@ -273,11 +278,15 @@ def main():
     type_checks()
     bridge_checks()
     names = ['nim-debug','odin-debug','nim-release','odin-release']
+    # Mojo uses the same pinned primitive ABI and all independent vector/policy checks.
+    if args.mojo:
+        library = BUILD / ('libragnarok_crypto.dylib' if platform.system() == 'Darwin' else 'libragnarok_crypto.so')
+        names += build_primitives(BUILD, 'mojo/crypto/driver.mojo', library)
     # Independent process suites can run concurrently without sharing seed owners or allocators.
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         records = dict(zip(names, pool.map(test, [BUILD / name for name in names])))
     summary = {'status':'passed', 'platform':platform.platform(), 'suites':records,
-               'cross_signed_messages':cross_test(), 'negative_type_probes':6, 'patches':[],
+               'cross_signed_messages':cross_test(args.mojo), 'negative_type_probes':6, 'patches':[],
                'ed25519_policy_difference':'BoringSSL accepts identity A/R with S=0; Odin default rejects it'}
     (BUILD / 'results.json').write_text(json.dumps(summary, indent=2)+'\n')
     print(json.dumps(summary, indent=2))

@@ -1,21 +1,21 @@
 # JAM Ragnarök — Design and Evaluation Plan
 
-**Status:** Natural, scalar, bounded and composite codec slices implemented; evaluation ongoing
-**Date:** 2026-10-13  
-**Candidates:** Nim and Odin  
+**Status:** Bounded M1/M2/M3 implementations in three candidates; shared parity verification ongoing
+**Date:** 2026-10-14
+**Candidates:** Nim, Odin, Mojo
 **Decision:** Open; no preferred winner by policy
 
 ## 1. Purpose
-Evaluate whether **Nim** or **Odin** is the better foundation for an independent JAM (Join-Accumulate Machine) client. The project deliberately balances serious distributed-systems engineering with interest in an unconventional, enjoyable systems programming language.
+Evaluate whether **Nim**, **Odin** or **Mojo** is the better foundation for an independent JAM (Join-Accumulate Machine) client. The project deliberately balances serious distributed-systems engineering with interest in an unconventional, enjoyable systems programming language.
 
-The first deliverable is **not** a validator: it is a reproducible, spec-conforming codec in both languages and evidence that the chosen language can support cryptography and asynchronous JAM networking.
+The first deliverable is **not** a validator: it is reproducible, spec-conforming codecs in all candidate languages and evidence that the chosen language can support cryptography and asynchronous JAM networking.
 
 ## 2. Context and prior decisions
 - The maintainer previously implemented a JAM codec in TypeScript. That implementation may support differential testing, but the Gray Paper remains authoritative.
-- Mojo was considered for its modern design and ownership model; insufficiently established first-class async networking is a blocker for a full client at present.
+- Mojo was initially deferred for immature async networking. The maintainer has reopened its evaluation; a public-FFI callback reactor qualifies under the same networking standard as Odin.
 - Nim offers static typing, ARC/ORC memory-management options, C interoperability, and an established async ecosystem. Nimbus is a relevant example of Nim in blockchain infrastructure.
 - Odin offers static typing, explicit allocators, C interoperability, native compilation, and a C-like syntax. Its event-loop and QUIC integration must be proven, not assumed.
-- Mandatory tracing GC is undesirable. Both candidates must demonstrate safe and comprehensible memory ownership.
+- Mandatory tracing GC is undesirable. All candidates must demonstrate safe and comprehensible memory ownership.
 - Language enjoyment and maintainability matter, but never override correctness or the asynchronous networking gate.
 
 ## 3. Principles
@@ -62,13 +62,21 @@ JAM's actual networking specification, including transport and authentication, m
 - Investigate current nonblocking I/O facilities and external QUIC integration on Linux.
 - Verify whether the resulting concurrency model scales without one OS thread per stream.
 
+### Mojo
+- Pin the stable compiler, native SDK runtime and bundled formatter with a complete wheel hash lock.
+- Use nominal types, checked public variants and native owned values; make foreign-owner aliases explicit.
+- Maintain a public-FFI POSIX reactor over the same LSQUIC ABI, with identity/framing policy in Mojo.
+- Require no Python protocol runtime, private task/compiler hooks, source patches or per-stream workers.
+- Measure SDK startup resources separately and retain raw process thread/heap observations.
+- Stop only at a demonstrated blocker requiring major hacks or unmaintainable rework.
+
 ## 6. Evaluation sequence
 
 ### M0 — Environment and baseline
 - Choose Linux target(s), compiler versions and reproducible build method.
 - Pin exact Gray Paper and official vector revisions.
 - Document the maintainer's TypeScript implementation/version if supplied.
-- Establish minimal CI for Nim and Odin.
+- Establish Linux CI for Nim, Odin and Mojo.
 
 ### M1 — Codec bake-off
 Implement in the same order in each language:
@@ -261,3 +269,20 @@ stream-generation matching, tagged failures and joined shutdown have bounded tes
 This closes the proposed bounded offload POC, while full-ring scheduling/load sizing, independent
 JAM peers and crypto/backend audit gates remain open. No speed optimization or language selection
 is part of this round; the next increment awaits the maintainer's go-ahead.
+
+The maintainer has authorized a third-language Mojo evaluation, starting with the M3 risk gate.
+Pin stable Mojo 1.1.0; reuse the exact maintained LSQUIC/BoringSSL and primitive Rust/C ABIs.
+Native public-FFI readiness/callbacks qualify; private async-runtime/compiler hooks, Python
+network execution, dependency patches and large custom-runtime work do not. Continue through
+parity with the existing codec, crypto, networking and measurement corpus, or report the first
+credible maintenance blocker. `async`/`await` is a possible later optimization, not a prerequisite
+when the existing callback standard can be met. Nim/Odin correctness and pins remain unchanged.
+
+
+The Mojo parity implementation now covers the established M1 scalar/bounded/composite/digest and
+owned snapshot APIs, M2 primitive/contextual/ring crypto, and M3 authenticated retained services,
+IPv6 peer arbitration/reconnect, disruption/admission and bounded proof offload. The common
+69-case benchmark and all directed three-language comparisons are wired into Linux CI. See
+[Mojo implementation, reproduction and measurement limits](mojo.md). This supersedes the earlier
+two-candidate scope descriptions; historical reports retain their original observed evidence.
+No language decision or optimization is part of this authorized parity increment.

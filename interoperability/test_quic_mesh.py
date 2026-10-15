@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Retained two-peer IPv6 engines, duplicate arbitration, fallback dial and bidirectional CE 143 regression."""
+from mojo_support import networking_candidates
 import argparse
 import json
 import os
@@ -7,7 +8,7 @@ from pathlib import Path
 import socket
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures
+from test_quic import BUILD, build_peers, dependencies, fixtures, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
 
 
@@ -25,7 +26,7 @@ def preferred(local, remote):
 
 
 # Wait for both peers' explicit markers, checking bounded resources even while no application messages are pending.
-def observe(processes, logs, marker, peaks, seconds=15):
+def observe(processes, logs, marker, peaks, seconds=15, thread_limits=None):
     deadline = time.monotonic() + seconds
     # Never let stale logs or a crashed peer satisfy a subsequent lifecycle barrier.
     while True:
@@ -33,7 +34,11 @@ def observe(processes, logs, marker, peaks, seconds=15):
         for role, process in processes.items():
             assert process.poll() is None, (role, process.returncode, texts[role][-4000:])
             sample = resources(process.pid)
-            assert sample['threads'] == 1 and sample['rss_bytes'] < 256 * 1024 * 1024, (role, sample)
+            expected_threads = 1 if thread_limits is None else thread_limits[role]
+            assert 1 <= sample['threads'] <= expected_threads and sample['rss_bytes'] < 256 * 1024 * 1024, (role, sample, expected_threads)
+            # SDK workers may still be starting before the first native readiness/authentication marker.
+            if any(line == 'READY' or line == 'AUTH_OK' or line.startswith('MESH_READY ') for line in texts[role].splitlines()):
+                assert sample['threads'] == expected_threads, ('changed fixed runtime thread count', sample, expected_threads)
             for metric, value in sample.items():
                 peaks[role][metric] = max(peaks[role].get(metric, 0), value)
         if all(any(line.startswith(marker) for line in text.splitlines()) for text in texts.values()):
@@ -51,6 +56,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
     gate.mkdir()
     logs = {role: directory / f'{role}.log' for role in ('a', 'b')}
     processes, handles = {}, {}
+    thread_limits = dict(zip(logs, (THREAD_BASELINES[language] for language in languages)))
     peaks = {role: {} for role in logs}
     idle = {role: [] for role in logs}
     identities = {role: (folder / f'{role}.pub').read_bytes() for role in logs}
@@ -68,7 +74,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
             handles[role] = logs[role].open('w')
             processes[role] = subprocess.Popen(command, stdout=handles[role], stderr=subprocess.STDOUT,
                 env={**os.environ, 'RAGNAROK_MESH_ROUNDS': str(rounds), 'RAGNAROK_MESH_FALLBACK': '0' if bad_pin else '1'})
-        texts = observe(processes, logs, 'MESH_READY ', peaks)
+        texts = observe(processes, logs, 'MESH_READY ', peaks, thread_limits=thread_limits)
         for role, text in texts.items():
             if not bad_pin:
                 assert f'MESH_READY {int(decisions[role])}' in text.splitlines(), (role, decisions, text)
@@ -83,7 +89,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
         # Round zero proves nonpreferred fallback after five seconds; subsequent rounds deliberately race both dials.
         for round_index in range(rounds):
             (gate / f'start-{round_index}').touch()
-            texts = observe(processes, logs, f'MESH_EXCHANGED {round_index} ', peaks)
+            texts = observe(processes, logs, f'MESH_EXCHANGED {round_index} ', peaks, thread_limits=thread_limits)
             for role, text in texts.items():
                 assert f'MESH_EXCHANGED {round_index} 8' in text.splitlines(), (role, text)
                 expected_direction = decisions[role] if round_index else not decisions[role]
@@ -91,7 +97,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
                 if round_index:
                     assert f'MESH_DUPLICATE {round_index}' in text.splitlines(), (role, text)
             (gate / f'close-{round_index}').touch()
-            texts = observe(processes, logs, f'MESH_IDLE {round_index} ', peaks)
+            texts = observe(processes, logs, f'MESH_IDLE {round_index} ', peaks, thread_limits=thread_limits)
             # Exact accepted/closed equality proves complete retirement before another dial on the same engines.
             for role, process in processes.items():
                 line = next(line for line in texts[role].splitlines() if line.startswith(f'MESH_IDLE {round_index} '))
@@ -101,6 +107,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
                 assert incoming + outgoing == 1 + 2 * round_index, line
                 sample = resources(process.pid)
                 sample['allocated_bytes'] = allocated
+                sample['thread_baseline'] = thread_limits[role]
                 idle[role].append(sample)
         budgets = {role: check_growth(samples, warmup) for role, samples in idle.items()}
         (gate / 'stop').touch()
@@ -114,7 +121,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
                 assert int(fields[2]) <= int(fields[1]) + 65536, fields
         result = {'pairing': name, 'rounds': rounds, 'fallback_timeout_seconds': 5,
                   'bidirectional_queries': rounds * 8, 'duplicate_connections_retired': rounds - 1,
-                  'retained_engines_per_peer': 2, 'peaks': peaks, 'idle_budgets': budgets,
+                  'retained_engines_per_peer': 2, 'thread_baselines': thread_limits, 'peaks': peaks, 'idle_budgets': budgets,
                   'seconds': time.monotonic() - started}
         (directory / 'resources.json').write_text(json.dumps({'result': result, 'idle_samples': idle}, indent=2) + '\n')
         return result
@@ -127,13 +134,14 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
             handle.close()
 
 
-# Compile/reuse the same pinned transport ABI, then run all four native pairings sequentially without speed thresholds.
+# Compile/reuse the same pinned transport ABI, then run all enabled native pairings sequentially without speed thresholds.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--fetch', action='store_true')
     parser.add_argument('--rounds', type=int, default=16)
     parser.add_argument('--warmup', type=int, default=4)
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo candidate')
     args = parser.parse_args()
     assert 12 <= args.rounds <= 64 and 0 <= args.warmup <= args.rounds - 8
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -142,15 +150,16 @@ def main():
     result_path.write_text(json.dumps({'complete': False, 'stage': 'build'}) + '\n')
     if not args.skip_build:
         build_peers(dependencies(args.fetch))
-    for language in ('nim', 'odin'):
+    candidates = networking_candidates(BUILD, args.mojo, args.skip_build, THREAD_BASELINES)
+    for language in candidates:
         assert subprocess.check_output([str(BUILD / f'{language}-peer'), '--mesh-selftest'], text=True).strip() == 'MESH_POLICY_OK'
     folder = fixtures()
     results = []
-    for a, b in (('nim', 'nim'), ('nim', 'odin'), ('odin', 'nim'), ('odin', 'odin')):
+    for a, b in [(a, b) for a in candidates for b in candidates]:
         result = pairing((a, b), folder, args.rounds, args.warmup)
         results.append(result)
         print('PASS', result['pairing'], result['bidirectional_queries'], 'IPv6 bidirectional queries', flush=True)
-    for languages in (('nim', 'odin'), ('odin', 'nim')):
+    for languages in [(a, b) for a in candidates for b in candidates if a != b]:
         results.append(pairing(languages, folder, 1, 0, bad_pin=True))
         print('PASS', '-'.join(languages), 'IPv6 wrong identity rejected', flush=True)
     result_path.write_text(json.dumps({'complete': True, 'results': results}, indent=2) + '\n')

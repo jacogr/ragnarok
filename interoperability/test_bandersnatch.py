@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build the pinned historical JAM Bandersnatch Rust ABI and check both native-language adapters."""
 import argparse
+from mojo_support import build_primitives
 import concurrent.futures
 import ctypes
 import hashlib
@@ -138,7 +139,9 @@ def suite(binary):
     failed = subprocess.run([str(binary),'F'],capture_output=True,text=True)
     diagnostic = failed.stdout+failed.stderr
     assert failed.returncode!=0
-    assert ('FieldDefect' in diagnostic if binary.name.startswith('nim') else 'assert' in diagnostic.lower())
+    assert ('FieldDefect' in diagnostic if binary.name.startswith('nim') else
+            'wrong variant type' in diagnostic if binary.name.startswith('mojo') else
+            'assert' in diagnostic.lower())
     ietf = json.loads(fixture_path('ietf.json').read_text())
     rings = json.loads(fixture_path('ring.json').read_text())
     # Ordinary contextual signatures must reproduce every published field exactly, not just verify themselves.
@@ -197,24 +200,32 @@ def suite(binary):
 
 
 # Cross-check proof creation and output/context binding with the two language owners over the same backend.
-def cross():
-    nim,odin = BUILD / 'nim-release', BUILD / 'odin-release'
+def cross(include_mojo=False):
+    names = ['nim', 'odin'] + (['mojo'] if include_mojo else [])
+    binaries = [BUILD / f'{name}-release' for name in names]
     v = json.loads(fixture_path('ring.json').read_text())[0]
-    members,sk,root = octets(v['ring_pks']),octets(v['sk']),octets(v['ring_pks_com'])
-    # A safe fresh ring proof need not equal non-ZK deterministic publication vectors.
-    for prover,verifier in ((nim,odin),(odin,nim)):
-        proof = octets(query(prover,'G',8,sk,3,members,b'',b''))
-        assert len(proof)==784
-        assert query(verifier,'W',8,root,proof,b'',b'')==v['beta'][:64]
-    # Extra deterministic scalars are canonical little endian test material, not production entropy.
-    for i in range(1,17):
-        scalar = i.to_bytes(32,'little');context = bytes(range(i));ad = b'additional'
-        public = query(nim,'P',scalar)
-        assert public==query(odin,'P',scalar)
-        signature = query(nim,'S',scalar,context,ad)
-        assert signature==query(odin,'S',scalar,context,ad)
-        assert query(nim,'V',octets(public),octets(signature),context,ad)==query(odin,'V',octets(public),octets(signature),context,ad)
-    return {'ring_proofs':2,'ietf_messages':16}
+    members, sk, root = octets(v['ring_pks']), octets(v['sk']), octets(v['ring_pks_com'])
+    ring_pairs = 0
+    # Each directed pairing creates a safe fresh randomized proof and verifies it in the other language.
+    for prover in binaries:
+        for verifier in binaries:
+            # Self-verification is already covered by the per-candidate published vector suites.
+            if prover == verifier:
+                continue
+            proof = octets(query(prover, 'G', 8, sk, 3, members, b'', b''))
+            assert len(proof) == 784
+            assert query(verifier, 'W', 8, root, proof, b'', b'') == v['beta'][:64]
+            ring_pairs += 1
+    # Canonical deterministic fixture scalars are test material, never production entropy.
+    for i in range(1, 17):
+        scalar = i.to_bytes(32, 'little'); context = bytes(range(i)); ad = b'additional'
+        public = [query(binary, 'P', scalar) for binary in binaries]
+        signatures = [query(binary, 'S', scalar, context, ad) for binary in binaries]
+        assert len(set(public)) == 1 and len(set(signatures)) == 1, names
+        # Verified output extraction must agree for each candidate on the same complete proof.
+        outputs = [query(binary, 'V', octets(public[0]), octets(signatures[0]), context, ad) for binary in binaries]
+        assert len(set(outputs)) == 1, (names, outputs)
+    return {'ring_proofs': ring_pairs, 'ietf_messages': 16, 'languages': names}
 
 
 # Exercise exact widths, malformed points/scalars/roots and all-or-nothing writes at the Rust/C boundary.
@@ -275,15 +286,19 @@ def types():
 
 # Produce a success summary only after source pins, Rust tests, ABI guards and all native suites pass.
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--fetch',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--fetch',action='store_true');parser.add_argument('--mojo',action='store_true');args=parser.parse_args()
     BUILD.mkdir(parents=True,exist_ok=True);(BUILD/'results.json').unlink(missing_ok=True)
     sources(args.fetch);official_sources(args.fetch);build(args.fetch);types()
     names=['nim-debug','odin-debug','nim-release','odin-release']
+    # Reuse the pristine historical backend and run the same contextual/ring/JAM vectors for Mojo.
+    if args.mojo:
+        library = BUILD / 'target/release' / ('libragnarok_bandersnatch.dylib' if platform.system() == 'Darwin' else 'libragnarok_bandersnatch.so')
+        names += build_primitives(BUILD, 'mojo/bandersnatch/driver.mojo', library)
     # Suites have independent processes/owners, so parallel fixture checks do not race destruction.
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         records=dict(zip(names,pool.map(suite,[BUILD/name for name in names])))
     summary={'status':'passed','platform':platform.platform(),'suite':PINS['suite'],'suites':records,
-             'cross_language':cross(),'abi_checks':bridge_checks(),'negative_type_probes':6,'source_patches':[]}
+             'cross_language':cross(args.mojo),'abi_checks':bridge_checks(),'negative_type_probes':6,'source_patches':[]}
     (BUILD/'results.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary,indent=2))
 
 

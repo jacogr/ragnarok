@@ -17,13 +17,14 @@ from digest_checks import wire_for
 from test_quic import ROOT, run, PINS
 from toolchain_checks import odin_matches
 import test_crypto
+from mojo_support import compiler
 
 BUILD = ROOT / 'build/bench'
 RAW = BUILD / 'raw'
 
 
 # Pin compilers and preserve checks; allocation instrumentation is a separate build rather than a timing tax.
-def build(fetch, reuse_native):
+def build(fetch, reuse_native, include_mojo=False):
     assert PINS['nim'] in subprocess.check_output(['nim', '--version'], text=True)
     assert odin_matches(subprocess.check_output(['odin', 'version'], text=True), PINS['odin'])
     if not reuse_native:
@@ -50,6 +51,17 @@ def build(fetch, reuse_native):
         commands.append(['odin', 'build', ROOT / 'odin/bench', '-o:speed', '-vet', '-strict-style',
                          *(['-define:ALLOCATIONS=true'] if instrumented else []),
                          f'-out:{BUILD / ("odin" + name)}', *linker])
+    # Mojo shares the exact observer/crypto libraries; public heap observations use a separate OS shim.
+    if include_mojo:
+        helper = BUILD / f'libmojo_os.{suffix}'
+        commands.append(['clang', '-dynamiclib' if suffix == 'dylib' else '-shared', '-fPIC', '-O2',
+                         '-Wall', '-Wextra', '-Werror', ROOT / 'interoperability/mojo/os.c', '-o', helper])
+        for instrumented in (False, True):
+            name = 'mojo-alloc' if instrumented else 'mojo'
+            commands.append([compiler(), 'build', '-I', ROOT / 'mojo', '-O3',
+                             ROOT / 'mojo/bench/main.mojo', '-Xlinker', observer, '-Xlinker', crypto,
+                             *(['-DALLOCATIONS=true', '-Xlinker', helper] if instrumented else []),
+                             '-o', BUILD / name])
     with (BUILD / 'build.log').open('w') as log:
         for command in commands:
             run(command, log) # Preserve exact compiler flags and complete diagnostics.
@@ -151,6 +163,15 @@ def native(case, language, iterations, samples, latency, cpu, instrumented=False
     calls = min(iterations, 64) + (iterations if instrumented else iterations * samples + latency)
     assert ending[0][0] == (case['expected'] if calls % 2 else 0), ('operation checksum', output)
     if instrumented:
+        if language == 'mojo':
+            # The public SDK has no allocation-call counter; never manufacture counts from heap/RSS samples.
+            heaps = [[int(value) for value in parts[1:]] for parts in lines if parts[0] == 'ALLOC_MOJO_HEAP']
+            assert len(heaps) == 1 and heaps[0][0] == iterations and not batches and not latencies, output
+            # SDK worker initialization/caches affect process heap independently of this operation's owners.
+            assert abs(heaps[0][1]) <= 16 * 1024 * 1024, ('Mojo process heap observation ceiling', case, heaps)
+            return {'calls_per_operation': None, 'frees_per_operation': None,
+                    'requested_bytes_per_operation': None, 'live_delta_bytes': heaps[0][1],
+                    'scope': 'public process malloc live bytes; SDK/native libraries included; allocation calls unavailable'}
         assert len(allocs) == 1 and not batches and not latencies, output
         count, allocated, freed, live, requested = allocs[0]
         assert allocated == freed and abs(live) <= 65536, ('unsettled allocation ownership', case, allocs)
@@ -173,20 +194,34 @@ def distribution(values):
 
 # Human-readable report retains ratios only within this same host/run, never across platform artifacts.
 def markdown(report):
+    names = list(report['cases'][0]['languages'])
+    labels = {'nim': 'Nim', 'odin': 'Odin', 'mojo': 'Mojo'}
+    headers = ([f'{labels[name]} median ns/op' for name in names]
+               + [f'{labels[name]}/Nim time' for name in names if name != 'nim']
+               + [f'{labels[name]} alloc calls/op' for name in names])
     lines = ['# Optimized checked benchmark', '', f'Platform: {report["platform"]}',
              f'Linux CPU affinity: {report["cpu"]}; complete: {report["complete"]}', '',
-             'Times include the common noinline/observation boundary; assertions and bounds checks remain enabled.',
-             'Latency percentiles are single-operation samples with timer overhead; throughput uses separate batches.', '',
-             '| Case | Operation | Nim median ns/op | Odin median ns/op | Odin/Nim time | Nim alloc calls/op | Odin alloc calls/op |',
-             '| --- | --- | ---: | ---: | ---: | ---: | ---: |']
+             'Checked optimized builds share inputs and the noinline observation boundary.',
+             'Batch throughput and individual-operation latency samples remain separate.', '',
+             '| Case | Operation | ' + ' | '.join(headers) + ' |',
+             '| --- | --- | ' + ' | '.join('---:' for _ in headers) + ' |']
+    # Report observations without speed thresholds or an implied language-selection verdict.
     for item in report['cases']:
-        nim, odin = item['languages']['nim'], item['languages']['odin']
-        n, o = nim['throughput']['median'], odin['throughput']['median']
-        lines.append(f'| {item["name"]} | {item["operation"]} | {n:.1f} | {o:.1f} | {o/n:.2f} | {nim["allocations"]["calls_per_operation"]:.1f} | {odin["allocations"]["calls_per_operation"]:.1f} |')
-    lines += ['', 'Odin/Nim > 1 means Nim took less time in this run. No significance or language winner is implied.',
-              'Borrowed decode validates framing/fields and returns spans; it does not scan or copy blob payloads.',
-              'Prepared owned encoding excludes decode/allocation. Owned decoding includes metadata selection and final release.',
-              'JSON retains all samples, operation latency p50/p95/p99, peak process RSS, allocation counters and corpus hashes.', '']
+        medians = {name: item['languages'][name]['throughput']['median'] for name in names}
+        values = [f'{medians[name]:.1f}' for name in names]
+        values += [f'{medians[name]/medians["nim"]:.2f}' for name in names if name != 'nim']
+        # An unavailable public SDK counter remains visibly unavailable, never formatted as zero.
+        for name in names:
+            calls = item['languages'][name]['allocations']['calls_per_operation']
+            values.append('unavailable' if calls is None else f'{calls:.1f}')
+        values = ' | '.join(values)
+        lines.append(f'| {item["name"]} | {item["operation"]} | {values} |')
+    lines += ['', 'Time ratios above one mean Nim took less time in this run; no significance is implied.',
+              'Borrowed decoding validates framing/fields without copying opaque payloads.',
+              'Owned decoding includes metadata selection and final release; prepared owned encoding excludes capture.',
+              'JSON retains samples, latency percentiles, RSS, allocation observations and source/input hashes.',
+              'Mojo exposes public process malloc live bytes here; allocation call/free counts are unavailable.',
+              'These baseline measurements imply no optimization ceiling or language winner.', '']
     return '\n'.join(lines)
 
 
@@ -197,14 +232,16 @@ def main():
     parser.add_argument('--reuse-native', action='store_true')
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--quick', action='store_true', help='smoke only: fewer repetitions/samples, never decision evidence')
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo baseline')
     args = parser.parse_args()
+    languages = ('nim', 'odin', 'mojo') if args.mojo else ('nim', 'odin')
     global RAW
     BUILD.mkdir(parents=True, exist_ok=True)
     RAW = BUILD / 'raw' / str(time.time_ns())
     # A failed new build cannot leave an earlier success report looking current.
     (BUILD / 'results.json').write_text(json.dumps({'complete': False, 'stage': 'build'}) + '\n')
     (BUILD / 'results.md').unlink(missing_ok=True)
-    commands = build(args.fetch, args.reuse_native) if not args.skip_build else None
+    commands = build(args.fetch, args.reuse_native, args.mojo) if not args.skip_build else None
     cpu = min(os.sched_getaffinity(0)) if platform.system() == 'Linux' else None
     repeats, samples, latency = (1, 3, 16) if args.quick else (3, 15, 128)
     report = {'platform': platform.platform(), 'cpu': cpu, 'quick': args.quick, 'complete': False,
@@ -214,14 +251,16 @@ def main():
               'nim_version': subprocess.check_output(['nim', '--version'], text=True),
               'odin_version': subprocess.check_output(['odin', 'version'], text=True),
               'clang_version': subprocess.check_output(['clang', '--version'], text=True), 'cases': []}
+    if args.mojo:
+        report['mojo_version'] = subprocess.check_output([compiler(), '--version'], text=True)
     # Record hardware, measured binary hashes and exact codec/adapter source, including uncommitted changes.
     report['hardware'] = Path('/proc/cpuinfo').read_text() if cpu is not None else subprocess.check_output(['sysctl', '-n', 'machdep.cpu.brand_string'], text=True).strip()
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                              for directory in ('nim/src', 'odin/codec', 'nim/crypto', 'odin/crypto', 'nim/bench', 'odin/bench', 'interoperability/bench', 'interoperability/crypto')
+                              for directory in ('nim/src', 'odin/codec', 'nim/crypto', 'odin/crypto', 'nim/bench', 'odin/bench', 'interoperability/bench', 'interoperability/crypto', 'mojo', 'interoperability/mojo')
                               for path in (ROOT / directory).rglob('*') if path.is_file()}
     report['source_sha256']['interoperability/benchmark.py'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     report['binary_sha256'] = {name: hashlib.sha256((BUILD / name).read_bytes()).hexdigest()
-                              for name in ('nim', 'odin', 'nim-alloc', 'odin-alloc')}
+                              for name in [value for language in languages for value in (language, language + '-alloc')]}
     output = BUILD / 'results.json'
     try:
         cases = corpus()
@@ -229,12 +268,14 @@ def main():
         rng.shuffle(cases) # Stable mixed workload order limits systematic warming/frequency drift by case size.
         for index, case in enumerate(cases):
             probe_iterations = 8 if case['wire_bytes'] >= 65536 else 1024
-            probes = {language: native(case, language, probe_iterations, 3, 0, cpu, label='calibration') for language in ('nim', 'odin')}
+            probes = {language: native(case, language, probe_iterations, 3, 0, cpu, label='calibration') for language in languages}
             slowest = max(statistics.median(probe['batch_ns_per_operation']) for probe in probes.values())
             iterations = min(20000000, max(1, int((2_000_000 if args.quick else 10_000_000) / slowest)))
             measurements = {language: {'batches': [], 'latencies': [], 'peak_rss_bytes': 0, 'process_medians_ns': []} for language in probes}
             for repeat in range(repeats):
-                order = ('nim', 'odin') if (index + repeat) % 2 == 0 else ('odin', 'nim')
+                # Rotate every candidate through first/middle/last position across paired repeats.
+                pivot = (index + repeat) % len(languages)
+                order = languages[pivot:] + languages[:pivot]
                 for language in order:
                     data = native(case, language, iterations, samples, latency, cpu, label=f'timing-{repeat}')
                     measurements[language]['process_medians_ns'].append(statistics.median(data['batch_ns_per_operation']))

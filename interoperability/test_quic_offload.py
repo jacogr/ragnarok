@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fixed worker RingVRF verification alongside persistent native QUIC, with bounded owned jobs."""
+from mojo_support import networking_candidates
 import argparse
 import hashlib
 import json
@@ -9,7 +10,7 @@ import re
 import socket
 import subprocess
 import time
-from test_quic import ROOT, BUILD as QUIC, build_peers, dependencies, fixtures, run, PINS
+from test_quic import ROOT, BUILD as QUIC, build_peers, dependencies, fixtures, run, PINS, THREAD_BASELINES
 from test_quic_soak import resources
 from toolchain_checks import odin_matches
 import test_bandersnatch as bs
@@ -62,7 +63,8 @@ def corpus():
 
 
 # One process survives repeated queue pressure, cancellation and proof errors without replacing its listener/workers.
-def exercise(language, certificates, fixture, rounds, warmup, repeats):
+def exercise(language, certificates, fixture, rounds, warmup, repeats, include_mojo=False):
+    fixed_threads = THREAD_BASELINES[language] + 2
     directory = BUILD / language
     directory.mkdir(exist_ok=True)
     gate = directory / f'release-{time.time_ns()}'
@@ -71,6 +73,7 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats):
     log = directory / 'server.log'
     children, handles, idle, peaks = [], [], [], {}
     accepted = 0
+    client_rotation = 0
     # Reserve an IPv6 loopback port; READY confirms that the service really owns the released port.
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('::1', 0))
@@ -90,9 +93,9 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats):
             text = log.read_text()
             assert server.poll() is None, (language, server.returncode, text[-4000:])
             sample = resources(server.pid)
-            assert 1 <= sample['threads'] <= 3 and sample['rss_bytes'] < 256 * 1024 * 1024, (language, sample)
+            assert 1 <= sample['threads'] <= fixed_threads and sample['rss_bytes'] < 256 * 1024 * 1024, (language, sample)
             if 'READY' in text.splitlines():
-                assert sample['threads'] == 3, (language, sample) # Startup may be observed before the fixed workers exist.
+                assert sample['threads'] == fixed_threads, (language, sample) # Startup may be observed before the fixed workers exist.
             for metric, value in sample.items():
                 peaks[metric] = max(peaks.get(metric, 0), value)
             if predicate(text):
@@ -109,6 +112,9 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats):
     def launch(implementation, mode):
         nonlocal accepted
         accepted += 1
+        # Cycle native clients without changing queue generations, capacity or cancellation counts.
+        if include_mojo:
+            implementation = ('nim', 'odin', 'mojo')[(accepted - 1 + client_rotation) % 3]
         path = directory / f'{accepted}-{implementation}-{mode}.log'
         handle = path.open('w'); handles.append(handle)
         process = subprocess.Popen([str(BUILD / f'{implementation}-peer'), 'client', str(port),
@@ -129,6 +135,8 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats):
     try:
         watch(lambda text: 'READY' in text.splitlines())
         for wave in range(rounds):
+            # Rotate the complete fifteen-client wave so every language exercises every exact job role.
+            client_rotation = wave
             if gate.exists():
                 gate.unlink() # Re-arm only this harness's test hold while there are no retained jobs.
             base = wave * 7
@@ -191,7 +199,7 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats):
         growth = {f'idle_{metric}_range': max(x[metric] for x in retained)-min(x[metric] for x in retained)
                   for metric in ('rss_bytes', 'descriptors', 'allocated_bytes')}
         assert growth['idle_rss_bytes_range'] <= 16*1024*1024 and growth['idle_descriptors_range'] <= 2, growth
-        assert growth['idle_allocated_bytes_range'] <= 65536 and all(x['threads'] == 3 for x in idle), idle
+        assert growth['idle_allocated_bytes_range'] <= 65536 and all(x['threads'] == fixed_threads for x in idle), idle
         # Exit with two actual crypto batches running and two queued jobs. Join waits for Rust before releasing owners.
         gate.unlink()
         pending = [launch('nim' if index % 2 == 0 else 'odin', 'proof') for index in range(4)]
@@ -208,7 +216,7 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats):
         else:
             values = re.findall(r'^SERVICE_CLEAN (\d+) (\d+)$', final, re.M)
             assert len(values) == 1 and int(values[0][1]) <= int(values[0][0])+65536, values
-        return {'language': language, 'rounds': rounds, 'workers': 2, 'job_cap': 4,
+        return {'language': language, 'rounds': rounds, 'runtime_thread_baseline': THREAD_BASELINES[language], 'workers': 2, 'job_cap': 4,
                 'verification_repeats_per_job': repeats, 'verified_jobs': rounds*3,
                 'wrong_domain_rejections': rounds, 'capacity_rejections': rounds,
                 'queued_cancellations': rounds, 'held_running_cancellations': rounds, 'actual_crypto_cancellations': rounds,
@@ -234,6 +242,7 @@ def main():
     parser.add_argument('--rounds', type=int, default=10)
     parser.add_argument('--warmup', type=int, default=2)
     parser.add_argument('--repeats', type=int, default=128)
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo candidate')
     args = parser.parse_args()
     assert args.rounds >= args.warmup+8 and args.warmup >= 0 and 1 <= args.repeats <= 256
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -241,10 +250,11 @@ def main():
     # Build unless the caller explicitly requests the existing labelled peers.
     if not args.skip_build:
         build(args.fetch, args.reuse_native)
+    candidates = networking_candidates(BUILD, args.mojo, args.skip_build, THREAD_BASELINES, 'offload')
     fixture, metadata = corpus()
     certificates = fixtures(BUILD / 'fixtures')
     # Focused completion-capacity checks use one real verification per job and no external hold or network loop.
-    for language in ('nim', 'odin'):
+    for language in candidates:
         with (BUILD / f'{language}-selftest.log').open('w') as output:
             process = subprocess.run([str(BUILD / f'{language}-peer'), '--offload-selftest'],
                 env={**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(fixture), 'RAGNAROK_OFFLOAD_REPEATS': '1',
@@ -260,8 +270,8 @@ def main():
         transcript = (BUILD / f'{language}-held-shutdown.log').read_text()
         assert process.returncode == 0 and 'OFFLOAD_HELD_SHUTDOWN 4' in transcript.splitlines(), transcript
         assert 'OFFLOAD_STATE 2 2 0 0 0 0 4' in transcript.splitlines() and 'OFFLOAD_JOINED 2' in transcript.splitlines(), transcript
-    results = [exercise(language, certificates, fixture, args.rounds, args.warmup, args.repeats)
-               for language in ('nim', 'odin')]
+    results = [exercise(language, certificates, fixture, args.rounds, args.warmup, args.repeats, args.mojo)
+               for language in candidates]
     (BUILD / 'results.json').write_text(json.dumps({'fixture': metadata, 'services': results}, indent=2)+'\n')
     print('PASS Bandersnatch offload: bounded workers/jobs, owned cancellation, real-crypto networking and joined shutdown', flush=True)
 

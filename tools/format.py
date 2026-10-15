@@ -1,10 +1,29 @@
 #!/usr/bin/env python3
-"""Format all project Nim/Odin sources, or check them without writing changes."""
+"""Format all project Nim/Odin/Mojo sources, or check them without writing changes."""
 import argparse
+import os
+import shutil
 from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def mojo_formatter():
+    """Resolve the pinned local SDK, an explicit override, or the installed Mojo executable."""
+    configured = os.environ.get("RAGNAROK_MOJO")
+    # An explicit SDK path lets CI and isolated developer environments select their compiler.
+    if configured:
+        return configured
+    isolated = ROOT / "build/mojo-env/bin/mojo"
+    # Prefer the project installation so formatting follows the evaluation compiler pin.
+    if isolated.is_file():
+        return str(isolated)
+    installed = shutil.which("mojo")
+    # Missing tooling is a failed check, rather than silently skipping the third language.
+    if installed is None:
+        raise SystemExit("Mojo not found; install tools/mojo-requirements.txt in build/mojo-env")
+    return installed
 
 
 def format_source(path):
@@ -12,6 +31,9 @@ def format_source(path):
     # Select the formatter and its explicit project settings from the source extension.
     if path.suffix == '.nim':
         command = ['nimpretty', '--stdin', '--indent:2', '--maxLineLen:100']
+    elif path.suffix == '.mojo':
+        # Invoke the compiler's official formatter; stdin keeps check mode read-only.
+        command = [mojo_formatter(), 'format', '--quiet', '--line-length', '100', '-']
     else:
         # Odin reads the shared config even when formatting individual files through stdin.
         command = ['odinfmt', '-stdin', f'-config:{ROOT / "odinfmt.json"}']
@@ -25,8 +47,10 @@ def main():
     parser.add_argument('--check', action='store_true', help='report differences without changing files')
     args = parser.parse_args()
     changed = []
-    # Include tests and deliberate compile-failure fixtures; both still have valid source syntax.
-    paths = sorted((ROOT / 'nim').rglob('*.nim')) + sorted((ROOT / 'odin').rglob('*.odin'))
+    # Include tests and deliberate compile-failure fixtures with valid formatter syntax.
+    paths = (sorted((ROOT / 'nim').rglob('*.nim'))
+             + sorted((ROOT / 'odin').rglob('*.odin'))
+             + sorted((ROOT / 'mojo').rglob('*.mojo')))
     for path in paths:
         formatted = format_source(path)
         # Skip files already in canonical formatter output so their timestamps remain untouched.

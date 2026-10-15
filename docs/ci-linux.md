@@ -4,7 +4,7 @@
 pull requests and manual dispatches. It uses one Ubuntu 24.04 x86-64 runner;
 there are no macOS or Windows CI jobs.
 
-The job installs native build dependencies and the existing pinned Nim 2.2.12,
+The job installs native build dependencies and the pinned Nim 2.2.12,
 Odin dev-2026-10 and odinfmt 2026-08 toolchains into temporary runner storage.
 [CI download pins](../spec/ci-toolchains.json) include SHA-256 checksums for each
 archive and the formatter compatibility patch used by the macOS Homebrew build.
@@ -20,34 +20,41 @@ through official rustup component verification in this temporary runner. The
 Rust ABI's pristine historical backend/spec sources, Cargo.lock closure and
 public SRS are independently pinned; no dependency source patches are applied.
 
+Mojo 1.1.0 and its bundled formatter are installed in `build/mojo-env` from the complete
+hash-pinned wheel closure in `tools/mojo-requirements.txt`. The build helper checks the exact
+compiler identity before compiling. See [the third-candidate contract and measurement limits](mojo.md).
+
 After checkout, `python3 tools/setup_submodules.py` initializes the recorded
 upstream source submodules and a focused JAM-vector checkout. Compiler setup
 then proceeds as before. The job runs:
 
 ```sh
 python3 tools/format.py --check
-python3 interoperability/test_codec.py
-python3 interoperability/test_crypto.py --fetch
-python3 interoperability/test_bandersnatch.py --fetch
-python3 interoperability/test_quic.py --fetch
+python3 interoperability/test_codec.py --mojo
+python3 interoperability/test_crypto.py --mojo --fetch
+python3 interoperability/test_bandersnatch.py --mojo --fetch
+python3 interoperability/test_quic.py --mojo --fetch
 python3 interoperability/test_quic_soak_harness.py
-python3 interoperability/test_quic_soak.py --skip-build
-python3 interoperability/test_quic_service.py --skip-build
-python3 interoperability/test_integration.py --reuse-native
+python3 interoperability/test_quic_soak.py --mojo --skip-build
+python3 interoperability/test_quic_service.py --mojo --skip-build
+python3 interoperability/test_quic_mesh.py --mojo --skip-build
+python3 interoperability/test_quic_resilience.py --mojo --skip-build
+python3 interoperability/test_integration.py --mojo --reuse-native
+python3 interoperability/test_quic_offload.py --mojo --reuse-native
 python3 interoperability/test_benchmark_harness.py
-python3 interoperability/benchmark.py --reuse-native
+python3 interoperability/benchmark.py --mojo --reuse-native
 ```
 
-The codec command covers both native implementations, negative compilation
+The codec command covers all three native implementations, negative compilation
 fixtures, official vectors and shared conformance cases. The crypto command
-checks both debug/release implementations, pinned RFC/Wycheproof fixtures,
+checks checked debug/release builds of all three candidates, pinned RFC/Wycheproof fixtures,
 independent hashes, ownership and concurrent native calls. It uses pristine
 BoringSSL/XKCP submodules and shares the identical BoringSSL build with QUIC.
-The new Bandersnatch step awaits a pushed Linux run. The QUIC command uses
-pinned native submodules, builds both explicit adapters without Nim
+The QUIC command uses
+pinned native submodules, builds all three explicit adapters without Nim
 packages/source patches, and runs the authenticated
 cross-language CE 143 proof and rejection cases. Dependencies are not cached.
-The new bounded soak follows the original proof using those freshly built peers;
+The bounded soak follows the original proof using those freshly built peers;
 see [its workload and budgets](quic-soak.md). Python 3.12 supports safe archive
 extraction during setup.
 
@@ -60,7 +67,11 @@ The job has read-only repository permissions. On success or failure it retains
 platform/build/test logs and crypto/QUIC results for seven days. The upload explicitly
 selects diagnostic files; generated TLS private keys are excluded.
 
-## Verification status
+## Historical verification status
+
+The following records the original two-language baseline. The expanded three-language workflow
+awaits its pushed Linux run; local Mac observations are recorded separately in
+[the Mojo parity report](../results/mojo-parity.md).
 
 [Linux run 38512012802](https://github.com/jacogr/ragnarok/actions/runs/38512012802) passed on 2026-10-14
 at commit `dd90bb6c56e150d896910594e7bc83474ec678f4`. Ubuntu 24.04 x86-64

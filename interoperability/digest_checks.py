@@ -1,4 +1,5 @@
 """Independent full work-digest oracle, pinned official vectors and shared native checks."""
+from mojo_support import codec_commands
 import json
 from pathlib import Path
 import random
@@ -183,8 +184,8 @@ def verify_digest(build, nim_flags, linker, run, encode, decode):
     request_file.write_text('\n'.join(requests) + '\n')
     outputs = []
     # Require both implementations to match independent expected results for every request.
-    for driver in drivers:
-        output = run([driver, request_file], capture_output=True).stdout.splitlines()
+    for driver in codec_commands(build, drivers, 'digest'):
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
         assert len(output) == len(expected), (driver, len(output), len(expected))
         for index, (actual, wanted) in enumerate(zip(output, expected)):
             assert actual == wanted, (driver, index, requests[index], actual, wanted)

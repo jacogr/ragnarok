@@ -1,0 +1,2 @@
+# Stable compiler and its bundled official formatter for the Mojo evaluation.
+mojo==1.1.0

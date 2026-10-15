@@ -1,7 +1,8 @@
 # macOS toolchain baseline
 
 Verified 2026-10-13 on Apple Silicon (arm64), macOS 27.0.1.
-This is a local development baseline; Linux reproducibility (M0) remains open.
+This records the original local development setup; later Linux checks are in [CI](ci-linux.md).
+The subsequently added pinned Mojo SDK and formatter are documented in [Mojo evaluation](mojo.md).
 No JAM protocol implementation or conformance tests are part of this setup.
 
 ## Recorded versions

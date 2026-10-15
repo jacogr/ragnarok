@@ -1,4 +1,5 @@
 """Independent bounded-container reference cases and native cross-language checks (stdlib only)."""
+from mojo_support import codec_commands
 import json
 from pathlib import Path
 import random
@@ -216,8 +217,8 @@ def verify_bounded(build, nim_flags, linker, run, reference_encode, reference_de
     request_file.write_text('\n'.join(requests) + '\n')
     outputs = []
     # Each adapter also asserts that every failing write/decode preserves the entire supplied destination.
-    for driver in (nim_driver, odin_driver):
-        output = run([driver, request_file], capture_output=True).stdout.splitlines()
+    for driver in codec_commands(build, (nim_driver, odin_driver), 'bounded'):
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
         assert len(output) == len(expected), (driver, len(output), len(expected))
         # Preserve the failing request in the assertion so any semantic mismatch can be replayed exactly.
         for index, (actual, wanted) in enumerate(zip(output, expected)):

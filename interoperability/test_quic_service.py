@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Persistent-engine multi-peer regression, distinct from throughput benchmarking."""
+from mojo_support import networking_candidates
 import argparse
+from functools import partial
 import json
 import os
 import platform
@@ -8,19 +10,22 @@ import re
 import socket
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures
+from test_quic import BUILD, build_peers, dependencies, fixtures, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
 
 
 # Keep one listener PID/engine alive while observing bounded resource use and native application markers.
-def wait_service(server, log, predicate, peaks, seconds=10):
+def wait_service(server, log, predicate, peaks, seconds=10, thread_limit=1):
     deadline = time.monotonic() + seconds
     # A failed/dead listener cannot satisfy a later observation using stale log output.
     while True:
         text = log.read_text()
         assert server.poll() is None, ('listener exited', server.returncode, text[-4000:])
         sample = resources(server.pid)
-        assert sample['threads'] == 1 and sample['rss_bytes'] < 256 * 1024 * 1024, sample
+        assert 1 <= sample['threads'] <= thread_limit and sample['rss_bytes'] < 256 * 1024 * 1024, (sample, thread_limit)
+        # SDK workers may still be starting before the first native readiness/authentication marker.
+        if any(line == 'READY' or line == 'AUTH_OK' or line.startswith('MESH_READY ') for line in text.splitlines()):
+            assert sample['threads'] == thread_limit, ('changed fixed runtime thread count', sample, thread_limit)
         # Aggregate high-water observations without inspecting descriptor contents or private keys.
         for metric, value in sample.items():
             peaks[metric] = max(peaks.get(metric, 0), value)
@@ -31,7 +36,10 @@ def wait_service(server, log, predicate, peaks, seconds=10):
 
 
 # Exercise one language's listener with both client languages, independent identities and reconnect waves.
-def service(language, folder, rounds, warmup):
+def service(language, folder, rounds, warmup, include_mojo=False):
+    thread_limit = THREAD_BASELINES[language]
+    # A fixed startup pool is measured separately; native streams may never add threads.
+    wait = partial(wait_service, thread_limit=thread_limit)
     directory = BUILD / 'service' / language
     directory.mkdir(parents=True, exist_ok=True)
     stop = directory / f'stop-{time.time_ns()}'
@@ -50,6 +58,9 @@ def service(language, folder, rounds, warmup):
 
     # Each dial uses a fresh client process/connection; only the server's engine is persistent in this round.
     def client(iteration, name, implementation, identity, mode, alpn='jamnp-s/1/00000000'):
+        # Rotate roles through all three clients while preserving the same admission/resource workload.
+        if include_mojo:
+            implementation = ('nim', 'odin', 'mojo')[(iteration + int(implementation == 'odin')) % 3]
         path = directory / f'{iteration}-{name}.log'
         output = path.open('w')
         handles.append(output)
@@ -62,7 +73,7 @@ def service(language, folder, rounds, warmup):
 
     accepted = 0
     try:
-        wait_service(server, log, lambda text: 'READY\n' in text, peaks)
+        wait(server, log, lambda text: 'READY\n' in text, peaks)
         # Repeated waves use the same identities but new connections, proving reconnect after retirement.
         for iteration in range(rounds):
             before = log.read_text()
@@ -70,7 +81,7 @@ def service(language, folder, rounds, warmup):
             isolated = before.count('ISOLATED_HEALTHY\n')
             mixed = [client(iteration, 'mixed-nim', 'nim', 'b', 'mixed'),
                      client(iteration, 'mixed-odin', 'odin', 'c', 'mixed')]
-            wait_service(server, log, lambda text: text.count('BACKPRESSURE\n') >= blocked + 2, peaks)
+            wait(server, log, lambda text: text.count('BACKPRESSURE\n') >= blocked + 2, peaks)
             # TLS rejection overlaps healthy peers and must not terminate or poison the shared listener.
             rejected = client(iteration, 'rejected', 'nim' if iteration % 2 == 0 else 'odin',
                               'wrong-san' if iteration % 2 == 0 else 'b', 'clean',
@@ -79,14 +90,14 @@ def service(language, folder, rounds, warmup):
             # Kill an authenticated peer at the first and final wave; the transport's idle deadline retires it.
             if iteration in (0, rounds - 1):
                 crash = client(iteration, 'crashed', 'odin' if language == 'nim' else 'nim', 'e', 'mixed')
-                wait_service(server, log, lambda text: re.search(r'^PEERS [3-9]\d*$', text[len(before):], re.M), peaks)
+                wait(server, log, lambda text: re.search(r'^PEERS [3-9]\d*$', text[len(before):], re.M), peaks)
                 crash[0].kill()
                 crash[0].wait(timeout=5)
                 accepted += 1
             # Separate healthy connections must complete while the mixed peers own parked writes.
             healthy = [client(iteration, 'healthy-nim', 'nim', 'd', 'clean'),
                        client(iteration, 'healthy-odin', 'odin', 'e', 'clean')]
-            wait_service(server, log, lambda text: text.count('ISOLATED_HEALTHY\n') > isolated, peaks)
+            wait(server, log, lambda text: text.count('ISOLATED_HEALTHY\n') > isolated, peaks)
             # Exact client outcomes distinguish framed exchanges from merely authenticated TLS sessions.
             for process, path in healthy + mixed:
                 assert process.wait(timeout=8) == 0, (path.name, path.read_text())
@@ -98,10 +109,11 @@ def service(language, folder, rounds, warmup):
             assert 'EXCHANGE_OK' not in rejected[1].read_text(), rejected[1].read_text()
             accepted += 4
             # Native idle markers require zero retained connections AND zero live native-language stream slots.
-            text = wait_service(server, log, lambda text: f'SERVICE_IDLE {accepted} {accepted} ' in text, peaks)
+            text = wait(server, log, lambda text: f'SERVICE_IDLE {accepted} {accepted} ' in text, peaks)
             matches = re.findall(rf'^SERVICE_IDLE {accepted} {accepted} (\d+)(?: (\d+))?$', text, re.M)
             assert len(matches) == 1, ('missing or duplicate idle observation', text[-2000:])
             sample = resources(server.pid)
+            sample['thread_baseline'] = thread_limit
             sample['allocated_bytes'] = int(matches[0][0])
             # Odin retains only one receive and one timer while the service stays live; cancellation drains both at exit.
             if language == 'odin':
@@ -124,7 +136,7 @@ def service(language, folder, rounds, warmup):
             assert len(clean) == 1 and int(clean[0][1]) <= int(clean[0][0]) + 65536, clean
         if language == 'odin':
             assert 'SERVICE_CLEAN 0 0\n' in log.read_text(), log.read_text()[-4000:]
-        return {'language': language, 'persistent_server_pid': server.pid, 'rounds': rounds,
+        return {'language': language, 'thread_baseline': thread_limit, 'persistent_server_pid': server.pid, 'rounds': rounds,
                 'accepted_and_retired_connections': accepted, 'peak_connections': peak,
                 'isolated_healthy_outcomes': text.count('ISOLATED_HEALTHY\n'),
                 'elapsed_seconds': time.monotonic() - started, 'peaks': peaks, 'idle': idle, 'growth': growth}
@@ -146,23 +158,25 @@ def main():
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--rounds', type=int, default=16)
     parser.add_argument('--warmup', type=int, default=4)
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo candidate')
     args = parser.parse_args()
     assert 12 <= args.rounds <= 32 and 0 <= args.warmup <= args.rounds - 8, 'Invalid bounded service extent'
     BUILD.mkdir(parents=True, exist_ok=True)
     if not args.skip_build:
         build_peers(dependencies(args.fetch))
+    candidates = networking_candidates(BUILD, args.mojo, args.skip_build, THREAD_BASELINES)
     folder = fixtures()
     output = BUILD / 'service/results.json'
     output.parent.mkdir(exist_ok=True)
     report = {'platform': platform.platform(), 'rounds': args.rounds, 'warmup': args.warmup,
               'complete': False, 'persistent_client_engines': False,
-              'limits': {'active_rss_bytes': 256 * 1024 * 1024, 'threads': 1,
+              'limits': {'active_rss_bytes': 256 * 1024 * 1024, 'threads': dict(THREAD_BASELINES),
                          'idle_rss_range_bytes': 16 * 1024 * 1024, 'idle_descriptor_range': 2,
                          'idle_allocation_range_bytes': 65536}, 'servers': []}
     try:
-        # Both persistent listeners receive the same mix of independent Nim and Odin clients.
-        for language in ('nim', 'odin'):
-            report['servers'].append(service(language, folder, args.rounds, args.warmup))
+        # Every retained listener receives the same balanced mix of enabled native clients.
+        for language in candidates:
+            report['servers'].append(service(language, folder, args.rounds, args.warmup, args.mojo))
             output.write_text(json.dumps(report, indent=2) + '\n')
     except Exception as error:
         report['failure'] = str(error)
@@ -170,7 +184,7 @@ def main():
         raise
     report['complete'] = True
     output.write_text(json.dumps(report, indent=2) + '\n')
-    print(f'PASS persistent QUIC: {2 * args.rounds} multi-peer waves; two engine lifetimes', flush=True)
+    print(f'PASS persistent QUIC: {len(candidates) * args.rounds} multi-peer waves; {len(candidates)} engine lifetimes', flush=True)
 
 
 # Importing this harness neither builds nor launches network peers.

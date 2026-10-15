@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Build pinned isolated QUIC dependencies and verify authenticated JAMNP-S CE 143 peers."""
+from mojo_support import networking_candidates
 import argparse
+from mojo_support import build_quic, runtime_threads
 import concurrent.futures
 import hashlib
 import json
@@ -16,6 +18,9 @@ from dependencies import require_submodule
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'build/quic'
 PINS = json.loads((ROOT / 'spec/quic-proof-pins.json').read_text())
+
+# Native callback peers create no per-stream workers; Mojo has a separately measured fixed SDK startup pool.
+THREAD_BASELINES = {"nim": 1, "odin": 1}
 
 
 # Run structured commands without shell interpolation; append diagnostics to a retained reproducible build log.
@@ -173,7 +178,7 @@ def attempt(case, folder):
             if scenario == 'no-fin':
                 time.sleep(0.1)
                 observed_threads = {'server': thread_count(process.pid), 'client': thread_count(client_process.pid)}
-                assert observed_threads == {'server': 1, 'client': 1}, (case, observed_threads)
+                assert observed_threads == {'server': THREAD_BASELINES[server_language], 'client': THREAD_BASELINES[client_language]}, (case, observed_threads, THREAD_BASELINES)
             client_out, client_err = client_process.communicate(timeout=4)
             result = subprocess.CompletedProcess(client, client_process.returncode, client_out, client_err)
             process.wait(timeout=4)
@@ -200,24 +205,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fetch', action='store_true', help='fetch missing exact source commits into ignored build storage')
     parser.add_argument('--skip-build', action='store_true', help='reuse previously built native peers')
+    parser.add_argument('--mojo', action='store_true', help='include the pinned native Mojo candidate')
     args = parser.parse_args()
     BUILD.mkdir(parents=True, exist_ok=True)
     if not args.skip_build:
         build_peers(dependencies(args.fetch))
-    run([BUILD / 'nim-peer', '--selftest'])
-    run([BUILD / 'odin-peer', '--selftest'])
-    run([BUILD / 'nim-peer', '--io-selftest'])
-    run([BUILD / 'odin-peer', '--io-selftest'])
+    candidates = networking_candidates(BUILD, args.mojo, args.skip_build, THREAD_BASELINES)
+    # Every candidate exercises its own DER/framing and POSIX readiness implementation.
+    for language in candidates:
+        run([BUILD / f'{language}-peer', '--selftest'])
+        run([BUILD / f'{language}-peer', '--io-selftest'])
     folder = fixtures()
     scenarios = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',
                  'wrong-server-key', 'wrong-alpn', 'bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')
-    cases = [(server, client, scenario) for server, client in (('nim', 'nim'), ('odin', 'odin'), ('nim', 'odin'), ('odin', 'nim')) for scenario in scenarios]
+    cases = [(server, client, scenario) for server, client in [(a, b) for a in candidates for b in candidates] for scenario in scenarios]
     # Independent cases may overlap, but each native peer still owns a single event loop for all its streams.
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(lambda case: attempt(case, folder), cases))
     (BUILD / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
-    print('PASS QUIC: 64 peer pairs; 4 valid x 8 concurrent CE 143 requests; '
-          '36 TLS/identity rejections; 24 authenticated protocol rejections', flush=True)
+    print(f'PASS QUIC: {len(cases)} cases across {len(candidates)**2} directed peer pairings', flush=True)
 
 
 # Importing this module never fetches dependencies, creates keys or opens a UDP listener.

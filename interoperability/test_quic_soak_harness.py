@@ -5,10 +5,20 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from test_quic_soak import wait_marker
+from mojo_support import networking_candidates
 
 
 # Exercise orchestration independently of native sockets; preserve the real deadline and resource assertions.
 class MarkerTests(unittest.TestCase):
+    # Direct CLI execution and imported harnesses must update the caller's same baseline mapping.
+    def test_candidate_baseline_uses_callers_mapping(self):
+        baselines = {'nim': 1, 'odin': 1}
+        with patch('mojo_support.runtime_threads', return_value=9) as probe:
+            candidates = networking_candidates(Path('/unused'), True, True, baselines)
+        self.assertEqual(candidates, ('nim', 'odin', 'mojo'))
+        self.assertEqual(baselines, {'nim': 1, 'odin': 1, 'mojo': 9})
+        probe.assert_called_once_with(Path('/unused/mojo-peer'))
+
     # The Linux failure inserted a receive-buffer warning between cleanup and the next listener's readiness.
     def test_interleaved_warning_does_not_hide_ready(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -57,6 +67,47 @@ class MarkerTests(unittest.TestCase):
                 process.poll.return_value = None
                 with patch('test_quic_soak.resources', return_value=sample), self.assertRaises(AssertionError):
                     wait_marker({'server': process}, {'server': log}, 'server', 'READY', {'server': {}}, occurrences=2)
+
+    # Preserve raw SDK startup counts while still rejecting any new stream/connection worker.
+    def test_explicit_fixed_runtime_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'server.log'
+            log.write_text('waiting\n')
+            process = Mock(pid=123)
+            process.poll.return_value = None
+            for count in (9, 10):
+                sample = {'rss_bytes': 1024, 'threads': count, 'descriptors': 5}
+                with patch('test_quic_soak.resources', return_value=sample), patch(
+                        'test_quic_soak.time.sleep', side_effect=lambda _: log.write_text('READY\n')):
+                    if count == 9:
+                        peaks = {'server': {}}
+                        wait_marker({'server': process}, {'server': log}, 'server', 'READY', peaks,
+                                    thread_limits={'server': 9})
+                        self.assertEqual(peaks['server']['threads'], 9)
+                    else:
+                        log.write_text('waiting\n')
+                        with self.assertRaises(AssertionError):
+                            wait_marker({'server': process}, {'server': log}, 'server', 'READY', {'server': {}},
+                                        thread_limits={'server': 9})
+
+    # A fast Linux sample may precede SDK worker startup, but authentication requires the full fixed pool.
+    def test_startup_count_is_not_a_post_authentication_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'server.log'
+            process = Mock(pid=123)
+            process.poll.return_value = None
+            sample = {'rss_bytes': 1024, 'threads': 1, 'descriptors': 5}
+            for authenticated in (False, True):
+                log.write_text('AUTH_OK\n' if authenticated else 'starting\n')
+                with patch('test_quic_soak.resources', return_value=sample), patch(
+                        'test_quic_soak.time.sleep', side_effect=lambda _: log.write_text('FINISH\n')):
+                    if authenticated:
+                        with self.assertRaises(AssertionError):
+                            wait_marker({'server': process}, {'server': log}, 'server', 'FINISH', {'server': {}},
+                                        thread_limits={'server': 9})
+                    else:
+                        wait_marker({'server': process}, {'server': log}, 'server', 'FINISH', {'server': {}},
+                                    thread_limits={'server': 9})
 
     # An absent listener remains a bounded failure even if unrelated diagnostics keep arriving.
     def test_progress_deadline_still_rejects(self):

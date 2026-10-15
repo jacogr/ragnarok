@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Build native implementations and cross-check pinned fixtures. Python stdlib only."""
+import argparse
 import hashlib
+from mojo_support import build_codec, codec_commands, type_checks
 import json
 from pathlib import Path
 import platform
@@ -223,8 +225,8 @@ def verify_fixed(build, nim_flags, linker):
     request_file.write_text('\n'.join(requests) + '\n')
     outputs = []
     # Each native implementation must match the same independent results, including empty output lines.
-    for driver in (nim_driver, odin_driver):
-        output = run([driver, request_file], capture_output=True).stdout.splitlines()
+    for driver in codec_commands(build, (nim_driver, odin_driver), 'fixed'):
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
         assert len(output) == len(expected), (driver, len(output), len(expected))
         # Keep the exact failing request and observed/expected response in the diagnostic.
         for index, (actual, wanted) in enumerate(zip(output, expected)):
@@ -238,6 +240,9 @@ def verify_fixed(build, nim_flags, linker):
 
 # Build and check both languages, then compare the same request corpus with the reference results.
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mojo", action="store_true", help="also verify both pinned Mojo build modes")
+    args = parser.parse_args()
     codec_sources()
     nim_version = run(['nim', '--version'], capture_output=True).stdout
     odin_version = run(['odin', 'version'], capture_output=True).stdout
@@ -251,6 +256,10 @@ def main():
     # Keep all binaries and generated inputs in temporary storage that is cleaned up even on failure.
     with tempfile.TemporaryDirectory(prefix='ragnarok-codec-') as temporary:
         build = Path(temporary)
+        # Explicit Mojo evaluation adds native binaries to every existing independent codec corpus.
+        if args.mojo:
+            build_codec(build, run)
+            print(f"PASS Mojo: {type_checks(build)} negative compilation checks", flush=True)
         nim_flags = ['--mm:arc', f'--nimcache:{build / "nimcache"}']
         run(['nim', 'check', '--mm:arc', ROOT / 'nim/src/natural.nim'])
         run(['nim', 'c', *nim_flags, f'--out:{build / "nim-tests"}', '-r', ROOT / 'nim/tests/test_natural.nim'])
@@ -333,8 +342,8 @@ def main():
         request_file.write_text('\n'.join(requests) + '\n')
         outputs = []
         # Run each native adapter on the exact same request file and require one response per request.
-        for driver in (nim_driver, odin_driver):
-            output = run([driver, request_file], capture_output=True).stdout.splitlines()
+        for driver in codec_commands(build, (nim_driver, odin_driver), 'natural'):
+            output = run([*driver, request_file], capture_output=True).stdout.splitlines()
             assert len(output) == len(expected), (driver, len(output), len(expected))
             # Compare each response with its expected value/error and retain the failing request in the diagnostic.
             for index, (actual, wanted) in enumerate(zip(output, expected)):
