@@ -1,0 +1,8 @@
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+/Users/jacogr/Projects/jacogr/ragnarok/build/ergonomics/abi-layout.mojo:6:8: error: all members of 'RegisterPassable' struct must themselves be 'RegisterPassable'
+struct CertFields(RegisterPassable):
+       ^
+/Users/jacogr/Projects/jacogr/ragnarok/build/ergonomics/abi-layout.mojo:14:5: note: 'key' declared with type 'Array[UInt8, Int(32)]'
+    var key: Array[UInt8, 32]
+    ^
+/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo: error: failed to parse the provided Mojo source module

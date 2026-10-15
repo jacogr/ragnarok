@@ -1,0 +1,652 @@
+{
+  "kind": "measured static snapshot, not development-history metrics",
+  "definition": "Physical nonblank noncomment source lines, imports/declarations/braces included; explicit embedded tests excluded. POC profile/control implementation remains included.",
+  "baseline_revision": "cd0dbd0b01c48bf995535d63a9ea61259b39f9f4",
+  "manifest_sha256": "a4b521e503eabb02b82be518cff64dfdf888f1fea18d1382f55551024f57604c",
+  "tool_sha256": "4b807b8fa8fe0486494d5607a2a3eba219b1127c015efc2cb5e5f11752f70bec",
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "python": "3.14.2 (main, Jan  3 2026, 19:07:32) [Clang 13.1.6 (clang-1316.0.21.2.5)]",
+    "tools": {
+      "nim": {
+        "command": [
+          "nim",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "Nim Compiler Version 2.2.12 [MacOSX: arm64]\nCompiled at 2026-09-08\nCopyright (c) 2006-2026 by Andreas Rumpf\n\nactive boot switches: -d:release -d:nimUseLinenoise",
+        "stderr": ""
+      },
+      "odin": {
+        "command": [
+          "odin",
+          "version"
+        ],
+        "returncode": 0,
+        "stdout": "/opt/homebrew/bin/odin version dev-2026-10:84bc3fc21",
+        "stderr": ""
+      },
+      "mojo": {
+        "command": [
+          "/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "Mojo 1.1.0 (8189361e)",
+        "stderr": ""
+      },
+      "clang": {
+        "command": [
+          "clang",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "Apple clang version 21.0.0 (clang-2100.3.34.2)\nTarget: arm64-apple-darwin27.0.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+        "stderr": ""
+      },
+      "rust": {
+        "command": [
+          "rustc",
+          "--version"
+        ],
+        "returncode": 0,
+        "stdout": "rustc 1.99.0 (b940084d7 2026-09-28)",
+        "stderr": ""
+      }
+    },
+    "configuration_sha256": {
+      ".editorconfig": "564b32b452eca52dbf6c818d4f52897a8bb71f340ace6ddbaaa33d6e7252a969",
+      "odinfmt.json": "6e775b94b4849c952e24f237ac3cb96357d25d1c4cb3d084b8cdf5eafa5b78ea",
+      "tools/format.py": "423a07db2689be53209bafab39471da9be1933065fbfcc7ef4495687ebb239ec",
+      "tools/mojo-requirements.txt": "0530e9c7b870b1bb2d3d1c85c49311ef2ff1629ac826d0eb51177e393dadc675",
+      "spec/ci-toolchains.json": "054af5a827611f444fefa651500af61c1c6baf742f3bf86a850e61e916bb4fc0",
+      "spec/quic-proof-pins.json": "fb95f53d6d94873fdb07ab03efe129836de45111ee16ac9a0bb01783608cea96",
+      "spec/crypto-pins.json": "04dc6dc13391a1a39bfe407f34f7402084d7ae58abe5985906ca0c1e8d5ccd4a",
+      "spec/bandersnatch-pins.json": "bc5fde67e5a687a8a3c1d681b588fcf4627f870c456819bf061b7704990f4938",
+      "spec/mojo-pins.json": "2242ea59d70fd75afa8216b0343448a23169f88220f2015d814beebef7658d66",
+      ".github/workflows/linux.yml": "2857f8a19e3e8cd2fce406a7fcb1c31c6f353166803a487bb47dec5472495960"
+    }
+  },
+  "totals": {
+    "nim": {
+      "M1": 705,
+      "M2": 269,
+      "M3": 1174
+    },
+    "odin": {
+      "M1": 1072,
+      "M2": 379,
+      "M3": 1549
+    },
+    "mojo": {
+      "M1": 944,
+      "M2": 385,
+      "M3": 2055,
+      "M3 C support": 146
+    }
+  },
+  "files": [
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/bounded.nim",
+      "sha256": "6a254baeee9bdb0d3e281f37f8de2d4419209c70c941544be3756cfd8f05dcda",
+      "exclude": [],
+      "physical_lines": 172,
+      "implementation_loc": 114,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/composite.nim",
+      "sha256": "8b7edf3872743d28f212dca021ecd75f4249af22309c7925cff4c05713d6b546",
+      "exclude": [],
+      "physical_lines": 293,
+      "implementation_loc": 218,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/fixed_unsigned.nim",
+      "sha256": "ab79b3861a1600507ab0f964640c28210ad97c4a7b403c33cf63fea012457930",
+      "exclude": [],
+      "physical_lines": 67,
+      "implementation_loc": 42,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/natural.nim",
+      "sha256": "873bc72bf914e7e87ec2ebdb1acc09ce4efb2690377175669fb73c4d0db08a4b",
+      "exclude": [],
+      "physical_lines": 73,
+      "implementation_loc": 46,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/owned.nim",
+      "sha256": "f41b36e551c92c1fe531300ae2e4ec288d0c1c560bdebd8778722415d6b17628",
+      "exclude": [],
+      "physical_lines": 269,
+      "implementation_loc": 187,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M1",
+      "path": "nim/src/work_digest.nim",
+      "sha256": "451f4d3b3495e4077728c3c9a8516d9c0ab302f0c53f6190f5880608853270c0",
+      "exclude": [],
+      "physical_lines": 138,
+      "implementation_loc": 98,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M2",
+      "path": "nim/bandersnatch/bandersnatch.nim",
+      "sha256": "33939eb62561ade6ed0177e729209fe8ff5e50ce1baebc4656bdc82b9da647f1",
+      "exclude": [],
+      "physical_lines": 283,
+      "implementation_loc": 184,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M2",
+      "path": "nim/crypto/primitives.nim",
+      "sha256": "316b05f04fcf6b7980f69421d0c4d628246eb33af164f7d22ddc2e76f9772fbf",
+      "exclude": [],
+      "physical_lines": 141,
+      "implementation_loc": 85,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "nim",
+      "group": "M3",
+      "path": "nim/quic/integration.nim",
+      "sha256": "773a111675ae0b2f760a53bcd79cd84665be7aef8cb633106ca813157ed8556c",
+      "exclude": [
+        {
+          "start": 100,
+          "end": 125,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 125,
+      "implementation_loc": 74,
+      "excluded_code_lines": 25
+    },
+    {
+      "language": "nim",
+      "group": "M3",
+      "path": "nim/quic/mesh.nim",
+      "sha256": "62f31646ba3fa7225eb65026133c47aa36cd2c7c8bb67dc6ce5899e055bec64b",
+      "exclude": [
+        {
+          "start": 12,
+          "end": 30,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 180,
+      "implementation_loc": 128,
+      "excluded_code_lines": 15
+    },
+    {
+      "language": "nim",
+      "group": "M3",
+      "path": "nim/quic/offload.nim",
+      "sha256": "4a1b9d554b455c15ae60e5e56d52bf8102c68ab11f75c109a5ff86ad1a463c96",
+      "exclude": [
+        {
+          "start": 238,
+          "end": 290,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 290,
+      "implementation_loc": 208,
+      "excluded_code_lines": 47
+    },
+    {
+      "language": "nim",
+      "group": "M3",
+      "path": "nim/quic/peer.nim",
+      "sha256": "76adf56fd87ea7f9e298b318c9ac44eb9e136949c50f777d30df17aededc1492",
+      "exclude": [
+        {
+          "start": 618,
+          "end": 660,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        },
+        {
+          "start": 674,
+          "end": 697,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 730,
+      "implementation_loc": 530,
+      "excluded_code_lines": 55
+    },
+    {
+      "language": "nim",
+      "group": "M3",
+      "path": "nim/quic/transport.nim",
+      "sha256": "3c938b88f5f7d55de207c49a33c7d456ad5d859bc6c5fcbffac49e794db71201",
+      "exclude": [
+        {
+          "start": 333,
+          "end": 355,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 355,
+      "implementation_loc": 234,
+      "excluded_code_lines": 21
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/bounded.odin",
+      "sha256": "83ef6bdeac0047ecec37261ae4c9aa6faba6b950cb2da4b31f9d9b0cc441e0c7",
+      "exclude": [],
+      "physical_lines": 206,
+      "implementation_loc": 154,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/composite.odin",
+      "sha256": "2b470d36361c905327f485f65dbd553ffb00d7c241d9fa8a035e8a71c8adb53a",
+      "exclude": [],
+      "physical_lines": 386,
+      "implementation_loc": 332,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/fixed_unsigned.odin",
+      "sha256": "c9d8fd9393ace854f794c0dd4c64e226c33d21845ee756c89b9182239a0d0c92",
+      "exclude": [],
+      "physical_lines": 77,
+      "implementation_loc": 54,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/natural.odin",
+      "sha256": "fafbf83b85b34f9862ef7b51893829388c1fed6f217b1ecfb25e8d2ad9989404",
+      "exclude": [],
+      "physical_lines": 86,
+      "implementation_loc": 59,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/owned.odin",
+      "sha256": "26bdd5828054f2ea17f068a1012e0c50713d461d2f97d0d5b168a15c8015b236",
+      "exclude": [],
+      "physical_lines": 423,
+      "implementation_loc": 335,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/result.odin",
+      "sha256": "f9451b3aa63a9d822adf301aed4cfbc02005283810f8c74345110082fb13115e",
+      "exclude": [],
+      "physical_lines": 24,
+      "implementation_loc": 16,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M1",
+      "path": "odin/codec/work_digest.odin",
+      "sha256": "fde06bec42d4bc1ba0e132f5fe57cfc09cb39bbb818fa3b6340a71116c4e7621",
+      "exclude": [],
+      "physical_lines": 153,
+      "implementation_loc": 122,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M2",
+      "path": "odin/bandersnatch/bandersnatch.odin",
+      "sha256": "8e87d6285e711e4ad6d38fbc57a8283d283d1839c4c51ba27eee30271c8f2e64",
+      "exclude": [],
+      "physical_lines": 334,
+      "implementation_loc": 253,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M2",
+      "path": "odin/crypto/primitives.odin",
+      "sha256": "42e26458bb8d1e5082d5a7c4fe287db22268117f524d3920ed43ce073beed2dd",
+      "exclude": [],
+      "physical_lines": 171,
+      "implementation_loc": 126,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "odin",
+      "group": "M3",
+      "path": "odin/quic/integration.odin",
+      "sha256": "2395bc87f0ca3c4f1c2fc5b03e75381899c727ba4b52f8fdfe380e5367a9e37a",
+      "exclude": [
+        {
+          "start": 104,
+          "end": 133,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 133,
+      "implementation_loc": 84,
+      "excluded_code_lines": 30
+    },
+    {
+      "language": "odin",
+      "group": "M3",
+      "path": "odin/quic/mesh.odin",
+      "sha256": "54c6c59de2d3c61464390415008cc6ff122f4b9743efbc488e116f1ec9966603",
+      "exclude": [
+        {
+          "start": 30,
+          "end": 52,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 328,
+      "implementation_loc": 269,
+      "excluded_code_lines": 19
+    },
+    {
+      "language": "odin",
+      "group": "M3",
+      "path": "odin/quic/offload.odin",
+      "sha256": "609d5d87d07c090f3d92471bd48fba38db5200283a3f2de2bf9bb3821ffa6371",
+      "exclude": [
+        {
+          "start": 300,
+          "end": 363,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 363,
+      "implementation_loc": 268,
+      "excluded_code_lines": 59
+    },
+    {
+      "language": "odin",
+      "group": "M3",
+      "path": "odin/quic/peer.odin",
+      "sha256": "3a6868fc25c7845b685ae55ebc6a986e02482b79a79d484d40be1dc9316c3ccb",
+      "exclude": [
+        {
+          "start": 968,
+          "end": 1055,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        },
+        {
+          "start": 1060,
+          "end": 1060,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        },
+        {
+          "start": 1062,
+          "end": 1078,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 1136,
+      "implementation_loc": 928,
+      "excluded_code_lines": 85
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/bounded.mojo",
+      "sha256": "a335ef86dc7cbb1883dbfac749e92880fecd0593bb7dd1d178b72ff42e05b4b9",
+      "exclude": [],
+      "physical_lines": 183,
+      "implementation_loc": 131,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/composite.mojo",
+      "sha256": "fb3f41118086929ad981813a6ea5cc2be54137f16ddc0c456759ea72a04339f8",
+      "exclude": [],
+      "physical_lines": 329,
+      "implementation_loc": 241,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/digest.mojo",
+      "sha256": "d4524368130f3a4ae55b2f9272e07002534f2d3e974e90480d54caea4e15e6f6",
+      "exclude": [],
+      "physical_lines": 158,
+      "implementation_loc": 121,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/owned.mojo",
+      "sha256": "3ad6bcfafe960b292963433a9452903f039132eabdba48d65650f6ae6e949994",
+      "exclude": [],
+      "physical_lines": 306,
+      "implementation_loc": 210,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/scalar.mojo",
+      "sha256": "825172498045c878968fc162733efcd5d8be510a086ac856afb91e3991c8b495",
+      "exclude": [],
+      "physical_lines": 95,
+      "implementation_loc": 64,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M1",
+      "path": "mojo/codec/types.mojo",
+      "sha256": "4ae9e015d71094e36b892a6dd8b578eb8f3b9b75e9d2ec7ab2e19179f11fdd64",
+      "exclude": [],
+      "physical_lines": 288,
+      "implementation_loc": 177,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M2",
+      "path": "mojo/bandersnatch/primitives.mojo",
+      "sha256": "333d88010c0fc3c8366461532b045efc2848d626983aa301db073e3097efc261",
+      "exclude": [],
+      "physical_lines": 366,
+      "implementation_loc": 255,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M2",
+      "path": "mojo/crypto/primitives.mojo",
+      "sha256": "78f71231a5e1163d8d0f02f67be2a8ede3250188677ea1263469196601b0f577",
+      "exclude": [],
+      "physical_lines": 191,
+      "implementation_loc": 130,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/quic/core.mojo",
+      "sha256": "3a5a83a158883acbc2a3b75821e472e15c911120a1146f3c4b1c827f27de7626",
+      "exclude": [
+        {
+          "start": 1313,
+          "end": 1387,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        },
+        {
+          "start": 7,
+          "end": 7,
+          "reason": "test-only import"
+        }
+      ],
+      "physical_lines": 1387,
+      "implementation_loc": 1077,
+      "excluded_code_lines": 74
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/quic/integration.mojo",
+      "sha256": "21f5934b93daa710feb0d4f88a22f97b873260ec2e3bcc2e8a93e94567276ba2",
+      "exclude": [
+        {
+          "start": 161,
+          "end": 202,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 202,
+      "implementation_loc": 105,
+      "excluded_code_lines": 32
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/quic/mesh.mojo",
+      "sha256": "ba676d9cd3a1701d06f34519c68c8e8cdef9c7ea67c38e40baf946e208791883",
+      "exclude": [
+        {
+          "start": 24,
+          "end": 43,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 406,
+      "implementation_loc": 320,
+      "excluded_code_lines": 16
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/quic/offload.mojo",
+      "sha256": "525bb084988ae192e17fe365a96d5790a40002582246e163b8acd28f49335e03",
+      "exclude": [
+        {
+          "start": 439,
+          "end": 529,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        }
+      ],
+      "physical_lines": 529,
+      "implementation_loc": 323,
+      "excluded_code_lines": 66
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/quic/peer.mojo",
+      "sha256": "77f0b74301523f7d84c8ed37e00e4d9d0f51e8a8cb0187bccdb6ce84049d5508",
+      "exclude": [
+        {
+          "start": 20,
+          "end": 53,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        },
+        {
+          "start": 6,
+          "end": 6,
+          "reason": "test-only import"
+        }
+      ],
+      "physical_lines": 87,
+      "implementation_loc": 42,
+      "excluded_code_lines": 31
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/quic/selftests.mojo",
+      "sha256": "7aebe6e402cd73f69ed9cb2266caab1df39a074a9091f4361ce48a8eb8a8ea3a",
+      "exclude": [
+        {
+          "start": 28,
+          "end": 72,
+          "reason": "embedded selftest, fuzz, diagnostic probe, test helper or test-only dispatch"
+        },
+        {
+          "start": 1,
+          "end": 1,
+          "reason": "test-only import"
+        }
+      ],
+      "physical_lines": 72,
+      "implementation_loc": 17,
+      "excluded_code_lines": 34
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/quic/transport.mojo",
+      "sha256": "1bd4c431c8df515d2a24a19a7a4d7b241b1d7b39fd59b3f80bc2067d48234b66",
+      "exclude": [],
+      "physical_lines": 229,
+      "implementation_loc": 164,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M3 C support",
+      "path": "interoperability/mojo/os.c",
+      "sha256": "c70bdc75d0c62116285b16b3e73fe567b99dc9435d29988a400a91203e2caff8",
+      "exclude": [],
+      "physical_lines": 182,
+      "implementation_loc": 146,
+      "excluded_code_lines": 0
+    },
+    {
+      "language": "mojo",
+      "group": "M3",
+      "path": "mojo/tests/support.mojo",
+      "sha256": "201528a515763d4ad434ac1aa52ffff4f2e59129f1378ea726314b3163416120",
+      "exclude": [
+        {
+          "start": 1,
+          "end": 26,
+          "reason": "test-only imports and unsigned parser"
+        },
+        {
+          "start": 38,
+          "end": 88,
+          "reason": "hex/sentinel test utilities; retain only signed/capacity helpers consumed by native QUIC"
+        }
+      ],
+      "physical_lines": 88,
+      "implementation_loc": 7,
+      "excluded_code_lines": 48
+    }
+  ]
+}

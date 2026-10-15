@@ -1,0 +1,3 @@
+/Users/jacogr/Projects/jacogr/ragnarok/odin/tests/compile_fail/mutable_owner.odin(5:11) Error: 'Owned_Storage' is not declared by 'codec' 
+	storage: codec.Owned_Storage 
+	         ^~~~~~~~~~~~~~~~~~^ 

@@ -117,6 +117,9 @@ jobs:
       - name: Benchmark evidence integrity checks
         run: python3 interoperability/test_benchmark_harness.py
 
+      - name: Ergonomics measurement integrity
+        run: python3 tools/ergonomics/test_tools.py
+
       - name: Optimized checked codec and hash comparison
         run: python3 interoperability/benchmark.py --mojo --reuse-native 2>&1 | tee build/ci/benchmark.log
 

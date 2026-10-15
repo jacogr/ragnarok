@@ -1,0 +1,12 @@
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+......................................................................
+/Users/jacogr/Projects/jacogr/ragnarok/nim/tests/compile_fail/natural_as_fixed.nim(5, 20) Error: type mismatch
+Expression: encodeFixed(value, ByteWidth(1))
+  [1] value: JamNatural
+  [2] ByteWidth(1): ByteWidth
+
+Expected one of (first mismatch at [position]):
+[1] proc encodeFixed(value: FixedUnsigned; width: ByteWidth): FixedEncodeResult
+
+/Users/jacogr/Projects/jacogr/ragnarok/nim/tests/compile_fail/natural_as_fixed.nim(5, 20) Error: expression '' has no type (or is ambiguous)

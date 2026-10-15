@@ -7,6 +7,8 @@ research, implement, test and document the work. We make that collaboration expl
 Independent Nim, Odin and Mojo JAM experiments. Language selection remains open.
 The [Mojo evaluation](docs/mojo.md) covers the same bounded M1 codec, M2 crypto and M3 QUIC POC.
 See [local parity verification and the three-language baseline](results/mojo-parity.md).
+The [AI development ergonomics comparison](results/ai-ergonomics.md) separates measured evidence
+from historical gaps and introduces prospective task tracking.
 See [the design](docs/design.md), [the pinned codec specification](spec/codec.md)
 and [the macOS toolchains](docs/toolchains-macos.md).
 [Linux CI](docs/ci-linux.md) runs formatting, codec, crypto and QUIC checks on GitHub Actions.

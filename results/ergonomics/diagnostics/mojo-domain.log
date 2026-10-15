@@ -1,0 +1,8 @@
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+/Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/compile_fail/swapped_hash.mojo:8:27: error: cannot implicitly convert 'DigestHash[Int(1)]' value to 'CodeHash'
+    var wrong: CodeHash = value
+                          ^~~~~
+/Users/jacogr/Projects/jacogr/ragnarok/mojo/tests/compile_fail/swapped_hash.mojo:8:27: note: 'CodeHash' is aka 'DigestHash[Int(0)]'
+    var wrong: CodeHash = value
+                          ^
+/Users/jacogr/Projects/jacogr/ragnarok/build/mojo-env/bin/mojo: error: failed to parse the provided Mojo source module

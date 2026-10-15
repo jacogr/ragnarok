@@ -45,6 +45,14 @@ Never guess protocol semantics. When the specification is ambiguous, add a docum
 - Use `odinfmt` for Odin, `nimpretty` for Nim, and `mojo format` for Mojo, including tests and tooling sources. Mojo uses four-space indentation and a 100-column formatter target. Run `python3 tools/format.py` to apply project settings, then `python3 tools/format.py --check` to verify. Keep `odinfmt.json` and the formatter settings in the shared runner consistent; preserve explanatory comments when formatting.
 - Add negative compilation tests for important type distinctions when practical.
 - Add malformed/truncated/overflow input tests and fuzzing entry points for every decoder.
+- For subsequent language-evaluation implementation tasks, preregister the equivalent functionality,
+  acceptance/baseline checks, source scope, task order and AI/toolchain configuration using
+  `tools/ergonomics/journal.py` as documented in `docs/ai-ergonomics.md`. Begin before editing;
+  wrap direct compiler attempts and tests, and record distinct defects, human decisions and
+  confirmed regressions with evidence and logic/language/compiler/library/FFI/infrastructure attribution.
+  Intentional negative-compilation probes are diagnostics, never repair iterations. Missing or
+  incomplete history stays N/A; do not reconstruct timings/counts from commits or log filenames.
+  Do not change native implementation behavior or weaken tests to improve an ergonomics metric.
 - Keep benchmarking separate from correctness. Benchmark optimized builds on the same hardware and input corpus, with allocation and tail-latency observations where practical.
 - Do not optimize at the expense of spec conformance. Profile before optimizing.
 - Keep changes to Nim and Odin isolated except for shared specification fixtures, test vectors, and benchmark protocols.

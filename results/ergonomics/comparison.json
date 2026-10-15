@@ -1,0 +1,62 @@
+{
+  "audit_client_date": "2026-10-15",
+  "source_revision": "cd0dbd0b01c48bf995535d63a9ea61259b39f9f4",
+  "scope": "Equivalent completed M1/M2/M3 POC; no native behavior changes for this audit",
+  "measurement_status": "LOC measured; other historical totals unavailable, not estimated",
+  "metrics": {
+    "nim": {
+      "compiler_repair_iterations": null,
+      "time_to_passing_tests_seconds": null,
+      "bugs_found_after_compilation": null,
+      "implementation_loc": 2148,
+      "native_implementation_loc": 2148,
+      "language_specific_c_loc": 0,
+      "human_interventions": null,
+      "regression_rate": null
+    },
+    "odin": {
+      "compiler_repair_iterations": null,
+      "time_to_passing_tests_seconds": null,
+      "bugs_found_after_compilation": null,
+      "implementation_loc": 3000,
+      "native_implementation_loc": 3000,
+      "language_specific_c_loc": 0,
+      "human_interventions": null,
+      "regression_rate": null
+    },
+    "mojo": {
+      "compiler_repair_iterations": null,
+      "time_to_passing_tests_seconds": null,
+      "bugs_found_after_compilation": null,
+      "implementation_loc": 3530,
+      "native_implementation_loc": 3384,
+      "language_specific_c_loc": 146,
+      "human_interventions": null,
+      "regression_rate": null
+    }
+  },
+  "evidence": {
+    "results/ergonomics/loc.json": "98ab756b243e5f77302cb34211c821d76220c6650afa7327d4daff46f31f5b38",
+    "tools/ergonomics/loc-scope.json": "a4b521e503eabb02b82be518cff64dfdf888f1fea18d1382f55551024f57604c",
+    "results/ergonomics/diagnostics.json": "c6bb20155277cf0a51991a6df8d3c3b0fcbf37ae7f92658d5b5edb600f55951b"
+  },
+  "prospective": {
+    "protocol": "docs/ai-ergonomics.md",
+    "journal": "tools/ergonomics/journal.py",
+    "completed_matched_native_trials": [],
+    "status": "Tracking required for future authorized increments; this audit did not start artificial native tasks"
+  },
+  "recommendation": {
+    "candidate": "nim",
+    "status": "provisional project-specific engineering inference",
+    "measured_reliability_winner": null,
+    "basis": "Private ARC snapshots and last-owner secret/Rust destruction reduce explicit alias/release obligations in the current implementation",
+    "limitations": [
+      "No comparable compiler-repair or development clocks",
+      "No complete post-compilation defect or human-decision census",
+      "No matched retrospective regression denominators",
+      "Mojo inherited corrected contracts, examples and test infrastructure",
+      "Current adapter strategies do not establish intrinsic language limits"
+    ]
+  }
+}

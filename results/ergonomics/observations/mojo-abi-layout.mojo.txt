@@ -1,0 +1,19 @@
+from std.ffi import c_int, c_size_t
+from std.sys import size_of
+
+# Match the existing copied certificate observation ABI; no protocol policy belongs in C.
+@fieldwise_init
+struct CertFields(RegisterPassable):
+    var ed_key: c_int
+    var ed_signature: c_int
+    var san_extensions: c_int
+    var san_count: c_int
+    var san_dns: c_int
+    var key_length: c_size_t
+    var san_length: c_size_t
+    var key: Array[UInt8, 32]
+    var san: Array[UInt8, 256]
+
+# Inspect fixed aggregate layout before passing any native buffer through this ABI.
+def main():
+    print(size_of[CertFields]())

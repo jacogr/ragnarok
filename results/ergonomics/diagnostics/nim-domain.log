@@ -1,0 +1,4 @@
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/nim.cfg' [Conf]
+Hint: used config file '/opt/homebrew/Cellar/nim/2.2.12/nim/config/config.nims' [Conf]
+.........................................................................
+/Users/jacogr/Projects/jacogr/ragnarok/nim/tests/compile_fail/swapped_digest_hash.nim(5, 18) Error: type mismatch: got 'PayloadHash' for 'wrong' but expected 'CodeHash = distinct array[0..31, byte]'
