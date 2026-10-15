@@ -108,6 +108,14 @@ jobs:
       - name: Checked assurances codecs (three languages, Nim LTO)
         run: python3 interoperability/test_assurances.py 2>&1 | tee build/ci/assurances.log
 
+      - name: Assurance signing-context oracle and nominal safeguards
+        run: |
+          python3 interoperability/test_assurance_crypto_harness.py
+          python3 interoperability/test_assurance_crypto_types.py
+
+      - name: Assurance transcripts, parent binding and validator signatures
+        run: python3 interoperability/test_assurance_crypto.py 2>&1 | tee build/ci/assurance-crypto.log
+
       - name: Checked complete-report and guarantee comparison (Nim LTO)
         run: python3 interoperability/benchmark_report.py --skip-build 2>&1 | tee build/ci/report-benchmark.log
 
@@ -189,6 +197,11 @@ jobs:
             build/offload/results.json
             build/offload/*/*.log
             build/offload/*/resources.json
+            build/assurance-crypto/*-build.log
+            build/assurance-crypto/checks-*/results.json
+            build/assurance-crypto/checks-*/stderr.log
+            build/assurance-crypto/types/*.log
+            build/assurance-crypto/types/results.json
             build/assurances/*-build.log
             build/assurances/checks-*/results.json
             build/assurances/checks-*/stderr.log

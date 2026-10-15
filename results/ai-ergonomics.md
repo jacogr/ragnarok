@@ -179,7 +179,8 @@ No weighted score or universal language ranking is justified by the current evid
 clock boundaries, coverage checks and task-order controls. `AGENTS.md` now requires it for future
 authorized evaluation increments. The journal leaves unrecorded totals N/A, captures direct attempts
 and exact logs, and validates current-source acceptance and LOC evidence. At the original audit there were no completed matched native tasks. Subsequent authorized
-[complete-report](work-report/ergonomics.md) and [assurances](assurances.md) rounds now retain
+[complete-report](work-report/ergonomics.md), [assurances](assurances.md) and
+[assurance-context](assurance-crypto.md) rounds now retain
 matched prospective repair counts, LOC, checks and source evidence. Historical unknowns stay N/A.
 
 Executed for this audit:
@@ -202,15 +203,31 @@ a local pass is not a claim that the updated workflow has already passed remotel
 | --- | ---: | ---: | ---: |
 | [Complete work report](work-report/ergonomics.md) | 0 | 5 | 4 |
 | [Assurances extrinsic](assurances.md) | 1 | 1 | 2 |
-| **Cumulative measured total** | **1** | **6** | **6** |
+| [Assurance signing context](assurance-crypto.md) | 0 | 0 | 1 |
+| **Cumulative measured total** | **1** | **6** | **7** |
 
-These totals cover prospectively recorded rounds only; earlier repair counts remain N/A.
-Intentional rejection probes and unchanged infrastructure retries are excluded. Keep per-round
-counts and update this cumulative row with each completed matched round.
+| New production implementation LOC by authorized task | Nim | Odin | Mojo |
+| --- | ---: | ---: | ---: |
+| [Complete work report](work-report/ergonomics.md) | 338 | 480 | 513 |
+| [Assurances extrinsic](assurances.md) | 125 | 152 | 145 |
+| [Assurance signing context](assurance-crypto.md) | 89 | 83 | 95 |
+| **Cumulative measured total** | **552** | **715** | **753** |
 
-Nim's lower observed repair burden now spans two tasks. All candidates have zero confirmed native
-post-compilation defects in these rounds; this does not establish a defect-rate winner. The
-assurances round reverses the first two task-order positions, records exact failures, and retains
-shared setup problems separately. Comparable development-time values remain N/A because source
-inspection, sequential context and earlier shared-work timing were not controlled equivalently.
-See each task's complete six-metric table, raw journals and limitations before drawing conclusions.
+These totals cover completed prospectively recorded rounds only. Cumulative new-task LOC is not
+whole-repository LOC; reused implementation, tests, drivers and shared infrastructure are excluded
+according to each task manifest. Earlier untracked repair counts remain N/A. Intentional rejection
+probes and unchanged infrastructure retries are excluded. The [machine-readable ledger](ergonomics/increment-totals.json)
+links and hashes every contribution. Keep per-round counts and update both cumulative rows with
+each completed matched round.
+
+Nim's lower observed repair burden now spans three related tasks. All candidates have zero confirmed
+native post-compilation defects in these rounds; this does not establish a defect-rate winner.
+Nim and Odin needed no repairs in the new M2 task; Odin's new implementation was smaller in that
+round, while Mojo's one repair concerned the SDK Array initializer. The three task orders now give
+each language one turn in each position. Shared agent context and sequential learning remain.
+
+The new assurance-context round records measured handoff-to-first-final-source-pass wall times,
+with shared preparation completed beforehand. They include tests/baselines/instrumentation and
+are not a controlled language-speed ranking. Earlier comparative-time values remain N/A because
+of pre-handoff inspection and shared-work timing limitations. See each task's complete six-metric
+table, raw journals, test coverage and limitations before drawing conclusions.

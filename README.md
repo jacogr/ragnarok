@@ -178,3 +178,8 @@ owned fixed records in all three languages. The [API guide](docs/assurances.md) 
 [verification/ergonomics evidence](results/assurances.md) cover official tiny/full vectors, malformed
 inputs, atomic output and nominal type guards. Reproduce with
 `python3 interoperability/test_assurances.py` and `python3 interoperability/test_assurances_types.py`.
+
+The [assurance signing-context slice](docs/assurance-crypto.md) adds the normative transcript,
+explicit parent binding and validator-indexed Ed25519 verification in all three languages.
+[Evidence](results/assurance-crypto.md) includes independent signatures and cumulative repair/LOC
+totals. Run `python3 interoperability/test_assurance_crypto.py` after the pinned crypto build.

@@ -291,3 +291,10 @@ and atomic caller-buffer operations. [Results](../results/assurances.md) retain 
 compiler-repair observations. Signature/parent/assignment validation remains context-dependent
 work outside this structural codec. Tiny parameters are 2 cores / 6 validators, as pinned in the
 vector README; the earlier work-report profile label is corrected without rewriting history.
+
+The [assurance signing-context round](assurance-crypto.md) now composes fixed assurance fields with
+the normative Blake2b transcript and validator-indexed ordinary Ed25519 verification against an
+explicit parent. Full structural/context preflight precedes signature work. This adds no state
+transition, pending-report eligibility or exceptional-point verifier-policy decision. The
+[three-language evidence](../results/assurance-crypto.md) records the next measured development
+round and cumulative compiler-repair/implementation-LOC totals.

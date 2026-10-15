@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "baseline_revision": "27f215d4999b14036df104eba924959173f5b221",
+  "definition": "New assurance-context production module plus new shared failure declarations only; physical nonblank/noncomment LOC. Excludes tests, infrastructure, dependencies and existing reused code.",
+  "files": [
+    {
+      "language": "nim",
+      "group": "M2",
+      "path": "nim/crypto/assurance_context.nim",
+      "sha256": "94f774db14fd82d128b2fd6ae8a27446fdee37cbb70f36697b26577e01ff8200",
+      "exclude": []
+    }
+  ]
+}

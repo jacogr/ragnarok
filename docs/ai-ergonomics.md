@@ -42,6 +42,11 @@ only one language is not permission to implement it in the others for this study
 | Human interventions | Independently actionable human decisions/corrections beyond the initial registered assignment. Record nature, evidence and whether common to all candidates; count decisions, not messages. |
 | Regression rate | Distinct reviewed previously passing check IDs confirmed broken / distinct passing-baseline check IDs actually retested. Report baseline coverage and raw recheck failures separately. With no denominator or incomplete annotation, use N/A. |
 
+For each completed round, show both the per-round compiler repairs and implementation LOC and
+their running measured totals in the comparison docs. Link each contribution to its journal/LOC
+snapshot. Label cumulative new-task LOC separately from whole-repository LOC; do not fill
+untracked historical repair counts with zero or add the same reused implementation twice.
+
 The regression unit is a **registered check**, not the number of assertions hidden inside a command.
 Use the same check granularity for all three languages. A new test catching an old coverage gap is
 post-compilation defect evidence; its existence alone does not prove a formerly passing identical

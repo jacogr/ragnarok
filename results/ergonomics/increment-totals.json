@@ -1,0 +1,76 @@
+{
+  "definition": "Cumulative new implementation LOC and compiler repairs across completed prospectively tracked increments only; not whole-repository LOC. Tests, reused code, infrastructure and intentional probes excluded per each task manifest/protocol. Earlier untracked repair counts remain N/A.",
+  "rounds": [
+    {
+      "equivalence_id": "complete-work-report-2026-10-15",
+      "evidence": "results/work-report/ergonomics.json",
+      "sha256": "1cfd0b4d61ac848482ad0359b0a7aa825370cb67fb19f74d185c9e270f0617d0",
+      "languages": {
+        "nim": {
+          "compiler_repair_iterations": 0,
+          "implementation_loc": 338
+        },
+        "odin": {
+          "compiler_repair_iterations": 5,
+          "implementation_loc": 480
+        },
+        "mojo": {
+          "compiler_repair_iterations": 4,
+          "implementation_loc": 513
+        }
+      }
+    },
+    {
+      "equivalence_id": "assurances-extrinsic-2026-10-15",
+      "evidence": "results/assurances/ergonomics.json",
+      "sha256": "e2d91a02fcb4a877e75e6d9e13e1ede9cd889ae0f4095900d143b6859c413dd5",
+      "languages": {
+        "nim": {
+          "compiler_repair_iterations": 1,
+          "implementation_loc": 125
+        },
+        "odin": {
+          "compiler_repair_iterations": 1,
+          "implementation_loc": 152
+        },
+        "mojo": {
+          "compiler_repair_iterations": 2,
+          "implementation_loc": 145
+        }
+      }
+    },
+    {
+      "equivalence_id": "assurance-signing-context-2026-10-15",
+      "evidence": "results/assurance-crypto/ergonomics.json",
+      "sha256": "ea0e03c37c2b740347a7c6299ef727e5d3c4445e84cafe2705634b8ff86eac30",
+      "languages": {
+        "nim": {
+          "compiler_repair_iterations": 0,
+          "implementation_loc": 89
+        },
+        "odin": {
+          "compiler_repair_iterations": 0,
+          "implementation_loc": 83
+        },
+        "mojo": {
+          "compiler_repair_iterations": 1,
+          "implementation_loc": 95
+        }
+      }
+    }
+  ],
+  "totals": {
+    "nim": {
+      "compiler_repair_iterations": 1,
+      "implementation_loc": 552
+    },
+    "odin": {
+      "compiler_repair_iterations": 6,
+      "implementation_loc": 715
+    },
+    "mojo": {
+      "compiler_repair_iterations": 7,
+      "implementation_loc": 753
+    }
+  }
+}

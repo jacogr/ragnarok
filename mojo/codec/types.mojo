@@ -118,6 +118,15 @@ struct Failure(Copyable, Movable):
         elif self._code == 28:
             # A structurally encoded validator can still be outside the configured set.
             return String("invalidvalidator")
+        # Context verification requires an exact validator-key mapping.
+        elif self._code == 29:
+            return String("invalidkeyset")
+        # Every assurance anchor must match the externally supplied parent.
+        elif self._code == 30:
+            return String("wrongparent")
+        # A rejected ordinary signature provides no verified count.
+        elif self._code == 31:
+            return String("invalidsignature")
         else:
             # Corrupted caller metadata cannot fabricate a successful result.
             return String("uninitialized")
@@ -295,6 +304,15 @@ def fail[name: String]() -> Failure:
     # Validator-index range errors remain distinct from ordering failures.
     elif name == "invalidvalidator":
         return Failure(28)
+    # A partial or oversized validator table cannot establish the intended key mapping.
+    elif name == "invalidkeyset":
+        return Failure(29)
+    # Anchor/expected-parent mismatch is independent of signature validity.
+    elif name == "wrongparent":
+        return Failure(30)
+    # The existing provider rejected the ordinary Ed25519 credential.
+    elif name == "invalidsignature":
+        return Failure(31)
     else:
         # An unsupported reason remains a failure, never a fabricated success.
         return Failure(0)

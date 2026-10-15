@@ -71,7 +71,7 @@ specification/test-label defect, not three native decoder defects or three regre
 [Setup notes](assurances/setup-notes.md) retain that distinction.
 
 Across the two new matched implementation tasks, repair observations are Nim **[0, 1]**, Odin
-**[5, 1]**, Mojo **[4, 2]**. Cumulative measured totals are **Nim 1, Odin 6, Mojo 6**;
+**[5, 1]**, Mojo **[4, 2]**. Cumulative measured totals at the end of that round were **Nim 1, Odin 6, Mojo 6**;
 earlier untracked work remains N/A. The [running comparison](ai-ergonomics.md#subsequent-matched-implementation-evidence)
 keeps both per-round counts and cumulative totals. This strengthens the limited observation that Nim has needed less
 compiler repair in this workflow. The present task gives no defect-rate winner: all three passed
