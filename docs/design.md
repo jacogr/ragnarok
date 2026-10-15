@@ -284,3 +284,10 @@ IPv6 peer arbitration/reconnect, disruption/admission and bounded proof offload.
 [Mojo implementation, reproduction and measurement limits](mojo.md). This supersedes the earlier
 two-candidate scope descriptions; historical reports retain their original observed evidence.
 No language decision or optimization is part of this authorized parity increment.
+
+The [assurances codec round](assurances.md) adds native C.2 structural assurances extrinsics in all
+three candidates: ordered validator indices, fixed profile bitfields, fully owned record values
+and atomic caller-buffer operations. [Results](../results/assurances.md) retain the next matched
+compiler-repair observations. Signature/parent/assignment validation remains context-dependent
+work outside this structural codec. Tiny parameters are 2 cores / 6 validators, as pinned in the
+vector README; the earlier work-report profile label is corrected without rewriting history.

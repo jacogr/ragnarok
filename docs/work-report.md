@@ -23,7 +23,7 @@ Nim modules are `nim/src/work_report.nim`, `nim/src/report_owned.nim` and
 Mojo uses `mojo/codec/report.mojo`, `mojo/codec/report_owned.mojo` and `mojo/crypto/guarantee.mojo`.
 Owner failures reuse the existing ownership result domain in Nim/Odin and checked variants in Mojo.
 
-Provide the chain's core count explicitly: six for the pinned tiny profile, 341 for full.
+Provide the chain's core count explicitly: two for the pinned tiny profile, 341 for full.
 A borrowed decoder returns one complete prefix; check `consumed == input length` when the
 application expects a standalone report. Input must remain alive and stable during borrowed use.
 Successful digest payload spans are rebased to the original complete input, not child slices.

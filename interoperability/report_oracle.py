@@ -157,7 +157,7 @@ def requests():
         expected.append(decode(wire, cores))
     # Official JSON/binary equality checks include both configured chain profiles and immutable file hashes.
     pins = json.loads((ROOT / 'spec/pins.json').read_text())
-    for chain, cores in (('tiny', 6), ('full', 341)):
+    for chain, cores in (('tiny', 341), ('full', 341)):
         value = official(chain)
         wire = (ROOT / f'vendor/jamtestvectors/codec/{chain}/work_report.bin').read_bytes()
         for extension in ('json', 'bin'):
@@ -166,6 +166,9 @@ def requests():
         assert encode(value) == wire
         assert decode(wire, cores) == fields(value) + ' ' + str(len(wire))
         add_decode(wire, cores)
+        # The tiny codec fixture's core 3 is structurally encodable but outside its actual two-core chain.
+        if chain == 'tiny':
+            add_decode(wire, 2)
         lines.append(f'E {cores} {len(wire)} ' + fields(value)); expected.append(wire.hex())
     # Every corpus frame tests independent construction, prefix consumption and exact/insufficient capacities.
     for name, value in corpus():

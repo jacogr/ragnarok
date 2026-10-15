@@ -172,3 +172,9 @@ workload. Run `python3 interoperability/test_work_report.py` after building the 
 library. The [comparison](results/work-report.md) separates complete-report codec, ownership, hash,
 Ed25519-provider and combined costs. Reproduce with
 `python3 interoperability/benchmark_report.py`; Nim uses checked ARC/Clang LTO throughout this run.
+
+The [assurances extrinsic](spec/assurances.md) now has equivalent allocation-free codecs with
+owned fixed records in all three languages. The [API guide](docs/assurances.md) and
+[verification/ergonomics evidence](results/assurances.md) cover official tiny/full vectors, malformed
+inputs, atomic output and nominal type guards. Reproduce with
+`python3 interoperability/test_assurances.py` and `python3 interoperability/test_assurances_types.py`.

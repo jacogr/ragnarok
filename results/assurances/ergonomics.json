@@ -1,0 +1,129 @@
+{
+  "equivalence_id": "assurances-extrinsic-2026-10-15",
+  "order": [
+    "mojo",
+    "nim",
+    "odin"
+  ],
+  "request_count": 21536,
+  "request_sha256": "6716107ad4caf8d30d38578dccf0f979bf3e2f143fa5667ec17934b94455699c",
+  "expected_sha256": "868bbebe66aaf847d8c7f22997072872e565dab5c77d5f4f673386025692abd4",
+  "comparable_development_time": "N/A: reusable-source analysis before handoffs and sequential context/order confounds; raw journal wall intervals retained",
+  "languages": {
+    "nim": {
+      "metrics": {
+        "compiler_repair_iterations": 1,
+        "observed_compiler_repairs_by_cause": {
+          "language": 1,
+          "compiler": 0,
+          "logic": 0,
+          "library": 0,
+          "ffi": 0,
+          "infrastructure": 0,
+          "unknown": 0
+        },
+        "direct_compile_invocations": 2,
+        "attempts_complete": true,
+        "time_to_passing_tests_seconds": 160.380789,
+        "observed_time_to_logged_passing_tests_seconds": 160.380789,
+        "bugs_found_after_compilation": 0,
+        "human_interventions": 0,
+        "confirmed_regression_checks": 0,
+        "baseline_checks_retested": 1,
+        "baseline_checks_registered": 1,
+        "regression_rate": 0.0,
+        "raw_recheck_failure_rate": 0.0,
+        "annotations_complete": true,
+        "compiler_attempt_capture": "operator must attest all direct attempts were wrapped; interruptions remain visible",
+        "implementation_loc": 125
+      },
+      "comparable_time_to_passing_tests_seconds": null,
+      "check": {
+        "language": "nim",
+        "requests": 21536,
+        "status": "passed",
+        "request_sha256": "6716107ad4caf8d30d38578dccf0f979bf3e2f143fa5667ec17934b94455699c",
+        "binary_sha256": "e03a6e4b041051e720fed47b3061f7fd96474e3d94230dd3d6ab7f4f274d8776"
+      }
+    },
+    "odin": {
+      "metrics": {
+        "compiler_repair_iterations": 1,
+        "observed_compiler_repairs_by_cause": {
+          "language": 1,
+          "compiler": 0,
+          "logic": 0,
+          "library": 0,
+          "ffi": 0,
+          "infrastructure": 0,
+          "unknown": 0
+        },
+        "direct_compile_invocations": 2,
+        "attempts_complete": true,
+        "time_to_passing_tests_seconds": 191.155873,
+        "observed_time_to_logged_passing_tests_seconds": 191.155873,
+        "bugs_found_after_compilation": 0,
+        "human_interventions": 0,
+        "confirmed_regression_checks": 0,
+        "baseline_checks_retested": 1,
+        "baseline_checks_registered": 1,
+        "regression_rate": 0.0,
+        "raw_recheck_failure_rate": 0.0,
+        "annotations_complete": true,
+        "compiler_attempt_capture": "operator must attest all direct attempts were wrapped; interruptions remain visible",
+        "implementation_loc": 152
+      },
+      "comparable_time_to_passing_tests_seconds": null,
+      "check": {
+        "language": "odin",
+        "requests": 21536,
+        "status": "passed",
+        "request_sha256": "6716107ad4caf8d30d38578dccf0f979bf3e2f143fa5667ec17934b94455699c",
+        "binary_sha256": "1117b627561472139f8ea5e34c19a50e9eabac37dae297b5bdfd048ba11b8daf"
+      }
+    },
+    "mojo": {
+      "metrics": {
+        "compiler_repair_iterations": 2,
+        "observed_compiler_repairs_by_cause": {
+          "language": 1,
+          "compiler": 0,
+          "logic": 0,
+          "library": 1,
+          "ffi": 0,
+          "infrastructure": 0,
+          "unknown": 0
+        },
+        "direct_compile_invocations": 5,
+        "attempts_complete": true,
+        "time_to_passing_tests_seconds": 244.478172,
+        "observed_time_to_logged_passing_tests_seconds": 244.478172,
+        "bugs_found_after_compilation": 0,
+        "human_interventions": 0,
+        "confirmed_regression_checks": 0,
+        "baseline_checks_retested": 1,
+        "baseline_checks_registered": 1,
+        "regression_rate": 0.0,
+        "raw_recheck_failure_rate": 0.0,
+        "annotations_complete": true,
+        "compiler_attempt_capture": "operator must attest all direct attempts were wrapped; interruptions remain visible",
+        "implementation_loc": 145
+      },
+      "comparable_time_to_passing_tests_seconds": null,
+      "check": {
+        "language": "mojo",
+        "requests": 21536,
+        "status": "passed",
+        "request_sha256": "6716107ad4caf8d30d38578dccf0f979bf3e2f143fa5667ec17934b94455699c",
+        "binary_sha256": "99fdbe4437c7c0f381bc9bfcc5eeb615cdf2dc27f43438760c53b84fff84c8b5"
+      }
+    }
+  },
+  "source_sha256": {
+    "spec/assurances.md": "8c0e0e3906f313e79bc2e5809050c2023b45d56a697e162277470b19e0829ca1",
+    "interoperability/assurances_oracle.py": "b45ec149d58174c50f66b8d93f37fc818100bfb79e22df6d099cae2ea8763ab8",
+    "interoperability/test_assurances.py": "997a396a53ac0ff245791cfffd65a48cf9f7565f280a2c87a736e21da6fe83b8",
+    "interoperability/test_assurances_types.py": "2b0d91a59a419d1f12d8fc7fcd92d0ef0c9a977ff96b60589fca8719c9d86df9",
+    "interoperability/test_assurances_harness.py": "fa5ab0bc22708fce3d22ce566dd2424910c55b8f7a6231c1f64b5b501875c8f6"
+  }
+}

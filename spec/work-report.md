@@ -20,7 +20,7 @@ sorting caller data. The core index is a general natural, not E2.
 
 Report limits: 1–16 digests; at most 8 prerequisites plus lookup entries; authorization
 output plus successful digest outputs at most 49,152 bytes. Core count is explicit chain
-configuration (6 tiny, 341 full), not inferred from serialized data. Codecs check these
+configuration (2 tiny, 341 full), not inferred from serialized data. Codecs check these
 structural limits, not state-dependent gas availability, roots, assignments or authorization.
 Counts are checked before narrowing/indexing; fixed metadata arrays bound borrowed
 parsing without input-derived allocation. Successful blob spans borrow the original whole
@@ -45,3 +45,11 @@ all truncations of representative reports, count/canonicality/ordering/aggregate
 late encoder failures and overlap atomicity, retained ownership under caller mutation,
 and deterministic malformed-input fuzzing. Performance is separate from conformance.
 Nim measurements use checked ARC/Clang LTO exclusively, as requested by the maintainer.
+
+
+Profile correction (assurances follow-up): the pinned vector README specifies 2 tiny cores and
+6 tiny validators. The standalone `codec/tiny/work_report` sample nevertheless uses core index 3;
+it is a structural codec fixture, not a chain-eligible tiny report. The report harness exercises
+its bytes with a permissive 341-core bound and separately requires rejection under the actual
+2-core tiny bound. The earlier report's six-core profile label was incorrect; native caller-bound
+range checking is unchanged. Historical comparison artifacts retain their original source hashes.

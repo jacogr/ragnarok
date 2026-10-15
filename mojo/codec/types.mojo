@@ -112,6 +112,12 @@ struct Failure(Copyable, Movable):
         # Cryptographic content binding is independent of successful codec validation.
         elif self._code == 26:
             return String("hashmismatch")
+        # Assurances configuration and validator bounds retain independent failure reasons.
+        elif self._code == 27:
+            return String("invalidconfig")
+        elif self._code == 28:
+            # A structurally encoded validator can still be outside the configured set.
+            return String("invalidvalidator")
         else:
             # Corrupted caller metadata cannot fabricate a successful result.
             return String("uninitialized")
@@ -283,6 +289,12 @@ def fail[name: String]() -> Failure:
     # A valid codec snapshot still must match its independently retained requested content key.
     elif name == "hashmismatch":
         return Failure(26)
+    # Assurances resource configuration is checked before any input access.
+    elif name == "invalidconfig":
+        return Failure(27)
+    # Validator-index range errors remain distinct from ordering failures.
+    elif name == "invalidvalidator":
+        return Failure(28)
     else:
         # An unsupported reason remains a failure, never a fabricated success.
         return Failure(0)

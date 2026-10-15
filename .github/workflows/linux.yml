@@ -100,6 +100,14 @@ jobs:
       - name: Complete-report codecs and independent guarantee signatures
         run: python3 interoperability/test_work_report.py --skip-build 2>&1 | tee build/ci/report-codec.log
 
+      - name: Assurances oracle integrity and nominal type safeguards
+        run: |
+          python3 interoperability/test_assurances_harness.py
+          python3 interoperability/test_assurances_types.py
+
+      - name: Checked assurances codecs (three languages, Nim LTO)
+        run: python3 interoperability/test_assurances.py 2>&1 | tee build/ci/assurances.log
+
       - name: Checked complete-report and guarantee comparison (Nim LTO)
         run: python3 interoperability/benchmark_report.py --skip-build 2>&1 | tee build/ci/report-benchmark.log
 
@@ -181,6 +189,11 @@ jobs:
             build/offload/results.json
             build/offload/*/*.log
             build/offload/*/resources.json
+            build/assurances/*-build.log
+            build/assurances/checks-*/results.json
+            build/assurances/checks-*/stderr.log
+            build/assurances/types/*.log
+            build/assurances/types/results.json
             build/report/*build*.log
             build/report/*correctness.json
             build/report/*stderr.log

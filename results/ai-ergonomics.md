@@ -178,8 +178,9 @@ No weighted score or universal language ranking is justified by the current evid
 [The prospective protocol](../docs/ai-ergonomics.md) defines all six metrics, cause categories,
 clock boundaries, coverage checks and task-order controls. `AGENTS.md` now requires it for future
 authorized evaluation increments. The journal leaves unrecorded totals N/A, captures direct attempts
-and exact logs, and validates current-source acceptance and LOC evidence. There are **no completed
-matched prospective native tasks yet**.
+and exact logs, and validates current-source acceptance and LOC evidence. At the original audit there were no completed matched native tasks. Subsequent authorized
+[complete-report](work-report/ergonomics.md) and [assurances](assurances.md) rounds now retain
+matched prospective repair counts, LOC, checks and source evidence. Historical unknowns stay N/A.
 
 Executed for this audit:
 
@@ -194,3 +195,22 @@ separate contextual ABI rejection reproduced. Those synthetic tests validate the
 and are excluded from candidate metrics. Native implementation behavior, tests, compiler/dependency
 pins and test thresholds were unchanged. Linux CI additionally runs the metric-integrity tests;
 a local pass is not a claim that the updated workflow has already passed remotely.
+
+## Subsequent matched implementation evidence
+
+| Compiler repair cycles by authorized task | Nim | Odin | Mojo |
+| --- | ---: | ---: | ---: |
+| [Complete work report](work-report/ergonomics.md) | 0 | 5 | 4 |
+| [Assurances extrinsic](assurances.md) | 1 | 1 | 2 |
+| **Cumulative measured total** | **1** | **6** | **6** |
+
+These totals cover prospectively recorded rounds only; earlier repair counts remain N/A.
+Intentional rejection probes and unchanged infrastructure retries are excluded. Keep per-round
+counts and update this cumulative row with each completed matched round.
+
+Nim's lower observed repair burden now spans two tasks. All candidates have zero confirmed native
+post-compilation defects in these rounds; this does not establish a defect-rate winner. The
+assurances round reverses the first two task-order positions, records exact failures, and retains
+shared setup problems separately. Comparable development-time values remain N/A because source
+inspection, sequential context and earlier shared-work timing were not controlled equivalently.
+See each task's complete six-metric table, raw journals and limitations before drawing conclusions.
