@@ -9,6 +9,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `bounded.nim` | Bounded byte strings and homogeneous fixed-width sequences |
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
 | `work_digest.nim`, `work_report.nim` | Complete nested work digests/reports |
+| `tickets.nim`, `guarantees.nim` | Ticket records and immutable report guarantees |
 | `assurances.nim` | Ordered validator indices, fixed profile bitfields and signatures |
 | `owned.nim`, `report_owned.nim` | Immutable ARC snapshots and owner-bound extraction |
 
@@ -31,3 +32,5 @@ are 2 cores / 6 validators; full is 341 / 1023. Structural codec acceptance does
 
 See `tests/test_codec.py`, `tests/test_work_report.py` and `tests/test_assurances.py` for independent
 oracles, official vectors, boundary/fuzz inputs, alias probes and output atomicity checks.
+
+[M1 progress and next coherent groups](m1.md) distinguish implemented codec families from remaining work.

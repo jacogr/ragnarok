@@ -16,9 +16,14 @@ def token(data):
     return data.hex() or '-'
 
 
-# Convert published 0.8.0 named JSON fields into the separate oracle's complete report representation.
+# Load the independently pinned standalone report fixture.
 def official(chain):
     item = json.loads((ROOT / f'vendor/jamtestvectors/codec/{chain}/work_report.json').read_text())
+    return from_json(item)
+
+
+# Interpret report JSON fields identically when embedded in a published guarantees extrinsic.
+def from_json(item):
     spec, ctx = item['package_spec'], item['context']
     # Upstream fixture hex is explicitly prefixed, unlike the trusted adapter protocol.
     def blob(value):

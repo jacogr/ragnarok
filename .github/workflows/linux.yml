@@ -65,6 +65,13 @@ jobs:
       - name: Codec conformance and native tests
         run: python3 tests/test_codec.py 2>&1 | tee build/ci/codec.log
 
+      - name: Tickets and guarantees extrinsics
+        run: |
+          python3 tests/test_tickets_harness.py
+          python3 tests/test_guarantees_harness.py
+          python3 tests/test_tickets.py 2>&1 | tee build/ci/tickets.log
+          python3 tests/test_guarantees.py 2>&1 | tee build/ci/guarantees.log
+
       - name: Crypto vectors, ownership and ABI checks
         run: python3 tests/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
 
@@ -124,6 +131,14 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/tickets/*.log
+            build/tickets/results.json
+            build/tickets/types/*.log
+            build/tickets/types/results.json
+            build/guarantees/*.log
+            build/guarantees/results.json
+            build/guarantees/types/*.log
+            build/guarantees/types/results.json
             build/crypto/*.log
             build/crypto/results.json
             build/bandersnatch/*.log

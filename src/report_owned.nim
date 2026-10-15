@@ -62,6 +62,15 @@ proc reportOwnerOverlaps(data: ReportData, output: var openArray[byte],
   let b = cast[uint](addr output[0])
   (a <= b and b-a < uint(data.wire.len)) or (b < a and a-b < uint(length))
 
+# Let composed atomic encoders reject overlap with any part of their complete destination in preflight.
+# Only a Boolean leaves this owner; no backing pointer or detached coordinate is exposed.
+proc ownedReportOverlapsOutput*(owner: OwnedReport, output: var openArray[byte]): OwnedResult[
+    bool] {.raises: [].} =
+  # Default owners have no validated storage against which an alias claim can be made.
+  if owner.data.isNil: return OwnedResult[bool](error: OwnershipError.InvalidOwner)
+  OwnedResult[bool](error: OwnershipError.None,
+    value: reportOwnerOverlaps(owner.data, output, output.len))
+
 # Copy authorization output at zero or digest i's successful payload at i+1, always bound to this owner alone.
 proc copyReportBlob*(owner: OwnedReport, index: int, output: var openArray[byte]): OwnedResult[
     int] {.raises: [].} =

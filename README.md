@@ -16,7 +16,7 @@ and observations are preserved in the
 
 The current foundation includes canonical codecs and immutable snapshots, native crypto adapters,
 and authenticated nonblocking QUIC with bounded ownership/cancellation tests. It is not yet a full
-JAM client or production validator. [Design and remaining work](docs/design.md) describe the scope.
+JAM client or production validator. [M1 codec progress](docs/m1.md) and [design/remaining work](docs/design.md) describe the scope.
 
 ## Setup
 

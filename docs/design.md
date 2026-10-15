@@ -26,12 +26,14 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
 ## Implemented foundation
 
 - General naturals, fixed unsigned widths, bounded bytes/sequences, optional/work variants,
-  preimage extrinsics, work digests, complete reports and assurances.
+  preimage/ticket/guarantee extrinsics, work digests, complete reports and assurances.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
   backpressure, cancellation, deadlines, peer-loss/admission recovery and bounded proof offload.
 - Official/vector references, native fuzz/selftests and Linux correctness/lifecycle CI.
+
+See [M1 codec progress](m1.md) for the remaining grouped codec increments.
 
 ## Outstanding work
 
