@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
+1–12; remaining state serialization, trie proofs and persistence remain open. PVM execution and
 state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -165,8 +165,23 @@ Validation: 2,949 independent requests, six literal oracle checks, two nominal a
 compiler rejections, native lifetime/copy/presence/index/result guards and four partial C(10) roots.
 Twelve derived published JSON-state observations preserve eight successful assurance states and
 four expected raw dispute-state decoder rejections. No child policy or fixture field is weakened.
-Assignment transitions and cryptographic verification remain separate. Next planned: chapter 12
-privileged-service configuration. See [the contract](../spec/state-availability.md).
+Assignment transitions and cryptographic verification remain separate. Chapter 12 is now covered
+below. See [the contract](../spec/state-availability.md).
+
+## Privileged-service configuration state extension
+
+`state_privileges.nim` implements T chapter 12: fixed E4 manager/core assigners/delegator/registrar
+and a count-prefixed dictionary of natural service IDs and gas allowances. Strict numeric key
+order, uint32 service bounds, full uint64 gas, resource policy and whole-parent preflight precede
+allocation. Private ARC snapshots expose copied roles, nominal core extraction and fixed copied
+service/gas pairs. No caller-owned arrays or detached spans escape.
+
+Validation: 1,354 independent requests, six literal oracle checks, two nominal and one privacy
+compiler rejections, retained-scope/copy/index/result guards and 24 partial C(12) roots. Sixteen
+published pre/post/profile observations derive exact component bytes from eight pinned accumulation
+JSON fixtures, preserving fields and explicitly sorting dictionary keys numerically. These are
+serialization checks, not STF execution or whole-state-root evidence. Next planned: chapter 13
+activity statistics. See [the contract](../spec/state-privileges.md).
 
 ## Published codec fixture inventory
 

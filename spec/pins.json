@@ -20,7 +20,9 @@
       "text/accumulation.tex": "bc919b34266cee75577f5fb3282b55768d0d75b6b8fe15d2835a228be18e6a6f",
       "text/merklization.tex": "1e05e9d1672ba94a72ba85b20843effeb721ff6fca8407d254a82d94116efdea",
       "text/authorization.tex": "9873bce01eeb25d657aa32955e3f487388eeb6029128ffebb7ae312b0af1ca81",
-      "text/recent_history.tex": "1a5424af880851d77baf51d29d05a11cff689a007dd44d991f40cf7025a6fc36"
+      "text/recent_history.tex": "1a5424af880851d77baf51d29d05a11cff689a007dd44d991f40cf7025a6fc36",
+      "text/accounts.tex": "badaf09677a420ec6d47ae439f8d7641173e8fd460ed8f2305e336d999073d7a",
+      "text/overview.tex": "ae8623ac404549e6c23ef27e5145e8f21e5d60be4e14c48dd3230cd2a6a6417e"
     }
   },
   "vectors": {
@@ -116,7 +118,15 @@
       "stf/assurances/full/no_assurances-1.json": "e5eb7f6c347a4b444cef682448e074bb40d296f917bfa4c5484896db216cebcb",
       "stf/assurances/full/some_assurances-1.json": "b45e09553125bc57af3997ea75bf467a689faddf02513877a6d6514f23b5142a",
       "stf/disputes/tiny/progress_invalidates_avail_assignments-1.json": "a9942665d37a62508420c63cd3b64fc285b61adce87d6baae4f76e18c0bc23f6",
-      "stf/disputes/full/progress_invalidates_avail_assignments-1.json": "efc496d503c3722a561f80fba7f712e879ed905e2eca8b5c3dceab999030e412"
+      "stf/disputes/full/progress_invalidates_avail_assignments-1.json": "efc496d503c3722a561f80fba7f712e879ed905e2eca8b5c3dceab999030e412",
+      "stf/accumulate/tiny/always_accumulate-1.json": "42f2924f335199f43534d3df7838b95d9d00de1ae73586aefec0c54d7450acfc",
+      "stf/accumulate/tiny/always_accumulate-2.json": "982ef8530bb46eb84d608b361da58a8a77387aee9be29aab156517344b66a86b",
+      "stf/accumulate/tiny/bless_from_non_manager-2.json": "4d663ff735006492e5420eb0212d772b88badf97d1ae5808e03fd21d5bcf644d",
+      "stf/accumulate/tiny/assign_from_non_assigner-2.json": "f81a4e0eff5af440a01c98ba50f0562ce0034a116eebf3f65201d89579bd4136",
+      "stf/accumulate/full/always_accumulate-1.json": "e61968aec9dc2126a5ce700b495e1aea3f76643f9a08a22f37d6bfd8bf9237f1",
+      "stf/accumulate/full/always_accumulate-2.json": "59e87dfd0023e64e3ae464b2ecc5a5e1a4f2745a88bad628230a845925089ae0",
+      "stf/accumulate/full/bless_from_non_manager-2.json": "10955b4c02e8bff2fc5a55a2340d029396a4c6f0fcbff48e6bcd9d9e464d7419",
+      "stf/accumulate/full/assign_from_non_assigner-2.json": "591e629211620a4fe0d424c7286a2a2b5d7423017191268f3bfacf044f1755f9"
     }
   },
   "toolchains": {

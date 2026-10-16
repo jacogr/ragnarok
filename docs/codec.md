@@ -9,6 +9,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
 | `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
 | `state_authorization.nim` | Core-indexed authorization pools/queues, bounded entries and immutable snapshots |
+| `state_privileges.nim` | Chapter-12 E4 role services, fixed core assigners and canonical natural service/gas dictionary |
 | `state_availability.nim` | Chapter-10 fixed optional core slots, full guarantees and E4 registration timestamps |
 | `state_history.nim` | Chapter-3 recent records, package dictionaries and optional MMR belt peak encoding |
 | `state_disputes.nim` | Chapter-5 canonical judgment/offender sets, whole-parent preflight and immutable snapshots |
