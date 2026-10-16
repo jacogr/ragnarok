@@ -47,7 +47,9 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
   values; opaque retained values need no original storage keys. Request histories add E4 length/hash
   keys and fixed tagged 0..3-slot values; top-length namespace admissibility remains a parity gate.
   Fourteen unmodified published full-state mappings reproduce their roots independently and natively;
-  typed whole-state composition, numeric-width resolution, proofs and persistence remain future work.
+  exact typed chapter captures now compose with typed service records or explicit opaque captures
+  into immutable whole mappings; five complete published mappings reproduce their roots.
+  Numeric-width/domain resolution, proofs and persistence remain future work.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
@@ -65,8 +67,10 @@ chapters 1–16 now have typed serializers; chapter 13 retains a
 [trace key-width parity gate](../spec/state-statistics.md). Service-account metadata is implemented.
 Storage/preimage and request-history keyed entries are implemented. Request-length namespace
 policy also needs clarification. The [full-map root audit](../spec/state-roots.md) verifies fourteen
-published maps and records C(12) service/gas and C(13) key/gas width gates. Next planned: typed
-whole-state composition with parent limits, duplicate rejection and exact component extents.
+published maps and records C(12) service/gas and C(13) key/gas width gates.
+[Typed composition](../spec/state-composition.md) now enforces exact component extents, common
+profiles, parent budgets and duplicate rejection. Next planned: investigate nonempty reference
+C(12) wires and C(13) service/gas widths; full M1 parity still requires normative clarification.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general

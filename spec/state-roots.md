@@ -91,8 +91,9 @@ entry/node counts, corpus hash and per-request expected/actual verdicts in ignor
 `build/state-roots/results.json`. Linux CI runs the same checks after building native crypto and
 retains logs/results. Local macOS arm64 passing results do not certify Linux CI.
 
-M1 state parity remains incomplete: **typed whole-state composition and numeric-width/request-key
-policy resolution** remain. Next bounded group: typed composition of covered chapter/service
-entries, with whole-parent limits, duplicate rejection and exact component extents; preserve the
-open width gates and avoid claiming full T(state) conformance until they are resolved. Trie
-proofs/persistence, state transitions and PVM execution remain separate work.
+[Typed composition](state-composition.md) now integrates exact chapter captures, typed metadata
+and typed or explicitly opaque service values, with parent limits and duplicate rejection. Five
+published complete mappings compose and reproduce their roots under the recorded interpretation.
+M1 state parity remains incomplete pending **numeric-width/request-key policy resolution**.
+Next bounded group: investigate nonempty C(12) reference wires and C(13) service/gas widths.
+Trie proofs/persistence, state transitions and PVM execution remain separate work.

@@ -7,6 +7,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
 | `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
+| `state_composition.nim` | Exact typed chapter capture, profile-bound immutable whole mappings, typed service sources and bounded roots; width/domain gates remain open |
 | `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
 | `state_authorization.nim` | Core-indexed authorization pools/queues, bounded entries and immutable snapshots |
 | `state_requests.nim` | E4-length/hash request keys and fixed tagged 0..3-slot histories; reserved-length cross-map policy remains pending |

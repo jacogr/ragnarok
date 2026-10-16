@@ -125,6 +125,11 @@ jobs:
           python3 tests/test_state_roots_harness.py
           python3 tests/test_state_roots.py 2>&1 | tee build/ci/state-roots.log
 
+      - name: Typed whole-state composition
+        run: |
+          python3 tests/test_state_composition_harness.py
+          python3 tests/test_state_composition.py 2>&1 | tee build/ci/state-composition.log
+
       - name: Entropy validator and timeslot state components
         run: |
           python3 tests/test_state_safrole_harness.py
@@ -248,6 +253,9 @@ jobs:
             build/ci/*.log
             build/state-roots/*.log
             build/state-roots/results.json
+            build/state-composition/*.log
+            build/state-composition/results.json
+            build/state-composition/types/*.log
             build/state-requests/*.log
             build/state-requests/results.json
             build/state-requests/types/*.log

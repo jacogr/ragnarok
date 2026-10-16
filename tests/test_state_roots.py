@@ -46,7 +46,7 @@ def main():
     (folder/'results.json').write_text(json.dumps(summary, indent=2)+'\n')
     print(f'PASS full-state roots: {len(observations)} published maps, '
           f'{summary["distinct_published_roots"]} distinct roots, {len(lines)} native requests')
-    print('M1 PARITY OPEN: typed whole-state composition, numeric widths and request namespace policy')
+    print('M1 PARITY OPEN: numeric widths and request namespace policy; typed composition is verified separately')
 
 
 # Importing this runner never starts native compilation or an upstream generator.
