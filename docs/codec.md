@@ -7,6 +7,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
 | `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
+| `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
 | `c2_records.nim` | Standalone availability, deferred transfers, immutable operands and tagged accumulation inputs |
 | `collections.nim` | Canonical typed sets and dictionaries over natural/fixed unsigned/fixed-octet scalars |
 | `bitstrings.nim` | Strict Boolean prefixes, fixed/variable packed bitstrings and immutable bit owners |
@@ -80,5 +81,8 @@ wire ceilings are explicit. These codecs do not execute accumulation or verify s
 [State-layout foundation](../spec/state-layout.md) begins the separate state commitment scope:
 31-byte keys, 64-byte node values and explicit partial left-child commitments. Results and metadata
 are independent fixed copies, so these APIs return new values rather than mutate caller buffers.
-This includes node hashing through the existing Blake2b backend, not full trie construction or
-state serialization. Run its native suite after building the primitive bridge.
+Node hashing uses the existing Blake2b backend. The separate [trie-root API](../spec/state-trie.md)
+constructs order-independent roots from borrowed serialized entries, rejects duplicate keys and
+checks payload/topology budgets before hashing. Source storage must stay stable for the synchronous
+call; returned roots are independent fixed copies. State-component serialization, proofs and
+persistence remain future work. Run both native suites after building the primitive bridge.

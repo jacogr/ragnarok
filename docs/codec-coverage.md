@@ -4,8 +4,9 @@ This audit follows Appendix C.1/C.2 at the exact source/vector revisions in `spe
 The **C.1/C.2 framing baseline is implemented within the scope listed below**. Complete published
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
-now covers key construction/node encoding; complete state serialization and trie construction
-remain open. PVM execution and state transitions are separate client work.
+now covers key construction/node encoding and roots over serialized entries; complete state
+serialization, trie proofs and persistence remain open. PVM execution and state transitions are
+separate client work.
 
 ## General encodings (C.1)
 
@@ -64,14 +65,27 @@ operand vectors. No standalone transfer/operand codec fixture family exists at t
 `state_layout.nim` implements the three 31-byte key constructors and 64-byte branch/leaf
 encodings from the pinned state-merklization chapter. It copies fixed metadata and hashes canonical
 node bytes through the existing primitive bridge. A decoded left child is a nominal **255-bit
-commitment**, never a fabricated full node hash. Full trie construction, proofs, persistence and
-state-component value serialization are not implemented.
+commitment**, never a fabricated full node hash. Root construction is covered separately below;
+proofs, persistence and state-component value serialization are not implemented.
 
 Validation: 12,233 independent requests, six literal harness checks, three nominal compiler
 rejections and fixed-value/variant-guard tests. The pinned historical trie JSON uses 32-byte keys;
 only five singleton roots are used, with an explicit projection to the first 31 bytes. Those are
 compatibility evidence, not modern full-trie vectors. Original data remains an unmodified pinned
 Git blob; its generator is never executed. See [the contract](../spec/state-layout.md).
+
+## Serialized state trie roots
+
+`state_trie.nim` calculates M over already serialized 31-byte key/value entries. It preserves every
+MSB-first unary branch, uses the zero empty identity, rejects duplicate keys and checks exact
+nonempty-node work plus individual/aggregate payload ceilings before hashing. Inputs remain
+borrowed only for the call; returned roots are independent fixed values.
+
+Validation: 2,308 independent requests, six literal oracle checks, two nominal compiler rejections
+and native source-preservation/copied-root/variant-guard checks. All 11 frozen historical roots
+match only after explicit collision-free key projection; current authored 31-byte maps and the
+pinned equations remain authoritative. State-component serialization, proofs and persistence are
+separate. See [the root contract](../spec/state-trie.md).
 
 ## Published codec fixture inventory
 

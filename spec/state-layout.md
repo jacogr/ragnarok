@@ -11,7 +11,8 @@ revision, primitive backend or toolchain changes.
 `state_layout.nim` implements fixed state-key/node layout and node hashing. It does **not**
 construct a trie/root from entries, serialize state components T(state), derive service storage
 namespace prefixes automatically, build proofs, execute transitions or implement persistence.
-Those remain explicit future increments. In particular, hashing a zero-filled branch node is not
+Root construction is now covered separately in [state-trie.md](state-trie.md); the other
+responsibilities remain future increments. In particular, hashing a zero-filled branch node is not
 the empty-trie's zero identity rule; empty-trie handling belongs to trie construction.
 
 `StateKey` owns exactly 31 bytes. `StateChapter` is a nominal octet, and service identifiers reuse
@@ -109,5 +110,5 @@ CI runs this suite after the native primitive library is built, retaining build 
 compiler diagnostics and request digest/results under ignored `build/state-layout/`. Provenance
 checks read the frozen historical blob directly at its recorded Git revision; partial clones may
 materialize that promised data object through Git. Source files and gitlinks remain unchanged.
-Local verification is macOS arm64; Linux x86-64 validation occurs in CI after push. The next bounded
-step is trie-root construction over already serialized 31-byte key/value entries.
+Local verification is macOS arm64; Linux x86-64 validation occurs in CI after push. Root
+construction over serialized entries has its separate [contract](state-trie.md) and test suite.
