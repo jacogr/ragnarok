@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -604,6 +604,13 @@ STATISTICS_PRIVATE = {'statistics_result_entry_private': 'completed', 'statistic
 PRIVATE.update(STATISTICS_PRIVATE)
 NOMINAL.update(statistics_gas_as_counter="ActivityGas", statistics_service_as_core="StatisticsServiceIndex")
 STATISTICS_MEMBERS = ('entry-config', 'entry-current', 'entry-previous', 'entry-cores', 'entry-policy', 'entry-order', 'entry-bytes', 'decode-config', 'decode-count', 'decode-framing', 'decode-limit', 'decode-overflow', 'decode-order', 'decode-tail', 'decode-bytes', 'owner', 'consumed', 'info', 'validator-owner', 'validator-index', 'validator-epoch', 'core-owner', 'core-index', 'service-owner', 'service-index', 'natural', 'key', 'core-fields', 'service-fields', 'layout-services', 'layout-consumed')
+# Queue result payloads and owner storage remain private across both component domains.
+WORKQUEUES_PRIVATE = {'workqueue_result_entry_private': 'completed', 'workqueue_result_ready_read_private': 'completed', 'workqueue_result_acc_read_private': 'completed', 'workqueue_result_info_private': 'completed', 'workqueue_result_integer_private': 'completed', 'workqueue_result_item_private': 'completed', 'workqueue_result_hash_private': 'completed', 'workqueue_result_count_private': 'completed', 'workqueue_result_retag': 'status', 'workqueue_result_forge': 'status', 'workqueue_result_error_write': 'error', 'workqueue_result_value_write': 'value', 'workqueue_ready_rebind': 'data', 'workqueue_accumulated_rebind': 'data', 'workqueue_ready_private': 'data', 'workqueue_accumulated_private': 'data'}
+PRIVATE.update(WORKQUEUES_PRIVATE)
+NOMINAL.update(workqueue_hash_as_item="[3] expected: ReadyItemIndex but got: WorkQueueHashIndex",
+               workqueue_item_as_slot="[2] expected: WorkQueueSlot but got: ReadyItemIndex",
+               workqueue_wrong_owner="[1] expected: ReadySnapshot but got: AccumulatedSnapshot")
+WORKQUEUES_MEMBERS = ('ready-entry-config', 'ready-entry-count', 'ready-entry-policy', 'ready-entry-report', 'ready-entry-child', 'ready-entry-dependencies', 'ready-entry-order', 'ready-entry-bytes', 'acc-entry-count', 'acc-entry-order', 'acc-entry-policy', 'ready-owner', 'ready-consumed', 'ready-config', 'ready-overflow', 'ready-framing', 'ready-child', 'ready-dependencies', 'ready-bytes', 'acc-owner', 'acc-consumed', 'acc-order', 'acc-overflow', 'ready-info', 'acc-info', 'ready-slot-owner', 'ready-slot-index', 'acc-slot-owner', 'acc-slot-index', 'item-owner', 'item-slot', 'item-index', 'dep-owner', 'dep-slot', 'dep-item', 'dep-index', 'hash-owner', 'hash-slot', 'hash-index', 'count-truncated', 'count-noncanonical', 'ready-layout', 'acc-layout')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -652,7 +659,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -687,7 +694,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_statistics_driver.nim', 'tests/state_statistics_oracle.py',
+                'tests/native/state_workqueues_driver.nim', 'tests/state_workqueues_oracle.py',
+                'tests/test_state_workqueues_harness.py', 'tests/native/state_statistics_driver.nim', 'tests/state_statistics_oracle.py',
                 'tests/test_state_statistics_harness.py', 'tests/state_widths_oracle.py', 'tests/native/state_privileges_driver.nim', 'tests/state_privileges_oracle.py',
                 'tests/test_state_privileges_harness.py', 'tests/native/state_availability_driver.nim', 'tests/state_availability_oracle.py',
                 'tests/test_state_availability_harness.py', 'tests/native/state_history_driver.nim', 'tests/state_history_oracle.py',
@@ -724,11 +732,11 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([availability_fixture] if name in ('state_availability', 'state_availability_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [])], name+'-run')
+            row['run'] = command([binary, *([availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
             if name == 'ownership' and row['passed']:
                 # Retain public live-memory measurements for the isolated five-schema ARC release workload.
@@ -856,6 +864,13 @@ def main():
             if release is not None:
                 # Live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
                 report['safrole_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_workqueues_private' and row['passed']:
+            # Escaped report children and replaced ring owners release their final references at scope exit.
+            release = re.search(r'WORKQUEUES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
+                report['workqueues_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_trie_private' and row['passed']:
             # Temporary sorted-key scratch must retire after success, preflight rejection and early/late backend failure.
             release = re.search(r'TRIE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1482,6 +1497,38 @@ def main():
     corpus['passed'] = corpus['passed'] and len(corpus['published_trace_components']) == 6 and all(row['complete_component_match'] for row in corpus['published_trace_components'])
     report['statistics_corpus'] = corpus
     announce('independent chapter-13 activity statistics state corpus', corpus['passed'])
+    # Chapters 14/15 retain independent literal, derived JSON and exact raw trace evidence.
+    from state_workqueues_oracle import requests as workqueue_requests, published as workqueue_published, published_traces as workqueue_traces, parse as workqueue_parse, wire as workqueue_wire
+    harness = command([sys.executable, ROOT/'tests/test_state_workqueues_harness.py'], 'workqueues-harness')
+    lines, expected = workqueue_requests()
+    source = BUILD/'workqueues-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    traces = []
+    # Whole-component trace replay is separate from sorted JSON-derived mathematical sets.
+    for kind, data, config in workqueue_traces():
+        rows, consumed, items, dependencies = workqueue_parse(kind, data, config)
+        traces.append(dict(kind=kind, bytes=len(data), consumed=consumed, items=items,
+                           dependencies=dependencies, sha256=hashlib.sha256(data).hexdigest(),
+                           complete_component_match=consumed == len(data) and workqueue_wire(kind, rows) == data))
+    compiled, binary = build(compiler, ROOT/'tests/native/state_workqueues_driver.nim', 'state_workqueues-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_json_components=len(workqueue_published()), published_trace_components=traces,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Expected observations come from the independent reference, never a native round trip.
+        result = command([binary, source], 'state_workqueues-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Preserve the first disagreement and complete log for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    corpus['passed'] = corpus['passed'] and len(traces) == 12 and all(row['complete_component_match'] for row in traces)
+    report['workqueues_corpus'] = corpus
+    announce('independent chapters 14/15 ready/accumulated queue corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1879,6 +1926,17 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['statistics'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' statistics '+member+' guard', passed)
+    # Both queue domains and internal count/layout proofs require successful payload selection.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_workqueues_results.nim', 'workqueues-results', crypto_library)
+    report['workqueues_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Actual/default failures execute separately so one rejected access cannot conceal another.
+        for origin in ('default', 'error'):
+            for member in WORKQUEUES_MEMBERS:
+                result = command([binary, member, origin, availability_fixture], 'workqueues-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['workqueues'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' workqueues '+member+' guard', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -1913,6 +1971,9 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name.startswith('workqueue_'):
+            # Nominal row/item/hash positions and owner kinds cannot be substituted.
+            rejected = 'Error: Type mismatch at [position]' in result['output'] and member in result['output']
         elif name == 'statistics_gas_as_counter':
             # A nominal natural gas value cannot fill an E4 validator array element, even for small numeric values.
             rejected = ('Error: Type mismatch at [position]' in result['output']
@@ -1996,6 +2057,9 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['workqueues_corpus']['passed']
+                   and len(report['workqueues']) == 2*len(WORKQUEUES_MEMBERS)
+                   and all(row['passed'] for row in report['workqueues'])
                    and report['statistics_corpus']['passed']
                    and len(report['statistics']) == 2*len(STATISTICS_MEMBERS)
                    and all(row['passed'] for row in report['statistics'])

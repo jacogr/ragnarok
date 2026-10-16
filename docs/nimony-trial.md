@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **40 native suites, twenty-two independent family corpora, 1,004 runtime misuse rejections
-and 487 compilation rejections pass locally**. Chapter-13 activity statistics joins the verified
+Status: **42 native suites, twenty-three independent family corpora, 1,090 runtime misuse rejections
+and 506 compilation rejections pass locally**. Chapters 14/15 work queues join the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
-state-key/node, bounded trie, entropy/roster/time, authorization and state chapters 3–5/10/12/13.
+state-key/node, bounded trie, entropy/roster/time, authorization and state chapters 3–5/10/12–15.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1275,11 +1275,58 @@ remaining failure retained. The branch Linux workflow uses the expanded runner a
 Results remain local macOS ARM64, checked ARC/Clang LTO. Actual Linux execution and full M1/M2/M3
 runtime parity remain separate gates. Chapters 14/15 work queues are the next bounded family.
 
+## Twenty-eighth bounded increment: chapters 14/15 work queues
+
+`src/codec/state_workqueues.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
+0.8.0 T(state) chapters 14/15 retain their fixed epoch rings, ordered ready-report rows, complete
+C.2 child reports, canonical dependency sets and canonical accumulated package sets. Report
+sequence order and repeated report identities remain significant; hash sets remain strictly
+lexicographic and unique within each set. There is no extra outer count, report prefix, sorting
+fallback, accumulation execution or protocol/dependency change.
+
+`WorkQueueResult[T]` hides status and payload behind read-only reasons and a success precondition,
+including private natural-count/layout proofs. Explicit nullable acyclic ring storage is checked
+through stable retained locals. Ready/accumulated owners and slot/item/hash ordinals remain separate
+nominal domains. Fixed metadata/hashes are independent copies; extracted report handles retain
+their child after parent release. Complete preflight still precedes retained allocation, including
+late report/dependency failures. Native descriptor extents, aggregate metadata and fixed payload
+sizes retain explicit division/subtraction checks before arithmetic, narrowing or allocation.
+
+The port uses explicit initialization, supported nullable references, explicit byte appends and
+nonthrowing integer/hex parsing in the trusted test driver. No compiler or runtime patches were
+needed. One supplementary ordering test initially exceeded its aggregate item budget; its earlier
+row is now empty so the intended late `NonCanonical` failure is reached without changing production
+error precedence. This test-fixture correction is separate from compiler-repair measurements.
+
+All **2,904 unchanged independent requests** and **six literal reference checks** pass. Coverage
+includes truncations, count boundaries, late failures, all hash-order octets, row/aggregate/child
+budgets, ring positions, repeated report identities, deterministic mutations and **48 partial
+component trie roots**. The corpus retains **24 JSON-derived component observations** from pinned
+accumulation STF sources and **12 exact raw trace components**, all fully consumed and re-emitted
+unchanged. JSON-derived sorted mathematical sets and raw trace bytes remain distinct evidence;
+selected raw ready rings are empty, with nonempty ready coverage supplied by the JSON sources.
+The isolated retain/replace/drop workload returns public live occupancy from **592 to 592 bytes**
+after **1,000 warmed cycles**, including escaped report children and late-failure preflight. This
+is a scoped allocator observation, not an RSS or general leak-freedom claim.
+
+This increment adds **86 runtime misuse rejections** (forty-three actual/default result pairs)
+and **19 compilation rejections** (sixteen private/read-only result/owner probes and three nominal
+owner/index substitutions). Cumulative totals are **1,090 runtime misuse rejections, 506 compilation
+rejections (436 privacy + 62 nominal + five schema + three static contracts), 42 positive native
+suites and twenty-three family corpora**, plus three separate language probes. Formatting covers
+**695 Nim files**; the functional report records **694 matching source/test hashes**. These safety
+counts are separate from compiler-repair measurements.
+
+The local all-source semantic audit advances from 29/43 to **30/43 passing modules**, retaining all
+thirteen remaining failures. Branch Linux CI uses the expanded runner automatically. Verification
+here is macOS ARM64, checked ARC/Clang LTO. Actual Linux execution and full M1/M2/M3 runtime parity
+remain separate gates. Chapter-16 last accumulation outputs is the next bounded family.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapters 14/15 ready and accumulated work queues (`src/codec/state_workqueues.nim`),
-preserving fixed epoch rings, ordered retained reports, canonical dependency/accumulated hash sets,
-nominal positions, whole-parent preflight and the existing independent entry/root corpus.
+Next: port M1 chapter-16 last accumulation outputs (`src/codec/state_outputs.nim`), preserving
+the ordered count-prefixed sequence, fixed E4 service IDs and 32-byte commitments, repeated pairs,
+nominal indices, whole-parent preflight and the existing independent entry/root corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
