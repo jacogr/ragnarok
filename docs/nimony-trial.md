@@ -1,10 +1,11 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **30 native suites, seventeen independent family corpora, 745 runtime misuse rejections and
-398 compilation rejections pass locally**. Chapter-4 Safrole basic state now joins the verified
-scalar, owned, report, extrinsic-family, work-package, header, block, bitstring, collection, C.2,
-raw-crypto, state-key/node-layout, bounded trie, entropy/roster/time and authorization slices.
+Status: **32 native suites, eighteen independent family corpora, 777 runtime misuse rejections and
+411 compilation rejections pass locally**. Chapter-5 dispute judgment/offender state joins the
+verified scalar, owned, report, extrinsic-family, work-package, header, block, bitstring, collection,
+C.2, raw-crypto, state-key/node-layout, bounded trie, entropy/roster/time, authorization and chapter-4
+slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -975,11 +976,65 @@ command, source hash and verdict under `build/nimony-ci/modules/`. The workflow 
 compiler/environment metadata and uses `tools/setup_nimony_ci_linux.py` for verified installation.
 Full Linux runtime evidence still awaits CI execution after publishing these changes.
 
+## Twenty-third bounded increment: chapter-5 dispute judgment/offender state
+
+`src/codec/state_disputes.nim` now targets the same pristine Nimony nightly. Gray Paper 0.8.0
+T(state) chapter 5 retains four independently canonical sorted sets, canonical general-natural
+counts and nominally separate report hashes and offender keys. There is no source sorting,
+deduplication, alternate wire format, dispute transition or cryptographic validation added here.
+No protocol/dependency pin, compiler source or native primitive backend changes.
+
+`DisputeStateResult[T]` now hides its discriminator/payload behind read-only `error` and
+success-precondition `value` accessors. This protects the private no-allocation scan layout too;
+failed/default results cannot authorize entries, owners, copied counts/identities or consumed
+progress. Nullable acyclic snapshot storage is bound to a checked stable local before access.
+Default owners, huge indices and forged judgment enum tags return typed errors; `InvalidTag`
+is appended to the error vocabulary for invalid source API tags, with no new wire tag.
+
+Whole-source and whole-parent checks still precede allocations, including final offender ordering.
+Independent immutable capture survives callee return, destructive wire/source mutation, retained
+aliases and handle replacement. Editing copied metadata or fixed identities cannot alter its
+owner. Direct private arithmetic probes reach `high(int)` exactly, reject the next count prefix
+and a 33-byte extent before addition, allow zero growth at the ceiling, and reject `high(uint64)`
+counts by aggregate or host extent checks before narrowing/multiplication. They do not construct
+fake sequence descriptors or depend on overflow exceptions.
+
+All **2,766 unchanged independent corpus requests** and **six literal reference checks** pass.
+These retain all four sorted sets, duplicate/descending source and wire rejection, differences in
+every identity octet, proper truncations, late offender failures, huge/overlong counts, 127/128 and
+255/256 boundaries, policy ceilings, suffixes and randomized cases. Twelve hash-checked published
+pre/post state sources remain derived component fixtures; twelve singleton trie integrations
+commit C(5) alone, not complete state roots or successful dispute transitions.
+
+After 100 warmups, **1,000 scoped cycles return live occupancy 192 → 192 bytes**, including
+escaped/replaced/retained owners, copied metadata/identities, empty states and late malformed
+parent temporaries. A duplicate final offender also rejects without increasing live occupancy.
+This is workload-specific allocator evidence, not RSS or general leak freedom; OOM remains
+fail-stop. No compiler/runtime hook or dependency patch is used.
+
+This slice adds **32 runtime misuse rejections** (sixteen actual failure/default payload pairs)
+and **13 compilation rejections** (eleven private/read-only result or owner bypasses and the two
+original report-as-offender/byte-budget-as-ordinal probes). Cumulative totals are **777 runtime
+misuse rejections, 411 compilation rejections (355 privacy + 51 nominal + five schema), 32 positive
+native suites and eighteen independent corpora**, plus the three separate language probes.
+Formatting covers **607 Nim files**. Functional evidence records **568 source/test hashes** in
+`build/nimony-trial/verification/results.json`.
+
+Nimony diagnostics rejected same-container read/write expressions in two new test statements as
+`mutable argument aliases with immutable parameter`. Explicit local reads before writes retained
+the intended test operations. This is an observed compiler diagnostic, not a measured defect-rate
+comparison or a claim that it proves alias safety across the implementation.
+
+Results remain local macOS ARM64 with checked ARC/Clang LTO. The branch Linux workflow picks up the
+new suites, corpus and guards automatically. The local all-source compilation gate advances from
+24/43 to **25/43 passing modules**; its remaining failures stay visible. Actual Linux results and
+full M1/M2/M3 parity remain unverified; compile-only success does not replace runtime gates.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapter-5 dispute judgment/offender state (`src/codec/state_disputes.nim`), preserving
-four independently canonical ordered sets, nominal report/key separation, immutable owner-bound
-extraction, whole-parent preflight and the existing independent entry/root corpus.
+Next: port M1 chapter-3 recent history (`src/codec/state_history.nim`), preserving ordered block
+records, canonical package-to-segment dictionaries, selected optional peak values, immutable
+owner-bound extraction, whole-parent preflight and the existing independent entry/root corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1015,8 +1070,8 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
-and raw-crypto/state-key/node-layout/trie/entropy-roster-time/authorization/chapter-4 slices.
-A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
-switched normal CI. Formatting passes.
+verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
+C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
+authorization and state chapters 4–5. A missing check or failed guard still makes the runner exit
+one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

@@ -141,8 +141,10 @@ Authorization pools and queues now pass their complete independent corpus, guard
 retained nested-owner/copy checks, kind validation, arithmetic and scoped release workload.
 Chapter-4 Safrole basic state now passes its complete independent corpus, guarded chapter-local
 results, closed source alternatives, retained parent/child copies, arithmetic and scoped release
-workload. The next compiler-port increment is chapter-5 dispute judgment/offender state
-(`state_disputes.nim`). M1 migration remains partial.
+workload. Chapter-5 dispute judgment/offender state now passes its complete independent corpus,
+guarded public/private results, canonical-set/domain checks, retained owner/copy checks, arithmetic
+and scoped release workload. The next compiler-port increment is chapter-3 recent history
+(`state_history.nim`). M1 migration remains partial.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux

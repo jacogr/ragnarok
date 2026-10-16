@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -581,6 +581,10 @@ CONSENSUS_MEMBERS = (
     'layout-pending',
     'layout-consumed',
 )
+STATE_DISPUTES_PRIVATE = {'state_disputes_result_entry_private': 'completed', 'state_disputes_result_read_private': 'completed', 'state_disputes_result_info_private': 'completed', 'state_disputes_result_report_private': 'completed', 'state_disputes_result_offender_private': 'completed', 'state_disputes_result_retag': 'status', 'state_disputes_result_forge': 'status', 'state_disputes_result_error_write': 'error', 'state_disputes_result_value_write': 'value', 'state_disputes_owner_rebind': 'data', 'state_disputes_private': 'data'}
+PRIVATE.update(STATE_DISPUTES_PRIVATE)
+NOMINAL.update(state_report_as_offender="got: DisputeHash but wanted: OffenderKey", state_bytes_as_dispute_index="ByteLimit")
+STATE_DISPUTES_MEMBERS = ('entry-order', 'entry-limit', 'owner', 'consumed', 'decode-order', 'decode-framing', 'decode-limit', 'decode-overflow', 'decode-bytes', 'info', 'report-owner', 'report-index', 'report-tag', 'offender-owner', 'offender-index', 'layout')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -629,7 +633,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -664,7 +668,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_consensus_driver.nim', 'tests/state_consensus_oracle.py',
+                'tests/native/state_disputes_driver.nim', 'tests/state_disputes_oracle.py',
+                'tests/test_state_disputes_harness.py', 'tests/native/state_consensus_driver.nim', 'tests/state_consensus_oracle.py',
                 'tests/test_state_consensus_harness.py', 'tests/native/state_authorization_driver.nim', 'tests/state_authorization_oracle.py',
                 'tests/test_state_authorization_harness.py', 'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
                 'tests/test_state_safrole_harness.py', 'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
@@ -693,7 +698,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -769,6 +774,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_disputes_private' and row['passed']:
+            # Retained/replaced chapter-5 parents and copied set identities retire at their final ARC owner.
+            release = re.search(r'STATE_DISPUTES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public live occupancy measures this warmed workload, never RSS or general leak freedom.
+                report['state_disputes_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_consensus_private' and row['passed']:
             # Both parent modes, escaped children and copied source arrays must retire at final ARC release.
             release = re.search(r'CONSENSUS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1294,6 +1306,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['consensus_corpus'] = corpus
     announce('independent chapter-4 Safrole basic state corpus', corpus['passed'])
+    # Preserve independent chapter-5 byte/field equations, derived fixtures and partial single-entry roots.
+    from state_disputes_oracle import requests as state_disputes_requests, published as state_disputes_published
+    harness = command([sys.executable, ROOT/'tests/test_state_disputes_harness.py'], 'state_disputes-harness')
+    lines, expected = state_disputes_requests()
+    source = BUILD/'state_disputes-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_disputes_driver.nim', 'state_disputes-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_derived_state_sources=len(state_disputes_published()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Observe every child field after caller mutation; no native round trip supplies an expected answer.
+        result = command([binary, source], 'state_disputes-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep complete output and the first mismatch for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['state_disputes_corpus'] = corpus
+    announce('independent chapter-5 dispute judgment/offender state corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1634,6 +1670,17 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['consensus'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' consensus '+member+' guard', passed)
+    # All public result shapes and private scan layouts require success before payload access.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_state_disputes_results.nim', 'state-disputes-results', crypto_library)
+    report['state_disputes_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate default and actual failed operations so one failed precondition cannot conceal another.
+        for origin in ('default', 'error'):
+            for member in STATE_DISPUTES_MEMBERS:
+                result = command([binary, member, origin], 'state-disputes-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['state_disputes'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' chapter-5 '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1661,6 +1708,11 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'state_bytes_as_dispute_index':
+            # Byte budgets cannot substitute for ordinals in the offender set.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'stateOffenderAt(' in result['output']
+                        and '[2] expected: DisputeStateIndex but got: '+member in result['output'])
         elif name == 'state_validator_as_slot':
             # Pending validator ordinals cannot fill the distinct schedule-slot argument.
             rejected = ('Error: Type mismatch at [position]' in result['output']
@@ -1714,6 +1766,9 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['state_disputes_corpus']['passed']
+                   and len(report['state_disputes']) == 2*len(STATE_DISPUTES_MEMBERS)
+                   and all(row['passed'] for row in report['state_disputes'])
                    and len(report['consensus']) == 2*len(CONSENSUS_MEMBERS)+2
                    and all(row['passed'] for row in report['consensus'])
                    and len(report['authorization']) == 2*len(AUTHORIZATION_MEMBERS)
