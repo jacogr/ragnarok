@@ -2,6 +2,7 @@
 """Verify protocol source identity, published migration provenance and explicit unresolved parity gates."""
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 import unittest
 from dependencies import ROOT, require_submodule
@@ -36,6 +37,10 @@ class SpecificationTests(unittest.TestCase):
         # Hash every consumed fixture and the upstream changelog, not merely the JSON representation.
         for path, digest in entry['files'].items():
             self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(), digest, path)
+        # Additional frozen data may remain outside the deliberately sparse working tree; read only its exact pinned Git blob.
+        for path, digest in entry.get('git_blobs', {}).items():
+            data = subprocess.check_output(['git', '-C', str(ROOT/entry['path']), 'show', entry['commit']+':'+path])
+            self.assertEqual(hashlib.sha256(data).hexdigest(), digest, path)
         # Test the new fields' literal fixed offsets without importing the production or report-oracle codec.
         for chain, shards in (('tiny', 6), ('full', 1023)):
             folder = ROOT/f'vendor/jamtestvectors/codec/{chain}'

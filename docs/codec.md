@@ -6,6 +6,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | Module | Scope |
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
+| `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
 | `c2_records.nim` | Standalone availability, deferred transfers, immutable operands and tagged accumulation inputs |
 | `collections.nim` | Canonical typed sets and dictionaries over natural/fixed unsigned/fixed-octet scalars |
 | `bitstrings.nim` | Strict Boolean prefixes, fixed/variable packed bitstrings and immutable bit owners |
@@ -75,3 +76,9 @@ values from context, include the transfer/operand outer tags in their standalone
 the 128-byte memo, and distinguish E8 transfer gas from natural operand gas. Fixed records are
 independent copies; operand snapshots bind result/trace extraction to their owner. Caller blob and
 wire ceilings are explicit. These codecs do not execute accumulation or verify state eligibility.
+
+[State-layout foundation](../spec/state-layout.md) begins the separate state commitment scope:
+31-byte keys, 64-byte node values and explicit partial left-child commitments. Results and metadata
+are independent fixed copies, so these APIs return new values rather than mutate caller buffers.
+This includes node hashing through the existing Blake2b backend, not full trie construction or
+state serialization. Run its native suite after building the primitive bridge.

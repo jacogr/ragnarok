@@ -45,6 +45,8 @@ failure atomicity, immutable ownership and intentional nominal-domain compilatio
 
 ```sh
 python3 tests/test_crypto.py --fetch
+python3 tests/test_state_layout.py
+python3 tests/test_state_layout_harness.py
 python3 tests/test_bandersnatch.py --fetch
 python3 tests/test_work_report.py
 python3 tests/test_report_types.py
