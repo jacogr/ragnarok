@@ -170,8 +170,8 @@ through the Nimony runner, alongside literal oracle/provenance checks. All 185,3
 natural/fixed/bounded/composite/digest requests and their nominal/privacy safeguards now pass too.
 Local M1 validation migration parity is reached for the documented implemented scope; the parked
 namespace policy and Linux confirmation remain separate. M2 assurance signing contexts and
-validator-key/parent verification now pass too; next are guarantee messages and complete-report
-signature composition.
+validator-key/parent verification now pass too, alongside guarantee messages and complete-report
+signature composition. Next: Bandersnatch result contracts and native key/setup owner lifetimes.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux

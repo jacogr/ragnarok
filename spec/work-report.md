@@ -82,7 +82,13 @@ and ARC release coverage. Runtime misuse and compilation checks protect results 
 hash/root/slot/shard domains. Commands, source hashes, corpus hashes and exact diagnostics are
 retained in ignored `build/nimony-trial/verification/results.json` and adjacent logs.
 
-The full `report_driver.nim` still dispatches its explicit crypto `check` subcommand and includes
-the same codec adapter for all ordinary requests. Nimony verification here does not include those
-hash/signature composition checks, Linux execution, or full-client migration; see
-[the trial](../docs/nimony-trial.md).
+The full `report_driver.nim` now compiles on Nimony, dispatches its explicit crypto `check`
+subcommand and includes the same codec adapter for all 18,430 ordinary requests. All 63 original
+independent OpenSSL credential cases pass, comparing the complete re-encoded report, exact
+46-byte guarantee message and expected signature verdict. New 0.8.0 field mutations, wrong domain,
+swapped keys and individual corrupted signatures retain their original expectations.
+`GuaranteeMessageResult` keeps composition status/storage private, with read-only reasons and
+success-guarded fixed message copies. The helper hashes caller-supplied bytes; it does not validate
+report eligibility or guarantor assignments. Linux/full-client parity and the exceptional-point
+policy remain separate. Next: Bandersnatch result contracts and native key/setup owner lifetimes.
+See [the trial](../docs/nimony-trial.md) for cumulative evidence.

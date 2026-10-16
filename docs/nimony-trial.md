@@ -1,17 +1,17 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **52 native suites, thirty-seven independent corpora, 1,310 runtime misuse rejections
-and 608 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+Status: **53 native suites, thirty-eight independent corpora, 1,314 runtime misuse rejections
+and 616 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
 All production codec modules and documented M1 regression families now pass locally, including
 the five early independent corpora and their original nominal/privacy safeguards. Local M1
 validation migration parity is reached for the implemented scope; the parked request-namespace
-policy still qualifies normative state parity. The M2 assurance signing-context slice now also
-passes locally; guarantee contexts, Bandersnatch, M3 and Linux parity remain unverified. This branch targets
-Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
+policy still qualifies normative state parity. The M2 assurance and guarantee/report
+signing-context slices now also pass locally; Bandersnatch, M3 and Linux parity remain unverified.
+This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
 
@@ -1781,19 +1781,81 @@ Local M1 validation migration parity is retained, with the namespace policy stil
 M2/M3 parity remains open. Next is guarantee signing-message and complete-report signature
 composition through the existing primitive bridge.
 
+## Thirty-seventh bounded increment: guarantee messages and complete-report credentials
+
+`src/crypto/guarantee.nim` now targets the pristine pinned nightly. The Gray Paper 0.8.0
+`guarantorsig` message remains exactly `$jam_guarantee || Blake2b-256(canonical_report_bytes)`:
+46 owned bytes, including the leading dollar sign, with no added timeslot or second hash. The
+raw helper hashes supplied bytes; validating canonical complete reports remains the caller's
+responsibility. No validator-assignment, eligibility or exceptional-point acceptance rule changes.
+
+The new **`GuaranteeMessageResult`** owns private status and fixed completed storage, retaining
+read-only `.error` and guarded `.value` access. It replaces this helper's former explicit
+`CryptoResult[GuaranteeMessage]` return type: primitive result constructors remain private to the
+primitive module. Current callers use the same read interface. The dedicated name also avoids
+colliding with the codec's generic `GuaranteeResult[T]`. No public unchecked-success factory or
+compiler/private-runtime workaround is introduced. Default/backend-failed alternatives cannot
+publish partial/default signing bytes; successful outputs are independent fixed copies.
+
+The full `report_driver.nim` now builds with the real production crypto bridge and handles both
+its unchanged **18,430 codec requests** and its explicit credential subcommand. All **63 original
+independent signature checks** pass across seven authored/published report fixtures: two valid
+ordinary credentials, independent signature corruption, changed report hash, each new 0.8.0
+shard/anchor-slot/lookup-state field, wrong domain and swapped public keys. Native output must
+match every re-encoded report byte, all 46 signing bytes and the expected credential verdict.
+The corpus remains structural evidence; a permissive profile does not make every sample
+chain-eligible or establish guarantor assignments.
+
+The original cases now have one shared `composition_cases()` constructor. Comparing its complete
+ordered wire/credential/verdict tuples against the committed helper confirms exact equality.
+`build/nimony-trial/report-signature-extraction.json` records that comparison. Two harness tests
+freeze the full public case identity and independently check literal mutation offsets and unchanged
+source fields. OpenSSL fixtures remain independently checked against the pinned RFC 8032 known
+answer; expected message bytes come from Python hashlib. Every native command, input hash,
+actual/expected output hash and individual verdict is retained by the trial runner.
+
+A separate observer-linked native suite verifies independent known answers for empty and three-byte
+raw inputs, copied transcript/source independence, immediate hash refusal and recovery. Those raw
+inputs test the helper contract, not report admissibility. Public live occupancy returns **192 to
+192 bytes after 1,000 warmed scopes**; this is workload-specific Nim allocator evidence, not RSS
+or general provider leak freedom. The credential corpus links the production bridge; only fault
+checks use the existing project-only observer. Native/upstream sources and pins remain unchanged.
+
+**Zero rejected targeted builds or compile/fix cycles** and **zero post-compilation defects** were
+observed in this increment. The full report driver, new native suite and misuse adapter each built
+on their first attempt; all targeted execution passed. This is a small composition/adapter port,
+not evidence that fewer cycles alone imply greater reliability. Historical repair totals and
+elapsed development time are not reconstructed. Intentional rejection fixtures are safety evidence,
+not compiler repairs.
+
+This increment adds **four actual/default runtime misuse rejections** (empty/nonempty backend
+failures), **six private/read-only result compilation rejections** and **two nominal probes**
+(message versus signature, raw hash versus message). Cumulative totals are **53 positive native
+suites, thirty-eight independent corpora, 1,314 runtime misuse rejections and 616 compilation
+rejections** (516 privacy + 91 nominal + five schema + four static contracts), plus three language
+probes. Formatting covers **788 Nim files**; the functional report records **868 matching source/
+test/fixture hashes**. Ten CI-helper checks pass. The all-source semantic audit advances to
+**37/43**, with Bandersnatch and five QUIC modules remaining.
+
+Results are local macOS ARM64, pristine pinned Nimony 0.6.3, checked ARC/Clang LTO. Local M1
+validation migration parity is retained. Raw primitives, assurances and guarantee/report signing
+composition now pass, while Bandersnatch/VRF, networking and Linux confirmation remain separate
+migration gates. The parked namespace and exceptional-point policies are unchanged. Next is the
+Bandersnatch adapter's guarded results and native key/setup ownership slice.
+
 ## Remaining work and next bounded increment
 
-Next: port `src/crypto/guarantee.nim` and complete-report signature composition, including
-success-only result contracts, independent report/credential checks, backend refusal/recovery and
-nominal message/hash safeguards. Keep protocol/dependency pins and exceptional-point policy
-unchanged. Bandersnatch/VRF ownership and context verification remain later bounded M2 work.
+Next: port the Bandersnatch adapter's result contracts and native key/setup owner lifetimes,
+using the existing pinned ark-vrf 0.2.2 ABI. Verify fixed imports, aliases, close/last-owner release
+and failure recovery before extending contextual VRF/RingVRF runtime coverage. Keep upstream
+sources, SRS hashes, draft/reference policy and all protocol/dependency pins unchanged.
 
 Further port work remains:
 
 - M1: local validation migration parity is reached for the documented implemented codec scope.
   The request-namespace normative policy remains parked; Linux execution is a separate gate.
-- M2: raw primitives and assurance signing contexts pass locally. Guarantee/report signature
-  composition and Bandersnatch/VRF runtime parity, including their FFI lifetimes, remain unverified.
+- M2: raw primitives, assurance contexts and guarantee/report signature composition pass locally.
+  Bandersnatch/VRF runtime parity and its native owner lifetimes remain unverified.
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
   Its alternative networking facilities require a dispatcher port and the existing lifecycle,
   service, mesh, resilience and offload tests.
@@ -1824,7 +1886,7 @@ verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
 authorization, state chapters 3–5/10/12–16, fixed service-account metadata and storage/preimage
 keyed values, request histories, exact chapter/service composition, raw whole-state roots, published width
-evidence, the unchanged parked namespace witnesses, the original five early codec corpora and stateless
-assurance signing contexts.
+evidence, the unchanged parked namespace witnesses, the original five early codec corpora, stateless
+assurance signing contexts and guarantee/report credential composition.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

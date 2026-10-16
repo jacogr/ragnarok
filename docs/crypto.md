@@ -38,5 +38,11 @@ fixed-copy/preflight/refusal/recovery suite. Live occupancy remains 192 bytes be
 warmed scopes; this is scoped evidence, not a general leak claim. Signature acceptance policy and
 protocol/dependency pins are unchanged. Linux confirmation remains separate.
 
-Next: guarantee signing messages and complete-report signature composition. Bandersnatch/VRF
-runtime parity and networking remain later gates. See the [cumulative trial](nimony-trial.md).
+Guarantee composition now also passes: `GuaranteeMessageResult` keeps fixed transcript storage
+private and guards success access while preserving read-only `.error`/`.value` callers. The full
+report driver replays the same 18,430 codec requests and all 63 original independent credential
+checks. Known-answer/copy/refusal/recovery tests, four runtime misuse guards and eight compilation
+probes also pass; live occupancy remains 192 bytes after 1,000 warmed scopes.
+
+Next: Bandersnatch result contracts and native key/setup owner lifetimes. Contextual VRF/RingVRF
+runtime coverage and networking remain later gates. See the [cumulative trial](nimony-trial.md).

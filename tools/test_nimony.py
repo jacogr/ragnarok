@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -671,6 +671,14 @@ NOMINAL.update(assurance_context_parent='got: AssuranceAnchor but wanted: Assura
 ASSURANCE_CONTEXT_MEMBERS = ('message-config', 'message-padding', 'message-backend',
     'verify-config', 'verify-keys', 'verify-count', 'verify-index', 'verify-order', 'verify-padding',
     'verify-parent', 'verify-backend', 'verify-signature')
+# Guarantee signing results own their fixed payload; raw hash/signature domains remain distinct.
+GUARANTEE_MESSAGE_PRIVATE = dict(guarantee_message_private='completed',
+    guarantee_message_status_private='status', guarantee_message_retag='status',
+    guarantee_message_forge='status', guarantee_message_error_write='error', guarantee_message_value_write='value')
+PRIVATE.update(GUARANTEE_MESSAGE_PRIVATE)
+NOMINAL.update(guarantee_message_as_signature='got: GuaranteeMessage but wanted: EdSignature',
+               guarantee_hash_as_message='got: Blake2bHash but wanted: GuaranteeMessage')
+GUARANTEE_MESSAGE_MEMBERS = ('empty', 'bytes')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -719,7 +727,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -751,7 +759,8 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
+    sources += [ROOT/path for path in ('src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
+                'tests/native/report_check.nim', 'tests/test_report_signature_harness.py','src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
                 'tests/assurance_crypto_oracle.py', 'tests/test_assurance_crypto_harness.py', 'vectors/assurance-context.json','tests/native/driver.nim', 'tests/native/fixed_driver.nim',
                 'tests/native/bounded_driver.nim', 'tests/native/composite_driver.nim', 'tests/native/digest_driver.nim',
                 'tests/native/batch_support.nim', 'tests/test_early_codec_harness.py', 'tests/bounded_checks.py', 'tests/composite_checks.py',
@@ -810,7 +819,7 @@ def main():
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name in ('assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
+                                 crypto_observer if name in ('guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
                                  else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
@@ -1006,6 +1015,13 @@ def main():
             if release is not None:
                 # This warmed public occupancy observation is workload-specific, never an RSS or general leak claim.
                 report['assurance_context_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'guarantee_message' and row['passed']:
+            # Fixed signing results and synchronous borrows must leave no new live Nim storage after warmed scopes.
+            release = re.search(r'GUARANTEE_MESSAGE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public occupancy covers this workload only, not provider RSS or general leak freedom.
+                report['guarantee_message_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
@@ -1041,14 +1057,14 @@ def main():
                 corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
         report[family+'_corpus'] = corpus
         announce('unchanged independent '+family+' corpus', corpus['passed'])
-    # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
+    # The full report driver retains the unchanged codec batch and exposes credential composition separately.
     sys.path.insert(0, str(ROOT/'tests'))
     from report_oracle import requests
     report_harness = command([sys.executable, ROOT/'tests/test_report_harness.py'], 'report-harness')
     lines, expected = requests()
     source = BUILD/'report-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/report_codec_driver.nim', 'report-codec')
+    compiled, binary = build(compiler, ROOT/'tests/native/report_driver.nim', 'report-codec', crypto_library)
     corpus = dict(build=compiled, harness=report_harness, requests=len(lines), passed=False,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1065,6 +1081,36 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['report_corpus'] = corpus
     announce('independent report corpus', corpus['passed'])
+    # Independently signed full-report fixtures retain all original key/signature/domain/new-field mutations.
+    from report_fixtures import fixtures as signed_report_fixtures, composition_cases
+    harness = command([sys.executable, ROOT/'tests/test_report_signature_harness.py'], 'report-signature-harness')
+    provider, values = signed_report_fixtures()
+    cases = composition_cases(values)
+    folder = BUILD/'report-signatures'
+    folder.mkdir(exist_ok=True)
+    checks = []
+    # This shared full-driver build must succeed before any credential command can run.
+    compiled = report['report_corpus']['build']
+    if compiled['exit_code'] == 0:
+        # Each public wire has an independent path and an expected complete echo, exact transcript and verdict.
+        for index, case in enumerate(cases):
+            source = folder/(str(index)+'.bin')
+            source.write_bytes(case['wire'])
+            message = b'$jam_guarantee'+hashlib.blake2b(case['wire'], digest_size=32).digest()
+            expected = 'VERIFY '+case['wire'].hex()+' '+message.hex()+' '+str(int(case['wanted']))+'\n'
+            result = command([BUILD/'report-codec', 'check', source,
+                              *[raw.hex() for pair in case['credentials'] for raw in pair]], 'report-signature-'+str(index))
+            output = result.pop('output')
+            checks.append(dict(name=case['name'], passed=result['exit_code'] == 0 and output == expected,
+                               wanted=case['wanted'], run=result,
+                               wire_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                               expected_sha256=hashlib.sha256(expected.encode()).hexdigest(),
+                               actual_sha256=hashlib.sha256(output.encode()).hexdigest()))
+    corpus = dict(build=compiled, harness=harness, provider=provider, requests=len(cases), fixtures=len(values), checks=checks,
+                  passed=harness['exit_code'] == 0 and len(cases) == len(checks) == 63 and all(row['passed'] for row in checks),
+                  scope='full canonical report bytes and ordinary Ed25519 credential bindings; no assignment or point-policy decision')
+    report['report_signature_corpus'] = corpus
+    announce('independent full-report guarantee signature composition corpus', corpus['passed'])
     # Preserve the full independent assurance corpus and derive capacity-free inspection expectations separately.
     from assurances_oracle import requests as assurance_requests, decode as assurance_decode
     assurance_harness = command([sys.executable, ROOT/'tests/test_assurances_harness.py'], 'assurance-harness')
@@ -1956,6 +2002,17 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['assurance_context'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' assurance context '+member+' guard', passed)
+    # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_guarantee_message_results.nim', 'guarantee-message-results', crypto_observer)
+    report['guarantee_message_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Empty/nonempty raw inputs are isolated, and each default is separate from the actual provider refusal.
+        for origin in ('default', 'error'):
+            for member in GUARANTEE_MESSAGE_MEMBERS:
+                result = command([binary, member, origin], 'guarantee-message-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['guarantee_message'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' guarantee message '+member+' guard', passed)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2565,6 +2622,9 @@ def main():
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and report['early_oracle_harness']['exit_code'] == 0
                    and all(report[family+'_corpus']['passed'] for family in ('natural', 'fixed', 'bounded', 'composite', 'digest'))
+                   and report['report_signature_corpus']['passed']
+                   and len(report['guarantee_message']) == 2*len(GUARANTEE_MESSAGE_MEMBERS)
+                   and all(row['passed'] for row in report['guarantee_message'])
                    and report['assurance_context_corpus']['passed']
                    and len(report['assurance_context']) == 2*len(ASSURANCE_CONTEXT_MEMBERS)
                    and all(row['passed'] for row in report['assurance_context'])

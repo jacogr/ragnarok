@@ -151,7 +151,7 @@ Results are local macOS ARM64, checked ARC/Clang LTO. All production codec modul
 Unchanged width-evidence and parked namespace-witness regressions now replay through this driver
 in the Nimony runner. The five early primitive/composite independent corpora now pass too,
 completing local M1 validation migration parity for the documented implemented scope. Linux
-execution remains separate. The M2 assurance signing-context slice now passes; next are guarantee
-messages and complete-report signature composition.
+execution remains separate. M2 assurance and guarantee/report signing composition now pass.
+Next: Bandersnatch result contracts and native key/setup owner lifetimes.
 No transition execution or new namespace rule is introduced. See the
 [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3 work.
