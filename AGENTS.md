@@ -44,6 +44,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   and document the remaining gate; do not tune acceptance to make a corpus pass.
 
 ## Working style
+- The M1 request-namespace and C13 statistics-gas questions are parked by the maintainer pending
+  Gray Paper 0.8.1/0.8.2 review. Preserve their evidence, pending tests and current codec behavior.
+  Revisit during that specification upgrade or on an explicit maintainer request; do not treat
+  resolving them as the next active increment or invent interim protocol restrictions.
 - Complete the authorized bounded increment and report it, then wait for the maintainer's next
   explicit go-ahead before starting another increment.
 - Read `docs/design.md` before architectural changes. State scope, applicable spec references and

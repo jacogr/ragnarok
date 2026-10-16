@@ -147,5 +147,6 @@ gates remain unchanged.
 
 The C13 service-key migration is complete. All 224 selected chapter captures and fourteen
 published full-state mappings now pass [typed composition](state-composition.md), but M1 parity
-remains incomplete pending C13 gas and request namespace policy. Next: request-length namespace
-admissibility review; C13 gas still requires normative/reference clarification.
+remains incomplete pending C13 gas and request namespace policy. Both questions are
+[parked for Gray Paper 0.8.1/0.8.2 review](state-clarifications.md); current behavior and pending
+tests remain.

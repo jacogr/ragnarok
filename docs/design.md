@@ -70,8 +70,9 @@ policy also needs clarification. The [full-map root audit](../spec/state-roots.m
 published maps and records the dictionary migration and remaining C(13) gas conflict.
 [Typed composition](../spec/state-composition.md) now enforces exact component extents, common
 profiles, parent budgets and duplicate rejection. The [width investigation](../spec/state-widths.md)
-supports the implemented C(12) E4 service/E8 gas and C(13) E4-key migration. Next planned:
-resolve the [recorded specification questions](../spec/state-clarifications.md). The
+supports the implemented C(12) E4 service/E8 gas and C(13) E4-key migration. The maintainer has
+[parked the two specification questions](../spec/state-clarifications.md) pending Gray Paper
+0.8.1/0.8.2 review; they are not the next active increment. The
 [namespace review](../spec/request-namespace.md) produces funded local-rule witnesses, not an
 exclusion; production behavior is unchanged. C(13) gas and request namespace policy still need
 clarification before full M1 parity.

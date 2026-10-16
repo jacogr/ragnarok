@@ -95,5 +95,6 @@ retains logs/results. Local macOS arm64 passing results do not certify Linux CI.
 and typed or explicitly opaque service values, with parent limits and duplicate rejection. All fourteen
 published complete mappings compose and reproduce their roots under the recorded interpretation.
 M1 state parity remains incomplete pending **numeric-width/request-key policy resolution**.
-Next: resolve [request namespace and C13 gas clarification questions](state-clarifications.md).
+The maintainer has [parked both questions](state-clarifications.md) for Gray Paper 0.8.1/0.8.2
+review; there is no further active clarification increment against the current pin.
 The [namespace review](request-namespace.md) found local-rule counterexamples, not an exclusion. Trie proofs/persistence, state transitions and PVM execution remain separate work.

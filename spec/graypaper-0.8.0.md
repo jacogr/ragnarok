@@ -187,4 +187,5 @@ wire reconstruction is not claimed as full normative parity.
 The [request-history contract](state-requests.md) records the other cross-map question: E4 lengths
 fffffffe/ffffffff reproduce preimage/storage key prefixes. Full stated domains remain supported
 and the trie rejects duplicate keys. No inferred reserved-length restriction is installed.
-Next bounded group: request-length namespace admissibility review.
+Request namespace and C13 gas questions are [parked by the maintainer](state-clarifications.md)
+pending Gray Paper 0.8.1/0.8.2 review. Current behavior, evidence and pending tests remain.

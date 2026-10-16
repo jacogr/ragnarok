@@ -1,8 +1,22 @@
-# Open M1 specification clarification questions
+# Parked M1 specification clarification questions
 
 Pinned Gray Paper: v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`.
 Pinned reference vectors: v0.8.0 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
 This is a local review packet, not an upstream ruling or a submitted issue.
+
+## Status: parked by the maintainer
+
+Revisit both questions when reviewing Gray Paper **0.8.1/0.8.2**. They remain unresolved parity
+gates, but are not active work. Preserve the current codecs, duplicate-key rejection, evidence and
+pending tests; no interim workaround or inferred protocol restriction is planned.
+
+During that version review:
+
+- Check request key prefixes, the blob-length domain, solicit rules and account invariants against
+  the two existing small-payload witnesses.
+- Check statistics gas definitions and T's width note against the release-matched raw vectors.
+- Record whether each question is resolved, unchanged or replaced before changing implementation
+  behavior or closing a pending test. Upgrade pins only within an authorized specification migration.
 
 ## Request namespace versus fresh solicit
 
@@ -37,6 +51,7 @@ intended encoding needs an explicit definition and matching raw vectors.
 Current behavior: retain the published natural statistics-gas framing with an explicit pending
 normative/reference gate. No gas-width fallback, vector rewriting or full M1 parity claim.
 
-Next: resolve these specification decisions, then apply focused implementation/conformance updates.
+Next review trigger: evaluating Gray Paper 0.8.1/0.8.2, or an explicit maintainer request.
+No further clarification increment is scheduled against the current 0.8.0 pin.
 Codec families and selected whole-state mappings otherwise have the recorded implementation tests;
 this does not claim PVM, state-transition or production-validator completeness.

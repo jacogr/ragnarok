@@ -136,4 +136,5 @@ validation is macOS arm64, with Linux confirmation after push.
 
 All state component families and selected complete compositions now have tests, but **M1 parity
 remains incomplete** pending request namespace and C13 gas policy. The review preserves the full
-length domain and duplicate rejection. Next: resolve the [two recorded specification questions](state-clarifications.md).
+length domain and duplicate rejection. The maintainer has [parked both specification questions](state-clarifications.md)
+pending Gray Paper 0.8.1/0.8.2 review; they are not active work.
