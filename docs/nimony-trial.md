@@ -1,10 +1,11 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **36 native suites, twenty independent family corpora, 892 runtime misuse rejections and
-455 compilation rejections pass locally**. Chapter-10 availability now joins the verified scalar,
+Status: **38 native suites, twenty-one independent family corpora, 942 runtime misuse rejections
+and 469 compilation rejections pass locally**. Chapter-12 privileges now joins the verified scalar,
 owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto, state-key/node,
-bounded trie, entropy/roster/time, authorization and state chapter-3/chapter-4/chapter-5 slices.
+bounded trie, entropy/roster/time, authorization and state chapter-3/chapter-4/chapter-5/chapter-10
+slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1166,11 +1167,61 @@ remain in the same full runner. The local all-source semantic audit advances fro
 **27/43 passing modules**, retaining every remaining failure. Results are local macOS ARM64, checked
 ARC/Clang LTO; actual Linux execution and full M1/M2/M3 migration remain separate gates.
 
+## Twenty-sixth bounded increment: chapter-12 privileged services
+
+`src/codec/state_privileges.nim` now targets the same pristine Nimony nightly, preserving Gray
+Paper 0.8.0 T(state) chapter 12. Fixed E4 manager/assigner/delegator/registrar roles precede one
+canonical natural dictionary count and fixed E4-service/E8-gas pairs. Keys remain strictly
+increasing numerically, including cases such as 255/256 whose little-endian byte order differs.
+The full unsigned gas range is retained. No sorting, deduplication, compact-pair fallback, service
+eligibility checks or privilege transitions are added. Protocol/dependency pins and upstream
+compiler/library sources are unchanged.
+
+`PrivilegeResult[T]` now hides its discriminator/payload behind read-only reasons and a checked
+success-only value accessor, including the private natural reader and no-allocation scan layout.
+Nullable acyclic owner storage is checked through stable retained locals. Whole-source/parent
+shape, count, order and byte checks still precede output/retained array allocation, including late
+key/gas failures. Metadata, assigners and service/gas pairs are independent fixed copies; replacing
+handles or editing source/wire/extracted values cannot alter a retained sibling owner.
+
+All **1,390 unchanged independent requests** and **seven literal reference checks** pass, retaining
+fixed E4/E8 padding and field order, full numeric service/gas domains, no-count core assigners,
+count boundaries through 1,024, supported/invalid core profiles, exact/below byte/item policies,
+duplicate/descending numeric keys, representative proper truncations, malformed/overlong/huge
+counts, legacy compact-pair probes, suffixes, random source/input mutations and 24 singleton trie
+integrations. Sixteen derived phase/profile sources from eight hash-checked published JSON blobs
+remain unchanged. These are component fixtures and C(12)-only roots, not standalone published T
+binaries, passed STFs or complete state roots.
+
+After 100 warmups, **1,000 scoped cycles return live occupancy 192 → 192 bytes**, covering
+escaped/replaced/retained parents, scalar metadata and pair copies, empty dictionaries and late
+malformed parent temporaries. A duplicate final key rejects without increasing live occupancy.
+Direct arithmetic probes reach `high(int)` exactly, reject the next byte and an E8 extent before
+addition, allow zero growth at the ceiling, accept the largest representable typed-array count and
+reject its successor or `high(uint64)` without allocation. Caller item policy still precedes native
+extent failure. No fake descriptors, overflow exceptions or private compiler/runtime hooks are
+used. Live occupancy is workload-specific, not RSS/general leak freedom; OOM remains fail-stop.
+
+This increment adds **50 runtime misuse rejections** (twenty-five actual/default result pairs)
+and **14 compilation rejections** (twelve private/read-only result/owner probes and the original
+gas-as-service and dictionary-index-as-core substitutions). The existing nominal probes retain
+precise compiler type/argument diagnostics. Cumulative totals are **942 runtime misuse rejections,
+469 compilation rejections (404 privacy + 57 nominal + five schema + three static contracts),
+38 positive native suites and twenty-one family corpora**, plus three separate language probes.
+Formatting covers **662 Nim files**; the functional report records **644 matching source/test
+hashes**. No historical compiler-repair measurements are inferred from these safety-test totals.
+
+The branch Linux workflow automatically uses the expanded runner and all-source compilation gate.
+The local semantic module audit advances from 27/43 to **28/43 passing**, with every remaining
+failure retained. Results remain local macOS ARM64, checked ARC/Clang LTO. Actual Linux execution
+and full M1/M2/M3 runtime parity remain separate migration gates. Chapter-13 activity statistics is the next slice;
+the accepted compact C13 gas policy and parked request-namespace question remain unchanged.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapter-12 privileges (`src/codec/state_privileges.nim`), preserving fixed service
-roles/assigners, the canonical E4-service/E8-gas dictionary, nominal indices, immutable copied
-extraction, whole-parent preflight and the existing independent entry/root corpus.
+Next: port M1 chapter-13 activity statistics (`src/codec/state_statistics.nim`), preserving fixed
+E4 validator counters, canonical natural core/service values and the accepted compact gas policy,
+nominal measure/index domains, immutable copied extraction and the existing independent corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1208,6 +1259,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
-authorization and state chapters 3–5/10. A missing check or failed guard still makes the runner exit
-one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
+authorization and state chapters 3–5/10/12. A missing check or failed guard still makes the runner
+exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

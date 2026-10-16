@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -596,6 +596,10 @@ PRIVATE.update(AVAILABILITY_PRIVATE)
 NOMINAL.update(assignment_guarantee_slot="GuaranteeSlot", assignment_validator_as_core="GuarantorIndex")
 CONTRACTS.update(assignment_known_absent_guarantee="assignment.isPresent", assignment_known_absent_registered="assignment.isPresent")
 AVAILABILITY_MEMBERS = ('entry-config', 'entry-count', 'entry-bytes', 'entry-present', 'entry-report', 'entry-credential', 'entry-validator', 'owner', 'consumed', 'decode-config', 'decode-tag', 'decode-late', 'decode-credential', 'decode-validator', 'decode-framing', 'decode-present', 'decode-bytes', 'decode-timestamp', 'info', 'at-owner', 'at-index', 'layout-consumed', 'layout-present')
+PRIVILEGES_PRIVATE = {'privilege_result_entry_private': 'completed', 'privilege_result_read_private': 'completed', 'privilege_result_info_private': 'completed', 'privilege_result_service_private': 'completed', 'privilege_result_pair_private': 'completed', 'privilege_result_natural_private': 'completed', 'privilege_result_retag': 'status', 'privilege_result_forge': 'status', 'privilege_result_error_write': 'error', 'privilege_result_value_write': 'value', 'privilege_owner_rebind': 'data', 'privilege_snapshot_private': 'data'}
+PRIVATE.update(PRIVILEGES_PRIVATE)
+NOMINAL.update(privilege_gas_as_service="got: PrivilegeGas but wanted: ServiceIndex", privilege_entry_as_core="PrivilegeEntryIndex")
+PRIVILEGES_MEMBERS = ('entry-config', 'entry-count', 'entry-policy', 'entry-order', 'entry-bytes', 'decode-config', 'decode-fixed', 'decode-framing', 'decode-count', 'decode-overflow', 'decode-order', 'decode-gas', 'decode-bytes', 'owner', 'consumed', 'info', 'assigner-owner', 'assigner-index', 'pair-owner', 'pair-index', 'natural-truncated', 'natural-framing', 'natural-bytes', 'layout-count', 'layout-consumed')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -644,7 +648,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -679,7 +683,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_availability_driver.nim', 'tests/state_availability_oracle.py',
+                'tests/native/state_privileges_driver.nim', 'tests/state_privileges_oracle.py',
+                'tests/test_state_privileges_harness.py', 'tests/native/state_availability_driver.nim', 'tests/state_availability_oracle.py',
                 'tests/test_state_availability_harness.py', 'tests/native/state_history_driver.nim', 'tests/state_history_oracle.py',
                 'tests/test_state_history_harness.py', 'tests/native/state_disputes_driver.nim', 'tests/state_disputes_oracle.py',
                 'tests/test_state_disputes_harness.py', 'tests/native/state_consensus_driver.nim', 'tests/state_consensus_oracle.py',
@@ -714,7 +719,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -790,6 +795,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_privileges_private' and row['passed']:
+            # Immutable roles/assigners/pairs and all retained/replaced handles retire at final ARC release.
+            release = re.search(r'PRIVILEGES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
+                report['privileges_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_availability_private' and row['passed']:
             # Independent assignment/report children survive parent retirement and release with their final handles.
             release = re.search(r'AVAILABILITY_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1408,6 +1420,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['availability_corpus'] = corpus
     announce('independent chapter-10 availability assignment state corpus', corpus['passed'])
+    # Preserve independent chapter-12 byte/field equations, derived fixtures and partial single-entry roots.
+    from state_privileges_oracle import requests as state_privileges_requests, published as state_privileges_published
+    harness = command([sys.executable, ROOT/'tests/test_state_privileges_harness.py'], 'state_privileges-harness')
+    lines, expected = state_privileges_requests()
+    source = BUILD/'state_privileges-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_privileges_driver.nim', 'state_privileges-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_derived_state_sources=len(state_privileges_published()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Observe every child field after caller mutation; no native round trip supplies an expected answer.
+        result = command([binary, source], 'state_privileges-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep complete output and the first mismatch for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['privileges_corpus'] = corpus
+    announce('independent chapter-12 privileged service state corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1783,6 +1819,17 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['availability'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' availability '+member+' guard', passed)
+    # Every public result shape and private natural/layout proof requires success before payload access.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_privileges_results.nim', 'privileges-results', crypto_library)
+    report['privileges_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate actual failures and defaults so one rejected access never conceals another.
+        for origin in ('default', 'error'):
+            for member in PRIVILEGES_MEMBERS:
+                result = command([binary, member, origin], 'privileges-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['privileges'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' privileges '+member+' guard', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -1817,6 +1864,11 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'privilege_entry_as_core':
+            # Always-accumulate dictionary ordinals cannot select a core assigner.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'privilegeAssignerAt(' in result['output']
+                        and '[2] expected: PrivilegeCoreIndex but got: '+member in result['output'])
         elif name in ('assignment_guarantee_slot', 'assignment_validator_as_core'):
             # Guarantee evaluation time and guarantor indices cannot fill registration/core domains.
             call, position, expected = (('presentAssignment(', 2, 'AssignmentSlot') if name == 'assignment_guarantee_slot'
@@ -1886,6 +1938,9 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['privileges_corpus']['passed']
+                   and len(report['privileges']) == 2*len(PRIVILEGES_MEMBERS)
+                   and all(row['passed'] for row in report['privileges'])
                    and report['availability_corpus']['passed']
                    and len(report['availability']) == 2*len(AVAILABILITY_MEMBERS)+6
                    and all(row['passed'] for row in report['availability'])

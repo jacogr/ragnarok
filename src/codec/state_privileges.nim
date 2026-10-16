@@ -1,5 +1,6 @@
 ## GP 0.8.0 T chapter 12: E4 role services and a count-prefixed E4-service/E8-gas dictionary.
 ## Serialization preserves privileges; it does not authorize services or execute privilege changes.
+import std/assertions
 import ./[natural, bounded, composite, assurances, state_layout, state_trie]
 export ServiceIndex, CoreCount
 
@@ -30,17 +31,17 @@ type
     LimitExceeded, LengthOverflow, InvalidService, InvalidOwner, InvalidIndex
   ## Success is the only alternative that contains a usable payload.
   PrivilegeResult*[T] = object
-    case error*: PrivilegeError
-    of PrivilegeError.None:
-      value*: T # Select success before reading application data.
+    case status: PrivilegeError
+    of None:
+      completed: T # Select success before reading application data.
     else:
-      discard   # Defaults and failures carry no fabricated state.
+      discard      # Defaults and failures carry no fabricated state.
   ## Private immutable acyclic ARC storage contains independent fixed values only.
   PrivilegeData = ref object
     state: PrivilegeState
   ## Value handles share retained storage; caller replacement never changes another handle's state.
   PrivilegeSnapshot* = object
-    data: PrivilegeData
+    data: nil PrivilegeData
   ## Complete prefix success binds the retained component to its exact consumed extent.
   PrivilegeRead* = object
     snapshot*: PrivilegeSnapshot
@@ -52,6 +53,13 @@ type
   ## Private scan proof contains only bounded offsets/counts and never escapes to callers.
   Layout = object
     start, count, consumed: int
+
+## A reason is read-only and never authorizes values or partial parsing progress.
+func error*[T](value: PrivilegeResult[T]): PrivilegeError = value.status
+## Public payloads and internal scalar/layout proofs require success under optimized builds too.
+func value*[T](value: PrivilegeResult[T]): T {.inline, requires: value.status ==
+    PrivilegeError.None.} =
+  value.completed
 
 ## Reject unsupported profiles before any field access or native count conversion.
 proc validate(config: PrivilegeConfig): PrivilegeError =
@@ -81,13 +89,13 @@ proc readNatural(input: openArray[byte], cursor: var int,
   let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
-      return PrivilegeResult[uint64](error: PrivilegeError.Truncated) # Missing fields publish no partial progress.
+      return PrivilegeResult[uint64](status: PrivilegeError.Truncated) # Missing fields publish no partial progress.
     else:
-      return PrivilegeResult[uint64](error: PrivilegeError.NonCanonical) # No alternate dictionary count representation.
+      return PrivilegeResult[uint64](status: PrivilegeError.NonCanonical) # No alternate dictionary count representation.
   let error = grow(cursor, parsed.consumed, config)
   if error != PrivilegeError.None: return PrivilegeResult[uint64](
-      error: error) # Complete scalar still consumes policy.
-  PrivilegeResult[uint64](error: PrivilegeError.None, value: uint64(parsed.value))
+      status: error) # Complete scalar still consumes policy.
+  PrivilegeResult[uint64](status: PrivilegeError.None, completed: uint64(parsed.value))
 
 ## Copy one prevalidated E4 service with explicit little-endian shifts, retaining no input coordinates.
 proc serviceAt(input: openArray[byte], offset: int): ServiceIndex =
@@ -107,15 +115,15 @@ proc gasAt(input: openArray[byte], offset: int): PrivilegeGas =
 proc scan(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[Layout] =
   let valid = validate(config)
   if valid != PrivilegeError.None: return PrivilegeResult[Layout](
-      error: valid) # Invalid policy precedes input work.
+      status: valid) # Invalid policy precedes input work.
   var cursor = 4*(int(uint64(config.cores))+3)
   if input.len < cursor: return PrivilegeResult[Layout](
-      error: PrivilegeError.Truncated) # All fixed roles must be present.
+      status: PrivilegeError.Truncated) # All fixed roles must be present.
   let count = readNatural(input, cursor, config)
   if count.error != PrivilegeError.None: return PrivilegeResult[Layout](
-      error: count.error) # Require canonical dictionary count.
+      status: count.error) # Require canonical dictionary count.
   let error = countError(count.value, config)
-  if error != PrivilegeError.None: return PrivilegeResult[Layout](error: error) # No announced-count allocation.
+  if error != PrivilegeError.None: return PrivilegeResult[Layout](status: error) # No announced-count allocation.
   let start = cursor
   var previous = 0'u64
   # Fixed E4 keys and E8 gas are fully present and numerically ordered before any owner allocation.
@@ -123,27 +131,27 @@ proc scan(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[Layo
     let start = cursor
     let keyError = grow(cursor, 4, config)
     if keyError != PrivilegeError.None: return PrivilegeResult[Layout](
-        error: keyError) # Key padding consumes budget.
+        status: keyError) # Key padding consumes budget.
     if cursor > input.len: return PrivilegeResult[Layout](
-        error: PrivilegeError.Truncated) # Require every E4 octet.
+        status: PrivilegeError.Truncated) # Require every E4 octet.
     let key = uint64(uint32(serviceAt(input, start)))
     if i > 0 and key <= previous:
-      return PrivilegeResult[Layout](error: PrivilegeError.NonCanonical) # Compare decoded numeric IDs, not little-endian octets.
+      return PrivilegeResult[Layout](status: PrivilegeError.NonCanonical) # Compare decoded numeric IDs, not little-endian octets.
     previous = key
     let gasError = grow(cursor, 8, config)
     if gasError != PrivilegeError.None: return PrivilegeResult[Layout](
-        error: gasError) # Full E8 gas shares parent policy.
+        status: gasError) # Full E8 gas shares parent policy.
     if cursor > input.len: return PrivilegeResult[Layout](
-        error: PrivilegeError.Truncated) # Late gas failure publishes no owner.
-  PrivilegeResult[Layout](error: PrivilegeError.None,
-    value: Layout(start: start, count: int(count.value), consumed: cursor))
+        status: PrivilegeError.Truncated) # Late gas failure publishes no owner.
+  PrivilegeResult[Layout](status: PrivilegeError.None,
+    completed: Layout(start: start, count: int(count.value), consumed: cursor))
 
 ## Capture the complete component only after every late dictionary key/value has passed preflight.
 proc decodePrivilegeState*(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[
     PrivilegeRead] =
   let checked = scan(input, config)
   if checked.error != PrivilegeError.None: return PrivilegeResult[PrivilegeRead](
-      error: checked.error) # No failed owner/progress.
+      status: checked.error) # No failed owner/progress.
   let cores = int(uint64(config.cores))
   let data = PrivilegeData(state: PrivilegeState(manager: serviceAt(input, 0),
     delegator: serviceAt(input, 4*(cores+1)), registrar: serviceAt(input, 4*(cores+2)),
@@ -155,8 +163,9 @@ proc decodePrivilegeState*(input: openArray[byte], config: PrivilegeConfig): Pri
   for i in 0..<checked.value.count:
     data.state.always[i] = AlwaysAccumulate(service: serviceAt(input, cursor), gas: gasAt(input, cursor+4))
     cursor += 12
-  PrivilegeResult[PrivilegeRead](error: PrivilegeError.None,
-    value: PrivilegeRead(snapshot: PrivilegeSnapshot(data: data), consumed: checked.value.consumed))
+  PrivilegeResult[PrivilegeRead](status: PrivilegeError.None,
+    completed: PrivilegeRead(snapshot: PrivilegeSnapshot(data: data),
+        consumed: checked.value.consumed))
 
 ## Commit a canonical natural after the whole source has passed sizing, order and byte-policy checks.
 proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
@@ -184,26 +193,26 @@ proc putGas(value: PrivilegeGas, output: var seq[byte], cursor: var int) =
 proc privilegeStateEntry*(source: PrivilegeState, config: PrivilegeConfig): PrivilegeResult[StateEntry] =
   let valid = validate(config)
   if valid != PrivilegeError.None: return PrivilegeResult[StateEntry](
-      error: valid) # Policy precedes source traversal.
+      status: valid) # Policy precedes source traversal.
   if uint64(source.assigners.len) != uint64(config.cores):
-    return PrivilegeResult[StateEntry](error: PrivilegeError.InvalidCount) # No missing core or extra array count is inferred.
+    return PrivilegeResult[StateEntry](status: PrivilegeError.InvalidCount) # No missing core or extra array count is inferred.
   let count = countError(uint64(source.always.len), config)
   if count != PrivilegeError.None: return PrivilegeResult[StateEntry](
-      error: count) # Bound work before sizing pairs.
+      status: count) # Bound work before sizing pairs.
   var size = 4*(source.assigners.len+3)
   var error = grow(size, natural.encode(JamNatural(source.always.len)).len, config)
   if error != PrivilegeError.None: return PrivilegeResult[StateEntry](
-      error: error) # Empty dictionary still emits its count.
+      status: error) # Empty dictionary still emits its count.
   # Numeric dictionary order is required from sources; no silent sorting or last-key-wins repair.
   for i, pair in source.always:
     if i > 0 and uint32(pair.service) <= uint32(source.always[i-1].service):
-      return PrivilegeResult[StateEntry](error: PrivilegeError.NonCanonical) # Even a late duplicate invalidates all output.
+      return PrivilegeResult[StateEntry](status: PrivilegeError.NonCanonical) # Even a late duplicate invalidates all output.
     error = grow(size, 4, config)
     if error != PrivilegeError.None: return PrivilegeResult[StateEntry](
-        error: error) # All four key bytes consume parent policy.
+        status: error) # All four key bytes consume parent policy.
     error = grow(size, 8, config)
     if error != PrivilegeError.None: return PrivilegeResult[StateEntry](
-        error: error) # All eight gas bytes consume parent policy.
+        status: error) # All eight gas bytes consume parent policy.
   var entry = StateEntry(key: chapterKey(StateChapter(12)), value: newSeq[byte](size))
   var cursor = 0
   putService(source.manager, entry.value, cursor)
@@ -216,32 +225,35 @@ proc privilegeStateEntry*(source: PrivilegeState, config: PrivilegeConfig): Priv
   for pair in source.always:
     putService(pair.service, entry.value, cursor)
     putGas(pair.gas, entry.value, cursor)
-  PrivilegeResult[StateEntry](error: PrivilegeError.None, value: entry)
+  PrivilegeResult[StateEntry](status: PrivilegeError.None, completed: entry)
 
 ## Return copied scalar roles and cardinalities without exporting retained arrays.
 proc privilegeInfo*(owner: PrivilegeSnapshot): PrivilegeResult[PrivilegeInfo] =
-  if owner.data.isNil: return PrivilegeResult[PrivilegeInfo](
-      error: PrivilegeError.InvalidOwner) # Defaults are not valid empty state.
-  PrivilegeResult[PrivilegeInfo](error: PrivilegeError.None,
-    value: PrivilegeInfo(manager: owner.data.state.manager, delegator: owner.data.state.delegator,
-      registrar: owner.data.state.registrar,
-      cores: owner.data.state.assigners.len, always: owner.data.state.always.len))
+  let data = owner.data
+  if data == nil: return PrivilegeResult[PrivilegeInfo](
+      status: PrivilegeError.InvalidOwner) # Defaults are not valid empty state.
+  PrivilegeResult[PrivilegeInfo](status: PrivilegeError.None,
+    completed: PrivilegeInfo(manager: data.state.manager, delegator: data.state.delegator,
+      registrar: data.state.registrar,
+      cores: data.state.assigners.len, always: data.state.always.len))
 
 ## Extract one fixed assigner by nominal core position, keeping dictionary ordinals separate.
 proc privilegeAssignerAt*(owner: PrivilegeSnapshot, index: PrivilegeCoreIndex): PrivilegeResult[ServiceIndex] =
-  if owner.data.isNil: return PrivilegeResult[ServiceIndex](
-      error: PrivilegeError.InvalidOwner) # No default service on absent storage.
-  if uint64(index) >= uint64(owner.data.state.assigners.len):
-    return PrivilegeResult[ServiceIndex](error: PrivilegeError.InvalidIndex) # Bound before narrowing/access.
-  PrivilegeResult[ServiceIndex](error: PrivilegeError.None, value: owner.data.state.assigners[int(
+  let data = owner.data
+  if data == nil: return PrivilegeResult[ServiceIndex](
+      status: PrivilegeError.InvalidOwner) # No default service on absent storage.
+  if uint64(index) >= uint64(data.state.assigners.len):
+    return PrivilegeResult[ServiceIndex](status: PrivilegeError.InvalidIndex) # Bound before narrowing/access.
+  PrivilegeResult[ServiceIndex](status: PrivilegeError.None, completed: data.state.assigners[int(
       uint64(index))])
 
 ## Extract one copied service/gas pair, independent of both its snapshot and source arrays.
 proc alwaysAccumulateAt*(owner: PrivilegeSnapshot, index: PrivilegeEntryIndex): PrivilegeResult[
     AlwaysAccumulate] =
-  if owner.data.isNil: return PrivilegeResult[AlwaysAccumulate](
-      error: PrivilegeError.InvalidOwner) # No fabricated pair on default owners.
-  if uint64(index) >= uint64(owner.data.state.always.len):
-    return PrivilegeResult[AlwaysAccumulate](error: PrivilegeError.InvalidIndex) # Dictionary has its own cardinality.
-  PrivilegeResult[AlwaysAccumulate](error: PrivilegeError.None, value: owner.data.state.always[int(
+  let data = owner.data
+  if data == nil: return PrivilegeResult[AlwaysAccumulate](
+      status: PrivilegeError.InvalidOwner) # No fabricated pair on default owners.
+  if uint64(index) >= uint64(data.state.always.len):
+    return PrivilegeResult[AlwaysAccumulate](status: PrivilegeError.InvalidIndex) # Dictionary has its own cardinality.
+  PrivilegeResult[AlwaysAccumulate](status: PrivilegeError.None, completed: data.state.always[int(
       uint64(index))])

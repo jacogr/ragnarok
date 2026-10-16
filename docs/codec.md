@@ -148,7 +148,9 @@ guarded results and optional peaks, retained dictionaries/copies, arithmetic and
 workload. A statically proven absent-hash read also fails compilation. Chapter-10 availability
 state also passes its corpus, guarded result/assignment contracts, retained guarantee/report
 lifetimes, copied-field, arithmetic and scoped release checks.
-Next is chapter-12 privileges (`state_privileges.nim`). M1 migration remains partial.
+Chapter-12 privileges also passes its corpus, guarded public/private results, retained role/pair
+copies, numeric-order, arithmetic and scoped release checks. Next is chapter-13 activity statistics
+(`state_statistics.nim`). M1 migration remains partial.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux
