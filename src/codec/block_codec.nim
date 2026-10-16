@@ -689,6 +689,6 @@ proc readDisputes*(owner: DisputeComponent): DisputeResult[DisputesRead] =
 
 # Materialize the existing sealed-header/marker API on demand; an unsigned component has no matching type.
 proc readHeader*(owner: HeaderComponent): HeaderResult[HeaderRead] =
-  if owner.data.isNil: return HeaderResult[HeaderRead](
-      error: HeaderError.InvalidOwner) # Defaults cannot fabricate a seal.
+  if owner.data.isNil: return headerFailure[HeaderRead](
+      HeaderError.InvalidOwner) # Defaults cannot fabricate a seal.
   decodeHeader(owner.data.wire, headerConfig(owner.data.config))

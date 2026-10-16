@@ -93,7 +93,8 @@ their matching retained owner. No mutable backing sequence, pointer or detached 
 Owner re-emission copies only the selected validated interval and rejects destinations overlapping
 any part of the retained wire. Default owners and signed invalid/absent-marker indices return
 failure. Failed/default results carry only their reason, never a value, owner or progress.
-Optimized builds keep both result and optional-alternative field guards.
+On Nimony, private result/optional storage and guarded accessors protect successful values and
+present-only payloads.
 
 ## Verification
 
@@ -113,5 +114,40 @@ count maxima with duplicate/descending identities; overlong/huge counts; exact/s
 consumed-byte budget boundaries; deterministic structured/arbitrary malformed input; late-source
 atomicity; fixed/descriptor/key/ticket/offender aliases; guarded failed/absent access; five nominal
 compiler rejection probes and four private-owner probes. Eight harness known-answer tests protect
-the independent oracle. Linux CI builds with ARC/Clang LTO and all existing assertion, bounds,
-range, field and overflow checks enabled. Passing framing tests is not state/signature validation.
+the independent oracle. The established Linux CI profile belongs to the Nim 2 baseline; this
+experimental Nimony port has not switched or passed that pipeline. Passing framing tests is not
+state/signature validation.
+
+## Nimony port verification
+
+The pinned nightly uses private `HeaderResult[T]` status/value storage with read-only outcomes and
+success-precondition access. The failure helper forbids None. Four private nullable owner types
+retain stable nil-checked references before reading fixed metadata or selecting nested views.
+The block adapter/fixture were updated mechanically for this API; block runtime parity is separate.
+
+Optional source and metadata variants hide their presence tag and payloads. `present` is read-only;
+source entropies/copies/edits and metadata entropies/counts require presence. Factories construct
+present/absent epoch and winner sources, leaving chain cardinality validation to encoder preflight.
+`editEpochValidators` and `editWinnerTickets` expose checked mutable **encoder source** fields.
+`epochValidatorCopies` and `winnerTicketCopies` return independent sequence copies. Retained
+snapshot APIs expose copied fixed records/metadata and indexed lookups. Production encoders use
+actual private source storage for overlap checks, preserving the complete-source alias contract.
+
+`tools/test_nimony.py` runs all 20,144 original requests plus 8,246 direct sealed-header inspections:
+**28,390 comparisons**. Inspection expectations select independently decoded logical fields,
+including exact full/signing extents, roots, slot, author, proof, offender count and seal. Concrete
+adapter branches preserve every prior operation after template binding proved unsupported in this
+nightly. Full signing bytes and all published tiny/full fixtures retain their existing coverage.
+
+The native suite adds source-copy independence, same-sized parent replacement and signing/marker
+views surviving last-parent release. A warmed 1,000-cycle ARC workload leaves public live occupancy
+at 27,648 bytes on the trial Mac, with outer fixtures live; this measures that workload rather than
+RSS or general leak freedom. Eighty-one runtime misuse checks cover result access, default/absent
+source and copied metadata payloads, mutable source edits and invalid failure construction.
+Forty privacy checks and five nominal/type checks reject raw fields, retagging, forged owners/
+variants and treating an unsigned view as a full header.
+
+Commands, compiler metadata, source/corpus hashes and exact diagnostics are retained in ignored
+`build/nimony-trial/verification/results.json` and adjacent logs. Local macOS ARM64 checked ARC/
+Clang LTO verification does not establish Linux, state eligibility or signature validity; see
+[the trial](../docs/nimony-trial.md).

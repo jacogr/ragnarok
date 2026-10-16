@@ -132,7 +132,7 @@ doAssert encodeBlock(backing[0], config, descriptorBytes.toOpenArray(0, blockSiz
     FrameError.AliasedBuffers
 # A different epoch parameter must not reinterpret an already captured header as a shorter standalone prefix.
 var winnerHeader = header.Header()
-winnerHeader.unsigned.winners = WinnersMarker(present: true, tickets: newSeq[WinningTicket](12))
+winnerHeader.unsigned.winners = presentWinners(newSeq[WinningTicket](12))
 var headerBuffer: array[2048, byte]
 let headerCount = encodeHeader(winnerHeader, header.HeaderConfig(cores: config.cores,
   authorValidators: config.validators, epochSlots: config.epochSlots, maxBytes: config.maxBytes), headerBuffer)

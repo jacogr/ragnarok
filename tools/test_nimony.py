@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -123,6 +123,67 @@ PACKAGE_MEMBERS = ('context-value', 'context-consumed', 'import-value', 'import-
     'item-consumed', 'package-info', 'item-info', 'child', 'selected-import', 'selected-commitment',
     'context-written', 'import-written', 'commitment-written', 'item-written', 'package-written',
     'payload', 'blob', 'owned-item', 'owned-package')
+HEADER_PRIVATE = {
+    'header_result_private': 'completed',
+    'header_result_unsigned_private': 'completed',
+    'header_result_retag': 'status',
+    'header_result_forge': 'status',
+    'header_result_error': 'error',
+    'header_result_value': 'value',
+    'header_owner_forge': 'data',
+    'unsigned_header_owner_forge': 'data',
+    'epoch_marker_owner_forge': 'data',
+    'winners_marker_owner_forge': 'data',
+    'source_epoch_entropyValue': 'entropyValue',
+    'source_epoch_ticketEntropyValue': 'ticketEntropyValue',
+    'source_epoch_validatorValues': 'validatorValues',
+    'source_epoch_retag': 'isPresent',
+    'source_epoch_forge': 'isPresent',
+    'source_epoch_present': 'present',
+    'source_epoch_entropy_write': 'entropy',
+    'source_epoch_ticketsEntropy_write': 'ticketsEntropy',
+    'source_winners_ticketValues': 'ticketValues',
+    'source_winners_retag': 'isPresent',
+    'source_winners_forge': 'isPresent',
+    'source_winners_present': 'present',
+    'meta_epoch_entropyValue': 'entropyValue',
+    'meta_epoch_ticketEntropyValue': 'ticketEntropyValue',
+    'meta_epoch_validatorCount': 'validatorCount',
+    'meta_epoch_retag': 'isPresent',
+    'meta_epoch_forge': 'isPresent',
+    'meta_epoch_present': 'present',
+    'meta_epoch_entropy_write': 'entropy',
+    'meta_epoch_ticketsEntropy_write': 'ticketsEntropy',
+    'meta_epoch_count_write': 'validators',
+    'meta_winners_ticketCount': 'ticketCount',
+    'meta_winners_retag': 'isPresent',
+    'meta_winners_forge': 'isPresent',
+    'meta_winners_present': 'present',
+    'meta_winners_count_write': 'tickets',
+    'private_header_owner': 'data',
+    'private_unsigned_header_owner': 'data',
+    'private_epoch_marker_owner': 'data',
+    'private_winners_marker_owner': 'data',
+}
+HEADER_MEMBERS = (
+    'header-owner', 'header-consumed', 'unsigned-owner', 'unsigned-consumed', 'epoch-owner',
+    'epoch-consumed', 'winners-owner', 'winners-consumed', 'fixed-ticket', 'fixed-consumed',
+    'info', 'inspection', 'unsigned-info', 'unsigned-view', 'epoch-view', 'winners-view',
+    'epoch-info', 'winners-info', 'validator', 'ticket', 'offender', 'header-written',
+    'unsigned-written', 'epoch-written', 'winners-written', 'fixed-written', 'owned-header',
+    'owned-unsigned', 'owned-epoch', 'owned-winners',
+)
+HEADER_OPTIONAL = (
+    'source-entropy', 'source-tickets-entropy', 'source-validators', 'source-tickets',
+    'meta-entropy', 'meta-tickets-entropy', 'meta-validators', 'meta-tickets', 'edit-validators',
+    'edit-tickets',
+)
+NOMINAL.update(swapped_header_root='got: ExtrinsicRoot but wanted: PriorStateRoot',
+               swapped_header_author='got: ValidatorIndex but wanted: AuthorIndex',
+               swapped_header_proof='got: HeaderSeal but wanted: HeaderEntropyProof',
+               swapped_winning_ticket_id='got: EpochEntropy but wanted: WinningTicketId',
+               unsigned_as_full_header='expected: OwnedHeader but got: OwnedUnsignedHeader')
+PRIVATE.update(HEADER_PRIVATE)
 PRIVATE.update(PACKAGE_PRIVATE)
 PRIVATE.update(DISPUTE_PRIVATE)
 PRIVATE.update(TICKET_PRIVATE)
@@ -178,7 +239,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -193,7 +254,9 @@ def main():
                   ROOT/'tests/tickets_oracle.py', ROOT/'tests/test_tickets_harness.py',
                   ROOT/'tests/disputes_oracle.py', ROOT/'tests/native/disputes_driver.nim',
                   ROOT/'tests/test_disputes_harness.py', ROOT/'tests/package_oracle.py',
-                  ROOT/'tests/native/package_driver.nim', ROOT/'tests/test_package_harness.py']
+                  ROOT/'tests/native/package_driver.nim', ROOT/'tests/test_package_harness.py',
+                  ROOT/'tests/header_oracle.py', ROOT/'tests/native/header_driver.nim',
+                  ROOT/'tests/test_header_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -249,6 +312,13 @@ def main():
                 if release is not None:
                     # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
                     report['package_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'header' and row['passed']:
+                # Signing and marker views must retain their exact original snapshot until the last view is released.
+                release = re.search(r'HEADER_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy observes this isolated warmed ARC workload, not RSS or refcount internals.
+                    report['header_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -458,6 +528,62 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['package_corpus'] = corpus
     announce('independent context/import/commitment/item/package corpus', corpus['passed'])
+    # Retain the complete five-family header corpus and add direct full-header inspection expectations.
+    from header_oracle import requests as header_requests, decode as header_decode
+    lines, expected = header_requests()
+    original_count = len(lines)
+    groups = {kind: sum(line.split(' ', 2)[1] == kind for line in lines) for kind in ('T', 'E', 'W', 'U', 'H')}
+    for line in list(lines):
+        # Every original full-header decode input also reaches inspection without capturing a snapshot.
+        fields = line.split()
+        if fields[0] == 'D' and fields[1] == 'H':
+            data = bytes.fromhex(fields[6]) if fields[6] != '-' else b''
+            result = header_decode('H', data, tuple(map(int, fields[2:6])))
+            parts = result.split()
+            lines.append('Q '+line[2:])
+            if len(parts) == 1:
+                # Failed inspection exposes none of the successfully copied header metadata.
+                expected.append(result)
+            else:
+                # Parse the oracle's independent logical marker fields, not native coordinates or serialized offsets.
+                cursor = 5
+                if parts[cursor] == '0':
+                    # Absent epoch metadata contains no entropies, count or key fields.
+                    cursor += 1
+                else:
+                    # Present epoch logical fields carry two entropies and a count followed by key pairs.
+                    count = int(parts[cursor+3])
+                    cursor += 4+2*count
+                if parts[cursor] == '0':
+                    # An absent winner marker contributes only its logical presence flag.
+                    cursor += 1
+                else:
+                    # Logical winner fields include the independently known sequence length plus fixed ticket pairs.
+                    count = int(parts[cursor+1])
+                    cursor += 2+2*count
+                author, proof, offenders = parts[cursor:cursor+3]
+                assert len(parts) == cursor+4+int(offenders)
+                expected.append(' '.join([parts[0], str(int(parts[0])-96), *parts[1:5], author, proof, offenders, parts[-1]]))
+    source = BUILD/'header-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/header_driver.nim', 'header-codec')
+    corpus = dict(build=compiled, original_requests=original_count, request_groups=groups,
+                  inspection_requests=len(lines)-original_count, requests=len(lines), passed=False,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Independently observe every field after source erasure, marker retention and exact signing-prefix checks.
+        result = command([binary, source], 'header-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep the first differing row while retaining complete native output beside the evidence JSON.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['header_corpus'] = corpus
+    announce('independent ticket/epoch/winner/unsigned/full-header corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -629,6 +755,21 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['packages'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' package '+member+' guard', passed)
+    # Guard all public header result instantiations and both source/metadata optional alternatives.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_header_results.nim', 'header-results')
+    report['headers_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate each result access, absent-field read/edit and invalid failure construction in its own process.
+        cases = [(member, origin) for origin in ('default', 'error') for member in HEADER_MEMBERS]
+        cases += [(member, origin) for origin in ('default', 'absent') for member in HEADER_OPTIONAL]
+        cases += [('factory', 'none')]
+        for member, origin in cases:
+            result = command([binary, member, origin], 'header-'+origin+'-'+member)
+            sentinel = ('value.isPresent' if member in HEADER_OPTIONAL else
+                        'not reason == None' if member == 'factory' else 'value.status == None')
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['headers'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' header '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -652,6 +793,10 @@ def main():
             # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'rootImport(' in result['output'] and member in result['output'])
+        elif name == 'unsigned_as_full_header':
+            # Sealed output accepts only the full owner type, never a signing-only retained view.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'encodeOwnedHeader(' in result['output'] and member in result['output'])
         else:
             # Other nominal fields provide precise got/wanted domain names.
             rejected = 'Error: type mismatch: '+member in result['output']
@@ -667,6 +812,8 @@ def main():
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
+                   and report['header_corpus']['passed']
+                   and len(report['headers']) == 81 and all(row['passed'] for row in report['headers'])
                    and len(report['packages']) == 51 and all(row['passed'] for row in report['packages'])
                    and len(report['disputes']) == 25 and all(row['passed'] for row in report['disputes'])
                    and len(report['tickets']) == 10 and all(row['passed'] for row in report['tickets'])

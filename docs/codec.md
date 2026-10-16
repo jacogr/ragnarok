@@ -123,4 +123,6 @@ Ticket encoding, decoding and inspection also pass their independent corpus, inc
 atomicity, alias and guarded-progress checks. Dispute verdict/evidence snapshots, inspection,
 result safety and release checks now pass as well. Work-package inputs and retained package/item
 snapshots also pass their complete independent corpus, guarded import alternatives and release
-checks. Header and marker codecs are the next bounded compiler-port increment.
+checks. Full/signing headers, optional markers, retained views and selected-alternative guards now
+pass their complete corpus and release checks. Complete extrinsic/block composition is the next
+bounded compiler-port increment.

@@ -385,11 +385,58 @@ constructor rejections and 145 compilation rejections**, plus **12 positive suit
 corpora and three runtime probes. Formatting passes. Verification remains local macOS ARM64 with
 checked ARC/Clang LTO; Linux and M2/M3 remain unverified. M1 migration remains partial.
 
+## Eleventh increment: headers, signing payloads and markers
+
+`header.nim` now runs under the same pinned Nimony nightly. `HeaderResult[T]` keeps status/value
+private and requires success before application access. Defaults remain Uninitialized. Sibling
+failure construction rejects None; the block adapter's missing-header return and block fixture's
+winner source were mechanically adapted without claiming block runtime parity. All four owner
+handle types use private nullable references retained in stable nil-checked locals.
+
+Epoch/winner source and copied-metadata alternatives now keep presence and payloads private.
+Read-only presence is always available; entropies, sequence copies and counts require presence.
+Absent/default marker values remain absent. `presentEpoch`/`presentWinners` and their absent
+counterparts build source alternatives; encoder preflight still validates their cardinalities.
+Explicit `editEpochValidators`/`editWinnerTickets` return checked mutable source fields, while
+`epochValidatorCopies`/`winnerTicketCopies` return independent copies. Immutable snapshot APIs
+still expose only copied metadata and indexed records. Encoders inspect the actual private source
+sequences, preserving complete-source alias checks rather than checking temporary sequence copies.
+
+The nightly treated mutable/read-only sequence accessor overloads as ambiguous, so edits/copies
+have distinct names. Concrete adapter branches replace procedure-symbol templates whose binding
+is unsupported here. A guard-fixture local was renamed after collision with its imported module.
+These changes use public language facilities; no compiler patch or private runtime hook is used.
+
+All **20,144** existing independent requests pass: **1,358 fixed tickets**, **3,624 epochs**,
+**3,009 winner markers**, **3,810 unsigned headers** and **8,343 full headers**. Another **8,246**
+direct sealed-header inspections compare all copied fixed fields, full/signing extents, offender
+counts and seal against independent logical fields. Total header corpus: **28,390 comparisons**.
+Coverage retains all published tiny/full header and seal-free signing bytes, optional combinations,
+validator-population changes, E1/E2/E4/count widths, illegal tags, huge configured epoch lengths,
+truncations, byte budgets, duplicate/unsorted supplied sequence values, malformed fuzz, late errors,
+source mutation and exact-prefix re-emission. Eight oracle example tests also pass.
+
+The thirteenth positive suite preserves every fixed/descriptor/key/ticket/offender alias check,
+default-owner rejection and full-versus-signing boundary. It adds independent source-copy checks,
+parent replacement, orphaned signing/epoch/winner views and warmed ARC release coverage. After
+100 warmups, 1,000 isolated retain/replace/copy/drop cycles leave public live occupancy unchanged:
+**27,648 → 27,648 bytes** on this Mac, with outer fixtures live. This measures that workload, not
+RSS or general leak freedom. Signing payloads still omit exactly the final 96-byte seal.
+
+This increment adds **81 runtime misuse rejections** (60 failed/default result reads, 20 absent
+source/metadata reads or edits and one invalid failure constructor) and **45 compilation
+rejections** (40 private/read-only owner/result/variant checks and five nominal/owner-type checks).
+Cumulative coverage is **301 runtime result/variant/constructor rejections and 190 compilation
+rejections**, plus **13 positive suites**, seven family corpora and three runtime probes.
+Verification remains local macOS ARM64 with checked ARC/Clang LTO. M1 migration remains partial;
+Linux, state-dependent marker eligibility and cryptographic verification remain separate work.
+
 ## Remaining work and next bounded increment
 
-Next: port header and marker codecs (`header.nim`), including full/signing header forms,
-epoch/winner alternatives, retained owners, guarded results and the independent published/
-boundary/lifetime corpus. Other M1 families and M2/M3 remain separate increments.
+Next: port complete extrinsic and block composition (`block_codec.nim`), including schema-bound
+components, nested typed failures, retained child materialization, guarded alternatives and the
+existing independent block/atomicity/lifetime corpus. Its child codec prerequisites now pass
+locally. Other M1 families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -421,7 +468,8 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package slice.
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header
+slice.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
