@@ -133,6 +133,13 @@ success in those five cases is explicitly **not** complete-entry conformance, an
 must not be treated as the trace producer's intended service statistics. Resolution requires
 normative/reference clarification and focused evidence before changing service-key framing.
 
+T also includes a general note that non-discriminator state numbers use fixed widths according
+to their domains. This is additional normative context for the key-width discrepancy, alongside
+C.1's generic dictionary equation. It must be reconciled with the traces' variable-width core/
+service numeric fields before closing the gate. The current implementation is the recorded T/C.1
+interpretation, not a claim that this broader note has been resolved; no statistics behavior is
+changed by the service-metadata increment.
+
 `build/state-statistics/results.json` retains corpus identity, build commands and per-entry raw
 SHA-256, complete-match flag and consumed/trailing counts alongside the open gate. Fixtures are
 SHA-256 checked before parsing at exact pinned Git blob identities; partial clones may fetch
@@ -144,5 +151,5 @@ gates remain unchanged.
 
 The documented M1 framing baseline remains covered; chapters 1–16 now have typed serializers,
 with chapter 13's trace wire-parity gate open. Service entries and whole-state
-composition still remain. Next planned bounded group: **service-account metadata at
-C(255, service)**. See the [M1 checklist](../docs/m1.md).
+composition still remain. Next planned bounded group: **keyed service storage/preimage
+entries**. See the [M1 checklist](../docs/m1.md).

@@ -140,6 +140,11 @@ jobs:
           python3 tests/test_state_history_harness.py
           python3 tests/test_state_history.py 2>&1 | tee build/ci/state-history.log
 
+      - name: Service account metadata
+        run: |
+          python3 tests/test_state_accounts_harness.py
+          python3 tests/test_state_accounts.py 2>&1 | tee build/ci/state-accounts.log
+
       - name: Last accumulation output state
         run: |
           python3 tests/test_state_outputs_harness.py
@@ -226,6 +231,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/state-accounts/*.log
+            build/state-accounts/results.json
+            build/state-accounts/types/*.log
             build/state-outputs/*.log
             build/state-outputs/results.json
             build/state-outputs/types/*.log

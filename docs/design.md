@@ -42,7 +42,8 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
   the published trace service-key width differs from pinned-paper framing and remains a parity gate.
   Chapters 14/15 add fixed epoch rings of ordered ready reports/dependency sets and accumulated
   package sets, with retained report children and canonical hash ordering. Chapter 16 adds the
-  ordered service/output-commitment sequence. Service entries, proofs and persistence remain future work.
+  ordered service/output-commitment sequence. C(255, service) metadata adds fixed version-zero
+  account fields as independent values. Keyed service entries, proofs and persistence remain future work.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
@@ -57,8 +58,8 @@ PVM execution, complete state transitions, block import, consensus and availabil
 remaining state-component serialization, trie proofs/persistence and production validator operation
 are not implemented. Root construction accepts already serialized state-key/value entries; state
 chapters 1–16 now have typed serializers; chapter 13 retains a
-[trace key-width parity gate](../spec/state-statistics.md). Next planned: service-account metadata
-at C(255, service), followed by keyed storage/preimage/request entries and whole-state composition.
+[trace key-width parity gate](../spec/state-statistics.md). Service-account metadata is implemented.
+Next planned: keyed service storage/preimage entries, then request history and whole-state composition.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general

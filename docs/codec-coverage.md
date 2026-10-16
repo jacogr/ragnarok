@@ -231,9 +231,25 @@ compiler rejections, scope/copy/index/result guards and 21 partial C(16) roots. 
 trace entries consume completely and re-emit identically, but all are empty. Nonempty sequence,
 E4/commitment, order, count, policy, truncation and mutation coverage is explicitly authored.
 No nonempty published conformance, accumulation execution or whole-state-root claim is made.
-Next planned: service-account metadata at C(255, service); keyed service entries and whole-state
-integration remain. The chapter-13 parity gate is unchanged.
+Service-account metadata is now covered below; keyed service entries and whole-state integration
+remain. The chapter-13 parity gate is unchanged.
 See [the contract](../spec/state-outputs.md).
+
+## Service-account metadata extension
+
+`state_accounts.nim` implements C(255, service): version zero, code hash, five E8 fields and four
+E4 fields in a fixed 89-byte payload. Service identity remains in the interleaved chapter key.
+The decoder returns independent fixed values without heap ownership after complete policy/version/
+payload checks. Distinct balance, gas, storage-size/item, timeslot and service types preserve roles;
+unknown versions, malformed discriminators, truncation and insufficient budget return typed failure.
+
+Validation: 1,794 independent requests, six literal oracle checks, three nominal compiler
+rejections, fixed scope/source/input/value-copy and result guards, and 51 partial entry roots.
+Twenty pinned JSON-derived records and twenty exact trace key/value entries match, preserving all
+metadata fields, including nonzero service IDs. No account-validity, footprint/deposit/chronology,
+code-preimage or whole-state-root claim follows from metadata framing. Next planned: keyed
+service storage/preimage entries, then request history and whole-state composition. The chapter-13
+parity gate is unchanged. See [the contract](../spec/state-accounts.md).
 
 ## Published codec fixture inventory
 
