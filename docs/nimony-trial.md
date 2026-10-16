@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **34 native suites, nineteen independent family corpora, 840 runtime misuse rejections and
-433 compilation rejections pass locally**. Chapter-3 recent history now joins the verified scalar,
+Status: **36 native suites, twenty independent family corpora, 892 runtime misuse rejections and
+455 compilation rejections pass locally**. Chapter-10 availability now joins the verified scalar,
 owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto, state-key/node,
-bounded trie, entropy/roster/time, authorization and chapter-4/chapter-5 slices.
+bounded trie, entropy/roster/time, authorization and state chapter-3/chapter-4/chapter-5 slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1108,12 +1108,69 @@ No codec/runtime behavior changed and all 596 prior functional source/test hashe
 The cumulative 34-suite, nineteen-corpus, 840-runtime/433-compilation rejection evidence remains
 unchanged; CI safeguard tests are separate. Chapter-10 availability remains the next codec slice.
 
+## Twenty-fifth bounded increment: chapter-10 availability state
+
+`src/codec/state_availability.nim` now runs on the same pristine Nimony nightly, preserving Gray
+Paper 0.8.0 T(state) chapter 10: a fixed per-core sequence of optional full standalone guarantees,
+each followed by its distinct E4 registration time. Shared guarantee/report framing, credential
+policy and error precedence remain unchanged. This does not verify signatures, availability
+transitions, eligibility or contextual report-core/outer-position agreement. Protocol/dependency
+pins, upstream sources and maintained native bridges are unchanged.
+
+`AvailabilityResult[T]` now has private status/payload, read-only reasons and success-only value
+contracts, including the private fixed stack scan layout. Nullable acyclic parent storage is
+checked through stable local references. `AvailabilityAssignment` hides its discriminator, child
+and registration fields behind `absentAssignment()` / `presentAssignment(guarantee, registered)`
+constructors and read-only `present`, `guarantee` and `registered` accessors. Selected child fields
+require presence; default absence cannot expose a fabricated report or timestamp. These factories
+select source alternatives; encoding still validates the full guarantee content.
+
+Copied assignment/guarantee metadata and credentials are independent fixed values. Their opaque
+report handle retains immutable report bytes after caller sources and parent scopes retire.
+Editing source or extracted alternatives replaces the whole assignment; editing a copied child
+cannot alter a sibling owner. Whole-parent/source validation still precedes retained/output and
+child scratch allocation, including final malformed tags, child credentials and registration bytes.
+
+All **2,949 unchanged independent requests** and **six literal reference checks** pass, retaining
+fixed tiny/full core shapes, every reserved optional tag, proper representative truncations,
+full child/report/credential observations, E4 boundaries, exact/below byte/item ceilings, malformed
+late children, canonical framing, suffixes, random assignments and four singleton trie roots.
+Twelve hash-checked published phase/profile observations remain explicitly derived JSON fixtures.
+Eight decode successfully; four retain the expected report-policy `LimitExceeded` rejection and
+corresponding invalid source reports. Neither erasure shards nor credentials are repaired to
+force acceptance. These are component/partial-root observations, not passed STFs or full state roots.
+
+After 100 warmups, **1,000 scoped cycles return live occupancy 592 → 592 bytes**, with the stable
+independent report fixture included in the baseline. The workload covers escaped/replaced parents,
+copied assignments and credentials, retained report children after parent retirement, byte-for-byte
+child replay, empty state and late malformed parent temporaries. A reserved final tag rejects
+without increasing live occupancy. Direct arithmetic probes reach `high(int)` exactly, reject the
+next byte and a four-byte timestamp before addition, allow zero growth at the ceiling and retain
+explicit byte policy. No fabricated descriptors, overflow-exception emulation, synchronization
+bypass or compiler/runtime hook is used. Occupancy is workload-specific, not RSS/general leak
+freedom; allocation exhaustion remains fail-stop.
+
+This increment adds **52 runtime misuse rejections**: twenty-three actual/default result pairs
+and six default/source/decoded absent-field reads. **22 compilation rejections** cover eighteen
+private/read-only result/owner/assignment probes, two nominal time/index substitutions and two
+statically proven absent-child/timestamp contract violations. The original registration-time
+nominal probe now calls the closed source factory, preserving its rejected GuaranteeSlot versus
+AssignmentSlot substitution. Nimony also rejected mutable global fixture reads in test helpers;
+passing fixture bytes explicitly retained the tests without suppressing its access checks.
+
+Cumulative totals are **892 runtime misuse rejections, 455 compilation rejections (392 privacy +
+55 nominal + five schema + three static contracts), 36 positive native suites and twenty family
+corpora**, plus three separate language probes. Formatting covers **649 Nim files**; the functional
+report records **624 matching source/test hashes**. Existing report/guarantee and block regressions
+remain in the same full runner. The local all-source semantic audit advances from 26/43 to
+**27/43 passing modules**, retaining every remaining failure. Results are local macOS ARM64, checked
+ARC/Clang LTO; actual Linux execution and full M1/M2/M3 migration remain separate gates.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapter-10 availability state (`src/codec/state_availability.nim`), preserving the
-fixed per-core sequence of optional full guarantees and E4 registration timestamps, guarded source
-alternatives, retained report-child lifetimes, whole-parent preflight and independent entry/root
-corpus.
+Next: port M1 chapter-12 privileges (`src/codec/state_privileges.nim`), preserving fixed service
+roles/assigners, the canonical E4-service/E8-gas dictionary, nominal indices, immutable copied
+extraction, whole-parent preflight and the existing independent entry/root corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1151,6 +1208,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
-authorization and state chapters 3–5. A missing check or failed guard still makes the runner exit
+authorization and state chapters 3–5/10. A missing check or failed guard still makes the runner exit
 one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

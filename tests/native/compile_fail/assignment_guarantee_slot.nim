@@ -1,5 +1,4 @@
-## Guarantee evaluation time cannot silently become the assignment registration time.
+## Guarantee evaluation slots cannot substitute for assignment registration timestamps.
 import ../../../src/codec/[state_availability, guarantees]
-var slot: GuaranteeSlot
-let assignment = AvailabilityAssignment(present: true, registered: slot)
-discard assignment
+let slot = default(GuaranteeSlot)
+discard presentAssignment(default(Guarantee), slot)

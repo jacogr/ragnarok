@@ -133,3 +133,25 @@ confirmation requires CI after push. Existing crypto parity gates remain unchang
 M1's C.1/C.2 framing baseline remains covered; complete state serialization remains open. Next
 planned bounded chunk: **whole-state composition/root evidence and parity review**. The
 [M1 checklist](../docs/m1.md) tracks service entries and whole-state integration.
+
+## Experimental Nimony branch
+
+The [Nimony trial](../docs/nimony-trial.md) verifies the unchanged 2,949 independent requests and
+six literal reference checks. Results use private status/payload and checked success-only accessors;
+nullable owner storage is checked through stable retained locals. Assignment alternatives use
+`absentAssignment()` / `presentAssignment(guarantee, registered)` with read-only presence and
+presence-required child/registration getters. Source editing replaces the complete alternative;
+the guarantee content is still validated by the shared record helpers.
+
+Two native suites cover retained/replaced parents, escaped report children, copied assignments and
+credentials, independent E4 fields, empty states, late rejection and arithmetic boundaries.
+Fifty-two isolated runtime cases require the exact result or assignment contract. Eighteen privacy/
+read-only, two nominal and two proven-absence contract probes reject compilation. The original
+registration-time probe uses the new source factory while retaining the same rejected type swap.
+The warmed 1,000-cycle ownership workload returns live occupancy 592 → 592 bytes, including the
+stable report fixture in its baseline, on local macOS ARM64 with checked ARC/Clang LTO.
+
+The eight successful and four expected-rejected published decode observations remain distinguished;
+no fixture content or child policy is changed. Use the trial runner
+`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on this branch.
+The historical Nim 2 commands above describe the main-branch baseline. Actual Linux results and full M1/M2/M3 runtime parity remain separate gates.

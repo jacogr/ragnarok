@@ -145,8 +145,10 @@ workload. Chapter-5 dispute judgment/offender state now passes its complete inde
 guarded public/private results, canonical-set/domain checks, retained owner/copy checks, arithmetic
 and scoped release workload. Chapter-3 recent history now passes its complete independent corpus,
 guarded results and optional peaks, retained dictionaries/copies, arithmetic and scoped release
-workload. A statically proven absent-hash read also fails compilation. The next compiler-port
-increment is chapter-10 availability state (`state_availability.nim`). M1 migration remains partial.
+workload. A statically proven absent-hash read also fails compilation. Chapter-10 availability
+state also passes its corpus, guarded result/assignment contracts, retained guarantee/report
+lifetimes, copied-field, arithmetic and scoped release checks.
+Next is chapter-12 privileges (`state_privileges.nim`). M1 migration remains partial.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux
