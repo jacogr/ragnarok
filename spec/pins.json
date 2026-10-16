@@ -144,7 +144,11 @@
       "traces/fuzzy/00000010.json": "f906e14c7bdee39b223b67402ed9e34579ea9d097dcb193e584833f0e3f3c009",
       "traces/storage/00000001.json": "cbc75d1e204e2416675ebbdf6e7051b5ad1da865a45533a5f9bb23a2cc84b678",
       "traces/storage/00000002.json": "3264d15312075fa07547ea33a659e7e8052cb938cdc21f859b042352bae324ff",
-      "traces/preimages/00000001.json": "5ee767aa015ea8742a10c3a8e3af934e3544ab25d046cf49c5a2b3095c5d7c26"
+      "traces/preimages/00000001.json": "5ee767aa015ea8742a10c3a8e3af934e3544ab25d046cf49c5a2b3095c5d7c26",
+      "stf/accumulate/tiny/same_round_storage_isolation-1.json": "c0c317779f9d8ec1c91590ecb1f77a657b47491be62f820990df45ad0434f9be",
+      "stf/accumulate/tiny/same_round_storage_isolation-2.json": "18f4c11d3521da991a5d63fa9c3a6e03ec534e49bc3fe806efdf1b851d9e7d5f",
+      "stf/accumulate/full/same_round_storage_isolation-1.json": "58e308cec65385cd35b4ef331639b175840568be0b48d32a8e60a85c0d4b79ee",
+      "stf/accumulate/full/same_round_storage_isolation-2.json": "90200062211edb9ded873d3da538942c52bb84bec3568e39087119be0d6bac2e"
     }
   },
   "toolchains": {

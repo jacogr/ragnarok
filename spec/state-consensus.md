@@ -109,7 +109,7 @@ and uploads diagnostics. Local validation is macOS arm64; Linux results require 
 
 M1 framing-baseline coverage remains distinct from full state serialization. Chapter 5 now has its
 separate [dispute-state codec](state-disputes.md); chapter 3 has its
-[recent-history codec](state-history.md). Next planned: keyed service storage/preimage entries.
+[recent-history codec](state-history.md). Next planned: service request history entries.
 Chapter 10 has its
 [availability-state codec](state-availability.md).
 The [M1 checklist](../docs/m1.md) records remaining state chapters and service entries;

@@ -114,6 +114,6 @@ corpus SHA-256 and diagnostics. Linux CI runs the suite and retains logs; local 
 macOS arm64, with Linux confirmation pending CI after push.
 
 State chapters 1–16 and service metadata now have codecs; **M1 state parity remains incomplete**.
-Keyed storage/preimage/request entries, whole-state composition/root evidence and the existing
-chapter-13 trace gate remain. Next planned bounded group: **keyed service storage/preimage
-entries**, followed by request history. See the [M1 checklist](../docs/m1.md).
+Service request history entries, whole-state composition/root evidence and the existing
+chapter-13 trace gate remain. Next planned bounded group: **service request history
+entries**, followed by whole-state composition. See the [M1 checklist](../docs/m1.md).

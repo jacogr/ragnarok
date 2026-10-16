@@ -43,7 +43,9 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
   Chapters 14/15 add fixed epoch rings of ordered ready reports/dependency sets and accumulated
   package sets, with retained report children and canonical hash ordering. Chapter 16 adds the
   ordered service/output-commitment sequence. C(255, service) metadata adds fixed version-zero
-  account fields as independent values. Keyed service entries, proofs and persistence remain future work.
+  account fields as independent values. Storage/preimage mappings add explicit key domains and raw
+  values; opaque retained values need no original storage keys. Request histories, proofs and
+  persistence remain future work.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
@@ -59,7 +61,8 @@ remaining state-component serialization, trie proofs/persistence and production 
 are not implemented. Root construction accepts already serialized state-key/value entries; state
 chapters 1–16 now have typed serializers; chapter 13 retains a
 [trace key-width parity gate](../spec/state-statistics.md). Service-account metadata is implemented.
-Next planned: keyed service storage/preimage entries, then request history and whole-state composition.
+Storage/preimage keyed entries are implemented. Next planned: service request history entries,
+then whole-state composition.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general

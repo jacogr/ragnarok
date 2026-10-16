@@ -108,4 +108,4 @@ requires CI after push.
 State chapters **1–16** now have typed serializers to pinned-paper framing, with chapter 13's
 trace key-width gate still open. **M1 state parity is not complete**: keyed service storage/
 preimage/request entries and whole-state composition/root evidence remain. Next planned bounded
-increment: **keyed service storage/preimage entries**. See the [M1 checklist](../docs/m1.md).
+increment: **service request history entries**. See the [M1 checklist](../docs/m1.md).

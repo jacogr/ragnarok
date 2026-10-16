@@ -111,5 +111,5 @@ remain unchanged.
 
 The documented M1 C.1/C.2 framing baseline remains covered. State chapters **1–16** now have typed
 serializers; chapter 13 retains its [trace parity gate](state-statistics.md). Service entries and
-whole-state composition remain open. Next planned bounded increment: **keyed service storage/preimage
+whole-state composition remain open. Next planned bounded increment: **service request history
 entries**. See the [M1 checklist](../docs/m1.md).

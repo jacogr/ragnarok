@@ -247,9 +247,26 @@ Validation: 1,794 independent requests, six literal oracle checks, three nominal
 rejections, fixed scope/source/input/value-copy and result guards, and 51 partial entry roots.
 Twenty pinned JSON-derived records and twenty exact trace key/value entries match, preserving all
 metadata fields, including nonzero service IDs. No account-validity, footprint/deposit/chronology,
-code-preimage or whole-state-root claim follows from metadata framing. Next planned: keyed
-service storage/preimage entries, then request history and whole-state composition. The chapter-13
+code-preimage or whole-state-root claim follows from metadata framing. Storage/preimage entries
+are now covered below; request history and whole-state composition remain. The chapter-13
 parity gate is unchanged. See [the contract](../spec/state-accounts.md).
+
+## Service storage and preimage entry extension
+
+`state_service_values.nim` implements C(service, E4(uint32-max) || raw key) storage mappings and
+C(service, E4(uint32-max-1) || hash) preimage mappings, with unframed raw values. Logical key/value
+policy and native scratch extent precede key hashing/output copying. Capture of an existing key
+retains independent raw bytes and checks its interleaved service identity, requiring no original
+storage key or guessed hashed namespace. Copy/re-emission APIs preserve private immutable storage,
+atomic failure and empty-value presence. Hash/content and request-history validity remain contextual.
+
+Validation: 2,047 independent requests, six literal oracle checks, two nominal and one privacy
+compiler rejections, retained-scope/key/value/result/atomic/alias checks and 83 partial roots.
+Twelve storage and sixteen preimage JSON-derived mappings preserve all source bytes. Sixteen exact
+trace captures test opaque existing-key/raw-value retention only; their namespaces cannot be
+recovered and are not claimed as classified storage/preimage conformance. Next planned: service
+request history entries, then whole-state composition. The chapter-13 gate remains open.
+See [the contract](../spec/state-service-values.md).
 
 ## Published codec fixture inventory
 
