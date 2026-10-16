@@ -1,6 +1,6 @@
-## Remaining migration gate: the natural codec still exposes raw variant fields.
-import ../../src/codec/natural
+## Remaining migration gate: composite results still expose raw variant progress.
+import ../../src/codec/[composite, bounded]
 import std/syncio
-# This must reject once primitive results receive the guarded API; until then the gate stays red.
-let decoded = decode(newSeq[byte](0))
-echo uint64(decoded.value)
+# Primitive results are protected; this composite result must receive the same guarded API next.
+let decoded = decodeOptionalBorrowed(newSeq[byte](0), ByteLimit(1))
+echo decoded.consumed

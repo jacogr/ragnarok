@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the Nimony-only partial port, guarded bounded results and remaining primitive-result gate."""
+"""Verify the Nimony-only partial port, guarded bounded/primitive results and remaining composite-result gate."""
 import argparse
 import hashlib
 import json
@@ -13,6 +13,15 @@ SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
+PRIMITIVE_PRIVATE = dict(primitive_natural_private='decodedValue', primitive_natural_retag='success',
+    primitive_natural_forge='success', primitive_fixed_decode_private='decodedValue',
+    primitive_fixed_decode_retag='success', primitive_fixed_decode_forge='success',
+    primitive_fixed_encode_private='encodedValue', primitive_fixed_encode_retag='success',
+    primitive_fixed_encode_forge='success', primitive_ok_write='ok',
+    primitive_error_private='failureReason', primitive_reason_write='error')
+PRIVATE.update(PRIMITIVE_PRIVATE)
+PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
+PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 MEMBERS = ('offset', 'length', 'blob-consumed', 'written', 'count', 'sequence-consumed')
 
 
@@ -45,7 +54,7 @@ def announce(name, passed):
     print(('PASS ' if passed else 'FAIL ')+name, flush=True)
 
 
-# This increment establishes bounded-result safety, while unported primitive results remain a gate.
+# Primitive and bounded results are protected; unported composite results remain a migration gate.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
@@ -53,7 +62,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], privacy=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], privacy=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -101,6 +110,19 @@ def main():
                           and '[AssertionDefect]' in result['output'])
                 report['bounded'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' '+member+' guard', passed)
+    # Primitive success payloads are guarded on defaults/errors; error reasons are guarded on success.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_primitive_results.nim', 'primitive-results')
+    report['primitive_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Ten failure/default payload reads and three success-side error reads each run independently.
+        cases = [(member, origin) for origin in ('default', 'error') for member in PRIMITIVE_MEMBERS]
+        cases += [(member, 'success') for member in PRIMITIVE_ERRORS]
+        for member, origin in cases:
+            result = command([binary, member, origin], 'primitive-'+origin+'-'+member)
+            passed = (result['exit_code'] == 1 and 'value.success' in result['output']
+                      and '[AssertionDefect]' in result['output'])
+            report['primitive'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -115,19 +137,20 @@ def main():
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_unported_result.nim', 'unported-result')
     remaining = dict(build=compiled, passed=False)
     if compiled['exit_code'] == 0:
-        # This currently prints zero; a future primitive-result increment must make it reject access.
+        # This still prints zero; the next composite-result increment must make it reject access.
         remaining['run'] = command([binary], 'unported-result-run')
         remaining['passed'] = remaining['run']['exit_code'] == 1 and '[AssertionDefect]' in remaining['run']['output']
-    report['remaining_primitive_gate'] = remaining
-    announce('remaining primitive-result guard', remaining['passed'])
+    report['remaining_composite_gate'] = remaining
+    announce('remaining composite-result guard', remaining['passed'])
     step_passed = (all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
                    and all(row['passed'] for row in report['runtime']) and len(report['bounded']) == 12
                    and all(row['passed'] for row in report['bounded'])
+                   and len(report['primitive']) == 13 and all(row['passed'] for row in report['primitive'])
                    and all(row['passed'] for row in report['privacy']))
-    report['bounded_increment'] = 'passed' if step_passed else 'failed'
+    report['protected_results_increment'] = 'passed' if step_passed else 'failed'
     report['status'] = 'partial-checks-passed' if step_passed and remaining['passed'] else 'blocked'
     (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
-    print(f'Bounded increment: {report["bounded_increment"]}; migration trial: {report["status"]}')
+    print(f'Protected results: {report["protected_results_increment"]}; migration trial: {report["status"]}')
     print(f'Evidence: {BUILD.relative_to(ROOT)}/results.json')
     raise SystemExit(0 if report['status'] == 'partial-checks-passed' else 1)
 

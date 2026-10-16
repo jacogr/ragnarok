@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **five native codec suites pass; bounded-result safety is implemented; remaining results
-and the broader port are still migration gates**. This branch targets Nimony directly, without
+Status: **five native codec suites pass; bounded and primitive result safety is implemented;
+composite results and the broader port are still migration gates**. This branch targets Nimony directly, without
 dual-compiler source support. The main branch remains on Nim 2.2.12. Protocol/dependency pins
 are unchanged.
 
@@ -74,20 +74,42 @@ distinct from default/uninitialized results.
 | Six bounded-result properties, actual failures | All six stop at the success precondition. |
 | Same six properties, default results | All six stop at the success precondition. |
 | Three raw-payload reads, private retagging, public-reason assignment and forged success | All six fail compilation for the intended member. |
-| Natural decoder's unported failed-result payload read | Still prints zero; migration gate remains red. |
+| Natural/fixed-width success payload reads on default/error results | All ten stop at their success precondition. |
+| Error-reason reads on successful natural/fixed-width results | All three stop at their failure precondition. |
+| Primitive private storage, retagging, forgery and public-property assignment | All twelve fail compilation for the intended member. |
+| Composite decoder's unported failed-result progress read | Still prints zero; migration gate remains red. |
 
-The 12 runtime rejection checks require the contract diagnostic and expected exit status; an
-unrelated process failure cannot count as protection. The six privacy checks require member-specific
+All 25 runtime rejection checks require the contract diagnostic and expected exit status; an
+unrelated process failure cannot count as protection. The 18 privacy checks require member-specific
 compilation diagnostics. Existing successful property reads are exercised by the positive suites.
 Malformed input still returns typed failure; invalid caller access is a programmer contract error.
 Wire bytes, output atomicity and borrowed-storage lifetimes do not change.
 
+## Second safety increment: primitive results
+
+`DecodeResult`, `FixedDecodeResult` and `FixedEncodeResult` now have private Boolean
+discriminators, success payloads and failure reasons. `ok` is read-only. The existing property
+spellings (`value`, `consumed`, `encoded`, `error`) call guarded accessors: payloads require success,
+and error reasons require failure. Callers cannot retag a failure or forge a success through safe
+construction. Returned fixed-byte storage is copied, with no new borrowed lifetime.
+
+Default behavior is unchanged: natural decode defaults fail with `truncated`; fixed encode/decode
+defaults fail with `InvalidWidth`. Zero-width fixed encoding/decoding remains successful for zero,
+consuming/emitting no bytes. Wire encodings, byte widths and canonicality rules are unchanged.
+The existing natural/fixed boundary and 10,000-case fuzz suites, plus bounded/composite/digest
+integration, all pass under the same checked ARC/Clang LTO profile.
+
+This increment adds 13 runtime rejection checks (ten failed/default payload reads and three
+success-side error reads) and 12 private-state/forgery compilation rejections. Combined with the
+previous increment, the runner verifies **25 runtime result rejections and 18 compilation
+rejections**, alongside the five positive suites and three runtime-language probes.
+
 ## Remaining work and next bounded increment
 
-Next: give the natural and fixed-width primitive results the same private, guarded access contract.
-The focused natural-result gate in `tests/native/nimony_unported_result.nim` deliberately remains
-failing until that increment. Composite/work-digest and other result families follow in coherent
-groups; bounded-result protection is not a claim that all public results are safe yet.
+Next: protect composite optional/work-output/preimage results and work-digest results, including
+their nested variants. The focused gate in `tests/native/nimony_unported_result.nim` now reads
+progress from a failed optional decode and still exposes zero. This remains an actual failing
+migration gate; protecting primitive results does not establish all public-result safety.
 
 Further port work remains:
 
@@ -118,6 +140,6 @@ python3 tools/format.py --check
 
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
-`bounded_increment: passed` records this step. Overall `status: blocked` and exit **1** retain the
-actual unprotected natural-result gate; do not present that as a clean migration. Formatting passes.
+`protected_results_increment: passed` records the combined bounded/primitive steps. Overall
+`status: blocked` and exit **1** retain the actual unprotected composite-result gate; do not present that as a clean migration. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

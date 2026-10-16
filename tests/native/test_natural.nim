@@ -18,6 +18,9 @@ proc check(x: uint64) =
   let prefix = decode(padded)
   assert prefix.ok and prefix.consumed == encoded.len
 
+# A default natural result stays failed with its original readable reason, never a valid zero.
+let defaultResult = default(DecodeResult)
+assert not defaultResult.ok and defaultResult.error == truncated
 # Exhaust the first 65,536 values, covering all one- and two-byte forms and part of the next size.
 for x in 0'u64..65535'u64: check(x)
 # Probe both sides of every binary boundary, including all changes in encoded length.
