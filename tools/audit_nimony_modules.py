@@ -32,7 +32,8 @@ def check_module(compiler, source, folder):
 # Derive coverage from the source tree so newly added or still-unported modules cannot disappear from the gate.
 def audit(compiler, folder):
     folder.mkdir(parents=True, exist_ok=True)
-    version = subprocess.check_output([str(compiler), '--version'], text=True)
+    # The pinned compiler prints its version to stderr; retain it in provenance rather than only the console.
+    version = subprocess.check_output([str(compiler), '--version'], text=True, stderr=subprocess.STDOUT)
     rows = []
     # Continue after genuine failures to show all remaining work, while retaining a failing final exit status.
     for source in sorted((ROOT/'src').rglob('*.nim')):

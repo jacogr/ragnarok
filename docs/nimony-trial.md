@@ -1089,6 +1089,25 @@ advances from 25/43 to **26/43 passing modules**, with every remaining failure r
 Linux execution and full M1/M2/M3 parity remain separate gates. The next slice is chapter-10
 availability state.
 
+## Linux CI repair: capture the compiler version stream
+
+The first PR setup run failed before compilation despite displaying `0.6.3 [linux; amd64]`.
+Nimony writes its version banner to stderr, while the installer captured stdout alone. The same
+behavior was reproduced with the pinned macOS binary: stdout was empty and stderr contained the
+correct version. The installer now captures both streams before checking the exact version prefix;
+wrong/empty versions and nonzero command exits still fail before PATH/environment export. Archive
+SHA-256, nightly commit/date/platform checks and all toolchain pins remain unchanged.
+
+The all-source audit captures both streams too, so its compiler metadata records the actual banner.
+Ten CI safeguard tests pass, including real Python child processes exercising stdout and stderr
+banners, a near-matching wrong version, empty output and a nonzero exit. The exact pinned native
+Nimony binary also passes the repaired check. This is a local installer/metadata fix; confirmation
+of Linux setup and subsequent runtime checks requires the next CI run.
+
+No codec/runtime behavior changed and all 596 prior functional source/test hashes still match.
+The cumulative 34-suite, nineteen-corpus, 840-runtime/433-compilation rejection evidence remains
+unchanged; CI safeguard tests are separate. Chapter-10 availability remains the next codec slice.
+
 ## Remaining work and next bounded increment
 
 Next: port M1 chapter-10 availability state (`src/codec/state_availability.nim`), preserving the

@@ -50,6 +50,14 @@ def install(destination, pins, formatter_pins):
     return root, [root/'bin', tools], metadata
 
 
+# Nimony emits its banner on stderr; capture both streams and reject mismatches/nonzero exits before PATH export.
+def verify_version(compiler, expected):
+    version = subprocess.check_output([str(compiler), '--version'], text=True, stderr=subprocess.STDOUT)
+    if not version.startswith(expected+' '):
+        raise ValueError('Nimony binary version disagrees with its archive pin: '+repr(version))
+    return version
+
+
 # Restrict binary execution to its intended host and export exact paths for later GitHub steps.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -60,9 +68,7 @@ def main():
     pins = json.loads((ROOT/'spec/nimony-ci-toolchain.json').read_text())
     formatter_pins = json.loads((ROOT/'spec/ci-toolchains.json').read_text())
     root, paths, metadata = install(args.destination.resolve(), pins, formatter_pins)
-    version = subprocess.check_output([str(root/'bin/nimony'), '--version'], text=True)
-    if not version.startswith(pins['version']+' '):
-        raise ValueError('Nimony binary version disagrees with its archive pin')
+    version = verify_version(root/'bin/nimony', pins['version'])
     subprocess.run([str(paths[1]/'nimpretty'), '--version'], check=True)
     # GitHub consumes these files in subsequent steps; local installation still prints inspectable paths.
     if os.environ.get('GITHUB_PATH'):

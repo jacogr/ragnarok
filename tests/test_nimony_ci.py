@@ -12,7 +12,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from setup_ci_linux import download, extract
-from setup_nimony_ci_linux import verify_identity
+from setup_nimony_ci_linux import verify_identity, verify_version
 from summarize_nimony_ci import summarize
 import audit_nimony_modules as modules
 
@@ -67,6 +67,31 @@ class NimonyCISafeguards(unittest.TestCase):
             (root/'NIGHTLY.txt').write_text('nimony-commit: '+pins['commit']+'\ndate: '+pins['date']+'\nplatform: macos_arm64\n')
             with self.assertRaisesRegex(ValueError, 'platform'):
                 verify_identity(root, pins)
+
+    # Real child processes reproduce stdout/stderr behavior without downloading or executing a fixture compiler.
+    def test_version_streams_and_rejections(self):
+        real_output = subprocess.check_output
+        # Both supported stream placements must pass; a wrong/empty banner or failing command must remain rejected.
+        for stream, banner, code, failure in (
+                ('stderr', '0.6.3 [linux; amd64]\n', 0, None),
+                ('stdout', '0.6.3 [linux; amd64]\n', 0, None),
+                ('stderr', '0.6.30 [linux; amd64]\n', 0, ValueError),
+                ('stderr', '', 0, ValueError),
+                ('stderr', '0.6.3 [linux; amd64]\n', 1, subprocess.CalledProcessError)):
+            with self.subTest(stream=stream, banner=banner, code=code):
+                # Translate only the executable under test; preserve the helper's actual subprocess capture/check options.
+                def output(command, **options):
+                    self.assertEqual(command, ['/fixture/nimony', '--version'])
+                    script = 'import sys; sys.'+stream+'.write('+repr(banner)+'); sys.exit('+str(code)+')'
+                    return real_output([sys.executable, '-c', script], **options)
+                with patch('setup_nimony_ci_linux.subprocess.check_output', side_effect=output):
+                    if failure is None:
+                        # The exact banner is retained for CI diagnostics as well as pin validation.
+                        self.assertEqual(verify_version(Path('/fixture/nimony'), '0.6.3'), banner)
+                    else:
+                        # Mismatches and process failures cannot authorize a successful compiler setup.
+                        with self.assertRaises(failure):
+                            verify_version(Path('/fixture/nimony'), '0.6.3')
 
     # Inventory discovery must include a newly added module and keep a failed module red while checking later files.
     def test_inventory_failure_and_new_module(self):
