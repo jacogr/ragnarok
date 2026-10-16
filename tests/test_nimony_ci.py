@@ -151,6 +151,19 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('Runtime misuse rejections: 0', text)
         self.assertIn('Independent corpora: 0', text)
 
+    # Independent lifecycle verdicts must stay visible without counting network waves as compiler or corpus checks.
+    def test_retained_summary_scope(self):
+        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                      quic_service=dict(passed=True, result=dict(rounds=16, idle=[{}]*16,
+                                                               accepted_and_retired_connections=66)),
+                      quic_integration_service=dict(passed=False, failure='cancelled owner remained live'))
+        text = summarize(report, 'slice')
+        self.assertIn('Retained CE 143 service: Pass', text)
+        self.assertIn('Waves: 16; retired connections: 66', text)
+        self.assertIn('Integrated digest service: Fail', text)
+        self.assertIn('Independent corpora: 0', text)
+        self.assertIn('Runtime misuse rejections: 0', text)
+
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
         report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],

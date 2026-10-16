@@ -41,6 +41,18 @@ def summarize(report, kind):
             peer = report['quic_peer']
             lines += ['', 'Authenticated CE 143 peer matrix: '+('Pass' if peer['passed'] else 'Fail')+'.',
                       'Matrix cases: '+str(peer.get('matrix_cases', 'N/A'))+'; repeated valid startups: '+str(peer.get('repeated_valid', 'N/A'))+'.']
+        for key, label in (('quic_service', 'Retained CE 143 service'),
+                           ('quic_integration_service', 'Integrated digest service')):
+            if key in report:
+                # Each workload keeps its own verdict; missing numeric observations are never inferred as zero.
+                row = report[key]
+                lines += ['', label+': '+('Pass' if row['passed'] else 'Fail')+'.']
+                if row['passed']:
+                    # Report measured waves/connections without confusing live networking with pure codec corpora.
+                    result = row['result']
+                    rounds = result.get('rounds', len(result['idle']))
+                    connections = result['accepted_and_retired_connections'] if key == 'quic_service' else result['connections']
+                    lines += ['Waves: '+str(rounds)+'; retired connections: '+str(connections)+'.']
     else:
         # Unknown report schemas must fail loudly instead of generating a misleading empty summary.
         raise ValueError('Unknown summary kind: '+kind)

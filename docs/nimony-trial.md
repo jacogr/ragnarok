@@ -15,8 +15,9 @@ native key/setup ownership, contextual VRF/RingVRF and original native-boundary/
 coverage also pass locally. M2 migration regression parity is reached for the implemented
 release-reference scope. M3 now has a local UDP/readiness and linked native-transport lifecycle
 slice, plus shared SAN/DER identity, structural framing and enabled CE fixture composition.
-The one-shot authenticated CE 143 peer matrix now passes locally.
-Broader M3 lifecycle coverage and Linux parity remain unverified.
+The one-shot authenticated CE 143 peer matrix and retained service/integrated digest lifecycle
+workloads now pass locally. Mesh/reconnect, broader resilience/offload and Linux parity remain
+unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -2234,11 +2235,77 @@ Results are local macOS ARM64 on pinned Nimony 0.6.3. Implemented-scope M1/M2 re
 normative gates are unchanged. Service/integrated lifecycle, mesh/reconnect/resilience, proof
 offload, Linux execution and a normal build/CI cutover remain open.
 
+## Forty-fourth bounded increment: retained service and integrated digest lifecycles
+
+The existing checked Nimony peers pass the original retained-listener and codec/crypto integration
+workloads without further production changes. Only test binary/log routing and reproducible
+verification/CI evidence change. The same pinned JAMNP-S CE 143 rules, Gray Paper 0.8.0 C.2 test
+fixtures, native ABI and compiler/dependency revisions remain in force. Complete C.2 digests are
+still an authored integration workload, not a new normative interpretation of CE preimages.
+
+`tests/test_quic_service.py` accepts isolated binaries and log paths while retaining its sixteen
+waves, four warmup observations, original deadlines and resource budgets. One server PID, UDP
+socket and LSQUIC engine survive all waves. Two mixed clients retain real parked writes while
+independent healthy peers complete requests. Wrong SAN/ALPN attempts reject without poisoning the
+listener; two authenticated peers are killed, their connections expire and later waves recover.
+The run retires **66 connections**, with peak overlap **five**, and checks exact healthy, malformed,
+missing-FIN and cancellation outcomes before final shutdown. Client engines are fresh per dial.
+
+`tests/test_integration.py` similarly reuses its original twelve waves and four warmup observations.
+Three concurrent identities per wave each run eight independently owned streams: three successful
+captures, four expected rejections (including wrong content hash), and one cancellation. The server
+retains the validated digest owner across real backpressure before the cancelled stream's close
+releases it. Codec, trailing and missing-key failures leave healthy siblings operational; later
+healthy work succeeds. This retires **36 connections**, covers **288 initiated streams** and records
+**36 cancelled-snapshot releases**, with peak overlap **three**. All source-overwrite, retained
+serialization and Blake2b behavior remains in the previously verified native composition.
+
+Targeted local observations, after the unchanged warmup:
+
+| Observation | Retained service | Integrated digest service |
+| --- | ---: | ---: |
+| Waves / post-warmup samples | 16 / 12 | 12 / 8 |
+| Live Nim allocation range | 0 bytes (6,112 throughout) | 0 bytes (1,088,656 throughout) |
+| Idle descriptor range | 0 | 0 |
+| Observed server OS threads | 1 | 1 |
+| Idle RSS range | 81,920 bytes | 49,152 bytes |
+| Post-engine Nim allocation, before / after | 192 / 5,664 bytes | 192 / 5,792 bytes |
+
+The integration fixture bank intentionally remains alive at idle, including its one-MiB fixture;
+flat live allocation is not a zero-allocation claim. The same finite budgets remain **64 KiB** for
+post-warmup language allocation, **16 MiB** for RSS range, **two** descriptors and **256 MiB** active
+RSS, with one thread. Final engine destruction has a separate **64 KiB** language-allocation
+allowance. These observations cover controlled local workloads, not arbitrary leak freedom or a
+performance benchmark. Targeted results and logs are preserved in `verification/retained-targeted-results.json` and
+`verification/retained-targeted-{service,integration}/` below `build/nimony-trial/`. Final-run
+observations are retained independently in `results.json`.
+
+The cumulative runner now executes both workloads as separate mandatory gates and retains their
+idle samples, peaks, connection counts and failure diagnoses. Branch CI archives server/client logs
+and resource JSON and shows each workload's own verdict. Eleven existing lifecycle-harness tests
+retain marker/deadline, sample-count, counter-scope and exact resource-boundary safeguards; the CI
+summary tests also keep a failed integrated workload visible when ordinary service passes. All
+native positives remain **63**, independent corpora **41**, runtime misuse rejections **1,368** and
+compilation rejections **666**; network waves are not relabelled as compiler or codec probes.
+
+No production implementation or compiler repair cycle was needed in this increment: both targeted
+workloads passed on their first run. There is no new implementation LOC. Formatting still covers
+**851 Nim files**. The full runner hashes **977 source/test/configuration files**, including the
+shared service/resource harnesses.
+The all-source semantic audit remains **44/45** with unchanged production hashes: the standalone
+mesh include fragment still needs structure work. The prior boolean/pointer initialization safety
+limitation remains recorded and is not resolved by these passing lifecycle tests.
+
+Results are local macOS ARM64, pinned Nimony 0.6.3, checked ARC/Clang release LTO. Implemented-scope
+M1/M2 parity and normative gates are unchanged. Retained IPv6 client engines, duplicate arbitration,
+mesh/reconnect/resilience, enabled proof offload, Linux execution and normal build/CI cutover remain
+separate gates.
+
 ## Remaining work and next bounded increment
 
-Next: retained CE 143 service and integrated digest lifecycle coverage, including retired stream
-owners, backpressure/cancellation and post-failure recovery. Mesh/reconnect/resilience and enabled
-proof offload follow as bounded increments.
+Next: retained IPv6 mesh/reconnect lifecycle and standalone module structure, preserving duplicate
+arbitration, bidirectional CE requests and peer-loss recovery. Broader admission/resilience and
+enabled proof offload follow as bounded increments.
 
 Further port work remains:
 
@@ -2251,8 +2318,8 @@ Further port work remains:
 - M3: bounded POSIX UDP/readiness, descriptor retirement and linked transport setup/teardown pass
   locally. Shared identity/DER, structural framing and enabled integration ownership/results pass
   too. The actual peer and one-shot authentication/framing matrix now pass locally. Retained
-  service/integrated lifecycle, mesh/reconnect/resilience and enabled offload compilation/runtime
-  coverage remain migration gates.
+  service and integrated digest lifecycles now pass too. Retained IPv6 mesh/reconnect/resilience
+  and enabled offload compilation/runtime coverage remain migration gates.
 - Toolchain: branch Linux installation/pinning, formatter setup and trial CI are configured.
   Linux execution, normal build commands and main documentation/CI cutover remain gates until the
   port demonstrates equivalent safety.

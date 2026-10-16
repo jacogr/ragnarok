@@ -44,11 +44,13 @@ def wait_service(server, log, predicate, peaks, seconds=10, thread_limit=1):
 
 
 # Exercise the Nim listener with independent client identities and reconnect waves.
-def service(language, folder, rounds, warmup, ):
+def service(language, folder, rounds, warmup, *, binaries=None, directory=None):
+    # Compiler-specific binaries and logs preserve the same workload without overwriting normal build products.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     thread_limit = THREAD_BASELINES[language]
     # A fixed startup pool is measured separately; native streams may never add threads.
     wait = partial(wait_service, thread_limit=thread_limit)
-    directory = BUILD / 'service' / language
+    directory = BUILD / 'service' / language if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     stop = directory / f'stop-{time.time_ns()}'
     log = directory / 'server.log'
@@ -57,7 +59,7 @@ def service(language, folder, rounds, warmup, ):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
-    command = [str(BUILD / f'{language}-peer'), 'server', str(port), str(folder / 'a.cert.pem'),
+    command = [str(binaries[language]), 'server', str(port), str(folder / 'a.cert.pem'),
                str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '120000', 'service']
     handle = log.open('w')
     server = subprocess.Popen(command, env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)},
@@ -69,7 +71,7 @@ def service(language, folder, rounds, warmup, ):
         path = directory / f'{iteration}-{name}.log'
         output = path.open('w')
         handles.append(output)
-        arguments = [str(BUILD / f'{implementation}-peer'), 'client', str(port),
+        arguments = [str(binaries[implementation]), 'client', str(port),
                      str(folder / f'{identity}.cert.pem'), str(folder / f'{identity}.key.pem'),
                      str(folder / 'a.pub'), alpn, '5000', mode]
         process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.STDOUT)

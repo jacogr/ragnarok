@@ -789,6 +789,7 @@ def main():
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
                 'src/quic/mesh.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
+                'tests/test_quic_service.py', 'tests/test_quic_soak.py', 'tests/test_quic_soak_harness.py',
                 'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
                 'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
                 'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
@@ -2179,6 +2180,7 @@ def main():
                 announce('QUIC '+origin+' '+member+' guard', passed)
     # Shared process-startup and summary safeguards must stay effective with isolated compiler-specific binary paths.
     report['quic_peer_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_harness.py'], 'quic-peer-harness')
+    report['quic_lifecycle_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_soak_harness.py'], 'quic-lifecycle-harness')
     report['ci_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_nimony_ci.py'], 'ci-harness')
     # Build the actual peer entry point without invoking the historical compiler/build path.
     compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer', quic_library=quic_library)
@@ -2210,6 +2212,31 @@ def main():
         row['passed'] = row['run']['exit_code'] == 0
     report['suites'].append(row)
     announce('enabled peer integration entry point', row['passed'])
+    # Retained listeners reuse the original failure schedules, warmup, timeouts and scoped resource limits.
+    report['quic_service'] = dict(passed=False)
+    report['quic_integration_service'] = dict(passed=False)
+    if report['quic_peer_build']['exit_code'] == 0:
+        from test_quic_service import service as retained_service
+        try:
+            # One server engine survives sixteen waves, including malformed peers and two forced peer deaths.
+            result = retained_service('nim', quic_fixtures, 16, 4, binaries={'nim': BUILD/'quic-peer'},
+                                      directory=BUILD/'retained-service')
+            report['quic_service'] = dict(passed=True, result=result)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # Finalizers preserve logs and retire children; failure cannot be replaced by later integration success.
+            report['quic_service'] = dict(passed=False, failure=str(error))
+    announce('retained CE 143 service lifecycle', report['quic_service']['passed'])
+    if compiled['exit_code'] == 0:
+        from test_integration import service as integrated_service
+        try:
+            # Three concurrent identities per wave exercise real capture/hash/copy/cancellation owners.
+            result = integrated_service('nim', quic_fixtures, integration_wires, 12, 4,
+                                        binaries={'nim': binary}, directory=BUILD/'retained-integration')
+            report['quic_integration_service'] = dict(passed=True, result=result)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # Typed protocol rejections are checked by the harness; assertion/timeouts remain workload failures.
+            report['quic_integration_service'] = dict(passed=False, failure=str(error))
+    announce('retained integrated digest lifecycle', report['quic_integration_service']['passed'])
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -2865,6 +2892,8 @@ def main():
                    and all(row['passed'] for row in report['bandersnatch'])
                    and report['bandersnatch_corpus']['passed']
                    and report['quic_protocol_corpus']['passed']
+                   and report['quic_lifecycle_harness']['exit_code'] == 0
+                   and report['quic_service']['passed'] and report['quic_integration_service']['passed']
                    and report['quic_peer_harness']['exit_code'] == 0 and report['ci_harness']['exit_code'] == 0
                    and report['quic_peer']['passed'] and report.get('quic_peer_controls', {}).get('passed', False)
                    and report['integration_corpus']['passed']

@@ -39,18 +39,27 @@ The unchanged pinned native library also passes 16 standalone engine cycles and 
 including failure recovery and independent sibling retirement. Nimony Linux CI includes this slice;
 actual Linux confirmation remains separate.
 
-The broad service/mesh/resilience/offload lifecycle claims above describe the historical implemented
+The broad mesh/resilience/offload lifecycle claims above describe the historical implemented
 behavior and remain migration gates on this branch. The actual peer executable now builds under
 checked Nimony ARC/Clang LTO and passes its original parser/readiness and mesh-policy selftests.
 The original sixteen one-shot authentication/framing scenarios and twelve additional valid cold
 startups pass, with one OS thread per endpoint observed during the no-FIN case. The enabled
 integration entry point also builds and passes its no-socket capture selftest. Startup/control
-validation rejects nine malformed CLI cases. These are local macOS ARM64 results; Linux is pending. Shared identity/DER and structural CE framing now
+validation rejects nine malformed CLI cases. These are local macOS ARM64 results; Linux is pending.
+Shared identity/DER and structural CE framing now
 also pass their parser selftest, independent oracle and guarded-result checks. The peer delegates
 these checks to `src/quic/protocol.nim`; fixture content and integration policy remain in the peer.
 Enabled CE 143 fixture composition now also passes: private retained digest snapshots survive
 receive-buffer overwrite, guarded results refuse failed access, and immutable fixture banks publish
 only complete successful reloads. This is an integration workload, not a new normative relationship
 between C.2 fields and CE query keys.
-Next: retained CE 143 service and integrated digest lifecycle coverage, followed by
-mesh/resilience and proof offload. See the [cumulative Nimony evidence](nimony-trial.md).
+The original retained service workload now passes sixteen waves and 66 retired connections,
+including two forced peer deaths, rejected authentication, parked large writes and healthy sibling
+progress. The integrated digest listener passes twelve waves, 36 retired connections and 36
+cancelled-snapshot release observations. Both retain one server engine across all their waves;
+clients use fresh processes/connections. Post-warmup language allocation and descriptor ranges are
+zero in the targeted local run; RSS ranges remain below the unchanged 16 MiB budget. Final engine
+teardown passes the separate 64 KiB language-allocation allowance. These finite controlled runs do
+not establish leak freedom, retained client-engine parity or general JAM interoperability.
+Next: retained IPv6 mesh/reconnect lifecycle and standalone module structure, followed by broader
+resilience and proof offload. See the [cumulative Nimony evidence](nimony-trial.md).

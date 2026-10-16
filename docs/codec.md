@@ -177,7 +177,8 @@ lifecycle checks now pass locally.
 Shared identity/DER/framing validation now also passes locally.
 CE 143 integration results and retained digest ownership now also pass locally.
 The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
-Next: retained CE 143 service and integrated digest lifecycle coverage. Linux confirmation and normative
+Retained CE 143 service and integrated digest lifecycles now also pass locally.
+Next: retained IPv6 mesh/reconnect lifecycle and standalone module structure. Linux confirmation and normative
 policy gates remain separate.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the

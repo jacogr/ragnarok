@@ -73,10 +73,12 @@ def corpus():
 
 
 # One persistent listener processes simultaneous independent clients through every composed failure/lifetime path.
-def service(language, certificates, wires, rounds, warmup, ):
+def service(language, certificates, wires, rounds, warmup, *, binaries=None, directory=None):
+    # Trial binaries reuse the exact fixture/stream workload and keep their outputs isolated.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     observe = partial(wait_service, thread_limit=THREAD_BASELINES[language])
-    directory = BUILD / language
-    directory.mkdir(exist_ok=True)
+    directory = BUILD / language if directory is None else directory
+    directory.mkdir(parents=True, exist_ok=True)
     stop = directory / 'stop'
     if stop.exists():
         stop.unlink() # Retire only this harness's previous stop control before the new listener starts.
@@ -87,7 +89,7 @@ def service(language, certificates, wires, rounds, warmup, ):
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
     server_output = log.open('w')
-    server = subprocess.Popen([str(BUILD / f'{language}-peer'), 'server', str(port),
+    server = subprocess.Popen([str(binaries[language]), 'server', str(port),
                                str(certificates / 'a.cert.pem'), str(certificates / 'a.key.pem'), '-',
                                'jamnp-s/1/00000000', '120000', 'integration'], env=environment,
                               stdout=server_output, stderr=subprocess.STDOUT)
@@ -100,7 +102,7 @@ def service(language, certificates, wires, rounds, warmup, ):
                 path = directory / f'{iteration}-{index}.client.log'
                 output = path.open('w')
                 handles.append(output)
-                process = subprocess.Popen([str(BUILD / f'{client_language}-peer'), 'client', str(port),
+                process = subprocess.Popen([str(binaries[client_language]), 'client', str(port),
                                             str(certificates / f'{identity}.cert.pem'), str(certificates / f'{identity}.key.pem'),
                                             str(certificates / 'a.pub'), 'jamnp-s/1/00000000', '5000', 'integrated'],
                                            env=environment, stdout=output, stderr=subprocess.STDOUT)
