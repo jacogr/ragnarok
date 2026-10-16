@@ -642,6 +642,24 @@ NOMINAL.update(composition_service_as_entry="[2] expected: StateEntryIndex but g
                composition_entry_as_chapter="got: StateEntry but wanted: StateChapterSnapshot",
                composition_service_as_chapter_index="[2] expected: StateChapterId but got: ServiceIndex")
 COMPOSITION_MEMBERS = ('capture-config', 'capture-policy', 'capture-short', 'capture-tail', 'capture-framing', 'capture-chapter', 'compose-owner', 'compose-chapter', 'compose-profile', 'compose-policy', 'compose-captured-owner', 'compose-captured-context', 'compose-duplicate', 'compose-backend', 'compose-nodes', 'commitment-owner', 'entry-owner', 'entry-index')
+# Preserve original early-codec nominal rejection fixtures, including exact argument/field diagnostics.
+EARLY_NOMINAL = {
+    'raw_integer': ('encode(', '[1] expected: JamNatural but got: uint64'),
+    'fixed_raw_value': ('encodeFixed(', '[1] expected: FixedUnsigned but got: uint64'),
+    'fixed_raw_width': ('encodeFixed(', '[2] expected: ByteWidth but got: int64'),
+    'natural_as_fixed': ('encodeFixed(', '[1] expected: FixedUnsigned but got: JamNatural'),
+    'raw_byte_limit': ('decodeBytesBorrowed(', '[2] expected: ByteLimit but got: uint64'),
+    'wrong_limit_domain': ('decodeBytesBorrowed(', '[2] expected: ByteLimit but got: ElementLimit'),
+    'raw_sequence_values': ('encodeSequence(', '[1] expected: openArray but got: array[0..0, uint64]'),
+    'raw_work_variant': ('encodeWorkBorrowed(', '[1] expected: WorkOutput but got: uint8'),
+}
+NOMINAL.update({name: diagnostic for name, (_, diagnostic) in EARLY_NOMINAL.items()})
+NOMINAL.update(raw_service_index='got: uint32 but wanted: ServiceIndex',
+               wrong_preimage_limit='got: ByteLimit but wanted: ElementLimit',
+               swapped_digest_hash='got: PayloadHash but wanted: CodeHash',
+               raw_digest_gas='got: uint64 but wanted: Gas',
+               wrong_digest_metric='got: ImportCount but wanted: ExportCount')
+PRIVATE.update(mutable_owner='data', failed_digest_payload='value')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -722,7 +740,11 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('tests/native/state_composition_driver.nim', 'tests/state_composition_oracle.py',
+    sources += [ROOT/path for path in ('tests/native/driver.nim', 'tests/native/fixed_driver.nim',
+                'tests/native/bounded_driver.nim', 'tests/native/composite_driver.nim', 'tests/native/digest_driver.nim',
+                'tests/native/batch_support.nim', 'tests/test_early_codec_harness.py', 'tests/bounded_checks.py', 'tests/composite_checks.py',
+                'vectors/natural-boundaries.json', 'vectors/fixed-unsigned-boundaries.json',
+                'vectors/bounded-containers.json','tests/native/state_composition_driver.nim', 'tests/state_composition_oracle.py',
                 'tests/test_state_composition_harness.py', 'tests/state_roots_oracle.py',
                 'tests/test_state_roots_harness.py', 'tests/test_state_widths_harness.py',
                 'tests/request_namespace_oracle.py', 'tests/test_request_namespace_harness.py',
@@ -967,6 +989,39 @@ def main():
                 report['crypto_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
+    # Replay all five early independent corpora, preserving original requests before any adapter execution.
+    from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode
+    from bounded_checks import batch_requests as bounded_requests
+    from composite_checks import batch_requests as composite_requests
+    from digest_checks import batch_requests as digest_requests
+    # File suffixes preserve the existing driver identities; all use this runner's checked LTO build profile.
+    report['early_oracle_harness'] = command([sys.executable, ROOT/'tests/test_early_codec_harness.py'], 'early-oracle-harness')
+    early = (('natural', 'driver', natural_requests()), ('fixed', 'fixed_driver', fixed_requests()),
+             ('bounded', 'bounded_driver', bounded_requests(reference_encode, reference_decode)),
+             ('composite', 'composite_driver', composite_requests(reference_encode, reference_decode)),
+             ('digest', 'digest_driver', digest_requests(reference_encode, reference_decode)))
+    for family, adapter, observations in early:
+        lines, expected, *anchors = observations
+        source = BUILD/(family+'-requests.txt')
+        source.write_text('\n'.join(lines)+'\n')
+        compiled, binary = build(compiler, ROOT/f'tests/native/{adapter}.nim', 'early-'+family)
+        corpus = dict(build=compiled, requests=len(lines), passed=False,
+                      published_checks=anchors[0],
+                      requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                      expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
+        if compiled['exit_code'] == 0:
+            # Compare complete byte/field/error observations; adapters retain atomicity and owned-copy assertions.
+            result = command([binary, source], 'early-'+family+'-corpus')
+            output = result.pop('output')
+            actual = output.splitlines()
+            corpus['run'] = result
+            corpus['passed'] = result['exit_code'] == 0 and actual == expected
+            corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+            if not corpus['passed']:
+                # Include missing/extra responses as mismatches; never accept a matching partial prefix.
+                corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+        report[family+'_corpus'] = corpus
+        announce('unchanged independent '+family+' corpus', corpus['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
     sys.path.insert(0, str(ROOT/'tests'))
     from report_oracle import requests
@@ -2347,7 +2402,11 @@ def main():
     for name, member in NOMINAL.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        if name in ('state_key_as_hash', 'state_partial_as_hash', 'state_value_as_node_hash', 'state_root_as_node'):
+        if name in EARLY_NOMINAL:
+            # Require the intended domain rejection, not unrelated syntax, initialization or import failures.
+            call, diagnostic = EARLY_NOMINAL[name]
+            rejected = 'Error: Type mismatch at [position]' in result['output'] and call in result['output'] and diagnostic in result['output']
+        elif name in ('state_key_as_hash', 'state_partial_as_hash', 'state_value_as_node_hash', 'state_root_as_node'):
             # A key, truncated left commitment or value hash cannot fill a complete child-hash argument.
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
@@ -2450,6 +2509,8 @@ def main():
                    and len(report['primitive']) == 13 and all(row['passed'] for row in report['primitive'])
                    and len(report['composite']) == 29 and all(row['passed'] for row in report['composite'])
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
+                   and report['early_oracle_harness']['exit_code'] == 0
+                   and all(report[family+'_corpus']['passed'] for family in ('natural', 'fixed', 'bounded', 'composite', 'digest'))
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']

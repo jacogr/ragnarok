@@ -1,14 +1,15 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **51 native suites, thirty-one independent corpora, 1,286 runtime misuse rejections
-and 584 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+Status: **51 native suites, thirty-six independent corpora, 1,286 runtime misuse rejections
+and 599 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
-All production codec modules are ported. The validation audit closes state evidence replay;
-the five early primitive/composite independent corpora still need runner integration.
-Full M1 verification remains qualified; broader M2, M3 and Linux parity remain unverified. This branch targets
+All production codec modules and documented M1 regression families now pass locally, including
+the five early independent corpora and their original nominal/privacy safeguards. Local M1
+validation migration parity is reached for the implemented scope; the parked request-namespace
+policy still qualifies normative state parity. Broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -1656,19 +1657,78 @@ replace those corpus comparisons. That is the next bounded validation task. No p
 module remains to port; the all-source semantic baseline remains 35/43, with the eight remaining
 failures in contextual crypto/Bandersnatch and QUIC.
 
+## Thirty-fifth bounded increment: early independent corpora and local M1 validation parity
+
+The natural, fixed-width unsigned, bounded bytes/sequences, optional/work/preimage and full digest
+batch adapters now compile and run on the pristine pinned nightly. Production codec behavior,
+protocol/dependency pins and the parked request-namespace question are unchanged. Trusted batch
+I/O uses supported `cmdline`/`syncio`; textual uint64 and host-int parsing explicitly validates
+before multiply/add/narrowing under intentional Nimony wrapping. Signed widths include `low(int)`
+without an unrepresentable positive intermediate. Assertions and checked ARC/Clang LTO remain on.
+
+The original Python request construction is extracted into reusable constructors; no cases or
+expectations are replaced by production output. A direct comparison against the committed
+constructors confirms exact equality, including metadata. Five checked corpus-identity tests freeze
+the original request/expectation hashes so a later omission cannot silently reduce coverage.
+
+| Independent family | Unchanged native requests |
+| --- | ---: |
+| General naturals | 45,215 |
+| Fixed-width unsigned integers | 73,278 |
+| Bounded byte strings and fixed-width sequences | 26,712 |
+| Optional/work variants and nested preimages | 25,890 |
+| Complete work digests | 14,278 |
+| Total added to the trial runner | 185,373 |
+
+Each original successful decode still exercises the existing owner-copy checks where applicable.
+Encoder and sequence/preimage failure paths retain their whole-destination sentinels, including
+late-field failures. Full fields, exact consumed extents, complete wire bytes and precise typed
+failures are compared; this is more than round-trip agreement. Missing/extra response lines fail.
+The original thirteen nominal rejection fixtures and two privacy/forgery fixtures now also run
+through Nimony with their intended diagnostics. Existing isolated default/error runtime guards
+replace the historical in-process `FieldDefect` catches; contracts must still terminate misuse.
+
+**Eleven rejected adapter builds** were observed before all five built successfully: two each for
+natural/fixed/bounded/digest, three for composite. The first five all report the same shared helper
+initialization issue, so these are not eleven independent language problems. Explicit output-local
+initialization fixes that diagnostic. The next round covers fixture I/O effects, supported `assert`
+and element-wise sequence insertion. The final composite rejection caught my misplaced payload
+loop outside its source scope. No production defect was found after successful compilation; all
+five complete independent corpora passed their first native execution. These are adapter-port
+measurements, not new protocol implementations. New production implementation LOC is **zero**;
+historical compiler-repair totals and elapsed implementation times are not reconstructed.
+Diagnostic evidence is retained in `build/nimony-trial/verification/early-*-first-build.log`,
+`early-*-second-build.log` and `early-composite-third-build.log`. Corpus extraction/equality
+and targeted execution evidence are in `build/nimony-trial/early-corpus-extraction.json` and
+`early-targeted-results.json`. The full runner preserves final commands and hashes alongside them.
+
+Cumulative coverage is **51 positive native suites, thirty-six independent corpora, 1,286 runtime
+misuse rejections and 599 compilation rejections** (503 privacy + 87 nominal + five schema + four
+static contracts), plus three language probes. This increment adds five corpora and fifteen
+compilation rejections, with no increase to the runtime-misuse count. Formatting covers **769 Nim
+files**. The functional report records **838 matching source/test/fixture hashes**. All five new
+corpus verdicts and the five identity checks are required for a successful runner exit. Ten
+CI-helper checks also pass.
+
+**Local Nimony M1 validation migration parity is reached for the documented implemented scope.**
+All codec modules and the audited original M1 regression families now have checked native evidence.
+This does not resolve the maintainer-parked namespace question, imply general state admissibility,
+implement state transitions or establish Linux execution. The separate source audit remains at
+35/43: all production codec modules pass, with eight contextual crypto/Bandersnatch and QUIC
+modules remaining. The global trial status stays `partial-checks-passed` until M2/M3 migration.
+Next is the M2 assurance signing-context/validator-key slice.
+
 ## Remaining work and next bounded increment
 
-Next: port/integrate the five early natural, fixed-width, bounded, composite and digest batch
-adapters and their existing independent corpora into the checked Nimony runner. Preserve their
-original input/expectation coverage and atomic/ownership checks; finish the local M1 validation
-comparison before moving to contextual M2. Keep the request-namespace question parked and all
-protocol/dependency pins unchanged.
+Next: port `src/crypto/assurance_context.nim`, its guarded result API, fixed signing transcript,
+validator-key/parent verification, independent signature corpus and negative/ownership checks.
+Use the already ported primitive bridge. Keep crypto acceptance policy and protocol/dependency
+pins unchanged; guarantee contexts and Bandersnatch remain subsequent bounded M2 chunks.
 
 Further port work remains:
 
-- M1: production codec families, typed composition and state regression replay are ported.
-  Five early independent batch corpora remain to integrate before claiming complete local
-  verification parity. Actual Linux execution remains distinct.
+- M1: local validation migration parity is reached for the documented implemented codec scope.
+  The request-namespace normative policy remains parked; Linux execution is a separate gate.
 - M2: contextual JAM crypto and Bandersnatch/VRF runtime parity, including their FFI lifetimes,
   remain unverified. The raw primitive slice above does not establish those properties.
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
@@ -1701,6 +1761,6 @@ verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
 authorization, state chapters 3–5/10/12–16, fixed service-account metadata and storage/preimage
 keyed values, request histories, exact chapter/service composition, raw whole-state roots, published width
-evidence and the unchanged parked namespace witnesses.
+evidence, the unchanged parked namespace witnesses and the original five early codec corpora.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

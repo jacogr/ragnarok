@@ -48,6 +48,21 @@ def verify_composite(build, nim_flags, run, encode, decode):
             assert 'type mismatch' in result.stderr or 'Cannot assign value' in result.stderr, result.stderr
     drivers = [build / 'nim-composite-driver']
     run(['nim', 'c', *nim_flags, f'--out:{drivers[0]}', ROOT / 'tests/native/composite_driver.nim'])
+    requests, expected, full_vector_checks, field_checks = batch_requests(encode, decode)
+    request_file = build / 'composite-requests.txt'
+    request_file.write_text('\n'.join(requests) + '\n')
+    for driver in codec_commands(build, drivers, 'composite'):
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
+        assert len(output) == len(expected), (driver, len(output), len(expected))
+        for index, (actual, wanted) in enumerate(zip(output, expected)):
+            assert actual == wanted, (driver, index, requests[index], actual, wanted)
+    print(f'PASS composite: {len(requests)} independent Nim requests; '
+          f'{full_vector_checks} complete official preimage checks; {field_checks} official work-output checks; '
+          '3 negative compilation checks', flush=True)
+
+
+# Construct the unchanged independent corpus without building or executing a native adapter.
+def batch_requests(encode, decode):
     requests, expected = [], []
 
     # Append complete optional/work encoder cases with matching policy/storage precedence.
@@ -213,13 +228,4 @@ def verify_composite(build, nim_flags, run, encode, decode):
         variant_decode('OD', wire, limit)
         variant_decode('WD', wire, limit)
         preimage_decode(wire, rng.choice((0, 4, 2**64 - 1)), limit, limit, rng.randrange(9)) # No claimed-size allocation.
-    request_file = build / 'composite-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    for driver in codec_commands(build, drivers, 'composite'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS composite: {len(requests)} independent Nim requests; '
-          f'{full_vector_checks} complete official preimage checks; {field_checks} official work-output checks; '
-          '3 negative compilation checks', flush=True)
+    return requests, expected, full_vector_checks, field_checks

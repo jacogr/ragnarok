@@ -1,62 +1,56 @@
-## Trusted local batch adapter: FE <width> <value> or FD <width> <hex bytes>.
-import std/[os, strutils]
+## Fixed-width batch adapter; preserve invalid widths and reject textual uint64/host-int overflow.
+import std/[assertions, cmdline, strutils, syncio]
+import ./batch_support
 import ../../src/codec/fixed_unsigned
 
-# Translate typed native errors into stable text labels for the shared harness.
+# Preserve stable wire-policy reasons rather than interpreting unsupported widths as syntax errors.
 proc errorText(error: FixedError): string =
   case error
-  # Unsupported widths have priority over other codec failures.
-  of FixedError.InvalidWidth: "invalidwidth"
-  # The value cannot be represented without dropping significant bits.
-  of FixedError.ValueOutOfRange: "outofrange"
-  # The input does not contain the whole requested field.
-  of FixedError.Truncated: "truncated"
+  of FixedError.InvalidWidth: "invalidwidth" # Width validation precedes reading or shifting.
+  of FixedError.ValueOutOfRange: "outofrange" # Encoding cannot discard significant bits.
+  of FixedError.Truncated: "truncated" # Decoding requires every requested byte.
 
-# Produce one response per trusted request while allowing invalid adapter input to be reported.
-for line in readFile(paramStr(1)).splitLines():
-  # Ignore blank lines rather than introducing an additional batch request.
-  if line.len == 0: continue
-  try:
-    let parts = line.split(' ', maxsplit = 2)
-    # Require the command, width and payload; an empty decode payload still occupies the third part.
-    if parts.len != 3: raise newException(ValueError, "request parts")
-    let width = ByteWidth(parseInt(parts[1]))
-    # Encode a checked unsigned decimal value with the requested width.
-    if parts[0] == "FE":
-      let encoded = encodeFixed(FixedUnsigned(parseBiggestUInt(parts[2])), width)
-      # Emit only actual wire bytes; zero-width success intentionally produces an empty line.
-      if encoded.ok:
-        var hex = ""
-        # Print byte pairs without exposing unused storage in the fixed result array.
-        for i in 0..<encoded.encoded.len:
-          hex.add(toHex(encoded.encoded.bytes[i], 2).toLowerAscii())
-        echo hex
-      else:
-        # Codec failures are distinct from bad decimal or hex request syntax.
-        echo errorText(encoded.error)
-    elif parts[0] == "FD":
-      # Borrow bytes from a bounded stack buffer for the production decoder.
-      let hex = parts[2]
-      # Complete pairs and the buffer limit must be checked before conversion or writing.
-      if hex.len mod 2 != 0 or hex.len > 128: raise newException(ValueError, "hex length")
-      var bytes: array[64, byte]
-      # Decode each byte pair after explicitly validating its alphabet.
-      for i in 0..<hex.len div 2:
-        let pair = hex[i * 2..i * 2 + 1]
-        # Reject syntax outside the lowercase-hex adapter protocol.
-        for c in pair:
-          if c notin {'0'..'9', 'a'..'f'}: raise newException(ValueError, "hex digit")
-        bytes[i] = byte(parseHexInt(pair))
-      let decoded = decodeFixed(bytes.toOpenArray(0, hex.len div 2 - 1), width)
-      # Report both value and consumption to verify prefix behavior, including width zero.
-      if decoded.ok:
-        echo $uint64(decoded.value) & " " & $decoded.consumed
-      else:
-        # A native error consumes no field and has no value to print.
-        echo errorText(decoded.error)
+# One textual request may deliberately exceed host/uint64 limits; handle that before codec construction.
+proc request(line: string) =
+  let parts = line.split(' ', maxsplit = 2)
+  var width: int = 0
+  if parts.len != 3 or not parseSigned(parts[1], width):
+    echo "inputerror" # Empty decode data still has its explicit third part.
+    return
+  if parts[0] == "FE":
+    var value: uint64 = 0
+    if not parseUnsigned(parts[2], value):
+      echo "inputerror" # Overflow and negative values must never narrow or wrap.
+      return
+    let encoded = encodeFixed(FixedUnsigned(value), ByteWidth(width))
+    if encoded.ok:
+      var hex = ""
+      # Zero-width success intentionally prints an empty response line.
+      for i in 0..<encoded.encoded.len:
+        hex.add(toHex(int(encoded.encoded.bytes[i]), 2).toLowerAscii())
+      echo hex
     else:
-      # Reject unknown commands rather than routing them to a codec accidentally.
-      echo "inputerror"
-  except ValueError:
-    # Invalid or overflowing textual input must not terminate the rest of the batch.
-    echo "inputerror"
+      echo errorText(encoded.error) # No completed encoded array is available on failure.
+  elif parts[0] == "FD":
+    let hex = parts[2]
+    if hex.len mod 2 != 0 or hex.len > 128:
+      echo "inputerror" # Bound the test transport independently of requested width.
+      return
+    var bytes = newSeq[byte](hex.len div 2)
+    # Decode only supplied bytes; unsupported widths still reach the native width check.
+    for i in 0..<bytes.len: bytes[i] = octet(hex[2*i..2*i+1])
+    let decoded = decodeFixed(bytes, ByteWidth(width))
+    if decoded.ok:
+      echo $uint64(decoded.value) & " " & $decoded.consumed # Include prefix consumption, even for width zero.
+    else:
+      echo errorText(decoded.error) # A failed prefix has no observable default value.
+  else:
+    echo "inputerror" # Unknown command never selects a codec accidentally.
+
+# Retain empty payload spaces while discarding only truly empty batch lines.
+try:
+  for line in readFile(paramStr(1)).splitLines():
+    if line.len > 0: request(line) # Final newline does not add an observation.
+except:
+  # Fixture I/O failures are fatal and cannot masquerade as production codec errors.
+  quit 2

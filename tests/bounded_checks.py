@@ -45,6 +45,23 @@ def verify_bounded(build, nim_flags, run, reference_encode, reference_decode):
                        ('ByteLimit', 'Byte_Limit', 'FixedUnsigned', 'Fixed_Unsigned')), result.stderr
     nim_driver = build / 'nim-bounded-driver'
     run(['nim', 'c', *nim_flags, f'--out:{nim_driver}', ROOT / 'tests/native/bounded_driver.nim'])
+    requests, expected, official_count, fixtures = batch_requests(reference_encode, reference_decode)
+    request_file = build / 'bounded-requests.txt'
+    request_file.write_text('\n'.join(requests) + '\n')
+    # Each adapter also asserts that every failing write/decode preserves the entire supplied destination.
+    for driver in codec_commands(build, (nim_driver,), 'bounded'):
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
+        assert len(output) == len(expected), (driver, len(output), len(expected))
+        # Preserve the failing request in the assertion so any semantic mismatch can be replayed exactly.
+        for index, (actual, wanted) in enumerate(zip(output, expected)):
+            assert actual == wanted, (driver, index, requests[index], actual, wanted)
+    print(f'PASS bounded: {len(requests)} independent Nim requests; '
+          f'{official_count} official blob checks; {len(fixtures)} project fixtures; '
+          '3 negative compilation checks', flush=True)
+
+
+# Construct the unchanged independent corpus without building or executing a native adapter.
+def batch_requests(reference_encode, reference_decode):
     requests, expected = [], []
 
     # Append byte-encoder cases and compare policy/capacity precedence before constructing expected bytes.
@@ -207,15 +224,4 @@ def verify_bounded(build, nim_flags, run, reference_encode, reference_decode):
     for width in (-2**63, -1, 9, 2**63 - 1):
         se([], width, 0, 0)
         sd(b'', width, 0, 0)
-    request_file = build / 'bounded-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    # Each adapter also asserts that every failing write/decode preserves the entire supplied destination.
-    for driver in codec_commands(build, (nim_driver,), 'bounded'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        # Preserve the failing request in the assertion so any semantic mismatch can be replayed exactly.
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS bounded: {len(requests)} independent Nim requests; '
-          f'{official_count} official blob checks; {len(fixtures)} project fixtures; '
-          '3 negative compilation checks', flush=True)
+    return requests, expected, official_count, fixtures

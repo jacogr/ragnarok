@@ -166,9 +166,11 @@ closed shapes; the namespace question remains parked. Exact chapter/service comp
 passes its complete corpus and published whole mappings, guarded results, nominal chapter container,
 retained/copy checks, parent arithmetic and backend cleanup. Separate raw whole-map roots pass.
 All production codec modules are ported. Width evidence and parked namespace witnesses now replay
-through the Nimony runner, alongside the existing literal oracle/provenance checks. Next: integrate
-the five early natural/fixed/bounded/composite/digest independent batch corpora; native suite success
-alone does not establish complete local M1 validation parity. Linux execution remains separate.
+through the Nimony runner, alongside literal oracle/provenance checks. All 185,373 original early
+natural/fixed/bounded/composite/digest requests and their nominal/privacy safeguards now pass too.
+Local M1 validation migration parity is reached for the documented implemented scope; the parked
+namespace policy and Linux confirmation remain separate. Next: M2 assurance signing contexts and
+validator-key/parent verification.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux

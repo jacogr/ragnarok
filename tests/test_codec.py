@@ -167,6 +167,23 @@ def verify_fixed(build, nim_flags):
             assert 'encodeFixed' in result.stderr or 'encode_fixed' in result.stderr, result.stderr
     nim_driver = build / 'nim-fixed-driver'
     run(['nim', 'c', *nim_flags, f'--out:{nim_driver}', ROOT / 'tests/native/fixed_driver.nim'])
+    requests, expected, official_count, fixtures = fixed_requests()
+    request_file = build / 'fixed-requests.txt'
+    request_file.write_text('\n'.join(requests) + '\n')
+    # Each native implementation must match the same independent results, including empty output lines.
+    for driver in codec_commands(build, (nim_driver,), 'fixed'):
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
+        assert len(output) == len(expected), (driver, len(output), len(expected))
+        # Keep the exact failing request and observed/expected response in the diagnostic.
+        for index, (actual, wanted) in enumerate(zip(output, expected)):
+            assert actual == wanted, (driver, index, requests[index], actual, wanted)
+    print(f'PASS fixed unsigned: {len(requests)} independent Nim requests; '
+          f'{official_count} official field checks; {len(fixtures)} boundary fixtures; '
+          '3 negative compilation checks', flush=True)
+
+
+# Author the original fixed-width corpus independently of native compilation or execution.
+def fixed_requests():
     requests, expected = official_fixed_cases()
     official_count = len(requests)
     fixtures = json.loads((ROOT / 'vectors/fixed-unsigned-boundaries.json').read_text())
@@ -214,18 +231,48 @@ def verify_fixed(build, nim_flags):
     requests.extend(['FE 1 -1', 'FE 8 18446744073709551616',
                      'FE 999999999999999999999999 0', 'FD -999999999999999999999999 '])
     expected.extend(['inputerror'] * 4)
-    request_file = build / 'fixed-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    # Each native implementation must match the same independent results, including empty output lines.
-    for driver in codec_commands(build, (nim_driver,), 'fixed'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        # Keep the exact failing request and observed/expected response in the diagnostic.
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS fixed unsigned: {len(requests)} independent Nim requests; '
-          f'{official_count} official field checks; {len(fixtures)} boundary fixtures; '
-          '3 negative compilation checks', flush=True)
+    return requests, expected, official_count, fixtures
+
+
+# Author the original natural corpus, including malformed text and every prefix header.
+def natural_requests():
+    requests, expected = official_prefix_cases()
+    official_count = len(requests)
+    fixtures = json.loads((ROOT / 'vectors/natural-boundaries.json').read_text())
+    # Check the saved size-boundary fixtures in both directions and verify their expected bytes independently.
+    for item in fixtures:
+        x, encoded = int(item['value']), item['hex']
+        assert reference_encode(x).hex() == encoded
+        requests.extend([f'E {x}', 'D ' + encoded])
+        expected.extend([encoded, f'{x} {len(encoded) // 2}'])
+    rng = random.Random(0x4a414d)
+    values = [0, 2**64 - 1] + [rng.getrandbits(64) for _ in range(10000)]
+    for x in values:
+        encoded = reference_encode(x)
+        requests.extend([f'E {x}', 'D ' + encoded.hex(), 'D ' + (encoded + b'\x42').hex()])
+        expected.extend([encoded.hex(), f'{x} {len(encoded)}', f'{x} {len(encoded)}'])
+    inputs = [b'']
+    # Every header, every proper prefix, zero payloads and maximum payloads.
+    # Cover every possible first byte, including all payload sizes and the ff marker.
+    for header in range(256):
+        # Zero and all-one payloads probe the low and high extremes for each header.
+        for payload in (b'\0' * 8, b'\xff' * 8):
+            data = bytes([header]) + payload
+            inputs.extend(data[:length] for length in range(10))
+    # Deliberately encode values just below each size threshold using that unnecessarily long form.
+    for length in range(1, 9):
+        x = 2**(7 * length) - 1
+        header = 255 if length == 8 else 256 - 2**(8 - length) + x // 256**length
+        inputs.append(bytes([header]) + (x % 256**length).to_bytes(length, 'little'))
+    inputs.extend(rng.randbytes(rng.randrange(33)) for _ in range(10000))
+    # Feed every arbitrary or malformed byte sequence to both decoders and the independent reference.
+    for data in inputs:
+        requests.append('D ' + data.hex())
+        expected.append(reference_decode(data))
+    # uint64 overflow must be rejected by the adapter, never truncated.
+    requests.extend(['E 18446744073709551616', 'E -1'])
+    expected.extend(['inputerror', 'inputerror'])
+    return requests, expected, official_count, fixtures
 
 
 # Build and check Nim, then compare the same request corpus with the reference results.
@@ -265,42 +312,7 @@ def main():
         print('Raw-integer nominal safeguard passed', flush=True)
         nim_driver = build / 'nim-driver'
         run(['nim', 'c', *nim_flags, f'--out:{nim_driver}', ROOT / 'tests/native/driver.nim'])
-        requests, expected = official_prefix_cases()
-        official_count = len(requests)
-        fixtures = json.loads((ROOT / 'vectors/natural-boundaries.json').read_text())
-        # Check the saved size-boundary fixtures in both directions and verify their expected bytes independently.
-        for item in fixtures:
-            x, encoded = int(item['value']), item['hex']
-            assert reference_encode(x).hex() == encoded
-            requests.extend([f'E {x}', 'D ' + encoded])
-            expected.extend([encoded, f'{x} {len(encoded) // 2}'])
-        rng = random.Random(0x4a414d)
-        values = [0, 2**64 - 1] + [rng.getrandbits(64) for _ in range(10000)]
-        for x in values:
-            encoded = reference_encode(x)
-            requests.extend([f'E {x}', 'D ' + encoded.hex(), 'D ' + (encoded + b'\x42').hex()])
-            expected.extend([encoded.hex(), f'{x} {len(encoded)}', f'{x} {len(encoded)}'])
-        inputs = [b'']
-        # Every header, every proper prefix, zero payloads and maximum payloads.
-        # Cover every possible first byte, including all payload sizes and the ff marker.
-        for header in range(256):
-            # Zero and all-one payloads probe the low and high extremes for each header.
-            for payload in (b'\0' * 8, b'\xff' * 8):
-                data = bytes([header]) + payload
-                inputs.extend(data[:length] for length in range(10))
-        # Deliberately encode values just below each size threshold using that unnecessarily long form.
-        for length in range(1, 9):
-            x = 2**(7 * length) - 1
-            header = 255 if length == 8 else 256 - 2**(8 - length) + x // 256**length
-            inputs.append(bytes([header]) + (x % 256**length).to_bytes(length, 'little'))
-        inputs.extend(rng.randbytes(rng.randrange(33)) for _ in range(10000))
-        # Feed every arbitrary or malformed byte sequence to both decoders and the independent reference.
-        for data in inputs:
-            requests.append('D ' + data.hex())
-            expected.append(reference_decode(data))
-        # uint64 overflow must be rejected by the adapter, never truncated.
-        requests.extend(['E 18446744073709551616', 'E -1'])
-        expected.extend(['inputerror', 'inputerror'])
+        requests, expected, official_count, fixtures = natural_requests()
         request_file = build / 'requests.txt'
         request_file.write_text('\n'.join(requests) + '\n')
         # Run each native adapter on the exact same request file and require one response per request.
