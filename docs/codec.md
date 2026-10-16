@@ -155,8 +155,10 @@ and scoped release workload. Chapters 14/15 ready and accumulated work queues no
 independent corpus, guarded public/private results, canonical sets, retained report/ring lifetimes,
 fixed-copy, arithmetic and scoped release checks. Chapter-16 last accumulation outputs also
 passes its independent corpus, guarded results, ordered/repeated fixed pairs, retained owners,
-arithmetic and scoped release checks. Next is C(255, service) account metadata
-(`state_accounts.nim`).
+arithmetic and scoped release checks. C(255, service) account metadata now also passes its
+independent corpus, guarded result/progress contracts, fixed field/source/input copies, unsigned
+boundaries and scoped encoded-entry release checks. Next is service storage/preimage keyed values
+(`state_service_values.nim`).
 M1 migration remains partial.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the

@@ -1,36 +1,50 @@
 ## Independent source fields and copied-value observations for C(255, service) metadata.
-import std/[os, strutils]
+import std/[assertions, cmdline, syncio, strutils, parseutils]
 import ../../src/codec/[state_accounts, state_trie, bounded]
 
 ## Preserve hostile empty input rather than replacing it with a valid zero discriminator.
 proc unhex(text: string): seq[byte] =
   if text == "-": return @[] # Trusted empty transport token is not protocol version zero.
-  doAssert text.len mod 2 == 0
+  assert text.len mod 2 == 0
   result = newSeq[byte](text.len div 2)
-  for i in 0..<result.len: result[i] = byte(parseHexInt(text[
-      2*i..2*i+1])) # Exact code/value octets remain visible.
+  # Trusted fixture transport carries exactly two lowercase hexadecimal digits per octet.
+  for i in 0..<result.len:
+    let pair = text[2*i..2*i+1]
+    # Reject malformed tokens rather than silently accepting a partial parse.
+    for c in pair: assert c in {'0'..'9', 'a'..'f'}
+    var octet: byte = 0
+    assert parseHex(pair, octet) == 2
+    result[i] = octet
 
 ## Display complete fixed bytes including leading zeroes, without interpreting hashes as integers.
 proc hex(bytes: openArray[byte]): string =
   if bytes.len == 0: return "-" # Preserve empty trusted fields if encountered.
-  for b in bytes: result.add(toHex(b, 2).toLowerAscii()) # No production serialization creates these observations.
+  result = ""
+  # Display every supplied fixed octet, preserving leading zeroes.
+  for b in bytes: result.add(toHex(int(b), 2).toLowerAscii()) # No production serialization creates these observations.
+
+## Require a complete trusted uint64 token through the supported nonthrowing interface.
+proc unsigned(text: string): uint64 =
+  var number: uint64 = 0
+  assert text.len > 0 and parseBiggestUInt(text, number) == text.len
+  number
 
 ## Construct typed source metadata directly from decimal fields and literal code identity.
 proc source(parts: seq[string]): ServiceMetadata =
-  doAssert parts.len == 13
+  assert parts.len == 13
   let raw = unhex(parts[3])
-  doAssert raw.len == 32
-  var code: array[32, byte]
+  assert raw.len == 32
+  var code = default(array[32, byte])
   for i in 0..<32: code[i] = raw[i] # Code identity is a fixed value, independent of production decoding.
-  ServiceMetadata(codeHash: CodeHash(code), balance: AccountBalance(parseBiggestUInt(parts[4])),
-    minimumAccumulationGas: Gas(parseBiggestUInt(parts[5])), minimumTransferGas: Gas(
-        parseBiggestUInt(parts[6])),
-    storageBytes: AccountStorageBytes(parseBiggestUInt(parts[7])), depositOffset: AccountBalance(
-        parseBiggestUInt(parts[8])),
-    storageItems: AccountStorageItems(parseBiggestUInt(parts[9])), created: AccountSlot(
-        parseBiggestUInt(parts[10])),
-    lastAccumulation: AccountSlot(parseBiggestUInt(parts[11])), parent: ServiceIndex(
-        parseBiggestUInt(parts[12])))
+  ServiceMetadata(codeHash: CodeHash(code), balance: AccountBalance(unsigned(parts[4])),
+    minimumAccumulationGas: Gas(unsigned(parts[5])), minimumTransferGas: Gas(
+        unsigned(parts[6])),
+    storageBytes: AccountStorageBytes(unsigned(parts[7])), depositOffset: AccountBalance(
+        unsigned(parts[8])),
+    storageItems: AccountStorageItems(unsigned(parts[9])), created: AccountSlot(
+        unsigned(parts[10])),
+    lastAccumulation: AccountSlot(unsigned(parts[11])), parent: ServiceIndex(
+        unsigned(parts[12])))
 
 ## Observe every logical fixed field, preserving the precise normative ordering of the five E8/four E4 values.
 proc observed(value: ServiceMetadataRead): string =
@@ -45,11 +59,11 @@ proc observed(value: ServiceMetadataRead): string =
 
 ## Execute a complete trusted source or hostile-wire request, exposing only selected success or a failure reason.
 proc request(parts: seq[string]) =
-  let budget = ByteLimit(parseBiggestUInt(parts[1]))
+  let budget = ByteLimit(unsigned(parts[1]))
   case parts[0]
   of "V", "R":
     var value = source(parts)
-    let encoded = serviceMetadataEntry(ServiceIndex(parseBiggestUInt(parts[2])), value, budget)
+    let encoded = serviceMetadataEntry(ServiceIndex(unsigned(parts[2])), value, budget)
     if encoded.error != ServiceMetadataError.None:
       echo ($encoded.error).toLowerAscii() # No fabricated default key/value after resource failure.
     else:
@@ -61,7 +75,7 @@ proc request(parts: seq[string]) =
             perValue: ByteLimit(high(uint64)),
           totalValueBytes: ByteLimit(high(uint64)), nodes: TrieNodeLimit(
               1))) # One metadata entry only, not the whole service or JAM state.
-        doAssert root.error == StateTrieError.None
+        assert root.error == StateTrieError.None
         echo hex(array[32, byte](root.value.root))
   of "D":
     var input = unhex(parts[2])
@@ -71,7 +85,7 @@ proc request(parts: seq[string]) =
     else:
       for i in 0..<input.len: input[i] = 0 # Fixed copied fields must survive complete caller-input destruction.
       echo observed(decoded.value)
-  else: doAssert false # Unknown trusted operations cannot silently become a different schema.
+  else: assert false # Unknown trusted operations cannot silently become a different schema.
 
 # Every request releases its temporary caller arrays; decoded metadata has no retained heap ownership.
 for line in lines(paramStr(1)):

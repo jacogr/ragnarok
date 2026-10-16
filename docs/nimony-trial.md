@@ -1,10 +1,11 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **44 native suites, twenty-four independent family corpora, 1,122 runtime misuse rejections
-and 518 compilation rejections pass locally**. Chapter-16 last accumulation outputs joins the verified
+Status: **46 native suites, twenty-five independent family corpora, 1,138 runtime misuse rejections
+and 527 compilation rejections pass locally**. Service-account metadata joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
-state-key/node, bounded trie, entropy/roster/time, authorization and state chapters 3–5/10/12–16.
+state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
+and fixed C(255, service) account records.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1368,11 +1369,61 @@ here remain local macOS ARM64, checked ARC/Clang LTO; actual Linux execution and
 runtime parity are separate gates. Chapters 1–16 now have their existing typed serializers ported,
 but service-keyed state and whole-state composition remain. Next is C(255, service) account metadata.
 
+## Thirtieth bounded increment: C(255, service) account metadata
+
+`src/codec/state_accounts.nim` now targets the same pristine pinned Nimony 0.6.3 nightly. Gray
+Paper 0.8.0 T's C(255, service) mapping retains the interleaved service key and exact 89-byte
+version-zero value: one canonical zero discriminator, a fixed code hash, five E8 fields and four
+E4 fields. Balance, gas, storage, timeslot and service domains remain nominally distinct, with
+full unsigned field ranges preserved. No variable-width fallback, account eligibility/deposit
+validation, nested service maps, transition execution or protocol/dependency change is introduced.
+
+`ServiceMetadataResult[T]` now hides status/payload behind read-only reasons and a success
+precondition. Complete fixed metadata and its consumed extent remain independent values: no
+heap-backed snapshot or owner relation is needed. Encoded entry bytes remain caller-owned fresh
+storage. The existing fixed-budget, canonical version, supported version and complete-payload
+failure precedence is unchanged. Even the last parent-service byte must exist before field copies.
+Fixed offsets introduce no input-derived size arithmetic or advertised-size allocation.
+
+The port explicitly initializes byte arrays and scalar read accumulators. The trusted driver uses
+nonthrowing complete-token integer/hex parsing. Initial targeted selftest and driver builds both
+rejected `uint64(maxBytes) < ServiceMetadataBytes`: the compiler reported expected uint64 but got
+int64 for the named fixed-size constant. **One observed source repair cycle** made the comparison
+explicitly unsigned at both call sites; both builds then passed. This is compiler/type-inference
+migration friction, not a discovered wire-format defect. Initial diagnostics remain in ignored
+`build/nimony-trial/verification/{test_state_accounts,state_accounts_driver}-initial-build.log`.
+The new private-copy and isolated-result binaries passed their first targeted builds. No upstream
+patches or private runtime hooks were needed; no historical repair counts are inferred.
+
+All **1,794 unchanged independent requests** and **six literal reference checks** pass. Coverage
+includes every proper record truncation, every code-hash octet, each E8/E4 field across unsigned
+boundaries, service key boundaries, fixed byte budgets, canonical/unknown/truncated/overlong
+versions, suffixes, deterministic mutations and **51 partial metadata-entry trie roots**. The
+corpus retains **20 JSON-derived metadata records** and **20 exact nonempty raw trace entries**
+with complete key/value replay. No published fields are normalized and no accumulation STF runs.
+Supplementary checks exercise escaped/replaced fixed records, independent copies, literal
+little-endian high-bit reads and late failures. After **1,000 warmed cycles**, public live allocation
+returns from **192 to 192 bytes** while fresh encoded entries retire. This scoped observation does
+not establish general leak freedom or RSS behavior; the decoded metadata itself has no references.
+
+This increment adds **16 runtime misuse rejections** (eight actual/default result pairs) and
+**nine compilation rejections** (six private/read-only result probes plus gas-as-balance,
+bytes-as-items and timeslot-as-parent substitutions). Cumulative totals are **1,138 runtime misuse
+rejections, 527 compilation rejections (452 privacy + 67 nominal + five schema + three static
+contracts), 46 positive native suites and twenty-five family corpora**, plus three separate language
+probes. Formatting covers **714 Nim files**; the functional report records **727 matching source/test
+hashes**. Safety rejection counts remain separate from compiler-repair measurements.
+
+The all-source semantic audit advances from 31/43 to **32/43 passing modules**, retaining all eleven
+remaining failures. Branch Linux CI automatically runs the expanded migrated slice. Evidence here
+remains local macOS ARM64, checked ARC/Clang LTO; actual Linux execution and full M1/M2/M3 runtime
+parity remain gates. Next is service storage/preimage keys and retained raw values.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 C(255, service) account metadata (`src/codec/state_accounts.nim`), preserving the
-fixed version-zero record, nominal balance/gas/storage/time domains, chapter/service key layout,
-whole-record preflight and the existing independent entry/root corpus.
+Next: port M1 service storage/preimage keyed values (`src/codec/state_service_values.nim`),
+preserving namespace/hash domains, raw unframed values, immutable captures, copy/alias and backend
+failure contracts, resource preflight and the existing independent entry/root corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1410,6 +1461,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
-authorization and state chapters 3–5/10/12–16. A missing check or failed guard still makes the runner
+authorization, state chapters 3–5/10/12–16 and fixed service-account metadata. A missing check or failed guard still makes the runner
 exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

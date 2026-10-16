@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -616,6 +616,13 @@ OUTPUTS_PRIVATE = {'output_result_entry_private': 'completed', 'output_result_re
 PRIVATE.update(OUTPUTS_PRIVATE)
 NOMINAL.update(output_root_as_commitment="got: StateNodeHash but wanted: OutputCommitment", output_service_as_index="OutputLogIndex")
 OUTPUTS_MEMBERS = ('entry-items', 'entry-bytes', 'owner', 'consumed', 'decode-framing', 'decode-items', 'decode-bytes', 'decode-overflow', 'decode-tail', 'count-owner', 'at-owner', 'at-index', 'at-empty', 'extent-items', 'extent-overflow', 'extent-bytes')
+# Fixed record fields are public copies; result status and successful payloads remain private/read-only.
+ACCOUNTS_PRIVATE = {'account_result_entry_private': 'completed', 'account_result_read_private': 'completed', 'account_result_retag': 'status', 'account_result_forge': 'status', 'account_result_error_write': 'error', 'account_result_value_write': 'value'}
+PRIVATE.update(ACCOUNTS_PRIVATE)
+NOMINAL.update(account_gas_as_balance="got: Gas but wanted: AccountBalance",
+               account_bytes_as_items="got: AccountStorageBytes but wanted: AccountStorageItems",
+               account_slot_as_parent="got: AccountSlot but wanted: ServiceIndex")
+ACCOUNTS_MEMBERS = ('entry-bytes', 'metadata', 'consumed', 'decode-policy', 'decode-framing', 'decode-version', 'decode-version-truncated', 'decode-tail')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -664,7 +671,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -695,7 +702,8 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('tests/native/state_outputs_driver.nim', 'tests/state_outputs_oracle.py',
+    sources += [ROOT/path for path in ('tests/native/state_accounts_driver.nim', 'tests/state_accounts_oracle.py',
+                'tests/test_state_accounts_harness.py', 'tests/native/state_outputs_driver.nim', 'tests/state_outputs_oracle.py',
                 'tests/test_state_outputs_harness.py', 'src/crypto/primitives.nim', 'tests/native/crypto_driver.nim',
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
@@ -738,7 +746,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -870,6 +878,13 @@ def main():
             if release is not None:
                 # Live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
                 report['safrole_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_accounts_private' and row['passed']:
+            # Metadata copies contain no references; every fresh encoded entry must still retire at scope exit.
+            release = re.search(r'ACCOUNTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # This public allocator observation covers only the warmed workload, never RSS or general leak freedom.
+                report['accounts_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_outputs_private' and row['passed']:
             # Replaced log owners and detached fixed pairs retire after their final scoped reference.
             release = re.search(r'OUTPUTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1575,6 +1590,40 @@ def main():
     corpus['passed'] = corpus['passed'] and len(traces) == 8 and all(row['complete_component_match'] for row in traces)
     report['outputs_corpus'] = corpus
     announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
+    # Fixed account metadata retains independent field equations, JSON records and exact nonempty raw traces.
+    from state_accounts_oracle import requests as accounts_requests, published_json as accounts_json, published_traces as accounts_traces, parse as accounts_parse, wire as accounts_wire, key as accounts_key, MAX as accounts_max, SIZE as accounts_size
+    harness = command([sys.executable, ROOT/'tests/test_state_accounts_harness.py'], 'accounts-harness')
+    lines, expected = accounts_requests()
+    source = BUILD/'accounts-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    traces = []
+    # Select exact reconstructable C(255, service) keys, never arbitrary hashed keys sharing the first byte.
+    for entry in accounts_traces():
+        fields = accounts_parse(entry['wire'], accounts_max)
+        traces.append(dict(path=entry['path'], phase=entry['phase'], service=entry['service'],
+                           key=accounts_key(entry['service']).hex(), bytes=len(entry['wire']), consumed=accounts_size,
+                           sha256=hashlib.sha256(entry['wire']).hexdigest(),
+                           complete_component_match=len(entry['wire']) == accounts_size and accounts_wire(fields) == entry['wire']))
+    compiled, binary = build(compiler, ROOT/'tests/native/state_accounts_driver.nim', 'state_accounts-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_json_metadata=len(accounts_json()), published_trace_metadata=traces,
+                  scope='C(255,service) fixed version-zero metadata; no nested maps, account validation or transitions',
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Independent expected fields/bytes/reasons precede execution; native round trips supply no expected answers.
+        result = command([binary, source], 'state_accounts-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Preserve the first mismatch and full observation log for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    corpus['passed'] = corpus['passed'] and len(traces) == 20 and all(row['complete_component_match'] for row in traces)
+    report['accounts_corpus'] = corpus
+    announce('independent C(255,service) account metadata corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1994,6 +2043,17 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['outputs'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' outputs '+member+' guard', passed)
+    # Fixed metadata and encoded entries require exact success, even though records need no retained heap owner.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_accounts_results.nim', 'accounts-results', crypto_library)
+    report['accounts_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Default and actual failures execute independently so no payload/progress bypass is concealed.
+        for origin in ('default', 'error'):
+            for member in ACCOUNTS_MEMBERS:
+                result = command([binary, member, origin], 'accounts-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'parsed.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['accounts'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' accounts '+member+' guard', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -2119,6 +2179,9 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['accounts_corpus']['passed']
+                   and len(report['accounts']) == 2*len(ACCOUNTS_MEMBERS)
+                   and all(row['passed'] for row in report['accounts'])
                    and report['outputs_corpus']['passed']
                    and len(report['outputs']) == 2*len(OUTPUTS_MEMBERS)
                    and all(row['passed'] for row in report['outputs'])
