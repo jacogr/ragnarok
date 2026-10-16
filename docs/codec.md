@@ -157,8 +157,11 @@ fixed-copy, arithmetic and scoped release checks. Chapter-16 last accumulation o
 passes its independent corpus, guarded results, ordered/repeated fixed pairs, retained owners,
 arithmetic and scoped release checks. C(255, service) account metadata now also passes its
 independent corpus, guarded result/progress contracts, fixed field/source/input copies, unsigned
-boundaries and scoped encoded-entry release checks. Next is service storage/preimage keyed values
-(`state_service_values.nim`).
+boundaries and scoped encoded-entry release checks. Service storage/preimage keyed values also
+pass their independent corpus, guarded results, retained key/value copies, atomic alias/capacity
+checks, backend refusal/recovery, native scratch bounds and scoped release checks. Next is service
+request-history framing and tagged alternatives (`state_requests.nim`), preserving the parked
+namespace question.
 M1 migration remains partial.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the

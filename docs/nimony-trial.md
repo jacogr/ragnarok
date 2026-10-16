@@ -1,11 +1,11 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **46 native suites, twenty-five independent family corpora, 1,138 runtime misuse rejections
-and 527 compilation rejections pass locally**. Service-account metadata joins the verified
+Status: **48 native suites, twenty-six independent family corpora, 1,176 runtime misuse rejections
+and 540 compilation rejections pass locally**. Service storage/preimage keyed values join the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
-and fixed C(255, service) account records.
+and fixed C(255, service) account records, plus retained raw service values.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1419,11 +1419,69 @@ remaining failures. Branch Linux CI automatically runs the expanded migrated sli
 remains local macOS ARM64, checked ARC/Clang LTO; actual Linux execution and full M1/M2/M3 runtime
 parity remain gates. Next is service storage/preimage keys and retained raw values.
 
+## Thirty-first bounded increment: service storage/preimage keyed values
+
+`src/codec/state_service_values.nim` now targets the same pristine pinned Nimony nightly. Gray
+Paper 0.8.0 T's storage/preimage mappings retain their distinct E4 namespace prefixes, original
+raw keys/fixed lookup hashes, maintained Blake2b-256 key derivation and unframed raw values.
+Values, including empty/count-like bytes and supplied hash/content mismatches, remain structural
+state data. Capturing an existing hashed key checks its service octets without inferring its
+original namespace or requiring original storage-key enumeration. No protocol/dependency change,
+contextual hash/content validation or service-state transition is introduced.
+
+`ServiceValueResult[T]` hides status/payload behind read-only reasons and a success precondition,
+including private scratch extent proofs. A small private `storageExtent` helper preserves the
+existing key-length-plus-four check and permits native arithmetic boundary tests without fake
+open arrays or huge allocations. Nullable immutable owner storage is checked through stable
+retained locals. Fixed identity metadata is copied; copy capacity/overlap checks still precede
+every write, destination suffixes remain unchanged, and re-emitted entries own fresh raw bytes.
+
+The port uses explicit initialization, nullable references and supported nonthrowing test-driver
+parsers. The initial mechanical edit accidentally renamed ordinary function parameters along with
+result fields. The compiler rejected those edits; restoring the parameter names was **one observed
+source repair cycle**, not evidence of a language/library limitation. Initial build diagnostics
+remain under ignored `build/nimony-trial/verification/*-initial-build.log`. A separate test-only
+observer library-path typo caused one local link failure and was corrected without a source
+change; that is infrastructure friction, not a compiler repair. No upstream or private-runtime
+patches were needed, and no historical repair totals are inferred.
+
+All **2,047 unchanged independent requests** and **six literal reference checks** pass. Coverage
+retains namespace/hash boundaries, raw empty/binary/count-like values, service identity mutation,
+key/value limits, fixed copies, deterministic sources and **83 partial single-entry trie roots**.
+Pinned JSON supplies **12 storage and 16 preimage mappings** with exact source fields. Sixteen raw
+trace captures retain original keys/values, explicitly unclassified: hashed namespaces cannot be
+recovered from those keys and may include request histories. Constructor and opaque-capture
+evidence remain separate. No published fields are repaired and no upstream generators execute.
+
+Expanded private checks retain/release replaced owners, independent metadata/entry/copy outputs,
+empty captures, atomic exact aliases, shifted overlap detection and short-destination precedence.
+The existing separate test-only crypto observer demonstrates immediate backend refusal, policy
+rejection before hashing (zero calls), successful recovery and scratch cleanup; production corpus
+binaries link the unmodified bridge. Native extent checks cover `high(int)-4`, the exact fitting
+boundary and larger rejected lengths without allocating advertised storage. After **1,000 warmed
+cycles**, public live allocation returns from **272 to 272 bytes**. This scoped observation does
+not establish general leak freedom or RSS behavior.
+
+This increment adds **38 runtime misuse rejections** (nineteen actual/default result pairs) and
+**13 compilation rejections** (eleven private/read-only result/owner probes and two nominal
+hash/key substitutions). Cumulative totals are **1,176 runtime misuse rejections, 540 compilation
+rejections (463 privacy + 69 nominal + five schema + three static contracts), 48 positive native
+suites and twenty-six family corpora**, plus three separate language probes. Formatting covers
+**725 Nim files**; the functional report records **746 matching source/test hashes**. Safety
+rejections remain separate from compiler-repair measurements.
+
+The all-source semantic audit advances from 32/43 to **33/43 passing modules**, retaining all ten
+remaining failures. Branch Linux CI automatically uses the expanded runner. Verification here
+remains local macOS ARM64, checked ARC/Clang LTO; Linux execution and full M1/M2/M3 runtime parity
+remain gates. Next is service request-history framing and its tagged alternatives, preserving the
+maintainer-parked namespace question without inventing interim restrictions.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 service storage/preimage keyed values (`src/codec/state_service_values.nim`),
-preserving namespace/hash domains, raw unframed values, immutable captures, copy/alias and backend
-failure contracts, resource preflight and the existing independent entry/root corpus.
+Next: port M1 service request histories (`src/codec/state_requests.nim`), preserving fixed
+length/hash key framing, canonical counts, tagged 0–3-slot alternatives, nominal time/length
+domains, whole-record preflight and the existing corpus. Keep the request-namespace question
+parked for Gray Paper 0.8.1/0.8.2 review as directed by the maintainer.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1461,6 +1519,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
-authorization, state chapters 3–5/10/12–16 and fixed service-account metadata. A missing check or failed guard still makes the runner
-exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
+authorization, state chapters 3–5/10/12–16, fixed service-account metadata and storage/preimage
+keyed values. A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
