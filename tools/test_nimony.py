@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -660,6 +660,17 @@ NOMINAL.update(raw_service_index='got: uint32 but wanted: ServiceIndex',
                raw_digest_gas='got: uint64 but wanted: Gas',
                wrong_digest_metric='got: ImportCount but wanted: ExportCount')
 PRIVATE.update(mutable_owner='data', failed_digest_payload='value')
+# Assurance transcripts/counts remain private, read-only and nominal despite being fixed values.
+ASSURANCE_CONTEXT_PRIVATE = dict(assurance_context_message_private='completed',
+    assurance_context_count_private='completed', assurance_context_status_private='status',
+    assurance_context_retag='status', assurance_context_forge='status',
+    assurance_context_error_write='error', assurance_context_value_write='value')
+PRIVATE.update(ASSURANCE_CONTEXT_PRIVATE)
+NOMINAL.update(assurance_context_parent='got: AssuranceAnchor but wanted: AssuranceParent',
+               assurance_context_message='got: AssuranceSigningMessage but wanted: EdSignature')
+ASSURANCE_CONTEXT_MEMBERS = ('message-config', 'message-padding', 'message-backend',
+    'verify-config', 'verify-keys', 'verify-count', 'verify-index', 'verify-order', 'verify-padding',
+    'verify-parent', 'verify-backend', 'verify-signature')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -708,7 +719,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -740,7 +751,8 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('tests/native/driver.nim', 'tests/native/fixed_driver.nim',
+    sources += [ROOT/path for path in ('src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
+                'tests/assurance_crypto_oracle.py', 'tests/test_assurance_crypto_harness.py', 'vectors/assurance-context.json','tests/native/driver.nim', 'tests/native/fixed_driver.nim',
                 'tests/native/bounded_driver.nim', 'tests/native/composite_driver.nim', 'tests/native/digest_driver.nim',
                 'tests/native/batch_support.nim', 'tests/test_early_codec_harness.py', 'tests/bounded_checks.py', 'tests/composite_checks.py',
                 'vectors/natural-boundaries.json', 'vectors/fixed-unsigned-boundaries.json',
@@ -798,7 +810,7 @@ def main():
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
+                                 crypto_observer if name in ('assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
                                  else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
@@ -987,6 +999,13 @@ def main():
             if release is not None:
                 # These public allocator counts apply only to the warmed isolated workload.
                 report['crypto_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'assurance_context' and row['passed']:
+            # Fixed transcript/count copies and transient seed fixtures must leave no additional live allocations.
+            release = re.search(r'ASSURANCE_CONTEXT_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # This warmed public occupancy observation is workload-specific, never an RSS or general leak claim.
+                report['assurance_context_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
@@ -1080,6 +1099,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['assurance_corpus'] = corpus
     announce('independent assurance codec/inspection corpus', corpus['passed'])
+    # Preserve the complete independently signed assurance-context corpus and frozen source/expected identities.
+    from assurance_crypto_oracle import requests as assurance_context_requests
+    harness = command([sys.executable, ROOT/'tests/test_assurance_crypto_harness.py'], 'assurance-context-harness')
+    provider, lines, expected = assurance_context_requests()
+    source = BUILD/'assurance-context-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/assurance_crypto_driver.nim', 'assurance-context-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, provider=provider, requests=len(lines), passed=False,
+                  scope='fixed transcript and stateless validator-key/parent checks; no state eligibility or point-policy change',
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Ordinary OpenSSL signatures and hashlib transcripts precede native execution; compare every complete result.
+        result = command([binary, source], 'assurance-context-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected and len(lines) == 2087
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        if not corpus['passed']:
+            # Include missing/extra observations and retain the full output for exact replay.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['assurance_context_corpus'] = corpus
+    announce('independent assurance transcript/context/signature corpus', corpus['passed'])
     # Keep the original guarantee corpus intact and independently check inspection and standalone APIs.
     from guarantees_checks import requests as guarantee_requests
     lines, expected, counts = guarantee_requests()
@@ -1902,6 +1945,17 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
         report[family+'_corpus'] = corpus
         announce('unchanged '+family+' regression corpus', passed)
+    # Transcript and count access on every actual/default context failure must terminate at the success contract.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
+    report['assurance_context_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate every read so an earlier contract failure cannot conceal a later unguarded payload.
+        for origin in ('default', 'error'):
+            for member in ASSURANCE_CONTEXT_MEMBERS:
+                result = command([binary, member, origin], 'assurance-context-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['assurance_context'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' assurance context '+member+' guard', passed)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2511,6 +2565,9 @@ def main():
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and report['early_oracle_harness']['exit_code'] == 0
                    and all(report[family+'_corpus']['passed'] for family in ('natural', 'fixed', 'bounded', 'composite', 'digest'))
+                   and report['assurance_context_corpus']['passed']
+                   and len(report['assurance_context']) == 2*len(ASSURANCE_CONTEXT_MEMBERS)
+                   and all(row['passed'] for row in report['assurance_context'])
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']

@@ -15,13 +15,21 @@ type
     NonCanonical, WrongParent, InvalidSignature, BackendFailure
   # Default and failure alternatives have no transcript, count or partially validated value.
   AssuranceContextResult*[T] = object
-    case error*: AssuranceContextError
-    of AssuranceContextError.None:
+    case status: AssuranceContextError
+    of None:
       # Success alone exposes the fully completed message or verification count.
-      value*: T
+      completed: T
     else:
       # A failed result carries only its reason.
       discard
+
+# Return a read-only failure reason; defaults and errors never publish a transcript or count.
+func error*[T](value: AssuranceContextResult[T]): AssuranceContextError = value.status
+
+# Fixed outputs are copied only after selecting success; no caller can bypass the supported contract.
+func value*[T](value: AssuranceContextResult[T]): T {.inline, requires: value.status ==
+    AssuranceContextError.None.} =
+  value.completed
 
 # Validate all native bit storage before constructing the protocol's fixed-width transcript.
 proc canonicalBits(bits: AssuranceBits, cores: CoreCount): bool {.raises: [].} =
@@ -43,13 +51,13 @@ proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
   # Validate the unsigned profile before narrowing or indexing the final bitfield byte.
   if uint64(cores) < 1 or uint64(cores) > 341:
     return AssuranceContextResult[AssuranceSigningMessage](
-        error: AssuranceContextError.InvalidConfig)
+        status: AssuranceContextError.InvalidConfig)
   # Signing a noncanonical native value would hide caller data and produce a misleading credential.
   if not canonicalBits(bits, cores):
     return AssuranceContextResult[AssuranceSigningMessage](
-        error: AssuranceContextError.NonCanonical)
+        status: AssuranceContextError.NonCanonical)
   let width = (int(cores)+7) div 8
-  var transcript: array[75, byte]
+  var transcript = default(array[75, byte])
   let parentBytes = array[32, byte](parent)
   # Parent identity bytes precede the fixed bitfield with no discriminator or length prefix.
   for i in 0..<32: transcript[i] = parentBytes[i]
@@ -59,16 +67,16 @@ proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
   # No failed provider output can become a default all-zero signing message.
   if hashed.error != CryptoError.None:
     return AssuranceContextResult[AssuranceSigningMessage](
-        error: AssuranceContextError.BackendFailure)
-  var message: array[46, byte]
+        status: AssuranceContextError.BackendFailure)
+  var message = default(array[46, byte])
   const domain = "$jam_available"
   # The leading dollar sign is signed; no terminator or extra domain hash is inserted.
   for i in 0..<domain.len: message[i] = byte(domain[i])
   let digest = array[32, byte](hashed.value)
   # Blake2b is parameterized for 32 output bytes, preserving the digest's identity order.
   for i in 0..<32: message[14+i] = digest[i]
-  AssuranceContextResult[AssuranceSigningMessage](error: AssuranceContextError.None,
-    value: AssuranceSigningMessage(message))
+  AssuranceContextResult[AssuranceSigningMessage](status: AssuranceContextError.None,
+    completed: AssuranceSigningMessage(message))
 
 # Verify stable borrowed records and key mapping without allocations, mutation or retained pointers.
 proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
@@ -77,15 +85,15 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
   # Configuration has precedence over empty input and absent validator keys.
   if not validConfig(config):
     return AssuranceContextResult[VerifiedAssuranceCount](
-        error: AssuranceContextError.InvalidConfig)
+        status: AssuranceContextError.InvalidConfig)
   # The key table is indexed by validator identity, never by a record's position in this batch.
   if uint64(keys.len) != uint64(config.validators):
     return AssuranceContextResult[VerifiedAssuranceCount](
-        error: AssuranceContextError.InvalidKeySet)
+        status: AssuranceContextError.InvalidKeySet)
   # A bounded count also bounds all subsequent native loops.
   if uint64(values.len) > uint64(config.validators):
     return AssuranceContextResult[VerifiedAssuranceCount](
-        error: AssuranceContextError.LimitExceeded)
+        status: AssuranceContextError.LimitExceeded)
   var previous = -1
   let expected = array[32, byte](parent)
   # Complete every structural/context check before an early invalid signature can hide a later failure.
@@ -93,19 +101,19 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
     if uint64(value.validator) >= uint64(config.validators):
       # E2 width does not prove membership in this configured validator set.
       return AssuranceContextResult[VerifiedAssuranceCount](
-          error: AssuranceContextError.InvalidValidator)
+          status: AssuranceContextError.InvalidValidator)
     # Unique ascending indices prevent duplicate validator credentials within the same extrinsic.
     if int(value.validator) <= previous:
       return AssuranceContextResult[VerifiedAssuranceCount](
-          error: AssuranceContextError.NonCanonical)
+          status: AssuranceContextError.NonCanonical)
     # Validate unused bits and storage even for values constructed directly by a native caller.
     if not canonicalBits(value.bits, config.cores):
       return AssuranceContextResult[VerifiedAssuranceCount](
-          error: AssuranceContextError.NonCanonical)
+          status: AssuranceContextError.NonCanonical)
     # Every anchor must bind to the externally supplied expected block parent.
     if value.anchor.bytes != expected:
       return AssuranceContextResult[VerifiedAssuranceCount](
-          error: AssuranceContextError.WrongParent)
+          status: AssuranceContextError.WrongParent)
     previous = int(value.validator)
   # Only a fully valid context proceeds to ordinary backend Ed25519 verification.
   for value in values:
@@ -114,11 +122,11 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
     # Backend failure never turns into an ordinary negative/positive credential by fallback.
     if message.error != AssuranceContextError.None or signature.error != CryptoError.None:
       return AssuranceContextResult[VerifiedAssuranceCount](
-          error: AssuranceContextError.BackendFailure)
+          status: AssuranceContextError.BackendFailure)
     let bytes = array[46, byte](message.value)
     # The provider's existing exceptional-point policy is unchanged and remains documented separately.
     if not verify(keys[int(value.validator)], signature.value, bytes):
       return AssuranceContextResult[VerifiedAssuranceCount](
-          error: AssuranceContextError.InvalidSignature)
-  AssuranceContextResult[VerifiedAssuranceCount](error: AssuranceContextError.None,
-    value: VerifiedAssuranceCount(values.len))
+          status: AssuranceContextError.InvalidSignature)
+  AssuranceContextResult[VerifiedAssuranceCount](status: AssuranceContextError.None,
+    completed: VerifiedAssuranceCount(values.len))

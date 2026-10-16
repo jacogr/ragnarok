@@ -27,3 +27,16 @@ The exceptional-point Ed25519 acceptance policy is unresolved: pinned BoringSSL 
 identity-A/identity-R/zero-S probes. Vector success does not finalize consensus verification policy
 or establish a backend audit. See [the primitive contract](../spec/crypto.md) and
 [Bandersnatch contract](../spec/bandersnatch.md) for provenance and remaining security limits.
+
+## Nimony branch migration
+
+Raw primitives and assurance signing contexts now pass the pinned Nimony trial under checked
+ARC/Clang LTO. Assurance results use private discriminators/payloads, read-only errors and guarded
+fixed-value accessors. The unchanged 2,087-request independent corpus and four literal checks pass,
+alongside 24 actual/default misuse rejections, nine privacy/nominal compilation probes and a native
+fixed-copy/preflight/refusal/recovery suite. Live occupancy remains 192 bytes before/after 1,000
+warmed scopes; this is scoped evidence, not a general leak claim. Signature acceptance policy and
+protocol/dependency pins are unchanged. Linux confirmation remains separate.
+
+Next: guarantee signing messages and complete-report signature composition. Bandersnatch/VRF
+runtime parity and networking remain later gates. See the [cumulative trial](nimony-trial.md).
