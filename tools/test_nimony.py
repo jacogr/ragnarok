@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -388,6 +388,16 @@ PRIVATE.update(OWNED_PRIVATE)
 PRIVATE['wrong_owner_pool'] = 'copyOwnedBlob'
 PRIVATE.update(COMPOSITE_PRIVATE)
 PRIVATE.update(PRIMITIVE_PRIVATE)
+PRIVATE.update(crypto_blake_private='completed', crypto_keccak_private='completed',
+               crypto_seed_private='completed', crypto_key_private='completed',
+               crypto_signature_private='completed', crypto_result_retag='status',
+               crypto_result_forge='status', crypto_result_error_write='error',
+               crypto_result_value_write='value', crypto_seed_storage='storage',
+               crypto_seed_forge='storage')
+NOMINAL.update(crypto_swapped_hash='got: KeccakHash but wanted: Blake2bHash',
+               crypto_swapped_key='got: EdSignature but wanted: EdPublicKey')
+CRYPTO_MEMBERS = ('blake', 'keccak', 'seed-width', 'key-width', 'signature-width',
+                  'key-missing', 'key-cleared', 'key-backend', 'sign-missing', 'sign-cleared', 'sign-backend')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -408,12 +418,15 @@ def command(arguments, name):
 
 
 # Use Nimony ARC/Clang release/LTO with bounds/contracts enabled; never use danger or noAssertions.
-def build(compiler, source, name):
+def build(compiler, source, name, crypto_library=None):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
              '--boundchecks:on', '--passC:-flto', '--passL:-flto']
     if platform.system() == 'Linux':
         # Preserve the established Linux LTO linker choice when the trial reaches that host.
         flags += ['--passL:-fuse-ld=lld']
+    if crypto_library is not None:
+        # Crypto clients use the maintained public C header and one explicit native library.
+        flags += [f'--passC:-I{ROOT/"native/crypto"}', f'--passL:{crypto_library}']
     binary = BUILD/name
     result = command([compiler, 'c', *flags, f'--nimcache:{BUILD/(name+"-cache")}',
                       f'--out:{binary}', source], name+'-build')
@@ -433,7 +446,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -464,10 +477,18 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
+    sources += [ROOT/path for path in ('src/crypto/primitives.nim', 'tests/native/crypto_driver.nim',
+                'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
+                'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
+                'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
+                'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
+                'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(sources)}
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
     sys.path.insert(0, str(ROOT/'tests'))
+    from nimony_crypto import prepare as prepare_crypto
+    crypto_library, crypto_observer, report['crypto_native'] = prepare_crypto(BUILD)
     from guarantees_oracle import record as guarantee_record
     guarantee_fixture = BUILD/'minimal-report.bin'
     guarantee_fixture.write_bytes(guarantee_record(0)['report'])
@@ -482,7 +503,8 @@ def main():
     (block_fixture/'header.bin').write_bytes(block_published('tiny', 'B', canonical=True)[0])
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
-        compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name)
+        compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
+                                 crypto_observer if name == 'crypto_seeds' else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -558,6 +580,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'crypto_seeds' and row['passed']:
+            # Exact-storage wipe checks run while memory is live; occupancy must return after final-owner release.
+            release = re.search(r'CRYPTO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # These public allocator counts apply only to the warmed isolated workload.
+                report['crypto_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -1181,6 +1210,29 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['c2'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' c2 '+member+' guard', passed)
+    # Preserve every independent primitive vector, ownership check and joined native-thread workload.
+    compiled, binary = build(compiler, ROOT/'tests/native/crypto_driver.nim', 'crypto-driver', crypto_library)
+    corpus = dict(build=compiled, passed=False)
+    if compiled['exit_code'] == 0:
+        # The production-linked corpus has no failure injection or observation wrappers.
+        corpus['run'] = command([sys.executable, ROOT/'tests/test_nimony_crypto.py', '--binary', binary], 'crypto-corpus')
+        corpus['passed'] = corpus['run']['exit_code'] == 0
+        if corpus['passed']:
+            # Retain structured independent equation/thread counts alongside the exact reproduction command.
+            corpus['counts'] = json.loads(corpus['run']['output'])
+    report['crypto_corpus'] = corpus
+    announce('crypto corpus', corpus['passed'])
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_crypto_results.nim', 'crypto-results', crypto_observer)
+    report['crypto_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Every default and real operation failure runs in a separate checked process.
+        for origin in ('default', 'error'):
+            for member in CRYPTO_MEMBERS:
+                # Distinguish the success contract from a crash, missing library or unrelated assertion.
+                result = command([binary, member, origin], 'crypto-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['crypto'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' crypto '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1238,7 +1290,9 @@ def main():
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
                    and report['header_corpus']['passed'] and report['block_corpus']['passed']
                    and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
-                   and report['c2_corpus']['passed']
+                   and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
+                   and len(report['crypto']) == 2*len(CRYPTO_MEMBERS)
+                   and all(row['passed'] for row in report['crypto'])
                    and len(report['c2']) == 2*len(C2_MEMBERS)+len(C2_VARIANTS)
                    and all(row['passed'] for row in report['c2'])
                    and len(report['collections']) == 2*len(COLLECTION_MEMBERS)

@@ -1,12 +1,12 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **21 native suites, eleven independent family corpora, 522 runtime misuse rejections and
-293 compilation rejections pass locally**. Availability specifications, deferred transfers and
-accumulation input records now join the verified scalar, owned, report, extrinsic-family,
-work-package, header, block, bitstring and collection slices.
-M1 migration remains partial; M2/M3 and Linux parity remain unverified. This branch targets Nimony
-directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
+Status: **22 native suites, twelve independent family corpora, 544 runtime misuse rejections and
+306 compilation rejections pass locally**. Raw Blake2b-256, legacy Keccak-256 and ordinary Ed25519
+now join the verified scalar, owned, report, extrinsic-family, work-package, header, block,
+bitstring, collection and C.2 slices.
+M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
+Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged.
 
 ## Compiler and environment
@@ -623,21 +623,63 @@ private runtime API, fallback encoding or omitted existing corpus case is used. 
 verification remains local macOS ARM64 with checked ARC/Clang LTO. M1 migration is still partial;
 Linux and M2/M3 parity remain unverified.
 
+## Sixteenth increment: raw cryptographic primitives
+
+`src/crypto/primitives.nim` now runs on the same pristine nightly, through the existing maintained
+C ABI and unchanged pinned BoringSSL/XKCP sources. `CryptoResult[T]` hides its discriminator and
+payload behind a read-only error and success-precondition value getter. Hashes, keys and signatures
+keep their distinct types. Default results remain Uninitialized; exact-width imports, empty raw
+messages and backend acceptance behavior are unchanged. Clients supply the public bridge include
+directory explicitly; generated C no longer depends on a source-relative header location.
+
+Opaque seed handles use private nullable ARC references, stable checked locals and a typed object
+destructor. Import copies caller bytes. Explicit clear invalidates all aliases; missing/cleared
+seeds cannot stand in for an imported all-zero seed. A test-only observer wraps the project bridge
+in a separate library, matching the original seed allocation's address. It sees nonzero fixture
+bytes before the real wipe and zero bytes afterward, inside the wipe callback while storage is
+still live. It retains no ARC owner and never reads freed memory. Dropping an intermediate alias
+does not wipe; dropping the last owner does. Explicit/repeated clear and typed refusals from all
+four fallible backend operations pass, followed by successful recovery. No compiler/runtime hook
+or upstream patch is used. This verifies exercised seed storage, not all possible secret copies,
+allocation-failure recovery or concurrent clear/sign behavior.
+
+The preserved independent corpus passes **five RFC 8032 cases, 151 Wycheproof cases, 56 raw messages
+for each hash**, exact-width/retained-input checks, the existing failed-result probe and **32
+deterministic generated signing fixtures**. Blake2b is compared with Python hashlib; Keccak uses
+the existing independent integer oracle. The four-worker test uses supported `RawThread` creation
+and joins every started thread, including if later creation fails. Each worker owns its seed and
+runs **128 rounds** of hashing, signing and verification; no ARC seed owner crosses threads.
+Direct C pointer/length, unchanged-output and wipe checks pass too.
+
+The exceptional-point probes retain the actual backend verdicts: identity A/R with S=0 is accepted
+for empty/abc messages; tested all-zero A/R and S=group-order cases are rejected. The normative
+JAM acceptance policy remains unresolved; passing this corpus does not settle it.
+
+After 100 warmups, **1,000 scoped seed release cycles return live occupancy 192 → 192 bytes**.
+This isolated allocator observation is not RSS or a general leak-freedom claim. The new guards add
+**22 runtime misuse rejections** for default/failed hash, import, derivation and signature results,
+including backend, missing-seed and cleared-seed failures. **13 compilation rejections** cover
+11 private/read-only result/seed bypasses and two nominal hash/signature/key swaps.
+Cumulative totals are **544 runtime result/variant/constructor rejections, 306 compilation
+rejections (263 privacy + 38 nominal + five schema), 22 positive native suites and twelve family
+corpora**, plus three language runtime probes. Formatting covers **509 Nim files**. The final
+evidence records **429 matching source/test hashes**.
+All results remain local macOS ARM64, checked ARC/Clang LTO. Production native sources and pins are
+unchanged. This completes the raw primitive slice, not all M2 or M1 migration.
+
 ## Remaining work and next bounded increment
 
-Next: port the raw crypto primitive adapter (`src/crypto/primitives.nim`): Blake2b-256, Ed25519
-and legacy Keccak-256, including guarded results, seed ownership/erasure and existing known-answer/
-negative tests through the pristine native bridge. This is the M2 prerequisite for continuing M1
-state-key/node hashing (`state_layout.nim` imports that adapter). Bandersnatch, contextual crypto,
-remaining state codecs and M3 remain separate increments.
+Next: port M1 state keys and fixed node layout/hashing (`src/codec/state_layout.nim`), now that
+its raw Blake2b dependency passes. Verify key domains, partial commitments, fixed copies, guarded
+results and the existing independent layout vectors. State trie construction is a separate chunk.
 
 Further port work remains:
 
 - M1: remaining record/state families still need compiler/runtime verification, guarded results
   and ownership coverage. Unsupported array slices, writable pointer views and `FieldDefect` catches
   need supported equivalents without reducing test coverage.
-- M2: crypto/VRF runtime parity, FFI ownership, destruction, secret erasure and thread safety are
-  unverified. Exploratory semantic checks alone do not establish those properties.
+- M2: contextual JAM crypto and Bandersnatch/VRF runtime parity, including their FFI lifetimes,
+  remain unverified. The raw primitive slice above does not establish those properties.
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
   Its alternative networking facilities require a dispatcher port and the existing lifecycle,
   service, mesh, resilience and offload tests.
@@ -651,7 +693,9 @@ remains parked for Gray Paper 0.8.1/0.8.2 review; this trial does not reopen pro
 
 Download the exact macOS ARM64 release asset above, verify its SHA-256 and extract under ignored
 `build/nimony-trial/`. It supplies `nimony/bin/nimony` and libraries; no upstream build scripts
-are required. A C compiler must be on `PATH`.
+are required. A C/C++ compiler, CMake and the pinned BoringSSL/XKCP/Wycheproof submodules must be
+available.
+The runner rebuilds the maintained primitive ABI and separate test-only observer.
 
 ```sh
 python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony
@@ -662,7 +706,7 @@ The runner now targets **only Nimony**. It writes commands, compiler/nightly met
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
-slice.
+and raw-crypto slices.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

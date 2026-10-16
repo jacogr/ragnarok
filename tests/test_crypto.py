@@ -29,9 +29,8 @@ def dependencies(fetch):
     return paths
 
 
-# Compile a narrow ABI from pristine BoringSSL/XKCP sources, then both checked native test adapters.
-def build(paths):
-    assert PINS['nim'] in subprocess.check_output(['nim', '--version'], text=True)
+# Compile only the maintained primitive ABI; compiler-specific test adapters are built separately.
+def build_native(paths):
     system = platform.system()
     assert system in ('Darwin', 'Linux')
     library = BUILD / ('libragnarok_crypto.dylib' if system == 'Darwin' else 'libragnarok_crypto.so')
@@ -60,12 +59,20 @@ def build(paths):
             objects.append(obj)
         run(['clang++', '-dynamiclib' if system == 'Darwin' else '-shared', *objects,
              native / 'libcrypto.a', '-pthread', '-o', library], log)
+    return library
+
+
+# Historical compiler entry point; the Nimony trial reuses only build_native and the unchanged vector equations.
+def build(paths):
+    assert PINS['nim'] in subprocess.check_output(['nim', '--version'], text=True)
+    library = build_native(paths)
+    with (BUILD / 'build.log').open('a') as log:
         linker = []
         # Test checked debug and optimized release builds; do not disable result/union assertions.
         for mode in ('debug', 'release'):
             run(['nim', 'c', '--mm:arc', '--cc:clang', '--clang.linkerexe:clang++', '--skipParentCfg',
                  '--skipUserCfg', *(['-d:release'] if mode == 'release' else []), f'--passL:{library}',
-                 f'--nimcache:{BUILD / ("nim-cache-" + mode)}', f'--out:{BUILD / ("nim-" + mode)}',
+                 f'--passC:-I{ROOT / "native/crypto"}', f'--nimcache:{BUILD / ("nim-cache-" + mode)}', f'--out:{BUILD / ("nim-" + mode)}',
                  ROOT / 'tests/native/crypto_driver.nim'], log)
 
 
@@ -134,7 +141,7 @@ def test(binary):
     assert invalid.returncode != 0
     # Require the expected checked-result diagnostic, not an unrelated process failure.
     diagnostic = invalid.stdout + invalid.stderr
-    assert 'FieldDefect' in diagnostic
+    assert 'value.status == None' in diagnostic and '[AssertionDefect]' in diagnostic
     assert query(binary, 'O') == 'ok'
     assert query(binary, 'T') == 'ok'
     fixture = ROOT / 'vectors/official/crypto'
@@ -194,8 +201,8 @@ def test(binary):
 
 
 # Cross-sign independent deterministic fixtures and stress simultaneous calls through separate native processes.
-def generated_signatures():
-    binary = BUILD/'nim-release'
+def generated_signatures(binary=None):
+    binary = binary or BUILD/'nim-release'
     rng = random.Random(25519)
     # Deterministic public fixture seeds exercise ordinary signing and verification beyond the known answers.
     for i in range(32):
