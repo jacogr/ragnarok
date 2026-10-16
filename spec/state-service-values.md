@@ -125,6 +125,6 @@ Nim 2.2.12 ARC/Clang LTO retains assertion/bounds/range/field/overflow guards. I
 runs the suite and retains logs; local validation is macOS arm64, with Linux confirmation after push.
 
 State chapters 1–16, account metadata and storage/preimage mappings now have codecs, but **M1 state
-parity remains incomplete**. Service request histories, whole-state composition/root evidence and
-the existing chapter-13 trace gate remain. Next planned bounded increment: **service request
-history entries**. See the [M1 checklist](../docs/m1.md).
+parity remains incomplete**. Request-history framing is implemented; whole-state composition/root
+evidence and the chapter-13/request-length parity gates remain. Next planned bounded increment:
+**whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).

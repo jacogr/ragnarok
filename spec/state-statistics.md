@@ -151,5 +151,5 @@ gates remain unchanged.
 
 The documented M1 framing baseline remains covered; chapters 1–16 now have typed serializers,
 with chapter 13's trace wire-parity gate open. Service entries and whole-state
-composition still remain. Next planned bounded group: **service request history
-entries**. See the [M1 checklist](../docs/m1.md).
+composition still remain. Next planned bounded group: **whole-state composition/root evidence
+and parity review**. See the [M1 checklist](../docs/m1.md).

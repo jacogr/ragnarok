@@ -180,3 +180,9 @@ same pins: five nonempty trace C(13) values fit E4 service-dictionary keys, whil
 ordinary natural keys. The pinned-paper implementation and exact raw fixture prefix observations
 are retained separately; successful prefix parsing is not complete-entry parity. Upstream
 clarification remains necessary before changing that key schema or claiming full state parity.
+
+The [request-history contract](state-requests.md) records another cross-map question: the stated
+E4 request-length domain includes fffffffe/ffffffff, reproducing the preimage/storage key prefixes.
+The component serializers preserve the stated domains and the trie rejects duplicate keys;
+a focused pending test records that admissible lengths or another normative constraint still
+need clarification before full state-parity claims. No inferred reserved-length rule is installed.

@@ -148,7 +148,15 @@
       "stf/accumulate/tiny/same_round_storage_isolation-1.json": "c0c317779f9d8ec1c91590ecb1f77a657b47491be62f820990df45ad0434f9be",
       "stf/accumulate/tiny/same_round_storage_isolation-2.json": "18f4c11d3521da991a5d63fa9c3a6e03ec534e49bc3fe806efdf1b851d9e7d5f",
       "stf/accumulate/full/same_round_storage_isolation-1.json": "58e308cec65385cd35b4ef331639b175840568be0b48d32a8e60a85c0d4b79ee",
-      "stf/accumulate/full/same_round_storage_isolation-2.json": "90200062211edb9ded873d3da538942c52bb84bec3568e39087119be0d6bac2e"
+      "stf/accumulate/full/same_round_storage_isolation-2.json": "90200062211edb9ded873d3da538942c52bb84bec3568e39087119be0d6bac2e",
+      "stf/preimages/tiny/preimage_needed-1.json": "9ff6432544966b5d5b264389553de9194d498b2267a5e050d0284f51f42665f5",
+      "stf/preimages/tiny/preimage_needed-2.json": "837d5eb18e9369da9da327519320d66e52a16a8b6db1146e0791f12e18c7fe05",
+      "stf/preimages/full/preimage_needed-1.json": "9ff6432544966b5d5b264389553de9194d498b2267a5e050d0284f51f42665f5",
+      "stf/preimages/full/preimage_needed-2.json": "837d5eb18e9369da9da327519320d66e52a16a8b6db1146e0791f12e18c7fe05",
+      "stf/preimages/tiny/preimage_not_needed-1.json": "2831ee484a6a6765d69ebd5d768bc9abbf2e146c4c89df21c25a11ad002462b8",
+      "stf/preimages/tiny/preimage_not_needed-2.json": "6f363712ac580645bbbe31efc583af9e3f70a1f2335bfd4dbc8c231e70b92809",
+      "stf/preimages/full/preimage_not_needed-1.json": "2831ee484a6a6765d69ebd5d768bc9abbf2e146c4c89df21c25a11ad002462b8",
+      "stf/preimages/full/preimage_not_needed-2.json": "6f363712ac580645bbbe31efc583af9e3f70a1f2335bfd4dbc8c231e70b92809"
     }
   },
   "toolchains": {

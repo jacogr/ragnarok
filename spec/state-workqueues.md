@@ -144,4 +144,4 @@ confirmation pending CI after push. Standard formatting is applied without toolc
 M1 framing-baseline coverage remains distinct from full state serialization. Chapters **1–16**
 now have typed serializers, with chapter 13's trace key-width gate still open. Service
 entries and whole-state composition/root evidence remain. Next planned bounded increment:
-**service request history entries**. See the [M1 checklist](../docs/m1.md).
+**whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).

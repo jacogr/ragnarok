@@ -264,9 +264,23 @@ Validation: 2,047 independent requests, six literal oracle checks, two nominal a
 compiler rejections, retained-scope/key/value/result/atomic/alias checks and 83 partial roots.
 Twelve storage and sixteen preimage JSON-derived mappings preserve all source bytes. Sixteen exact
 trace captures test opaque existing-key/raw-value retention only; their namespaces cannot be
-recovered and are not claimed as classified storage/preimage conformance. Next planned: service
-request history entries, then whole-state composition. The chapter-13 gate remains open.
+recovered and are not claimed as classified storage/preimage conformance. Request-history framing is now covered below; whole-state composition remains. The chapter-13 gate remains open.
 See [the contract](../spec/state-service-values.md).
+
+## Service request-history extension
+
+`state_requests.nim` implements C(service, E4(length) || lookup hash) and count-prefixed 0..3 E4
+history slots. Fixed tagged alternatives expose only actual mode fields; defaults/failures remain
+separate. Complete count/item/byte preflight precedes copying, key hashing and output allocation.
+No chronology, availability, request lifecycle or preimage/context invariant is inferred.
+
+Validation: 2,273 independent requests, six passing literal checks and one pending namespace-policy
+check, two nominal compiler rejections, fixed-copy/tagged-field/result guards and 98 partial roots.
+Twenty-eight JSON histories cover counts 0/1/2; twenty exact trace histories with proven matching
+preimage identities cover count 1. Count 3 is authored evidence. Full E4 lengths fffffffe/ffffffff
+reproduce preimage/storage namespace overlaps; trie composition rejects duplicate keys, and no
+admissibility restriction is invented. Whole-state composition/root evidence and numeric-width/
+key-domain clarification remain before M1 parity. See [the contract](../spec/state-requests.md).
 
 ## Published codec fixture inventory
 
