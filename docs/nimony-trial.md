@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **28 native suites, sixteen independent family corpora, 685 runtime misuse rejections and
-374 compilation rejections pass locally**. Authorization pools and queues now join the verified
+Status: **30 native suites, seventeen independent family corpora, 745 runtime misuse rejections and
+398 compilation rejections pass locally**. Chapter-4 Safrole basic state now joins the verified
 scalar, owned, report, extrinsic-family, work-package, header, block, bitstring, collection, C.2,
-raw-crypto, state-key/node-layout, bounded trie and entropy/roster/time slices.
+raw-crypto, state-key/node-layout, bounded trie, entropy/roster/time and authorization slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged.
@@ -867,11 +867,68 @@ suites and sixteen family corpora**, plus three runtime language probes. Formatt
 local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2,
 M3 and Linux parity remain unverified.
 
+## Twenty-first increment: chapter-4 Safrole basic state
+
+`src/codec/state_consensus.nim` now runs on the same pristine nightly, preserving Gray Paper
+0.8.0 T(state) chapter 4 and C.2 ticket fields: pending full validators, opaque 144-byte ring
+commitment, tag-selected fixed sealer schedule and variable ticket accumulator. This remains
+structural serialization, not Safrole execution, key/proof verification or a complete state root.
+No protocol pin, primitive backend, dependency or compiler source change is involved.
+
+Chapter operations now return `SafroleStateResult[T]`, with private status/payload, read-only
+reason and success-precondition value. It reuses StateComponentError without reopening the roster
+module's private result constructors. Pending-validator extraction explicitly converts selected
+child successes or failure reasons. The wrapper also protects private no-allocation scan layouts
+and accumulator count tuples. This is a chapter-local API type change; error vocabulary and
+accepted wire bytes are unchanged.
+
+`SealerSchedule` hides its discriminator and both arrays. `ticketSchedule` and `keySchedule`
+construct only the selected alternative; kind is read-only. Source factories retain ordinary
+source sequence references, which must remain stable during encoding. `tickets`/`keys` inspection
+requires the selected branch and returns independent sequence copies; source editing can replace
+the whole alternative using a constructor. Encoding/preflight uses actual private selected arrays,
+so inspecting APIs do not introduce copying/allocation into whole-parent sizing. Raw wire tags
+2..255 still return InvalidTag before schedule access. Default sources remain empty Tickets.
+
+Parent snapshots use private nullable acyclic ARC references and stable checked locals. All late
+schedule/count/payload checks still precede any child or parent allocation. Copied metadata and
+fixed child values cannot retag or mutate the owner; inactive owner extraction returns WrongVariant.
+The parent retains its immutable pending-roster child, while replacing/dropping one handle leaves
+other owners intact. A white-box project test retains only the child after its callee-local parent
+retires; the child still exposes all six original records.
+
+All **7,298 unchanged independent requests** and **six literal oracle checks** pass. Coverage
+retains both schedule modes, all proper representative truncations, every reserved tag and E1
+attempt, 127/128 accumulator prefixes, late overlong/huge counts, exact/below byte limits, roster
+and accumulator ceilings, fixed source cardinalities, zero/oversized epochs, repeated/arbitrary
+ordered sequences, suffixes, random states and ten single-entry trie integrations. Eight frozen
+published state sources remain hash-checked derived component fixtures, not standalone published
+T binaries or passed Safrole transitions. Partial roots commit C(4) alone.
+
+Private stride probes reach high(int) exactly, reject the next byte and a 33-byte record before
+addition, accept zero growth at the ceiling, and reject a high(uint64) count before narrowing or
+multiplication. No unsafe sequence descriptor, wrapping-exception emulation or private compiler/
+runtime hook is used. After 100 warmups, **1,000 scoped cycles return live occupancy 192 → 192
+bytes**, including both parent modes, replaced/retained parents, escaped roster children, copied
+source arrays/metadata/records and late malformed parent temporaries. This is workload-specific
+live allocator occupancy, not RSS or general leak freedom; allocation exhaustion remains fail-stop.
+
+This increment adds **60 runtime misuse rejections**: 58 default/failed public/private result reads
+and both inactive source-array accesses. Actual failures cover configuration, pending counts,
+reserved tags, late accumulator framing/count/policy, whole-parent byte limits, host extents,
+default owners, high indices and wrong owner variants. **24 compilation rejections** cover 22
+private/read-only result/owner/source bypasses and the original BLS-as-ring and validator-as-slot
+nominal probes. Cumulative totals are **745 runtime result/variant/constructor rejections, 398
+compilation rejections (344 privacy + 49 nominal + five schema), 30 positive native suites and
+seventeen family corpora**, plus three runtime language probes. Formatting covers **595 Nim files**;
+the final evidence records **549 matching source/test hashes**. Results remain local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity
+remain unverified.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapter-4 Safrole basic state (`src/codec/state_consensus.nim`): pending validators,
-ring commitment, tagged slot-sealer schedules and ticket accumulator, preserving whole-parent
-preflight, retained child owners, selected alternatives and the existing independent corpus.
+Next: port M1 chapter-5 dispute judgment/offender state (`src/codec/state_disputes.nim`), preserving
+four independently canonical ordered sets, nominal report/key separation, immutable owner-bound
+extraction, whole-parent preflight and the existing independent entry/root corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -907,7 +964,7 @@ The runner now targets **only Nimony**. It writes commands, compiler/nightly met
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
-and raw-crypto/state-key/node-layout/trie/entropy-roster-time/authorization slices.
+and raw-crypto/state-key/node-layout/trie/entropy-roster-time/authorization/chapter-4 slices.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

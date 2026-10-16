@@ -75,7 +75,8 @@ codec; structural tests leave existing crypto gates unchanged.
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+The historical Nim 2 baseline ran the following after `python3 tests/test_crypto.py`
+(use the trial runner below on the experimental Nimony branch):
 
 ```sh
 python3 tests/test_state_consensus_harness.py
@@ -102,7 +103,7 @@ gamma_s/gamma_a fields, including ticket and fallback schedules. SHA-256 pins ar
 consumption. Encodings are explicitly derived component fixtures, not standalone published T
 binaries or claims of passing those Safrole STFs. No generator is executed or vendor source changed.
 
-Checked Nim 2.2.12 ARC/Clang LTO builds retain all runtime guards. The native tests verify the
+Historical checked Nim 2.2.12 ARC/Clang LTO builds retained all runtime guards. The native tests verify the
 64-bit int/33-byte ticket assumptions used for reference extent checks. Ignored
 `build/state-consensus/` retains commands, request SHA-256, logs and results; Linux CI runs the suite
 and uploads diagnostics. Local validation is macOS arm64; Linux results require CI after push.
@@ -114,3 +115,35 @@ Chapter 10 has its
 [availability-state codec](state-availability.md).
 The [M1 checklist](../docs/m1.md) records remaining state chapters and service entries;
 this increment does not close them.
+
+## Nimony branch port
+
+The [nightly trial](../docs/nimony-trial.md#twenty-first-increment-chapter-4-safrole-basic-state)
+verifies the same chapter-4 contract with checked ARC/Clang LTO on macOS ARM64. Chapter operations
+return `SafroleStateResult[T]`, retaining StateComponentError reasons while keeping successful
+construction private to this module. Status/payload are private; error is read-only and value
+requires success. Child-roster outcomes are explicitly converted after selection, preserving
+private roster result construction rather than adding public success factories.
+
+Source schedules use `ticketSchedule(values)` or `keySchedule(values)`; the tag and arrays are
+private. Kind is read-only; selected `tickets`/`keys` inspection returns independent sequence
+copies and requires the matching alternative. Factories retain ordinary source array references;
+callers must keep source data stable during encoding. Edit a copied array and replace the source
+alternative with its constructor when needed. Internal preflight/encoding uses the real private
+arrays, preserving allocation-free whole-parent sizing. Defaults remain empty ticket sources;
+raw wire tags 2..255 still reject with InvalidTag before any schedule access.
+
+Parent owners use private nullable acyclic ARC references and stable checked locals. Metadata is
+a fixed independent copy; editing it cannot retag the owner. Fixed child extraction remains
+owner-bound with typed InvalidOwner/InvalidIndex/WrongVariant failures. An escaped pending-roster
+child remains valid after its callee-local parent retires.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`. It preserves
+all 7,298 independent requests, six literal harness checks, eight hash-checked derived fixtures
+and ten partial single-entry roots. Separate processes check failed/default public/private result
+reads and both inactive source arrays. External compilation probes reject private result/owner/
+source bypasses and both original nominal swaps. Private stride tests cover native high(int) and
+uint64 boundaries without unsafe sequence descriptors. After warmup, 1,000 scoped parent/child/
+copy/error cycles return live allocator occupancy to baseline. This is workload-specific evidence,
+not general leak freedom or recoverable allocation-failure support. Full M1, Safrole execution,
+broader crypto and Linux parity remain separate gates.

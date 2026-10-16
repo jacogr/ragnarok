@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -524,6 +524,63 @@ AUTHORIZATION_MEMBERS = (
     'tuple-count',
     'tuple-prefix',
 )
+CONSENSUS_PRIVATE = dict(
+    consensus_result_entry_private='completed',
+    consensus_result_read_private='completed',
+    consensus_result_info_private='completed',
+    consensus_result_validator_private='completed',
+    consensus_result_ticket_private='completed',
+    consensus_result_key_private='completed',
+    consensus_result_count_private='completed',
+    consensus_result_retag='status',
+    consensus_result_forge='status',
+    consensus_result_error_write='error',
+    consensus_result_value_write='value',
+    consensus_schedule_tag='mode',
+    consensus_schedule_tickets='ticketValues',
+    consensus_schedule_keys='keyValues',
+    consensus_schedule_retag='mode',
+    consensus_schedule_forge='mode',
+    consensus_schedule_kind_write='kind',
+    consensus_schedule_tickets_write='tickets',
+    consensus_schedule_keys_write='keys',
+    consensus_owner_data='data',
+    consensus_owner_rebind='data',
+)
+CONSENSUS_PRIVATE['state_consensus_private'] = 'data'
+PRIVATE.update(CONSENSUS_PRIVATE)
+NOMINAL.update(state_bls_as_ring='got: StateBlsKey but wanted: StateRingRoot', state_validator_as_slot='StateValidatorIndex')
+CONSENSUS_MEMBERS = (
+    'entry-count',
+    'entry-config',
+    'entry-policy',
+    'entry-bytes',
+    'owner',
+    'consumed',
+    'decode-config',
+    'decode-roster',
+    'decode-tag',
+    'decode-framing',
+    'decode-count',
+    'decode-policy',
+    'decode-bytes',
+    'decode-overflow',
+    'info',
+    'pending-owner',
+    'pending-index',
+    'ticket-owner',
+    'ticket-variant',
+    'ticket-index',
+    'key-owner',
+    'key-variant',
+    'key-index',
+    'accumulator-owner',
+    'accumulator-index',
+    'count-value',
+    'count-size',
+    'layout-pending',
+    'layout-consumed',
+)
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -572,7 +629,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -607,7 +664,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_authorization_driver.nim', 'tests/state_authorization_oracle.py',
+                'tests/native/state_consensus_driver.nim', 'tests/state_consensus_oracle.py',
+                'tests/test_state_consensus_harness.py', 'tests/native/state_authorization_driver.nim', 'tests/state_authorization_oracle.py',
                 'tests/test_state_authorization_harness.py', 'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
                 'tests/test_state_safrole_harness.py', 'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
@@ -635,7 +693,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -711,6 +769,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_consensus_private' and row['passed']:
+            # Both parent modes, escaped children and copied source arrays must retire at final ARC release.
+            release = re.search(r'CONSENSUS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public live allocator occupancy is workload-specific, not RSS or general leak freedom.
+                report['consensus_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_authorization_private' and row['passed']:
             # Nested pool/queue storage must release after callee return, replacement, alias retention and failure.
             release = re.search(r'AUTHORIZATION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1205,6 +1270,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['authorization_corpus'] = corpus
     announce('independent authorization pool/queue state corpus', corpus['passed'])
+    # Preserve independent chapter-4 byte/field equations, derived fixtures and partial single-entry roots.
+    from state_consensus_oracle import requests as consensus_requests, published as consensus_published
+    harness = command([sys.executable, ROOT/'tests/test_state_consensus_harness.py'], 'consensus-harness')
+    lines, expected = consensus_requests()
+    source = BUILD/'consensus-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_consensus_driver.nim', 'consensus-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_derived_state_sources=len(consensus_published()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Observe every child field after caller mutation; no native round trip supplies an expected answer.
+        result = command([binary, source], 'consensus-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep complete output and the first mismatch for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['consensus_corpus'] = corpus
+    announce('independent chapter-4 Safrole basic state corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1532,6 +1621,19 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['authorization'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' authorization '+member+' guard', passed)
+    # Chapter-local results and closed source alternatives guard every inactive/default observation.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_consensus_results.nim', 'consensus-results', crypto_library)
+    report['consensus_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate public/private failures and both inactive source sequence branches.
+        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in CONSENSUS_MEMBERS]
+        cases += [('source-tickets', 'Keys', 'source.mode == Tickets'), ('source-keys', 'Tickets', 'source.mode == Keys')]
+        for member, origin, sentinel in cases:
+            # Require the exact success or branch contract rather than a crash or unrelated assertion.
+            result = command([binary, member, origin], 'consensus-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['consensus'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' consensus '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1559,6 +1661,11 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'state_validator_as_slot':
+            # Pending validator ordinals cannot fill the distinct schedule-slot argument.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'sealerTicketAt(' in result['output']
+                        and '[2] expected: SafroleStateIndex but got: '+member in result['output'])
         elif name == 'auth_core_as_position':
             # Core ordinals cannot fill the distinct per-row hash-position argument.
             rejected = ('Error: Type mismatch at [position]' in result['output']
@@ -1606,7 +1713,9 @@ def main():
                    and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
-                   and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed']
+                   and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and len(report['consensus']) == 2*len(CONSENSUS_MEMBERS)+2
+                   and all(row['passed'] for row in report['consensus'])
                    and len(report['authorization']) == 2*len(AUTHORIZATION_MEMBERS)
                    and all(row['passed'] for row in report['authorization'])
                    and len(report['safrole']) == 2*len(SAFROLE_MEMBERS)+1

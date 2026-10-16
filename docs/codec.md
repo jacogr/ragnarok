@@ -139,5 +139,7 @@ Entropy, validator rosters and timeslot state now pass their complete independen
 guarded results, retained-owner/copy checks, arithmetic and scoped release workload.
 Authorization pools and queues now pass their complete independent corpus, guarded results,
 retained nested-owner/copy checks, kind validation, arithmetic and scoped release workload.
-The next compiler-port increment is chapter-4 Safrole basic state (`state_consensus.nim`).
-M1 migration remains partial.
+Chapter-4 Safrole basic state now passes its complete independent corpus, guarded chapter-local
+results, closed source alternatives, retained parent/child copies, arithmetic and scoped release
+workload. The next compiler-port increment is chapter-5 dispute judgment/offender state
+(`state_disputes.nim`). M1 migration remains partial.

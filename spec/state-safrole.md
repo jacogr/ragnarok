@@ -123,7 +123,8 @@ checks. Maximum uint64 populations return LengthOverflow before multiplication o
 The nightly permits unchecked integer-to-enum conversion, so entry construction explicitly checks
 chapter 7–9 membership and returns InvalidTag for every other underlying byte representation; all
 256 chapter bytes are tested without changing accepted roster encodings.
-The shared family's chapter-4 tag/variant behavior remains a separate compiler-port gate.
+Chapter-4 tag/variant behavior now passes its separate [Nimony port](state-consensus.md#nimony-branch-port),
+whose chapter-local result wrapper preserves the shared error vocabulary and private child results.
 
 The native suite retains callee-local roster snapshots across source retirement, replaces owners
 while aliases survive, mutates independent record/fixed copies and checks missing/high-index
