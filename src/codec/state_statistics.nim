@@ -1,4 +1,5 @@
 ## GP 0.8.0 T chapter 13 and statistics activityspec: retained structural statistics, not updates.
+import std/assertions
 import ./[natural, bounded, composite, assurances, state_layout, state_trie]
 export ServiceIndex, CoreCount, ValidatorCount
 
@@ -38,7 +39,9 @@ type
     statistics*: ServiceActivity
   ## Validator/core positions and service dictionary ordinals have independent nominal domains.
   StatisticsValidatorIndex* = distinct uint64
+  ## Core positions are independent of validator positions and service dictionary ordinals.
   StatisticsCoreIndex* = distinct uint64
+  ## Service extraction uses a dictionary ordinal, not the service ID or a core position.
   StatisticsServiceIndex* = distinct uint64
   ## Stable synchronous source; array shapes/order must already agree with the supplied profile.
   ActivityState* = object
@@ -54,20 +57,20 @@ type
   ## Default and failures carry only reasons, without values, owner handles or parser progress.
   ActivityError* {.pure.} = enum
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical, LimitExceeded,
-    LengthOverflow, InvalidService, InvalidOwner, InvalidIndex
+    LengthOverflow, InvalidService, InvalidOwner, InvalidIndex, InvalidTag
   ## Only complete success exposes an application payload.
   ActivityResult*[T] = object
-    case error*: ActivityError
-    of ActivityError.None:
-      value*: T # Success must be selected before any payload access.
+    case status: ActivityError
+    of None:
+      completed: T # Success must be selected before any payload access.
     else:
-      discard   # Default/failed alternatives cannot masquerade as empty statistics.
+      discard      # Default/failed alternatives cannot masquerade as empty statistics.
   ## Acyclic private ARC storage owns independent fixed records, without caller-array aliases.
   ActivityData = ref object
     state: ActivityState
   ## Value handles retain shared immutable private storage; replacement cannot mutate other copies.
   ActivitySnapshot* = object
-    data: ActivityData
+    data: nil ActivityData
   ## Prefix success binds its retained snapshot to the exact complete consumed extent.
   ActivityRead* = object
     snapshot*: ActivitySnapshot
@@ -80,6 +83,13 @@ type
   Layout = object
     starts: array[StatisticsEpoch, int]
     coreStart, serviceStart, services, consumed: int
+
+## Failure reasons remain read-only and never authorize values or partial parser progress.
+func error*[T](value: ActivityResult[T]): ActivityError = value.status
+## Public and private payloads require complete success under checked optimized builds too.
+func value*[T](value: ActivityResult[T]): T {.inline, requires: value.status ==
+    ActivityError.None.} =
+  value.completed
 
 ## Validate both independent roster domains before core/count conversions or input access.
 proc validate(config: ActivityConfig): ActivityError =
@@ -113,71 +123,71 @@ proc readNatural(input: openArray[byte], cursor: var int, config: ActivityConfig
   let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
-      return ActivityResult[uint64](error: ActivityError.Truncated) # Missing count/key/measure is incomplete framing.
+      return ActivityResult[uint64](status: ActivityError.Truncated) # Missing count/key/measure is incomplete framing.
     else:
-      return ActivityResult[uint64](error: ActivityError.NonCanonical) # Reject alternate encodings of a complete scalar.
+      return ActivityResult[uint64](status: ActivityError.NonCanonical) # Reject alternate encodings of a complete scalar.
   let error = grow(cursor, parsed.consumed, config)
   if error != ActivityError.None: return ActivityResult[uint64](
-      error: error) # Complete scalars still consume policy.
-  ActivityResult[uint64](error: ActivityError.None, value: uint64(parsed.value))
+      status: error) # Complete scalars still consume policy.
+  ActivityResult[uint64](status: ActivityError.None, completed: uint64(parsed.value))
 
 ## Read one E4 dictionary service key with parent policy and presence checked before access.
 proc readService(input: openArray[byte], cursor: var int, config: ActivityConfig): ActivityResult[uint32] =
   let start = cursor
   let error = grow(cursor, 4, config)
   if error != ActivityError.None: return ActivityResult[uint32](
-      error: error) # Fixed padding consumes the full budget.
+      status: error) # Fixed padding consumes the full budget.
   if cursor > input.len: return ActivityResult[uint32](
-      error: ActivityError.Truncated) # No narrowing or partial key read.
+      status: ActivityError.Truncated) # No narrowing or partial key read.
   var value = 0'u32
   # Fixed E4 covers exactly the service domain without an additional natural-number discriminator.
   for j in 0..<4: value = value or (uint32(input[start+j]) shl (j*8))
-  ActivityResult[uint32](error: ActivityError.None, value: value)
+  ActivityResult[uint32](status: ActivityError.None, completed: value)
 
 ## Fixed local tuples validate all natural children without heap allocation or externally reusable spans.
-proc readFields[N: static int](input: openArray[byte], cursor: var int,
+proc readFields[N: static[int]](input: openArray[byte], cursor: var int,
     config: ActivityConfig): ActivityResult[array[N, uint64]] =
-  var fields: array[N, uint64]
+  var fields = default(array[N, uint64])
   # Tuple arity is a schema constant; no input count controls this local array size.
   for i in 0..<N:
     let parsed = readNatural(input, cursor, config)
     if parsed.error != ActivityError.None: return ActivityResult[array[N, uint64]](
-        error: parsed.error) # Late fields reject the tuple.
+        status: parsed.error) # Late fields reject the tuple.
     fields[i] = parsed.value
-  ActivityResult[array[N, uint64]](error: ActivityError.None, value: fields)
+  ActivityResult[array[N, uint64]](status: ActivityError.None, completed: fields)
 
 ## Preflight every component, including the last service field, before capturing any owner storage.
 proc scan(input: openArray[byte], config: ActivityConfig): ActivityResult[Layout] =
   let valid = validate(config)
   if valid != ActivityError.None: return ActivityResult[Layout](
-      error: valid) # Invalid profile cannot authorize reads.
-  var layout: Layout
+      status: valid) # Invalid profile cannot authorize reads.
+  var layout = default(Layout)
   var cursor = 0
   # Each epoch has its own natural count followed by six E4 fields per record, not natural counters.
-  for epoch in StatisticsEpoch:
+  for epoch in low(StatisticsEpoch)..high(StatisticsEpoch):
     let count = readNatural(input, cursor, config)
     if count.error != ActivityError.None: return ActivityResult[Layout](
-        error: count.error) # Canonical count required before shape check.
+        status: count.error) # Canonical count required before shape check.
     if count.value != uint64(population(config, epoch)):
-      return ActivityResult[Layout](error: ActivityError.InvalidCount) # Counts must match their corresponding supplied roster.
+      return ActivityResult[Layout](status: ActivityError.InvalidCount) # Counts must match their corresponding supplied roster.
     layout.starts[epoch] = cursor
     let error = grow(cursor, int(count.value)*24, config)
     if error != ActivityError.None: return ActivityResult[Layout](
-        error: error) # Profile bounds prove multiplication safe.
+        status: error) # Profile bounds prove multiplication safe.
     if cursor > input.len: return ActivityResult[Layout](
-        error: ActivityError.Truncated) # Fixed counters must all be present.
+        status: ActivityError.Truncated) # Fixed counters must all be present.
   layout.coreStart = cursor
   # Core cardinality is fixed by profile: no count discriminator appears here.
   for i in 0..<int(uint64(config.cores)):
     let fields = readFields[8](input, cursor, config)
     if fields.error != ActivityError.None: return ActivityResult[Layout](
-        error: fields.error) # A late core rejects the complete parent.
+        status: fields.error) # A late core rejects the complete parent.
   let count = readNatural(input, cursor, config)
   if count.error != ActivityError.None: return ActivityResult[Layout](
-      error: count.error) # Empty dictionary still requires its count.
+      status: count.error) # Empty dictionary still requires its count.
   let error = serviceCount(count.value, config)
   if error != ActivityError.None: return ActivityResult[Layout](
-      error: error) # Check count/native storage before pair traversal.
+      status: error) # Check count/native storage before pair traversal.
   layout.services = int(count.value)
   layout.serviceStart = cursor
   var previous = 0'u64
@@ -185,20 +195,21 @@ proc scan(input: openArray[byte], config: ActivityConfig): ActivityResult[Layout
   for i in 0..<layout.services:
     let key = readService(input, cursor, config)
     if key.error != ActivityError.None: return ActivityResult[Layout](
-        error: key.error) # Missing fixed key rejects all earlier data.
+        status: key.error) # Missing fixed key rejects all earlier data.
     if i > 0 and key.value <= previous:
-      return ActivityResult[Layout](error: ActivityError.NonCanonical) # Equal and descending numeric IDs are invalid.
+      return ActivityResult[Layout](status: ActivityError.NonCanonical) # Equal and descending numeric IDs are invalid.
     previous = uint64(key.value)
     let fields = readFields[11](input, cursor, config)
     if fields.error != ActivityError.None: return ActivityResult[Layout](
-        error: fields.error) # No partial record on late gas failure.
+        status: fields.error) # No partial record on late gas failure.
   layout.consumed = cursor
-  ActivityResult[Layout](error: ActivityError.None, value: layout)
+  ActivityResult[Layout](status: ActivityError.None, completed: layout)
 
 ## Convert a typed core record to the exact eight natural wire positions without exposing retained arrays.
 proc coreFields(value: CoreActivity): array[8, uint64] =
+  result = default(array[8, uint64])
   # Seven named non-gas counters precede the final gas statistic.
-  for measure in CoreMeasure: result[ord(measure)] = uint64(value.counters[measure])
+  for measure in low(CoreMeasure)..high(CoreMeasure): result[ord(measure)] = uint64(value.counters[measure])
   result[7] = uint64(value.gas)
 
 ## Convert typed service fields to provision/refinement/import/extrinsic/export/accumulation wire order.
@@ -218,15 +229,15 @@ proc serviceFields(value: ServiceActivity): array[11, uint64] =
 proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): ActivityResult[ActivityRead] =
   let checked = scan(input, config)
   if checked.error != ActivityError.None: return ActivityResult[ActivityRead](
-      error: checked.error) # No earlier owner/progress after failure.
+      status: checked.error) # No earlier owner/progress after failure.
   let layout = checked.value
   let data = ActivityData()
   # Both roster arrays own copied E4 values and preserve validator-position order.
-  for epoch in StatisticsEpoch:
+  for epoch in low(StatisticsEpoch)..high(StatisticsEpoch):
     data.state.validators[epoch] = newSeq[ValidatorActivity](population(config, epoch))
     var cursor = layout.starts[epoch]
     for i in 0..<data.state.validators[epoch].len:
-      for measure in ValidatorMeasure:
+      for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
         var value = 0'u32
         for j in 0..<4: value = value or (uint32(input[cursor+j]) shl (j*8)) # Explicit E4 little-endian copy.
         data.state.validators[epoch][i][measure] = ValidatorCounter(value)
@@ -236,8 +247,8 @@ proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): Activ
   # Read only proved tuples; immutable capture occurs after the whole parent is known valid.
   for i in 0..<data.state.cores.len:
     let fields = readFields[8](input, cursor, config).value
-    for measure in CoreMeasure: data.state.cores[i].counters[measure] = ActivityNatural(fields[ord(
-        measure)]) # Named natural domains.
+    for measure in low(CoreMeasure)..high(CoreMeasure): data.state.cores[i].counters[
+        measure] = ActivityNatural(fields[ord(measure)]) # Named natural domains.
     data.state.cores[i].gas = ActivityGas(fields[7])
   data.state.services = newSeq[ServiceStatisticsEntry](layout.services)
   cursor = layout.serviceStart
@@ -246,15 +257,15 @@ proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): Activ
     let key = readService(input, cursor, config).value
     let fields = readFields[11](input, cursor, config).value
     var record = ServiceStatisticsEntry(service: ServiceIndex(key))
-    for measure in ServiceMeasure:
+    for measure in low(ServiceMeasure)..high(ServiceMeasure):
       let position = if ord(measure) < 3: ord(measure) else: ord(
           measure)+1 # Refinement gas occupies wire position 3.
       record.statistics.counters[measure] = ActivityNatural(fields[position])
     record.statistics.refinementGas = ActivityGas(fields[3])
     record.statistics.accumulationGas = ActivityGas(fields[10])
     data.state.services[i] = record
-  ActivityResult[ActivityRead](error: ActivityError.None,
-    value: ActivityRead(snapshot: ActivitySnapshot(data: data), consumed: layout.consumed))
+  ActivityResult[ActivityRead](status: ActivityError.None,
+    completed: ActivityRead(snapshot: ActivitySnapshot(data: data), consumed: layout.consumed))
 
 ## Commit a measured canonical natural after whole-source validation and destination sizing.
 proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
@@ -268,48 +279,48 @@ proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
 proc activityStateEntry*(source: ActivityState, config: ActivityConfig): ActivityResult[StateEntry] =
   let valid = validate(config)
   if valid != ActivityError.None: return ActivityResult[StateEntry](
-      error: valid) # Configuration precedes source traversal.
+      status: valid) # Configuration precedes source traversal.
   var size = 0
   # Both variable epoch arrays must match their separate roster populations.
-  for epoch in StatisticsEpoch:
+  for epoch in low(StatisticsEpoch)..high(StatisticsEpoch):
     let count = source.validators[epoch].len
     if count != population(config, epoch): return ActivityResult[StateEntry](
-        error: ActivityError.InvalidCount) # Never infer a roster from source count.
+        status: ActivityError.InvalidCount) # Never infer a roster from source count.
     let error = grow(size, natural.encode(JamNatural(count)).len+count*24, config)
     if error != ActivityError.None: return ActivityResult[StateEntry](
-        error: error) # Proved profile count bounds native multiplication.
+        status: error) # Proved profile count bounds native multiplication.
   if uint64(source.cores.len) != uint64(config.cores):
-    return ActivityResult[StateEntry](error: ActivityError.InvalidCount) # Fixed core sequence has no outer count.
+    return ActivityResult[StateEntry](status: ActivityError.InvalidCount) # Fixed core sequence has no outer count.
   let count = serviceCount(uint64(source.services.len), config)
   if count != ActivityError.None: return ActivityResult[StateEntry](
-      error: count) # Item/storage policy precedes variable source traversal.
+      status: count) # Item/storage policy precedes variable source traversal.
   # Size every natural core field before allocating any encoded parent bytes.
   for core in source.cores:
     for field in coreFields(core):
       let error = grow(size, natural.encode(JamNatural(field)).len, config)
       if error != ActivityError.None: return ActivityResult[StateEntry](
-          error: error) # Gas and counters share byte policy.
+          status: error) # Gas and counters share byte policy.
   let prefix = grow(size, natural.encode(JamNatural(source.services.len)).len, config)
   if prefix != ActivityError.None: return ActivityResult[StateEntry](
-      error: prefix) # Even zero services consume a count byte.
+      status: prefix) # Even zero services consume a count byte.
   # Service inputs must already have strictly increasing numeric IDs; do not sort or deduplicate silently.
   for i, record in source.services:
     if i > 0 and uint32(record.service) <= uint32(source.services[i-1].service):
-      return ActivityResult[StateEntry](error: ActivityError.NonCanonical) # Late duplicate/disorder invalidates all output.
+      return ActivityResult[StateEntry](status: ActivityError.NonCanonical) # Late duplicate/disorder invalidates all output.
     let key = grow(size, 4, config)
     if key != ActivityError.None: return ActivityResult[StateEntry](
-        error: key) # All four service-key bytes share parent policy.
+        status: key) # All four service-key bytes share parent policy.
     for field in serviceFields(record.statistics):
       let error = grow(size, natural.encode(JamNatural(field)).len, config)
       if error != ActivityError.None: return ActivityResult[StateEntry](
-          error: error) # Include the last accumulation gas field.
+          status: error) # Include the last accumulation gas field.
   var entry = StateEntry(key: chapterKey(StateChapter(13)), value: newSeq[byte](size))
   var cursor = 0
   # Commit count-prefixed E4 validator tuples in current/previous order.
-  for epoch in StatisticsEpoch:
+  for epoch in low(StatisticsEpoch)..high(StatisticsEpoch):
     putNatural(uint64(source.validators[epoch].len), entry.value, cursor)
     for record in source.validators[epoch]:
-      for measure in ValidatorMeasure:
+      for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
         for j in 0..<4:
           entry.value[cursor] = byte((uint32(record[measure]) shr (j*8)) and
               255) # All counters retain their four-byte width.
@@ -325,43 +336,49 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
       inc cursor
     for field in serviceFields(record.statistics): putNatural(field, entry.value,
         cursor) # Tuple has fixed arity, without its own count.
-  ActivityResult[StateEntry](error: ActivityError.None, value: entry)
+  ActivityResult[StateEntry](status: ActivityError.None, completed: entry)
 
 ## Return copied record counts without exposing any retained arrays.
 proc activityInfo*(owner: ActivitySnapshot): ActivityResult[ActivityInfo] =
-  if owner.data.isNil: return ActivityResult[ActivityInfo](
-      error: ActivityError.InvalidOwner) # Default is not validated zero state.
-  var info = ActivityInfo(cores: owner.data.state.cores.len,
-      services: owner.data.state.services.len)
-  for epoch in StatisticsEpoch: info.validators[epoch] = owner.data.state.validators[
-      epoch].len # Preserve independent populations.
-  ActivityResult[ActivityInfo](error: ActivityError.None, value: info)
+  let data = owner.data
+  if data == nil: return ActivityResult[ActivityInfo](
+      status: ActivityError.InvalidOwner) # Default is not validated zero state.
+  var info = ActivityInfo(cores: data.state.cores.len,
+      services: data.state.services.len)
+  for epoch in low(StatisticsEpoch)..high(StatisticsEpoch): info.validators[
+      epoch] = data.state.validators[epoch].len # Preserve independent populations.
+  ActivityResult[ActivityInfo](status: ActivityError.None, completed: info)
 
 ## Copy a complete validator tuple selected by epoch and nominal validator position.
 proc validatorActivityAt*(owner: ActivitySnapshot, epoch: StatisticsEpoch,
     index: StatisticsValidatorIndex): ActivityResult[ValidatorActivity] =
-  if owner.data.isNil: return ActivityResult[ValidatorActivity](
-      error: ActivityError.InvalidOwner) # Missing storage cannot return counters.
-  if uint64(index) >= uint64(owner.data.state.validators[epoch].len):
-    return ActivityResult[ValidatorActivity](error: ActivityError.InvalidIndex) # Bound before native narrowing and selection.
-  ActivityResult[ValidatorActivity](error: ActivityError.None, value: owner.data.state.validators[
+  let data = owner.data
+  if data == nil: return ActivityResult[ValidatorActivity](
+      status: ActivityError.InvalidOwner) # Missing storage cannot return counters.
+  if ord(epoch) > ord(StatisticsEpoch.Previous):
+    return ActivityResult[ValidatorActivity](status: ActivityError.InvalidTag) # Reject forged epoch selectors before indexing retained rosters.
+  if uint64(index) >= uint64(data.state.validators[epoch].len):
+    return ActivityResult[ValidatorActivity](status: ActivityError.InvalidIndex) # Bound before native narrowing and selection.
+  ActivityResult[ValidatorActivity](status: ActivityError.None, completed: data.state.validators[
       epoch][int(uint64(index))])
 
 ## Copy one core's complete fixed tuple through its independently checked nominal position.
 proc coreActivityAt*(owner: ActivitySnapshot, index: StatisticsCoreIndex): ActivityResult[CoreActivity] =
-  if owner.data.isNil: return ActivityResult[CoreActivity](
-      error: ActivityError.InvalidOwner) # No default counters after failure.
-  if uint64(index) >= uint64(owner.data.state.cores.len):
-    return ActivityResult[CoreActivity](error: ActivityError.InvalidIndex) # Core positions are unrelated to dictionary ordinals.
-  ActivityResult[CoreActivity](error: ActivityError.None, value: owner.data.state.cores[int(uint64(index))])
+  let data = owner.data
+  if data == nil: return ActivityResult[CoreActivity](
+      status: ActivityError.InvalidOwner) # No default counters after failure.
+  if uint64(index) >= uint64(data.state.cores.len):
+    return ActivityResult[CoreActivity](status: ActivityError.InvalidIndex) # Core positions are unrelated to dictionary ordinals.
+  ActivityResult[CoreActivity](status: ActivityError.None, completed: data.state.cores[int(uint64(index))])
 
 ## Copy one numeric key and full service tuple; the pair has no owner-dependent mutable storage.
 proc serviceActivityAt*(owner: ActivitySnapshot, index: StatisticsServiceIndex): ActivityResult[
     ServiceStatisticsEntry] =
-  if owner.data.isNil: return ActivityResult[ServiceStatisticsEntry](
-      error: ActivityError.InvalidOwner) # No fabricated service pair.
-  if uint64(index) >= uint64(owner.data.state.services.len):
+  let data = owner.data
+  if data == nil: return ActivityResult[ServiceStatisticsEntry](
+      status: ActivityError.InvalidOwner) # No fabricated service pair.
+  if uint64(index) >= uint64(data.state.services.len):
     return ActivityResult[ServiceStatisticsEntry](
-        error: ActivityError.InvalidIndex) # Check dictionary cardinality before access.
-  ActivityResult[ServiceStatisticsEntry](error: ActivityError.None,
-      value: owner.data.state.services[int(uint64(index))])
+        status: ActivityError.InvalidIndex) # Check dictionary cardinality before access.
+  ActivityResult[ServiceStatisticsEntry](status: ActivityError.None,
+      completed: data.state.services[int(uint64(index))])

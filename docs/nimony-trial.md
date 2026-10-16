@@ -1,11 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **38 native suites, twenty-one independent family corpora, 942 runtime misuse rejections
-and 469 compilation rejections pass locally**. Chapter-12 privileges now joins the verified scalar,
-owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto, state-key/node,
-bounded trie, entropy/roster/time, authorization and state chapter-3/chapter-4/chapter-5/chapter-10
-slices.
+Status: **40 native suites, twenty-two independent family corpora, 1,004 runtime misuse rejections
+and 487 compilation rejections pass locally**. Chapter-13 activity statistics joins the verified
+scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
+state-key/node, bounded trie, entropy/roster/time, authorization and state chapters 3–5/10/12/13.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1217,11 +1216,70 @@ failure retained. Results remain local macOS ARM64, checked ARC/Clang LTO. Actua
 and full M1/M2/M3 runtime parity remain separate migration gates. Chapter-13 activity statistics is the next slice;
 the accepted compact C13 gas policy and parked request-namespace question remain unchanged.
 
+## Twenty-seventh bounded increment: chapter-13 activity statistics
+
+`src/codec/state_statistics.nim` now targets the same pristine Nimony nightly, preserving Gray
+Paper 0.8.0 T(state) chapter 13 and the maintainer's accepted compact gas policy. Separate current
+and previous validator populations retain their natural counts and six E4 counters per record.
+Core tuples retain eight natural fields without an array count; the numeric service dictionary
+retains E4 IDs and eleven natural fields, including the two gas positions. Full uint32 counters
+and uint64 natural/gas values remain supported. No alternative gas encoding, source normalization,
+statistics updates, epoch rotation or protocol/dependency change is introduced.
+
+`ActivityResult[T]` hides its discriminator/payload behind read-only reasons and success-only
+accessors, including internal natural/key reads, eight/eleven-field tuples and stack scan layouts.
+Nullable acyclic owner storage is checked through stable retained locals. A forged epoch selector
+returns appended `InvalidTag` before retained roster indexing; no wire tag is added. Metadata and
+all validator/core/service records remain independent fixed copies. Whole-source/parent preflight
+still precedes output/retained allocation, including the last accumulation-gas scalar.
+
+The compiler port uses supported ordinal-range iteration in declaration order, explicit fixed
+array initialization and `static[int]` tuple parameters. Initial targeted builds rejected the older
+`static int` spelling; changing the syntax allowed both adapter/selftest builds to succeed. This
+is observed migration syntax friction, not a protocol defect or an upstream compiler patch.
+
+All **2,615 unchanged independent requests** and **seven literal reference checks** pass. Coverage
+retains every representative proper truncation, all tuple field positions and natural width
+boundaries, E4 counter/service boundaries, numeric dictionary order, independent resized roster
+populations, core/profile shapes, exact/below item/byte policy, late malformed/overlong/huge
+scalars, suffixes, random input/source mutations and thirteen singleton trie integrations.
+
+Eight hash-checked published validator-pair observations retain their exact partial fields;
+zero core tuples and empty services are explicit authored completion, not published full-state
+values. Six exact pre/post C(13) trace entries decode and reproduce their complete original bytes,
+with per-entry consumed/trailing counts and SHA-256 retained. Sixteen later raw statistics values
+remain in the same corpus. Compact gas known answers at all three gas positions remain checked.
+The width-reference source is now hashed alongside the corpus/adapter. These are component and
+partial-root observations, not executed STFs or complete-state validity claims. The accepted
+compact interpretation and parked request-namespace question are unchanged.
+
+After 100 warmups, **1,000 scoped cycles return live occupancy 192 → 192 bytes**, covering
+escaped/replaced/retained parents, resized epochs, copied metadata and all three record families,
+empty service dictionaries and late malformed accumulation gas. An overlong final scalar rejects
+without increasing live occupancy. Direct arithmetic checks reach `high(int)` exactly, reject
+the next byte and an E4 extent before addition, permit zero growth at the ceiling, and reject
+unrepresentable typed service counts before allocation/narrowing. Caller item policy retains its
+precedence. No fake descriptors, overflow-exception emulation or private runtime hooks are used.
+Occupancy is workload-specific, not RSS/general leak freedom; OOM remains fail-stop.
+
+This increment adds **62 runtime misuse rejections** (thirty-one actual/default result pairs)
+and **18 compilation rejections** (sixteen private/read-only result/owner probes and the original
+gas-as-counter and service-index-as-core substitutions). Cumulative totals are **1,004 runtime
+misuse rejections, 487 compilation rejections (420 privacy + 59 nominal + five schema + three
+static contracts), 40 positive native suites and twenty-two family corpora**, plus three separate
+language probes. Formatting covers **679 Nim files**; the functional report records **669 matching
+source/test hashes**. These safety counts are separate from compiler-repair measurements.
+
+The local all-source semantic audit advances from 28/43 to **29/43 passing modules**, with every
+remaining failure retained. The branch Linux workflow uses the expanded runner automatically.
+Results remain local macOS ARM64, checked ARC/Clang LTO. Actual Linux execution and full M1/M2/M3
+runtime parity remain separate gates. Chapters 14/15 work queues are the next bounded family.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapter-13 activity statistics (`src/codec/state_statistics.nim`), preserving fixed
-E4 validator counters, canonical natural core/service values and the accepted compact gas policy,
-nominal measure/index domains, immutable copied extraction and the existing independent corpus.
+Next: port M1 chapters 14/15 ready and accumulated work queues (`src/codec/state_workqueues.nim`),
+preserving fixed epoch rings, ordered retained reports, canonical dependency/accumulated hash sets,
+nominal positions, whole-parent preflight and the existing independent entry/root corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1259,6 +1317,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
-authorization and state chapters 3–5/10/12. A missing check or failed guard still makes the runner
+authorization and state chapters 3–5/10/12/13. A missing check or failed guard still makes the runner
 exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

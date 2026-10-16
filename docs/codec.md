@@ -149,8 +149,11 @@ workload. A statically proven absent-hash read also fails compilation. Chapter-1
 state also passes its corpus, guarded result/assignment contracts, retained guarantee/report
 lifetimes, copied-field, arithmetic and scoped release checks.
 Chapter-12 privileges also passes its corpus, guarded public/private results, retained role/pair
-copies, numeric-order, arithmetic and scoped release checks. Next is chapter-13 activity statistics
-(`state_statistics.nim`). M1 migration remains partial.
+copies, numeric-order, arithmetic and scoped release checks. Chapter-13 activity statistics now
+passes its corpus, guarded results, resized epoch/copy contracts, compact gas checks, arithmetic
+and scoped release workload. Next are the ready and accumulated work queues in chapters 14/15
+(`state_workqueues.nim`).
+M1 migration remains partial.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux
