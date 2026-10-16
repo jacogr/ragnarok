@@ -39,7 +39,8 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 Use nominal wrappers for protocol indices, hashes, widths and resource limits. General naturals
 select `ok` before value/consumed fields; container/composite/owned APIs select their successful
 error branch before accessing data or progress. Failure/default branches expose only a reason.
-Nim variant field checks remain enabled in optimized builds.
+On the Nimony port, completed families enforce this through private state and guarded accessors;
+unported result families remain migration work. See [the trial record](nimony-trial.md).
 
 Borrowed APIs require stable input/pools during the synchronous call. No detached span proves which
 buffer it belongs to. For longer lifetimes, `decodeOwned*` snapshots copy and retain only the
@@ -112,3 +113,7 @@ key/value association and owner-bound optional peak copies.
 guarantee records, whole-parent preflight and independently retained child reports.
 Other state serialization, proofs and persistence remain future work. Run these native suites after
 building the primitive bridge.
+
+The Nimony owned-snapshot port and its retained-lifetime, result, metadata and copy contracts are
+recorded in [owned snapshots](../spec/owned-snapshots.md). Report-owned snapshots remain the next
+compiler-port increment.

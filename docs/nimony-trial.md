@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **five native codec suites and their scalar/composite/digest result-safety checks pass;
-owned snapshots and the broader port remain unported**. This branch targets Nimony directly, without
+Status: **six native codec suites, guarded results and the five-schema owned-snapshot layer pass;
+report ownership and the broader port remain unported**. This branch targets Nimony directly, without
 dual-compiler source support. The main branch remains on Nim 2.2.12. Protocol/dependency pins
 are unchanged.
 
@@ -82,8 +82,8 @@ distinct from default/uninitialized results.
 | Invalid explicit constructor arguments | All three stop at their constructor precondition. |
 | Composite/digest result and nested-variant privacy | All 24 raw-access, retagging, assignment and forgery probes reject compilation. |
 
-All 54 runtime rejection checks require the contract diagnostic and expected exit status; an
-unrelated process failure cannot count as protection. The 42 privacy checks require member-specific
+All 81 runtime rejection checks require the contract diagnostic and expected exit status; an
+unrelated process failure cannot count as protection. The 56 privacy/API checks require member-specific
 compilation diagnostics. Existing successful property reads are exercised by the positive suites.
 Malformed input still returns typed failure; invalid caller access is a programmer contract error.
 Wire bytes, output atomicity and borrowed-storage lifetimes do not change.
@@ -137,12 +137,43 @@ coverage is **54 runtime result/variant/constructor rejections and 42 compilatio
 plus the five positive suites and three language/runtime probes. The runner now exits zero for
 this verified slice. That does not establish a working full-client compiler migration.
 
+## Fourth increment: owned snapshots
+
+`owned.nim` now runs under Nimony for Bytes, Optional, Work, Preimages and Digest snapshots.
+The handle's private backing reference is explicitly nullable; default handles still return
+`InvalidOwner`. Each accessor retains one stable local reference before checking nil, allowing
+Nimony to prove later access without `lenientnils`, unchecked casts or assumptions. This is a
+source proof requirement, not evidence that the former immutable handle had a decoder defect.
+
+`OwnedResult[T]` keeps its status/payload private and gates `value` on success. Copied optional and
+work metadata hide their tags and lengths, with presence/Success preconditions on length reads.
+Defaults remain Uninitialized results, absent optional metadata and zero-length Success work
+metadata. Explicit sibling helpers construct completed generic results or length-only work metadata;
+these helpers do not validate an arbitrary handle. A default handle deliberately wrapped as a
+success is still rejected by the owner APIs themselves.
+
+The existing 10,000-case five-schema ownership corpus passes. Source mutation, escaped stack
+inputs, same-sized distinct owners, detached payload mutation, short-output atomicity, indices,
+schema mismatches, default-owner rejection and exact-prefix re-emission retain their checks.
+New replacement tests keep the old snapshot alive after its original handle is overwritten.
+
+After 100 warmup calls, 1,000 varying-payload retain/copy/drop cycles across **all five schemas**
+leave the public `getOccupiedMem()` count unchanged. `results.json` records the observed before/
+after values and workload. This checks live allocator occupancy after isolated scopes, not RSS,
+allocator page return or general leak freedom; no private ARC/runtime hooks are used.
+
+This increment adds 27 runtime misuse rejections and 14 compilation rejections, including the
+existing wrong-source-pool API probe. Cumulative coverage is **81 runtime result/variant/constructor
+rejections and 56 compilation rejections**, alongside six positive suites and three runtime probes.
+Constructor users in report ownership/block composition were mechanically adapted to the private
+shared result API; those higher-level families are not yet runtime-ported or claimed passing.
+
 ## Remaining work and next bounded increment
 
-Next: port owned codec snapshots (`owned.nim` and their ownership/result tests), preserving
-immutable retained bytes, owner-bound extraction, ARC release and default-owner rejection.
-Report ownership and higher-level codec families can then follow in coherent groups. Unported
-families still contain public result variants and Nim 2 library/API assumptions.
+Next: port work-report codecs and immutable report snapshots (`work_report.nim`, `report_owned.nim`
+and their report/result/lifetime tests). This extends the validated digest/owned foundations into
+full report metadata, canonical ordered fields and owner-bound payload extraction. Other M1
+families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -174,6 +205,6 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest slice. A missing check or failed guard still makes the runner
+verified scalar/composite/digest/owned slice. A missing check or failed guard still makes the runner
 exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

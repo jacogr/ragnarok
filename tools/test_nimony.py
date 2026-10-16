@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Verify the Nimony-only partial port, guarded scalar/composite/digest results and nested variants."""
+"""Verify the Nimony-only partial port, guarded codec results and immutable owned snapshots."""
 import argparse
 import hashlib
 import json
 import platform
+import re
 from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -45,10 +46,28 @@ COMPOSITE_PRIVATE = dict(
     variant_work_forge='outputKind',
     composite_error_write='error',
 )
+OWNED_PRIVATE = dict(
+    owned_result_private='completed',
+    owned_result_retag='status',
+    owned_result_forge='status',
+    owned_result_error_write='error',
+    owned_frame_private='data',
+    owned_optional_private='payloadLength',
+    owned_optional_retag='isPresent',
+    owned_optional_public_tag='present',
+    owned_optional_forge='isPresent',
+    owned_work_private='payloadLength',
+    owned_work_retag='outputKind',
+    owned_work_public_tag='kind',
+    owned_work_forge='outputKind',
+)
+PRIVATE.update(OWNED_PRIVATE)
+PRIVATE['wrong_owner_pool'] = 'copyOwnedBlob'
 PRIVATE.update(COMPOSITE_PRIVATE)
 PRIVATE.update(PRIMITIVE_PRIVATE)
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
+OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
 COMPOSITE_MEMBERS = ('optional-value', 'optional-consumed', 'work-value', 'work-consumed',
                      'preimages-count', 'preimages-consumed', 'written', 'digest-value', 'digest-consumed')
 MEMBERS = ('offset', 'length', 'blob-consumed', 'written', 'count', 'sequence-consumed')
@@ -91,7 +110,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], privacy=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], privacy=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -99,6 +118,7 @@ def main():
     report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
     sources = (list((ROOT/'src/codec').glob('*.nim'))
                + [ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
+               + [ROOT/'tests/native/ownership_checks.nim']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
                + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in PRIVATE]
                + [Path(__file__).resolve()])
@@ -112,6 +132,13 @@ def main():
             # Never run stale binaries after a failed build.
             row['run'] = command([binary], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
+            if name == 'ownership' and row['passed']:
+                # Retain public live-memory measurements for the isolated five-schema ARC release workload.
+                release = re.search(r'ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Counts refer to live allocator occupancy after warmup, never retained RSS/pages.
+                    report['arc_release'] = dict(cycles=1000, schemas=5, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
@@ -179,13 +206,45 @@ def main():
                 passed = passed and 'not reason == None' in result['output']
             report['composite'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' '+member+' guard', passed)
+    # Generic owned payloads, absent/error metadata and explicit factories retain independent guards.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_owned_results.nim', 'owned-results')
+    report['owned_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Sixteen failed/default payload reads, eight absent/error lengths and three constructor failures.
+        cases = [(member, origin) for origin in ('default', 'error') for member in OWNED_MEMBERS]
+        cases += [('absent-length', origin) for origin in ('default', 'absent')]
+        cases += [('work-error-length', str(tag)) for tag in range(1, 7)]
+        cases += [('factory-failure', 'none'), ('factory-length', 'negative'), ('factory-work', 'success')]
+        for member, origin in cases:
+            result = command([binary, member, origin], 'owned-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and '[AssertionDefect]' in result['output']
+            # Reject unrelated process failures by matching the intended result/variant/factory contract.
+            if member in OWNED_MEMBERS:
+                passed = passed and 'value.status == None' in result['output']
+            elif member == 'absent-length':
+                passed = passed and 'value.isPresent' in result['output']
+            elif member == 'work-error-length':
+                passed = passed and 'value.outputKind == Success' in result['output']
+            elif member == 'factory-failure':
+                passed = passed and 'not reason == None' in result['output']
+            elif member == 'factory-length':
+                passed = passed and '0 <= length' in result['output']
+            else:
+                passed = passed and 'not kind == Success' in result['output']
+            report['owned'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', source], name)
-        rejected = ('undeclared field' in result['output'] or 'cannot assign' in result['output']
-                    or 'cannot be assigned' in result['output'])
+        if name == 'wrong_owner_pool':
+            # The second argument must be an index, never a replacement source buffer.
+            rejected = 'Type mismatch' in result['output'] and '[2] expected: int64 but got: array' in result['output']
+        else:
+            # Every raw-state bypass must fail for its private/read-only member.
+            rejected = ('undeclared field' in result['output'] or 'cannot assign' in result['output']
+                        or 'cannot be assigned' in result['output'])
         passed = result['exit_code'] != 0 and member in result['output'] and rejected
         report['privacy'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
@@ -194,6 +253,7 @@ def main():
                    and all(row['passed'] for row in report['bounded'])
                    and len(report['primitive']) == 13 and all(row['passed'] for row in report['primitive'])
                    and len(report['composite']) == 29 and all(row['passed'] for row in report['composite'])
+                   and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and len(report['privacy']) == len(PRIVATE)
                    and all(row['passed'] for row in report['privacy']))
     report['protected_results_increment'] = 'passed' if step_passed else 'failed'

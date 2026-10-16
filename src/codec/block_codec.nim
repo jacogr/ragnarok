@@ -667,8 +667,8 @@ proc readAssurances*(owner: AssuranceComponent): FrameResult[seq[Assurance]] =
 
 # Materialize an existing immutable preimage-family owner on demand from the exact retained component bytes.
 proc readPreimages*(owner: PreimageComponent): OwnedResult[OwnedFrame] =
-  if owner.data.isNil: return OwnedResult[OwnedFrame](
-      error: OwnershipError.InvalidOwner) # No schema reinterpretation for defaults.
+  if owner.data.isNil: return ownedFailure[OwnedFrame](
+      OwnershipError.InvalidOwner) # No schema reinterpretation for defaults.
   decodeOwnedPreimages(owner.data.wire, owner.data.config.preimages)
 
 # Materialize the existing report/credential owner API on demand, keeping JAM report logic in its original codec.
