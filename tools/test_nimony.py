@@ -692,6 +692,8 @@ NOMINAL.update(bs_key_as_setup='[1] expected: BsSetup but got: BsKey',
                bs_signature_as_ring_proof='got: BsSignature but wanted: BsRingProof',
                bs_output_as_public='got: BsOutput but wanted: BsPublicKey')
 PRIVATE.update(integration_key_payload='completed', integration_capture_payload='completed', integration_child_payload='completed', integration_count_payload='completed', integration_bytes_payload='completed', integration_status='status', integration_retag='status', integration_error_write='error', integration_value_write='value', integration_forge='status', integration_verified_private='data', integration_verified_rebind='data', integration_verified_forge='data', integration_bank_private='data', integration_bank_rebind='data', integration_bank_forge='data', integration_verified_wire='wire', integration_bank_wires='wires')
+PRIVATE.update(session_peer_private='Peer', session_stream_private='StreamState',
+               session_frame_private='frameExtent', session_callback_private='verifyPeer')
 INTEGRATION_MEMBERS = ('key', 'capture', 'child', 'length', 'copy', 'fixture-key', 'fixture-bytes')
 BS_MEMBERS = ('key-short', 'key-zero', 'key-backend', 'setup-bounds', 'setup-backend',
               'public-owner', 'public-short', 'signature-short', 'signature-owner', 'root-short',
@@ -788,8 +790,9 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'src/quic/mesh.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
+                'src/quic/session.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
                 'tests/test_quic_service.py', 'tests/test_quic_soak.py', 'tests/test_quic_soak_harness.py',
+                'tests/test_quic_mesh.py', 'tests/test_quic_resilience.py', 'tests/test_quic_mesh_harness.py',
                 'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
                 'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
                 'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
@@ -2237,6 +2240,33 @@ def main():
             # Typed protocol rejections are checked by the harness; assertion/timeouts remain workload failures.
             report['quic_integration_service'] = dict(passed=False, failure=str(error))
     announce('retained integrated digest lifecycle', report['quic_integration_service']['passed'])
+    # Retained IPv6 peers keep both role engines through fallback, duplicate arbitration and reconnects.
+    report['quic_mesh_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_mesh_harness.py'], 'quic-mesh-harness')
+    report['quic_mesh'] = dict(passed=False)
+    report['quic_mesh_disruption'] = dict(passed=False)
+    if report['quic_peer_build']['exit_code'] == 0:
+        from test_quic_mesh import pairing as mesh_pairing
+        from test_quic_resilience import disruption as mesh_disruption
+        try:
+            # Reuse exact original rounds, warmup, wrong-identity gate and finite resource limits.
+            result = mesh_pairing(('nim', 'nim'), quic_fixtures, 16, 4,
+                                  binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh')
+            bad_pin = mesh_pairing(('nim', 'nim'), quic_fixtures, 1, 0, bad_pin=True,
+                                   binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh-bad-pin')
+            report['quic_mesh'] = dict(passed=True, result=result, bad_pin=bad_pin)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # All live endpoints retire in harness finalizers; a failed arbitration remains a failed gate.
+            report['quic_mesh'] = dict(passed=False, failure=str(error))
+        try:
+            # One keeper retains its two engines through twelve killed peers and a final healthy generation.
+            result = mesh_disruption(('nim', 'nim'), quic_fixtures, 12, 4,
+                                     binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh-disruption')
+            report['quic_mesh_disruption'] = dict(passed=True, result=result)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # Recovery must settle all eight pending operations before reconnect; ordinary mesh success cannot hide failure.
+            report['quic_mesh_disruption'] = dict(passed=False, failure=str(error))
+    announce('retained IPv6 mesh/reconnect and wrong identity', report['quic_mesh']['passed'])
+    announce('retained IPv6 peer-death recovery', report['quic_mesh_disruption']['passed'])
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -2762,6 +2792,9 @@ def main():
         if name == 'private_collection_commit':
             # Generic concept support must never export the unchecked writer.
             rejected = "undeclared identifier: 'put'" in result['output']
+        elif name.startswith('session_'):
+            # Moving the implementation into a module must not export raw owners or callback/buffer helpers.
+            rejected = ("undeclared identifier in module: '"+member+"'") in result['output']
         elif name == 'wrong_owner_pool':
             # The second argument must be an index, never a replacement source buffer.
             rejected = 'Type mismatch' in result['output'] and '[2] expected: int64 but got: array' in result['output']
@@ -2892,6 +2925,8 @@ def main():
                    and all(row['passed'] for row in report['bandersnatch'])
                    and report['bandersnatch_corpus']['passed']
                    and report['quic_protocol_corpus']['passed']
+                   and report['quic_mesh_harness']['exit_code'] == 0
+                   and report['quic_mesh']['passed'] and report['quic_mesh_disruption']['passed']
                    and report['quic_lifecycle_harness']['exit_code'] == 0
                    and report['quic_service']['passed'] and report['quic_integration_service']['passed']
                    and report['quic_peer_harness']['exit_code'] == 0 and report['ci_harness']['exit_code'] == 0

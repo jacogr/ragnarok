@@ -2,7 +2,7 @@
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
 Status: **63 native suites, forty-one independent corpora, 1,368 runtime misuse rejections
-and 666 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+and 670 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
@@ -16,8 +16,9 @@ coverage also pass locally. M2 migration regression parity is reached for the im
 release-reference scope. M3 now has a local UDP/readiness and linked native-transport lifecycle
 slice, plus shared SAN/DER identity, structural framing and enabled CE fixture composition.
 The one-shot authenticated CE 143 peer matrix and retained service/integrated digest lifecycle
-workloads now pass locally. Mesh/reconnect, broader resilience/offload and Linux parity remain
-unverified.
+workloads now pass locally. Retained IPv6 mesh/reconnect and twelve peer-death recovery rounds
+now pass too; all 45 production modules pass independent semantic compilation. Remaining
+admission/resilience, enabled offload and Linux parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. At the maintainer's request, the existing
 `.github/workflows/linux.yml` is now the single Linux workflow and uses the pinned Nimony nightly
@@ -2325,11 +2326,79 @@ including a regression check against duplicate Linux workflows and branch-name e
 Protocol provenance has two passing checks and the existing draft-29 discrepancy skip. This is a
 CI-only change; no new Linux execution or full runtime-suite result is claimed.
 
+## Forty-fifth bounded increment: standalone sessions and retained IPv6 mesh
+
+`src/quic/peer.nim` is now the thin CLI; `src/quic/session.nim` owns the private peer/stream state,
+identity callbacks, framing, single/service sessions and retained mesh coordination. The former
+`mesh.nim` include fragment was moved with `git mv` and combined with the peer implementation.
+This preserves stack-stable native callback owners and keeps all stream buffers and handles
+private, without a circular module dependency or public mutable state. Only the bounded lifecycle
+entry points, selftests and diagnostic helper are exported. Four compiler probes reject access to
+private peer/stream types, frame inspection and certificate callbacks.
+
+The source audit now independently compiles **45/45 production modules**. No file was excluded,
+renamed out of the audit's Nim inventory or accepted through an expected-failure allowlist. This
+covers the enabled-by-default source profile; it does not establish offload-enabled compilation or
+complete runtime parity. The pinned compiler, dependency sources, native ABI and checked
+ARC/Clang release LTO profile are unchanged.
+
+Protocol policy remains the pinned JAMNP-S Required-connectivity preferred-initiator expression,
+its example five-second fallback, duplicate-direction retirement and exact bidirectional CE 143
+framing. The original independent Python byte-order expression checks direction decisions; literal
+reference tests cover both final-byte high bits and symmetry. The original sixteen-round mesh
+workload retains two IPv6 role engines and one dispatcher in each peer throughout fallback,
+fifteen duplicate arbitrations, retirement and reconnect, completing **128 bidirectional queries**.
+A wrong expected identity rejects both directions before any application exchange.
+
+The original recovery workload retains one keeper and both its engines across **twelve peer
+deaths/restarts**. Before each kill, eight real request owners are pending. Idle expiry settles
+all **96 pending operations** exactly once, and each generation is followed by healthy exchange,
+including an additional final generation: **104 healthy queries**. The targeted maximum observed
+recovery was **1.974 seconds**, below the unchanged ten-second deadline. Client restarts use the
+same identity/listener port, not a replacement keeper. No protocol deadline or resource allowance
+is relaxed.
+
+Targeted post-warmup observations are retained in `verification/mesh-targeted-results.json` and
+adjacent `mesh-targeted/`, `mesh-bad-pin-targeted/` and `mesh-disruption-targeted/` logs below
+`build/nimony-trial/`:
+
+| Observation | Mesh peer A | Mesh peer B | Recovery keeper |
+| --- | ---: | ---: | ---: |
+| Live Nim allocation range | 0 | 0 | 0 |
+| Idle descriptor range | 0 | 0 | 0 |
+| Observed OS threads | 1 | 1 | 1 |
+| Idle RSS range, bytes | 262,144 | 245,760 | 163,840 |
+
+The same 64 KiB language-allocation, 16 MiB RSS-range, two-descriptor and 256 MiB active-RSS budgets
+remain, with post-engine cleanup checked separately. These finite controlled observations do not
+establish arbitrary leak freedom, network throughput or independent JAM-stack interoperability.
+The cumulative runner and canonical Linux workflow now gate mesh, wrong identity and peer-loss
+recovery separately, and retain endpoint logs/resource JSON and actual verdicts.
+
+The standalone session and native peer built on the first attempt; there were **zero compiler
+repair cycles** or new production decoder failures. One tooling repair completed compiler-specific
+binary/thread-limit plumbing after an interrupted editing script left the original callable in an
+initial orchestration process; recovery was then rerun with the completed helper. That is test
+infrastructure friction, not a Nimony diagnostic or protocol defect. Three independent harness
+checks protect the ordering reference, explicit one-thread/RSS budget and dead-keeper rejection.
+
+Cumulative coverage is **63 native suites, forty-one independent corpora, 1,368 runtime misuse
+rejections and 670 compilation rejections**: 566 privacy, 94 nominal, five schema, four static
+contracts and one ownership-lowering rejection. Formatting covers **855 Nim files**; the full
+runner hashes **984 source/test/configuration files**. Live network waves/queries are recorded separately from pure corpora and failed-result contract probes. The
+module's private surface is tested in addition to its ordinary and crypto-enabled peer callers.
+The prior accepted uninitialized scalar/pointer limitation remains documented; this refactor does
+not claim to repair the compiler.
+
+Results are local macOS ARM64 on pinned Nimony 0.6.3. Implemented-scope M1/M2 regression parity and
+normative gates are unchanged. Same-process repeated endpoint teardown, remaining admission/
+resilience coverage, enabled proof offload, Linux execution and local setup cutover remain open.
+
 ## Remaining work and next bounded increment
 
-Next: retained IPv6 mesh/reconnect lifecycle and standalone module structure, preserving duplicate
-arbitration, bidirectional CE requests and peer-loss recovery. Broader admission/resilience and
-enabled proof offload follow as bounded increments.
+Next: same-process repeated endpoint teardown/soak and remaining connection/stream admission
+recovery coverage, preserving finite resource budgets. Enabled proof offload follows as a separate
+bounded increment.
 
 Further port work remains:
 
@@ -2342,7 +2411,8 @@ Further port work remains:
 - M3: bounded POSIX UDP/readiness, descriptor retirement and linked transport setup/teardown pass
   locally. Shared identity/DER, structural framing and enabled integration ownership/results pass
   too. The actual peer and one-shot authentication/framing matrix now pass locally. Retained
-  service and integrated digest lifecycles now pass too. Retained IPv6 mesh/reconnect/resilience
+  service and integrated digest lifecycles pass too, alongside retained IPv6 mesh/reconnect and
+  twelve peer-death recovery rounds. Same-process endpoint soak, remaining admission/resilience
   and enabled offload compilation/runtime coverage remain migration gates.
 - Toolchain: the canonical Linux workflow now uses pinned Nimony and the formatter on all
   branches. Linux execution, normal local build commands and remaining setup documentation remain

@@ -179,6 +179,17 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('Independent corpora: 0', text)
         self.assertIn('Runtime misuse rejections: 0', text)
 
+    # A failed recovery workload cannot disappear behind healthy reconnect rounds or inflate codec metrics.
+    def test_mesh_summary_scope(self):
+        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                      quic_mesh=dict(passed=True, result=dict(rounds=16, bidirectional_queries=128)),
+                      quic_mesh_disruption=dict(passed=False, failure='pending owners not settled'))
+        text = summarize(report, 'slice')
+        self.assertIn('Retained IPv6 mesh: Pass', text)
+        self.assertIn('Reconnect rounds: 16; bidirectional queries: 128', text)
+        self.assertIn('IPv6 peer-death recovery: Fail', text)
+        self.assertIn('Runtime misuse rejections: 0', text)
+
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
         report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],

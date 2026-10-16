@@ -19,6 +19,8 @@ Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed 
 `src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A bounded POSIX
 nonblocking UDP dispatcher drives the maintained LSQUIC/TLS bridge. No stream or connection creates
 an OS thread. Optional RingVRF verification uses two workers and four total owned job slots.
+`peer.nim` is the bounded CLI. The standalone `session.nim` module privately owns peer/stream
+state, callbacks and retained mesh coordination; only lifecycle entry points are exported.
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

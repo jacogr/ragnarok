@@ -72,6 +72,11 @@ jobs:
             build/nimony-ci/*.log
             build/nimony-trial/verification/*.log
             build/nimony-trial/verification/results.json
+            build/nimony-trial/verification/mesh/*.log
+            build/nimony-trial/verification/mesh/resources.json
+            build/nimony-trial/verification/mesh-bad-pin/*.log
+            build/nimony-trial/verification/mesh-disruption/*.log
+            build/nimony-trial/verification/mesh-disruption/resources.json
             build/nimony-trial/verification/retained-service/*.log
             build/nimony-trial/verification/retained-service/resources.json
             build/nimony-trial/verification/retained-integration/*.log

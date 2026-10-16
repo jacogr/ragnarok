@@ -158,7 +158,8 @@ Shared identity/DER/framing validation now also passes locally.
 CE 143 integration results and retained digest ownership now also pass locally.
 The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
 Retained CE 143 service and integrated digest lifecycles now also pass locally.
-Next: retained IPv6 mesh/reconnect lifecycle and standalone module structure; Linux confirmation and
+Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
+Next: same-process endpoint soak and remaining admission/resilience coverage; Linux confirmation and
 documented normative policy gates remain separate. No transition execution or new namespace rule is
 introduced. See the [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3
 work.

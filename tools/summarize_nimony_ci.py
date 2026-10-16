@@ -53,6 +53,19 @@ def summarize(report, kind):
                     rounds = result.get('rounds', len(result['idle']))
                     connections = result['accepted_and_retired_connections'] if key == 'quic_service' else result['connections']
                     lines += ['Waves: '+str(rounds)+'; retired connections: '+str(connections)+'.']
+        for key, label in (('quic_mesh', 'Retained IPv6 mesh'),
+                           ('quic_mesh_disruption', 'IPv6 peer-death recovery')):
+            if key in report:
+                # Keep reconnect and killed-peer outcomes separate from ordinary one-shot/service coverage.
+                row = report[key]
+                lines += ['', label+': '+('Pass' if row['passed'] else 'Fail')+'.']
+                if row['passed']:
+                    # Count actual protocol/recovery outcomes without inflating codec or compiler metrics.
+                    result = row['result']
+                    if key == 'quic_mesh':
+                        lines += ['Reconnect rounds: '+str(result['rounds'])+'; bidirectional queries: '+str(result['bidirectional_queries'])+'.']
+                    else:
+                        lines += ['Peer deaths: '+str(result['peer_losses'])+'; pending operations settled: '+str(result['pending_operations_settled'])+'.']
     else:
         # Unknown report schemas must fail loudly instead of generating a misleading empty summary.
         raise ValueError('Unknown summary kind: '+kind)

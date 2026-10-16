@@ -48,9 +48,11 @@ def observe(processes, logs, marker, peaks, seconds=15, thread_limits=None):
 
 
 # Keep both logical peer processes and all four role engines alive for the complete externally gated workload.
-def pairing(languages, folder, rounds, warmup, bad_pin=False):
+def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, directory=None):
+    # Compiler-specific binary/log paths preserve the same retained engine and gate schedules.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     name = '-'.join(languages) + ('-bad-pin' if bad_pin else '')
-    directory = BUILD / 'mesh' / name
+    directory = BUILD / 'mesh' / name if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     gate = directory / f'gate-{time.time_ns()}'
     gate.mkdir()
@@ -68,7 +70,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False):
         for index, (role, language) in enumerate(zip(logs, languages)):
             other = 'b' if role == 'a' else 'a'
             remote_pin = 'c' if bad_pin and role == 'a' else other
-            command = [str(BUILD / f'{language}-peer'), 'mesh', str(local_ports[index]), str(local_ports[1-index]),
+            command = [str(binaries[language]), 'mesh', str(local_ports[index]), str(local_ports[1-index]),
                        str(folder / f'{role}.cert.pem'), str(folder / f'{role}.key.pem'),
                        str(folder / f'{role}.pub'), str(folder / f'{remote_pin}.pub'), 'jamnp-s/1/00000000', str(gate)]
             handles[role] = logs[role].open('w')
