@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **22 native suites, twelve independent family corpora, 544 runtime misuse rejections and
-306 compilation rejections pass locally**. Raw Blake2b-256, legacy Keccak-256 and ordinary Ed25519
+Status: **23 native suites, thirteen independent family corpora, 576 runtime misuse rejections and
+335 compilation rejections pass locally**. State-key construction and fixed node layout/hashing
 now join the verified scalar, owned, report, extrinsic-family, work-package, header, block,
-bitstring, collection and C.2 slices.
+bitstring, collection, C.2 and raw-crypto/state-key/node-layout slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged.
@@ -667,11 +667,57 @@ evidence records **429 matching source/test hashes**.
 All results remain local macOS ARM64, checked ARC/Clang LTO. Production native sources and pins are
 unchanged. This completes the raw primitive slice, not all M2 or M1 migration.
 
+## Seventeenth increment: state keys and fixed node layout/hashing
+
+`src/codec/state_layout.nim` now runs on the same pristine nightly. The scope remains Gray Paper
+0.8.0 state-key functions C, branch/leaf encodings B/L and raw node identification from the
+merklization chapter. No wire rule, native primitive, dependency pin or compiler source changes.
+This adds no trie construction, state-component serialization, proof or persistence behavior.
+
+`StateLayoutResult[T]` hides status/payload behind a read-only reason and success-precondition
+value getter. Copied node metadata hides its discriminator and all seven alternative fields.
+Read-only kind selection and field-specific contracts prevent inactive reads or retagging. The
+three source factories (`branchNodeInfo`, `embeddedNodeInfo`, `hashedNodeInfo`) construct tags and
+fixed copied fields together. They preserve the existing source-validation boundary:
+`encodeStateNode` rejects an invalid partial commitment, embedded length or padding before
+publishing any encoded node. Default metadata remains the existing all-zero branch; default
+results remain Uninitialized.
+
+All **12,233 unchanged independent requests** and **six literal oracle checks** pass. Coverage
+retains all chapter octets, E4 service boundaries/interleaving, raw preimage limits, every node
+header and embedded source-length octet, padding pollution, 32/33-byte leaf boundaries, hash
+input boundaries, truncations, suffixes, malformed bytes, exact metadata re-emission and raw
+Blake2b node hashes. Expected bytes/hashes come from the independent Python equations/hashlib,
+not native round trips. Five legacy singleton roots retain their explicitly labelled projection
+from historical 32-byte input keys to current 31-byte keys; they are not unmodified 0.8.0 vectors
+or multi-entry trie evidence.
+
+The native suite preserves destructive caller mutation, fixed independent copies and loss of
+exactly the left child's high bit. Source/getter copies cannot rewrite original metadata.
+Injected primitive refusals become BackendFailure for hashed service keys, long leaves and
+node hashing. Explicit limits and canonicality precede hashing, short embedded values remain
+usable without hashing, and normal hashing recovers after the test-only refusal is removed.
+The production-linked corpus has no observer/fault symbols. All protocol loops operate within
+fixed 31/32/64-byte extents or validated short lengths; borrowed input lengths are compared in
+uint64 before hashing. No input-derived heap owner, retained pointer or new unchecked size
+arithmetic is introduced.
+
+This increment adds **32 runtime misuse rejections**: 18 default/failed result reads (including
+consumed progress and three backend-failure paths) and 14 inactive metadata field reads, testing
+both wrong alternatives for every field. It adds **29 compilation rejections**: 26 private/read-only
+result/metadata checks and three nominal key/partial-commitment/value-hash versus full-node-hash
+checks. Cumulative totals are **576 runtime result/variant/constructor rejections, 335 compilation
+rejections (289 privacy + 41 nominal + five schema), 23 positive native suites and thirteen family
+corpora**, plus three runtime language probes. Formatting covers **536 Nim files**; the final
+evidence records **463 matching source/test hashes**. Verification remains local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity remain
+unverified. No compiler/private-runtime hooks, source patches or omitted corpus cases are used.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 state keys and fixed node layout/hashing (`src/codec/state_layout.nim`), now that
-its raw Blake2b dependency passes. Verify key domains, partial commitments, fixed copies, guarded
-results and the existing independent layout vectors. State trie construction is a separate chunk.
+Next: port M1 bounded state trie construction (`src/codec/state_trie.nim`), using the verified
+key/node layout and Blake2b dependency. Preserve order-independent roots, duplicate-key rejection,
+resource/topology budgets, independent root vectors and guarded results. State-component codecs
+remain later chunks.
 
 Further port work remains:
 
@@ -706,7 +752,7 @@ The runner now targets **only Nimony**. It writes commands, compiler/nightly met
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
-and raw-crypto slices.
+and raw-crypto/state-key/node-layout slices.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -398,6 +398,40 @@ NOMINAL.update(crypto_swapped_hash='got: KeccakHash but wanted: Blake2bHash',
                crypto_swapped_key='got: EdSignature but wanted: EdPublicKey')
 CRYPTO_MEMBERS = ('blake', 'keccak', 'seed-width', 'key-width', 'signature-width',
                   'key-missing', 'key-cleared', 'key-backend', 'sign-missing', 'sign-cleared', 'sign-backend')
+LAYOUT_PRIVATE = dict(
+    layout_result_key_private='completed',
+    layout_result_node_private='completed',
+    layout_result_read_private='completed',
+    layout_result_hash_private='completed',
+    layout_result_retag='status',
+    layout_result_forge='status',
+    layout_result_error_write='error',
+    layout_result_value_write='value',
+    layout_metadata_private='nodeKind',
+    layout_metadata_retag='nodeKind',
+    layout_metadata_forge='nodeKind',
+    layout_metadata_kind_write='kind',
+    layout_left_private='branchLeft',
+    layout_left_write='left',
+    layout_right_private='branchRight',
+    layout_right_write='right',
+    layout_embeddedKey_private='inlineKey',
+    layout_embeddedKey_write='embeddedKey',
+    layout_length_private='inlineLength',
+    layout_length_write='length',
+    layout_embedded_private='inlineBytes',
+    layout_embedded_write='embedded',
+    layout_hashedKey_private='regularKey',
+    layout_hashedKey_write='hashedKey',
+    layout_valueHash_private='regularHash',
+    layout_valueHash_write='valueHash',
+)
+PRIVATE.update(LAYOUT_PRIVATE)
+NOMINAL.update(state_key_as_hash='StateKey',
+               state_partial_as_hash='LeftChildCommitment',
+               state_value_as_node_hash='StateValueHash')
+LAYOUT_MEMBERS = ('key-limit', 'leaf-limit', 'node-info', 'node-consumed', 'metadata-invalid', 'hash-invalid', 'key-backend', 'leaf-backend', 'hash-backend')
+LAYOUT_VARIANTS = [('Branch-embeddedKey', 'Branch', 'node.nodeKind == EmbeddedLeaf'), ('Branch-length', 'Branch', 'node.nodeKind == EmbeddedLeaf'), ('Branch-embedded', 'Branch', 'node.nodeKind == EmbeddedLeaf'), ('Branch-hashedKey', 'Branch', 'node.nodeKind == HashedLeaf'), ('Branch-valueHash', 'Branch', 'node.nodeKind == HashedLeaf'), ('EmbeddedLeaf-left', 'EmbeddedLeaf', 'node.nodeKind == Branch'), ('EmbeddedLeaf-right', 'EmbeddedLeaf', 'node.nodeKind == Branch'), ('EmbeddedLeaf-hashedKey', 'EmbeddedLeaf', 'node.nodeKind == HashedLeaf'), ('EmbeddedLeaf-valueHash', 'EmbeddedLeaf', 'node.nodeKind == HashedLeaf'), ('HashedLeaf-left', 'HashedLeaf', 'node.nodeKind == Branch'), ('HashedLeaf-right', 'HashedLeaf', 'node.nodeKind == Branch'), ('HashedLeaf-embeddedKey', 'HashedLeaf', 'node.nodeKind == EmbeddedLeaf'), ('HashedLeaf-length', 'HashedLeaf', 'node.nodeKind == EmbeddedLeaf'), ('HashedLeaf-embedded', 'HashedLeaf', 'node.nodeKind == EmbeddedLeaf')]
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -446,7 +480,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -481,7 +515,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
+                'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
+                'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(sources)}
@@ -504,7 +539,7 @@ def main():
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name == 'crypto_seeds' else None)
+                                 crypto_observer if name in ('crypto_seeds', 'state_layout') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -957,6 +992,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['c2_corpus'] = corpus
     announce('independent availability/transfer/operand/accumulation corpus', corpus['passed'])
+    # Preserve the independent C/B/L equations, every hostile header/padding request and labelled historical projections.
+    from state_layout_oracle import requests as layout_requests, legacy_singletons
+    harness = command([sys.executable, ROOT/'tests/test_state_layout_harness.py'], 'layout-harness')
+    lines, expected = layout_requests()
+    source = BUILD/'layout-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_layout_driver.nim', 'layout-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  historical_projected_singletons=len(legacy_singletons()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # The reference computes keys/fields/padding/hash bytes independently before native execution.
+        result = command([binary, source], 'layout-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep the first differing row and complete adapter output for diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['layout_corpus'] = corpus
+    announce('independent state-key/node layout and hash corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1233,6 +1292,19 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['crypto'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' crypto '+member+' guard', passed)
+    # Guard every default/failed layout result and both wrong alternatives for every metadata field.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_layout_results.nim', 'layout-results', crypto_observer)
+    report['layout_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Backend refusals use the separate test-only observer while normal corpus requests use production hashing.
+        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in LAYOUT_MEMBERS]
+        cases += LAYOUT_VARIANTS
+        for member, origin, sentinel in cases:
+            # Require the exact result/field contract, never a crash or missing library.
+            result = command([binary, member, origin], 'layout-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['layout'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' layout '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1255,7 +1327,12 @@ def main():
     for name, member in NOMINAL.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        if name == 'swapped_import_identity':
+        if name in ('state_key_as_hash', 'state_partial_as_hash', 'state_value_as_node_hash'):
+            # A key, truncated left commitment or value hash cannot fill a complete child-hash argument.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'encodeStateBranch(' in result['output']
+                        and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'swapped_import_identity':
             # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'rootImport(' in result['output'] and member in result['output'])
@@ -1291,6 +1368,9 @@ def main():
                    and report['header_corpus']['passed'] and report['block_corpus']['passed']
                    and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
+                   and report['layout_corpus']['passed']
+                   and len(report['layout']) == 2*len(LAYOUT_MEMBERS)+len(LAYOUT_VARIANTS)
+                   and all(row['passed'] for row in report['layout'])
                    and len(report['crypto']) == 2*len(CRYPTO_MEMBERS)
                    and all(row['passed'] for row in report['crypto'])
                    and len(report['c2']) == 2*len(C2_MEMBERS)+len(C2_VARIANTS)

@@ -132,5 +132,6 @@ pass their complete corpus, closed schema checks, guarded results, private-stora
 snapshot release workload. C.2 availability specifications, transfers and accumulation input
 records now pass their complete corpus, guarded source/decoded alternatives and release checks.
 The raw crypto primitive dependency now passes its vector, result, seed-erasure and thread checks.
-The next compiler-port increment is M1 state keys and fixed node layout/hashing (`state_layout.nim`);
-state trie construction follows as a separate chunk. M1 migration remains partial.
+State keys and fixed node layout/hashing now pass their complete independent corpus, fixed-copy,
+result/variant, backend-failure and nominal-domain checks. The next compiler-port increment is
+bounded state trie construction (`state_trie.nim`). M1 migration remains partial.

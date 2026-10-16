@@ -83,9 +83,10 @@ The exceptional-point Ed25519/Bandersnatch gates are unaffected by this layout i
 
 ## Evidence and reproduction
 
-Run the primitive build first (`python3 tests/test_crypto.py`), then
-`python3 tests/test_state_layout_harness.py` and `python3 tests/test_state_layout.py`. Native
-builds retain Nim 2.2.12, ARC, checked Clang LTO and assertion/bounds/range/field/overflow guards.
+The historical Nim 2 baseline used the primitive build (`python3 tests/test_crypto.py`), then
+`python3 tests/test_state_layout_harness.py` and `python3 tests/test_state_layout.py`, with
+Nim 2.2.12, ARC, checked Clang LTO and assertion/bounds/range/field/overflow guards. On the
+experimental Nimony branch, use the trial runner documented below instead.
 Python's independent `hashlib.blake2b(digest_size=32)` and direct byte equations supply expectations.
 
 Six literal harness checks protect **12,233** deterministic native requests: all chapter octets,
@@ -112,3 +113,26 @@ checks read the frozen historical blob directly at its recorded Git revision; pa
 materialize that promised data object through Git. Source files and gitlinks remain unchanged.
 Local verification is macOS arm64; Linux x86-64 validation occurs in CI after push. Root
 construction over serialized entries has its separate [contract](state-trie.md) and test suite.
+
+## Nimony branch port
+
+The [nightly trial](../docs/nimony-trial.md#seventeenth-increment-state-keys-and-fixed-node-layouthashing)
+verifies this same layout contract with checked ARC/Clang LTO on macOS ARM64. Results hide their
+status/payload behind read-only error and success-precondition value access. `StateNodeInfo` hides
+its tag and alternative fields; kind is read-only and every copied field requires its own selected
+alternative. Nimony raw variant fields are not relied upon for access protection.
+
+Source metadata is constructed with `branchNodeInfo`, `embeddedNodeInfo` and `hashedNodeInfo`.
+These copy exact fields and select the tag together. Canonicality remains checked by
+`encodeStateNode`, so intentionally invalid source lengths, partial commitments and padding still
+return NonCanonical rather than being normalized. Default metadata remains an all-zero branch;
+default results remain Uninitialized. Caller input and returned/copied fields remain independent.
+
+`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` builds pristine
+native primitives, runs all 12,233 preserved independent requests and six literal harness checks,
+and checks default/failed result reads, every wrong metadata alternative, private/read-only fields
+and the three existing nominal-domain probes. The three hash compositions also reject injected
+native refusals without exposing a default key/node/hash. Fault injection is linked only into
+separate test processes; the independent corpus uses the production bridge. Historical singleton
+projections retain their limited provenance described above. Trie roots, remaining M1 state codecs
+and Linux parity are separate migration gates.
