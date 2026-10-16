@@ -115,5 +115,6 @@ Other state serialization, proofs and persistence remain future work. Run these 
 building the primitive bridge.
 
 The Nimony owned-snapshot port and its retained-lifetime, result, metadata and copy contracts are
-recorded in [owned snapshots](../spec/owned-snapshots.md). Report-owned snapshots remain the next
-compiler-port increment.
+recorded in [owned snapshots](../spec/owned-snapshots.md). Complete work-report codecs and report-owned snapshots now pass their independent corpus and
+lifetime/guard checks; see [the trial](nimony-trial.md). Assurance records/extrinsics are the next
+bounded compiler-port increment.

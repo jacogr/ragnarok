@@ -66,3 +66,23 @@ Published v0.8.0 JSON/binary pairs come from `davxy/jam-test-vectors`, tag v0.8.
 Tests independently construct the full wire from named JSON fields and observe every native
 header field. Authored new-field boundary and legacy-layout negative cases supplement these
 published vectors. See [the migration audit](graypaper-0.8.0.md).
+
+## Nimony port verification
+
+The pinned nightly trial now covers this codec and `report_owned.nim` with checked ARC/Clang LTO.
+`ReportResult` and `ReportHeaderResult` hide status/payload storage behind read-only outcome and
+success-precondition accessors. Child work descriptors are copied, so offset rebasing explicitly
+rebuilds the successful work value. Report owners retain a stable nil-checked private reference;
+metadata copies and owner-bound payload extraction expose no mutable backing bytes.
+
+`tools/test_nimony.py` runs all 18,430 independent report requests through
+`tests/native/report_codec_driver.nim`, including published tiny/full fixtures and the existing
+mutation/lifetime checks. `test_report_snapshots.nim` adds replacement/escaped-input/default-owner
+and ARC release coverage. Runtime misuse and compilation checks protect results and nominal
+hash/root/slot/shard domains. Commands, source hashes, corpus hashes and exact diagnostics are
+retained in ignored `build/nimony-trial/verification/results.json` and adjacent logs.
+
+The full `report_driver.nim` still dispatches its explicit crypto `check` subcommand and includes
+the same codec adapter for all ordinary requests. Nimony verification here does not include those
+hash/signature composition checks, Linux execution, or full-client migration; see
+[the trial](../docs/nimony-trial.md).

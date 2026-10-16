@@ -168,11 +168,44 @@ rejections and 56 compilation rejections**, alongside six positive suites and th
 Constructor users in report ownership/block composition were mechanically adapted to the private
 shared result API; those higher-level families are not yet runtime-ported or claimed passing.
 
+## Fifth increment: complete work reports and report snapshots
+
+`work_report.nim` and `report_owned.nim` now run under the same pinned Nimony nightly.
+Report/header results keep their discriminator and payload private. Read-only `error` remains
+available on every outcome; `value` and report `consumed` require success. Default results still
+carry Uninitialized. Hash/root/slot/shard domains remain distinct. Report owners use a stable
+nil-checked backing reference, retaining the original private consumed prefix through ARC.
+
+A child digest's span accessor returns a copy. Report decoding and the independent-source test
+adapter now rebuild the successful work variant when rebasing the child span to the original
+complete input/pool. Mutating a returned descriptor would otherwise leave the stored offset
+unchanged. The full independent semantic/byte corpus catches this regression.
+
+All **18,430** existing independent report requests pass, including pinned published 0.8.0 tiny/full
+fixtures, every field, canonical ordering, truncations, aggregate limits, maximum unsigned values,
+malformed fuzz cases, late encoder failures, overlap atomicity and owner extraction after input
+mutation. The shared codec adapter is split from the existing explicit crypto `check` subcommand;
+that integration entry point is preserved, but its signature/hash checks remain unported M2 work.
+No crypto verification is replaced with a successful stub or omitted from the ordinary runner.
+
+A seventh positive suite checks escaped input lifetimes, same-sized distinct owners, retained
+replacement handles, metadata-copy independence, payload-free work errors, every default-owner
+API and atomic short-output failure. After 100 warmup cycles, 1,000 report retain/replace/copy/drop
+cycles with varying bytes leave public live occupancy unchanged: **192 → 192 bytes** on this Mac.
+This measures that isolated ARC workload, not RSS or general leak freedom.
+
+This increment adds **14 runtime misuse rejections**, **10 privacy compilation rejections** and
+**four nominal-type compilation rejections**. Cumulative coverage is **95 runtime result/variant/
+constructor rejections and 70 compilation rejections**, plus **seven positive suites**, the report
+corpus and three language/runtime probes. The generic hash diagnostic rejects the substitution but
+prints `ReportHash` on both sides without its static domain argument; the rejection is useful, while
+its explanation is less precise than the slot/shard diagnostics. Linux remains unverified.
+
 ## Remaining work and next bounded increment
 
-Next: port work-report codecs and immutable report snapshots (`work_report.nim`, `report_owned.nim`
-and their report/result/lifetime tests). This extends the validated digest/owned foundations into
-full report metadata, canonical ordered fields and owner-bound payload extraction. Other M1
+Next: port assurance records and extrinsics (`assurances.nim` and their independent codec,
+result and nominal-domain checks). These provide the typed validator/configuration foundation
+used by guarantee extrinsics, which can then compose the retained report owners. Other M1
 families and M2/M3 remain separate increments.
 
 Further port work remains:
@@ -205,6 +238,6 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned slice. A missing check or failed guard still makes the runner
+verified scalar/composite/digest/owned/report slice. A missing check or failed guard still makes the runner
 exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

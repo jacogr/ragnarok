@@ -1,9 +1,10 @@
 ## GP v0.8.0 C.1/C.2 bounded complete work-report codec; see spec/work-report.md.
+import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_digest]
 
 type
   # Distinct generic hash domains own their bytes and cannot be silently interchanged.
-  ReportHash*[kind: static int] = object
+  ReportHash*[kind: static[int]] = object
     bytes*: array[32, byte]
   # Package identity is separate from roots and historical block identities.
   PackageHash* = ReportHash[0]
@@ -65,24 +66,41 @@ type
     lookupCount*: int
     digests*: array[16, WorkDigest]
     digestCount*: int
-  # Success-only report and consumed prefix; default/failed outcomes carry no usable metadata.
+  # Complete copied report data is private until the success precondition holds.
   ReportResult* = object
-    case error*: CompositeError
-    of CompositeError.None:
-      # These fields are inaccessible until success is selected.
-      value*: WorkReport
-      consumed*: int
+    case status: CompositeError
+    of None:
+      # Borrowed payload spans remain bound to the caller's exact input/pool.
+      decodedValue: WorkReport
+      byteConsumed: int
     else:
-      # A malformed final metric cannot expose a partial report.
+      # Failed/default outcomes contain no partial report or cursor progress.
       discard
+  # Fixed headers are copied values; truncated/invalid headers expose only their reason.
   ReportHeaderResult* = object
-    case error*: CompositeError
-    of CompositeError.None:
-      # No input references survive this value copy.
-      value*: ReportHeader
+    case status: CompositeError
+    of None:
+      # The complete header includes every 0.8.0 nominal field.
+      decodedValue: ReportHeader
     else:
-      # Missing fixed bytes expose only their reason.
+      # Default results remain Uninitialized, distinct from an all-zero header.
       discard
+
+# Read the full-report outcome without permitting retagging.
+func error*(value: ReportResult): CompositeError = value.status
+# Read the fixed-header outcome without exposing a writable discriminator.
+func error*(value: ReportHeaderResult): CompositeError = value.status
+# Only complete report decoding exposes copied fields and caller-bound spans.
+func value*(value: ReportResult): WorkReport {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.decodedValue
+# Only complete report decoding may advance the input cursor.
+func consumed*(value: ReportResult): int {.inline, requires: value.status == CompositeError.None.} =
+  value.byteConsumed
+# Failed/default fixed headers cannot expose default nominal identities.
+func value*(value: ReportHeaderResult): ReportHeader {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.decodedValue
 
 # Validate GP 0.8.0 valcount independently of state-dependent active-set equality.
 proc validErasureShards(value: ErasureShards): bool {.raises: [].} =
@@ -91,8 +109,8 @@ proc validErasureShards(value: ErasureShards): bool {.raises: [].} =
 # Decode all fixed availability/context fields before exposing any owned nominal values.
 proc decodeReportHeader*(input: openArray[byte]): ReportHeaderResult {.raises: [].} =
   # Prove the complete 0.8.0 fixed prefix before reading any new or retained field.
-  if input.len < 272: return ReportHeaderResult(error: CompositeError.Truncated)
-  var value: ReportHeader
+  if input.len < 272: return ReportHeaderResult(status: CompositeError.Truncated)
+  var value: ReportHeader = default(ReportHeader)
   # Copy packageHash identity bytes into their owned nominal field.
   for i in 0..<32: value.packageHash.bytes[i] = input[0+i]
   value.bundleLength = BundleLength(decodeFixed(input.toOpenArray(32, 35), ByteWidth(4)).value)
@@ -116,8 +134,8 @@ proc decodeReportHeader*(input: openArray[byte]): ReportHeaderResult {.raises: [
   for i in 0..<32: value.lookupStateRoot.bytes[i] = input[240+i]
   # Only a protocol-supported validator-set cardinality can describe erasure shards.
   if not validErasureShards(value.erasureShards):
-    return ReportHeaderResult(error: CompositeError.LimitExceeded)
-  ReportHeaderResult(error: CompositeError.None, value: value)
+    return ReportHeaderResult(status: CompositeError.LimitExceeded)
+  ReportHeaderResult(status: CompositeError.None, decodedValue: value)
 
 # Emit a fixed header value snapshot atomically, without retaining caller references.
 proc encodeReportHeader*(source: ReportHeader, output: var openArray[
@@ -173,10 +191,10 @@ proc reportHashLess(a, b: PackageHash): bool {.raises: [].} =
 proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportResult {.raises: [].} =
   let header = decodeReportHeader(input)
   # A missing fixed header cannot construct a report with invented default fields.
-  if header.error != CompositeError.None: return ReportResult(error: header.error)
+  if header.error != CompositeError.None: return ReportResult(status: header.error)
   # A chain profile cannot have more assurers than three times its configured core ceiling.
   if uint64(header.value.erasureShards) div 3 > coreCount:
-    return ReportResult(error: CompositeError.LimitExceeded)
+    return ReportResult(status: CompositeError.LimitExceeded)
   var value = WorkReport(header: header.value)
   var cursor = 272
   # Read a canonical natural into private parser state, never into a caller-visible partial report.
@@ -185,15 +203,16 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
       let parsed = natural.decode(input.toOpenArray(cursor, input.high))
       # Preserve precise natural failure before advancing or narrowing an attacker-supplied count.
       if not parsed.ok:
-        return ReportResult(error: if parsed.error ==
+        return ReportResult(status: if parsed.error ==
             natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
       target = uint64(parsed.value)
       cursor += parsed.consumed
-  var count: uint64
+  var count: uint64 = 0
   readNumber(count)
   # Protocol count policy precedes the fixed-stride extent proof and narrowing to a host index.
-  if count > 8: return ReportResult(error: CompositeError.LimitExceeded)
-  if count > uint64((input.len-cursor) div 32): return ReportResult(error: CompositeError.Truncated)
+  if count > 8: return ReportResult(status: CompositeError.LimitExceeded)
+  if count > uint64((input.len-cursor) div 32): return ReportResult(
+      status: CompositeError.Truncated)
   value.prerequisiteCount = int(count)
   # Prerequisites form an ordered unique set; received metadata is never silently sorted.
   for i in 0..<value.prerequisiteCount:
@@ -202,12 +221,12 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
     cursor += 32
     # Duplicate and descending set members are equally noncanonical.
     if i > 0 and not reportHashLess(value.prerequisites[i-1], value.prerequisites[i]):
-      return ReportResult(error: CompositeError.NonCanonical)
+      return ReportResult(status: CompositeError.NonCanonical)
   readNumber(count)
   value.core = CoreIndex(count)
   # Core bounds come from explicit chain configuration, not inferred from available input bytes.
-  if count >= coreCount: return ReportResult(error: CompositeError.LimitExceeded)
-  if input.len-cursor < 32: return ReportResult(error: CompositeError.Truncated)
+  if count >= coreCount: return ReportResult(status: CompositeError.LimitExceeded)
+  if input.len-cursor < 32: return ReportResult(status: CompositeError.Truncated)
   # Authorizer identity is an owned copy rather than an input-buffer view.
   for i in 0..<32: value.authorizer.bytes[i] = input[cursor+i]
   cursor += 32
@@ -216,7 +235,7 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
   let auth = decodeBytesBorrowed(input.toOpenArray(cursor, input.high), ByteLimit(49152))
   # Authorization payload length/policy/extent must validate before binding its descriptor.
   if auth.error != ContainerError.None:
-    return ReportResult(error: if auth.error == ContainerError.Truncated: CompositeError.Truncated elif auth.error ==
+    return ReportResult(status: if auth.error == ContainerError.Truncated: CompositeError.Truncated elif auth.error ==
         ContainerError.NonCanonical: CompositeError.NonCanonical else: CompositeError.LimitExceeded)
   value.authOutput = BlobSpan(offset: cursor+auth.offset, length: auth.length)
   cursor += auth.consumed
@@ -224,8 +243,9 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
   readNumber(count)
   # Lookup keys and prerequisites share one eight-entry dependency budget.
   if count > uint64(8-value.prerequisiteCount): return ReportResult(
-      error: CompositeError.LimitExceeded)
-  if count > uint64((input.len-cursor) div 64): return ReportResult(error: CompositeError.Truncated)
+      status: CompositeError.LimitExceeded)
+  if count > uint64((input.len-cursor) div 64): return ReportResult(
+      status: CompositeError.Truncated)
   value.lookupCount = int(count)
   # Complete key/root pairs retain identity bytes and canonical package-key order.
   for i in 0..<value.lookupCount:
@@ -236,24 +256,26 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
     cursor += 64
     # Equal keys are invalid even if their associated roots differ.
     if i > 0 and not reportHashLess(value.lookup[i-1].packageHash, value.lookup[i].packageHash):
-      return ReportResult(error: CompositeError.NonCanonical)
+      return ReportResult(status: CompositeError.NonCanonical)
   readNumber(count)
   # Counts cannot index fixed digest capacity before this protocol-bound proof.
-  if count < 1 or count > 16: return ReportResult(error: CompositeError.LimitExceeded)
+  if count < 1 or count > 16: return ReportResult(status: CompositeError.LimitExceeded)
   value.digestCount = int(count)
   # Every child, including its final metric, must validate before any successful report is returned.
   for i in 0..<value.digestCount:
     let parsed = decodeDigestBorrowed(input.toOpenArray(cursor, input.high), ByteLimit(49152-total))
     # Preserve exact nested failures, including the remaining aggregate blob budget.
-    if parsed.error != CompositeError.None: return ReportResult(error: parsed.error)
+    if parsed.error != CompositeError.None: return ReportResult(status: parsed.error)
     var digest = parsed.value
     # Successful payloads alone consume aggregate budget and need whole-input coordinates.
     if digest.output.kind == WorkKind.Success:
-      total += digest.output.blob.length
-      digest.output.blob.offset += cursor
+      let span = digest.output.blob
+      total += span.length
+      # Rebuild the copied work variant so spans address the original complete-report input.
+      digest.output = successfulWork(BlobSpan(offset: span.offset + cursor, length: span.length))
     value.digests[i] = digest
     cursor += parsed.consumed
-  ReportResult(error: CompositeError.None, value: value, consumed: cursor)
+  ReportResult(status: CompositeError.None, decodedValue: value, byteConsumed: cursor)
 
 proc measureReportBorrowed*(value: WorkReport, poolSize: int,
     coreCount: uint64): CompositeWrite {.raises: [].} =
@@ -356,6 +378,6 @@ proc encodeReportBorrowed*(source: WorkReport, pool: openArray[byte], coreCount:
   for i in 0..<value.digestCount:
     let encoded = encodeDigestBorrowed(value.digests[i], pool, ByteLimit(49152), output.toOpenArray(
         cursor, required-1))
-    doAssert encoded.error == CompositeError.None
+    assert encoded.error == CompositeError.None
     cursor += encoded.written
   compositeWritten(cursor)

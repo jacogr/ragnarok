@@ -58,5 +58,9 @@ The increment adds 27 exact runtime contract rejections and 14 member/API-specif
 rejections. Runtime cases cover eight generic result payload types on default/actual failures,
 absent optional lengths, all six work-error lengths and invalid explicit constructors. Compilation
 checks reject raw result/metadata fields, retagging, raw success construction, public-property
-assignment, backing-store access and a second source pool argument. Linux confirmation, report
-ownership and higher-level compiler migration remain separate work.
+assignment, backing-store access and a second source pool argument.
+
+The subsequent [report port](work-report.md#nimony-port-verification) applies the same immutable
+retention and guarded generic result contracts to `OwnedReport`. It adds the independent full
+report corpus and its own 1,000-cycle retain/replace/drop workload, with live occupancy unchanged
+at 192 bytes on the trial Mac. Linux confirmation and higher-level migration remain separate work.
