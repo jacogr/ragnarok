@@ -1,11 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **32 native suites, eighteen independent family corpora, 777 runtime misuse rejections and
-411 compilation rejections pass locally**. Chapter-5 dispute judgment/offender state joins the
-verified scalar, owned, report, extrinsic-family, work-package, header, block, bitstring, collection,
-C.2, raw-crypto, state-key/node-layout, bounded trie, entropy/roster/time, authorization and chapter-4
-slices.
+Status: **34 native suites, nineteen independent family corpora, 840 runtime misuse rejections and
+433 compilation rejections pass locally**. Chapter-3 recent history now joins the verified scalar,
+owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto, state-key/node,
+bounded trie, entropy/roster/time, authorization and chapter-4/chapter-5 slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1030,11 +1029,72 @@ new suites, corpus and guards automatically. The local all-source compilation ga
 24/43 to **25/43 passing modules**; its remaining failures stay visible. Actual Linux results and
 full M1/M2/M3 parity remain unverified; compile-only success does not replace runtime gates.
 
+## Twenty-fourth bounded increment: chapter-3 recent history
+
+`src/codec/state_history.nim` now targets the same pristine Nimony nightly, preserving Gray Paper
+0.8.0 T(state) chapter 3. Ordered recent blocks retain header/super-peak/state/E4-slot order,
+independently canonical package/segment dictionaries and ordered optional belt peaks. No
+history/MMR transition, commitment verification, source normalization or new wire format is added.
+Protocol pins, upstream sources and native primitive backends are unchanged.
+
+`HistoryResult[T]` hides its discriminator/payload behind read-only reasons and success-only
+accessors, including private count tuples and stack scan layouts. Nullable acyclic owner storage
+uses checked stable locals. Parent/cardinality/block metadata and package/segment pairs are
+independent fixed copies; extraction remains bound to the original history/block indices.
+Whole-source and whole-parent preflight still precedes any output/retained array allocation,
+including the final optional peak's tag and payload.
+
+`HistoryPeak` now hides its discriminator and hash storage. `absentHistoryPeak()` and
+`presentHistoryPeak(hash)` construct the alternatives; read-only `present` preserves default
+absence, and `hash` requires presence. A present all-zero hash remains distinct from absence.
+Source editing replaces the whole value; callers cannot retag it or write through either getter.
+Returned copied peaks retain the same contracts, without exporting owner storage.
+
+All **1,985 unchanged independent requests** and **six literal reference checks** pass. Coverage
+retains T field order, E4 endianness, package/segment association, sorted/duplicate/descending
+keys, every proper representative truncation, reserved optional tags, history 0/1/7/8/9 counts,
+127/128 and 255/256 framing, large dictionaries/belts, resource/host limits, suffixes and random
+sources/malformed inputs. Eight hash-checked phase/profile sources are derived from four published
+JSON blobs, with identical tiny/full contents at this pin; they are not eight unique states or
+standalone published T binaries. Nine singleton trie integrations commit C(3) alone, not full
+state validity or successful history transitions.
+
+After 100 warmups, **1,000 scoped cycles return live occupancy 192 → 192 bytes**. The workload
+covers escaped/replaced/retained parents, nested dictionaries, copied metadata/pairs/peaks,
+empty states and late malformed tag temporaries. A reserved final tag rejects without increasing
+live occupancy. Direct arithmetic checks reach `high(int)` exactly, reject the next byte and a
+33-byte extent before addition, permit zero growth at the ceiling, and reject `high(uint64)` pair
+claims before native multiplication/narrowing or aggregate addition. No fake descriptors,
+overflow-exception emulation or compiler/runtime hooks are used. Occupancy is workload-specific,
+not RSS or general leak freedom; allocation exhaustion remains fail-stop.
+
+This slice adds **63 runtime misuse rejections**: thirty actual-failure/default result pairs and
+three dynamically selected absent-hash reads (default, source and decoded). **22 compilation
+rejections** cover nineteen private/read-only result/owner/peak probes, the two original nominal
+substitutions and one statically proven absent-hash contract violation. Nimony rejected the known
+absence before execution with `Error: contract violated: peak.isPresent`; this remains a separate
+compilation test. Runtime and static contract checks are counted separately in the runner and CI
+summary. The constructor diagnostic for segment-as-package abbreviates both static `ReportHash`
+domains; the source-hashed negative probe still tests that exact rejected substitution.
+
+Cumulative totals are **840 runtime misuse rejections, 433 compilation rejections (374 privacy +
+53 nominal + five schema + one static contract), 34 positive native suites and nineteen family
+corpora**, plus the three separate language probes. Formatting covers **628 Nim files**; the
+functional report records **596 matching source/test hashes**. The nine CI reporting/installer
+safeguards also pass, including exclusion of static contracts from runtime counts.
+
+Results remain local macOS ARM64, checked ARC/Clang LTO. The branch Linux workflow automatically
+runs the expanded migrated slice and strict all-source compilation gate. The local module audit
+advances from 25/43 to **26/43 passing modules**, with every remaining failure retained. Actual
+Linux execution and full M1/M2/M3 parity remain separate gates. The next slice is chapter-10
+availability state.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapter-3 recent history (`src/codec/state_history.nim`), preserving ordered block
-records, canonical package-to-segment dictionaries, selected optional peak values, immutable
-owner-bound extraction, whole-parent preflight and the existing independent entry/root corpus.
+Next: port M1 chapter-10 availability state (`src/codec/state_availability.nim`), preserving the
+fixed per-core sequence of optional full guarantees and E4 registration timestamps, guarded source
+alternatives, retained report-child lifetimes, whole-parent preflight and independent entry/root
+corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1072,6 +1132,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
-authorization and state chapters 4–5. A missing check or failed guard still makes the runner exit
+authorization and state chapters 3–5. A missing check or failed guard still makes the runner exit
 one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

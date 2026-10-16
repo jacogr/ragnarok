@@ -119,10 +119,11 @@ class NimonyCISafeguards(unittest.TestCase):
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
         report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],
-                      fields=[dict(passed=True), dict(passed=True)], privacy=[dict(passed=True)], nominal=[], schemas=[],
+                      fields=[dict(passed=True), dict(passed=True)], privacy=[dict(passed=True)], nominal=[], schemas=[], contracts=[dict(passed=True)],
                       example_corpus=dict(passed=False, requests=3))
         text = summarize(report, 'slice')
         self.assertIn('Runtime misuse rejections: 2', text)
+        self.assertIn('Compilation rejections: 2', text)
         self.assertIn('partial evidence', text)
         self.assertIn('| `example_corpus` | Fail | 3 |', text)
         with self.assertRaises(KeyError):

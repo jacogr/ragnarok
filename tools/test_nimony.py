@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -585,6 +585,12 @@ STATE_DISPUTES_PRIVATE = {'state_disputes_result_entry_private': 'completed', 's
 PRIVATE.update(STATE_DISPUTES_PRIVATE)
 NOMINAL.update(state_report_as_offender="got: DisputeHash but wanted: OffenderKey", state_bytes_as_dispute_index="ByteLimit")
 STATE_DISPUTES_MEMBERS = ('entry-order', 'entry-limit', 'owner', 'consumed', 'decode-order', 'decode-framing', 'decode-limit', 'decode-overflow', 'decode-bytes', 'info', 'report-owner', 'report-index', 'report-tag', 'offender-owner', 'offender-index', 'layout')
+HISTORY_PRIVATE = {'history_result_entry_private': 'completed', 'history_result_read_private': 'completed', 'history_result_info_private': 'completed', 'history_result_block_private': 'completed', 'history_result_pair_private': 'completed', 'history_result_peak_private': 'completed', 'history_result_count_private': 'completed', 'history_result_retag': 'status', 'history_result_forge': 'status', 'history_result_error_write': 'error', 'history_result_value_write': 'value', 'history_owner_rebind': 'data', 'history_peak_tag_private': 'isPresent', 'history_peak_hash_private': 'peakHash', 'history_peak_retag': 'isPresent', 'history_peak_forge': 'isPresent', 'history_peak_present_write': 'present', 'history_peak_hash_write': 'hash', 'history_snapshot_private': 'data'}
+PRIVATE.update(HISTORY_PRIVATE)
+# The nightly abbreviates static ReportHash domains in constructor diagnostics; the hashed probe preserves the exact substitution.
+NOMINAL.update(history_segment_as_package="got: ReportHash but wanted: ReportHash", history_block_as_peak="HistoryBlockIndex")
+CONTRACTS = {"history_known_absent_hash": "peak.isPresent"}
+HISTORY_MEMBERS = ('entry-config', 'entry-count', 'entry-policy', 'entry-pairs', 'entry-order', 'entry-peaks', 'entry-bytes', 'decode-config', 'decode-count', 'decode-framing', 'decode-pairs', 'decode-order', 'decode-tag', 'decode-peaks', 'decode-bytes', 'decode-overflow', 'owner', 'consumed', 'info', 'block-owner', 'block-index', 'package-owner', 'package-block', 'package-index', 'peak-owner', 'peak-index', 'count-value', 'count-size', 'layout-blocks', 'layout-consumed')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -633,7 +639,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -659,7 +665,7 @@ def main():
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
-               + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL)]
+               + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL, *CONTRACTS)]
                + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
@@ -668,7 +674,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_disputes_driver.nim', 'tests/state_disputes_oracle.py',
+                'tests/native/state_history_driver.nim', 'tests/state_history_oracle.py',
+                'tests/test_state_history_harness.py', 'tests/native/state_disputes_driver.nim', 'tests/state_disputes_oracle.py',
                 'tests/test_state_disputes_harness.py', 'tests/native/state_consensus_driver.nim', 'tests/state_consensus_oracle.py',
                 'tests/test_state_consensus_harness.py', 'tests/native/state_authorization_driver.nim', 'tests/state_authorization_oracle.py',
                 'tests/test_state_authorization_harness.py', 'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
@@ -698,7 +705,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -774,6 +781,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_history_private' and row['passed']:
+            # Retained histories, associated dictionary arrays and selected optional values retire at final ARC release.
+            release = re.search(r'HISTORY_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public allocator occupancy measures this warmed workload, not RSS or general leak freedom.
+                report['history_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_disputes_private' and row['passed']:
             # Retained/replaced chapter-5 parents and copied set identities retire at their final ARC owner.
             release = re.search(r'STATE_DISPUTES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1330,6 +1344,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['state_disputes_corpus'] = corpus
     announce('independent chapter-5 dispute judgment/offender state corpus', corpus['passed'])
+    # Preserve independent chapter-3 byte/field equations, derived fixtures and partial single-entry roots.
+    from state_history_oracle import requests as state_history_requests, published as state_history_published
+    harness = command([sys.executable, ROOT/'tests/test_state_history_harness.py'], 'state_history-harness')
+    lines, expected = state_history_requests()
+    source = BUILD/'state_history-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_history_driver.nim', 'state_history-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_derived_state_sources=len(state_history_published()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Observe every child field after caller mutation; no native round trip supplies an expected answer.
+        result = command([binary, source], 'state_history-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep complete output and the first mismatch for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['history_corpus'] = corpus
+    announce('independent chapter-3 recent history state corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1681,6 +1719,25 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['state_disputes'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' chapter-5 '+member+' guard', passed)
+    # Public/private results and runtime-selected absent peak copies require exact supported contracts.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_history_results.nim', 'history-results', crypto_library)
+    report['history_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Actual/default failures and three kinds of absence execute independently.
+        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in HISTORY_MEMBERS]
+        cases += [('absent-hash', origin, 'peak.isPresent') for origin in ('default', 'source', 'decoded')]
+        for member, origin, sentinel in cases:
+            result = command([binary, member, origin], 'history-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['history'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' history '+member+' guard', passed)
+    # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
+    for name, sentinel in CONTRACTS.items():
+        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
+                          f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+        passed = result['exit_code'] != 0 and 'Error: contract violated: '+sentinel in result['output']
+        report['contracts'].append(dict(name=name, passed=passed, check=result))
+        announce(name, passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1708,6 +1765,11 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'history_block_as_peak':
+            # Recent block ordinals cannot select an MMR belt peak.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'historyPeakAt(' in result['output']
+                        and '[2] expected: HistoryPeakIndex but got: '+member in result['output'])
         elif name == 'state_bytes_as_dispute_index':
             # Byte budgets cannot substitute for ordinals in the offender set.
             rejected = ('Error: Type mismatch at [position]' in result['output']
@@ -1766,6 +1828,11 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['history_corpus']['passed']
+                   and len(report['history']) == 2*len(HISTORY_MEMBERS)+3
+                   and all(row['passed'] for row in report['history'])
+                   and len(report['contracts']) == len(CONTRACTS)
+                   and all(row['passed'] for row in report['contracts'])
                    and report['state_disputes_corpus']['passed']
                    and len(report['state_disputes']) == 2*len(STATE_DISPUTES_MEMBERS)
                    and all(row['passed'] for row in report['state_disputes'])
