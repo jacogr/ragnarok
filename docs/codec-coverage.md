@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–2/4/6–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
+1–2/4–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
 state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -124,8 +124,21 @@ separate responsibilities.
 Validation: 7,298 independent requests, six literal oracle checks, two nominal and one privacy
 compiler rejections, native ownership/copy/variant/index/result guards and ten partial single-entry
 trie integrations. Eight published tiny/full pre/post JSON sources provide derived component
-fixtures. Other state chapters remain open; next planned group is chapter 5 dispute state. See
+fixtures. Chapter 5 is now covered separately below; other state chapters remain open. See
 [the contract](../spec/state-consensus.md) and [M1 parity checklist](m1.md#m1-parity-checklist).
+
+## Dispute judgment/offender state serialization
+
+`state_disputes.nim` implements T chapter 5's canonical good/bad/wonky report sets and offender-key
+set. Each has its own canonical natural count and strictly increasing fixed-octet order. Per-set,
+aggregate item and complete-byte ceilings precede allocation; no owner is constructed until all
+four sets are valid. Extraction retains nominal report/key separation and immutable copied values.
+
+Validation: 2,766 independent requests, six literal harness checks, two nominal and one privacy
+compiler rejections, native ownership/copy/index/failure guards and twelve partial C(5) root
+integrations. Twelve published pre/post JSON sources provide explicitly sorted derived set
+fixtures; no dispute-transition or signature-validity claim is made. Next planned: chapter 3
+recent history and accumulation-output belt. See [the contract](../spec/state-disputes.md).
 
 ## Published codec fixture inventory
 

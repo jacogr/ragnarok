@@ -99,7 +99,13 @@
     "git_blobs": {
       "trie/trie.json": "fb5a172c4ef6cd5ffb7329fccc91b6160eed0d19d7a7f26e4390b5167270cd13",
       "stf/authorizations/tiny/progress_authorizations-1.json": "3ade9ebd934fba3dffbfc8ee926f26dff92a8b80acff4fc2427df724948f71b3",
-      "stf/authorizations/full/progress_authorizations-1.json": "5d5081e0001f5c09a793ccd1fad4414bab0be2d454ceb9022df6a7960c82703d"
+      "stf/authorizations/full/progress_authorizations-1.json": "5d5081e0001f5c09a793ccd1fad4414bab0be2d454ceb9022df6a7960c82703d",
+      "stf/disputes/tiny/progress_with_verdicts-4.json": "5b44563d5f744a16f001faa8203b931e3e87f52734d21b19bdfc91e728b4df38",
+      "stf/disputes/tiny/progress_with_verdicts-6.json": "3e8b670d804c6716f7092f031b73bb5af34a584e356938070d8a935cef4113c2",
+      "stf/disputes/tiny/progress_with_culprits-2.json": "50de1cc12a236be1c97cb9df84713764098e42b580ca7a5915f9e17bc37b8819",
+      "stf/disputes/full/progress_with_verdicts-4.json": "79a58e318aed5de5891311aaafed58829d138e6e9854b759bf1a22b5c3badee2",
+      "stf/disputes/full/progress_with_verdicts-6.json": "e0b296cb802aa01348d2783546a33dacc594e27cac798818b0bb4d3203b10c44",
+      "stf/disputes/full/progress_with_culprits-2.json": "8eee6062a1fa0a407d5cfda5d2a0ce17e88222db182ead6e4d9cf34c7f03c508"
     }
   },
   "toolchains": {

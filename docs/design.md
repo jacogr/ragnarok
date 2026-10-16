@@ -34,7 +34,7 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
 - State-key constructors, fixed trie node layouts and bounded roots over serialized key/value
   mappings; authorization pools/queues, entropy, staging/active/previous validator rosters and
   timeslot state serialization, plus chapter-4 pending validators, ring commitment, tagged sealer
-  schedules and ticket accumulator.
+  schedules and ticket accumulator; chapter-5 canonical report judgment and offender sets.
   Other state components, proofs and persistence remain future work.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
@@ -49,7 +49,8 @@ See [M1 codec progress](m1.md) for baseline coverage and the next scope boundary
 PVM execution, complete state transitions, block import, consensus and availability processing,
 remaining state-component serialization, trie proofs/persistence and production validator operation
 are not implemented. Root construction accepts already serialized state-key/value entries; state
-chapters 1–2, 4, 6–9 and 11 now have typed serializers. Next planned: chapter 5 dispute state.
+chapters 1–2, 4–9 and 11 now have typed serializers. Next planned: chapter 3 recent history and
+accumulation-output belt.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general

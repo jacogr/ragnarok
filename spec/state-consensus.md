@@ -107,6 +107,7 @@ Checked Nim 2.2.12 ARC/Clang LTO builds retain all runtime guards. The native te
 `build/state-consensus/` retains commands, request SHA-256, logs and results; Linux CI runs the suite
 and uploads diagnostics. Local validation is macOS arm64; Linux results require CI after push.
 
-M1 framing-baseline coverage remains distinct from full state serialization. Next planned bounded
-group: chapter 5's dispute judgment/offender state. The [M1 checklist](../docs/m1.md) records all
+M1 framing-baseline coverage remains distinct from full state serialization. Chapter 5 now has its
+separate [dispute-state codec](state-disputes.md). Next planned: chapter 3 recent history and
+accumulation-output belt. The [M1 checklist](../docs/m1.md) records all
 remaining state chapters and service entries; this increment does not close them.
