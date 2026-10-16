@@ -141,7 +141,7 @@ ARC/Clang LTO retains assertion/bounds/range/field/overflow guards. Ignored
 Linux CI runs the suite and retains diagnostics; local results are macOS arm64, with Linux
 confirmation pending CI after push. Standard formatting is applied without toolchain patches.
 
-M1 framing-baseline coverage remains distinct from full state serialization. Chapters **1–15**
-now have typed serializers, with chapter 13's trace key-width gate still open. Chapter 16, service
+M1 framing-baseline coverage remains distinct from full state serialization. Chapters **1–16**
+now have typed serializers, with chapter 13's trace key-width gate still open. Service
 entries and whole-state composition/root evidence remain. Next planned bounded increment:
-**chapter 16 last accumulation outputs**. See the [M1 checklist](../docs/m1.md).
+**service-account metadata at C(255, service)**. See the [M1 checklist](../docs/m1.md).

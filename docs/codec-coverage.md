@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–15 (chapter 13 has an open trace key-width gate); remaining state serialization, trie proofs
+1–16 (chapter 13 has an open trace key-width gate); remaining state serialization, trie proofs
 and persistence remain open. PVM execution and state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -215,8 +215,25 @@ Twenty-four JSON-derived tiny/full component observations include dependency cha
 all set sorting is explicit transport derivation. Twelve unchanged trace entries match completely
 and re-emit identically; their ready rings are empty, and some accumulated sets are populated.
 Transitions/dependency resolution and full-state roots remain separate. The chapter-13 gate is
-unchanged. Next planned: chapter 16 last accumulation outputs.
+unchanged. Chapter 16 is now covered below.
 See [the contract](../spec/state-workqueues.md).
+
+## Last accumulation output state extension
+
+`state_outputs.nim` implements T chapter 16 as one count-prefixed ordered sequence of E4 service
+IDs and fixed 32-byte output commitments. The complete count/extent/byte policy is checked before
+allocation or payload access. Private acyclic ARC owners expose only copied fixed pairs/counts
+through nominal indices. Encoding preserves supplied sequence order and duplicates structurally;
+it does not infer accumulation transitions or turn the sequence into a canonical dictionary.
+
+Validation: 1,901 independent requests, six literal oracle checks, two nominal and one privacy
+compiler rejections, scope/copy/index/result guards and 21 partial C(16) roots. Eight unchanged
+trace entries consume completely and re-emit identically, but all are empty. Nonempty sequence,
+E4/commitment, order, count, policy, truncation and mutation coverage is explicitly authored.
+No nonempty published conformance, accumulation execution or whole-state-root claim is made.
+Next planned: service-account metadata at C(255, service); keyed service entries and whole-state
+integration remain. The chapter-13 parity gate is unchanged.
+See [the contract](../spec/state-outputs.md).
 
 ## Published codec fixture inventory
 

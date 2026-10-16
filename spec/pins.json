@@ -140,7 +140,11 @@
       "stf/accumulate/tiny/enqueue_and_unlock_chain_wraps-1.json": "53483270eec8072aec0018119b2e5c41cc88c8505604e2bb3eb0ac8057d53f41",
       "stf/accumulate/full/accumulate_ready_queued_reports-1.json": "a8e1282b56d1bcdd1df804ba9dbabcd05a81b93f7cb525fa91bb573e3d7af318",
       "stf/accumulate/full/enqueue_and_unlock_chain-1.json": "9e8204089169a1c45e956376c6e9fed5d4ea4de6db3097db95d11c007414ada0",
-      "stf/accumulate/full/enqueue_and_unlock_chain_wraps-1.json": "0768a5ad8385dca4d43d0c4910a308af8ff8690c22857b96bc4b1282394b14f2"
+      "stf/accumulate/full/enqueue_and_unlock_chain_wraps-1.json": "0768a5ad8385dca4d43d0c4910a308af8ff8690c22857b96bc4b1282394b14f2",
+      "traces/fuzzy/00000010.json": "f906e14c7bdee39b223b67402ed9e34579ea9d097dcb193e584833f0e3f3c009",
+      "traces/storage/00000001.json": "cbc75d1e204e2416675ebbdf6e7051b5ad1da865a45533a5f9bb23a2cc84b678",
+      "traces/storage/00000002.json": "3264d15312075fa07547ea33a659e7e8052cb938cdc21f859b042352bae324ff",
+      "traces/preimages/00000001.json": "5ee767aa015ea8742a10c3a8e3af934e3544ab25d046cf49c5a2b3095c5d7c26"
     }
   },
   "toolchains": {
