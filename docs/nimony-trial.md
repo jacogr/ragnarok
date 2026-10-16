@@ -1,12 +1,13 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **51 native suites, twenty-nine independent corpora, 1,286 runtime misuse rejections
+Status: **51 native suites, thirty-one independent corpora, 1,286 runtime misuse rejections
 and 584 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
-All production codec modules are ported; a final M1 validation-entry-point audit remains.
+All production codec modules are ported. The validation audit closes state evidence replay;
+the five early primitive/composite independent corpora still need runner integration.
 Full M1 verification remains qualified; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1599,18 +1600,74 @@ of M1 validation entry points, including the existing width-evidence and parked 
 regressions through this ported driver. This replays existing evidence, not new clarification work.
 Linux execution and full M2/M3 runtime parity remain gates.
 
+## Thirty-fourth bounded increment: M1 state regression replay and validation audit
+
+The Nimony runner now replays the existing state-width and request-namespace regressions through
+its already ported composition driver. This changes verification tooling only: no production
+codec, protocol encoding, dependency pin or namespace admissibility rule changes.
+
+- **37 width requests** preserve the embedded ownership selftest and all **36 exact captures**
+  from four nonempty binary privilege fields and sixteen raw trace observations. Profiles,
+  original byte hashes, candidate diagnostics and metadata associations remain in the report.
+  C12 retains E4/E8 and C13 retains E4 keys/compact gas, with no fallback.
+- **Seven namespace requests** preserve the embedded selftest, four successful predecessor/control
+  mappings and two DuplicateKey post-states. Both funded tiny-payload local witnesses and their
+  five pinned normative source hashes are retained. This is evidence replay, without new normative
+  investigation, PVM execution or genesis-reachability claims. The request-history pending test
+  stays skipped and the question stays parked until Gray Paper 0.8.1/0.8.2.
+- The runner also executes the existing literal report, assurance and whole-state-root oracle
+  safeguards, which the audit found were absent from the trial runner, plus specification source
+  identity checks. Every new verdict participates in the runner's failing exit status. A failed
+  composition build prevents both new regressions from executing a stale binary.
+
+Width requests are now authored once in `tests/state_widths_oracle.py`; the historical wrapper and
+Nimony runner consume that same unchanged input/expectation construction. A direct comparison with
+the committed construction confirms identical requests, expectations and evidence records
+(`build/nimony-trial/width-extraction-check.json`). All eighteen literal
+width/namespace/root checks and all ten CI-helper checks pass. No new native adapter or production
+implementation was needed, so there are **zero new compiler repair cycles, zero new production
+implementation lines and zero observed production defects** in this tooling increment. This is
+not an additional equivalent implementation task for language comparisons.
+
+Cumulative checked evidence is **51 positive native suites, thirty-one independent corpora,
+1,286 runtime misuse rejections and 584 compilation rejections** (501 privacy + 74 nominal + five
+schema + four static contracts), plus three language probes. Formatting still covers **768 Nim
+files**. The full functional report records **811 source/test hashes** and complete commands,
+request/actual/expected hashes and individual verdicts. Results are local macOS ARM64, pristine
+pinned Nimony 0.6.3, checked ARC/Clang LTO. Branch Linux CI consumes the expanded runner; this
+local result does not establish Linux execution.
+
+The audit compared the original Linux workflow's validation entry points with the trial runner:
+
+| Validation scope | Nimony evidence / remaining work |
+| --- | --- |
+| Codec-native success, ownership and misuse checks | 51 suites and isolated runtime/compiler rejection checks |
+| Reports, extrinsics, packages, headers, blocks, bits, collections and C.2 | Existing independent corpora; report/assurance literal harnesses now also gated |
+| Typed state chapters, service values, composition and raw roots | Existing corpora; root literal harness now also gated |
+| State-width evidence and parked namespace witnesses | Both unchanged regressions now gated |
+| Specification identity | Existing provenance tests now gated |
+| Early natural/fixed/bounded/composite/digest adapters | Native suites pass; five legacy independent batch corpora are not yet integrated |
+| Contextual signatures, Bandersnatch, networking and integrated service | Separate M2/M3 ports; not M1 codec completion |
+
+**Full local M1 validation parity is not yet declared.** The audit found that the historical
+`tests/test_codec.py` entry point additionally drives natural, fixed-width, bounded, composite and
+digest independent corpora through five batch adapters. Their successful native suites do not
+replace those corpus comparisons. That is the next bounded validation task. No production codec
+module remains to port; the all-source semantic baseline remains 35/43, with the eight remaining
+failures in contextual crypto/Bandersnatch and QUIC.
+
 ## Remaining work and next bounded increment
 
-Next: audit M1 validation entry points and replay the existing state-width evidence and parked
-namespace-witness regressions through the ported composition driver. Close coverage/tooling gaps
-before declaring local M1 verification parity. Keep the request-namespace question parked for
-Gray Paper 0.8.1/0.8.2 review; do not add new admissibility rules or reopen normative investigation.
-Other state components remain later bounded chunks.
+Next: port/integrate the five early natural, fixed-width, bounded, composite and digest batch
+adapters and their existing independent corpora into the checked Nimony runner. Preserve their
+original input/expectation coverage and atomic/ownership checks; finish the local M1 validation
+comparison before moving to contextual M2. Keep the request-namespace question parked and all
+protocol/dependency pins unchanged.
 
 Further port work remains:
 
-- M1: production codec families and typed composition are ported. Audit remaining validation entry
-  points, width evidence and parked namespace-witness regressions before claiming complete local
+- M1: production codec families, typed composition and state regression replay are ported.
+  Five early independent batch corpora remain to integrate before claiming complete local
   verification parity. Actual Linux execution remains distinct.
 - M2: contextual JAM crypto and Bandersnatch/VRF runtime parity, including their FFI lifetimes,
   remain unverified. The raw primitive slice above does not establish those properties.
@@ -1643,6 +1700,7 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
 authorization, state chapters 3–5/10/12–16, fixed service-account metadata and storage/preimage
-keyed values, request histories, exact chapter/service composition and raw whole-state roots.
+keyed values, request histories, exact chapter/service composition, raw whole-state roots, published width
+evidence and the unchanged parked namespace witnesses.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

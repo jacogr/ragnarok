@@ -714,7 +714,8 @@ def main():
                   ROOT/'tests/collections_oracle.py', ROOT/'tests/test_collections_harness.py',
                   ROOT/'tests/native/c2_driver.nim', ROOT/'tests/c2_oracle.py', ROOT/'tests/test_c2_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
-                  ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
+                  ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json',
+                  ROOT/'tests/test_report_harness.py', ROOT/'tests/test_assurances_harness.py']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
                + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL, *CONTRACTS)]
                + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in
@@ -722,7 +723,10 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('tests/native/state_composition_driver.nim', 'tests/state_composition_oracle.py',
-                'tests/test_state_composition_harness.py', 'tests/state_roots_oracle.py', 'tests/native/composition_fixture.nim',
+                'tests/test_state_composition_harness.py', 'tests/state_roots_oracle.py',
+                'tests/test_state_roots_harness.py', 'tests/test_state_widths_harness.py',
+                'tests/request_namespace_oracle.py', 'tests/test_request_namespace_harness.py',
+                'tests/test_spec.py', 'tests/dependencies.py', 'tests/native/composition_fixture.nim',
                 'tests/native/state_requests_driver.nim', 'tests/state_requests_oracle.py',
                 'tests/test_state_requests_harness.py', 'tests/native/state_service_values_driver.nim', 'tests/state_service_values_oracle.py',
                 'tests/test_state_service_values_harness.py', 'tests/native/state_accounts_driver.nim', 'tests/state_accounts_oracle.py',
@@ -966,11 +970,12 @@ def main():
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
     sys.path.insert(0, str(ROOT/'tests'))
     from report_oracle import requests
+    report_harness = command([sys.executable, ROOT/'tests/test_report_harness.py'], 'report-harness')
     lines, expected = requests()
     source = BUILD/'report-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/report_codec_driver.nim', 'report-codec')
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=report_harness, requests=len(lines), passed=False,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare all encoded bytes and decoded semantic fields, including malformed and published fixtures.
@@ -978,7 +983,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = report_harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -988,6 +993,7 @@ def main():
     announce('independent report corpus', corpus['passed'])
     # Preserve the full independent assurance corpus and derive capacity-free inspection expectations separately.
     from assurances_oracle import requests as assurance_requests, decode as assurance_decode
+    assurance_harness = command([sys.executable, ROOT/'tests/test_assurances_harness.py'], 'assurance-harness')
     lines, expected = assurance_requests()
     codec_count = len(lines)
     for line in list(lines):
@@ -1003,7 +1009,7 @@ def main():
     source = BUILD/'assurance-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/assurances_driver.nim', 'assurances-codec')
-    corpus = dict(build=compiled, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
+    corpus = dict(build=compiled, harness=assurance_harness, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
                   requests=len(lines), passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare complete named fields/bytes and errors; native assertions additionally protect atomic output/lifetimes.
@@ -1011,7 +1017,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = assurance_harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1772,6 +1778,7 @@ def main():
     announce('independent exact chapter/service and whole-state composition corpus', corpus['passed'])
     # Raw full-map roots remain separate from typed composition and preserve their existing sensitivity variants.
     from state_roots_oracle import published as roots_published, requests as roots_requests
+    roots_harness = command([sys.executable, ROOT/'tests/test_state_roots_harness.py'], 'state-roots-harness')
     observations = roots_published()
     lines, expected, records = roots_requests(observations)
     source = BUILD/'state-roots-requests.txt'
@@ -1779,7 +1786,8 @@ def main():
     result = command([BUILD/'trie-codec', source], 'state-roots-corpus') if report['trie_corpus']['build']['exit_code'] == 0 else dict(exit_code=1, output='Trie driver build failed')
     output = result.pop('output')
     actual = output.splitlines()
-    corpus = dict(requests=len(lines), run=result, passed=result['exit_code'] == 0 and actual == expected,
+    corpus = dict(requests=len(lines), run=result, harness=roots_harness,
+                  passed=roots_harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected,
                   driver_build=report['trie_corpus']['build'], published_maps=[row for _, row in observations], variants=records,
                   distinct_published_roots=len({row['state_root'] for _, row in observations}),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
@@ -1787,6 +1795,58 @@ def main():
                   expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
     report['state_roots_corpus'] = corpus
     announce('independent raw published whole-state root corpus', corpus['passed'])
+    # Specification identity checks verify pristine pinned inputs, without advancing protocol decisions.
+    report['specification'] = command([sys.executable, ROOT/'tests/test_spec.py'], 'specification')
+    # Reuse the successfully compiled composition driver; never execute a stale binary after a failed build.
+    from state_widths_oracle import requests as width_requests
+    from request_namespace_oracle import requests as namespace_requests
+    composition_build = report['composition_corpus']['build']
+    pins = json.loads((ROOT/'spec/pins.json').read_text())
+    # These are the already cited witness sources; replaying their equations does not reopen normative review.
+    normative = ('text/accounts.tex', 'text/definitions.tex', 'text/pvm_invocations.tex',
+                 'text/accumulation.tex', 'text/merklization.tex')
+    normative_hashes = {name: hashlib.sha256((ROOT/pins['graypaper']['path']/name).read_bytes()).hexdigest()
+                        for name in normative}
+    normative_match = all(digest == pins['graypaper']['source_sha256'][name]
+                          for name, digest in normative_hashes.items())
+    # Freeze independent requests and expectations before executing either regression family.
+    for family in ('state_widths', 'request_namespace'):
+        harness = command([sys.executable, ROOT/f'tests/test_{family}_harness.py'], family+'-harness')
+        if family == 'state_widths':
+            # Preserve every published exact extent, profile and original candidate/metadata observation.
+            lines, expected, records, binaries, traces = width_requests()
+            evidence = dict(captures=records, binary_privilege_fields=[e for _, e in binaries],
+                            raw_trace_observations=[e for _, _, e in traces],
+                            gas_encoding_policy='canonical JAM compact naturals; no fallback')
+        else:
+            # Preserve the funded tiny-payload witnesses and full request-length domain unchanged.
+            lines, expected, witnesses = namespace_requests()
+            evidence = dict(witnesses=witnesses, normative_sources=normative_hashes,
+                            namespace_policy='parked until Gray Paper 0.8.1/0.8.2; no new restriction',
+                            scope='local account predicates and composition; no PVM or genesis reachability')
+        source = BUILD/(family+'-requests.txt')
+        source.write_text('\n'.join(lines)+'\n')
+        result = (command([BUILD/'state_composition-codec', source], family+'-corpus')
+                  if composition_build['exit_code'] == 0 else dict(exit_code=1, output='Composition driver build failed'))
+        output = result.pop('output')
+        actual = output.splitlines()
+        passed = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        if family == 'state_widths':
+            # All 36 original published values must capture exactly, without a compatibility fallback.
+            passed = passed and len(lines) == 37 and actual[1:] == ['ok']*36
+        else:
+            # Four successful controls/predecessors and two duplicate-key post-states retain the existing policy.
+            passed = passed and normative_match and len(lines) == 7 and len(witnesses) == 2
+        corpus = dict(requests=len(lines), run=result, harness=harness, driver_build=composition_build,
+                      passed=passed, evidence=evidence,
+                      requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                      actual_sha256=hashlib.sha256(output.encode()).hexdigest(),
+                      expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
+        if not passed:
+            # Retain length mismatches too; adjacent logs preserve complete native observations.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+        report[family+'_corpus'] = corpus
+        announce('unchanged '+family+' regression corpus', passed)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2399,6 +2459,8 @@ def main():
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
                    and report['composition_corpus']['passed'] and report['state_roots_corpus']['passed']
+                   and report['state_widths_corpus']['passed'] and report['request_namespace_corpus']['passed']
+                   and report['specification']['exit_code'] == 0
                    and len(report['composition']) == 2*len(COMPOSITION_MEMBERS)
                    and all(row['passed'] for row in report['composition'])
                    and report['requests_corpus']['passed']

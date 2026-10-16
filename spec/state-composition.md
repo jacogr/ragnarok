@@ -147,8 +147,9 @@ including its retained chapter baseline. Thirty-six isolated actual/default read
 the exact success contract; fourteen private/read-only compiler probes protect result, owner and
 slot storage, and three nominal probes protect owner and entry/chapter index domains.
 
-Results are local macOS ARM64, checked ARC/Clang LTO. All production codec modules are ported;
-next is the final M1 validation-entry-point audit, including unchanged width-evidence and parked
-namespace-witness regressions. Complete verification parity and Linux execution remain gates.
+Results are local macOS ARM64, checked ARC/Clang LTO. All production codec modules are ported.
+Unchanged width-evidence and parked namespace-witness regressions now replay through this driver
+in the Nimony runner. Next: integrate the five early primitive/composite independent batch corpora;
+complete local M1 validation parity and Linux execution remain separate gates.
 No transition execution or new namespace rule is introduced. See the
 [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3 work.
