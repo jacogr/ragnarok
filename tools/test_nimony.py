@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -81,6 +81,16 @@ NOMINAL.update(assurances_anchor='got: AssuranceSignature but wanted: AssuranceA
                assurances_config='got: ValidatorCount but wanted: CoreCount',
                assurances_index='got: CoreCount but wanted: ValidatorIndex')
 ASSURANCE_MEMBERS = ('written', 'count', 'consumed', 'inspect-count', 'inspect-consumed')
+GUARANTEE_PRIVATE = dict(guarantee_result_private='completed', guarantee_result_read_private='completed',
+    guarantee_result_retag='status', guarantee_result_forge='status', guarantee_result_error='error',
+    guarantee_result_value='value', private_guarantees_owner='data', guarantee_owner_forge='data')
+NOMINAL.update(swapped_guarantee_slot='got: LookupSlot but wanted: GuaranteeSlot',
+               swapped_guarantor_index='got: ValidatorIndex but wanted: GuarantorIndex',
+               swapped_guarantee_signature='got: AssuranceSignature but wanted: GuaranteeSignature')
+GUARANTEE_MEMBERS = ('owner', 'count', 'consumed', 'single-value', 'single-consumed', 'selected',
+                    'encoded', 'owned', 'measured', 'bytes', 'inspect-count', 'inspect-consumed',
+                    'record-core', 'record-consumed')
+PRIVATE.update(GUARANTEE_PRIVATE)
 PRIVATE.update(ASSURANCE_PRIVATE)
 PRIVATE.update(REPORT_PRIVATE)
 PRIVATE.update(OWNED_PRIVATE)
@@ -132,7 +142,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -142,6 +152,8 @@ def main():
                + [ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
                + [ROOT/'tests/native/ownership_checks.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
+               + list((ROOT/'tests').glob('guarantees_*.py'))
+               + [ROOT/'tests/native/guarantees_driver.nim']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -149,13 +161,18 @@ def main():
                + [Path(__file__).resolve()])
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(sources)}
+    # The existing native guarantee suite consumes an independently authored minimal report fixture.
+    sys.path.insert(0, str(ROOT/'tests'))
+    from guarantees_oracle import record as guarantee_record
+    guarantee_fixture = BUILD/'minimal-report.bin'
+    guarantee_fixture.write_bytes(guarantee_record(0)['report'])
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary], name+'-run')
+            row['run'] = command([binary, *([guarantee_fixture] if name == 'guarantees' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
             if name == 'ownership' and row['passed']:
                 # Retain public live-memory measurements for the isolated five-schema ARC release workload.
@@ -171,6 +188,13 @@ def main():
                 if release is not None:
                     # This is allocator live occupancy, not a general leak-freedom or RSS claim.
                     report['report_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'guarantees' and row['passed']:
+                # Report children survive parent retirement; all isolated scopes must release their final ARC references.
+                release = re.search(r'GUARANTEE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Observe only public live occupancy after warmup, never RSS or private reference counts.
+                    report['guarantee_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -229,6 +253,28 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['assurance_corpus'] = corpus
     announce('independent assurance codec/inspection corpus', corpus['passed'])
+    # Keep the original guarantee corpus intact and independently check inspection and standalone APIs.
+    from guarantees_checks import requests as guarantee_requests
+    lines, expected, counts = guarantee_requests()
+    source = BUILD/'guarantee-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/guarantees_driver.nim', 'guarantees-codec')
+    corpus = dict(build=compiled, request_groups=counts, requests=len(lines), passed=False,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Native assertions additionally cover input mutation, copied metadata and whole-output atomicity.
+        result = command([binary, source], 'guarantees-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Preserve the first differing row and exact full output instead of reporting a round-trip-only success.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['guarantee_corpus'] = corpus
+    announce('independent guarantee extrinsic/inspection/standalone corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -347,6 +393,19 @@ def main():
                           and '[AssertionDefect]' in result['output'])
                 report['assurances'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' assurance '+member+' guard', passed)
+    # Every public guarantee result instantiation must protect failed/default values, including inspection tuples.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_guarantee_results.nim', 'guarantee-results')
+    report['guarantees_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Independent processes prove all metadata paths and the failure factory's non-success requirement.
+        cases = [(member, origin) for origin in ('default', 'error') for member in GUARANTEE_MEMBERS]
+        cases += [('factory', 'none')]
+        for member, origin in cases:
+            result = command([binary, member, origin], 'guarantee-'+origin+'-'+member)
+            sentinel = 'not reason == None' if member == 'factory' else 'value.status == None'
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['guarantees'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' guarantee '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -376,6 +435,8 @@ def main():
                    and len(report['composite']) == 29 and all(row['passed'] for row in report['composite'])
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
+                   and report['guarantee_corpus']['passed']
+                   and len(report['guarantees']) == 29 and all(row['passed'] for row in report['guarantees'])
                    and len(report['assurances']) == 10 and all(row['passed'] for row in report['assurances'])
                    and len(report['reports']) == 14 and all(row['passed'] for row in report['reports'])
                    and len(report['nominal']) == len(NOMINAL) and all(row['passed'] for row in report['nominal'])

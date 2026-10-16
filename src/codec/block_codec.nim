@@ -673,8 +673,8 @@ proc readPreimages*(owner: PreimageComponent): OwnedResult[OwnedFrame] =
 
 # Materialize the existing report/credential owner API on demand, keeping JAM report logic in its original codec.
 proc readGuarantees*(owner: GuaranteeComponent): GuaranteeResult[GuaranteesRead] =
-  if owner.data.isNil: return GuaranteeResult[GuaranteesRead](
-      error: GuaranteeError.InvalidOwner) # Defaults carry no reports.
+  if owner.data.isNil: return guaranteeFailure[GuaranteesRead](
+      GuaranteeError.InvalidOwner) # Defaults carry no reports.
   let config = owner.data.config
   decodeGuarantees(owner.data.wire, GuaranteeConfig(cores: config.cores,
       validators: config.validators, maxBytes: config.maxBytes))

@@ -232,12 +232,50 @@ rejections** and **three nominal-domain compilation rejections**. Cumulative cov
 The compiler rejects anchor/signature swaps, validator/core index swaps and configuration-domain
 swaps. Verification remains local macOS ARM64 with checked ARC/Clang LTO; Linux is unverified.
 
+## Seventh increment: guarantee records and extrinsics
+
+`guarantees.nim` now runs under the same pinned Nimony nightly. `GuaranteeResult[T]` hides its
+status/value, exposes read-only outcomes and requires success before value access. Defaults remain
+Uninitialized. `guaranteeFailure[T]` lets sibling adapters report a non-success reason; it cannot
+construct success. The block adapter's existing missing-owner return was mechanically changed to
+this helper; block runtime parity is not claimed. Private parent storage is explicitly nullable,
+and getters retain a stable nil-checked reference for access and ARC lifetime proofs.
+
+The original scan-before-allocation, frame budgets, error precedence, core/credential order and
+fixed E4/E2 fields are unchanged. Child reports still use their validated immutable owner API.
+The complete **7,617-request** independent extrinsic corpus passes, including published tiny/full
+fixtures, the full 341-core count, every representative truncation, late errors, malformed fuzz,
+complete fixed fields, caller-source mutation, copied-getter independence and atomic output.
+Another **7,555** direct inspections check every original decode input without child capture.
+**8,836** additional standalone capture/inspection/measurement/fresh-encoding comparisons check
+complete child bytes and fixed metadata, prefix consumption, budgets through uint64 maximum,
+truncations, credential counts, configuration extremes and deterministic malformed input.
+Total guarantee corpus: **24,008 requests**. The standalone oracle parses directly so removing
+an extrinsic count cannot accidentally change budget-versus-report failure precedence.
+
+The ninth positive suite retains the existing late-failure, source-alias and default-owner checks.
+It additionally replaces parent handles while aliases retain old snapshots, returns child reports
+past the last parent scope, mutates original sources, and runs 1,000 isolated retain/replace/copy/drop
+cycles after 100 warmups. Public live occupancy remains **16,608 → 16,608 bytes** on this Mac;
+other outer test snapshots remain live during that observation. This checks that workload's ARC
+release, not RSS or general leak freedom. No private runtime/refcount hooks are used.
+
+This increment adds **29 runtime misuse rejections** and **11 compilation rejections** (eight
+private/read-only owner/result checks and three nominal slot/index/signature checks). Cumulative
+coverage is **134 runtime result/variant/constructor rejections and 96 compilation rejections**,
+plus **nine positive suites**, the report/assurance/guarantee corpora and three runtime probes.
+The former FieldDefect catch is replaced by independent processes matching the actual Nimony
+success-contract failures, including all public generic result instantiations and the failure
+factory's precondition. The four independent guarantee-oracle example tests also pass.
+Verification remains local macOS ARM64 with checked ARC/Clang LTO; Linux is unverified.
+Credential verification, assignments and eligibility remain separate state/M2 work.
+
 ## Remaining work and next bounded increment
 
-Next: port guarantee records and extrinsics (`guarantees.nim`), including immutable parent
-owners, independently retained report children, credential domains, guarded results and the
-existing independent wire/semantic/lifetime corpus. The report and assurance prerequisites now
-pass locally. Other M1 families and M2/M3 remain separate increments.
+Next: port ticket records and extrinsics (`tickets.nim`), preserving fixed E1 attempts and
+784-byte opaque proofs, guarded progress results, caller-buffer atomicity and the independent
+published/boundary/fuzz corpus. Cryptographic proof verification remains separate M2 work.
+Other M1 families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -269,6 +307,6 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance slice. A missing check or failed guard
+verified scalar/composite/digest/owned/report/assurance/guarantee slice. A missing check or failed guard
 still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

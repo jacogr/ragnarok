@@ -54,3 +54,30 @@ credential failures, nested malformed framing, source mutation and copied-getter
 whole-destination encoder sentinels, outer-record overlap, checked variant access, deterministic
 malformed input, three nominal compiler rejections and private-owner field rejection. Run
 `python3 tests/test_guarantees.py` and `python3 tests/test_guarantees_harness.py`.
+
+## Nimony port verification
+
+The pinned nightly port uses private `GuaranteeResult[T]` status/value storage, read-only `error`
+and a success-precondition `value` accessor. `guaranteeFailure[T]` requires a non-success reason
+for sibling adapters; there is no public raw success constructor. Defaults remain Uninitialized.
+`OwnedGuarantees` uses a private nullable ARC reference, retained locally before nil checks.
+The scan-before-allocation and full-source preflight policies, wire fields and error precedence
+are preserved. Signature validity and state eligibility are not established by this codec.
+
+`tools/test_nimony.py` runs all 7,617 original independent extrinsic requests, 7,555 corresponding
+allocation-free inspections and 8,836 standalone capture/inspection/measurement/encoding cases.
+`tests/guarantees_checks.py` parses standalone bytes directly, preserving budget error precedence
+without introducing an artificial outer count. Tests include published fixtures, full population,
+truncations, malformed inputs, unsigned configuration/budget boundaries and exact metadata/bytes.
+
+The native suite retains late-failure atomicity and deliberate outer-record alias checks through
+an aligned fixed array view. It adds parent replacement, escaped child retention and a warmed
+1,000-cycle ARC release workload: live occupancy is unchanged at 16,608 bytes on the trial Mac.
+That observation covers the isolated workload, not RSS or general leak freedom. Twenty-nine
+runtime rejections guard public result paths and failure construction. Eight compilation checks
+reject result/owner bypasses; three nominal checks reject slot, index and signature swaps.
+
+Commands, compiler metadata, source/corpus hashes and exact diagnostics are retained in ignored
+`build/nimony-trial/verification/results.json` and adjacent logs. Local checked ARC/Clang LTO
+verification does not establish Linux, block-composition or crypto parity; see
+[the trial](../docs/nimony-trial.md).
