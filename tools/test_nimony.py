@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -267,6 +267,34 @@ BITS_MEMBERS = (
     'fixed-consumed', 'info-count', 'info-packed', 'bit', 'bit-index', 'boolean-write',
     'variable-write', 'fixed-write', 'owned-variable-write', 'owned-fixed-write',
 )
+COLLECTION_PRIVATE = {
+    'private_set_snapshot': 'data',
+    'private_dictionary_snapshot': 'data',
+    'collection_result_integer_private': 'completed',
+    'collection_result_count_private': 'completed',
+    'collection_result_set_private': 'completed',
+    'collection_result_dictionary_private': 'completed',
+    'collection_result_scalar_private': 'completed',
+    'collection_result_pair_private': 'completed',
+    'collection_result_retag': 'status',
+    'collection_result_forge': 'status',
+    'collection_result_error_write': 'error',
+    'collection_result_value_write': 'value',
+    'private_collection_unit': 'unit',
+    'private_collection_commit': 'put',
+}
+COLLECTION_MEMBERS = (
+    'set-owner', 'set-consumed', 'dictionary-owner', 'dictionary-consumed', 'set-count',
+    'dictionary-count', 'natural', 'unsigned', 'bytes', 'pair-key', 'pair-value', 'fixed-write',
+    'variable-write', 'dictionary-write', 'owned-fixed-write', 'owned-variable-write',
+    'owned-dictionary-write', 'scalar-natural', 'scalar-natural-consumed', 'scalar-unsigned',
+    'scalar-bytes', 'scalar-size', 'scalar-natural-write', 'scalar-unsigned-write',
+    'scalar-bytes-write',
+)
+PRIVATE.update(COLLECTION_PRIVATE)
+NOMINAL.update(raw_collection_count="[2] expected: CollectionCount but got: uint64",
+               swapped_collection_schema="[1] expected: CollectionUInt but got: CollectionUInt",
+               dictionary_as_set="[1] expected: OwnedSet[T] but got: OwnedDictionary")
 PRIVATE.update(BITS_PRIVATE)
 NOMINAL.update(raw_bit_count="[2] expected: BitCount but got: uint64",
                swapped_bit_limit="[2] expected: BitLimit but got: ByteLimit")
@@ -330,7 +358,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -350,11 +378,15 @@ def main():
                   ROOT/'tests/test_header_harness.py', ROOT/'tests/block_oracle.py',
                   ROOT/'tests/native/block_driver.nim', ROOT/'tests/test_block_harness.py',
                   ROOT/'tests/native/bits_driver.nim', ROOT/'tests/bits_oracle.py',
-                  ROOT/'tests/test_bits_harness.py']
+                  ROOT/'tests/test_bits_harness.py', ROOT/'tests/native/collections_driver.nim',
+                  ROOT/'tests/collections_oracle.py', ROOT/'tests/test_collections_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
                + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL)]
+               + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in
+                  ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
+                   'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(sources)}
@@ -436,6 +468,13 @@ def main():
                 if release is not None:
                     # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
                     report['bits_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'collections' and row['passed']:
+                # Replaced typed sets/dictionaries and zero-width domains release their final ARC references.
+                release = re.search(r'COLLECTION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
+                    report['collection_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -751,6 +790,31 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['bits_corpus'] = corpus
     announce('independent Boolean/fixed/variable bitstring corpus', corpus['passed'])
+    # Preserve the unchanged collection oracle: numeric/byte ordering, pairing and zero-width singleton domains.
+    from collections_oracle import requests as collection_requests
+    harness = command([sys.executable, ROOT/'tests/test_collections_harness.py'], 'collection-harness')
+    lines, expected = collection_requests()
+    source = BUILD/'collection-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    groups = {kind: sum(line.split()[1] == kind for line in lines) for kind in ('F', 'S', 'M')}
+    assert sum(groups.values()) == len(lines), groups
+    compiled, binary = build(compiler, ROOT/'tests/native/collections_driver.nim', 'collection-codec')
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Compare copied logical fields, canonical wire, consumed progress and typed reasons after input erasure.
+        result = command([binary, source], 'collection-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Retain the first mismatch and complete native output for reproducible diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['collection_corpus'] = corpus
+    announce('independent canonical fixed/variable set/dictionary corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -963,12 +1027,44 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['bits'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' bits '+member+' guard', passed)
+    # Every collection/scalar result shape keeps failure/default application access guarded.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_collection_results.nim', 'collection-results')
+    report['collections_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate all application reads and both unsupported direct scalar width contracts.
+        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in COLLECTION_MEMBERS]
+        for member, origin, sentinel in cases:
+            result = command([binary, member, origin], 'collection-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['collections'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' collection '+member+' guard', passed)
+    # Closed family checks and direct static scalar contracts reject unsupported schemas before execution.
+    for name, domain in (('unsupported_collection_scalar', 'string'),
+                         ('negative_collection_width', 'CollectionUInt'), ('wide_collection_width', 'CollectionUInt'),
+                         ('scalar_collection_negative_width', '-1'), ('scalar_collection_wide_width', '9')):
+        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
+                          f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+        if name.startswith('scalar_collection_'):
+            # Constant-invalid direct helper calls fail at the supported precondition during compilation.
+            rejected = ('Error: contract violated:' in result['output']
+                        and '0 <= '+domain+' and '+domain+' <= 8' in result['output'])
+        else:
+            # No unsupported mutable schema or E width can instantiate a collection decoder.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'does not match constraint' in result['output'] and domain in result['output']
+                        and 'decodeVariableSet(' in result['output'])
+        passed = result['exit_code'] != 0 and rejected
+        report['schemas'].append(dict(name=name, passed=passed, check=result))
+        announce(name, passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', source], name)
-        if name == 'wrong_owner_pool':
+        if name == 'private_collection_commit':
+            # Generic concept support must never export the unchecked writer.
+            rejected = "undeclared identifier: 'put'" in result['output']
+        elif name == 'wrong_owner_pool':
             # The second argument must be an index, never a replacement source buffer.
             rejected = 'Type mismatch' in result['output'] and '[2] expected: int64 but got: array' in result['output']
         else:
@@ -986,9 +1082,13 @@ def main():
             # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'rootImport(' in result['output'] and member in result['output'])
-        elif name in ('raw_bit_count', 'swapped_bit_limit'):
+        elif name in ('raw_bit_count', 'swapped_bit_limit', 'raw_collection_count',
+                      'swapped_collection_schema', 'dictionary_as_set'):
+
             # The second parameter must retain its logical-bit domain, independently of array-view diagnostics.
-            call = 'decodeFixedBits(' if name == 'raw_bit_count' else 'decodeBits('
+            call = dict(raw_bit_count='decodeFixedBits(', swapped_bit_limit='decodeBits(',
+                        raw_collection_count='decodeSet(', swapped_collection_schema='encodeOwnedVariableSet(',
+                        dictionary_as_set='setCount(')[name]
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and call in result['output'] and member in result['output'])
         elif name in ('unsigned_as_full_header', 'block_as_extrinsic'):
@@ -1012,7 +1112,10 @@ def main():
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
                    and report['header_corpus']['passed'] and report['block_corpus']['passed']
-                   and report['bits_corpus']['passed']
+                   and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
+                   and len(report['collections']) == 2*len(COLLECTION_MEMBERS)
+                   and all(row['passed'] for row in report['collections'])
+                   and len(report['schemas']) == 5 and all(row['passed'] for row in report['schemas'])
                    and len(report['bits']) == 2*len(BITS_MEMBERS) and all(row['passed'] for row in report['bits'])
                    and len(report['blocks']) == 2*len(BLOCK_MEMBERS)+3+len(BLOCK_WRONG)
                    and all(row['passed'] for row in report['blocks'])

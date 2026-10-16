@@ -127,5 +127,7 @@ checks. Full/signing headers, optional markers, retained views and selected-alte
 pass their complete corpus and release checks. Complete extrinsic/block composition now passes
 its independent corpus, nested cause/result guards, cross-child alias checks and retained-child
 release workload. Strict Booleans and fixed/variable packed bitstrings now pass their independent
-corpus, guarded results and snapshot release checks. Canonical scalar sets and dictionaries are
-the next bounded compiler-port increment.
+corpus, guarded results and snapshot release checks. Canonical scalar sets and dictionaries now
+pass their complete corpus, closed schema checks, guarded results, private-storage aliases and
+snapshot release workload. C.2 availability and accumulation input records are the next bounded
+compiler-port increment.

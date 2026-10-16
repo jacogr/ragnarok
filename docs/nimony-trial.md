@@ -1,12 +1,12 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **17 native suites, nine independent family corpora, 416 runtime misuse rejections and
-230 compilation rejections pass locally**. Strict Booleans and fixed/variable packed bitstrings
-now join the verified scalar, owned, report, extrinsic-family, work-package, header and block slices.
-M1 migration remains partial; M2/M3 and Linux parity remain unverified. This branch targets Nimony directly,
-without dual-compiler source support. The main branch remains on Nim 2.2.12. Protocol/dependency
-pins are unchanged.
+Status: **19 native suites, ten independent family corpora, 466 runtime misuse rejections and
+252 compilation rejections pass locally**. Canonical scalar sets and dictionaries now join the
+verified scalar, owned, report, extrinsic-family, work-package, header, block and bitstring slices.
+M1 migration remains partial; M2/M3 and Linux parity remain unverified. This branch targets Nimony
+directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
+Protocol/dependency pins are unchanged.
 
 ## Compiler and environment
 
@@ -512,18 +512,74 @@ rejections (200 privacy + 30 nominal), 17 positive native suites and nine family
 three runtime language probes. Verification remains local macOS ARM64 with checked ARC/Clang LTO.
 M1 migration is still partial; Linux, M2 and M3 remain unverified.
 
+## Fourteenth increment: canonical scalar sets and dictionaries
+
+`collections.nim` now runs on the same pristine nightly. `CollectionResult[T]` keeps status/payload
+private, with read-only outcomes and success-precondition application access. Nullable set/dictionary
+references receive stable local non-null proofs. Supported elements remain value-only naturals,
+E0–E8 unsigned scalars and fixed octets. Public generic APIs combine a scalar-operation concept with
+a closed family gate; arbitrary mutable schemas cannot opt into collection ownership.
+
+This was a harder compiler port than the preceding increments. Unconstrained generic bodies did
+not resolve their scalar operations. Typedesc-parameter constructors triggered an internal
+`isTrival` compiler error; explicit `CollectionUInt[W]`/`CollectionBytes[N]` names avoid it. Concept
+matching across modules required visible implementing operations. Safe scalar readers, sizing,
+comparison and atomic `encodeScalar` operations now provide that public interface; unchecked
+cursor writers remain private and have an explicit negative compilation probe. Scalar encoding
+copies its fixed value before writing, including shifted source/output overlap. Parent collection
+encoders retain their stronger whole-source alias rejection and complete preflight. The checked
+writer adds another field-level validation path; whether LTO eliminates that work has not been
+measured. This increment establishes correctness coverage, not performance parity.
+
+The explicit E0–E8 family registry rejects invalid collection schemas at compile time. Direct
+scalar helper width contracts also reject constant-invalid calls during compilation, for example
+`contract violated: 0 <= 9 and 9 <= 8`. These two probes are compilation rejections, not runtime
+repair or guard measurements. No historical compiler-repair count is inferred from this run.
+Concept default requirements are written explicitly so the existing `nimpretty` formatter can
+parse them; there is no formatter bypass or alternate compiler source path.
+
+The first adapter build exposed a standard-sequence division-by-zero warning for physically
+zero-sized `CollectionBytes[0]`. A private `array[ord(size == 0), byte]` storage unit makes that
+scalar physically nonzero, while adding no wire bytes. Positive-width scalar extents are unchanged.
+The unit is inaccessible to callers and excluded from comparison/serialization. Zero-width sets
+and dictionary key domains still admit only one distinct element. The final build has no such
+warning; neither compiler nor standard-library sources are modified.
+
+All **13,161** unchanged independent requests pass, alongside seven oracle known answers. They
+retain every E0–E8 instantiation, natural/fixed-byte schemas, mixed dictionaries, numeric versus
+wire-order inversions, strict duplicate/descending rejection, unordered associated values,
+zero-width domains, huge count/host-bound claims, late source overflow, truncation, malformed fuzz,
+item/byte budgets and exact/short/spare output. Published report fields supply only hash-checked
+empty set/dictionary cross-checks; nonempty logical-order examples remain independently authored.
+
+Both native suites preserve retained owners, copied value independence, stricter policy, defaults,
+signed index errors and borrowed/private typed-storage aliases. Added coverage exercises callee-local
+source escape, same-sized owner replacement, copied pairs, checked scalar failures and shifted
+scalar overlap. After 100 warmups, 1,000 retain/replace/reframe/drop cycles return public live allocator
+occupancy to baseline: **480 → 480 bytes**, including zero-width typed sequences, with outer fixtures
+live. Exact counts are in the evidence JSON; this measures that workload rather than RSS or general
+leak freedom.
+
+This increment adds **50 runtime misuse rejections** and **22 compilation rejections**: 14 private/
+read-only result/owner/storage/writer checks, three nominal count/schema/owner checks and five
+unsupported-schema/static-width checks. Cumulative totals are **466 runtime result/variant/
+constructor rejections, 252 compilation rejections (214 privacy + 33 nominal + five schema),
+19 positive native suites and ten family corpora**, plus three runtime language probes. Verification
+remains local macOS ARM64 with checked ARC/Clang LTO; M1 migration is partial and Linux/M2/M3 remain
+unverified. These generic/storage adaptations are concrete compiler friction and should inform the
+trial assessment; passing the earlier simpler slices alone did not establish generic maturity.
+
 ## Remaining work and next bounded increment
 
-Next: port canonical scalar sets and dictionaries (`collections.nim`), including supported schema
-constraints, retained typed ownership, strict ordering/duplicate rejection, guarded results and
-the independent collection/alias/lifetime corpus. Remaining M1/state families and M2/M3 remain
-separate increments.
+Next: port C.2 availability specifications and accumulation input records (`c2_records.nim`),
+including deferred transfers, tagged input alternatives, retained owners and the existing independent
+record/alias/lifetime corpus. Remaining M1/state families and M2/M3 remain separate increments.
 
 Further port work remains:
 
-- M1: collection generics need explicit constraints and replacements for unsupported `static`
-  statements. Array slices, writable `toOpenArray` views and `FieldDefect` catches need supported
-  equivalents without reducing test coverage.
+- M1: remaining record/state families still need compiler/runtime verification, guarded results
+  and ownership coverage. Unsupported array slices, writable pointer views and `FieldDefect` catches
+  need supported equivalents without reducing test coverage.
 - M2: crypto/VRF runtime parity, FFI ownership, destruction, secret erasure and thread safety are
   unverified. Exploratory semantic checks alone do not establish those properties.
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
@@ -549,7 +605,7 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection
 slice.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
