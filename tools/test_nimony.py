@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -635,6 +635,13 @@ NOMINAL.update(request_length_as_slot="RequestSlot", request_slot_as_length="Req
 CONTRACTS.update(request_known_requested_since="history.mode == Available")
 REQUESTS_MEMBERS = ('owner', 'consumed', 'decode-framing', 'decode-count', 'decode-items', 'decode-bytes', 'decode-tail', 'key-policy', 'key-backend', 'entry-items', 'entry-bytes', 'entry-key', 'entry-backend', 'extent-count', 'extent-items', 'extent-bytes')
 REQUESTS_FIELDS = (('since', 0, 'Available'), ('since', 2, 'Available'), ('since', 3, 'Available'), ('availableFrom', 0, 'Unavailable'), ('availableFrom', 1, 'Unavailable'), ('availableFrom', 3, 'Unavailable'), ('unavailableFrom', 0, 'Unavailable'), ('unavailableFrom', 1, 'Unavailable'), ('unavailableFrom', 3, 'Unavailable'), ('originalFrom', 0, 'Reavailable'), ('originalFrom', 1, 'Reavailable'), ('originalFrom', 2, 'Reavailable'), ('removedAt', 0, 'Reavailable'), ('removedAt', 1, 'Reavailable'), ('removedAt', 2, 'Reavailable'), ('restoredAt', 0, 'Reavailable'), ('restoredAt', 1, 'Reavailable'), ('restoredAt', 2, 'Reavailable'))
+# Chapter/mapping payloads and fixed slot storage remain private behind nominal accessors.
+COMPOSITION_PRIVATE = {'composition_result_chapter_private': 'completed', 'composition_result_state_private': 'completed', 'composition_result_commitment_private': 'completed', 'composition_result_entry_private': 'completed', 'composition_result_retag': 'status', 'composition_result_forge': 'status', 'composition_result_error_write': 'error', 'composition_result_value_write': 'value', 'composition_chapter_private': 'data', 'composition_chapter_rebind': 'data', 'composition_snapshot_private': 'data', 'composition_snapshot_rebind': 'data', 'composition_slots_private': 'slots', 'composition_slots_forge': 'slots'}
+PRIVATE.update(COMPOSITION_PRIVATE)
+NOMINAL.update(composition_service_as_entry="[2] expected: StateEntryIndex but got: ServiceIndex",
+               composition_entry_as_chapter="got: StateEntry but wanted: StateChapterSnapshot",
+               composition_service_as_chapter_index="[2] expected: StateChapterId but got: ServiceIndex")
+COMPOSITION_MEMBERS = ('capture-config', 'capture-policy', 'capture-short', 'capture-tail', 'capture-framing', 'capture-chapter', 'compose-owner', 'compose-chapter', 'compose-profile', 'compose-policy', 'compose-captured-owner', 'compose-captured-context', 'compose-duplicate', 'compose-backend', 'compose-nodes', 'commitment-owner', 'entry-owner', 'entry-index')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -683,7 +690,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -714,7 +721,9 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('tests/native/state_requests_driver.nim', 'tests/state_requests_oracle.py',
+    sources += [ROOT/path for path in ('tests/native/state_composition_driver.nim', 'tests/state_composition_oracle.py',
+                'tests/test_state_composition_harness.py', 'tests/state_roots_oracle.py', 'tests/native/composition_fixture.nim',
+                'tests/native/state_requests_driver.nim', 'tests/state_requests_oracle.py',
                 'tests/test_state_requests_harness.py', 'tests/native/state_service_values_driver.nim', 'tests/state_service_values_oracle.py',
                 'tests/test_state_service_values_harness.py', 'tests/native/state_accounts_driver.nim', 'tests/state_accounts_oracle.py',
                 'tests/test_state_accounts_harness.py', 'tests/native/state_outputs_driver.nim', 'tests/state_outputs_oracle.py',
@@ -756,15 +765,19 @@ def main():
                           block_published('tiny', 'E', canonical=True)):
         (block_fixture/(name+'.bin')).write_bytes(data)
     (block_fixture/'header.bin').write_bytes(block_published('tiny', 'B', canonical=True)[0])
+    # Composition ownership probes consume independent literal chapters, not native round-trip fixtures.
+    from state_composition_oracle import chapters as composition_chapters
+    composition_fixture = BUILD/'composition-chapters.txt'
+    composition_fixture.write_text('\n'.join(raw.hex() for raw in composition_chapters())+'\n')
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private')
+                                 crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
                                  else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [])], name+'-run')
+            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
             if name == 'ownership' and row['passed']:
                 # Retain public live-memory measurements for the isolated five-schema ARC release workload.
@@ -892,6 +905,13 @@ def main():
             if release is not None:
                 # Live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
                 report['safrole_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_composition_private' and row['passed']:
+            # Replaced snapshots, copied entries and late native refusals release all final scoped references.
+            release = re.search(r'COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Baseline includes retained independent chapters; compare live occupancy, never RSS or general leak freedom.
+                report['composition_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_requests_private' and row['passed']:
             # Fixed histories own no references; keyed entry buffers retire after every success/refusal/recovery scope.
             release = re.search(r'REQUESTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1723,6 +1743,50 @@ def main():
     corpus['passed'] = corpus['passed'] and len(traces) == 20 and all(row['complete_component_match'] for row in traces)
     report['requests_corpus'] = corpus
     announce('independent service request-history key/shape corpus', corpus['passed'])
+    # Exact chapter/service composition compares every mapping byte as well as root and topology counts.
+    from state_composition_oracle import requests as composition_requests
+    harness = command([sys.executable, ROOT/'tests/test_state_composition_harness.py'], 'composition-harness')
+    lines, expected, components, whole = composition_requests()
+    source = BUILD/'composition-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_composition_driver.nim', 'state_composition-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_component_observations=components, published_composed_states=whole,
+                  published_exact_captures=sum(row['verdict'] == 'ok' for row in components),
+                  scope='exact typed chapter capture and complete mappings; opaque service values explicit; no transitions',
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Expected complete mappings and roots precede execution; embedded ownership/association selftests also run.
+        result = command([binary, source], 'state_composition-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Preserve the first disagreement and complete native observations for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    corpus['passed'] = corpus['passed'] and len(components) == 224 and corpus['published_exact_captures'] == 224 and len(whole) == 14
+    report['composition_corpus'] = corpus
+    announce('independent exact chapter/service and whole-state composition corpus', corpus['passed'])
+    # Raw full-map roots remain separate from typed composition and preserve their existing sensitivity variants.
+    from state_roots_oracle import published as roots_published, requests as roots_requests
+    observations = roots_published()
+    lines, expected, records = roots_requests(observations)
+    source = BUILD/'state-roots-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    result = command([BUILD/'trie-codec', source], 'state-roots-corpus') if report['trie_corpus']['build']['exit_code'] == 0 else dict(exit_code=1, output='Trie driver build failed')
+    output = result.pop('output')
+    actual = output.splitlines()
+    corpus = dict(requests=len(lines), run=result, passed=result['exit_code'] == 0 and actual == expected,
+                  driver_build=report['trie_corpus']['build'], published_maps=[row for _, row in observations], variants=records,
+                  distinct_published_roots=len({row['state_root'] for _, row in observations}),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  actual_sha256=hashlib.sha256(output.encode()).hexdigest(),
+                  expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
+    report['state_roots_corpus'] = corpus
+    announce('independent raw published whole-state root corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2183,6 +2247,17 @@ def main():
             passed = result['exit_code'] == 1 and 'history.mode == '+tag in result['output'] and '[AssertionDefect]' in result['output']
             report['requests'].append(dict(origin=origin, member=field, inactive_mode=mode, passed=passed, run=result))
             announce(f'{origin} requests {mode}/{field} shape guard', passed)
+    # Complete composition payloads require exact success, including backend and association failures.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_composition_results.nim', 'composition-results', crypto_observer)
+    report['composition_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Actual and default failures execute separately so one protected read never conceals another.
+        for origin in ('default', 'error'):
+            for member in COMPOSITION_MEMBERS:
+                result = command([binary, member, origin, composition_fixture], 'composition-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['composition'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' composition '+member+' guard', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -2217,6 +2292,9 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name in ('composition_service_as_entry', 'composition_service_as_chapter_index'):
+            # Service identities cannot address a whole-map entry or the fixed nominal chapter container.
+            rejected = 'Error: Type mismatch at [position]' in result['output'] and member in result['output']
         elif name in ('request_length_as_slot', 'request_slot_as_length'):
             # Slot and advertised-length domains stay distinct through safe source constructors and key derivation.
             call, position, actual = (('availableHistory(', 1, 'RequestLength') if name == 'request_length_as_slot'
@@ -2320,6 +2398,9 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['composition_corpus']['passed'] and report['state_roots_corpus']['passed']
+                   and len(report['composition']) == 2*len(COMPOSITION_MEMBERS)
+                   and all(row['passed'] for row in report['composition'])
                    and report['requests_corpus']['passed']
                    and len(report['requests']) == 2*len(REQUESTS_MEMBERS)+2*len(REQUESTS_FIELDS)+6
                    and all(row['passed'] for row in report['requests'])

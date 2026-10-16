@@ -162,9 +162,12 @@ pass their independent corpus, guarded results, retained key/value copies, atomi
 checks, backend refusal/recovery, native scratch bounds and scoped release checks. Request-history
 framing now also passes its corpus, guarded results and inactive timestamp accessors, fixed-copy
 checks, backend refusal/recovery and scoped entry release. Safe constructors preserve the four
-closed shapes; the namespace question remains parked. Next is exact chapter/service composition
-and whole-state root evidence (`state_composition.nim`).
-M1 migration remains partial.
+closed shapes; the namespace question remains parked. Exact chapter/service composition now also
+passes its complete corpus and published whole mappings, guarded results, nominal chapter container,
+retained/copy checks, parent arithmetic and backend cleanup. Separate raw whole-map roots pass.
+All production codec modules are ported. Next is the final M1 validation-entry-point audit, including
+existing width evidence and parked namespace-witness regressions; full verification parity remains
+qualified until that audit and Linux execution.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux

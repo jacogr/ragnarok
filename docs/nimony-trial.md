@@ -1,12 +1,13 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **50 native suites, twenty-seven independent family corpora, 1,250 runtime misuse rejections
-and 567 compilation rejections pass locally**. Service request histories join the verified
+Status: **51 native suites, twenty-nine independent corpora, 1,286 runtime misuse rejections
+and 584 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
-M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
+All production codec modules are ported; a final M1 validation-entry-point audit remains.
+Full M1 verification remains qualified; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -1534,19 +1535,83 @@ remains local macOS ARM64, checked ARC/Clang LTO; Linux execution and full M1/M2
 remain gates. Next is exact chapter/service composition and whole-state root evidence, preserving
 all existing interpretations and the parked namespace question.
 
+## Thirty-third bounded increment: exact state composition and published roots
+
+`src/codec/state_composition.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
+0.8.0 T's sixteen mandatory chapters retain exact typed capture, complete consumed extents and
+shared core/validator/epoch profile association. Typed service metadata, storage/preimage/request
+sources and explicitly opaque captured mappings retain their original keys and bytes. Parent
+entry/value ceilings precede key work, and trie composition rejects every duplicate rather than
+selecting an overwrite policy. C13 compact gas and the maintainer-parked request namespace remain
+unchanged. No transition execution, namespace inference or protocol/dependency change is introduced.
+
+`StateCompositionResult[T]` hides status/payload behind read-only reasons and a success
+precondition. Nullable chapter/mapping owners are checked through stable retained locals.
+`StateChapters` is a fixed sixteen-slot container with private storage and nominal `StateChapterId`
+indexing: the nightly cannot default-initialize the former nonzero enum-indexed array. Its guarded
+index accessors preserve chapter identity without exposing retained bytes. Forged chapter enum
+values reject before dispatch. Exact captures, copied roots/counts and fresh extracted entries
+retain immutable acyclic ownership; replacing caller chapter slots cannot mutate a completed state.
+
+This port exposed more compiler friction than the smaller codec families. **Four rejected targeted
+driver builds** preceded the first successful build, covering nonzero enum array/index/default
+support, enum iteration, template-dependent field lookup and success symbols. One attempted shared
+error-type name was my editing error. Explicit ordinal iteration, a nominal fixed container and
+ordinary typed decode dispatch are supported without compiler patches or private runtime hooks.
+After compilation, the existing duplicate-key selftest found **one error-translation defect**:
+generic `when compiles(T.member)` checks did not retain the expected mapping, yielding
+InvalidComponent instead of DuplicateKey. Explicit closed typed error adapters now preserve the
+shared categories. Initial compiler logs and the isolated failing selftest are retained under
+ignored `build/nimony-trial/verification/state_composition-*-build.log` and `composition-debug.log`.
+These observed repairs and post-compilation failure are separate from safety rejection totals;
+no historical repair counts are inferred.
+
+All **14,471 unchanged independent composition requests** and **seven literal checks** pass,
+comparing every completed key/value entry, root and topology count. All **224 unchanged published
+chapter captures** succeed. All **fourteen complete published mappings** reproduce their roots
+(ten distinct roots), with fixed metadata re-encoded and other keyed service values explicitly
+opaque. Original namespaces are not recovered from hashes. A separate **154-request raw whole-map
+root corpus** retains permutations, sensitivity mutations, exact budgets and duplicate/policy
+failures over those same pinned states. No fixture bytes or published roots are repaired.
+
+Expanded private checks cover escaped/replaced mappings and chapter handles, independent entries
+and fixed commitments, missing/wrong-profile sources, exact descriptor/aggregate arithmetic and
+late backend refusal after three successful service-key hashes. Observer counters demonstrate
+parent preflight before hashing and recovery after refusal; production corpora link the unmodified
+primitive bridge. After **1,000 warmed cycles**, public live allocation returns from **35,920 to
+35,920 bytes**, including the retained authored chapter baseline. This scoped observation is not
+an RSS or general leak-freedom claim.
+
+This increment adds **36 runtime misuse rejections** (eighteen actual/default result pairs) and
+**17 compilation rejections** (fourteen private/read-only result/owner/container probes and three
+nominal owner/index substitutions). Cumulative totals are **1,286 runtime misuse rejections,
+584 compilation rejections (501 privacy + 74 nominal + five schema + four static contracts),
+51 positive native suites and twenty-nine independent corpora**, plus three separate language
+probes. Formatting covers **768 Nim files**; the functional report records **803 matching source/test
+hashes**. The composition corpus retains its embedded public ownership/association selftest;
+the new native suite separately observes private lifetime/backend cleanup.
+
+The all-source semantic audit advances from 34/43 to **35/43 passing modules**: every production
+codec module now passes, with the remaining eight failures in contextual crypto/Bandersnatch and
+QUIC. Branch Linux CI automatically uses the expanded runner. Verification here remains local
+macOS ARM64, checked ARC/Clang LTO. Full M1 verification is not yet declared: next is a final audit
+of M1 validation entry points, including the existing width-evidence and parked namespace-witness
+regressions through this ported driver. This replays existing evidence, not new clarification work.
+Linux execution and full M2/M3 runtime parity remain gates.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 exact chapter/service composition (`src/codec/state_composition.nim`), preserving
-profile binding, complete component consumption, typed/opaque service mappings, duplicate-key
-rejection, retained captures and the existing independent whole-state root corpus. Keep the
-request-namespace question parked for Gray Paper 0.8.1/0.8.2 review as directed by the maintainer.
+Next: audit M1 validation entry points and replay the existing state-width evidence and parked
+namespace-witness regressions through the ported composition driver. Close coverage/tooling gaps
+before declaring local M1 verification parity. Keep the request-namespace question parked for
+Gray Paper 0.8.1/0.8.2 review; do not add new admissibility rules or reopen normative investigation.
 Other state components remain later bounded chunks.
 
 Further port work remains:
 
-- M1: remaining record/state families still need compiler/runtime verification, guarded results
-  and ownership coverage. Unsupported array slices, writable pointer views and `FieldDefect` catches
-  need supported equivalents without reducing test coverage.
+- M1: production codec families and typed composition are ported. Audit remaining validation entry
+  points, width evidence and parked namespace-witness regressions before claiming complete local
+  verification parity. Actual Linux execution remains distinct.
 - M2: contextual JAM crypto and Bandersnatch/VRF runtime parity, including their FFI lifetimes,
   remain unverified. The raw primitive slice above does not establish those properties.
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
@@ -1578,6 +1643,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
 authorization, state chapters 3–5/10/12–16, fixed service-account metadata and storage/preimage
-keyed values and request histories. A missing check or failed guard still makes the runner exit
-one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
+keyed values, request histories, exact chapter/service composition and raw whole-state roots.
+A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
