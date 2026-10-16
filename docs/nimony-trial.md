@@ -301,12 +301,51 @@ private/read-only result checks and two nominal attempt/proof checks). Cumulativ
 Verification remains local macOS ARM64 with checked ARC/Clang LTO. No Linux, RingVRF verification
 or Safrole eligibility parity is claimed by this codec increment.
 
+## Ninth increment: dispute verdicts and evidence
+
+`disputes.nim` now runs under the same pinned Nimony nightly. `DisputeResult[T]` keeps status/value
+private, exposes read-only outcomes and requires success before value access. Defaults remain
+Uninitialized. `disputeFailure[T]` permits sibling failure reporting with a non-success reason;
+the block adapter's missing-owner branch was mechanically adapted, without claiming block parity.
+Private snapshot references are explicitly nullable and retained in stable nil-checked locals.
+The judgment getter proves its backing reference independently of the nested verdict query.
+
+Fixed helpers use explicit initialization and supported static parameter syntax. Scan-before-
+allocation, section budgets, variable judgment counts, canonical Boolean/E2/E4 fields, ordering,
+full-source preflight and atomic output are unchanged. Published tiny/full samples retain their
+NonCanonical verdict-order rejection; separately sorted test copies retain their acceptance role.
+No upstream source, vector or protocol interpretation changed.
+
+All **10,908** existing independent dispute requests pass. Six extra cases cover unsigned validator/
+byte-budget extremes, canonical empty prefixes with trailing input and huge announced counts.
+Another **10,831** direct inspections compare all section cardinalities and exact consumption with
+independently decoded logical fields. Total dispute corpus: **21,745 comparisons**. Coverage retains
+16-verdict/1023-judgment and 16-culprit/fault ceilings, count widths, representative truncations,
+budget precedence, every illegal Boolean tag, late ordering/index errors, fixed-field identities,
+3,500 structured/random malformed inputs, complete record copies and unused-output sentinels.
+The six independent oracle example tests also pass.
+
+The eleventh positive suite preserves all owner/index errors and real-storage alias probes for
+outer descriptors, verdicts, nested judgments, culprits and faults. Public writable fixed-array
+views replace unsupported writable pointer slices. Snapshot replacement tests retain old aliases,
+escape local source scopes, mutate copied metadata/records and exercise all record families.
+After 100 warmups, 1,000 isolated retain/replace/copy/drop cycles leave public live occupancy
+unchanged: **140,880 → 140,880 bytes** on this Mac. Outer test fixtures remain live throughout;
+this checks that workload's ARC release, not RSS or general leak freedom.
+
+This increment adds **25 runtime misuse rejections** and **12 compilation rejections** (eight
+private/read-only owner/result checks and four nominal epoch/judge/key/signature checks).
+Cumulative coverage is **169 runtime result/variant/constructor rejections and 122 compilation
+rejections**, plus **11 positive suites**, five independent family corpora and three runtime probes.
+The former FieldDefect catch is replaced by independent exact-contract subprocess checks for every
+public result type and failure construction. Verification remains local macOS ARM64 with checked
+ARC/Clang LTO. Linux, contextual quorum/epoch eligibility and signature verification remain separate.
+
 ## Remaining work and next bounded increment
 
-Next: port dispute verdicts, judgments and culprit/fault evidence (`disputes.nim`), including
-canonical ordering, nominal identities, retained ownership, guarded results and the existing
-published/independent adversarial corpus. Signature verification and contextual quorum checks
-remain separate work. Other M1 families and M2/M3 remain separate increments.
+Next: port work-package inputs and immutable package/item snapshots (`work_package.nim`),
+including retained item handles, owner-bound payload extraction, guarded results and the existing
+independent wire/semantic/lifetime corpus. Other M1 families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -338,7 +377,7 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket slice. A missing check or
-failed guard still makes the runner exit one. There is no claim of full-client parity or an already
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute slice. A missing
+check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

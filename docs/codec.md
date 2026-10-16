@@ -120,5 +120,6 @@ lifetime/guard checks; see [the trial](nimony-trial.md). Assurance encoding, dec
 also pass their independent corpus with guarded progress results. Guarantee sequences and
 standalone records now pass wire/semantic, inspection, parent/child lifetime and result checks.
 Ticket encoding, decoding and inspection also pass their independent corpus, including lifetime,
-atomicity, alias and guarded-progress checks. Dispute codecs are the next bounded compiler-port
-increment.
+atomicity, alias and guarded-progress checks. Dispute verdict/evidence snapshots, inspection,
+result safety and release checks now pass as well. Work-package inputs and retained package/item
+snapshots are the next bounded compiler-port increment.

@@ -681,8 +681,8 @@ proc readGuarantees*(owner: GuaranteeComponent): GuaranteeResult[GuaranteesRead]
 
 # Materialize the existing immutable disputes API without exporting raw wire or detached spans.
 proc readDisputes*(owner: DisputeComponent): DisputeResult[DisputesRead] =
-  if owner.data.isNil: return DisputeResult[DisputesRead](
-      error: DisputeError.InvalidOwner) # Missing snapshots carry no verdicts.
+  if owner.data.isNil: return disputeFailure[DisputesRead](
+      DisputeError.InvalidOwner) # Missing snapshots carry no verdicts.
   let config = owner.data.config
   decodeDisputes(owner.data.wire, DisputeConfig(validators: config.validators,
       maxBytes: config.maxBytes))

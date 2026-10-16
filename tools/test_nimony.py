@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -98,6 +98,16 @@ TICKET_PRIVATE = dict(tickets_write_private='byteWritten', tickets_write_retag='
 NOMINAL.update(raw_ticket_attempt='got: uint8 but wanted: TicketAttempt',
                swapped_ticket_proof='got: TicketAttempt but wanted: TicketProof')
 TICKET_MEMBERS = ('written', 'count', 'consumed', 'inspect-count', 'inspect-consumed')
+DISPUTE_PRIVATE = dict(dispute_result_private='completed', dispute_result_info_private='completed',
+    dispute_result_retag='status', dispute_result_forge='status', dispute_result_error='error',
+    dispute_result_value='value', private_disputes_owner='data', dispute_owner_forge='data')
+NOMINAL.update(swapped_dispute_epoch='got: GuaranteeSlot but wanted: DisputeEpoch',
+               swapped_judge_index='got: ValidatorIndex but wanted: JudgeIndex',
+               swapped_offender_key='got: DisputeHash but wanted: OffenderKey',
+               swapped_dispute_signature='got: GuaranteeSignature but wanted: DisputeSignature')
+DISPUTE_MEMBERS = ('owner', 'decoded-info', 'info', 'verdict', 'verdict-judgments', 'judgment',
+                   'culprit', 'fault', 'written', 'owned-written', 'inspect-verdicts', 'inspect-consumed')
+PRIVATE.update(DISPUTE_PRIVATE)
 PRIVATE.update(TICKET_PRIVATE)
 PRIVATE.update(GUARANTEE_PRIVATE)
 PRIVATE.update(ASSURANCE_PRIVATE)
@@ -151,7 +161,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -163,7 +173,9 @@ def main():
                + list((ROOT/'tests').glob('report_*.py'))
                + list((ROOT/'tests').glob('guarantees_*.py'))
                + [ROOT/'tests/native/guarantees_driver.nim', ROOT/'tests/native/tickets_driver.nim',
-                  ROOT/'tests/tickets_oracle.py', ROOT/'tests/test_tickets_harness.py']
+                  ROOT/'tests/tickets_oracle.py', ROOT/'tests/test_tickets_harness.py',
+                  ROOT/'tests/disputes_oracle.py', ROOT/'tests/native/disputes_driver.nim',
+                  ROOT/'tests/test_disputes_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -205,6 +217,13 @@ def main():
                 if release is not None:
                     # Observe only public live occupancy after warmup, never RSS or private reference counts.
                     report['guarantee_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'disputes' and row['passed']:
+                # All isolated snapshot aliases, nested source sequences and record copies must release through ARC.
+                release = re.search(r'DISPUTE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy covers this workload, not private reference counts or RSS.
+                    report['dispute_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -331,6 +350,66 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['ticket_corpus'] = corpus
     announce('independent ticket codec/inspection corpus', corpus['passed'])
+    # Preserve original dispute semantics, including published ordering rejections, plus unsigned policy extremes.
+    from disputes_oracle import requests as dispute_requests, decode as dispute_decode, encode as dispute_encode
+    from disputes_oracle import fields as dispute_fields, example as dispute_example
+    lines, expected = dispute_requests()
+    original_count = len(lines)
+    for validators, data in ((6, b'\0\0\0'), (6, b'\0\0\0\xff'),
+                             (6, ticket_natural(2**64-1)), (2**64-1, b'')):
+        # Huge announced counts are rejected before narrowing; invalid unsigned profiles precede all input access.
+        lines.append(f'D {validators} {2**64-1} {data.hex() or "-"}')
+        expected.append(dispute_decode(data, validators, 2**64-1))
+    for validators in (6, 2**64-1):
+        # Empty source descriptors still require a valid profile and a complete three-byte frame.
+        value = dispute_example(0, 0, 0, 0)
+        lines.append(f'E {validators} {2**64-1} 3 '+dispute_fields(value))
+        expected.append(dispute_encode(value, validators, 2**64-1, 3))
+    codec_count = len(lines)
+    for line in list(lines):
+        # Every decoder input also reaches allocation-free inspection with its own count/extent expectation.
+        fields = line.split()
+        if fields[0] == 'D':
+            data = bytes.fromhex(fields[3]) if fields[3] != '-' else b''
+            result = dispute_decode(data, int(fields[1]), int(fields[2]))
+            parts = result.split()
+            lines.append(' '.join(['I', *fields[1:]]))
+            if len(parts) == 1:
+                # A typed oracle failure has no cardinalities or cursor to inspect.
+                expected.append(result)
+            else:
+                # Select section cardinalities from independent logical fields, never native layout/offsets.
+                verdicts, cursor = int(parts[1]), 2
+                for _ in range(verdicts):
+                    # Each verdict has hash/epoch/count plus three logical fields per judgment.
+                    votes = int(parts[cursor+2])
+                    cursor += 3+3*votes
+                culprits = int(parts[cursor])
+                cursor += 1+3*culprits
+                faults = int(parts[cursor])
+                cursor += 1+4*faults
+                assert cursor == len(parts)
+                expected.append(f'{verdicts} {culprits} {faults} {parts[0]}')
+    source = BUILD/'dispute-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/disputes_driver.nim', 'disputes-codec')
+    corpus = dict(build=compiled, original_requests=original_count, codec_requests=codec_count,
+                  inspection_requests=len(lines)-codec_count, requests=len(lines), passed=False,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Native checks also protect owner copies, exact prefix retention and whole-output failure atomicity.
+        result = command([binary, source], 'disputes-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Record the first disagreement while keeping complete actual output beside the JSON evidence.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['dispute_corpus'] = corpus
+    announce('independent dispute codec/inspection corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -475,6 +554,19 @@ def main():
                           and '[AssertionDefect]' in result['output'])
                 report['tickets'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' ticket '+member+' guard', passed)
+    # Every public dispute result type and explicit failure construction retain success contracts.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_dispute_results.nim', 'dispute-results')
+    report['disputes_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Separate processes prevent one rejection from concealing a later unguarded owner/record/progress path.
+        cases = [(member, origin) for origin in ('default', 'error') for member in DISPUTE_MEMBERS]
+        cases += [('factory', 'none')]
+        for member, origin in cases:
+            result = command([binary, member, origin], 'dispute-'+origin+'-'+member)
+            sentinel = 'not reason == None' if member == 'factory' else 'value.status == None'
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['disputes'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' dispute '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -505,6 +597,8 @@ def main():
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
+                   and report['dispute_corpus']['passed']
+                   and len(report['disputes']) == 25 and all(row['passed'] for row in report['disputes'])
                    and len(report['tickets']) == 10 and all(row['passed'] for row in report['tickets'])
                    and len(report['guarantees']) == 29 and all(row['passed'] for row in report['guarantees'])
                    and len(report['assurances']) == 10 and all(row['passed'] for row in report['assurances'])
