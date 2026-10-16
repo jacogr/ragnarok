@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-6–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
+1–2/6–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
 state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -99,6 +99,18 @@ compiler rejections, native retention/copy/field-guard checks and three partial 
 Four published tiny/full pre/post JSON states provide derived component fixtures, not standalone
 published state encodings or passing STF claims. Other T chapters and service-account entries
 remain open. See [the component contract](../spec/state-safrole.md).
+
+## Authorization state serialization
+
+`state_authorization.nim` implements T chapters 1–2: ordered per-core pools with canonical inner
+counts (0..8 hashes) and fixed queues (80 hashes), with no outer core count. Explicit core/hash/byte
+ceilings precede allocation; decoded snapshots retain private immutable core-bound rows and expose
+only independent fixed hash copies. Sequence order and repeated values remain unchanged.
+
+Validation: 7,059 independent requests, six literal harness checks, two nominal and one privacy
+compiler rejections, native ownership/copy/index/result guards and two partial trie integrations.
+Four published tiny/full pre/post JSON sources provide derived component fixtures. Other chapters
+and authorization transitions remain separate. See [the contract](../spec/state-authorization.md).
 
 ## Published codec fixture inventory
 

@@ -125,6 +125,11 @@ jobs:
           python3 tests/test_state_safrole_harness.py
           python3 tests/test_state_safrole.py 2>&1 | tee build/ci/state-safrole.log
 
+      - name: Authorization pool and queue state components
+        run: |
+          python3 tests/test_state_authorization_harness.py
+          python3 tests/test_state_authorization.py 2>&1 | tee build/ci/state-authorization.log
+
       - name: Report codecs, ownership and independent guarantee signatures
         run: python3 tests/test_work_report.py 2>&1 | tee build/ci/report.log
 
@@ -181,6 +186,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/state-authorization/*.log
+            build/state-authorization/results.json
+            build/state-authorization/types/*.log
             build/state-safrole/*.log
             build/state-safrole/results.json
             build/state-safrole/types/*.log
