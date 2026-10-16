@@ -129,5 +129,7 @@ its independent corpus, nested cause/result guards, cross-child alias checks and
 release workload. Strict Booleans and fixed/variable packed bitstrings now pass their independent
 corpus, guarded results and snapshot release checks. Canonical scalar sets and dictionaries now
 pass their complete corpus, closed schema checks, guarded results, private-storage aliases and
-snapshot release workload. C.2 availability and accumulation input records are the next bounded
-compiler-port increment.
+snapshot release workload. C.2 availability specifications, transfers and accumulation input
+records now pass their complete corpus, guarded source/decoded alternatives and release checks.
+The next compiler-port increment is the raw crypto primitive adapter required by state-key/node
+hashing, before continuing the remaining M1 state codecs.

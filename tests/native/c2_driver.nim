@@ -1,37 +1,49 @@
 ## Independent source construction and copied-field observations for the remaining C.2 records.
-import std/[os, strutils]
+import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
 
 # Require complete success before reading any fixed fields, owner or consumed/written extent.
 proc checked[T](parsed: RecordResult[T]): T =
-  doAssert parsed.error == RecordError.None
+  assert parsed.error == RecordError.None
   parsed.value
 
 # Trusted fixture hex becomes mutable caller-owned bytes that can be destroyed after decoding.
-proc unhex(text: string): seq[byte] =
-  # Preserve empty blobs as a single transport token.
-  if text == "-": return @[]
-  doAssert text.len mod 2 == 0 and text.len <= 2*1024*1024
+proc unhex(text: string): seq[byte] {.raises.} =
+  if text == "-": return @[] # Keep zero bytes as one trusted whitespace token.
+  assert text.len mod 2 == 0 and text.len <= 2*1024*1024
   result = newSeq[byte](text.len div 2)
-  # Each source octet has an independently owned mutable lifetime.
-  for i in 0..<result.len: result[i] = byte(parseHexInt(text[2*i..2*i+1]))
+  # Every exact byte pair belongs to this independent request's input storage.
+  for i in 0..<result.len:
+    let pair = text[2*i..2*i+1]
+    # Check trusted fixture spelling before unsigned conversion.
+    for c in pair: assert c in {'0'..'9', 'a'..'f'}
+    var octet: byte = 0
+    assert parseHex(pair, octet) == 2
+    result[i] = octet
+
+# Render exact bitstring bytes independently of the native logical observations.
+proc hex(bytes: openArray[byte]): string =
+  if bytes.len == 0: return "-" # Preserve empty field tokens when needed.
+  result = ""
+  # Every identity/proof byte contributes exactly two lowercase characters.
+  for value in bytes: result.add(toHex(int(value), 2).toLowerAscii())
+
+# Parse the full uint64 fixture domain without narrowing through signed host integers.
+proc unsigned(text: string): uint64 =
+  var number: uint64 = 0
+  assert text.len > 0 and parseBiggestUInt(text, number) == text.len
+  number
 
 # Read exactly one trusted fixed identity without silently padding or dropping fields.
-proc fixed[N: static int](text: string): array[N, byte] =
+proc fixed[N: static[int]](text: string): array[N, byte] {.raises.} =
+  result = default(array[N, byte])
   let bytes = unhex(text)
-  doAssert bytes.len == N
+  assert bytes.len == N
   # Fixed field sources are independently named values, never native decoded parent bytes.
   for i in 0..<N: result[i] = bytes[i]
 
-# Exact field observations preserve byte order and leading zeroes without interpreting cryptographic validity.
-proc hex(bytes: openArray[byte]): string =
-  # Empty payloads remain visible to the independent oracle.
-  if bytes.len == 0: return "-"
-  # Each fixed identity/payload is copied into textual observation storage.
-  for value in bytes: result.add(toHex(value, 2).toLowerAscii())
-
 # Parse explicit uint64 fixture domains before intentional narrowing into trusted typed source fields.
-proc number(text: string): uint64 = uint64(parseBiggestUInt(text))
+proc number(text: string): uint64 = unsigned(text)
 
 # Decoder and encoder record policies share four explicitly named resource ceilings.
 proc limits(parts: seq[string]): OperandLimits =
@@ -40,7 +52,7 @@ proc limits(parts: seq[string]): OperandLimits =
 
 # Every destination begins with canaries so whole-output failure and spare suffix preservation are checked.
 proc output(capacity: int): seq[byte] =
-  doAssert capacity in 0..2097152
+  assert capacity in 0..2097152
   result = newSeq[byte](capacity)
   # Canary initialization includes bytes beyond the eventual successful prefix.
   for i in 0..<capacity: result[i] = 0xA5
@@ -50,11 +62,11 @@ proc emitted(parsed: RecordResult[int], bytes: openArray[byte]) =
   # No failed preflight may write an earlier tag, hash or memo field.
   if parsed.error != RecordError.None:
     # Verify the entire supplied destination, not just the successful-prefix capacity.
-    for value in bytes: doAssert value == 0xA5
+    for value in bytes: assert value == 0xA5
     echo ($parsed.error).toLowerAscii()
   else:
     # The completed frame cannot overwrite unrelated suffix capacity.
-    for i in parsed.value..<bytes.len: doAssert bytes[i] == 0xA5
+    for i in parsed.value..<bytes.len: assert bytes[i] == 0xA5
     echo hex(bytes.toOpenArray(0, parsed.value-1))
 
 # Copy all availability roles to independent field tokens rather than relying on a same-codec wire round trip.
@@ -76,22 +88,22 @@ proc fields(owner: OwnedOperand): string =
   # Only success work results authorize a payload length or extraction call.
   if info.output.kind == WorkKind.Success:
     var bytes = output(info.output.length+3)
-    doAssert checked(copyOperandOutput(owner, bytes)) == info.output.length
+    assert checked(copyOperandOutput(owner, bytes)) == info.output.length
     # Payload extraction preserves spare suffix capacity.
-    for i in info.output.length..<bytes.len: doAssert bytes[i] == 0xA5
+    for i in info.output.length..<bytes.len: assert bytes[i] == 0xA5
     payload = hex(bytes.toOpenArray(0, info.output.length-1))
     # Mutation of an extracted copy cannot change the retained private snapshot.
     for i in 0..<info.output.length: bytes[i] = 0
-    doAssert checked(copyOperandOutput(owner, bytes)) == info.output.length
-    doAssert hex(bytes.toOpenArray(0, info.output.length-1)) == payload
+    assert checked(copyOperandOutput(owner, bytes)) == info.output.length
+    assert hex(bytes.toOpenArray(0, info.output.length-1)) == payload
   else:
     # An error is a valid output alternative, but never a fabricated empty success payload.
-    var empty: seq[byte]
-    doAssert copyOperandOutput(owner, empty).error == RecordError.NoPayload
+    var empty: seq[byte] = default(seq[byte])
+    assert copyOperandOutput(owner, empty).error == RecordError.NoPayload
   var trace = output(info.authBytes+3)
-  doAssert checked(copyOperandTrace(owner, trace)) == info.authBytes
+  assert checked(copyOperandTrace(owner, trace)) == info.authBytes
   # The trace extractor must also preserve all unrelated destination capacity.
-  for i in info.authBytes..<trace.len: doAssert trace[i] == 0xA5
+  for i in info.authBytes..<trace.len: assert trace[i] == 0xA5
   result = hex(info.packageHash.bytes) & " " & hex(info.segmentRoot.bytes) & " " & hex(
       info.authorizer.bytes) &
     " " & hex(array[32, byte](info.payloadHash)) & " " & $uint64(info.gas) & " " & $ord(
@@ -100,13 +112,13 @@ proc fields(owner: OwnedOperand): string =
   var bytes = output(info.consumed+3)
   let broad = OperandLimits(outputBytes: ByteLimit(high(uint64)), authBytes: ByteLimit(high(uint64)),
     totalBlobBytes: ByteLimit(high(uint64)), maxBytes: ByteLimit(high(uint64)))
-  doAssert checked(encodeOwnedOperand(owner, broad, bytes)) == info.consumed
+  assert checked(encodeOwnedOperand(owner, broad, bytes)) == info.consumed
   result.add(" " & hex(bytes.toOpenArray(0, info.consumed-1)))
   # Re-emission is supplementary to independent field observations and must preserve suffix capacity.
-  for i in info.consumed..<bytes.len: doAssert bytes[i] == 0xA5
+  for i in info.consumed..<bytes.len: assert bytes[i] == 0xA5
 
 # Capture a complete record, destroy its original bytes, then print only independently observable fields/progress.
-proc decodeRequest(parts: seq[string]) =
+proc decodeRequest(parts: seq[string]) {.raises.} =
   let policy = limits(parts)
   let config = AvailabilityConfig(cores: CoreCount(number(parts[2])), maxBytes: policy.maxBytes)
   var input = unhex(parts[7])
@@ -147,10 +159,10 @@ proc decodeRequest(parts: seq[string]) =
           parsed.value.value.operand) # Selected owner only.
       of AccumulationKind.Transfer: echo "1 " & $parsed.value.consumed & " " & fields(
           parsed.value.value.transfer) # Selected fixed copy only.
-  else: doAssert false # Unknown trusted request schemas must not choose a production decoder implicitly.
+  else: assert false # Unknown trusted request schemas must not choose a production decoder implicitly.
 
 # Construct typed sources directly from independent named fixture fields; never use the record decoder to prepare encoding.
-proc encodeRequest(parts: seq[string]) =
+proc encodeRequest(parts: seq[string]) {.raises.} =
   let policy = limits(parts)
   var bytes = output(parseInt(parts[7]))
   case parts[1]
@@ -174,18 +186,16 @@ proc encodeRequest(parts: seq[string]) =
         bytes) # Standalone tagged transfer encoding.
     else:
       # The union encoder emits exactly the same tagged transfer bytes.
-      emitted(encodeAccumulationInput(AccumulationSource(kind: AccumulationKind.Transfer,
-          transfer: value), policy, bytes), bytes)
+      emitted(encodeAccumulationInput(transferSource(value), policy, bytes), bytes)
   of "O", "UO":
     # All result/trace sources are separate logical sequences, independent of production spans/owners.
     let tag = parseInt(parts[13])
-    doAssert tag in 0..6
-    var work: OperandOutput
-    if tag == 0: work = OperandOutput(kind: WorkKind.Success, payload: unhex(parts[
-        14])) # Only success owns a source payload.
+    assert tag in 0..6
+    var work: OperandOutput = default(OperandOutput)
+    if tag == 0: work = successfulOperandOutput(unhex(parts[14])) # Only success owns a source payload.
     else:
       # Work error alternatives contain their tag alone, never a default byte sequence.
-      work = OperandOutput(kind: WorkKind(tag))
+      work = failedOperandOutput(WorkKind(tag))
     let value = AccumulationOperand(packageHash: PackageHash(bytes: fixed[32](parts[8])),
       segmentRoot: SegmentRoot(bytes: fixed[32](parts[9])), authorizer: AuthorizerHash(bytes: fixed[
           32](parts[10])),
@@ -195,14 +205,17 @@ proc encodeRequest(parts: seq[string]) =
         bytes) # Direct operand source encoding with one outer zero.
     else:
       # The union encoder adds no discriminator beyond that same operand tag zero.
-      emitted(encodeAccumulationInput(AccumulationSource(kind: AccumulationKind.Operand,
-          operand: value), policy, bytes), bytes)
-  else: doAssert false # Unknown trusted source schemas cannot bypass nominal construction.
+      emitted(encodeAccumulationInput(operandSource(value), policy, bytes), bytes)
+  else: assert false # Unknown trusted source schemas cannot bypass nominal construction.
 
 # Each request owns its temporary input/output and releases snapshots after the complete observation.
-for line in lines(paramStr(1)):
-  # Empty batch lines contain no record operation.
-  if line.len > 0:
-    let parts = line.splitWhitespace()
-    if parts[0] == "D": decodeRequest(parts) # Untrusted record framing and copied-field observation.
-    else: encodeRequest(parts) # Independent logical source construction and atomic output.
+try:
+  for line in lines(paramStr(1)):
+    # Empty batch lines contain no record operation.
+    if line.len > 0:
+      let parts = line.splitWhitespace()
+      if parts[0] == "D": decodeRequest(parts) # Untrusted record framing and copied-field observation.
+      else: encodeRequest(parts) # Independent logical source construction and atomic output.
+except:
+  # Trusted fixture transport failures are separate from typed protocol rejection.
+  quit(2)

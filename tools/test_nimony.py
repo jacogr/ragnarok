@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -291,6 +291,81 @@ COLLECTION_MEMBERS = (
     'scalar-bytes', 'scalar-size', 'scalar-natural-write', 'scalar-unsigned-write',
     'scalar-bytes-write',
 )
+C2_PRIVATE = {
+    'private_operand_snapshot': 'data',
+    'c2_result_integer_private': 'completed',
+    'c2_result_availability_private': 'completed',
+    'c2_result_transfer_private': 'completed',
+    'c2_result_operand_private': 'completed',
+    'c2_result_info_private': 'completed',
+    'c2_result_union_private': 'completed',
+    'c2_result_retag': 'status',
+    'c2_result_forge': 'status',
+    'c2_result_error_write': 'error',
+    'c2_result_value_write': 'value',
+    'c2_output_tag_private': 'outputKind',
+    'c2_output_payloadValues_private': 'payloadValues',
+    'c2_output_retag': 'outputKind',
+    'c2_output_forge': 'outputKind',
+    'c2_output_kind_write': 'kind',
+    'c2_output_info_tag_private': 'outputKind',
+    'c2_output_info_byteLength_private': 'byteLength',
+    'c2_output_info_retag': 'outputKind',
+    'c2_output_info_forge': 'outputKind',
+    'c2_output_info_kind_write': 'kind',
+    'c2_output_info_length_write': 'length',
+    'c2_source_tag_private': 'inputKind',
+    'c2_source_operandValue_private': 'operandValue',
+    'c2_source_transferValue_private': 'transferValue',
+    'c2_source_retag': 'inputKind',
+    'c2_source_forge': 'inputKind',
+    'c2_source_kind_write': 'kind',
+    'c2_source_operand_write': 'operand',
+    'c2_source_transfer_write': 'transfer',
+    'c2_decoded_tag_private': 'inputKind',
+    'c2_decoded_operandOwner_private': 'operandOwner',
+    'c2_decoded_transferValue_private': 'transferValue',
+    'c2_decoded_retag': 'inputKind',
+    'c2_decoded_forge': 'inputKind',
+    'c2_decoded_kind_write': 'kind',
+    'c2_decoded_operand_write': 'operand',
+    'c2_decoded_transfer_write': 'transfer',
+}
+C2_MEMBERS = (
+    'av-value', 'av-consumed', 'transfer-value', 'transfer-consumed', 'operand-owner',
+    'operand-consumed', 'info', 'union-value', 'union-consumed', 'av-write', 'transfer-write',
+    'operand-write', 'union-write', 'owned-write', 'output-copy', 'trace-copy',
+)
+C2_VARIANTS = (
+    ('outofgas-copy', 'error', 'value.outputKind == Success'),
+    ('outofgas-edit', 'error', 'value.outputKind == Success'),
+    ('outofgas-metadata', 'error', 'value.outputKind == Success'),
+    ('panic-copy', 'error', 'value.outputKind == Success'),
+    ('panic-edit', 'error', 'value.outputKind == Success'),
+    ('panic-metadata', 'error', 'value.outputKind == Success'),
+    ('badexports-copy', 'error', 'value.outputKind == Success'),
+    ('badexports-edit', 'error', 'value.outputKind == Success'),
+    ('badexports-metadata', 'error', 'value.outputKind == Success'),
+    ('oversize-copy', 'error', 'value.outputKind == Success'),
+    ('oversize-edit', 'error', 'value.outputKind == Success'),
+    ('oversize-metadata', 'error', 'value.outputKind == Success'),
+    ('bad-copy', 'error', 'value.outputKind == Success'),
+    ('bad-edit', 'error', 'value.outputKind == Success'),
+    ('bad-metadata', 'error', 'value.outputKind == Success'),
+    ('big-copy', 'error', 'value.outputKind == Success'),
+    ('big-edit', 'error', 'value.outputKind == Success'),
+    ('big-metadata', 'error', 'value.outputKind == Success'),
+    ('source-operand', 'error', 'value.inputKind == Operand'),
+    ('source-transfer', 'error', 'value.inputKind == Transfer'),
+    ('source-default-transfer', 'error', 'value.inputKind == Transfer'),
+    ('decoded-operand', 'error', 'value.inputKind == Operand'),
+    ('decoded-transfer', 'error', 'value.inputKind == Transfer'),
+    ('factory', 'none', 'not kind == Success'),
+)
+PRIVATE.update(C2_PRIVATE)
+NOMINAL.update(c2_balance_as_gas="got: TransferBalance but wanted: Gas",
+               c2_swapped_root="got: ReportHash but wanted: ReportHash",
+               c2_swapped_payload_hash="got: ReportHash but wanted: PayloadHash")
 PRIVATE.update(COLLECTION_PRIVATE)
 NOMINAL.update(raw_collection_count="[2] expected: CollectionCount but got: uint64",
                swapped_collection_schema="[1] expected: CollectionUInt but got: CollectionUInt",
@@ -358,7 +433,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -379,7 +454,8 @@ def main():
                   ROOT/'tests/native/block_driver.nim', ROOT/'tests/test_block_harness.py',
                   ROOT/'tests/native/bits_driver.nim', ROOT/'tests/bits_oracle.py',
                   ROOT/'tests/test_bits_harness.py', ROOT/'tests/native/collections_driver.nim',
-                  ROOT/'tests/collections_oracle.py', ROOT/'tests/test_collections_harness.py']
+                  ROOT/'tests/collections_oracle.py', ROOT/'tests/test_collections_harness.py',
+                  ROOT/'tests/native/c2_driver.nim', ROOT/'tests/c2_oracle.py', ROOT/'tests/test_c2_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -475,6 +551,13 @@ def main():
                 if release is not None:
                     # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
                     report['collection_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'c2' and row['passed']:
+                # Operand owners survive union/source retirement and release every retained/error snapshot at scope exit.
+                release = re.search(r'C2_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
+                    report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -815,6 +898,36 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['collection_corpus'] = corpus
     announce('independent canonical fixed/variable set/dictionary corpus', corpus['passed'])
+    # Independent C.2 references retain exact availability/transfer/operand framing and tagged-union agreement.
+    from c2_oracle import requests as c2_requests
+    harness = command([sys.executable, ROOT/'tests/test_c2_harness.py'], 'c2-harness')
+    lines, expected = c2_requests()
+    source = BUILD/'c2-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    groups = {}
+    # Classify actual request names rather than guessing adapter tags; every request must be included.
+    for line in lines:
+        parts = line.split()
+        key = parts[0]+'-'+parts[1]
+        groups[key] = groups.get(key, 0)+1
+    assert sum(groups.values()) == len(lines), groups
+    compiled, binary = build(compiler, ROOT/'tests/native/c2_driver.nim', 'c2-codec')
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Observe every fixed field, payload/trace copy and exact owned wire after destructive caller mutation.
+        result = command([binary, source], 'c2-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Preserve the first mismatch and all adapter output for reproducible diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['c2_corpus'] = corpus
+    announce('independent availability/transfer/operand/accumulation corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1056,6 +1169,18 @@ def main():
         passed = result['exit_code'] != 0 and rejected
         report['schemas'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
+    # Guard every C.2 result and selected work/source/metadata/decoded union alternative independently.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_c2_results.nim', 'c2-results')
+    report['c2_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Actual/default failures and every work-error alternative run in separate optimized processes.
+        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in C2_MEMBERS]
+        cases += list(C2_VARIANTS)
+        for member, origin, sentinel in cases:
+            result = command([binary, member, origin], 'c2-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['c2'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' c2 '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1113,6 +1238,9 @@ def main():
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
                    and report['header_corpus']['passed'] and report['block_corpus']['passed']
                    and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
+                   and report['c2_corpus']['passed']
+                   and len(report['c2']) == 2*len(C2_MEMBERS)+len(C2_VARIANTS)
+                   and all(row['passed'] for row in report['c2'])
                    and len(report['collections']) == 2*len(COLLECTION_MEMBERS)
                    and all(row['passed'] for row in report['collections'])
                    and len(report['schemas']) == 5 and all(row['passed'] for row in report['schemas'])

@@ -1,9 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **19 native suites, ten independent family corpora, 466 runtime misuse rejections and
-252 compilation rejections pass locally**. Canonical scalar sets and dictionaries now join the
-verified scalar, owned, report, extrinsic-family, work-package, header, block and bitstring slices.
+Status: **21 native suites, eleven independent family corpora, 522 runtime misuse rejections and
+293 compilation rejections pass locally**. Availability specifications, deferred transfers and
+accumulation input records now join the verified scalar, owned, report, extrinsic-family,
+work-package, header, block, bitstring and collection slices.
 M1 migration remains partial; M2/M3 and Linux parity remain unverified. This branch targets Nimony
 directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged.
@@ -569,11 +570,66 @@ remains local macOS ARM64 with checked ARC/Clang LTO; M1 migration is partial an
 unverified. These generic/storage adaptations are concrete compiler friction and should inform the
 trial assessment; passing the earlier simpler slices alone did not establish generic maturity.
 
+## Fifteenth increment: C.2 availability and accumulation records
+
+`c2_records.nim` now runs on the same pristine nightly. `RecordResult[T]` hides status/payload and
+requires success before values, retained owners or progress can be read. Operand ownership uses
+private nullable backing references and stable checked locals. Copied result/source/metadata tags
+are read-only; every selected work payload, output length and operand/transfer branch has its own
+supported access precondition. Defaults preserve the existing success-empty source output and
+operand source tag; default results and operand owners remain invalid/uninitialized.
+
+`successfulOperandOutput` and `failedOperandOutput` construct source alternatives together with
+their payload/tag; the failure constructor rejects Success. `editOperandPayload` explicitly edits
+selected success sources and `operandPayloadCopies` returns independent bytes. `operandSource`
+and `transferSource` construct the source union. Public source branch getters return copies;
+decoded branch getters retain the immutable operand or copy fixed transfer fields. Encoders use
+the actual private source descriptors/sequences internally, preserving complete-source alias
+checks rather than checking temporary accessor copies. Metadata cannot fabricate an error-output
+length or retag itself to access an inactive field.
+
+No wire/resource policy changed. Availability remains a fixed 104-byte tuple; transfers remain
+153 bytes with outer tag one, fixed 128-byte memo and E8 balance/gas. Operand outer tag zero and
+gas use canonical naturals, followed by the existing work result and final trace; union encoding
+adds no second tag. Child validation, aggregate subtraction, checked host extent growth, no-allocation
+scan and whole-output preflight remain intact. Actual work errors remain valid decoded application
+values whose output extraction returns NoPayload.
+
+All **26,090** unchanged independent requests pass, alongside eight oracle known answers. Coverage
+retains pinned tiny/full report availability prefixes, independently derived report-to-operand
+fields, authored transfers, every work-result alternative, unsigned/natural gas/count boundaries,
+shard/core domains, truncation/fuzz, invalid/overlong tags, huge blob claims, strict limits,
+independent field/byte observations and exact/short/spare output. Derived operands are not claimed
+as published standalone vectors, nor as valid state transitions or cryptographic verification.
+
+Both native suites preserve caller mutation, fixed copies, stricter retained policy, defaults,
+whole descriptor/cross-blob/private-wire aliases and unchanged failure output. Writable fixtures
+use fixed views over real backing allocations. Added coverage proves copied source branches/
+payloads cannot modify original sources, retains an operand after a callee-local union/source
+expires, replaces same-sized owners and tests independent extracted bytes/metadata. After 100
+warmups, 1,000 scoped release cycles, including all six work-error alternatives, return public live
+occupancy to baseline: **2,272 → 2,272 bytes**, with outer fixtures live. Exact counts are in the
+evidence JSON; this is workload-specific occupancy, not RSS or general leak freedom.
+
+This increment adds **56 runtime misuse rejections**: 32 failed/default result reads, 18 selected
+work-error payload/metadata accesses, five wrong source/decoded branch reads and one invalid failure
+constructor. It adds **41 compilation rejections**: 38 private/read-only result/owner/variant checks
+and three nominal balance/root/payload-hash checks. Cumulative totals are **522 runtime result/
+variant/constructor rejections, 293 compilation rejections (252 privacy + 36 nominal + five schema),
+21 positive native suites and eleven family corpora**, plus three runtime language probes.
+Temporary-expression/default type queries in a few negative fixtures were replaced with named
+locals/concrete RHS types so probes fail for their intended contract/member. No compiler patch,
+private runtime API, fallback encoding or omitted existing corpus case is used. Formatting passes;
+verification remains local macOS ARM64 with checked ARC/Clang LTO. M1 migration is still partial;
+Linux and M2/M3 parity remain unverified.
+
 ## Remaining work and next bounded increment
 
-Next: port C.2 availability specifications and accumulation input records (`c2_records.nim`),
-including deferred transfers, tagged input alternatives, retained owners and the existing independent
-record/alias/lifetime corpus. Remaining M1/state families and M2/M3 remain separate increments.
+Next: port the raw crypto primitive adapter (`src/crypto/primitives.nim`): Blake2b-256, Ed25519
+and legacy Keccak-256, including guarded results, seed ownership/erasure and existing known-answer/
+negative tests through the pristine native bridge. This is the M2 prerequisite for continuing M1
+state-key/node hashing (`state_layout.nim` imports that adapter). Bandersnatch, contextual crypto,
+remaining state codecs and M3 remain separate increments.
 
 Further port work remains:
 
@@ -605,7 +661,7 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
 slice.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
