@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -72,6 +72,16 @@ NOMINAL = dict(swapped_report_root='got: ReportHash but wanted: ReportHash',
                raw_erasure_shards='got: uint16 but wanted: ErasureShards')
 REPORT_MEMBERS = ('report-value', 'report-consumed', 'header-value', 'owner-value',
                   'info-value', 'prerequisite-value', 'lookup-value')
+ASSURANCE_PRIVATE = dict(assurances_write_private='byteWritten', assurances_write_retag='status',
+    assurances_write_forge='status', assurances_write_error='error', assurances_write_written='written',
+    assurances_decode_private='recordCount', assurances_decode_consumed='byteConsumed',
+    assurances_decode_retag='status', assurances_decode_forge='status', assurances_decode_error='error',
+    assurances_decode_count='count', assurances_decode_progress='consumed')
+NOMINAL.update(assurances_anchor='got: AssuranceSignature but wanted: AssuranceAnchor',
+               assurances_config='got: ValidatorCount but wanted: CoreCount',
+               assurances_index='got: CoreCount but wanted: ValidatorIndex')
+ASSURANCE_MEMBERS = ('written', 'count', 'consumed', 'inspect-count', 'inspect-consumed')
+PRIVATE.update(ASSURANCE_PRIVATE)
 PRIVATE.update(REPORT_PRIVATE)
 PRIVATE.update(OWNED_PRIVATE)
 PRIVATE['wrong_owner_pool'] = 'copyOwnedBlob'
@@ -122,7 +132,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -132,6 +142,8 @@ def main():
                + [ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
                + [ROOT/'tests/native/ownership_checks.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
+               + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
+                  ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
                + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL)]
                + [Path(__file__).resolve()])
@@ -184,6 +196,39 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['report_corpus'] = corpus
     announce('independent report corpus', corpus['passed'])
+    # Preserve the full independent assurance corpus and derive capacity-free inspection expectations separately.
+    from assurances_oracle import requests as assurance_requests, decode as assurance_decode
+    lines, expected = assurance_requests()
+    codec_count = len(lines)
+    for line in list(lines):
+        # Every decode input also reaches inspectAssurances, independent of caller typed capacity.
+        fields = line.split()
+        if fields[0] == 'D':
+            # The maximum valid profile has 1,023 records; inspection has no output-capacity policy.
+            data = bytes.fromhex(fields[4]) if fields[4] != '-' else b''
+            result = assurance_decode(int(fields[1]), int(fields[2]), 1024, data)
+            parts = result.split()
+            lines.append(' '.join(['I', fields[1], fields[2], fields[4]]))
+            expected.append(parts[0]+' '+parts[2] if len(parts) == 3 else result)
+    source = BUILD/'assurance-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/assurances_driver.nim', 'assurances-codec')
+    corpus = dict(build=compiled, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
+                  requests=len(lines), passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Compare complete named fields/bytes and errors; native assertions additionally protect atomic output/lifetimes.
+        result = command([binary, source], 'assurances-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Retain the first differing row and full adjacent log for reproducible diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['assurance_corpus'] = corpus
+    announce('independent assurance codec/inspection corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -289,6 +334,19 @@ def main():
                           and '[AssertionDefect]' in result['output'])
                 report['reports'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' '+member+' guard', passed)
+    # Decoder and inspection progress share the same result type but must reject each failing operation independently.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_results.nim', 'assurance-results')
+    report['assurances_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Each default and actual typed failure runs separately, preserving assertions in optimized builds.
+        for origin in ('default', 'error'):
+            # Read-only success metadata must not silently return zeros from a failed variant.
+            for member in ASSURANCE_MEMBERS:
+                result = command([binary, member, origin], 'assurance-'+origin+'-'+member)
+                passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
+                          and '[AssertionDefect]' in result['output'])
+                report['assurances'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' assurance '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -304,7 +362,7 @@ def main():
         passed = result['exit_code'] != 0 and member in result['output'] and rejected
         report['privacy'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
-    # Report hash, root, slot and shard domains must remain statically distinct under Nimony.
+    # Report and assurance identity, index and configuration domains must remain statically distinct under Nimony.
     for name, member in NOMINAL.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
@@ -317,7 +375,8 @@ def main():
                    and len(report['primitive']) == 13 and all(row['passed'] for row in report['primitive'])
                    and len(report['composite']) == 29 and all(row['passed'] for row in report['composite'])
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
-                   and report['report_corpus']['passed']
+                   and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
+                   and len(report['assurances']) == 10 and all(row['passed'] for row in report['assurances'])
                    and len(report['reports']) == 14 and all(row['passed'] for row in report['reports'])
                    and len(report['nominal']) == len(NOMINAL) and all(row['passed'] for row in report['nominal'])
                    and len(report['privacy']) == len(PRIVATE)

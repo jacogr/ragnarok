@@ -116,5 +116,6 @@ building the primitive bridge.
 
 The Nimony owned-snapshot port and its retained-lifetime, result, metadata and copy contracts are
 recorded in [owned snapshots](../spec/owned-snapshots.md). Complete work-report codecs and report-owned snapshots now pass their independent corpus and
-lifetime/guard checks; see [the trial](nimony-trial.md). Assurance records/extrinsics are the next
-bounded compiler-port increment.
+lifetime/guard checks; see [the trial](nimony-trial.md). Assurance encoding, decoding and inspection
+also pass their independent corpus with guarded progress results. Guarantee records/extrinsics
+and retained report children are the next bounded compiler-port increment.

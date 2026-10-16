@@ -201,12 +201,43 @@ corpus and three language/runtime probes. The generic hash diagnostic rejects th
 prints `ReportHash` on both sides without its static domain argument; the rejection is useful, while
 its explanation is less precise than the slot/shard diagnostics. Linux remains unverified.
 
+## Sixth increment: assurance records and extrinsics
+
+`assurances.nim` now runs under the same pinned Nimony nightly. Both result types keep status and
+payload private, with read-only outcomes and success preconditions on written/count/consumed.
+Defaults still return Uninitialized. The fixed owned records require no retained heap owner;
+explicit initialization preserves zero storage beyond a profile's serialized bitfield width.
+Configuration, error precedence, two-pass preflight, atomic writes and wire encodings are unchanged.
+
+All **20,706** existing independent assurance requests pass, including pinned published tiny/full
+fixtures, every configured core's bit position, width boundaries, full validator counts, unsigned
+configuration extremes, every representative truncation, count/order/index/padding failures,
+6,000 structured/unstructured fuzz requests, source mutation, unused destination sentinels and
+encoder/decoder overlap rejection. Another **18,831** requests compare `inspectAssurances` directly
+with the independent decoder model using maximum valid typed capacity; inspection itself needs no
+record destination. Every original decode input receives its own inspection expectation, including
+semantic failures that a small typed destination could otherwise mask.
+
+An eighth positive suite checks guarded defaults, empty-prefix consumption, unsigned configuration
+bounds, escaped source lifetimes, independently mutable fixed copies and zero-extended tiny-profile
+bitsets. The trusted fixture utility uses checked unsigned/hex parsers, explicit byte append loops,
+public open-array views and aligned fixed storage for deliberate unsafe overlap probes. No
+production allocation, compiler patch or private runtime dependency was introduced. This is codec
+coverage; contextual signature verification remains separate M2 work.
+
+This increment adds **10 runtime misuse rejections**, **12 privacy/read-only compilation
+rejections** and **three nominal-domain compilation rejections**. Cumulative coverage is now
+**105 runtime result/variant/constructor rejections and 85 compilation rejections**, alongside
+**eight positive suites**, both independent report/assurance corpora and three runtime probes.
+The compiler rejects anchor/signature swaps, validator/core index swaps and configuration-domain
+swaps. Verification remains local macOS ARM64 with checked ARC/Clang LTO; Linux is unverified.
+
 ## Remaining work and next bounded increment
 
-Next: port assurance records and extrinsics (`assurances.nim` and their independent codec,
-result and nominal-domain checks). These provide the typed validator/configuration foundation
-used by guarantee extrinsics, which can then compose the retained report owners. Other M1
-families and M2/M3 remain separate increments.
+Next: port guarantee records and extrinsics (`guarantees.nim`), including immutable parent
+owners, independently retained report children, credential domains, guarded results and the
+existing independent wire/semantic/lifetime corpus. The report and assurance prerequisites now
+pass locally. Other M1 families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -238,6 +269,6 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report slice. A missing check or failed guard still makes the runner
-exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
+verified scalar/composite/digest/owned/report/assurance slice. A missing check or failed guard
+still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
