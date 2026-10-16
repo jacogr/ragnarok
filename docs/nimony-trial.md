@@ -1,11 +1,11 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **48 native suites, twenty-six independent family corpora, 1,176 runtime misuse rejections
-and 540 compilation rejections pass locally**. Service storage/preimage keyed values join the verified
+Status: **50 native suites, twenty-seven independent family corpora, 1,250 runtime misuse rejections
+and 567 compilation rejections pass locally**. Service request histories join the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
-and fixed C(255, service) account records, plus retained raw service values.
+and fixed C(255, service) account records, retained raw service values and request-history framing.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1476,12 +1476,70 @@ remains local macOS ARM64, checked ARC/Clang LTO; Linux execution and full M1/M2
 remain gates. Next is service request-history framing and its tagged alternatives, preserving the
 maintainer-parked namespace question without inventing interim restrictions.
 
+## Thirty-second bounded increment: service request histories
+
+`src/codec/state_requests.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
+0.8.0 T's request mappings retain E4 advertised lengths plus fixed lookup hashes, maintained
+Blake2b/interleaved-service keys, canonical 0–3 counts and E4 timeslots in supplied order.
+Equal/descending slots and the complete uint32 length domain remain structural data. Both top-end
+namespace overlaps and duplicate-key rejection remain tested. The maintainer-parked namespace
+question and its pending test are unchanged; no interim length restriction, chronology/lifecycle
+rule, alternate encoding or protocol/dependency change is introduced.
+
+`RequestResult[T]` hides status/payload behind read-only reasons and a success precondition,
+including private extent proofs. `RequestHistory` now hides its mode and timestamp payloads.
+`requestedHistory`, `availableHistory`, `unavailableHistory` and `reavailableHistory` construct the
+four valid shapes. The read-only `state` and guarded timestamp accessors preserve familiar field
+reads while preventing retagging, forged alternatives and inactive-field reads. To change a fixed
+source value, construct a new valid history; raw object construction and field assignment are no
+longer public. Default history remains valid Requested; default result remains failure.
+
+The port explicitly initializes private staging fields, slot/preimage arrays and decoded history.
+Accepted counts are checked in uint64 before narrowing and bound all native extent arithmetic to
+1/5/9/13 bytes. Whole-prefix presence still precedes field copies. The trusted driver uses
+nonthrowing complete-token parsing and valid source constructors. Existing selftest/driver and
+new private/guard binaries passed their first targeted builds. A constructor-only inactive-read
+probe initially remained a runtime contract; adding an explicit state proof made the compiler
+reject it statically. This records proof availability, not a protocol defect or a source-port
+repair. No compiler patches, private runtime hooks or historical repair totals are introduced.
+
+All **2,273 unchanged independent requests** and **six passing literal checks** pass; the seventh
+literal test remains explicitly skipped for the parked namespace policy. Coverage retains every
+representative proper truncation, all E4 domains and active slot positions, invalid/huge/overlong
+counts, caller limits, suffixes, deterministic mutations and **98 partial request-entry roots**.
+Pinned JSON supplies **28 histories** (14/6/8/0 across counts 0/1/2/3); three-slot restoration is
+authored coverage. Twenty exact raw identified histories consume completely and re-emit unchanged,
+all count one. Identity is established by same-state content/preimage/request relationships, never
+by reversing or guessing a hashed namespace. No STF or request lifecycle executes.
+
+Expanded private checks cover all four fixed shapes, escaped/replaced copies, suffixes, late
+truncation, protocol bounds and backend refusal/recovery. Observer counters prove history/key
+policy rejects before hashing. Production corpora link the unmodified primitive bridge; fault
+injection is isolated in test-only binaries. After **1,000 warmed cycles**, public live allocation
+returns from **192 to 192 bytes** while fresh keyed entries retire. Fixed histories contain no
+heap references; this scoped allocation observation is not an RSS or general leak-freedom claim.
+
+This increment adds **74 runtime misuse rejections**: sixteen actual/default result pairs and
+42 inactive-field reads (all six fields against every wrong source/decoded shape, plus defaults).
+It adds **27 compilation rejections**: 24 private/read-only result/shape probes, two nominal
+length/slot substitutions and one explicitly proven inactive timestamp contract. Cumulative
+totals are **1,250 runtime misuse rejections, 567 compilation rejections (487 privacy + 71 nominal
++ five schema + four static contracts), 50 positive native suites and twenty-seven family corpora**,
+plus three separate language probes. Formatting covers **752 Nim files**; the functional report
+records **779 matching source/test hashes**. Safety counts are separate from compiler-repair metrics.
+
+The all-source semantic audit advances from 33/43 to **34/43 passing modules**, retaining all nine
+remaining failures. Branch Linux CI automatically runs the expanded migrated slice. Evidence here
+remains local macOS ARM64, checked ARC/Clang LTO; Linux execution and full M1/M2/M3 runtime parity
+remain gates. Next is exact chapter/service composition and whole-state root evidence, preserving
+all existing interpretations and the parked namespace question.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 service request histories (`src/codec/state_requests.nim`), preserving fixed
-length/hash key framing, canonical counts, tagged 0–3-slot alternatives, nominal time/length
-domains, whole-record preflight and the existing corpus. Keep the request-namespace question
-parked for Gray Paper 0.8.1/0.8.2 review as directed by the maintainer.
+Next: port M1 exact chapter/service composition (`src/codec/state_composition.nim`), preserving
+profile binding, complete component consumption, typed/opaque service mappings, duplicate-key
+rejection, retained captures and the existing independent whole-state root corpus. Keep the
+request-namespace question parked for Gray Paper 0.8.1/0.8.2 review as directed by the maintainer.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1520,5 +1578,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
 authorization, state chapters 3–5/10/12–16, fixed service-account metadata and storage/preimage
-keyed values. A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
+keyed values and request histories. A missing check or failed guard still makes the runner exit
+one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -628,6 +628,13 @@ SERVICE_VALUES_PRIVATE = {'service_value_result_key_private': 'completed', 'serv
 PRIVATE.update(SERVICE_VALUES_PRIVATE)
 NOMINAL.update(service_value_code_as_preimage="ServicePreimageHash", service_value_hash_as_key="StateKey")
 SERVICE_VALUES_MEMBERS = ('storage-key-policy', 'storage-key-backend', 'preimage-key-policy', 'preimage-key-backend', 'storage-entry-value', 'storage-entry-key', 'storage-entry-backend', 'preimage-entry-value', 'preimage-entry-key', 'preimage-entry-backend', 'capture-policy', 'capture-key', 'info-owner', 'copy-owner', 'copy-short', 'copy-alias', 'entry-owner', 'entry-policy', 'scratch-extent')
+# Request result state and all inactive history payloads remain private/read-only to callers.
+REQUESTS_PRIVATE = {'request_result_key_private': 'completed', 'request_result_entry_private': 'completed', 'request_result_read_private': 'completed', 'request_result_extent_private': 'completed', 'request_result_retag': 'status', 'request_result_forge': 'status', 'request_result_error_write': 'error', 'request_result_value_write': 'value', 'request_history_mode_private': 'mode', 'request_history_sinceSlot_private': 'sinceSlot', 'request_history_availableSlot_private': 'availableSlot', 'request_history_unavailableSlot_private': 'unavailableSlot', 'request_history_originalSlot_private': 'originalSlot', 'request_history_removedSlot_private': 'removedSlot', 'request_history_restoredSlot_private': 'restoredSlot', 'request_history_retag': 'mode', 'request_history_forge': 'mode', 'request_history_state_write': 'state', 'request_history_since_write': 'since', 'request_history_availableFrom_write': 'availableFrom', 'request_history_unavailableFrom_write': 'unavailableFrom', 'request_history_originalFrom_write': 'originalFrom', 'request_history_removedAt_write': 'removedAt', 'request_history_restoredAt_write': 'restoredAt'}
+PRIVATE.update(REQUESTS_PRIVATE)
+NOMINAL.update(request_length_as_slot="RequestSlot", request_slot_as_length="RequestLength")
+CONTRACTS.update(request_known_requested_since="history.mode == Available")
+REQUESTS_MEMBERS = ('owner', 'consumed', 'decode-framing', 'decode-count', 'decode-items', 'decode-bytes', 'decode-tail', 'key-policy', 'key-backend', 'entry-items', 'entry-bytes', 'entry-key', 'entry-backend', 'extent-count', 'extent-items', 'extent-bytes')
+REQUESTS_FIELDS = (('since', 0, 'Available'), ('since', 2, 'Available'), ('since', 3, 'Available'), ('availableFrom', 0, 'Unavailable'), ('availableFrom', 1, 'Unavailable'), ('availableFrom', 3, 'Unavailable'), ('unavailableFrom', 0, 'Unavailable'), ('unavailableFrom', 1, 'Unavailable'), ('unavailableFrom', 3, 'Unavailable'), ('originalFrom', 0, 'Reavailable'), ('originalFrom', 1, 'Reavailable'), ('originalFrom', 2, 'Reavailable'), ('removedAt', 0, 'Reavailable'), ('removedAt', 1, 'Reavailable'), ('removedAt', 2, 'Reavailable'), ('restoredAt', 0, 'Reavailable'), ('restoredAt', 1, 'Reavailable'), ('restoredAt', 2, 'Reavailable'))
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -676,7 +683,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -707,7 +714,8 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('tests/native/state_service_values_driver.nim', 'tests/state_service_values_oracle.py',
+    sources += [ROOT/path for path in ('tests/native/state_requests_driver.nim', 'tests/state_requests_oracle.py',
+                'tests/test_state_requests_harness.py', 'tests/native/state_service_values_driver.nim', 'tests/state_service_values_oracle.py',
                 'tests/test_state_service_values_harness.py', 'tests/native/state_accounts_driver.nim', 'tests/state_accounts_oracle.py',
                 'tests/test_state_accounts_harness.py', 'tests/native/state_outputs_driver.nim', 'tests/state_outputs_oracle.py',
                 'tests/test_state_outputs_harness.py', 'src/crypto/primitives.nim', 'tests/native/crypto_driver.nim',
@@ -751,8 +759,8 @@ def main():
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values') else None)
+                                 crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private')
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -884,6 +892,13 @@ def main():
             if release is not None:
                 # Live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
                 report['safrole_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_requests_private' and row['passed']:
+            # Fixed histories own no references; keyed entry buffers retire after every success/refusal/recovery scope.
+            release = re.search(r'REQUESTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
+                report['requests_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'service_values_private' and row['passed']:
             # Final retained owners and hashing scratch must retire after success, refusal, recovery and preflight failure.
             release = re.search(r'SERVICE_VALUES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1669,6 +1684,45 @@ def main():
     corpus['passed'] = corpus['passed'] and len(traces) == 16 and corpus['published_json_storage'] == 12 and corpus['published_json_preimages'] == 16
     report['service_values_corpus'] = corpus
     announce('independent service storage/preimage keys and opaque raw-value corpus', corpus['passed'])
+    # Request histories preserve the full E4 domain and the maintainer-parked namespace question.
+    from state_requests_oracle import requests as requests_requests, published as requests_published, published_traces as requests_traces, parse as requests_parse, wire as requests_wire
+    harness = command([sys.executable, ROOT/'tests/test_state_requests_harness.py'], 'requests-harness')
+    lines, expected = requests_requests()
+    source = BUILD/'requests-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    published = requests_published()
+    traces = []
+    # Identities come from exact content/preimage/request relationships in one state, never guessed hashed namespaces.
+    for entry in requests_traces():
+        slots, consumed = requests_parse(entry['wire'], (3, 13))
+        traces.append(dict(path=entry['path'], phase=entry['phase'], service=entry['service'], length=entry['length'],
+                           key=entry['key'].hex(), bytes=len(entry['wire']), count=len(slots), consumed=consumed,
+                           sha256=hashlib.sha256(entry['wire']).hexdigest(),
+                           complete_component_match=consumed == len(entry['wire']) and requests_wire(slots) == entry['wire']))
+    compiled, binary = build(compiler, ROOT/'tests/native/state_requests_driver.nim', 'state_requests-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_json_histories=len(published),
+                  published_json_shapes={str(n): sum(len(row[3]) == n for row in published) for n in range(4)},
+                  published_trace_histories=traces,
+                  namespace_overlap=dict(status='parked_by_maintainer_until_graypaper_0.8.1_or_0.8.2', lengths=[2**32-2, 2**32-1],
+                    observation='full stated domain preserved; overlapping keys reject at trie composition; no restriction inferred'),
+                  scope='request key/history framing only; no chronology, availability or lifecycle transitions',
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Independent expected fields/bytes/reasons precede execution; source and input mutation cannot change observations.
+        result = command([binary, source], 'state_requests-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Preserve the first mismatch and complete native observation log for independent reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    corpus['passed'] = corpus['passed'] and len(traces) == 20 and all(row['complete_component_match'] for row in traces)
+    report['requests_corpus'] = corpus
+    announce('independent service request-history key/shape corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2110,6 +2164,25 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['service_values'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' service values '+member+' guard', passed)
+    # Result payloads and every inactive timestamp require supported success/shape contracts.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_requests_results.nim', 'requests-results', crypto_observer)
+    report['requests_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Actual/default failures cannot fabricate valid Requested histories, keys or completed progress.
+        for origin in ('default', 'error'):
+            for member in REQUESTS_MEMBERS:
+                result = command([binary, member, origin], 'requests-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['requests'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' requests '+member+' guard', passed)
+        cases = [(field, origin, mode, tag) for origin in ('source', 'decoded') for field, mode, tag in REQUESTS_FIELDS]
+        cases += [(field, 'default', 0, tag) for field, mode, tag in REQUESTS_FIELDS if mode == 0]
+        # All six fields reject every inactive source/decoded mode and the empty default shape independently.
+        for field, origin, mode, tag in cases:
+            result = command([binary, 'field-'+field, origin, mode], f'requests-{origin}-{mode}-{field}')
+            passed = result['exit_code'] == 1 and 'history.mode == '+tag in result['output'] and '[AssertionDefect]' in result['output']
+            report['requests'].append(dict(origin=origin, member=field, inactive_mode=mode, passed=passed, run=result))
+            announce(f'{origin} requests {mode}/{field} shape guard', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -2144,6 +2217,12 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name in ('request_length_as_slot', 'request_slot_as_length'):
+            # Slot and advertised-length domains stay distinct through safe source constructors and key derivation.
+            call, position, actual = (('availableHistory(', 1, 'RequestLength') if name == 'request_length_as_slot'
+                                      else ('serviceRequestKey(', 3, 'RequestSlot'))
+            rejected = ('Error: Type mismatch at [position]' in result['output'] and call in result['output']
+                        and f'[{position}] expected: {member} but got: {actual}' in result['output'])
         elif name in ('service_value_code_as_preimage', 'service_value_hash_as_key'):
             # Equal-purpose hashes and final trie keys retain distinct nominal identities and widths.
             call, position, actual = (('servicePreimageKey(', 2, 'CodeHash') if name == 'service_value_code_as_preimage'
@@ -2241,6 +2320,9 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['requests_corpus']['passed']
+                   and len(report['requests']) == 2*len(REQUESTS_MEMBERS)+2*len(REQUESTS_FIELDS)+6
+                   and all(row['passed'] for row in report['requests'])
                    and report['service_values_corpus']['passed']
                    and len(report['service_values']) == 2*len(SERVICE_VALUES_MEMBERS)
                    and all(row['passed'] for row in report['service_values'])

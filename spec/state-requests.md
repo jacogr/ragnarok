@@ -31,7 +31,8 @@ supplied to entry encoding but absent from history payloads.
 | Unavailable | 2 | availableFrom, unavailableFrom |
 | Reavailable | 3 | originalFrom, removedAt, restoredAt |
 
-Inactive fields are unavailable and retain runtime variant guards. Default history is the valid
+Inactive fields are unavailable. On the Nimony branch, private alternatives and selected-field
+preconditions enforce this contract; see the branch verification below. Default history is the valid
 empty Requested alternative; default **result** is failure and contains no history. Every
 canonical accepted count occupies exactly one byte. All timeslots are explicit E4 values in their
 supplied positions, including zero, uint32-max, equal and descending values. The codec neither
@@ -82,7 +83,8 @@ The needed exclusion or namespace change still requires normative clarification.
 active literal test and native integration check reproduce both overlaps and show that existing
 trie composition returns DuplicateKey rather than silently overwriting a mapping. This does not
 resolve valid-state admissibility. Whole-state integration must retain duplicate-key rejection,
-and **full state-parity claims remain gated** by this issue and the chapter-13 width discrepancy.
+and the maintainer has parked normative resolution until Gray Paper 0.8.1/0.8.2 review. Chapter 13
+uses the accepted compact gas and numeric service-key policy without an alternate-width fallback.
 
 ## Independent and published evidence
 
@@ -110,7 +112,8 @@ histories with single-byte and arbitrary raw mutations; and **98 partial request
 Native supplementary tests protect fixed scope/source/input/value copies, inactive requested/
 available field reads, failed/default result guards, both domain overlaps and duplicate-key
 composition failure. Two compiler probes reject advertised-length-as-timeslot and the reverse.
-No retained mutable storage or privacy probe is needed for fixed tagged value records.
+No retained mutable storage needs a storage-privacy probe; Nimony result and variant access are
+protected by the branch-specific probes below.
 
 Eight exact JSON blobs at vector revision `d3c089c9a1d5352ad353626d7a2db8589f137b2a`,
 `stf/preimages/{tiny,full}/{preimage_needed-1,preimage_needed-2,preimage_not_needed-1,preimage_not_needed-2}.json`,
@@ -139,3 +142,36 @@ remains incomplete** pending request namespace policy. C13 compact gas is accept
 policy. The review preserves the full length domain and duplicate rejection. The maintainer has
 [parked the request-namespace question](state-clarifications.md) pending Gray Paper 0.8.1/0.8.2
 review; it is not active work.
+
+
+## Nimony branch verification
+
+The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
+keys, counts, fixed timeslots, policies and error precedence. `RequestResult[T]` keeps its status
+and payload private behind read-only reasons and success preconditions. `RequestHistory` keeps
+its mode and six timestamp fields private. Use `requestedHistory()`, `availableHistory(since)`,
+`unavailableHistory(availableFrom, unavailableFrom)` or
+`reavailableHistory(originalFrom, removedAt, restoredAt)` to construct fixed values. Inspect `state`
+and read only that shape's active timestamp accessors. To alter a value, construct a replacement
+shape; retagging, raw construction and timestamp assignment are unavailable to callers.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
+trial compiler. It includes the unchanged 2,273-request corpus, six passing literal checks, the
+parked policy test's explicit skip, 28 JSON histories, twenty exact identified raw histories and
+98 partial request roots. Two positive suites verify all four fixed modes, caller/source/copy
+independence, bounded arithmetic, backend refusal/recovery and preflight before native hashing.
+Production corpus binaries link the unmodified maintained primitive bridge; only test adapters
+link the separate observer. The scoped 1,000-cycle workload returns public live allocation from
+192 to 192 bytes locally; histories themselves contain no retained heap references.
+
+Seventy-four isolated reads reject through exact result/shape contracts: 32 actual/default result
+reads and 42 inactive timestamps across source/decoded/default origins. Twenty-four private and
+read-only compiler probes protect result and variant state, two nominal probes protect slot/length
+domains, and a proven Requested-state read of `since` fails its contract at compile time. Runtime
+checks cover cases without such a static proof. No compiler patches or private runtime hooks are
+used. This does not enforce chronology, request lifecycle or resolve namespace admissibility.
+
+Verification is local macOS ARM64, checked ARC/Clang LTO; Linux and full M1 migration remain gates.
+Next is exact chapter/service composition and whole-state root evidence, keeping the maintainer's
+namespace question parked. Cumulative totals and remaining work are in the
+[trial](../docs/nimony-trial.md).

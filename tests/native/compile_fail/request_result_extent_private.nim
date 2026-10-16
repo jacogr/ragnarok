@@ -1,0 +1,4 @@
+## Successful request payloads remain private behind the guarded result accessor.
+import ../../../src/codec/[state_requests, state_trie]
+let parsed = default(RequestResult[int])
+discard parsed.completed
