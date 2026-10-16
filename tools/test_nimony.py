@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -432,6 +432,18 @@ NOMINAL.update(state_key_as_hash='StateKey',
                state_value_as_node_hash='StateValueHash')
 LAYOUT_MEMBERS = ('key-limit', 'leaf-limit', 'node-info', 'node-consumed', 'metadata-invalid', 'hash-invalid', 'key-backend', 'leaf-backend', 'hash-backend')
 LAYOUT_VARIANTS = [('Branch-embeddedKey', 'Branch', 'node.nodeKind == EmbeddedLeaf'), ('Branch-length', 'Branch', 'node.nodeKind == EmbeddedLeaf'), ('Branch-embedded', 'Branch', 'node.nodeKind == EmbeddedLeaf'), ('Branch-hashedKey', 'Branch', 'node.nodeKind == HashedLeaf'), ('Branch-valueHash', 'Branch', 'node.nodeKind == HashedLeaf'), ('EmbeddedLeaf-left', 'EmbeddedLeaf', 'node.nodeKind == Branch'), ('EmbeddedLeaf-right', 'EmbeddedLeaf', 'node.nodeKind == Branch'), ('EmbeddedLeaf-hashedKey', 'EmbeddedLeaf', 'node.nodeKind == HashedLeaf'), ('EmbeddedLeaf-valueHash', 'EmbeddedLeaf', 'node.nodeKind == HashedLeaf'), ('HashedLeaf-left', 'HashedLeaf', 'node.nodeKind == Branch'), ('HashedLeaf-right', 'HashedLeaf', 'node.nodeKind == Branch'), ('HashedLeaf-embeddedKey', 'HashedLeaf', 'node.nodeKind == EmbeddedLeaf'), ('HashedLeaf-length', 'HashedLeaf', 'node.nodeKind == EmbeddedLeaf'), ('HashedLeaf-embedded', 'HashedLeaf', 'node.nodeKind == EmbeddedLeaf')]
+TRIE_PRIVATE = dict(
+    trie_result_commitment_private='completed',
+    trie_result_hash_private='completed',
+    trie_result_retag='status',
+    trie_result_forge='status',
+    trie_result_error_write='error',
+    trie_result_value_write='value',
+)
+PRIVATE.update(TRIE_PRIVATE)
+NOMINAL.update(state_root_as_node='StateRoot', state_bytes_as_nodes='got: ByteLimit but wanted: TrieNodeLimit')
+TRIE_ORIGINS = ('default', 'item-limit', 'per-value-limit', 'total-value-limit',
+                'node-limit', 'duplicate', 'backend-first', 'backend-late')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -480,7 +492,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -515,7 +527,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
+                'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
+                'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -539,7 +552,8 @@ def main():
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name in ('crypto_seeds', 'state_layout') else None)
+                                 crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
+                                 else crypto_library if name == 'state_trie' else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -615,6 +629,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_trie_private' and row['passed']:
+            # Temporary sorted-key scratch must retire after success, preflight rejection and early/late backend failure.
+            release = re.search(r'TRIE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public allocator occupancy is workload-specific and excludes RSS/retained page interpretations.
+                report['trie_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'crypto_seeds' and row['passed']:
             # Exact-storage wipe checks run while memory is live; occupancy must return after final-owner release.
             release = re.search(r'CRYPTO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1016,6 +1037,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['layout_corpus'] = corpus
     announce('independent state-key/node layout and hash corpus', corpus['passed'])
+    # Compare independent unsorted-list partitions, every key divergence bit and labelled historical projections.
+    from state_trie_oracle import requests as trie_requests, legacy_maps
+    harness = command([sys.executable, ROOT/'tests/test_state_trie_harness.py'], 'trie-harness')
+    lines, expected = trie_requests()
+    source = BUILD/'trie-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_trie_driver.nim', 'trie-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  historical_projected_maps=len(legacy_maps()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Every result compares exact root/counts or a typed reason; caller preservation is checked by the adapter.
+        result = command([binary, source], 'trie-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Retain complete native output and the first mismatch for independent diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['trie_corpus'] = corpus
+    announce('independent bounded state trie root corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1305,6 +1350,19 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['layout'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' layout '+member+' guard', passed)
+    # Public commitment and private recursive child-hash results must reject failed/default payload reads.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_trie_results.nim', 'trie-results', crypto_observer)
+    report['trie_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Independent processes expose no fabricated root, entry count, node count or child hash.
+        cases = [(member, origin) for origin in TRIE_ORIGINS for member in ('root', 'entries', 'nodes')]
+        cases += [('child-hash', origin) for origin in ('default', 'error')]
+        for member, origin in cases:
+            # Require the exact success contract rather than an unrelated process failure.
+            result = command([binary, member, origin], 'trie-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['trie'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' trie '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1327,7 +1385,7 @@ def main():
     for name, member in NOMINAL.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        if name in ('state_key_as_hash', 'state_partial_as_hash', 'state_value_as_node_hash'):
+        if name in ('state_key_as_hash', 'state_partial_as_hash', 'state_value_as_node_hash', 'state_root_as_node'):
             # A key, truncated left commitment or value hash cannot fill a complete child-hash argument.
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
@@ -1368,7 +1426,9 @@ def main():
                    and report['header_corpus']['passed'] and report['block_corpus']['passed']
                    and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
-                   and report['layout_corpus']['passed']
+                   and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
+                   and len(report['trie']) == 3*len(TRIE_ORIGINS)+2
+                   and all(row['passed'] for row in report['trie'])
                    and len(report['layout']) == 2*len(LAYOUT_MEMBERS)+len(LAYOUT_VARIANTS)
                    and all(row['passed'] for row in report['layout'])
                    and len(report['crypto']) == 2*len(CRYPTO_MEMBERS)

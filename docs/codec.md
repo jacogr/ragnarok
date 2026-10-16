@@ -133,5 +133,7 @@ snapshot release workload. C.2 availability specifications, transfers and accumu
 records now pass their complete corpus, guarded source/decoded alternatives and release checks.
 The raw crypto primitive dependency now passes its vector, result, seed-erasure and thread checks.
 State keys and fixed node layout/hashing now pass their complete independent corpus, fixed-copy,
-result/variant, backend-failure and nominal-domain checks. The next compiler-port increment is
-bounded state trie construction (`state_trie.nim`). M1 migration remains partial.
+result/variant, backend-failure and nominal-domain checks. Bounded trie roots now pass their
+complete independent corpus, preflight, result, scratch-release and nominal-domain checks.
+The next compiler-port increment is entropy, validator rosters and timeslot state
+(`state_safrole.nim`, chapters 6–9 and 11). M1 migration remains partial.

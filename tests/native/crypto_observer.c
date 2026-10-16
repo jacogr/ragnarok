@@ -12,6 +12,8 @@ int rc_real_ed_sign(const uint8_t *, const uint8_t *, size_t, uint8_t *);
 static void *target;
 static size_t target_length;
 static int calls, before_nonzero, after_zero, failures;
+/* Sequential fault tests count attempted Blake2b calls and may refuse after a known successful prefix. */
+static int blake_calls, blake_remaining = -1;
 
 /* Reset before each isolated fixture; only the wipe callback may inspect the still-live target. */
 void ro_watch(void *address, size_t length) {
@@ -24,7 +26,19 @@ int ro_calls(void) { return calls; }
 int ro_before_nonzero(void) { return before_nonzero; }
 int ro_after_zero(void) { return after_zero; }
 /* Fault flags apply only to the observer-linked sequential test adapter. */
-void ro_fail(int flags) { failures = flags; }
+void ro_fail(int flags) {
+    failures = flags;
+    blake_calls = 0;
+    blake_remaining = -1;
+}
+/* Refuse after a bounded number of successful calls, allowing cleanup after completed child hashes to be tested. */
+void ro_blake_after(int successful) {
+    failures = 0;
+    blake_calls = 0;
+    blake_remaining = successful;
+}
+/* Expose copied attempt counts to prove all preflight failures occur before cryptographic work. */
+int ro_blake_calls(void) { return blake_calls; }
 
 /* Inspect the live object before and after the real explicit cleanse, before the destructor can free it. */
 void rc_wipe(void *address, size_t length) {
@@ -50,7 +64,12 @@ void rc_wipe(void *address, size_t length) {
 }
 /* Inject a backend refusal without modifying output; successful calls use exactly the production bridge. */
 int rc_blake2b256(const uint8_t *data, size_t length, uint8_t out[32]) {
-    return failures & 1 ? 0 : rc_real_blake2b256(data, length, out);
+    ++blake_calls;
+    /* Both immediate and delayed refusals leave the caller output untouched. */
+    if ((failures & 1) || blake_remaining == 0) return 0;
+    /* A negative counter disables delayed refusal; only a positive budget is decremented. */
+    if (blake_remaining > 0) --blake_remaining;
+    return rc_real_blake2b256(data, length, out);
 }
 /* Keccak refusal is independent of Blake2b and preserves the legacy production implementation. */
 int rc_keccak256(const uint8_t *data, size_t length, uint8_t out[32]) {

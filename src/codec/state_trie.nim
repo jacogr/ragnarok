@@ -27,15 +27,22 @@ type
     nodes*: uint64
   ## Only a successful alternative exposes a completed commitment.
   StateTrieResult*[T] = object
-    case error*: StateTrieError
-    of StateTrieError.None:
-      value*: T # Only complete success exposes root/count metadata.
+    case status: StateTrieError
+    of None:
+      completed: T # Only complete success exposes root/count metadata.
     else:
-      discard   # Default and failures contain their reason alone.
+      discard      # Default and failures contain their reason alone.
   ## Private copied keys and source indices avoid retaining or copying caller values during sorting.
   KeyIndex = object
     key: StateKey
     index: int
+
+# Read failure reasons without granting access to a completed root, child identity or counts.
+func error*[T](value: StateTrieResult[T]): StateTrieError = value.status
+# Every public/private success payload requires explicit successful selection in optimized builds.
+func value*[T](value: StateTrieResult[T]): T {.inline, requires: value.status ==
+    StateTrieError.None.} =
+  value.completed
 
 ## Compare fixed keys lexicographically, which agrees with MSB-first bit order.
 proc compare(a, b: KeyIndex): int =
@@ -79,14 +86,14 @@ proc commit(entries: openArray[StateEntry], keys: seq[KeyIndex], first, stop, de
             perValue: ByteLimit): StateTrieResult[StateNodeHash] =
   if first == stop:
     # The empty dictionary identity is all zeroes, never Blake2b(empty).
-    return StateTrieResult[StateNodeHash](error: StateTrieError.None, value: StateNodeHash(default(
-        array[32, byte])))
-  var encoded: EncodedStateNode
+    return StateTrieResult[StateNodeHash](status: StateTrieError.None, completed: StateNodeHash(
+        default(array[32, byte])))
+  var encoded = default(EncodedStateNode)
   if stop-first == 1:
     # Leaf encoding selects inline versus raw-value hashing at the exact 32/33-byte boundary.
     let leaf = encodeStateLeaf(keys[first].key, entries[keys[first].index].value, perValue)
     if leaf.error != StateLayoutError.None:
-      return StateTrieResult[StateNodeHash](error: StateTrieError.BackendFailure) # Preflight already ruled out policy failure.
+      return StateTrieResult[StateNodeHash](status: StateTrieError.BackendFailure) # Preflight already ruled out policy failure.
     encoded = leaf.value
   else:
     # Preserve every shared-prefix branch and its empty sibling rather than compressing paths.
@@ -98,8 +105,8 @@ proc commit(entries: openArray[StateEntry], keys: seq[KeyIndex], first, stop, de
     encoded = encodeStateBranch(left.value, right.value)
   let hashed = hashStateNode(encoded)
   if hashed.error != StateLayoutError.None:
-    return StateTrieResult[StateNodeHash](error: StateTrieError.BackendFailure) # Foreign primitive failure cannot become a zero root.
-  StateTrieResult[StateNodeHash](error: StateTrieError.None, value: hashed.value)
+    return StateTrieResult[StateNodeHash](status: StateTrieError.BackendFailure) # Foreign primitive failure cannot become a zero root.
+  StateTrieResult[StateNodeHash](status: StateTrieError.None, completed: hashed.value)
 
 ## Compute an order-independent root without mutating inputs. All duplicate keys are rejected.
 ## O(n) private key/index sorting scratch and at most 248 recursive branch levels are released by ARC.
@@ -107,16 +114,16 @@ proc commit(entries: openArray[StateEntry], keys: seq[KeyIndex], first, stop, de
 proc stateTrieRoot*(entries: openArray[StateEntry], limits: StateTrieLimits): StateTrieResult[
     StateTrieCommitment] =
   if uint64(entries.len) > uint64(limits.items):
-    return StateTrieResult[StateTrieCommitment](error: StateTrieError.LimitExceeded) # Bound input-derived scratch first.
+    return StateTrieResult[StateTrieCommitment](status: StateTrieError.LimitExceeded) # Bound input-derived scratch first.
   if entries.len > high(int) div sizeof(KeyIndex) or entries.len > high(int) div sizeof(StateEntry):
-    return StateTrieResult[StateTrieCommitment](error: StateTrieError.LengthOverflow) # Typed extents must fit native addressing.
+    return StateTrieResult[StateTrieCommitment](status: StateTrieError.LengthOverflow) # Typed extents must fit native addressing.
   var total = 0'u64
   # Validate every payload before scratch allocation or any cryptographic operation.
   for entry in entries:
     let size = uint64(entry.value.len)
     if size > uint64(limits.perValue) or size > uint64(limits.totalValueBytes)-total:
       return StateTrieResult[StateTrieCommitment](
-          error: StateTrieError.LimitExceeded) # Subtraction prevents aggregate overflow.
+          status: StateTrieError.LimitExceeded) # Subtraction prevents aggregate overflow.
     total += size
   var keys = newSeq[KeyIndex](entries.len)
   # Copy only fixed keys and indices; source order and backing value storage stay untouched.
@@ -126,13 +133,14 @@ proc stateTrieRoot*(entries: openArray[StateEntry], limits: StateTrieLimits): St
   for i in 1..<keys.len:
     if compare(keys[i-1], keys[i]) == 0:
       return StateTrieResult[StateTrieCommitment](
-          error: StateTrieError.DuplicateKey) # A mapping cannot contain repeated identities.
+          status: StateTrieError.DuplicateKey) # A mapping cannot contain repeated identities.
   var nodes = 0'u64
   let counted = countNodes(keys, 0, keys.len, 0, limits.nodes, nodes)
   if counted != StateTrieError.None:
-    return StateTrieResult[StateTrieCommitment](error: counted) # No root or progress escapes resource preflight.
+    return StateTrieResult[StateTrieCommitment](status: counted) # No root or progress escapes resource preflight.
   let hashed = commit(entries, keys, 0, keys.len, 0, limits.perValue)
   if hashed.error != StateTrieError.None:
-    return StateTrieResult[StateTrieCommitment](error: hashed.error) # Propagate only the failure reason.
-  StateTrieResult[StateTrieCommitment](error: StateTrieError.None,
-    value: StateTrieCommitment(root: StateRoot(array[32, byte](hashed.value)), entries: entries.len, nodes: nodes))
+    return StateTrieResult[StateTrieCommitment](status: hashed.error) # Propagate only the failure reason.
+  StateTrieResult[StateTrieCommitment](status: StateTrieError.None,
+    completed: StateTrieCommitment(root: StateRoot(array[32, byte](hashed.value)),
+        entries: entries.len, nodes: nodes))

@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **23 native suites, thirteen independent family corpora, 576 runtime misuse rejections and
-335 compilation rejections pass locally**. State-key construction and fixed node layout/hashing
-now join the verified scalar, owned, report, extrinsic-family, work-package, header, block,
-bitstring, collection, C.2 and raw-crypto/state-key/node-layout slices.
+Status: **25 native suites, fourteen independent family corpora, 602 runtime misuse rejections and
+343 compilation rejections pass locally**. Bounded state trie construction now joins the verified
+scalar, owned, report, extrinsic-family, work-package, header, block, bitstring, collection, C.2,
+raw-crypto and state-key/node-layout slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged.
@@ -712,12 +712,60 @@ corpora**, plus three runtime language probes. Formatting covers **536 Nim files
 evidence records **463 matching source/test hashes**. Verification remains local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity remain
 unverified. No compiler/private-runtime hooks, source patches or omitted corpus cases are used.
 
+## Eighteenth increment: bounded state trie roots
+
+`src/codec/state_trie.nim` now runs on the same pristine nightly, retaining Gray Paper 0.8.0
+merklization equation M and the verified B/L encodings. Private sorted key/index scratch still
+uses the supported standard-library sort. `StateTrieResult[T]` hides status/payload behind a
+read-only reason and success-precondition getter, protecting both public commitments and private
+recursive child hashes. Empty mappings remain zero roots with zero nodes; duplicate identities
+are rejected, source order is preserved and every unary branch remains committed.
+
+All **2,308 unchanged independent requests** and **six literal topology/boundary checks** pass.
+The oracle partitions unsorted lists directly and uses hashlib, independently of the production
+sorted ranges/binary search. Coverage includes every divergence bit 0..247 with zero/one shared
+prefixes, permutations, exact/one-below topology budgets, empty/singleton maps, 32/33-byte values,
+primitive block boundaries, all payload/entry policies, equal/unequal duplicates, random maps and
+maps through 1,024 entries. Eleven frozen historical roots retain their labelled 32-to-31-byte
+key projection, with no projected duplicates. They are compatibility checks, not unmodified
+current-schema conformance or complete state serialization evidence.
+
+The native tests preserve copied roots and destructive caller mutation. A separate observer-linked
+suite verifies that entry, individual/aggregate payload, duplicate and topology failures occur
+before any cryptographic work. Empty mappings also succeed without hashing while the test backend
+is refusing. Immediate refusal and refusal after three successful primitive calls return only
+BackendFailure; the latter occurs after a complete child hash exists. Recovery reproduces the
+original root. The observer/fault symbols remain outside the production library/corpus adapter.
+
+Arithmetic remains explicit: native scratch extents are checked before allocation, aggregate
+lengths use remaining-budget subtraction, topology increments check ceilings first, and midpoint
+arithmetic stays inside the sorted range. White-box project tests exercise used=high(uint64),
+used=high(uint64)-1, empty children at exhausted budgets and the depth-248 defense without unsafe
+sequence descriptors or private compiler/runtime hooks. Public LengthOverflow remains defended
+but unexercised with ordinary small allocations; recoverable allocation exhaustion is not claimed.
+
+After 100 warmups, **1,000 scoped cycles return live occupancy 2,048 → 2,048 bytes**, with the
+16-entry long-value source retained outside each scope. Each cycle includes success, early and
+late backend failures, recovery, exhausted topology and duplicate-key rejection. Source key order
+and value bytes remain unchanged. This is workload-specific live allocator occupancy, not RSS
+or a general leak-freedom claim.
+
+This increment adds **26 runtime misuse rejections**: root/entry/node reads for default results,
+four independent resource failures, duplicates and immediate/late backend failures, plus default/
+failed private child-hash reads. It adds **eight compilation rejections**: six private/read-only
+result checks and the existing root-as-node and bytes-as-node-budget nominal probes. Cumulative
+totals are **602 runtime result/variant/constructor rejections, 343 compilation rejections
+(295 privacy + 43 nominal + five schema), 25 positive native suites and fourteen family corpora**,
+plus three runtime language probes. Formatting covers **544 Nim files**; the final evidence
+records **477 matching source/test hashes**. Verification remains local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity remain unverified.
+Protocol/native dependency pins and pristine upstream/compiler sources are unchanged.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 bounded state trie construction (`src/codec/state_trie.nim`), using the verified
-key/node layout and Blake2b dependency. Preserve order-independent roots, duplicate-key rejection,
-resource/topology budgets, independent root vectors and guarded results. State-component codecs
-remain later chunks.
+Next: port the related M1 entropy, staging/active/previous validator-roster and timeslot state
+codecs (`src/codec/state_safrole.nim`, chapters 6–9 and 11), including immutable roster ownership,
+result guards, structural population limits and the existing independent state-entry/root corpus.
+Other state components remain later bounded chunks.
 
 Further port work remains:
 
@@ -752,7 +800,7 @@ The runner now targets **only Nimony**. It writes commands, compiler/nightly met
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
-and raw-crypto/state-key/node-layout slices.
+and raw-crypto/state-key/node-layout/trie slices.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
