@@ -43,9 +43,8 @@ def dependencies(fetch):
 
 
 # Compile the same transport/TLS source revisions for both peers; use no global package installs or fetched executables.
-def build_peers(paths):
-    nim_version = subprocess.check_output(['nim', '--version'], text=True)
-    assert PINS['nim'] in nim_version
+def build_native(paths):
+    BUILD.mkdir(parents=True, exist_ok=True)
     bssl = paths['boringssl']
     system = platform.system()
     assert system in ('Darwin', 'Linux'), system
@@ -68,6 +67,16 @@ def build_peers(paths):
         run(['clang++', '-dynamiclib' if system == 'Darwin' else '-shared', BUILD / 'cert_fields.o',
              BUILD / 'transport_bridge.o', ROOT / 'build/native/lsquic/src/liblsquic/liblsquic.a',
              ROOT / 'build/native/boringssl/libssl.a', ROOT / 'build/native/boringssl/libcrypto.a', '-lz', '-o', library], log)
+    return library
+
+
+# Historical peer entry point remains separate from the branch's Nimony-only native-library build.
+def build_peers(paths):
+    nim_version = subprocess.check_output(['nim', '--version'], text=True)
+    assert PINS['nim'] in nim_version
+    library = build_native(paths)
+    # Preserve native build diagnostics while recording the historical peer command separately.
+    with (BUILD/'build.log').open('a') as log:
         run(['nim', 'c', '--mm:arc', '--cc:clang', '--clang.linkerexe:clang++', '--skipParentCfg', '--skipUserCfg',
              f'--passL:{library}', f'--nimcache:{BUILD / "nim-adapter-cache"}',
              f'--out:{BUILD / "nim-peer"}', ROOT / 'src/quic/peer.nim'], log)

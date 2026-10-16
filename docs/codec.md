@@ -172,8 +172,10 @@ Local M1 validation migration parity is reached for the documented implemented s
 namespace policy and Linux confirmation remain separate. M2 assurance signing contexts and
 validator-key/parent verification now pass too, alongside guarantee messages and complete-report
 signature composition. Bandersnatch owner safety and original contextual proof/JAM ticket/
-native-boundary/concurrency coverage now also pass locally. Next: M3 nonblocking UDP/socket
-readiness and registration retirement. Linux confirmation and normative policy gates remain separate.
+native-boundary/concurrency coverage now also pass locally. M3 UDP/readiness and linked transport
+lifecycle checks now pass locally.
+Next: peer identity/DER/framing and malformed-input selftests. Linux confirmation and normative
+policy gates remain separate.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux

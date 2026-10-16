@@ -55,7 +55,7 @@ jobs:
         run: python3 tests/test_nimony_ci.py
       - name: Formatting
         run: python3 tools/format.py --check
-      - name: Migrated codec, crypto and native-owner runtime coverage
+      - name: Migrated codec, crypto, UDP readiness and native-owner coverage
         run: python3 tools/test_nimony.py --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/runtime.log
       - name: Show measured partial coverage
         if: always()
@@ -72,6 +72,7 @@ jobs:
             build/nimony-ci/*.log
             build/nimony-trial/verification/*.log
             build/nimony-trial/verification/results.json
+            build/quic/build.log
             build/crypto/build.log
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log

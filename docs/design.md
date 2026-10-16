@@ -16,7 +16,7 @@ and caller-owned storage. Default/failed tagged results carry no values or progr
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
 
-`src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A standard-selector
+`src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A bounded POSIX
 nonblocking UDP dispatcher drives the maintained LSQUIC/TLS bridge. No stream or connection creates
 an OS thread. Optional RingVRF verification uses two workers and four total owned job slots.
 

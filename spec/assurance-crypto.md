@@ -63,7 +63,8 @@ seven private/read-only plus two nominal compiler probes reject at the intended 
 
 Results are local macOS ARM64, checked ARC/Clang LTO; Linux and full M3 parity remain separate.
 Guarantee/report signing composition now also passes. Bandersnatch owner safety and original
-contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally. Next: M3
-nonblocking UDP/socket readiness and registration retirement; Linux confirmation and documented
+contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally. M3
+UDP/readiness and linked transport lifecycle checks now pass locally.
+Next: peer identity/DER/framing and malformed-input selftests; Linux confirmation and documented
 normative policy gates remain separate. See the [cumulative trial](../docs/nimony-trial.md); the
 exceptional-point policy remains unresolved.

@@ -91,6 +91,8 @@ keys and individual corrupted signatures retain their original expectations.
 success-guarded fixed message copies. The helper hashes caller-supplied bytes; it does not validate
 report eligibility or guarantor assignments. Linux/full-client parity and the exceptional-point
 policy remain separate. Bandersnatch owner safety and original contextual proof/JAM
-ticket/native-boundary/concurrency coverage now also pass locally. Next: M3 nonblocking UDP/socket
-readiness and registration retirement; Linux confirmation and documented normative policy gates
+ticket/native-boundary/concurrency coverage now also pass locally. M3 UDP/readiness and linked
+transport lifecycle checks now pass locally.
+Next: peer identity/DER/framing and malformed-input selftests; Linux confirmation and documented
+normative policy gates
 remain separate. See [the trial](../docs/nimony-trial.md) for cumulative evidence.

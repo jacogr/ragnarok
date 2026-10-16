@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **54 native suites, thirty-nine independent corpora, 1,346 runtime misuse rejections
-and 636 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+Status: **56 native suites, thirty-nine independent corpora, 1,346 runtime misuse rejections
+and 639 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
@@ -13,7 +13,8 @@ policy still qualifies normative state parity. The M2 assurance and guarantee/re
 signing-context slices now also pass locally. Bandersnatch guarded results, fixed imports and
 native key/setup ownership, contextual VRF/RingVRF and original native-boundary/concurrency
 coverage also pass locally. M2 migration regression parity is reached for the implemented
-release-reference scope; M3 and Linux parity remain unverified.
+release-reference scope. M3 now has a local UDP/readiness and linked native-transport lifecycle
+slice; authenticated peers, broader M3 coverage and Linux parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -1967,12 +1968,86 @@ scope.** This preserves the Bandersnatch draft-text/reference discrepancy and ex
 Ed25519 policy gate; it does not claim an audit, normative resolution or Linux confirmation.
 M1's request-namespace policy remains parked.
 
+## Fortieth bounded increment: nonblocking UDP and transport retirement
+
+`src/quic/io.nim` replaces the unavailable Nim 2 socket/selector imports with a small maintained
+POSIX adapter. Public OS headers define socket addresses, poll entries and byte-order calls; the
+public Nimony POSIX bindings provide descriptor/error operations. Dependencies and the compiler
+remain pristine. No private runtime API, worker pool or per-connection thread is introduced.
+
+The dispatcher synchronously polls at most **two** descriptors with a **0–10 ms** wait, preserving
+the controlled standalone/two-role topology. Every call rebuilds its fixed poll array, so there is
+no asynchronous registration or pending buffer borrow. UDP remains nonblocking, non-inheritable
+across exec, limited to existing IPv4/IPv6 loopback scope and 2,048-byte sends. The transport still
+drains at most 64 packets per endpoint iteration. Interrupted/would-block reads yield to the next
+bounded dispatcher/timer iteration; sends retain retryable versus terminal error distinctions.
+This is a deliberately bounded adapter, not a general large-peer poll implementation.
+
+Socket ownership is non-copyable. An endpoint retains only its dispatcher metadata; the dispatcher
+stores copied descriptor numbers and never references endpoints, so ownership stays acyclic.
+Explicit close and scope destruction both unregister before closing the descriptor. The custom destructor also
+releases its retained ARC metadata field through the public destructor hook. One endpoint
+cannot register with two dispatchers, and closing a dispatcher prevents subsequent waits. Retiring
+one borrowed endpoint leaves its sibling active. Transport stack addresses remain stable while
+LSQUIC callbacks borrow them, and callers still explicitly close native engines before scope exit.
+The callback and engine defaults now express nullability. Scoped Nimony string storage provides
+terminating-zero C strings only for the duration of synchronous native construction.
+
+| Checked release/LTO evidence | Local result |
+| --- | --- |
+| Original idle/ready retirement matrix | 256 cases per family, sharing dispatcher metadata across retirements |
+| Automatic scope retirement | Another 256 cases per family; rebind each retired port to prove OS socket release |
+| Shared UDP dispatch | Both ready sockets route exact bytes/source ports; duplicate, foreign-dispatcher and capacity admission reject |
+| Boundary/setup failure | Would-block reads, closed dispatchers, short result arrays, invalid send sizes, failed bind and live-owner overwrite reject |
+| Native LSQUIC/TLS lifecycle | Failed certificate setup recovers; 16 IPv4/IPv6 standalone cycles and four shared engine pairs construct/poll/retire |
+| Ownership/compiler safeguards | Private endpoint/dispatcher metadata reject; full compilation rejects implicit endpoint copying |
+| Dispatcher ARC release | 1,000 warmed explicit/automatic scopes return public occupied memory to baseline |
+
+The native QUIC build was extracted from the historical peer command without changing configure,
+compile, link or dependency pins. The Nimony runner rebuilds that pristine library, creates ignored
+fixture identities and links the two new suites. Linux branch CI runs these automatically and
+retains `build/quic/build.log`; it does not invoke the historical Nim 2 peer build. The `nim` field
+in the original QUIC pin file remains historical provenance, not this trial's compiler selection.
+
+There were **four observed compiler repair rounds** during this port: ambiguous imported
+socket enum names, mutable imported poll constants triggering synchronization checks, implicit
+non-null default owners/string-to-C-string conversions, and missing exported close-on-exec
+constants. Repairs qualify the socket enums, use
+immutable header constants, model nullable owners/scoped C string storage and bind the missing
+constants through public OS headers. Diagnostics are in
+`build/nimony-trial/udp-first.log`, `quic-io-second.log`, `transport-io-first.log` and
+`udp-cloexec-first.log`. The final round was caught by both suites and the module audit; its two
+dependent suite failures count as one shared compiler repair, not independent language defects.
+The separately intentional ownership probe passes semantic checking but full compilation rejects
+`'=dup' is not available for type <UdpEndpoint>`; the runner therefore requires the full lowering
+check. These are prospective observations, not reconstructed historical repair totals. Post-build
+review also found an initially missing close-on-exec flag; it was restored and an OS-flag assertion
+was added before final verification. A separate public-occupancy probe then found a custom
+destructor omission: socket retirement passed, but the retained dispatcher ARC field was not
+released (832 to 4,032 bytes over 100 scopes). Explicitly destroying that field fixes the probe
+(192 to 192 bytes); the maintained suite now repeats 1,000 warmed explicit/automatic scopes (480 to 480 bytes).
+Evidence is retained in `verification/udp-lifetime.log` and `udp-lifetime-fixed.log` under
+`build/nimony-trial/`. These two review-found port defects are distinct from compiler repairs;
+no upstream compiler/runtime change was needed.
+
+Cumulative coverage is **56 positive native suites, thirty-nine independent corpora, 1,346 runtime
+misuse rejections and 639 compilation rejections**: 535 privacy, 94 nominal, five schema, four static
+contracts and one full-compilation ownership rejection. The new lifecycle checks belong to the two
+positive suites, not additional independent codec/crypto corpora or result-misuse guard counts.
+Formatting covers **816 Nim files** and the runner hashes **921 source/test/configuration files**.
+The all-source semantic audit advances to **41/44**: the new I/O module and transport pass; peer,
+mesh and integration remain. Offload-enabled compilation is still unverified.
+
+All results remain local macOS ARM64 with pinned Nimony 0.6.3, checked ARC/Clang LTO and unchanged
+LSQUIC/TLS pins. This proves only the exercised I/O/lifecycle slice. No authenticated peer exchange,
+network service/mesh/resilience/offload parity or Linux execution is claimed. M1/M2 local regression
+parity, the parked M1 namespace question and documented crypto policy gates retain their scope.
+
 ## Remaining work and next bounded increment
 
-Next: M3 nonblocking UDP/socket readiness and registration retirement. Port the maintained
-transport dispatcher to supported public Nimony/OS interfaces, preserve bounded work and explicit
-resource lifetimes, and replay the existing I/O retirement selftest before advancing to peers,
-services, mesh/resilience and offload. This increment does not start that port.
+Next: M3 peer identity/DER/framing migration and the original malformed-input selftests.
+Keep authenticated CE 143 exchanges, retained services, mesh/resilience and enabled proof offload
+as subsequent runtime gates. Do not equate linked native construction with authenticated networking.
 
 Further port work remains:
 
@@ -1982,9 +2057,9 @@ Further port work remains:
   Bandersnatch result/import/native-owner safety and original contextual VRF/RingVRF, JAM ticket,
   generated-proof, concurrency and native-boundary regression coverage now pass locally. The
   documented release-reference/draft-text and Ed25519 policy gates remain.
-- M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
-  Its alternative networking facilities require a dispatcher port and the existing lifecycle,
-  service, mesh, resilience and offload tests.
+- M3: bounded POSIX UDP/readiness, descriptor retirement and linked transport setup/teardown pass
+  locally. Peer identity/framing, authenticated exchanges, service, mesh, resilience and enabled
+  offload compilation/runtime coverage remain migration gates.
 - Toolchain: branch Linux installation/pinning, formatter setup and trial CI are configured.
   Linux execution, normal build commands and main documentation/CI cutover remain gates until the
   port demonstrates equivalent safety.
@@ -2014,6 +2089,7 @@ authorization, state chapters 3–5/10/12–16, fixed service-account metadata a
 keyed values, request histories, exact chapter/service composition, raw whole-state roots, published width
 evidence, the unchanged parked namespace witnesses, the original five early codec corpora, stateless
 assurance signing contexts, guarantee/report credential composition and the bounded Bandersnatch
-result/import/native-owner and contextual proof/native-boundary/concurrency slices.
+result/import/native-owner and contextual proof/native-boundary/concurrency slices, plus the
+bounded UDP/readiness and linked native transport lifecycle suites.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -686,6 +686,7 @@ BS_PRIVATE.update(bs_result_status_private='status', bs_result_retag='status', b
                   bs_result_error_write='error', bs_result_value_write='value',
                   bs_key_state_private='state', bs_setup_state_private='state', bs_key_forge='state', bs_setup_forge='state')
 PRIVATE.update(BS_PRIVATE)
+PRIVATE.update(quic_io_endpoint_forge='opened', quic_io_dispatcher_private='descriptors')
 NOMINAL.update(bs_key_as_setup='[1] expected: BsSetup but got: BsKey',
                bs_signature_as_ring_proof='got: BsSignature but wanted: BsRingProof',
                bs_output_as_public='got: BsOutput but wanted: BsPublicKey')
@@ -712,7 +713,7 @@ def command(arguments, name):
 
 
 # Use Nimony ARC/Clang release/LTO with bounds/contracts enabled; never use danger or noAssertions.
-def build(compiler, source, name, crypto_library=None, native_libraries=(), cflags=()):
+def build(compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
              '--boundchecks:on', '--passC:-flto', '--passL:-flto']
     if platform.system() == 'Linux':
@@ -721,6 +722,10 @@ def build(compiler, source, name, crypto_library=None, native_libraries=(), cfla
     if crypto_library is not None:
         # Crypto clients use the maintained public C header and one explicit native library.
         flags += [f'--passC:-I{ROOT/"native/crypto"}', f'--passL:{crypto_library}']
+    if quic_library is not None:
+        # QUIC clients use the unchanged maintained bridge and its public headers.
+        flags += [f'--passC:-I{ROOT/"native/quic"}', f'--passL:{quic_library}',
+                  f'--passL:-Wl,-rpath,{quic_library.parent}']
     if native_libraries:
         # Native Bandersnatch clients use one maintained header and explicit original/observer library paths.
         flags += [f'--passC:-I{ROOT/"native/bandersnatch"}']
@@ -746,7 +751,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -779,6 +784,9 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
+                'src/quic/io.nim', 'src/quic/transport.nim', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
+                'native/quic/transport_bridge.c', 'native/quic/transport_bridge.h', 'native/quic/cert_fields.c', 'native/quic/cert_fields.h',
+                'tests/native/compile_fail/quic_io_endpoint_copy.nim',
                 'tests/test_bandersnatch.py', 'tests/native/bandersnatch_driver.nim', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
                 'native/bandersnatch/src/lib.rs', 'native/bandersnatch/Cargo.toml', 'native/bandersnatch/Cargo.lock',
                 'spec/bandersnatch-pins.json', '.github/workflows/nimony-linux.yml','src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
@@ -826,6 +834,8 @@ def main():
     from bandersnatch_native import prepare as prepare_bandersnatch, OWNER_DEFINES
     bs_library, bs_observer, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
     bs_libraries = (bs_observer, bs_library)
+    from nimony_quic import prepare as prepare_quic
+    quic_library, quic_fixtures, report['quic_native'] = prepare_quic()
     from guarantees_oracle import record as guarantee_record
     guarantee_fixture = BUILD/'minimal-report.bin'
     guarantee_fixture.write_bytes(guarantee_record(0)['report'])
@@ -851,12 +861,20 @@ def main():
                                  crypto_observer if name in ('guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
                                  else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None,
                                  native_libraries=bs_libraries if name == 'bandersnatch_owners' else (),
-                                 cflags=OWNER_DEFINES if name == 'bandersnatch_owners' else ())
+                                 cflags=OWNER_DEFINES if name == 'bandersnatch_owners' else (),
+                                 quic_library=quic_library if name == 'quic_transport' else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [])], name+'-run')
+            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
+            if name == 'quic_io' and row['passed']:
+                # Custom resource destruction must release retained dispatcher metadata, not only OS sockets.
+                release = re.search(r'QUIC_IO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
+                    report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
             if name == 'ownership' and row['passed']:
                 # Retain public live-memory measurements for the isolated five-schema ARC release workload.
                 release = re.search(r'ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -2564,6 +2582,11 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['composition'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' composition '+member+' guard', passed)
+    # Unique socket ownership is checked by lowering/code generation, not by semantic checking alone.
+    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/quic_io_endpoint_copy.nim', 'quic-endpoint-copy')
+    passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <UdpEndpoint>" in compiled['output']
+    report['ownership_compile'].append(dict(name='quic_io_endpoint_copy', passed=passed, check=compiled))
+    announce('unique UDP endpoint copy rejection', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -2756,6 +2779,7 @@ def main():
                    and all(row['passed'] for row in report['history'])
                    and len(report['contracts']) == len(CONTRACTS)
                    and all(row['passed'] for row in report['contracts'])
+                   and len(report['ownership_compile']) == 1 and all(row['passed'] for row in report['ownership_compile'])
                    and report['state_disputes_corpus']['passed']
                    and len(report['state_disputes']) == 2*len(STATE_DISPUTES_MEMBERS)
                    and all(row['passed'] for row in report['state_disputes'])

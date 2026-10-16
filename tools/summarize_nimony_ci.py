@@ -24,8 +24,8 @@ def summarize(report, kind):
         # Count the actual independent evidence groups without hardcoding totals that grow during the port.
         groups = {key: value for key, value in report.items() if isinstance(value, list) and value
                   and all(isinstance(row, dict) and 'passed' in row for row in value)}
-        guards = sum(len(rows) for key, rows in groups.items() if key not in ('suites', 'runtime', 'privacy', 'nominal', 'schemas', 'contracts'))
-        compilations = sum(len(report[key]) for key in ('privacy', 'nominal', 'schemas'))+len(report.get('contracts', []))
+        guards = sum(len(rows) for key, rows in groups.items() if key not in ('suites', 'runtime', 'privacy', 'nominal', 'schemas', 'contracts', 'ownership_compile'))
+        compilations = sum(len(report[key]) for key in ('privacy', 'nominal', 'schemas'))+len(report.get('contracts', []))+len(report.get('ownership_compile', []))
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
         lines = ['## Nimony migrated runtime slice', '', '**Status: '+report['status']+'**', '',
                  f'- Native suites: {len(report["suites"])}', f'- Independent corpora: {len(corpora)}',

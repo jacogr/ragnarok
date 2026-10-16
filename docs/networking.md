@@ -2,7 +2,7 @@
 
 `src/quic/transport.nim` maintains a narrow adapter over pristine pinned LSQUIC/BoringSSL through
 `native/quic/`. Nim owns identity, DER/certificate observations, ALPN/framing and CE 143 policy.
-One selector dispatcher handles nonblocking UDP, bounded transport batches and application deadlines.
+One bounded POSIX readiness dispatcher handles nonblocking UDP, bounded transport batches and application deadlines.
 Callbacks borrow stable owners synchronously; no thread is created per connection or stream.
 
 The retained peer executable in `src/quic/peer.nim` supports controlled authenticated exchanges,
@@ -23,3 +23,23 @@ Port release/native bind is not descriptor inheritance, so unrelated processes r
 See [development commands](development.md). General validator-set management, multi-target dialing,
 independent JAM-stack interoperability, production sizing and full protocol/state coverage remain open.
 Pinned networking source is recorded in `spec/quic-proof-pins.json` and `vendor/jam-np`.
+
+## Nimony migration slice
+
+The experimental branch now uses `src/quic/io.nim` for nonblocking loopback UDP and a synchronous
+poll dispatcher capped at two sockets and ten milliseconds. It uses public OS headers/bindings,
+with no worker pool or compiler/dependency patches. Non-copyable endpoint owners unregister before
+close on explicit retirement or scope exit; dispatcher ownership is acyclic. Native engines still
+require explicit teardown while their callback owners remain stable.
+
+Local checked ARC/Clang LTO tests pass 1,024 idle/ready retirement cases over IPv4/IPv6, including
+scope exit and port rebind, shared readiness/data routing, flags, admission and setup failures.
+A further 1,000 warmed explicit/automatic scopes check release of retained ARC dispatcher metadata.
+The unchanged pinned native library also passes 16 standalone engine cycles and four shared pairs,
+including failure recovery and independent sibling retirement. Nimony Linux CI includes this slice;
+actual Linux confirmation remains separate.
+
+The peer executable and broad lifecycle claims above describe the historical implemented behavior;
+they are still migration gates on this branch. Next: peer identity/DER/framing and the original
+malformed-input selftests, followed by authenticated exchanges, services, mesh/resilience and
+proof offload. See the [cumulative Nimony evidence](nimony-trial.md).
