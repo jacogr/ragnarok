@@ -6,6 +6,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | Module | Scope |
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
+| `bitstrings.nim` | Strict Boolean prefixes, fixed/variable packed bitstrings and immutable bit owners |
 | `bounded.nim` | Bounded byte strings and homogeneous fixed-width sequences |
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
 | `work_digest.nim`, `work_report.nim` | Complete nested work digests/reports |
@@ -53,3 +54,9 @@ an outer discriminator. Parent scans validate every child before capture; encode
 all retained children before any write. Child materialization can allocate a separate family
 snapshot. The [coverage audit](codec-coverage.md) distinguishes complete published codec-family
 coverage from general encodings and accumulation records still missing in M1.
+
+[General Boolean and bitstring APIs](../spec/bitstrings.md) pack bits least-significant first,
+count logical bits in variable prefixes and enforce zero unused padding. Fixed framing omits the
+count. Matching immutable owners expose copied metadata/indexed Booleans and support either
+framing without exposing mutable packed bytes. Specialized assurance/dispute codecs retain their
+existing APIs and semantics.

@@ -13,10 +13,16 @@ its own scope; PVM execution and state transitions are separate client work.
 | General natural, fixed-width unsigned | Implemented in `natural.nim` / `fixed_unsigned.nim`; independent boundaries and nominal tests. |
 | Byte strings, fixed-width sequences | Implemented in `bounded.nim`; explicit resource budgets and atomic borrowed operations. |
 | Optional/tagged alternatives | Implemented for optional blobs, work results and header markers; not a generic schema framework. |
-| Boolean | Strict 0/1 paths in disputes; a standalone general Boolean API is still absent. |
-| Bitstrings | Fixed profile assurance bitfields, including unused-bit checks, are implemented; general variable bitstrings remain. |
+| Boolean | General strict 0/1 prefix API in `bitstrings.nim`, plus existing typed dispute paths. |
+| Bitstrings | General fixed/variable bitstrings in `bitstrings.nim`, immutable owners, logical bit limits and canonical padding; specialized assurance bitfields remain available. |
 | Canonical sets | Ordered unique prerequisites and evidence are specialized implementations; a reusable general set API remains. |
 | Canonical dictionaries | Specialized ordered report lookup paths exist; a reusable general dictionary API remains. |
+
+General Boolean/bitstring validation: 11,274 deterministic independent requests, six oracle
+known-answer checks, native lifetime/atomicity/alias/field-guard regressions, two nominal compiler
+rejections and one privacy rejection. Existing pinned tiny/full assurance bitfields and distinct
+dispute Boolean values are cross-checked through these APIs. See the
+[bitstring contract](../spec/bitstrings.md) for framing and padding rules.
 
 ## Specialized records (C.2)
 
@@ -31,8 +37,8 @@ its own scope; PVM execution and state transitions are separate client work.
 | Deferred transfers (`defxfer`) | Not implemented. |
 | Accumulation operands (`operandtuple`) | Not implemented. |
 
-The next coherent groups are general encodings and remaining C.2 records. A reusable schema
-framework is not required to close these concrete API gaps. State-dependent eligibility, hashing,
+The next coherent groups are reusable canonical sets/dictionaries and remaining C.2 records.
+A reusable schema framework is not required to close these concrete API gaps. State-dependent eligibility, hashing,
 signature/point validation, execution and authorization are not properties of the framing layer.
 
 ## Published codec fixture inventory

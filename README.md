@@ -28,6 +28,7 @@ See [development](docs/development.md) and [upstream ownership](docs/dependencie
 python3 tools/setup_submodules.py
 python3 tools/format.py --check
 python3 tests/test_codec.py
+python3 tests/test_bits.py
 python3 tests/test_tickets.py
 python3 tests/test_guarantees.py
 python3 tests/test_disputes.py

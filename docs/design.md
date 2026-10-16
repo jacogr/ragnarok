@@ -25,7 +25,8 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
 
 ## Implemented foundation
 
-- General naturals, fixed unsigned widths, bounded bytes/sequences, optional/work variants,
+- General naturals, fixed unsigned widths, strict Booleans, fixed/variable packed bitstrings,
+  bounded bytes/sequences, optional/work variants,
   preimage/ticket/guarantee/dispute extrinsics, work digests, complete reports, assurances,
   refinement contexts, work-package inputs, full/signing headers with epoch/winner markers,
   and complete extrinsic/block composition.

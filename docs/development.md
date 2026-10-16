@@ -15,6 +15,8 @@ Initialize sources with `python3 tools/setup_submodules.py` before native builds
 ```sh
 python3 tools/format.py --check
 python3 tests/test_codec.py
+python3 tests/test_bits.py
+python3 tests/test_bits_harness.py
 python3 tests/test_tickets.py
 python3 tests/test_tickets_harness.py
 python3 tests/test_guarantees.py
