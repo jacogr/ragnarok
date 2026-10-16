@@ -27,7 +27,8 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
 
 - General naturals, fixed unsigned widths, bounded bytes/sequences, optional/work variants,
   preimage/ticket/guarantee/dispute extrinsics, work digests, complete reports, assurances,
-  refinement contexts, work-package inputs and full/signing headers with epoch/winner markers.
+  refinement contexts, work-package inputs, full/signing headers with epoch/winner markers,
+  and complete extrinsic/block composition.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
@@ -39,7 +40,9 @@ See [M1 codec progress](m1.md) for the remaining grouped codec increments.
 ## Outstanding work
 
 PVM execution, complete state transitions, block import, consensus and availability processing,
-full extrinsic/state coverage and production validator operation are not implemented. Current
+remaining general/accumulation codecs, state coverage and production validator operation are not
+implemented. The [M1 coverage audit](codec-coverage.md) distinguishes wire composition from those
+remaining codec and validation responsibilities. Current
 network tests use bounded controlled topologies; general multi-target networking and independent
 JAM-stack interoperability remain open. Full-ring capacity sizing and dependency/security audits
 remain necessary. The exceptional-point Ed25519 acceptance policy requires an explicit normative

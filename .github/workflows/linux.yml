@@ -87,6 +87,11 @@ jobs:
           python3 tests/test_header_harness.py
           python3 tests/test_header.py 2>&1 | tee build/ci/header.log
 
+      - name: Complete extrinsic and block codecs
+        run: |
+          python3 tests/test_block_harness.py
+          python3 tests/test_block.py 2>&1 | tee build/ci/block.log
+
       - name: Crypto vectors, ownership and ABI checks
         run: python3 tests/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
 
@@ -166,6 +171,10 @@ jobs:
             build/header/results.json
             build/header/types/*.log
             build/header/types/results.json
+            build/block/*.log
+            build/block/results.json
+            build/block/types/*.log
+            build/block/types/results.json
             build/crypto/*.log
             build/crypto/results.json
             build/bandersnatch/*.log

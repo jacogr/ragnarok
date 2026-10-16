@@ -9,7 +9,8 @@ The maintainer authorized completing the migration while recording any Bandersna
 The release-designated ark-vrf 0.2.2 reference is now integrated and tested; a narrower discrepancy
 between the draft text and that reference remains explicit.
 The target specification is updated, but this is not a claim of complete 0.8.0 client conformance.
-Existing PVM, state-transition, full-block and validator-operation gaps remain outside this increment.
+PVM, state transitions, block eligibility/import and validator operation remain separate work.
+Complete block wire composition is now covered by the later M1 increment described below.
 
 ## Implemented scope
 
@@ -126,6 +127,11 @@ and no new scaffolding is presented as parity. See `docs/design.md` for the rema
 Standalone full/signing header and epoch/winner marker codecs now cover the 0.8.0 header wire
 changes, including variable epoch validator counts. [Their contract](header.md) separates framing
 from marker state eligibility, header/extrinsic hashing and signature verification.
+
+Complete extrinsic/block wire composition is now implemented in [block_codec](block.md). Parent
+preflight preserves each existing child policy and does not calculate or verify the header
+extrinsic commitment. All published codec families have explicit fixture outcomes; the
+[coverage audit](../docs/codec-coverage.md) records general and accumulation codecs still absent.
 
 ## Reproduction and observed validation
 

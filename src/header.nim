@@ -845,3 +845,14 @@ proc encodeOwnedWinnersMarker*(owner: OwnedWinnersMarker, output: var openArray[
   if owner.data.isNil:
     return HeaderResult[int](error: HeaderError.InvalidOwner)
   copy(owner.data, owner.data.layout.winnersStart, owner.data.layout.winnersLength, output)
+
+# Inspect a complete sealed header without allocation; parent block scans retain no source coordinates.
+proc inspectHeader*(input: openArray[byte], config: HeaderConfig): HeaderResult[
+    HeaderInfo] {.raises: [].} =
+  let scanned = scanHeader(input, config, true)
+  # The existing sealed scanner proves every marker, author and final signature extent.
+  if scanned.error != HeaderError.None: return HeaderResult[HeaderInfo](error: scanned.error)
+  HeaderResult[HeaderInfo](error: HeaderError.None, value: HeaderInfo(
+    unsigned: scanned.value.unsigned,
+    seal: HeaderSeal(fixed[96](input, scanned.value.unsigned.consumed)),
+        consumed: scanned.value.consumed))

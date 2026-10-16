@@ -10,6 +10,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
 | `work_digest.nim`, `work_report.nim` | Complete nested work digests/reports |
 | `tickets.nim`, `guarantees.nim` | Ticket records and immutable report guarantees |
+| `block_codec.nim` | Complete extrinsics/blocks over schema-bound immutable child components |
 | `header.nim` | Full/signing headers, epoch/winner markers, fixed tickets and retained views |
 | `work_package.nim` | Context, packed import references, input commitments, items and retained packages |
 | `disputes.nim` | Ordered verdicts/judgments and culprit/fault evidence with immutable snapshots |
@@ -46,3 +47,9 @@ count/dependency/footprint/gas limits and child owners that retain their parent 
 
 [Headers and markers](../spec/header.md) cover the exact signing prefix, variable epoch validator
 counts, fixed configured winner tuples and retained views that outlive full header handles.
+
+[Complete extrinsics and blocks](../spec/block.md) compose the existing child schemas without
+an outer discriminator. Parent scans validate every child before capture; encoders revalidate
+all retained children before any write. Child materialization can allocate a separate family
+snapshot. The [coverage audit](codec-coverage.md) distinguishes complete published codec-family
+coverage from general encodings and accumulation records still missing in M1.

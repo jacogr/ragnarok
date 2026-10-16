@@ -210,18 +210,27 @@ proc decodeWorkBorrowed*(input: openArray[byte], limit: ByteLimit): WorkResult {
 
 # Traverse nested records either without writes or as a commit pass after stable input has been proved valid.
 proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
-          output: var openArray[Preimage], commit: bool): PreimageResult {.raises: [].} =
+          output: var openArray[Preimage], commit: bool,
+          wireLimit: ByteLimit = ByteLimit(high(uint64))): PreimageResult {.raises: [].} =
   var cursor = offset
   var budget = uint64(limits.totalBlobBytes)
+  # A compositional inspection also bounds framing bytes; existing callers retain the unlimited default.
+  if uint64(cursor) > uint64(wireLimit): return PreimageResult(error: CompositeError.LimitExceeded)
   # Validate each tuple in wire order while subtracting its payload from the aggregate budget.
   for index in 0..<count:
     if input.len - cursor < 4: return PreimageResult(error: CompositeError.Truncated) # Missing service field.
+    # Bound per-record traversal before a parent can scan arbitrarily far beyond its frame budget.
+    if uint64(cursor+4) > uint64(wireLimit): return PreimageResult(
+        error: CompositeError.LimitExceeded)
     let service = decodeFixed(input.toOpenArray(cursor, cursor + 3), ByteWidth(4))
     cursor += 4
     let blob = decodeBytesBorrowed(input.toOpenArray(cursor, input.len - 1), ByteLimit(min(uint64(
         limits.perBlob), budget)))
     if blob.error != ContainerError.None: return PreimageResult(error: blobError(
         blob.error)) # Both blob policies checked early.
+    # Nested input extent is proved by decodeBytesBorrowed; only then can the exact wire endpoint be added.
+    if uint64(cursor+blob.consumed) > uint64(wireLimit):
+      return PreimageResult(error: CompositeError.LimitExceeded)
     if commit:
       # Only the second pass initializes record views; failed last records cannot expose an earlier partial prefix.
       output[index] = Preimage(service: ServiceIndex(uint32(uint64(service.value))),
@@ -295,3 +304,22 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
       copyMem(addr output[cursor], unsafeAddr pool[value.blob.offset], value.blob.length)
     cursor += value.blob.length
   CompositeWrite(error: CompositeError.None, written: required)
+
+# Inspect preimage framing/payload policy without allocation or exposing source coordinates.
+proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
+    wireLimit: ByteLimit): PreimageResult {.raises: [].} =
+  let prefix = natural.decode(input)
+  # Preserve primitive framing errors before choosing a count.
+  if not prefix.ok:
+    return PreimageResult(error: if prefix.error == natural.truncated: CompositeError.Truncated
+      else: CompositeError.NonCanonical) # Parent composition cannot normalize overlong counts.
+  let count = uint64(prefix.value)
+  # Policy and minimum-wire proof precede any conversion or record iteration.
+  if count > uint64(limits.items): return PreimageResult(error: CompositeError.LimitExceeded)
+  if count > uint64((input.len-int(prefix.consumed)) div 5):
+    return PreimageResult(error: CompositeError.Truncated) # Every record needs E4 service and at least one length octet.
+  # Keep parent acceptance compatible with later materialization through the existing typed preimage-owner API.
+  if count > uint64(high(int) div sizeof(Preimage)):
+    return PreimageResult(error: CompositeError.LengthOverflow)
+  var unused: array[0, Preimage]
+  walk(input, int(prefix.consumed), int(count), limits, unused, false, wireLimit)

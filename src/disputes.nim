@@ -403,3 +403,11 @@ proc encodeOwnedDisputes*(owner: OwnedDisputes, output: var openArray[byte]): Di
   # All checks precede the first write; only the original validated prefix is copied.
   for i in 0..<required: output[i] = owner.data.wire[i]
   DisputeResult[int](error: DisputeError.None, value: required)
+
+# Inspect all dispute sections without capturing bytes; only copied counts and exact progress leave the scan.
+proc inspectDisputes*(input: openArray[byte], config: DisputeConfig): DisputeResult[
+    DisputeInfo] {.raises: [].} =
+  let scanned = scan(input, config)
+  # Reuse the existing complete Boolean/index/order/extent validator.
+  if scanned.error != DisputeError.None: return DisputeResult[DisputeInfo](error: scanned.error)
+  DisputeResult[DisputeInfo](error: DisputeError.None, value: scanned.value.info)

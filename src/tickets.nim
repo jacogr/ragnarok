@@ -109,3 +109,18 @@ proc decodeTickets*(input: openArray[byte], limit: TicketLimit,
     output[i].proof = TicketProof(proof)
     cursor += 785
   TicketRead(error: TicketError.None, count: size, consumed: consumed)
+
+# Inspect complete ticket framing without allocating records or exposing any borrowed proof bytes.
+proc inspectTickets*(input: openArray[byte], limit: TicketLimit): TicketRead {.raises: [].} =
+  let prefix = natural.decode(input)
+  # An incomplete/overlong count cannot authorize a record extent or host conversion.
+  if not prefix.ok:
+    return TicketRead(error: if prefix.error == natural.truncated: TicketError.Truncated
+      else: TicketError.NonCanonical) # Canonical framing precedes count policy.
+  let count = uint64(prefix.value)
+  # Apply the same configured count ceiling as the existing caller-record decoder.
+  if count > uint64(limit): return TicketRead(error: TicketError.LimitExceeded)
+  # Every attempt/proof bit pattern is structurally valid; division proves the whole fixed sequence.
+  if count > uint64((input.len-int(prefix.consumed)) div 785):
+    return TicketRead(error: TicketError.Truncated)
+  TicketRead(error: TicketError.None, count: int(count), consumed: int(prefix.consumed)+int(count)*785)

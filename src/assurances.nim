@@ -184,3 +184,33 @@ proc decodeAssurances*(input: openArray[byte], config: AssuranceConfig,
   for i in 0..<length: output[i] = readRecord(input, prefix.consumed+i*stride, width)
   AssuranceDecodeResult(error: AssuranceError.None, count: length,
       consumed: prefix.consumed+length*stride)
+
+# Inspect complete assurance records without allocation/writes, reusing the existing per-record policy.
+proc inspectAssurances*(input: openArray[byte], config: AssuranceConfig): AssuranceDecodeResult {.raises: [].} =
+  # Caller domains precede any untrusted count or profile-dependent stride.
+  if not validConfig(config): return AssuranceDecodeResult(error: AssuranceError.InvalidConfig)
+  let prefix = natural.decode(input)
+  # Preserve canonical count failures before narrowing or iteration.
+  if not prefix.ok:
+    return AssuranceDecodeResult(error: if prefix.error ==
+        natural.truncated: AssuranceError.Truncated
+      else: AssuranceError.NonCanonical) # Overlong counts cannot choose a second encoding.
+  let count = uint64(prefix.value)
+  # Count bounds prove both host conversion and the validator index domain.
+  if count > uint64(config.validators): return AssuranceDecodeResult(
+      error: AssuranceError.LimitExceeded)
+  let width = (int(config.cores)+7) div 8
+  let stride = 98+width
+  # Prove complete fixed records before inspecting their fields.
+  if count > uint64((input.len-int(prefix.consumed)) div stride):
+    return AssuranceDecodeResult(error: AssuranceError.Truncated)
+  var previous = -1
+  # The same readRecord/recordError routines keep padding, order and membership policy in one place.
+  for i in 0..<int(count):
+    let record = readRecord(input, int(prefix.consumed)+i*stride, width)
+    let error = recordError(record, config, previous)
+    if error != AssuranceError.None: return AssuranceDecodeResult(
+        error: error) # Late records invalidate the whole scan.
+    previous = int(record.validator)
+  AssuranceDecodeResult(error: AssuranceError.None, count: int(count),
+    consumed: int(prefix.consumed)+int(count)*stride)

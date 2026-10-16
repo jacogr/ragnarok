@@ -77,7 +77,15 @@
       "vendor/jamtestvectors/codec/full/header_0.json": "646d3f47030bfe7d2194fa3757c38e6ea4c96195986626b07237d26870db8a29",
       "vendor/jamtestvectors/codec/full/header_0.bin": "86ec91a51bd2b629834e132488240b6f71bec02271ef2b22032fa64187425294",
       "vendor/jamtestvectors/codec/full/header_1.json": "47ddf8e2982e70a77f5e365644127b309797e85e6c1bac47c9ae606369a976b6",
-      "vendor/jamtestvectors/codec/full/header_1.bin": "161b1a4d59b7a4f0c74e54f59a7cd232aaa78608b68bb03a86ed48584d138be2"
+      "vendor/jamtestvectors/codec/full/header_1.bin": "161b1a4d59b7a4f0c74e54f59a7cd232aaa78608b68bb03a86ed48584d138be2",
+      "vendor/jamtestvectors/codec/tiny/extrinsic.json": "ea47a5123e8b27058758e97bfe414226fb2f9fd04522a264e96e2c2f2ceec07a",
+      "vendor/jamtestvectors/codec/tiny/extrinsic.bin": "343dd4d56cfb8650f92e4472b492c2025c6f4a16523a40909c75b9485861c07e",
+      "vendor/jamtestvectors/codec/tiny/block.json": "8fc05ef45aed64db46dd5d66ca848d5f4173587f800854fbd4b2dce9732ffcee",
+      "vendor/jamtestvectors/codec/tiny/block.bin": "4a1af8d9d8e0fda5c76ef1312f33a5123ec5e566a44c6c36767497feecfd7b20",
+      "vendor/jamtestvectors/codec/full/extrinsic.json": "03bd30e04eb9ae6215e2ea1466043cc4c9e7a94cd5fc2140d6dc15f0a354edbe",
+      "vendor/jamtestvectors/codec/full/extrinsic.bin": "a4498944d8b7a7d325633069cfeda130b31a397ea7fff542d6f28aaa439b4955",
+      "vendor/jamtestvectors/codec/full/block.json": "c22b2ac920a414b6299371dbc4fda5b95bbe521d6b24ef822fa2311a81d772f9",
+      "vendor/jamtestvectors/codec/full/block.bin": "c9c0de0d33c21b9b1873424267a7f3233e9dc41cde22b5120718d50f5d43af06"
     },
     "path": "vendor/jamtestvectors",
     "tag": "v0.8.0"

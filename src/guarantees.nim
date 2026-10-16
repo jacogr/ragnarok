@@ -291,3 +291,13 @@ proc encodeOwnedGuarantees*(owner: OwnedGuarantees, output: var openArray[byte])
   # An uninitialized owner cannot stand in for a validated zero-record extrinsic.
   if owner.data.isNil: return GuaranteeResult[int](error: GuaranteeError.InvalidOwner)
   encodeGuarantees(owner.data.values, owner.data.config, output)
+
+# Inspect all reports/credentials without capturing child owners; parent frames can preflight before allocation.
+proc inspectGuarantees*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[tuple[
+    count, consumed: int]] {.raises: [].} =
+  let scanned = scan(input, config)
+  # The existing scan owns every normative framing/order/credential rule.
+  if scanned.error != GuaranteeError.None:
+    return GuaranteeResult[tuple[count, consumed: int]](error: scanned.error)
+  GuaranteeResult[tuple[count, consumed: int]](error: GuaranteeError.None,
+    value: (count: scanned.value.count, consumed: scanned.value.consumed))

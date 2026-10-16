@@ -33,6 +33,7 @@ python3 tests/test_guarantees.py
 python3 tests/test_disputes.py
 python3 tests/test_work_package.py
 python3 tests/test_header.py
+python3 tests/test_block.py
 python3 tests/test_crypto.py --fetch
 python3 tests/test_bandersnatch.py --fetch
 python3 tests/test_work_report.py
