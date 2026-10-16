@@ -38,7 +38,7 @@ def main():
     assert sum(x['complete_normative_match'] for x in traces)==1 and len(traces)==6
     summary=dict(status='passed',requests=len(lines),nominal_rejections=len(records),privacy_rejections=1,
         published_validator_sources=len(published_validators()),published_trace_components=traces,
-        trace_parity_gate='open: five nonempty published trace entries use E4 service keys; pinned T(13)/C.1 specify natural keys',
+        trace_parity_gate='open: diagnostic E4 trace keys differ from current natural interpretation; reconcile general T fixed-width note for service IDs/gas',
         build_commands=commands,request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         scope='T chapter 13 framing; no statistics transitions or whole-state roots')
     (folder/'results.json').write_text(json.dumps(summary,indent=2)+'\n')

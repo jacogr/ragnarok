@@ -21,8 +21,10 @@ E4(manager)
 
 There is no tuple count or assigner-sequence count: its length is fixed by the configured core
 count. The four-byte override applies only to the manager/assigners/delegator/registrar group.
-The following small dictionary uses C.1's ordinary encoding: one canonical natural count and
-canonical natural keys and values. Dictionary service IDs have the uint32 service domain, while
+The current implementation interprets the following dictionary using C.1's ordinary encoding:
+one canonical natural count and canonical natural keys and values. The general T fixed-width note
+needs reconciliation for these bounded service/gas domains; this is now an explicit
+[whole-state parity gate](state-roots.md), not a settled normative width decision. Dictionary service IDs have the uint32 service domain, while
 gas accepts the entire uint64 domain, including zero and its maximum. Keys sort numerically,
 not by encoded bytes, gas value or little-endian role octets. Duplicate/descending keys reject;
 encoder sources are never silently sorted or deduplicated. Distinct core roles may share a

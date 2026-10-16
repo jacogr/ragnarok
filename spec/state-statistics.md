@@ -6,7 +6,7 @@ activity domains, `text/accumulation.tex` accumulation statistics, and C.1 natur
 sequence and dictionary definitions. Exact hashes are in [pins.json](pins.json). No dependency,
 compiler or toolchain revisions change. Published nonempty trace service-key parity is **open**.
 
-## Pinned-paper schema and public domains
+## Current T/C.1 interpretation and public domains
 
 `src/state_statistics.nim` provides `activityStateEntry(source, config)` for C(13) and
 `decodeActivityState(input, config)` for one complete component prefix:
@@ -124,8 +124,9 @@ These original bytes are replayed unchanged. Results under the pinned-paper sche
 | 3 post | 329 | 326 | 3 | No. |
 
 **Parity gate:** the five nonempty entries reconstruct exactly with a diagnostic-only E4 service-key
-layout. T(13) places the service dictionary outside the E4 override; C.1's dictionary equation
-instead applies ordinary E(key), and service IDs are naturals. The empty dictionary cannot
+layout. T(13) places the service dictionary outside the explicit E4 override; C.1's dictionary equation
+applies ordinary E(key), but service IDs have a bounded 32-bit domain and T's general fixed-width
+note also applies to the width review. The empty dictionary cannot
 distinguish these alternatives. The selected nonempty samples have key zero; the diagnostic fit
 explains offsets but does not settle which upstream source should change. No production E4-key
 fallback, fixture rewriting, guessed tuple fields or broader parity claim is introduced. Prefix
@@ -136,8 +137,10 @@ normative/reference clarification and focused evidence before changing service-k
 T also includes a general note that non-discriminator state numbers use fixed widths according
 to their domains. This is additional normative context for the key-width discrepancy, alongside
 C.1's generic dictionary equation. It must be reconciled with the traces' variable-width core/
-service numeric fields before closing the gate. The current implementation is the recorded T/C.1
-interpretation, not a claim that this broader note has been resolved; no statistics behavior is
+service numeric fields before closing the gate. In particular, gas has a bounded 64-bit domain,
+while ordinary core/service measures are general naturals. The [whole-state audit](state-roots.md)
+also records the chapter-12 service/gas width gate and exact raw full-map root evidence.
+The current implementation is the recorded T/C.1 interpretation, not a claim that this broader note has been resolved; no statistics behavior is
 changed by the service-metadata increment.
 
 `build/state-statistics/results.json` retains corpus identity, build commands and per-entry raw

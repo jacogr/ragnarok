@@ -176,8 +176,8 @@ so its result refers to the final release-reference backend.
 ## Subsequent state-wire parity gate
 
 The [chapter-13 statistics contract](state-statistics.md) records a further discrepancy at these
-same pins: five nonempty trace C(13) values fit E4 service-dictionary keys, while T(13)/C.1 specify
-ordinary natural keys. The pinned-paper implementation and exact raw fixture prefix observations
+same pins: five nonempty trace C(13) values fit E4 service-dictionary keys, while the current
+T/C.1 interpretation uses natural keys. The implementation and exact raw fixture prefix observations
 are retained separately; successful prefix parsing is not complete-entry parity. Upstream
 clarification remains necessary before changing that key schema or claiming full state parity.
 
@@ -186,3 +186,9 @@ E4 request-length domain includes fffffffe/ffffffff, reproducing the preimage/st
 The component serializers preserve the stated domains and the trie rejects duplicate keys;
 a focused pending test records that admissible lengths or another normative constraint still
 need clarification before full state-parity claims. No inferred reserved-length rule is installed.
+
+The [whole-state audit](state-roots.md) also records T's general fixed-width note: bounded service
+IDs/gas in C(12), and service IDs/gas in C(13), need reconciliation with that interpretation.
+Fourteen unchanged published full mappings reproduce their roots in the independent reference and
+checked Nim trie; this is serialized-byte evidence, not typed T(state) composition or width-policy
+resolution.

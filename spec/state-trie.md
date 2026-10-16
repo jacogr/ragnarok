@@ -83,7 +83,9 @@ All **11** frozen historical `trie/trie.json` roots at vector revision
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` match after explicitly projecting their
 32-byte keys to the first 31 bytes. Tests check that projection produces no duplicate identities.
 The exact Git blob SHA-256 is verified before parsing; no upstream generator is executed and
-no checkout/gitlink is changed. These are historical projected compatibility checks, **not**
+no checkout/gitlink is changed. The later [whole-state root suite](state-roots.md) separately verifies
+fourteen unchanged current-format pre/post mappings. These older cases are projected compatibility
+checks, **not**
 unmodified current-schema conformance vectors. The current equations and authored 31-byte cases
 supply the specification evidence; the older state-layout suite retains its five singleton checks.
 

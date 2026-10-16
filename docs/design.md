@@ -46,7 +46,8 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
   account fields as independent values. Storage/preimage mappings add explicit key domains and raw
   values; opaque retained values need no original storage keys. Request histories add E4 length/hash
   keys and fixed tagged 0..3-slot values; top-length namespace admissibility remains a parity gate.
-  Whole-state composition, proofs and persistence remain future work.
+  Fourteen unmodified published full-state mappings reproduce their roots independently and natively;
+  typed whole-state composition, numeric-width resolution, proofs and persistence remain future work.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
@@ -63,8 +64,9 @@ are not implemented. Root construction accepts already serialized state-key/valu
 chapters 1–16 now have typed serializers; chapter 13 retains a
 [trace key-width parity gate](../spec/state-statistics.md). Service-account metadata is implemented.
 Storage/preimage and request-history keyed entries are implemented. Request-length namespace
-policy also needs clarification. Next planned: whole-state composition/root evidence, beginning
-with numeric-width and key-domain parity review.
+policy also needs clarification. The [full-map root audit](../spec/state-roots.md) verifies fourteen
+published maps and records C(12) service/gas and C(13) key/gas width gates. Next planned: typed
+whole-state composition with parent limits, duplicate rejection and exact component extents.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general

@@ -40,6 +40,7 @@ python3 tests/test_block.py
 python3 tests/test_crypto.py --fetch
 python3 tests/test_state_layout.py
 python3 tests/test_state_trie.py
+python3 tests/test_state_roots.py
 python3 tests/test_state_safrole.py
 python3 tests/test_state_consensus.py
 python3 tests/test_state_disputes.py
