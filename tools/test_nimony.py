@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -183,6 +183,77 @@ NOMINAL.update(swapped_header_root='got: ExtrinsicRoot but wanted: PriorStateRoo
                swapped_header_proof='got: HeaderSeal but wanted: HeaderEntropyProof',
                swapped_winning_ticket_id='got: EpochEntropy but wanted: WinningTicketId',
                unsigned_as_full_header='expected: OwnedHeader but got: OwnedUnsignedHeader')
+BLOCK_PRIVATE = {
+    'private_component_snapshot': 'data',
+    'private_extrinsic_snapshot': 'data',
+    'private_block_snapshot': 'data',
+    'frame_result_private': 'completed',
+    'frame_result_retag': 'status',
+    'frame_result_forge': 'status',
+    'frame_result_cause_private': 'nestedCause',
+    'frame_result_error_write': 'error',
+    'frame_result_value_write': 'value',
+    'frame_result_cause_write': 'cause',
+    'component_cause_retag': 'schema',
+    'component_cause_forge': 'schema',
+    'component_cause_kind_write': 'kind',
+    'component_header_reason_private': 'headerReason',
+    'component_header_reason_write': 'headerError',
+    'component_ticket_reason_private': 'ticketReason',
+    'component_ticket_reason_write': 'ticketError',
+    'component_preimage_reason_private': 'preimageReason',
+    'component_preimage_reason_write': 'preimageError',
+    'component_guarantee_reason_private': 'guaranteeReason',
+    'component_guarantee_reason_write': 'guaranteeError',
+    'component_assurance_reason_private': 'assuranceReason',
+    'component_assurance_reason_write': 'assuranceError',
+    'component_dispute_reason_private': 'disputeReason',
+    'component_dispute_reason_write': 'disputeError',
+}
+BLOCK_MEMBERS = (
+    'decode-header', 'decode-tickets', 'decode-preimages', 'decode-guarantees', 'decode-assurances',
+    'decode-disputes', 'component-info', 'component-write', 'extrinsic-read', 'extrinsic-own',
+    'extrinsic-write', 'extrinsic-info', 'extrinsic-owned-write', 'block-read', 'block-write',
+    'block-info', 'block-owned-write', 'block-header', 'block-extrinsic', 'ticket-records',
+    'assurance-records', 'child-tickets', 'child-preimages', 'child-guarantees', 'child-assurances',
+    'child-disputes',
+)
+BLOCK_WRONG = (
+    ('header-as-ticket', 'Tickets'),
+    ('header-as-preimage', 'Preimages'),
+    ('header-as-guarantee', 'Guarantees'),
+    ('header-as-assurance', 'Assurances'),
+    ('header-as-dispute', 'Disputes'),
+    ('tickets-as-header', 'Header'),
+    ('tickets-as-preimage', 'Preimages'),
+    ('tickets-as-guarantee', 'Guarantees'),
+    ('tickets-as-assurance', 'Assurances'),
+    ('tickets-as-dispute', 'Disputes'),
+    ('preimages-as-header', 'Header'),
+    ('preimages-as-ticket', 'Tickets'),
+    ('preimages-as-guarantee', 'Guarantees'),
+    ('preimages-as-assurance', 'Assurances'),
+    ('preimages-as-dispute', 'Disputes'),
+    ('guarantees-as-header', 'Header'),
+    ('guarantees-as-ticket', 'Tickets'),
+    ('guarantees-as-preimage', 'Preimages'),
+    ('guarantees-as-assurance', 'Assurances'),
+    ('guarantees-as-dispute', 'Disputes'),
+    ('assurances-as-header', 'Header'),
+    ('assurances-as-ticket', 'Tickets'),
+    ('assurances-as-preimage', 'Preimages'),
+    ('assurances-as-guarantee', 'Guarantees'),
+    ('assurances-as-dispute', 'Disputes'),
+    ('disputes-as-header', 'Header'),
+    ('disputes-as-ticket', 'Tickets'),
+    ('disputes-as-preimage', 'Preimages'),
+    ('disputes-as-guarantee', 'Guarantees'),
+    ('disputes-as-assurance', 'Assurances'),
+)
+PRIVATE.update(BLOCK_PRIVATE)
+NOMINAL.update(swapped_extrinsic_component='got: Component but wanted: Component',
+               swapped_block_header='got: Component but wanted: Component',
+               block_as_extrinsic='expected: OwnedExtrinsic but got: OwnedBlock')
 PRIVATE.update(HEADER_PRIVATE)
 PRIVATE.update(PACKAGE_PRIVATE)
 PRIVATE.update(DISPUTE_PRIVATE)
@@ -239,7 +310,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -256,7 +327,8 @@ def main():
                   ROOT/'tests/test_disputes_harness.py', ROOT/'tests/package_oracle.py',
                   ROOT/'tests/native/package_driver.nim', ROOT/'tests/test_package_harness.py',
                   ROOT/'tests/header_oracle.py', ROOT/'tests/native/header_driver.nim',
-                  ROOT/'tests/test_header_harness.py']
+                  ROOT/'tests/test_header_harness.py', ROOT/'tests/block_oracle.py',
+                  ROOT/'tests/native/block_driver.nim', ROOT/'tests/test_block_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -269,13 +341,22 @@ def main():
     from guarantees_oracle import record as guarantee_record
     guarantee_fixture = BUILD/'minimal-report.bin'
     guarantee_fixture.write_bytes(guarantee_record(0)['report'])
+    # Native parent tests use independently authored policy-valid child fixtures, never parent decoder output.
+    from block_oracle import published as block_published
+    block_fixture = BUILD/'block-fixtures'
+    block_fixture.mkdir(exist_ok=True)
+    # These five children retain their exact independent tiny-profile source identities.
+    for name, data in zip(('tickets', 'preimages', 'guarantees', 'assurances', 'disputes'),
+                          block_published('tiny', 'E', canonical=True)):
+        (block_fixture/(name+'.bin')).write_bytes(data)
+    (block_fixture/'header.bin').write_bytes(block_published('tiny', 'B', canonical=True)[0])
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([guarantee_fixture] if name == 'guarantees' else [])], name+'-run')
+            row['run'] = command([binary, *([guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
             if name == 'ownership' and row['passed']:
                 # Retain public live-memory measurements for the isolated five-schema ARC release workload.
@@ -319,6 +400,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this isolated warmed ARC workload, not RSS or refcount internals.
                     report['header_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'block' and row['passed']:
+                # Replaced parents and all six materialized child families must release their final ARC references.
+                release = re.search(r'BLOCK_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
+                    report['block_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -584,6 +672,31 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['header_corpus'] = corpus
     announce('independent ticket/epoch/winner/unsigned/full-header corpus', corpus['passed'])
+    # Preserve every independent whole-block/extrinsic expectation, including actual published policy failures.
+    from block_oracle import requests as block_requests
+    harness = command([sys.executable, ROOT/'tests/test_block_harness.py'], 'block-harness')
+    lines, expected = block_requests()
+    source = BUILD/'block-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    groups = {operation+'-'+kind: sum(line.startswith(operation+' '+kind+' ') for line in lines)
+              for operation in ('D', 'E') for kind in ('E', 'B')}
+    compiled, binary = build(compiler, ROOT/'tests/native/block_driver.nim', 'block-codec')
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Compare all six exact child wires/counts after source erasure and on-demand materialization.
+        result = command([binary, source], 'block-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep the first mismatch plus complete native output for reproducible diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['block_corpus'] = corpus
+    announce('independent complete extrinsic/block corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -770,6 +883,20 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['headers'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' header '+member+' guard', passed)
+    # Parent values and nested component reasons require independent checked alternatives.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_block_results.nim', 'block-results')
+    report['blocks_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Default/actual failures, non-child outcomes and every wrong schema are isolated in separate processes.
+        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in BLOCK_MEMBERS]
+        cases += [(member, 'error', 'value.status == InvalidComponent')
+                  for member in ('cause-default', 'cause-parent', 'cause-success')]
+        cases += [(member, 'error', 'value.schema == '+kind) for member, kind in BLOCK_WRONG]
+        for member, origin, sentinel in cases:
+            result = command([binary, member, origin], 'block-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['blocks'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' block '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -793,10 +920,11 @@ def main():
             # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'rootImport(' in result['output'] and member in result['output'])
-        elif name == 'unsigned_as_full_header':
+        elif name in ('unsigned_as_full_header', 'block_as_extrinsic'):
             # Sealed output accepts only the full owner type, never a signing-only retained view.
             rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'encodeOwnedHeader(' in result['output'] and member in result['output'])
+                        and ('extrinsicInfo(' if name == 'block_as_extrinsic' else 'encodeOwnedHeader(') in result['output']
+                        and member in result['output'])
         else:
             # Other nominal fields provide precise got/wanted domain names.
             rejected = 'Error: type mismatch: '+member in result['output']
@@ -812,7 +940,9 @@ def main():
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
-                   and report['header_corpus']['passed']
+                   and report['header_corpus']['passed'] and report['block_corpus']['passed']
+                   and len(report['blocks']) == 2*len(BLOCK_MEMBERS)+3+len(BLOCK_WRONG)
+                   and all(row['passed'] for row in report['blocks'])
                    and len(report['headers']) == 81 and all(row['passed'] for row in report['headers'])
                    and len(report['packages']) == 51 and all(row['passed'] for row in report['packages'])
                    and len(report['disputes']) == 25 and all(row['passed'] for row in report['disputes'])

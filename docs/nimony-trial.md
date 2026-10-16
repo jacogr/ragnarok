@@ -1,10 +1,12 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **six native codec suites, guarded results and the five-schema owned-snapshot layer pass;
-report ownership and the broader port remain unported**. This branch targets Nimony directly, without
-dual-compiler source support. The main branch remains on Nim 2.2.12. Protocol/dependency pins
-are unchanged.
+Status: **15 native suites, eight independent family corpora, 386 runtime misuse rejections and
+218 compilation rejections pass locally**. Complete extrinsic/block composition now joins the
+verified scalar, owned, report, extrinsic-family, work-package and header slices. M1 migration
+remains partial; M2/M3 and Linux parity remain unverified. This branch targets Nimony directly,
+without dual-compiler source support. The main branch remains on Nim 2.2.12. Protocol/dependency
+pins are unchanged.
 
 ## Compiler and environment
 
@@ -431,12 +433,50 @@ rejections**, plus **13 positive suites**, seven family corpora and three runtim
 Verification remains local macOS ARM64 with checked ARC/Clang LTO. M1 migration remains partial;
 Linux, state-dependent marker eligibility and cryptographic verification remain separate work.
 
+## Twelfth increment: complete extrinsics and blocks
+
+`block_codec.nim` now compiles on the same pristine nightly. Static schema parameters use
+`static[ComponentKind]`; nullable private owners receive stable local non-null proofs. Parent
+`FrameResult[T]` tags and both payload alternatives are private. Read-only `error` selects the
+outcome, `value` requires success and `cause` requires `InvalidComponent`. Nested `ComponentFailure`
+schema/reason fields are private; `kind` is read-only and each child-reason accessor requires its
+matching schema. Default/failed operations cannot expose values, owners or consumed offsets.
+
+The nightly rejected generic parameter tags in variant constructors even inside the selected
+compile-time branch. Literal schema tags preserve exactly those branches and their typed reasons.
+The adapter uses concrete schema captures and re-emission calls, explicit initialization and
+public fixture I/O/parsing modules. Writable alias probes use fixed array views over real backing
+allocations, including preserved spare capacity for private-wire aliases. No compiler/runtime
+patch, unchecked variant read or alternate protocol representation is used.
+
+All **17,194** existing independent complete extrinsic/block requests pass, alongside seven oracle
+known-answer tests. They preserve all published original bytes and their existing typed structural
+policy rejections, plus independently authored valid counterparts. Encoder sources remain separate
+from parent decoding. Observations compare every child count and exact wire after caller-input
+erasure, exercise on-demand family APIs, and check truncation/fuzz, remaining byte budgets,
+stricter recapture policies, exact/short/spare output capacity and late atomic failures.
+
+Both native composition suites pass, preserving descriptor/private-wire cross-child alias checks,
+copied-record independence, default-owner failures and profile-reinterpretation rejection. The new
+release workload replaces a parent with a structurally different block, releases both parents and
+the extrinsic handle, erases caller bytes, then materializes all six retained original child
+families. After 100 warmups, 1,000 isolated cycles leave public live occupancy unchanged:
+**48,816 → 48,816 bytes** with outer fixtures live. This is workload-specific live occupancy,
+not RSS or a general leak-freedom claim.
+
+This increment adds **85 runtime misuse rejections**: 52 failed/default parent-result reads,
+three invalid cause reads and all 30 wrong selected-schema reason reads. It adds **28 compilation
+rejections**: 25 private/read-only result/cause/owner checks and three component/parent type checks.
+Cumulative totals are **386 runtime result/variant/constructor rejections, 218 compilation
+rejections (190 privacy + 28 nominal), 15 positive native suites and eight family corpora**,
+plus the three runtime language probes. All pass under local macOS ARM64 checked ARC/Clang LTO.
+The block frame still does not establish state eligibility, commitment correctness or valid seals.
+
 ## Remaining work and next bounded increment
 
-Next: port complete extrinsic and block composition (`block_codec.nim`), including schema-bound
-components, nested typed failures, retained child materialization, guarded alternatives and the
-existing independent block/atomicity/lifetime corpus. Its child codec prerequisites now pass
-locally. Other M1 families and M2/M3 remain separate increments.
+Next: port strict Booleans and packed bitstrings (`bitstrings.nim`), preserving exact/padded bit
+boundaries, malformed-tail rejection, atomicity, alias checks and guarded result access. Canonical
+collections, the remaining M1/state families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -468,7 +508,7 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block
 slice.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.

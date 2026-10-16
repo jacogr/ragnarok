@@ -31,7 +31,7 @@ does not claim those properties.
 
 ## Ownership and API
 
-`Component[static ComponentKind]` privately captures exact validated child bytes and configuration.
+`Component[kind: static[ComponentKind]]` privately captures exact validated child bytes and configuration.
 Header, ticket, preimage, guarantee, assurance and dispute components are nominally distinct:
 a wire-compatible component of another schema cannot be substituted. Header components always
 contain a seal. `decodeComponent` scans before copying; it does not export mutable storage or
@@ -57,8 +57,10 @@ an explicit access cost, not a zero-copy promise. Re-emission copies exact valid
 
 `FrameResult` carries a value only on `None`. `InvalidComponent` carries only a selected, typed
 child failure (kind plus the matching child error); all other failures/defaults carry only their
-reason. No failed branch publishes an owner, partial value or consumed offset. All runtime field
-guards remain enabled.
+reason. No failed branch publishes an owner, partial value or consumed offset. On the Nimony port,
+result tags/payloads and nested schema/reason fields are private. Read-only `value` requires success;
+`cause` requires `InvalidComponent`; each selected child reason requires its matching read-only
+`kind`. Supported contracts remain enabled in checked optimized builds.
 
 Invalid shared configuration precedes source traversal/input framing. Children are inspected in
 wire order with existing child error precedence. Preimages additionally checks serialized wire
@@ -101,3 +103,17 @@ aliases, and selected result/cause field guards. Three nominal and three private
 rejections protect the API. A white-box test includes only this project's own module to exercise
 otherwise inaccessible private-wire alias paths; production exports no backing pointer.
 Linux CI runs the same runner and retains its build, type-check and result diagnostics.
+
+## Nimony branch verification
+
+On this experimental branch, reproduce the checked ARC/Clang LTO port with
+`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`; the historical
+Nim 2 runner above is not a second supported source target. The cumulative runner includes all
+17,194 unchanged independent requests, the seven oracle known answers, both native composition
+suites, 85 isolated result/cause misuse rejections and 28 private/nominal compilation rejections.
+The release workload retains every original child across parent replacement and source erasure,
+then materializes all six family APIs. After 100 warmups, 1,000 isolated scopes return live allocator
+occupancy to baseline. Commands, source/request/output hashes and individual verdicts are retained
+in `build/nimony-trial/verification/results.json`. See [the trial](../docs/nimony-trial.md) for exact
+compiler/environment and cumulative totals. Verification is local macOS ARM64; this increment does
+not establish Nimony Linux, complete M1, M2/M3 or cryptographic/state parity.

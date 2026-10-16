@@ -124,5 +124,6 @@ atomicity, alias and guarded-progress checks. Dispute verdict/evidence snapshots
 result safety and release checks now pass as well. Work-package inputs and retained package/item
 snapshots also pass their complete independent corpus, guarded import alternatives and release
 checks. Full/signing headers, optional markers, retained views and selected-alternative guards now
-pass their complete corpus and release checks. Complete extrinsic/block composition is the next
-bounded compiler-port increment.
+pass their complete corpus and release checks. Complete extrinsic/block composition now passes
+its independent corpus, nested cause/result guards, cross-child alias checks and retained-child
+release workload. Strict Booleans and packed bitstrings are the next bounded compiler-port increment.
