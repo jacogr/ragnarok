@@ -126,4 +126,6 @@ snapshots also pass their complete independent corpus, guarded import alternativ
 checks. Full/signing headers, optional markers, retained views and selected-alternative guards now
 pass their complete corpus and release checks. Complete extrinsic/block composition now passes
 its independent corpus, nested cause/result guards, cross-child alias checks and retained-child
-release workload. Strict Booleans and packed bitstrings are the next bounded compiler-port increment.
+release workload. Strict Booleans and fixed/variable packed bitstrings now pass their independent
+corpus, guarded results and snapshot release checks. Canonical scalar sets and dictionaries are
+the next bounded compiler-port increment.

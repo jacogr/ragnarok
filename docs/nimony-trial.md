@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **15 native suites, eight independent family corpora, 386 runtime misuse rejections and
-218 compilation rejections pass locally**. Complete extrinsic/block composition now joins the
-verified scalar, owned, report, extrinsic-family, work-package and header slices. M1 migration
-remains partial; M2/M3 and Linux parity remain unverified. This branch targets Nimony directly,
+Status: **17 native suites, nine independent family corpora, 416 runtime misuse rejections and
+230 compilation rejections pass locally**. Strict Booleans and fixed/variable packed bitstrings
+now join the verified scalar, owned, report, extrinsic-family, work-package, header and block slices.
+M1 migration remains partial; M2/M3 and Linux parity remain unverified. This branch targets Nimony directly,
 without dual-compiler source support. The main branch remains on Nim 2.2.12. Protocol/dependency
 pins are unchanged.
 
@@ -472,11 +472,52 @@ rejections (190 privacy + 28 nominal), 15 positive native suites and eight famil
 plus the three runtime language probes. All pass under local macOS ARM64 checked ARC/Clang LTO.
 The block frame still does not establish state eligibility, commitment correctness or valid seals.
 
+## Thirteenth increment: strict Booleans and packed bitstrings
+
+`bitstrings.nim` now runs on the same pristine nightly. `BitResult[T]` hides its status and payload;
+read-only `error` selects the outcome and `value` requires `None`. Defaults remain Uninitialized,
+with no Boolean, metadata, owner or consumed/written progress. Private `OwnedBits` backing references
+are explicitly nullable and retained in stable checked locals. The wire representation, policy
+and error precedence are unchanged; no specialized assurance or dispute codec was replaced.
+
+Both native bitstring suites pass. They retain empty versus default ownership, caller-buffer
+mutation, stricter re-emission policy, indexed bounds, fixed-count mismatch, full-output atomicity,
+spare suffixes and borrowed/private packed-wire alias rejection. Writable alias probes use fixed
+array views over real allocations, including actual spare capacity. Source-owner replacement,
+callee-local source escape, copied metadata/output independence and warmed ARC release checks
+extend lifetime coverage. After 100 warmups, 1,000 isolated retain/replace/reframe/drop scopes return
+public live allocator occupancy to baseline: **384 → 384 bytes**, with outer fixtures live. This
+observes the measured workload, not RSS or a general leak-freedom property; exact counts are in the
+evidence JSON.
+
+All **11,274** unchanged independent requests pass, alongside six oracle known-answer tests.
+Coverage exhausts all 256 Boolean octets and all final-byte patterns for lengths 1–8 under both
+framings. It preserves logical bit order, zero padding, natural-width and packed-byte boundaries,
+all small truncations, empty/exact/short/spare output, late padding rejection, strict bit limits,
+maximum-uint64 count claims and 4,000 malformed-byte requests. Pinned tiny/full assurance bitfields
+and distinct dispute Boolean fields remain checked after their JSON hash verification; no dedicated
+published general-bitstring fixture family exists. Encoders receive independently authored logical
+sequences; decoded observations compare every bit, count, consumed extent and both owner framings.
+
+The original division/remainder ceiling calculation remains safe at the uint64 boundary; it never
+forms `count+7`. Policy/available-byte proofs still precede host narrowing and snapshot allocation.
+No arithmetic-exception emulation, compiler patch, private runtime API or fallback encoding is used.
+Fixture adapters use the nightly's public parsing/I/O modules and explicit initialization. Former
+FieldDefect catches become independent exact-contract subprocess checks.
+
+This increment adds **30 runtime misuse rejections** across failed/default public operations and
+**12 compilation rejections**: ten private/read-only owner/result checks and two nominal count/limit
+checks. Cumulative totals are **416 runtime result/variant/constructor rejections, 230 compilation
+rejections (200 privacy + 30 nominal), 17 positive native suites and nine family corpora**, plus
+three runtime language probes. Verification remains local macOS ARM64 with checked ARC/Clang LTO.
+M1 migration is still partial; Linux, M2 and M3 remain unverified.
+
 ## Remaining work and next bounded increment
 
-Next: port strict Booleans and packed bitstrings (`bitstrings.nim`), preserving exact/padded bit
-boundaries, malformed-tail rejection, atomicity, alias checks and guarded result access. Canonical
-collections, the remaining M1/state families and M2/M3 remain separate increments.
+Next: port canonical scalar sets and dictionaries (`collections.nim`), including supported schema
+constraints, retained typed ownership, strict ordering/duplicate rejection, guarded results and
+the independent collection/alias/lifetime corpus. Remaining M1/state families and M2/M3 remain
+separate increments.
 
 Further port work remains:
 
@@ -508,7 +549,7 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits
 slice.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.

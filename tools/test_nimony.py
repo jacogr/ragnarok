@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -250,6 +250,26 @@ BLOCK_WRONG = (
     ('disputes-as-guarantee', 'Guarantees'),
     ('disputes-as-assurance', 'Assurances'),
 )
+BITS_PRIVATE = {
+    'private_bits_snapshot': 'data',
+    'bits_result_private': 'completed',
+    'bits_result_read_private': 'completed',
+    'bits_result_boolean_private': 'completed',
+    'bits_result_info_private': 'completed',
+    'bits_result_bit_private': 'completed',
+    'bits_result_retag': 'status',
+    'bits_result_forge': 'status',
+    'bits_result_error_write': 'error',
+    'bits_result_value_write': 'value',
+}
+BITS_MEMBERS = (
+    'boolean-value', 'boolean-consumed', 'variable-owner', 'variable-consumed', 'fixed-owner',
+    'fixed-consumed', 'info-count', 'info-packed', 'bit', 'bit-index', 'boolean-write',
+    'variable-write', 'fixed-write', 'owned-variable-write', 'owned-fixed-write',
+)
+PRIVATE.update(BITS_PRIVATE)
+NOMINAL.update(raw_bit_count="[2] expected: BitCount but got: uint64",
+               swapped_bit_limit="[2] expected: BitLimit but got: ByteLimit")
 PRIVATE.update(BLOCK_PRIVATE)
 NOMINAL.update(swapped_extrinsic_component='got: Component but wanted: Component',
                swapped_block_header='got: Component but wanted: Component',
@@ -310,7 +330,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -328,7 +348,9 @@ def main():
                   ROOT/'tests/native/package_driver.nim', ROOT/'tests/test_package_harness.py',
                   ROOT/'tests/header_oracle.py', ROOT/'tests/native/header_driver.nim',
                   ROOT/'tests/test_header_harness.py', ROOT/'tests/block_oracle.py',
-                  ROOT/'tests/native/block_driver.nim', ROOT/'tests/test_block_harness.py']
+                  ROOT/'tests/native/block_driver.nim', ROOT/'tests/test_block_harness.py',
+                  ROOT/'tests/native/bits_driver.nim', ROOT/'tests/bits_oracle.py',
+                  ROOT/'tests/test_bits_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -407,6 +429,13 @@ def main():
                 if release is not None:
                     # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
                     report['block_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'bits' and row['passed']:
+                # Replaced handles, escaped sources and empty/nonempty captures release their final ARC references.
+                release = re.search(r'BITS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
+                    report['bits_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -697,6 +726,31 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['block_corpus'] = corpus
     announce('independent complete extrinsic/block corpus', corpus['passed'])
+    # Preserve all exhaustive Boolean/padding cases and pinned profile-field checks from the independent oracle.
+    from bits_oracle import requests as bits_requests
+    harness = command([sys.executable, ROOT/'tests/test_bits_harness.py'], 'bits-harness')
+    lines, expected = bits_requests()
+    source = BUILD/'bits-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    groups = {operation: sum(line.startswith(operation+' ') for line in lines)
+              for operation in ('BD', 'BE', 'D', 'E')}
+    compiled, binary = build(compiler, ROOT/'tests/native/bits_driver.nim', 'bits-codec')
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Observe every logical bit/count/extent after input erasure and compare both owner framing forms.
+        result = command([binary, source], 'bits-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Retain the first differing row and all native output for reproducible diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['bits_corpus'] = corpus
+    announce('independent Boolean/fixed/variable bitstring corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -897,6 +951,18 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['blocks'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' block '+member+' guard', passed)
+    # All Boolean/bitstring result types and public operations retain success-only value access.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_bits_results.nim', 'bits-results')
+    report['bits_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Actual rejection and default construction must independently stop at the success contract.
+        for origin in ('default', 'error'):
+            # Isolate each field/operation so one failed access cannot conceal another unchecked result.
+            for member in BITS_MEMBERS:
+                result = command([binary, member, origin], 'bits-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['bits'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' bits '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -920,6 +986,11 @@ def main():
             # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'rootImport(' in result['output'] and member in result['output'])
+        elif name in ('raw_bit_count', 'swapped_bit_limit'):
+            # The second parameter must retain its logical-bit domain, independently of array-view diagnostics.
+            call = 'decodeFixedBits(' if name == 'raw_bit_count' else 'decodeBits('
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and call in result['output'] and member in result['output'])
         elif name in ('unsigned_as_full_header', 'block_as_extrinsic'):
             # Sealed output accepts only the full owner type, never a signing-only retained view.
             rejected = ('Error: Type mismatch at [position]' in result['output']
@@ -941,6 +1012,8 @@ def main():
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
                    and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
                    and report['header_corpus']['passed'] and report['block_corpus']['passed']
+                   and report['bits_corpus']['passed']
+                   and len(report['bits']) == 2*len(BITS_MEMBERS) and all(row['passed'] for row in report['bits'])
                    and len(report['blocks']) == 2*len(BLOCK_MEMBERS)+3+len(BLOCK_WRONG)
                    and all(row['passed'] for row in report['blocks'])
                    and len(report['headers']) == 81 and all(row['passed'] for row in report['headers'])
