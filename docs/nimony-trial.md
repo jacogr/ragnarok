@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **26 native suites, fifteen independent family corpora, 641 runtime misuse rejections and
-359 compilation rejections pass locally**. Entropy, validator-roster and timeslot state codecs
-now join the verified scalar, owned, report, extrinsic-family, work-package, header, block,
-bitstring, collection, C.2, raw-crypto, state-key/node-layout and bounded trie slices.
+Status: **28 native suites, sixteen independent family corpora, 685 runtime misuse rejections and
+374 compilation rejections pass locally**. Authorization pools and queues now join the verified
+scalar, owned, report, extrinsic-family, work-package, header, block, bitstring, collection, C.2,
+raw-crypto, state-key/node-layout, bounded trie and entropy/roster/time slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged.
@@ -814,11 +814,65 @@ runtime language probes. Formatting covers **558 Nim files**; the final evidence
 **498 matching source/test hashes**. Results remain local macOS ARM64,
 checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity remain unverified.
 
+## Twentieth increment: authorization pools and queues
+
+`src/codec/state_authorization.nim` now runs on the same pristine nightly, preserving Gray Paper
+0.8.0 T(state) chapters 1–2 and authorization composition. Core order, per-core hash order, duplicate
+hashes, explicit empty pools, canonical pool counts and fixed 80-hash queues remain unchanged.
+This is serialization, not authorization execution or a complete state commitment. No protocol
+pin, primitive backend, dependency or compiler source change is involved.
+
+`AuthorizationResult[T]` hides status/payload behind read-only reasons and success-precondition
+getters. This protects public entries, snapshot reads, component kind, counts and copied hashes,
+plus private count/prefix tuples. Snapshots use private nullable acyclic ARC storage and stable
+checked locals. Both whole-component validation passes remain: all source rows before encoding
+allocation and all input rows before descriptor/hash capture. Caller entry payloads remain mutable
+owned bytes; captured nested rows stay private and immutable.
+
+`AuthorizationKind` is explicitly validated before either public API selects a namespace or schema.
+The nightly permits unchecked integer-to-enum conversion; invalid representations formerly could
+select the queue path or bypass the row-cardinality clauses. All **256 underlying kind bytes** are
+now tested against both APIs: Pools/Queues retain their own behavior and other representations
+return InvalidTag. Accepted pool/queue bytes and existing error ordering for valid kinds do not
+change. Default snapshots remain invalid owners rather than fabricated empty Pools.
+
+All **7,059 unchanged independent requests** and **six literal oracle checks** pass. Coverage
+retains all pool count pairs 0..9, exact/below aggregate budgets, late invalid rows, every proper
+truncation of two full pools and two 80-hash queues, outer source counts, queue lengths 0/1/79/80/81,
+malformed/overlong/huge counts, invalid/overflowing configurations, repeated/non-sorted hashes,
+suffixes, random pools/malformed wire and two partial trie integrations. Four pre/post tiny/full
+state sources retain their frozen Git blob identities/hashes; their component encodings remain
+derived fixtures, not standalone published binaries or authorization STF passes.
+
+Native tests retain callee-local pool/queue snapshots after source/entry/wire retirement, replace
+same-sized owners while aliases survive, mutate extracted fixed hashes and check empty/high-index
+failures. Private arithmetic probes charge a hash count up to high(uint64), reject the next hash
+before addition, and check prefix/stride overflow at high(int) before addition/multiplication.
+Huge descriptor/minimum-wire configurations reject before narrowing. No unsafe sequence descriptor,
+private compiler/runtime hook or wrapping-exception emulation is used.
+
+After 100 warmups, **1,000 scoped ownership/error cycles return live occupancy 192 → 192 bytes**,
+including replaced/retained Pools, both full queue rows, nested caller storage and late malformed
+row temporaries. This is workload-specific live allocator occupancy, not RSS or general leak
+freedom. Allocation exhaustion retains the existing fail-stop policy.
+
+This increment adds **44 runtime misuse rejections**: default/failed entry, owner, consumed cursor,
+kind, core/row count, hash and private count/prefix reads. Actual failures cover invalid kind,
+configuration, shape, framing, budgets, native extents, owners and ordinals. **15 compilation
+rejections** cover 13 private/read-only result/owner checks and the original core-as-position and
+bytes-as-hash-budget domain probes. Cumulative totals are **685 runtime result/variant/constructor
+rejections, 374 compilation rejections (322 privacy + 47 nominal + five schema), 28 positive native
+suites and sixteen family corpora**, plus three runtime language probes. Formatting covers
+**572 Nim files**; the final evidence records **519 matching source/test hashes**. Results remain
+local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2,
+M3 and Linux parity remain unverified.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 authorization pools and queues (`src/codec/state_authorization.nim`, chapters 1–2),
-including ordered core rows, immutable retained hash extraction, whole-input sizing, guarded
-results and the existing independent entry/root corpus. Other state components remain later chunks.
+Next: port M1 chapter-4 Safrole basic state (`src/codec/state_consensus.nim`): pending validators,
+ring commitment, tagged slot-sealer schedules and ticket accumulator, preserving whole-parent
+preflight, retained child owners, selected alternatives and the existing independent corpus.
+Other state components remain later bounded chunks.
 
 Further port work remains:
 
@@ -853,7 +907,7 @@ The runner now targets **only Nimony**. It writes commands, compiler/nightly met
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
-and raw-crypto/state-key/node-layout/trie/entropy-roster-time slices.
+and raw-crypto/state-key/node-layout/trie/entropy-roster-time/authorization slices.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

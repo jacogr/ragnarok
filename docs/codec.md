@@ -137,5 +137,7 @@ result/variant, backend-failure and nominal-domain checks. Bounded trie roots no
 complete independent corpus, preflight, result, scratch-release and nominal-domain checks.
 Entropy, validator rosters and timeslot state now pass their complete independent corpus,
 guarded results, retained-owner/copy checks, arithmetic and scoped release workload.
-The next compiler-port increment is authorization pools and queues (`state_authorization.nim`,
-chapters 1–2). M1 migration remains partial.
+Authorization pools and queues now pass their complete independent corpus, guarded results,
+retained nested-owner/copy checks, kind validation, arithmetic and scoped release workload.
+The next compiler-port increment is chapter-4 Safrole basic state (`state_consensus.nim`).
+M1 migration remains partial.

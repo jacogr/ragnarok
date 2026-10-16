@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -483,6 +483,47 @@ SAFROLE_MEMBERS = (
     'decode-policy',
     'decode-noncanonical',
 )
+AUTHORIZATION_PRIVATE = dict(
+    authorization_result_entry_private='completed',
+    authorization_result_read_private='completed',
+    authorization_result_kind_private='completed',
+    authorization_result_integer_private='completed',
+    authorization_result_hash_private='completed',
+    authorization_result_count_private='completed',
+    authorization_result_retag='status',
+    authorization_result_forge='status',
+    authorization_result_error_write='error',
+    authorization_result_value_write='value',
+    authorization_owner_data='data',
+    authorization_owner_rebind='data',
+)
+AUTHORIZATION_PRIVATE['auth_snapshot_private'] = 'data'
+PRIVATE.update(AUTHORIZATION_PRIVATE)
+NOMINAL.update(auth_core_as_position='AuthorizationCoreIndex', auth_bytes_as_hashes='got: ByteLimit but wanted: ElementLimit')
+AUTHORIZATION_MEMBERS = (
+    'entry-shape',
+    'entry-kind',
+    'entry-config',
+    'entry-policy',
+    'snapshot',
+    'consumed',
+    'decode-kind',
+    'decode-config',
+    'decode-count',
+    'decode-noncanonical',
+    'decode-policy',
+    'decode-overflow',
+    'kind',
+    'cores',
+    'count-owner',
+    'count-index',
+    'hash-owner',
+    'hash-core',
+    'hash-index',
+    'hash-empty',
+    'tuple-count',
+    'tuple-prefix',
+)
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -531,7 +572,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -566,7 +607,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
+                'tests/native/state_authorization_driver.nim', 'tests/state_authorization_oracle.py',
+                'tests/test_state_authorization_harness.py', 'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
                 'tests/test_state_safrole_harness.py', 'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
@@ -593,7 +635,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -669,6 +711,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_authorization_private' and row['passed']:
+            # Nested pool/queue storage must release after callee return, replacement, alias retention and failure.
+            release = re.search(r'AUTHORIZATION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Public live allocator counts cover this warmed workload, not RSS or general leak freedom.
+                report['authorization_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_safrole' and row['passed']:
             # Escaped/replaced immutable roster owners and fixed-entry temporaries must retire at final ARC release.
             release = re.search(r'STATE_SAFROLE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1132,6 +1181,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['safrole_corpus'] = corpus
     announce('independent entropy/validator-roster/timeslot state corpus', corpus['passed'])
+    # Preserve independent ordered core/row equations, malformed inputs, derived fixtures and partial commitments.
+    from state_authorization_oracle import requests as authorization_requests, published as authorization_published
+    harness = command([sys.executable, ROOT/'tests/test_state_authorization_harness.py'], 'authorization-harness')
+    lines, expected = authorization_requests()
+    source = BUILD/'authorization-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_authorization_driver.nim', 'authorization-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_derived_state_sources=len(authorization_published()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Observe fixed hashes and owner-bound boundaries after destructive caller mutation, comparing independent bytes.
+        result = command([binary, source], 'authorization-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Retain complete output and the first mismatch for independent diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['authorization_corpus'] = corpus
+    announce('independent authorization pool/queue state corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1447,6 +1520,18 @@ def main():
             passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
             report['safrole'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' safrole '+member+' guard', passed)
+    # Public authorization fields and internal framing tuples must reject every default/failed payload read.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_authorization_results.nim', 'authorization-results', crypto_library)
+    report['authorization_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Every exact failure cause is checked before attempting its forbidden field observation.
+        for origin in ('default', 'error'):
+            for member in AUTHORIZATION_MEMBERS:
+                # A crash, transport problem or unrelated assertion cannot count as success protection.
+                result = command([binary, member, origin], 'authorization-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['authorization'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' authorization '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1474,6 +1559,11 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'auth_core_as_position':
+            # Core ordinals cannot fill the distinct per-row hash-position argument.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'authorizerAt(' in result['output']
+                        and '[3] expected: AuthorizationIndex but got: '+member in result['output'])
         elif name == 'state_entropy_as_time':
             # Fixed entropy words cannot fill the E4 timeslot argument despite both being copied values.
             rejected = ('Error: Type mismatch at [position]' in result['output']
@@ -1516,7 +1606,9 @@ def main():
                    and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
-                   and report['safrole_corpus']['passed']
+                   and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed']
+                   and len(report['authorization']) == 2*len(AUTHORIZATION_MEMBERS)
+                   and all(row['passed'] for row in report['authorization'])
                    and len(report['safrole']) == 2*len(SAFROLE_MEMBERS)+1
                    and all(row['passed'] for row in report['safrole'])
                    and len(report['trie']) == 3*len(TRIE_ORIGINS)+2

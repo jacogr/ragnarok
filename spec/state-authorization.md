@@ -68,7 +68,8 @@ correct chain configuration; prefix parsing cannot identify an incorrectly selec
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+The historical Nim 2 baseline ran the following after `python3 tests/test_crypto.py`
+(use the trial runner below on the experimental Nimony branch):
 
 ```sh
 python3 tests/test_state_authorization_harness.py
@@ -97,7 +98,34 @@ a privacy probe rejects access to the snapshot's retained storage. The reference
 model targets 64-bit checked ARC builds; native selftests verify an eight-byte int and 16-byte row
 sequence descriptor, without inspecting private runtime APIs.
 
-Builds retain Nim 2.2.12, ARC, Clang LTO and assertions/bounds/range/field/overflow guards. Ignored
+Historical baseline builds used Nim 2.2.12, ARC, Clang LTO and
+assertions/bounds/range/field/overflow guards. Ignored
 `build/state-authorization/` records commands, request SHA-256, logs and results. Linux CI runs the
 suite after primitive construction and retains diagnostics. Local verification is macOS arm64;
 Linux verification requires CI after push. Existing crypto gates remain unchanged.
+
+## Nimony branch port
+
+The [nightly trial](../docs/nimony-trial.md#twentieth-increment-authorization-pools-and-queues)
+verifies the same chapter 1–2 contract with checked ARC/Clang LTO on macOS ARM64. Results hide
+status/payload behind read-only error and success-precondition value access, covering public
+application values and private framing tuples. Private nullable acyclic ARC references and stable
+checked locals bind extraction to immutable captured rows; entry payloads remain caller-owned
+mutable bytes. Both complete-component preflights remain before allocation/capture.
+
+The nightly permits unchecked integer-to-enum conversion. Both public APIs therefore validate the
+underlying kind before configuration or row processing; values other than Pools/Queues return
+InvalidTag. All 256 underlying byte representations are tested. Valid-kind wire rules and error
+precedence are unchanged; invalid kinds cannot silently choose queues or bypass cardinality rules.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`. It preserves all
+7,059 independent observations, six literal harness checks, four hash-checked derived state sources
+and two partial trie integrations, while checking failed/default fields, private/read-only owner/
+result bypasses and both original nominal-domain probes. White-box project tests exercise uint64
+hash-budget and signed native prefix/stride boundaries without unsafe enormous sequence descriptors.
+
+Native tests retain callee-local pool/queue owners across source retirement, replacement and hash
+copy mutation. After warmup, 1,000 scoped ownership/error cycles return live allocator occupancy
+to baseline. This is workload-specific ARC evidence, not general leak freedom or recoverable
+allocation-failure support. Full M1, authorization execution, broader crypto and Linux parity
+remain separate gates; no dependency/compiler patch or alternate wire representation is introduced.
