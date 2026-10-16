@@ -20,6 +20,10 @@ JAM client or production validator. [M1 codec progress](docs/m1.md) and [design/
 
 ## Setup
 
+On the experimental `nimony` branch, follow the [nightly trial](docs/nimony-trial.md) instead of
+the historical baseline commands below. Its [Linux workflow](.github/workflows/nimony-linux.yml)
+checks the migrated runtime slice and every source module; full migration remains incomplete.
+
 Pinned baseline: Nim **2.2.12**, ARC, Clang; Rust **1.99.0** for the Bandersnatch primitive bridge.
 Python **3.12+** runs verification/setup tools. Native builds also need CMake, zlib and OpenSSL.
 See [development](docs/development.md) and [upstream ownership](docs/dependencies.md).

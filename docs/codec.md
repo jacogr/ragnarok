@@ -143,3 +143,7 @@ Chapter-4 Safrole basic state now passes its complete independent corpus, guarde
 results, closed source alternatives, retained parent/child copies, arithmetic and scoped release
 workload. The next compiler-port increment is chapter-5 dispute judgment/offender state
 (`state_disputes.nim`). M1 migration remains partial.
+
+The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
+migrated runtime slice and a strict all-source semantic compilation gate independently. Linux
+execution is pending CI; passing the migrated slice does not establish full M1/M2/M3 parity.

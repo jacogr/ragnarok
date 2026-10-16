@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "runner": "ubuntu-24.04",
+  "architecture": "x86_64",
+  "python": "3.12",
+  "version": "0.6.3",
+  "commit": "5b51edfedb4d0dbd9028d9e57ac61d69dffe9410",
+  "date": "2026-10-15",
+  "platform": "linux_amd64",
+  "formatter_version": "2.2.12",
+  "download": {
+    "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-5b51edfed/nimony-0.6.3-5b51edfed-linux_amd64.tar.xz",
+    "sha256": "39f3493ad68418a38da0fc7c8e048ef67b2a96b60c7e6a97246f6ec595ee19c9"
+  }
+}

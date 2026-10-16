@@ -7,7 +7,8 @@ scalar, owned, report, extrinsic-family, work-package, header, block, bitstring,
 raw-crypto, state-key/node-layout, bounded trie, entropy/roster/time and authorization slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
-Protocol/dependency pins are unchanged.
+Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
+execution remains pending the first workflow run.
 
 ## Compiler and environment
 
@@ -924,6 +925,56 @@ seventeen family corpora**, plus three runtime language probes. Formatting cover
 the final evidence records **549 matching source/test hashes**. Results remain local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity
 remain unverified.
 
+## Twenty-second bounded increment: branch Linux CI
+
+The maintainer requested Linux CI before further codec ports. The separate
+[trial workflow](../.github/workflows/nimony-linux.yml) targets pushes to `nimony`, PRs whose head
+branch is `nimony`, and manual dispatch. The historical Nim 2 Linux job skips this branch/PR;
+main-branch CI remains unchanged. This is trial infrastructure, not a completed compiler migration.
+
+Two independent jobs expose progress without hiding remaining failures:
+
+- The migrated runtime job runs formatting, CI safeguards and the full current `test_nimony.py`
+  slice. Its summary reports actual suite, corpus and guard counts.
+- The all-source gate discovers every `src/**/*.nim`, including newly added modules. Each gets an
+  isolated semantic check and log. Any failure or timeout fails the job; there is no expected-failure
+  allowlist. Semantic success alone does not establish native linking or runtime equivalence.
+
+Both jobs retain summaries and scoped logs/reports even on failure. No binaries, compiler caches,
+vendor trees or generated keys are uploaded. The overall workflow can remain red while the
+migrated runtime job passes; this makes the unfinished port visible in the PR.
+
+[Linux toolchain pins](../spec/nimony-ci-toolchain.json) select Ubuntu 24.04 x86_64, Python 3.12
+and official Nimony 0.6.3 nightly `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410` (2026-10-15).
+The `linux_amd64` archive SHA-256 is
+`39f3493ad68418a38da0fc7c8e048ef67b2a96b60c7e6a97246f6ec595ee19c9`, verified against the
+[official release](https://github.com/nim-lang/nimony-website/releases/tag/nightly-0.6.3-5b51edfed).
+Setup verifies the archive digest and nightly commit/date/platform before execution. Clang/lld
+provide the checked ARC/LTO native profile. Formatting reuses the existing pinned Nim 2.2.12
+archive solely for `nimpretty`: only its formatter is exposed on PATH, not a second Nim compiler.
+Dependency sources stay pristine and existing gitlinks are unchanged.
+
+Local verification on macOS ARM64:
+
+- Nine CI safeguard tests pass: archive checksum, extraction boundaries, compiler identity,
+  complete module discovery, timeout/failure handling and truthful summaries.
+- Official actionlint 1.7.12 accepts both workflows; formatting passes for 595 Nim files.
+- Both actual Linux tool archives pass checksum verification and safe extraction. Their Linux
+  executables were not run on macOS; this is installer verification, not Linux runtime evidence.
+- The real all-source semantic audit reports **24/43 passing modules**, with all 19 failures
+  retained and a failing exit status. These are macOS compilation observations, not Linux results
+  or additional intentional rejection tests. Evidence: `build/nimony-ci/modules/results.json`.
+- Production source and existing functional test files are unchanged. The prior functional
+  report's 549 source/test hashes still match. Totals remain **30 native suites, seventeen corpora,
+  745 runtime misuse rejections and 398 compilation rejections**. No new functional runtime or
+  Linux pass is claimed for this infrastructure increment.
+
+Reproduce the CI safeguards with `python3 tests/test_nimony_ci.py`. Run the independent module gate
+with `python3 tools/audit_nimony_modules.py --compiler /absolute/path/to/nimony`; it writes every
+command, source hash and verdict under `build/nimony-ci/modules/`. The workflow records Linux
+compiler/environment metadata and uses `tools/setup_nimony_ci_linux.py` for verified installation.
+Full Linux runtime evidence still awaits CI execution after publishing these changes.
+
 ## Remaining work and next bounded increment
 
 Next: port M1 chapter-5 dispute judgment/offender state (`src/codec/state_disputes.nim`), preserving
@@ -941,8 +992,9 @@ Further port work remains:
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
   Its alternative networking facilities require a dispatcher port and the existing lifecycle,
   service, mesh, resilience and offload tests.
-- Toolchain: compiler installation/pinning, normal build commands, formatter setup, Linux CI and
-  main documentation still need a deliberate switch after the port demonstrates equivalent safety.
+- Toolchain: branch Linux installation/pinning, formatter setup and trial CI are configured.
+  Linux execution, normal build commands and main documentation/CI cutover remain gates until the
+  port demonstrates equivalent safety.
 
 No full migration or normal-CI compiler switch has occurred. The M1 request-namespace question
 remains parked for Gray Paper 0.8.1/0.8.2 review; this trial does not reopen protocol decisions.
