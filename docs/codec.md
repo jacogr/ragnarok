@@ -174,7 +174,8 @@ validator-key/parent verification now pass too, alongside guarantee messages and
 signature composition. Bandersnatch owner safety and original contextual proof/JAM ticket/
 native-boundary/concurrency coverage now also pass locally. M3 UDP/readiness and linked transport
 lifecycle checks now pass locally.
-Next: peer identity/DER/framing and malformed-input selftests. Linux confirmation and normative
+Shared identity/DER/framing validation now also passes locally.
+Next: CE 143 integration results and retained digest ownership. Linux confirmation and normative
 policy gates remain separate.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the

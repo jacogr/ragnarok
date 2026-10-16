@@ -134,5 +134,6 @@ The runner records 131 driver requests plus a separate failed-result contract pr
 These are local macOS ARM64 results under checked ARC/Clang LTO. Implemented release-reference M2
 regression coverage now passes; Linux confirmation and the draft-text discrepancy remain separate.
 M3 UDP/readiness and linked transport lifecycle checks now pass locally.
-Next: peer identity/DER/framing and malformed-input selftests. See the [cumulative
+Shared identity/DER/framing validation now also passes locally.
+Next: CE 143 integration results and retained digest ownership. See the [cumulative
 trial](../docs/nimony-trial.md).

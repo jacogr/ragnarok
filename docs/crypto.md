@@ -56,5 +56,6 @@ four-thread signing and native-boundary checks now also pass through the product
 M2 migration regression parity is reached for the implemented release-reference scope; the
 draft-text discrepancy, Ed25519 policy and Linux confirmation remain separate gates. M3
 UDP/readiness and linked transport lifecycle checks now pass locally.
-Next: peer identity/DER/framing and malformed-input selftests. See the [cumulative
+Shared identity/DER/framing validation now also passes locally.
+Next: CE 143 integration results and retained digest ownership. See the [cumulative
 trial](nimony-trial.md).

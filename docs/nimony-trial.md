@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **56 native suites, thirty-nine independent corpora, 1,346 runtime misuse rejections
-and 639 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+Status: **57 native suites, forty independent corpora, 1,354 runtime misuse rejections
+and 648 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
@@ -14,7 +14,8 @@ signing-context slices now also pass locally. Bandersnatch guarded results, fixe
 native key/setup ownership, contextual VRF/RingVRF and original native-boundary/concurrency
 coverage also pass locally. M2 migration regression parity is reached for the implemented
 release-reference scope. M3 now has a local UDP/readiness and linked native-transport lifecycle
-slice; authenticated peers, broader M3 coverage and Linux parity remain unverified.
+slice, plus shared SAN/DER identity and structural framing validation. Authenticated peers,
+broader M3 coverage and Linux parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -2043,11 +2044,80 @@ LSQUIC/TLS pins. This proves only the exercised I/O/lifecycle slice. No authenti
 network service/mesh/resilience/offload parity or Linux execution is claimed. M1/M2 local regression
 parity, the parked M1 namespace question and documented crypto policy gates retain their scope.
 
+## Forty-first bounded increment: shared identity and frame validation
+
+`src/quic/protocol.nim` now owns the existing pinned JAMNP-S key-derived SAN formula, copied DER
+identity checks, E4 length admission and structural CE 143 frame boundaries. The peer imports that
+module and delegates structural validation before its existing content-key, fixture and integration
+checks. Those application checks remain in the peer; a structurally complete frame alone does not
+establish preimage eligibility. The peer executable and its full original selftest are still migration
+gates. This increment exercises the shared parsers independently of peer scheduling and sockets.
+
+Applicable source remains `vendor/jam-np/simple.md` at networking revision
+`439c45aad135dc654b3de6f56d7d694fd02b7aa8`: its alternative-name formula, Messages E4 framing and
+CE 143 request/reply/FIN rules. Source, TLS, LSQUIC and crypto pins are unchanged. Identity policy
+still requires Ed25519 key/signature algorithms and exactly one complete key-derived DNS SAN;
+dialers compare all pinned key bytes, while an empty expected key allows identity discovery.
+DER must be bounded and consumed exactly. No certificate chain/point-policy decision is introduced.
+
+`LengthResult` and `FrameResult` keep tags and payload storage private. Read-only reasons distinguish
+uninitialized, incomplete and rejected input. Only exact bytes with FIN expose frame size/extent;
+partial input and complete bytes without FIN remain pending with no successful metadata. E4 counts
+are compared before narrowing, and frame-header addition checks its remaining host-int capacity
+before arithmetic on Nimony's wrapping target. The existing peer-facing `(complete, valid)` verdicts
+are preserved by mapping pending to `(false, true)`, failure to `(false, false)` and success to the
+unchanged payload/content checks.
+
+| Checked release/LTO evidence | Local result |
+| --- | --- |
+| Shared native selftest | Every request/reply prefix and the original 10,000 deterministic malformed DER/frame byte inputs pass |
+| Independent SAN formula | 322 inputs cover zero/all-one keys, all 256 individual bits and 64 deterministic unrelated keys |
+| Independent E4 admission | 84 width/policy cases include unsigned extremes and host-int ceilings without large allocation |
+| Independent structural framing | 11,394 cases cover prefixes, FIN, trailing bytes, wrong CE selector, large claims and original fuzz bytes |
+| DER/identity policy | Real valid/wrong-key/SAN/algorithm fixtures, every DER truncation, trailing bytes/certificate, oversize and embedded-NUL SAN mutations |
+| Result safety | Eight isolated default/error/pending reads reject; nine private/read-only/forged-result compilation probes reject |
+
+The independent Python oracle uses arbitrary-precision radix division and length arithmetic, not
+the native bit-grouping implementation or a Python production verifier. Its literal anchors protect
+byte order, alphabet and FIN behavior. The full corpus has over **25,000 requests**, with exact groups,
+commands, request/output SHA-256 values and first-mismatch diagnostics recorded as
+`quic_protocol_corpus` in the full report. DER lengths vary with newly generated public fixtures;
+the exact count belongs to that run's report. CI retains the public
+`build/nimony-trial/verification/quic-protocol-requests.txt` for replay; private fixture keys remain
+in ignored build storage and are not uploaded.
+
+There were **two observed compiler repair rounds**: nullable test pointers/default initialization
+in the frontend, then C generation for a header-defined structure containing inline byte arrays.
+The maintained C extractor zeroes its full output after the preflight this caller proves; the
+adapter therefore declares that output uninitialized until the synchronous extractor fills it,
+checks extraction success, then copies public key bytes individually into native fixed storage.
+It neither initializes C inline arrays with Nimony's distinct array representation nor passes an
+incompatible native-array pointer. No warning suppression, compiler/runtime hook or dependency
+patch is used. Diagnostics are retained in `build/nimony-trial/protocol-first-build.log` and
+`protocol-second-build.log`.
+
+One independent test anchor initially assumed that radix index 31 selected `7`; the pinned literal
+alphabet includes its leading dollar sign, so index 31 selects `6`. The reference test expectation
+was corrected; production output and the pinned formula were unchanged. This is a test-reference
+repair, separate from compiler friction or a production defect. Historical repair/time totals are
+not reconstructed.
+
+Cumulative coverage is **57 native suites, forty independent corpora, 1,354 runtime misuse
+rejections and 648 compilation rejections**: 544 privacy, 94 nominal, five schema, four static
+contracts and one ownership-lowering rejection. Formatting covers **829 Nim files**; the full runner
+hashes **938 source/test/configuration files**. The all-source semantic audit is **42/45**, adding the
+shared protocol module while peer, mesh and integration remain. Enabled proof-offload compilation
+is still unverified.
+
+These are local macOS ARM64 results on the unchanged pinned Nimony 0.6.3, checked ARC/Clang LTO.
+M1/M2 local regression parity retains its documented scope and normative gates. No authenticated
+exchange, whole-peer selftest, service/mesh/resilience/offload parity or Linux execution is claimed.
+
 ## Remaining work and next bounded increment
 
-Next: M3 peer identity/DER/framing migration and the original malformed-input selftests.
-Keep authenticated CE 143 exchanges, retained services, mesh/resilience and enabled proof offload
-as subsequent runtime gates. Do not equate linked native construction with authenticated networking.
+Next: CE 143 codec/crypto integration results and retained digest ownership, including the enabled
+integration path and its original selftest. This dependency still blocks the peer executable;
+authenticated exchanges, retained services, mesh/resilience and enabled proof offload follow.
 
 Further port work remains:
 
@@ -2058,8 +2128,9 @@ Further port work remains:
   generated-proof, concurrency and native-boundary regression coverage now pass locally. The
   documented release-reference/draft-text and Ed25519 policy gates remain.
 - M3: bounded POSIX UDP/readiness, descriptor retirement and linked transport setup/teardown pass
-  locally. Peer identity/framing, authenticated exchanges, service, mesh, resilience and enabled
-  offload compilation/runtime coverage remain migration gates.
+  locally. Shared identity/DER and structural framing now pass too. Integration ownership/results,
+  whole-peer validation, authenticated exchanges, service, mesh, resilience and enabled offload
+  compilation/runtime coverage remain migration gates.
 - Toolchain: branch Linux installation/pinning, formatter setup and trial CI are configured.
   Linux execution, normal build commands and main documentation/CI cutover remain gates until the
   port demonstrates equivalent safety.
@@ -2090,6 +2161,7 @@ keyed values, request histories, exact chapter/service composition, raw whole-st
 evidence, the unchanged parked namespace witnesses, the original five early codec corpora, stateless
 assurance signing contexts, guarantee/report credential composition and the bounded Bandersnatch
 result/import/native-owner and contextual proof/native-boundary/concurrency slices, plus the
-bounded UDP/readiness and linked native transport lifecycle suites.
+bounded UDP/readiness and linked native transport lifecycle suites, shared identity/frame selftests
+and their independent SAN/DER/framing corpus.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

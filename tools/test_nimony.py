@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -687,6 +687,7 @@ BS_PRIVATE.update(bs_result_status_private='status', bs_result_retag='status', b
                   bs_key_state_private='state', bs_setup_state_private='state', bs_key_forge='state', bs_setup_forge='state')
 PRIVATE.update(BS_PRIVATE)
 PRIVATE.update(quic_io_endpoint_forge='opened', quic_io_dispatcher_private='descriptors')
+PRIVATE.update(quic_length_payload='completed', quic_length_tag='status', quic_frame_payload='payloadSize', quic_frame_extent='completedExtent', quic_frame_tag='status', quic_frame_error_write='error', quic_frame_size_write='size', quic_length_value_write='value', quic_frame_forge='status')
 NOMINAL.update(bs_key_as_setup='[1] expected: BsSetup but got: BsKey',
                bs_signature_as_ring_proof='got: BsSignature but wanted: BsRingProof',
                bs_output_as_public='got: BsOutput but wanted: BsPublicKey')
@@ -751,7 +752,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -784,7 +785,8 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'src/quic/io.nim', 'src/quic/transport.nim', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
+                'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
+                'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
                 'native/quic/transport_bridge.c', 'native/quic/transport_bridge.h', 'native/quic/cert_fields.c', 'native/quic/cert_fields.h',
                 'tests/native/compile_fail/quic_io_endpoint_copy.nim',
                 'tests/test_bandersnatch.py', 'tests/native/bandersnatch_driver.nim', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
@@ -862,7 +864,7 @@ def main():
                                  else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None,
                                  native_libraries=bs_libraries if name == 'bandersnatch_owners' else (),
                                  cflags=OWNER_DEFINES if name == 'bandersnatch_owners' else (),
-                                 quic_library=quic_library if name == 'quic_transport' else None)
+                                 quic_library=quic_library if name in ('quic_transport', 'quic_protocol') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -2111,6 +2113,41 @@ def main():
     corpus['requests'] = len(corpus['observations'])
     report['bandersnatch_corpus'] = corpus
     announce('contextual Bandersnatch vectors/native ABI', corpus['passed'])
+    # Compare identity/framing outcomes with an independent arbitrary-precision oracle and public DER fixtures.
+    from quic_protocol_oracle import requests as protocol_requests
+    harness = command([sys.executable, ROOT/'tests/test_quic_protocol_harness.py'], 'quic-protocol-harness')
+    lines, expected, groups = protocol_requests(quic_fixtures)
+    source = BUILD/'quic-protocol-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/quic_protocol_driver.nim', 'quic-protocol-driver', quic_library=quic_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), groups=groups, passed=False,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest(),
+                  scope='pinned SAN/DER identity and structural CE framing; no TLS handshake or fixture eligibility claim')
+    if compiled['exit_code'] == 0:
+        # Keep exact status/identity/length/extent observations; incomplete results expose no payload metadata.
+        result = command([binary, source], 'quic-protocol-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        if not corpus['passed']:
+            # Missing, extra or differing rows remain reproducible against the retained public request file.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['quic_protocol_corpus'] = corpus
+    announce('independent SAN/DER/frame boundary corpus', corpus['passed'])
+    # Default/failed/pending frame metadata and default/failed E4 lengths cannot bypass result access contracts.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_quic_protocol_results.nim', 'quic-protocol-results', quic_library=quic_library)
+    report['quic_protocol_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # One rejected read per child process prevents a preceding contract trap from hiding another accessor.
+        for member in ('length', 'size', 'extent'):
+            for origin in (('default', 'error') if member == 'length' else ('default', 'error', 'pending')):
+                result = command([binary, member, origin], 'quic-protocol-'+member+'-'+origin)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
+                announce('QUIC '+origin+' '+member+' guard', passed)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2731,6 +2768,8 @@ def main():
                    and len(report['bandersnatch']) == 2*len(BS_MEMBERS)
                    and all(row['passed'] for row in report['bandersnatch'])
                    and report['bandersnatch_corpus']['passed']
+                   and report['quic_protocol_corpus']['passed']
+                   and len(report['quic_protocol']) == 8 and all(row['passed'] for row in report['quic_protocol'])
                    and report['report_signature_corpus']['passed']
                    and len(report['guarantee_message']) == 2*len(GUARANTEE_MESSAGE_MEMBERS)
                    and all(row['passed'] for row in report['guarantee_message'])

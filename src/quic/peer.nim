@@ -1,6 +1,7 @@
 ## One synchronous owner drives nonblocking UDP readiness and deadlines without external Nim dependencies.
 import std/[os, strutils, monotimes, times, selectors]
 import ./transport
+import ./protocol
 import ./integration
 import ./offload
 
@@ -44,57 +45,10 @@ const LargeSize = 1024 * 1024
 const LargeHash = [138'u8, 90, 122, 157, 195, 207, 32, 62, 211, 116, 176, 161, 238, 169,
   48, 96, 26, 210, 172, 191, 226, 180, 188, 98, 207, 131, 222, 78, 229, 54, 82, 139]
 
-# Literal least-significant-first radix-32 formula from the pinned JAMNP-S specification.
-proc peerName(key: array[32, byte]): array[54, byte] {.raises: [].} =
-  const alphabet = "$abcdefghijklmnopqrstuvwxyz234567"
-  result[0] = byte('$')
-  result[1] = byte('e')
-  # The final group zero-extends the Ed25519 key beyond 256 bits.
-  for group in 0..<52:
-    var index = 0
-    # Gather this group's five bits in little-endian order, not RFC base32 order.
-    for bit in 0..<5:
-      let position = group * 5 + bit
-      if position < 256: index = index or (int((key[position div 8] shr (position mod 8)) and
-          1) shl bit) # Only actual key bits contribute.
-    result[2 + group] = byte(alphabet[index])
-
-# Validate copied primitive certificate observations and optional expected identity entirely in Nim.
-proc validPeer(der: ptr byte, length: csize_t, expected: openArray[byte]): bool {.raises: [].} =
-  var fields: CertFields
-  # DER is borrowed only for bounded synchronous extraction; no TLS-owned pointer is retained.
-  if parseCert(der, length, addr fields) != 1: return false
-  # Require both Ed25519 algorithms and exactly one DNS SAN.
-  if fields.edKey != 1 or fields.edSignature != 1 or fields.keyLength != 32 or
-      fields.sanExtensions != 1 or fields.sanCount != 1 or fields.sanDns != 1: return false
-  let name = peerName(fields.key)
-  # Exact byte length prevents prefix and embedded-NUL acceptance.
-  if fields.sanLength != csize_t(name.len): return false
-  # Every DNS SAN byte must be the exact key-derived identity.
-  for i, value in name:
-    if fields.san[i] != value: return false # Reject altered names.
-  # Dialers pin the server key; acceptors may discover a consistent unknown peer.
-  if expected.len > 0:
-    if expected.len != 32: return false # No narrowing of malformed trusted identity input.
-    for i in 0..<32:
-      if expected[i] != fields.key[i]: return false # Compare full public keys.
-  true
-
 # Native TLS verification borrows only the retained peer's expected key; no closure or async frame is captured.
 proc verifyPeer(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   let peer = cast[ptr Peer](user)
   cint(validPeer(cast[ptr byte](der), length, peer.expected))
-
-# Validate a complete E4 header before host conversion, indexing or accepting any payload extent.
-proc checkedLength(header: openArray[byte], maximum: int): tuple[ok: bool, size: int] {.raises: [].} =
-  # Partial headers and invalid policies expose no usable extent.
-  if header.len != 4 or maximum < 0: return (false, 0)
-  var claimed = 0'u64
-  # Assemble exactly four little-endian bytes without a host-width-dependent cast.
-  for i in 0..<4: claimed = claimed or (uint64(header[i]) shl (8 * i))
-  # Prove the bounded conversion before allocation or payload access.
-  if claimed > uint64(maximum): return (false, 0)
-  (true, int(claimed))
 
 # Settle one stream exactly once; soak rejections preserve healthy siblings on the same connection.
 proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: [].} =
@@ -138,26 +92,19 @@ proc accepting(peer: ptr Peer, state: ptr StreamState): bool {.raises: [].} =
 
 # Check incremental framing and fixture payloads; success requires one exact message followed by FIN.
 proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid: bool] {.raises: [].} =
-  let start = if accepting(peer, state): 1 else: 0
-  # The request's first byte selects CE 143 explicitly.
-  if accepting(peer, state) and state.receivedLength > 0 and state.received[0] != 143: return (
-    false, false)
-  # A partial header remains pending only while the peer has not ended its direction.
-  if state.receivedLength < start + 4: return (false, not state.readFin)
   let maximum = if accepting(peer, state): 32 elif peer.integrated: WireCap elif peer.attack ==
       "soak": LargeSize else: 1024
-  let length = checkedLength(state.received.toOpenArray(start, start + 3), maximum)
-  # Reject impossible declared payloads before any narrowing/indexing.
-  if not length.ok: return (false, false)
-  let extent = start + 4 + length.size
-  # One message per direction forbids trailing bytes, even before FIN arrives.
-  if state.receivedLength > extent: return (false, false)
-  if not state.readFin: return (false, true) # Complete bytes without FIN are still pending.
-  if state.receivedLength != extent: return (false, false) # FIN before the declared payload is truncation.
+  let boundary = inspectFrame(state.received.toOpenArray(0, state.receivedLength - 1),
+      accepting(peer, state), maximum, state.readFin)
+  # Incomplete directions expose no payload extent until exact FIN; malformed framing settles the stream.
+  if boundary.error == FrameError.Pending: return (false, true)
+  if boundary.error != FrameError.None: return (false, false)
+  let extent = boundary.extent
+  let payloadSize = boundary.size
   # The integration corpus deliberately uses complete C.2 digests as otherwise opaque CE preimages.
   if peer.integrated:
     if accepting(peer, state):
-      if length.size != 32: return (false, false) # CE query hash width remains normative.
+      if payloadSize != 32: return (false, false) # CE query hash width remains normative.
       let index = findFixture(peer.bank, state.received.toOpenArray(5, 36))
       if index < 0:
         echo "INTEGRATION_REJECT Lookup"
@@ -183,7 +130,7 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
     return (true, true)
   # Requests select only exact fixture hash keys, never a default/missing map entry.
   if accepting(peer, state):
-    if length.size != 32: return (false, false) # Preimage keys have fixed width.
+    if payloadSize != 32: return (false, false) # Preimage keys have fixed width.
     var wanted = RequestHash
     # Cheap lookup, wrong-domain policy and backpressure fixtures each retain a full exact content key.
     if peer.offloading and state.received[5] == LightHash[0]:
@@ -197,7 +144,7 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
   else:
     # Replies must contain the exact expected tiny/large fixture, independently of transport chunking.
     let size = if state.attack == "slow": LargeSize else: 3
-    if length.size != size: return (false, false)
+    if payloadSize != size: return (false, false)
     for i in 0..<size:
       let wanted = if size == LargeSize: byte(i mod 251) else: byte(i + 1 + (
           if peer.light: 3 elif peer.badProof: 6 else: 0))
@@ -628,8 +575,8 @@ proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
 
 # Deterministic malformed-input coverage remains independently testable before native transport setup.
 proc selfTest() =
-  doAssert checkedLength([0'u8, 0, 0, 0], 0) == (true, 0)
-  doAssert not checkedLength([255'u8, 255, 255, 255], 1024).ok
+  doAssert checkedLength([0'u8, 0, 0, 0], 0).value == 0
+  doAssert checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None
   # Known valid frames exercise every partial prefix with and without FIN, complementing random malformed inputs.
   var request = newSeq[byte](37)
   request[0] = 143

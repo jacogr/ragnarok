@@ -154,7 +154,8 @@ local M1 validation migration parity for the documented implemented scope. Linux
 separate. M2 assurance and guarantee/report signing composition now pass. Bandersnatch owner safety
 and original contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally.
 M3 UDP/readiness and linked transport lifecycle checks now pass locally.
-Next: peer identity/DER/framing and malformed-input selftests; Linux confirmation and
+Shared identity/DER/framing validation now also passes locally.
+Next: CE 143 integration results and retained digest ownership; Linux confirmation and
 documented normative policy gates remain separate. No transition execution or new namespace rule is
 introduced. See the [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3
 work.

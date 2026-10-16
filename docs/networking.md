@@ -40,6 +40,8 @@ including failure recovery and independent sibling retirement. Nimony Linux CI i
 actual Linux confirmation remains separate.
 
 The peer executable and broad lifecycle claims above describe the historical implemented behavior;
-they are still migration gates on this branch. Next: peer identity/DER/framing and the original
-malformed-input selftests, followed by authenticated exchanges, services, mesh/resilience and
-proof offload. See the [cumulative Nimony evidence](nimony-trial.md).
+they are still migration gates on this branch. Shared identity/DER and structural CE framing now
+also pass their parser selftest, independent oracle and guarded-result checks. The peer delegates
+these checks to `src/quic/protocol.nim`; fixture content and integration policy remain in the peer.
+Next: codec/crypto integration results and retained digest ownership, followed by whole-peer
+validation, authenticated exchanges, services, mesh/resilience and proof offload. See the [cumulative Nimony evidence](nimony-trial.md).

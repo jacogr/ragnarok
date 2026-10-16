@@ -93,6 +93,7 @@ report eligibility or guarantor assignments. Linux/full-client parity and the ex
 policy remain separate. Bandersnatch owner safety and original contextual proof/JAM
 ticket/native-boundary/concurrency coverage now also pass locally. M3 UDP/readiness and linked
 transport lifecycle checks now pass locally.
-Next: peer identity/DER/framing and malformed-input selftests; Linux confirmation and documented
+Shared identity/DER/framing validation now also passes locally.
+Next: CE 143 integration results and retained digest ownership; Linux confirmation and documented
 normative policy gates
 remain separate. See [the trial](../docs/nimony-trial.md) for cumulative evidence.
