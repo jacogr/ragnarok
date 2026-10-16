@@ -71,8 +71,10 @@ published maps and records the dictionary migration and remaining C(13) gas conf
 [Typed composition](../spec/state-composition.md) now enforces exact component extents, common
 profiles, parent budgets and duplicate rejection. The [width investigation](../spec/state-widths.md)
 supports the implemented C(12) E4 service/E8 gas and C(13) E4-key migration. Next planned:
-request-length namespace admissibility review. C(13) gas and request namespace policy still
-need clarification before full M1 parity.
+resolve the [recorded specification questions](../spec/state-clarifications.md). The
+[namespace review](../spec/request-namespace.md) produces funded local-rule witnesses, not an
+exclusion; production behavior is unchanged. C(13) gas and request namespace policy still need
+clarification before full M1 parity.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general

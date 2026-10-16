@@ -48,6 +48,7 @@ python3 tests/test_state_consensus.py
 python3 tests/test_state_disputes.py
 python3 tests/test_state_history.py
 python3 tests/test_state_requests.py
+python3 tests/test_request_namespace.py
 python3 tests/test_state_service_values.py
 python3 tests/test_state_accounts.py
 python3 tests/test_state_outputs.py

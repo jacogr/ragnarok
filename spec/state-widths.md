@@ -112,6 +112,6 @@ Python/OS versions. The new exact blob hashes extend the existing vector pin; gi
 remain unchanged. Linux CI runs and retains the same checks; local macOS arm64 results do not
 claim Linux confirmation.
 
-Next: request-length namespace admissibility review. C13 gas and request namespace policy remain
+Next: resolve [request namespace and C13 gas clarification questions](state-clarifications.md). C13 gas and request namespace policy remain
 separate unresolved gates. Codec/body, boundary, ownership and complete-composition checks are
 recorded in their respective contracts; no transition or new client milestone is claimed.

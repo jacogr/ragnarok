@@ -43,7 +43,7 @@ class RequestHistoryHarness(unittest.TestCase):
         self.assertEqual(key(1,bytes(32),2**32-1),value_key('S',1,bytes(32)))
 
     # No admissible-length rule is invented while the stated E4 domain overlaps other namespace prefixes.
-    @unittest.skip('Pending normative clarification: admissible request lengths must reconcile fffffffe/ffffffff with preimage/storage namespaces')
+    @unittest.skip('Pending normative clarification: funded small-payload local witnesses pass solicit/account predicates but overlap preimage/storage keys; see spec/request-namespace.md')
     def test_resolved_namespace_policy(self):
         self.fail('Replace this pending gate with the clarified valid-state cross-map constraint; do not silently restrict lengths or change key domains.')
 

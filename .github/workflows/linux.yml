@@ -160,6 +160,11 @@ jobs:
           python3 tests/test_state_requests_harness.py
           python3 tests/test_state_requests.py 2>&1 | tee build/ci/state-requests.log
 
+      - name: Request namespace admissibility witnesses
+        run: |
+          python3 tests/test_request_namespace_harness.py
+          python3 tests/test_request_namespace.py 2>&1 | tee build/ci/request-namespace.log
+
       - name: Service storage and preimage entries
         run: |
           python3 tests/test_state_service_values_harness.py
@@ -266,6 +271,8 @@ jobs:
             build/state-requests/*.log
             build/state-requests/results.json
             build/state-requests/types/*.log
+            build/request-namespace/*.log
+            build/request-namespace/results.json
             build/state-service-values/*.log
             build/state-service-values/results.json
             build/state-service-values/types/*.log

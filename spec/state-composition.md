@@ -112,5 +112,5 @@ confirmation after push. No timing, transition or valid-state correctness claim 
 
 M1 state parity remains **incomplete** pending C13 gas and request-namespace policy. The C12 E4/E8
 and C13 E4-key migrations are implemented; statistics gas retains the explicitly gated natural
-interpretation. Next: request-length namespace admissibility review. Proofs/persistence, PVM and
-state transitions remain separate work.
+interpretation. Next: resolve the [request namespace and C13 gas questions](state-clarifications.md).
+Proofs/persistence, PVM and state transitions remain separate work.

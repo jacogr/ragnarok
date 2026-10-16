@@ -74,8 +74,10 @@ request_key(length = 2^32 - 1, hash) == storage_key(raw_key = hash[32])
 
 These are reproduced mathematical domain overlaps, not collisions in Blake2b. No narrower
 admissible-length rule is established by the request codec's cited schema. It therefore preserves
-the stated domain instead of inventing restrictions or changing key prefixes. Whether another
-valid-state rule excludes these combinations still requires normative clarification. A dedicated
+the stated domain instead of inventing restrictions or changing key prefixes. The [admissibility review](request-namespace.md) now supplies two small, funded local-rule
+witnesses satisfying the inspected account/preimage/deposit and fresh-solicit predicates. Those
+predicates do not exclude the combinations; full PVM/genesis reachability is not established.
+The needed exclusion or namespace change still requires normative clarification. A dedicated
 **pending namespace-policy test** is skipped explicitly until that rule can be specified. An
 active literal test and native integration check reproduce both overlaps and show that existing
 trie composition returns DuplicateKey rather than silently overwriting a mapping. This does not
@@ -132,7 +134,6 @@ bounds/range/field/overflow checks. Ignored `build/state-requests/` records comm
 fixture evidence and native/type diagnostics. Linux CI runs the suite and retains logs; local
 validation is macOS arm64, with Linux confirmation after push.
 
-All state component families now have codecs, but **M1 state parity is not complete**. Whole-state
-composition/root evidence, the chapter-13 numeric-width discrepancy and request-length namespace
-admissibility remain. Next planned group: **whole-state composition/root evidence, beginning with
-numeric-width and key-domain parity review**. See the [M1 checklist](../docs/m1.md).
+All state component families and selected complete compositions now have tests, but **M1 parity
+remains incomplete** pending request namespace and C13 gas policy. The review preserves the full
+length domain and duplicate rejection. Next: resolve the [two recorded specification questions](state-clarifications.md).
