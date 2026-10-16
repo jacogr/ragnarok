@@ -125,9 +125,9 @@ proc encodeReportHeader*(source: ReportHeader, output: var openArray[
   let value = source
   # Reject an invalid shard domain before capacity checks or destination mutation.
   if not validErasureShards(value.erasureShards):
-    return CompositeWrite(error: CompositeError.LimitExceeded)
+    return compositeFailure(CompositeError.LimitExceeded)
   # Whole-header capacity is required before writing the first hash byte.
-  if output.len < 272: return CompositeWrite(error: CompositeError.OutputTooSmall)
+  if output.len < 272: return compositeFailure(CompositeError.OutputTooSmall)
   # Preserve the supplied packageHash identity without reversal or hashing.
   for i in 0..<32: output[0+i] = value.packageHash.bytes[i]
   let bundleLength = encodeFixed(FixedUnsigned(value.bundleLength), ByteWidth(4))
@@ -159,7 +159,7 @@ proc encodeReportHeader*(source: ReportHeader, output: var openArray[
   for i in 0..<4: output[236+i] = lookupSlot.encoded.bytes[i]
   # Preserve the supplied lookupStateRoot identity without reversal or hashing.
   for i in 0..<32: output[240+i] = value.lookupStateRoot.bytes[i]
-  CompositeWrite(error: CompositeError.None, written: 272)
+  compositeWritten(272)
 
 # Compare package hash bytes lexicographically; equality is not strict order and therefore rejects duplicates.
 proc reportHashLess(a, b: PackageHash): bool {.raises: [].} =
@@ -260,27 +260,27 @@ proc measureReportBorrowed*(value: WorkReport, poolSize: int,
   # Header-domain checks precede all size measurement and preserve encoder atomicity.
   if not validErasureShards(value.header.erasureShards) or
       uint64(value.header.erasureShards) div 3 > coreCount:
-    return CompositeWrite(error: CompositeError.LimitExceeded)
+    return compositeFailure(CompositeError.LimitExceeded)
   # Signed public counts must fit bounded metadata before any array indexing or multiplication.
   if value.prerequisiteCount < 0 or value.prerequisiteCount > 8 or value.lookupCount < 0 or
       value.lookupCount > 8 or value.lookupCount > 8-value.prerequisiteCount or value.digestCount <
       1 or value.digestCount > 16 or uint64(value.core) >= coreCount:
-    return CompositeWrite(error: CompositeError.LimitExceeded)
+    return compositeFailure(CompositeError.LimitExceeded)
   let span = value.authOutput
   # Subtraction proves endpoint arithmetic, including an empty span at the pool end.
   if span.offset < 0 or span.length < 0 or span.offset > poolSize or span.length >
       poolSize-span.offset:
-    return CompositeWrite(error: CompositeError.InvalidSpan)
+    return compositeFailure(CompositeError.InvalidSpan)
   var total = span.length
-  if total > 49152: return CompositeWrite(error: CompositeError.LimitExceeded)
+  if total > 49152: return compositeFailure(CompositeError.LimitExceeded)
   # Encoders require canonical ordered input instead of silently sorting caller metadata.
   for i in 1..<value.prerequisiteCount:
     if not reportHashLess(value.prerequisites[i-1], value.prerequisites[i]):
-      return CompositeWrite(error: CompositeError.NonCanonical)
+      return compositeFailure(CompositeError.NonCanonical)
   # Only dictionary package keys decide ordering and uniqueness.
   for i in 1..<value.lookupCount:
     if not reportHashLess(value.lookup[i-1].packageHash, value.lookup[i].packageHash):
-      return CompositeWrite(error: CompositeError.NonCanonical)
+      return compositeFailure(CompositeError.NonCanonical)
   var required = 272 + natural.encode(JamNatural(value.prerequisiteCount)).len +
       32*value.prerequisiteCount + natural.encode(JamNatural(value.core)).len + 32 + natural.encode(
       JamNatural(value.authGas)).len + natural.encode(JamNatural(total)).len + total +
@@ -300,9 +300,9 @@ proc measureReportBorrowed*(value: WorkReport, poolSize: int,
     # Each of the five bounded naturals contributes its canonical wire width.
     for number in numbers: size += natural.encode(JamNatural(number)).len
     # Subtraction protects host addition even on narrower address spaces.
-    if size > high(int)-required: return CompositeWrite(error: CompositeError.LengthOverflow)
+    if size > high(int)-required: return compositeFailure(CompositeError.LengthOverflow)
     required += size
-  CompositeWrite(error: CompositeError.None, written: required)
+  compositeWritten(required)
 
 # Commit one canonical natural into a proven complete destination extent; no allocations are required.
 proc reportPutNatural(number: uint64, output: var openArray[byte], cursor: var int) {.raises: [].} =
@@ -319,13 +319,13 @@ proc encodeReportBorrowed*(source: WorkReport, pool: openArray[byte], coreCount:
   # No mutation is permitted until all fixed fields and the final nested metric have validated.
   if measured.error != CompositeError.None: return measured
   let required = measured.written
-  if output.len < required: return CompositeWrite(error: CompositeError.OutputTooSmall)
+  if output.len < required: return compositeFailure(CompositeError.OutputTooSmall)
   # Compare address differences without overflowing pointer-end arithmetic; empty pools do not alias.
   if pool.len > 0:
     let a = cast[uint](unsafeAddr pool[0])
     let b = cast[uint](addr output[0])
     if (a <= b and b-a < uint(pool.len)) or (b < a and a-b < uint(required)):
-      return CompositeWrite(error: CompositeError.AliasedBuffers)
+      return compositeFailure(CompositeError.AliasedBuffers)
   discard encodeReportHeader(value.header, output.toOpenArray(0, 271))
   var cursor = 272
   reportPutNatural(uint64(value.prerequisiteCount), output, cursor)
@@ -358,4 +358,4 @@ proc encodeReportBorrowed*(source: WorkReport, pool: openArray[byte], coreCount:
         cursor, required-1))
     doAssert encoded.error == CompositeError.None
     cursor += encoded.written
-  CompositeWrite(error: CompositeError.None, written: cursor)
+  compositeWritten(cursor)

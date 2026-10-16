@@ -273,10 +273,10 @@ proc mutation(kind: string, wire: var seq[byte], cores: uint64) =
   var output = newSeq[byte](65536)
   for b in output.mitems: b = 77 # Detect even a speculative first-byte commit.
   case kind
-  of "span": value.digests[value.digestCount-1].output = WorkOutput(kind: WorkKind.Success,
-      blob: BlobSpan(offset: wire.len, length: 1)) # Invalid final descriptor.
+  of "span": value.digests[value.digestCount-1].output = successfulWork(BlobSpan(offset: wire.len,
+      length: 1)) # Invalid final descriptor.
   of "count": value.digestCount = 0 # A report requires at least one work digest.
-  of "tag": value.digests[value.digestCount-1].output = WorkOutput(kind: cast[WorkKind](
+  of "tag": value.digests[value.digestCount-1].output = failedWork(cast[WorkKind](
       255)) # Explicit unsafe enum fabrication must fail preflight.
   of "core": value.core = CoreIndex(cores) # First index outside the configured core set.
   of "alias":

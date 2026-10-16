@@ -1,6 +1,10 @@
 import std/[assertions, syncio]
 import ../../src/codec/[work_digest, composite, bounded]
 
+# Default digest results remain failures; zero-filled successful digest values are not substituted.
+let defaultDigestResult = default(DigestResult)
+assert defaultDigestResult.error == CompositeError.Uninitialized
+
 # Arbitrary-input entry point checks successful metadata and exact full-prefix reconstruction without allocation.
 proc fuzzDigest*(input: openArray[byte]) =
   let parsed = decodeDigestBorrowed(input, ByteLimit(64))
@@ -23,7 +27,7 @@ for i in 0..<32:
 var pool = [1'u8, 2, 3]
 var value = WorkDigest(service: ServiceIndex(high(uint32)), codeHash: CodeHash(code),
     payloadHash: PayloadHash(payload), accumulateGas: Gas(high(uint64)),
-    output: WorkOutput(kind: WorkKind.Success, blob: BlobSpan(offset: 0, length: 3)),
+    output: successfulWork(BlobSpan(offset: 0, length: 3)),
     refine: RefineLoad(gasUsed: Gas(127), imports: ImportCount(128), extrinsicCount: ExtrinsicCount(
         16384), extrinsicSize: ExtrinsicBytes(1'u64 shl 56), exports: ExportCount(high(uint64))))
 var wire: array[256, byte] = default(array[256, byte])
@@ -32,6 +36,12 @@ assert encoded.error == CompositeError.None
 let decoded = decodeDigestBorrowed(wire.toOpenArray(0, encoded.written - 1), ByteLimit(3))
 assert decoded.error == CompositeError.None and decoded.consumed == encoded.written
 assert decoded.value.output.blob.offset == 78 and decoded.value.output.blob.length == 3
+# Extracted digests are copied; rebuilding a detached output cannot mutate the original result.
+var detachedDigest = decoded.value
+detachedDigest.service = ServiceIndex(1)
+detachedDigest.output = successfulWork(BlobSpan(offset: 0, length: 0))
+assert uint32(decoded.value.service) == high(uint32) and decoded.value.output.blob.length == 3
+
 assert uint64(decoded.value.refine.imports) == 128 and uint64(decoded.value.refine.exports) ==
     high(uint64)
 fuzzDigest(wire.toOpenArray(0, encoded.written - 1))
@@ -47,13 +57,13 @@ assert shortWrite.error == CompositeError.OutputTooSmall
 # Verify the whole sentinel buffer after the failed write.
 for b in wire: assert b == 77
 # A present empty blob still borrows its pool; later metric writes must not overwrite any pool bytes.
-value.output = WorkOutput(kind: WorkKind.Success, blob: BlobSpan(offset: 0, length: 0))
+value.output = successfulWork(BlobSpan(offset: 0, length: 0))
 let before = wire
 assert encodeDigestBorrowed(value, wire, ByteLimit(0), wire).error ==
     CompositeError.AliasedBuffers
 assert wire == before
 # Invalid nested spans fail before even a nominal fixed field is committed.
-value.output = WorkOutput(kind: WorkKind.Success, blob: BlobSpan(offset: high(int), length: 1))
+value.output = successfulWork(BlobSpan(offset: high(int), length: 1))
 assert encodeDigestBorrowed(value, pool, ByteLimit(3), wire).error == CompositeError.InvalidSpan
 assert wire == before
 var state = 0x444947455354'u64

@@ -35,3 +35,24 @@ rules such as preimage ordering/uniqueness or protocol resource constants.
 
 See [the Nim codec guide](../docs/codec.md) and source modules under `src/codec/`.
 Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.
+
+### Nimony result and variant safety
+
+On `nimony`, `CompositeWrite`, `OptionalResult`, `WorkResult` and `PreimageResult` hide their
+status and payload fields. Read-only `error` exposes the outcome; successful data and progress
+properties have Nimony success preconditions. Default results remain `Uninitialized`, distinct
+from validated empty values. Private storage prevents direct retagging, payload reads and raw
+success construction through safe code.
+
+Optional/work-output values use `absentBlob`, `presentBlob`, `successfulWork` and `failedWork`
+source constructors. Their tags are read-only and span access requires presence/Success. Spans
+are returned by value, retain no buffer, and still require the documented caller-owned stable pool.
+Source construction does not validate span bounds; encoders retain their typed span/policy errors.
+`failedWork` rejects Success because it requires a span. Default optional/work values keep their
+existing absent/empty-Success semantics and bytes.
+
+Sibling encoders may explicitly report completed extents using `compositeWritten` (nonnegative)
+or failures using `compositeFailure` (reason other than None). These constructors do not validate
+or write a caller buffer; each encoder remains responsible for preflight and atomic commit.
+The Nimony-only runner checks both result alternatives, all six work-error tags, absent payload
+access, constructor preconditions and raw-state bypass attempts. Wire encodings are unchanged.

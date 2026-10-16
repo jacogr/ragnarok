@@ -58,7 +58,7 @@ doAssert ownedInfo(records.value).value.consumed == 13
 # Complete digest fixtures use the normal encoder, then independently verify fixed metadata and payload snapshotting.
 var digestWire: array[128, byte]
 let digest = WorkDigest(service: ServiceIndex(7), accumulateGas: Gas(9),
-    output: WorkOutput(kind: WorkKind.Success, blob: BlobSpan(offset: 0, length: 2)),
+    output: successfulWork(BlobSpan(offset: 0, length: 2)),
     refine: RefineLoad(gasUsed: Gas(10)))
 let encoded = encodeDigestBorrowed(digest, [10'u8, 20], ByteLimit(2), digestWire)
 doAssert encoded.error == CompositeError.None

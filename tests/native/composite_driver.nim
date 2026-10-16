@@ -67,14 +67,13 @@ for line in readFile(paramStr(1)).splitLines():
       if p[0] == "OE":
         # A bool input has only these states.
         if tag notin [0, 1]: raise newException(ValueError, "presence")
-        let value = if tag == 0: OptionalBlob(present: false) else: OptionalBlob(present: true, blob: span)
+        let value = if tag == 0: absentBlob() else: presentBlob(span)
         encoded = encodeOptionalBorrowed(value, pool, limit, bytes.toOpenArray(0, cap - 1))
       else:
         # Reject textual enum values before casting; unknown binary variants go through decodeWorkBorrowed instead.
 
         if tag < 0 or tag > 6: echo "invalidtag"; continue
-        let value = if tag == 0: WorkOutput(kind: WorkKind.Success, blob: span) else: WorkOutput(
-            kind: WorkKind(tag))
+        let value = if tag == 0: successfulWork(span) else: failedWork(WorkKind(tag))
         encoded = encodeWorkBorrowed(value, pool, limit, bytes.toOpenArray(0, cap - 1))
       # Actual completed bytes.
       if encoded.error == CompositeError.None: echo hexText(bytes.toOpenArray(0, encoded.written - 1))

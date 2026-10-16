@@ -1,6 +1,42 @@
 import std/[assertions, syncio]
 import ../../src/codec/[composite, bounded]
 
+# Explicit source constructors retain optional/work wire defaults and return copied descriptors.
+proc checkSources() =
+  let defaultOptional = default(OptionalBlob)
+  let defaultWork = default(WorkOutput)
+  assert not defaultOptional.present
+  assert defaultWork.kind == WorkKind.Success and defaultWork.blob.length == 0
+  let optional = presentBlob(BlobSpan(offset: 1, length: 2))
+  var optionalCopy = optional.blob
+  optionalCopy.offset = 0
+  assert optional.blob.offset == 1 and optionalCopy.offset == 0
+  let work = successfulWork(BlobSpan(offset: 1, length: 2))
+  var workCopy = work.blob
+  workCopy.length = 0
+  assert work.blob.length == 2 and workCopy.length == 0
+  var bytes: array[2, byte] = default(array[2, byte])
+  assert encodeOptionalBorrowed(defaultOptional, [], ByteLimit(0), bytes).written == 1
+  assert bytes[0] == 0
+  assert encodeWorkBorrowed(defaultWork, [], ByteLimit(0), bytes).written == 2
+  assert bytes[0] == 0 and bytes[1] == 0
+  let absent = decodeOptionalBorrowed([byte(0)], ByteLimit(0))
+  assert absent.error == CompositeError.None and not absent.value.present
+  let emptyWork = decodeWorkBorrowed([byte(0), 0], ByteLimit(0))
+  assert emptyWork.error == CompositeError.None and emptyWork.value.blob.length == 0
+  let defaultWrite = default(CompositeWrite)
+  let defaultRead = default(OptionalResult)
+  let defaultWorkRead = default(WorkResult)
+  let defaultPreimages = default(PreimageResult)
+  assert defaultWrite.error == CompositeError.Uninitialized and defaultRead.error ==
+      CompositeError.Uninitialized
+  assert defaultWorkRead.error == CompositeError.Uninitialized and defaultPreimages.error ==
+      CompositeError.Uninitialized
+  assert compositeFailure(CompositeError.Truncated).error == CompositeError.Truncated
+  assert compositeWritten(0).written == 0
+
+checkSources()
+
 # Arbitrary-byte entry point: all successful values re-encode their consumed prefix, and errors preserve records.
 proc fuzzComposite*(input: openArray[byte]) =
   var wire: array[128, byte] = default(array[128, byte])
@@ -65,7 +101,7 @@ assert encodePreimagesBorrowed(bad, pool, limits, wire).error == CompositeError.
 for b in wire: assert b == 77
 # Every exact work-error tag is payload-free; trailing data is not interpreted as a blob.
 for tag in 1..6:
-  let value = WorkOutput(kind: WorkKind(tag))
+  let value = failedWork(WorkKind(tag))
   assert encodeWorkBorrowed(value, pool, ByteLimit(0), wire).written == 1
   assert decodeWorkBorrowed(wire, ByteLimit(0)).consumed == 1
 # Invalid discriminators and overlong canonical-zero attempts have different typed failures.
@@ -75,7 +111,7 @@ assert decodeOptionalBorrowed([128'u8, 0], ByteLimit(0)).error == CompositeError
 # Invalid source spans never reach indexing or endpoint addition.
 for span in [BlobSpan(offset: -1, length: 0), BlobSpan(offset: 0, length: -1), BlobSpan(
     offset: high(int), length: high(int))]:
-  assert encodeOptionalBorrowed(OptionalBlob(present: true, blob: span), pool, ByteLimit(high(
+  assert encodeOptionalBorrowed(presentBlob(span), pool, ByteLimit(high(
       uint64)), wire).error == CompositeError.InvalidSpan
 # Typed destination aliasing includes output inside a trailing field, not only the current record bytes.
 let raw = cast[ptr array[sizeof(Preimage) * 2, byte]](addr output[0])
@@ -100,7 +136,7 @@ echo "Nim composite: nested atomic failures, exact variants, aliasing and 10000 
 
 # Encoder overlap checks protect the pool and the typed descriptors during the entire commit.
 let poolBefore = pool
-let present = OptionalBlob(present: true, blob: BlobSpan(offset: 0, length: 0))
+let present = presentBlob(BlobSpan(offset: 0, length: 0))
 assert encodeOptionalBorrowed(present, pool, ByteLimit(0), pool).error ==
     CompositeError.AliasedBuffers
 assert pool == poolBefore

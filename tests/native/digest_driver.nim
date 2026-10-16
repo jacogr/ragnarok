@@ -77,8 +77,8 @@ for line in readFile(paramStr(1)).splitLines():
       var c, h: array[32, byte]
       # Copy the checked exact hash lengths into nominal owned storage.
       for i in 0..<32: c[i] = code[i]; h[i] = payloadHash[i]
-      let work = if tag == 0: WorkOutput(kind: WorkKind.Success, blob: BlobSpan(offset: 0,
-          length: pool.len)) else: WorkOutput(kind: WorkKind(tag))
+      let work = if tag == 0: successfulWork(BlobSpan(offset: 0,
+          length: pool.len)) else: failedWork(WorkKind(tag))
       let value = WorkDigest(service: ServiceIndex(uint32(service)), codeHash: CodeHash(c),
           payloadHash: PayloadHash(h), accumulateGas: Gas(gas), output: work, refine: RefineLoad(
               gasUsed: Gas(parseBiggestUInt(p[9])),

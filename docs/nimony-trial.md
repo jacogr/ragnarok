@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **five native codec suites pass; bounded and primitive result safety is implemented;
-composite results and the broader port are still migration gates**. This branch targets Nimony directly, without
+Status: **five native codec suites and their scalar/composite/digest result-safety checks pass;
+owned snapshots and the broader port remain unported**. This branch targets Nimony directly, without
 dual-compiler source support. The main branch remains on Nim 2.2.12. Protocol/dependency pins
 are unchanged.
 
@@ -77,10 +77,13 @@ distinct from default/uninitialized results.
 | Natural/fixed-width success payload reads on default/error results | All ten stop at their success precondition. |
 | Error-reason reads on successful natural/fixed-width results | All three stop at their failure precondition. |
 | Primitive private storage, retagging, forgery and public-property assignment | All twelve fail compilation for the intended member. |
-| Composite decoder's unported failed-result progress read | Still prints zero; migration gate remains red. |
+| Composite/digest result payload reads on defaults/errors | All eighteen stop at the success precondition. |
+| Absent optional and six work-error payload reads | All eight stop at their variant precondition. |
+| Invalid explicit constructor arguments | All three stop at their constructor precondition. |
+| Composite/digest result and nested-variant privacy | All 24 raw-access, retagging, assignment and forgery probes reject compilation. |
 
-All 25 runtime rejection checks require the contract diagnostic and expected exit status; an
-unrelated process failure cannot count as protection. The 18 privacy checks require member-specific
+All 54 runtime rejection checks require the contract diagnostic and expected exit status; an
+unrelated process failure cannot count as protection. The 42 privacy checks require member-specific
 compilation diagnostics. Existing successful property reads are exercised by the positive suites.
 Malformed input still returns typed failure; invalid caller access is a programmer contract error.
 Wire bytes, output atomicity and borrowed-storage lifetimes do not change.
@@ -104,12 +107,42 @@ success-side error reads) and 12 private-state/forgery compilation rejections. C
 previous increment, the runner verifies **25 runtime result rejections and 18 compilation
 rejections**, alongside the five positive suites and three runtime-language probes.
 
+## Third safety increment: composite/digest results and nested variants
+
+`CompositeWrite`, `OptionalResult`, `WorkResult`, `PreimageResult` and `DigestResult` now keep
+private status/payload alternatives. Their property names remain read-only, with success
+preconditions for values and progress. Defaults retain `CompositeError.Uninitialized`.
+The original failed-optional progress reproducer is now one of the passing guarded probes.
+
+`OptionalBlob` and `WorkOutput` also hide their discriminators and spans. Construct source
+values with `absentBlob`, `presentBlob`, `successfulWork` and `failedWork`. Span access requires
+presence/Success; `failedWork` rejects Success because that alternative needs an explicit span.
+Constructors accept source coordinates; matching-pool bounds remain the encoder's responsibility,
+with the same typed errors and atomic output behavior. They do not retain or validate a pool.
+Default optional remains absent; default work output remains an empty Success, as before.
+
+Sibling encoders now use explicit `compositeFailure(reason)` / `compositeWritten(extent)`
+builders. A failure reason cannot be None and a completed extent cannot be negative. These
+builders express the sibling encoder's completed operation; they do not independently prove
+that arbitrary caller storage was written. Raw result fields and discriminators remain private.
+
+Span and digest accessors return copies. Original-input digest offset adjustment rebuilds the
+work variant with its checked offset instead of mutating a span returned by an accessor.
+Positive tests verify unchanged absence/empty-success bytes, default reasons, original-input
+span offsets and independence of extracted descriptors/digests. Existing boundary, aliasing,
+truncation, late-failure atomicity and 10,000-case fuzz suites still pass.
+
+This increment adds 29 runtime misuse rejections and 24 compilation rejections. Cumulative
+coverage is **54 runtime result/variant/constructor rejections and 42 compilation rejections**,
+plus the five positive suites and three language/runtime probes. The runner now exits zero for
+this verified slice. That does not establish a working full-client compiler migration.
+
 ## Remaining work and next bounded increment
 
-Next: protect composite optional/work-output/preimage results and work-digest results, including
-their nested variants. The focused gate in `tests/native/nimony_unported_result.nim` now reads
-progress from a failed optional decode and still exposes zero. This remains an actual failing
-migration gate; protecting primitive results does not establish all public-result safety.
+Next: port owned codec snapshots (`owned.nim` and their ownership/result tests), preserving
+immutable retained bytes, owner-bound extraction, ARC release and default-owner rejection.
+Report ownership and higher-level codec families can then follow in coherent groups. Unported
+families still contain public result variants and Nim 2 library/API assumptions.
 
 Further port work remains:
 
@@ -140,6 +173,7 @@ python3 tools/format.py --check
 
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
-`protected_results_increment: passed` records the combined bounded/primitive steps. Overall
-`status: blocked` and exit **1** retain the actual unprotected composite-result gate; do not present that as a clean migration. Formatting passes.
+`protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
+verified scalar/composite/digest slice. A missing check or failed guard still makes the runner
+exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

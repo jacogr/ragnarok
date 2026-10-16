@@ -31,16 +31,26 @@ type
     accumulateGas*: Gas
     output*: WorkOutput
     refine*: RefineLoad
-  # Check error before reading value; failures have no consumed count or digest fields.
+  # Private tagged state exposes complete copied digests only through guarded accessors.
   DigestResult* = object
-    case error*: CompositeError
+    case status: CompositeError
     of None:
-      # Only success carries decoded/committed data and its completed extent.
-      value*: WorkDigest
-      consumed*: int
+      # Successful spans remain relative to the original borrowed input.
+      decodedValue: WorkDigest
+      byteConsumed: int
     else:
-      # Failure has no value, span, count or consumed/written metadata.
+      # Default/failure alternatives expose only a typed reason.
       discard
+
+# Read the reason without permitting callers to retag a failure as success.
+func error*(value: DigestResult): CompositeError = value.status
+# A failed digest cannot expose default hashes, service identity or nested work output.
+func value*(value: DigestResult): WorkDigest {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.decodedValue
+# Only a complete digest prefix can advance the caller's cursor.
+func consumed*(value: DigestResult): int {.inline, requires: value.status == CompositeError.None.} =
+  value.byteConsumed
 
 # Compare pointer differences without overflowing endpoint addition; empty spans never overlap.
 proc digestAlias(a: pointer, alen: int, b: pointer, blen: int): bool {.raises: [].} =
@@ -68,21 +78,19 @@ proc encodeDigestBorrowed*(source: WorkDigest, pool: openArray[byte], limit: Byt
   var suffix: array[5, EncodedNatural] = default(array[5, EncodedNatural])
   var required = 76
   # The work extent must be representable before adding it to the fixed fields.
-  if work.written > high(int) - required: return CompositeWrite(
-      error: CompositeError.LengthOverflow)
+  if work.written > high(int) - required: return compositeFailure(CompositeError.LengthOverflow)
   required += work.written
   # Encode each bounded-size metric locally and prove each subsequent extent before adding it.
   for i, metric in metrics(value.refine):
     suffix[i] = natural.encode(JamNatural(metric))
-    if required > high(int) - suffix[i].len: return CompositeWrite(
-        error: CompositeError.LengthOverflow) # Safe sum.
+    if required > high(int) - suffix[i].len: return compositeFailure(CompositeError.LengthOverflow) # Safe sum.
     required += suffix[i].len
   # Require the entire tuple, including its final metric, to fit before mutation.
-  if output.len < required: return CompositeWrite(error: CompositeError.OutputTooSmall)
+  if output.len < required: return compositeFailure(CompositeError.OutputTooSmall)
   # Success borrows the entire pool through the commit; error variants have no borrowed payload.
   if value.output.kind == WorkKind.Success and pool.len > 0 and
       digestAlias(unsafeAddr pool[0], pool.len, addr output[0], required):
-    return CompositeWrite(error: CompositeError.AliasedBuffers)
+    return compositeFailure(CompositeError.AliasedBuffers)
   let service = encodeFixed(FixedUnsigned(uint64(uint32(value.service))), ByteWidth(4))
   let gas = encodeFixed(FixedUnsigned(uint64(value.accumulateGas)), ByteWidth(8))
   # Commit the nominal service ID in four-byte little-endian order.
@@ -97,22 +105,22 @@ proc encodeDigestBorrowed*(source: WorkDigest, pool: openArray[byte], limit: Byt
   for field in suffix:
     for i in 0..<field.len: output[cursor + i] = field.bytes[i] # Commit each measured field byte.
     cursor += field.len
-  CompositeWrite(error: CompositeError.None, written: required)
+  compositeWritten(required)
 
 # Decode one complete digest prefix; returned successful blob coordinates refer to the original input.
 proc decodeDigestBorrowed*(input: openArray[byte], limit: ByteLimit): DigestResult {.raises: [].} =
   # The fixed prefix must exist before reading any service, hash or gas byte.
-  if input.len < 76: return DigestResult(error: CompositeError.Truncated)
+  if input.len < 76: return DigestResult(status: CompositeError.Truncated)
   let work = decodeWorkBorrowed(input.toOpenArray(76, input.len - 1), limit)
   # Reject incomplete/invalid work outputs before interpreting suffix metrics.
-  if work.error != CompositeError.None: return DigestResult(error: work.error)
+  if work.error != CompositeError.None: return DigestResult(status: work.error)
   var cursor = 76 + work.consumed
   var numbers: array[5, uint64] = default(array[5, uint64])
   # Every metric must be canonical and complete; a failing final field returns no digest.
   for i in 0..<5:
     let parsed = natural.decode(input.toOpenArray(cursor, input.len - 1))
     if not parsed.ok:
-      return DigestResult(error: if parsed.error ==
+      return DigestResult(status: if parsed.error ==
           natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
     numbers[i] = uint64(parsed.value)
     cursor += parsed.consumed
@@ -129,8 +137,11 @@ proc decodeDigestBorrowed*(input: openArray[byte], limit: ByteLimit): DigestResu
   value.payloadHash = PayloadHash(payload)
   value.output = work.value
   # Move successful spans from the work subframe to original-input coordinates.
-  if value.output.kind == WorkKind.Success: value.output.blob.offset += 76
+  if value.output.kind == WorkKind.Success:
+    # The span accessor returns a copy; rebuild the variant with the proved original-input offset.
+    let span = value.output.blob
+    value.output = successfulWork(BlobSpan(offset: span.offset + 76, length: span.length))
   value.refine = RefineLoad(gasUsed: Gas(numbers[0]), imports: ImportCount(numbers[1]),
       extrinsicCount: ExtrinsicCount(numbers[2]), extrinsicSize: ExtrinsicBytes(numbers[3]),
           exports: ExportCount(numbers[4]))
-  DigestResult(error: CompositeError.None, value: value, consumed: cursor)
+  DigestResult(status: CompositeError.None, decodedValue: value, byteConsumed: cursor)

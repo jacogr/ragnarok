@@ -39,7 +39,7 @@ unavailable(digestFailure.consumed)
 var destination: array[1, byte]
 let writeFailure = encodeBytes([1'u8], ByteLimit(0), destination)
 unavailable(writeFailure.written)
-let compositeFailure = encodeWorkBorrowed(WorkOutput(kind: WorkKind.Success, blob: BlobSpan(
+let compositeFailure = encodeWorkBorrowed(successfulWork(BlobSpan(
     offset: 2, length: 1)), [], ByteLimit(1), destination)
 unavailable(compositeFailure.written)
 # Zero is a legitimate decoded value or count; only the variant discriminator denotes failure.
