@@ -90,5 +90,6 @@ swapped keys and individual corrupted signatures retain their original expectati
 `GuaranteeMessageResult` keeps composition status/storage private, with read-only reasons and
 success-guarded fixed message copies. The helper hashes caller-supplied bytes; it does not validate
 report eligibility or guarantor assignments. Linux/full-client parity and the exceptional-point
-policy remain separate. Next: Bandersnatch result contracts and native key/setup owner lifetimes.
+policy remain separate. Bandersnatch owner/result safety now also passes locally. Next: contextual VRF/RingVRF vectors,
+JAM tickets and native-boundary/concurrency checks.
 See [the trial](../docs/nimony-trial.md) for cumulative evidence.

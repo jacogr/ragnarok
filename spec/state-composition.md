@@ -152,6 +152,7 @@ Unchanged width-evidence and parked namespace-witness regressions now replay thr
 in the Nimony runner. The five early primitive/composite independent corpora now pass too,
 completing local M1 validation migration parity for the documented implemented scope. Linux
 execution remains separate. M2 assurance and guarantee/report signing composition now pass.
-Next: Bandersnatch result contracts and native key/setup owner lifetimes.
+Bandersnatch owner/result safety now also passes locally. Next: contextual VRF/RingVRF vectors,
+JAM tickets and native-boundary/concurrency checks.
 No transition execution or new namespace rule is introduced. See the
 [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3 work.

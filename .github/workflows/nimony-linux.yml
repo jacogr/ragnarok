@@ -46,11 +46,16 @@ jobs:
         run: python3 tools/setup_nimony_ci_linux.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
       - name: Pinned pristine source submodules
         run: python3 tools/setup_submodules.py
+      - name: Pinned Rust and locked Bandersnatch registry dependencies
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
+          echo "RUSTUP_TOOLCHAIN=1.99.0" >> "$GITHUB_ENV"
+          rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
       - name: CI installer and reporting safeguards
         run: python3 tests/test_nimony_ci.py
       - name: Formatting
         run: python3 tools/format.py --check
-      - name: Migrated codec and primitive runtime coverage
+      - name: Migrated codec, crypto and native-owner runtime coverage
         run: python3 tools/test_nimony.py --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/runtime.log
       - name: Show measured partial coverage
         if: always()
@@ -68,6 +73,8 @@ jobs:
             build/nimony-trial/verification/*.log
             build/nimony-trial/verification/results.json
             build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
 
   modules:
     name: Nimony all-source compilation gate (Linux)

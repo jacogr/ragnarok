@@ -106,3 +106,26 @@ Exact agreement with the draft's literal 16-byte challenge statement remains blo
 upstream clarification; `bandersnatch-pins.json` records both values, and `test_spec.py` reports one
 focused pending text-consistency check. This discrepancy does not justify retaining the old nonce
 implementation or claiming a full protocol/security audit. See [the migration audit](graypaper-0.8.0.md).
+
+## Nimony owner/result migration
+
+The pinned Nimony adapter preserves the release-reference ABI, 96/784-byte proof contracts,
+normalization and source/SRS pins. Results hide discriminators/payloads behind read-only errors
+and success preconditions. Key/setup ARC owners and their native handles express nullability
+explicitly; stable retained locals protect defaults/closed handles. Close invalidates all aliases,
+and final ARC release invokes the correct original Rust destructor once.
+
+The test-only owner observer delegates real allocations/frees, counts live keys/setups across
+scopes and injects constructor refusals without altering production/upstream code. Native tests
+cover escaped scopes, retained aliases/replacement, close/final release, source/fixed copies,
+capacity boundaries and recovery. It does not inspect freed memory or independently establish
+scalar zeroization. The key/import workload returns live Nim occupancy 192 to 192 bytes after
+1,000 warmed scopes; setup release is tested separately with the real SRS. Thirty-two isolated
+result guards and seventeen privacy plus three nominal compiler probes pass. Three maintained
+Rust bridge tests and the locked/offline Rust 1.99.0 build also pass.
+
+These are local macOS ARM64 results under checked ARC/Clang LTO. Full module semantic success does
+not establish contextual VRF/RingVRF runtime parity or Linux execution. Next: replay the original
+ordinary/ring vectors, context-separated proofs, published JAM tickets, generated proofs and
+native-boundary/concurrency checks. The draft-text discrepancy remains unchanged. See the
+[cumulative trial](../docs/nimony-trial.md).

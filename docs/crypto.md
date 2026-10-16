@@ -44,5 +44,13 @@ report driver replays the same 18,430 codec requests and all 63 original indepen
 checks. Known-answer/copy/refusal/recovery tests, four runtime misuse guards and eight compilation
 probes also pass; live occupancy remains 192 bytes after 1,000 warmed scopes.
 
-Next: Bandersnatch result contracts and native key/setup owner lifetimes. Contextual VRF/RingVRF
-runtime coverage and networking remain later gates. See the [cumulative trial](nimony-trial.md).
+Bandersnatch results, fixed imports and native key/setup owner lifetimes now also pass locally.
+Private nullable ARC owners retain aliases, invalidate them on close and release the real Rust
+allocation once at final release. A separate observer-linked suite verifies actual allocation/free
+counts and constructor refusal/recovery; it neither hides frees nor reads freed secret memory.
+The pinned Rust build and three native bridge tests pass, with 32 result guards and 20 compiler
+probes in the Nimony runner. Key/import occupancy remains 192 bytes after 1,000 warmed scopes.
+
+Next: the original contextual VRF/RingVRF vectors, JAM tickets, generated proofs and native-boundary/
+concurrency checks. Full Bandersnatch runtime parity and Linux confirmation remain separate gates.
+See the [cumulative trial](nimony-trial.md).

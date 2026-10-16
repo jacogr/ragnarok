@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **53 native suites, thirty-eight independent corpora, 1,314 runtime misuse rejections
-and 616 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+Status: **54 native suites, thirty-eight independent corpora, 1,346 runtime misuse rejections
+and 636 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
@@ -10,7 +10,8 @@ All production codec modules and documented M1 regression families now pass loca
 the five early independent corpora and their original nominal/privacy safeguards. Local M1
 validation migration parity is reached for the implemented scope; the parked request-namespace
 policy still qualifies normative state parity. The M2 assurance and guarantee/report
-signing-context slices now also pass locally; Bandersnatch, M3 and Linux parity remain unverified.
+signing-context slices now also pass locally. Bandersnatch guarded results, fixed imports and
+native key/setup ownership also pass; contextual VRF/RingVRF, M3 and Linux parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -1843,19 +1844,93 @@ composition now pass, while Bandersnatch/VRF, networking and Linux confirmation 
 migration gates. The parked namespace and exceptional-point policies are unchanged. Next is the
 Bandersnatch adapter's guarded results and native key/setup ownership slice.
 
+## Thirty-eighth bounded increment: Bandersnatch results and native owner lifetimes
+
+The GP 0.8.0 release-reference Bandersnatch adapter now targets the same pristine pinned Nimony
+nightly. `BsResult[T]` hides status and payload behind read-only reasons and supported success
+contracts for keys, setups, public keys, signatures, ring roots/proofs, verified outputs and
+normalized sequences. The private acyclic `NativeData` reference is explicitly nullable in default
+`BsKey`/`BsSetup` handles. Stable retained locals guard access; `close` clears the shared native
+handle, and last-owner destruction selects the original Rust destructor exactly once.
+
+Native pointers and out-handle storage now express the ABI's nullability explicitly. Native out-handle
+pointers start nil, fixed buffers start initialized, and successful construction uses supported ARC
+reference constructors. The public ABI, reason mapping, bounded setup capacities, synchronous
+borrows, 96/784-byte contracts, normalization policy, source/SRS hashes and ark-vrf 0.2.2 profile
+remain unchanged. No compiler/private-runtime hook, proof padding or unsafe test-vector feature
+is introduced. Closing an owner still must not race an in-flight call through another alias.
+
+The new native suite uses the **real Rust ABI**, including SRS-backed setups. A test-only C
+observer counts successful constructors, destructor calls and live native keys/setups, and can
+refuse either constructor. Only test C call sites redirect four owner functions to that observer;
+production/upstream symbols and sources are unchanged. Successful observer calls delegate to the
+original ABI. It never suppresses a destructor, dereferences freed memory or exposes a secret/native
+address, and resetting counters cannot erase live-allocation counts. Counts establish release
+pairing; they do not independently inspect Rust's scalar zeroization.
+
+The suite verifies escaped key scope, source mutation independence, alias-retained replacement,
+explicit close invalidating aliases, harmless repeated/default close, and one free at final ARC
+release. Setup allocations have the same coverage with their own allocator/destructor, including
+real commitment calls proving alias liveness. Setup capacities at both host extremes and outside
+1..1023 reject before any native constructor call. Invalid scalar imports and injected constructor
+refusals publish no owner; subsequent imports/setups recover. The suite observes zero live native
+keys/setups after each scope.
+
+Fixed public imports use the pinned draft-29 vector-one public encoding. Signature/root/proof
+imports retain all bytes at their exact widths, reject short/long inputs and survive source
+mutation; these width imports do not validate a proof equation. A separately extracted normalized
+sequence can be changed without modifying its completed result. The warmed scalar/import workload
+returns public live Nim occupancy from **192 to 192 bytes after 1,000 scopes**. Real setup release
+is observed separately rather than rebuilding the SRS 1,000 times. This is bounded allocator/lifetime
+evidence, not RSS, full-ring sizing or general provider leak freedom.
+
+The maintained Rust builder is now shared independently of historical Nim driver compilation.
+It rechecks pristine source trees, the SRS/fixture hashes and Cargo lock; runs rustfmt and **three
+Rust bridge tests**, rejects unsafe `test-vectors` features, and builds with Rust/Cargo **1.99.0**
+locked/offline. `tests/bandersnatch_native.py` records the compiler versions and separate observer
+build. The Nimony Linux workflow installs the existing pinned Rust/rustfmt and explicitly fetches
+the locked registry closure; actual builds/tests remain offline. No dependency or gitlink advances.
+
+**Two rejected semantic checks** were measured before success: first the native handle storage/out
+parameters needed explicit nullability; then the nullable contract needed to extend through native
+calls and selectors. The owner suite and misuse adapter subsequently built and passed on their
+first attempts. **No post-compilation defect** was observed. Diagnostics remain in
+`build/nimony-trial/bs-initial.log`, `bs-second.log` and `bs-third.log`. These port repairs are
+separate from intentional safety rejections; historical repair totals and elapsed development time
+are not reconstructed.
+
+This increment adds **32 isolated actual/default runtime misuse rejections** across sixteen native
+import/owner/refusal paths, **17 private/read-only result/owner compiler probes** and **three nominal
+probes**. Cumulative totals are **54 positive Nimony suites, thirty-eight independent corpora,
+1,346 runtime misuse rejections and 636 compilation rejections** (533 privacy + 94 nominal + five
+schema + four static contracts), plus three language probes and the separately recorded Rust tests.
+No new full proof corpus is counted for these ownership/import checks. Formatting covers **810 Nim
+files**; the functional report records **900 matching source/test/configuration hashes**. Ten
+CI-helper tests pass. The all-source semantic audit advances to **39/43**: Bandersnatch and its dependent
+`src/quic/offload.nim` now pass. Four QUIC modules remain; offload runtime/lifecycle parity is
+still unverified.
+
+All results remain local macOS ARM64, checked ARC/Clang LTO on the pristine pinned Nimony nightly.
+Semantic compilation of the full Bandersnatch module is not full runtime conformance: original
+ordinary/ring vectors, contextual JAM ticket domains, generated proofs, wrong context/additional
+data and concurrent/native boundary coverage still need migration/replay. The namespace question stays parked and the
+Bandersnatch draft-text/reference discrepancy remains documented; Linux confirmation remains
+separate. Next is the contextual Bandersnatch/VRF/RingVRF vector and native-boundary slice.
+
 ## Remaining work and next bounded increment
 
-Next: port the Bandersnatch adapter's result contracts and native key/setup owner lifetimes,
-using the existing pinned ark-vrf 0.2.2 ABI. Verify fixed imports, aliases, close/last-owner release
-and failure recovery before extending contextual VRF/RingVRF runtime coverage. Keep upstream
-sources, SRS hashes, draft/reference policy and all protocol/dependency pins unchanged.
+Next: port the Bandersnatch fixture driver and replay the original ordinary/ring vectors,
+context-separated proof checks, published JAM tickets, generated proofs and native-boundary/
+concurrency tests through the maintained Rust ABI. Preserve the pinned release-reference profile,
+SRS, proof widths and domain policy. Owner/result safety above remains the regression baseline.
 
 Further port work remains:
 
 - M1: local validation migration parity is reached for the documented implemented codec scope.
   The request-namespace normative policy remains parked; Linux execution is a separate gate.
 - M2: raw primitives, assurance contexts and guarantee/report signature composition pass locally.
-  Bandersnatch/VRF runtime parity and its native owner lifetimes remain unverified.
+  Bandersnatch result/import/native-owner safety passes, but full contextual VRF/RingVRF runtime
+  conformance remains unverified.
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
   Its alternative networking facilities require a dispatcher port and the existing lifecycle,
   service, mesh, resilience and offload tests.
@@ -1887,6 +1962,7 @@ C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy
 authorization, state chapters 3–5/10/12–16, fixed service-account metadata and storage/preimage
 keyed values, request histories, exact chapter/service composition, raw whole-state roots, published width
 evidence, the unchanged parked namespace witnesses, the original five early codec corpora, stateless
-assurance signing contexts and guarantee/report credential composition.
+assurance signing contexts, guarantee/report credential composition and the bounded Bandersnatch
+result/import/native-owner slice.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

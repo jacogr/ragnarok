@@ -62,6 +62,6 @@ scopes. Twenty-four isolated actual/default payload reads reject at their succes
 seven private/read-only plus two nominal compiler probes reject at the intended boundaries.
 
 Results are local macOS ARM64, checked ARC/Clang LTO; Linux and full M2/M3 parity remain separate.
-Guarantee/report signing composition now also passes. Next: Bandersnatch result contracts and
-native key/setup owner lifetimes. See the
+Guarantee/report signing composition now also passes. Bandersnatch owner/result safety now also passes locally. Next: contextual VRF/RingVRF vectors,
+JAM tickets and native-boundary/concurrency checks. See the
 [cumulative trial](../docs/nimony-trial.md); the exceptional-point policy remains unresolved.

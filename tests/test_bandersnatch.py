@@ -73,11 +73,10 @@ def official_sources(fetch):
         assert expected==reduced, local
 
 
-# Build the reviewed locked Cargo closure and both checked debug/release wrappers against exactly one Rust library.
-def build(fetch):
+# Build/test the reviewed locked Cargo closure independently of a language-driver compiler.
+def build_native(fetch):
     assert subprocess.check_output(['rustc','--version'],text=True).startswith('rustc '+PINS['rust']+' ')
     assert subprocess.check_output(['cargo','--version'],text=True).startswith('cargo '+PINS['rust']+' ')
-    assert PINS['nim'] in subprocess.check_output(['nim','--version'],text=True)
     manifest = ROOT / 'native/bandersnatch/Cargo.toml'
     system = platform.system()
     assert system in ('Darwin','Linux')
@@ -93,6 +92,14 @@ def build(fetch):
         run(['cargo','fmt','--manifest-path',manifest,'--','--check'],log)
         run(['cargo','test','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
         run(['cargo','build','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
+    return library
+
+
+# Historical driver entry point reuses the maintained native build; the Nimony runner supplies its own checked adapter builds.
+def build(fetch):
+    assert PINS['nim'] in subprocess.check_output(['nim','--version'],text=True)
+    library = build_native(fetch)
+    with (BUILD/'build.log').open('a') as log:
         # Do not disable union/variant checks in either optimized build.
         for mode in ('debug','release'):
             run(['nim','c','--mm:arc','--cc:clang','--skipParentCfg','--skipUserCfg',

@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -679,6 +679,19 @@ PRIVATE.update(GUARANTEE_MESSAGE_PRIVATE)
 NOMINAL.update(guarantee_message_as_signature='got: GuaranteeMessage but wanted: EdSignature',
                guarantee_hash_as_message='got: Blake2bHash but wanted: GuaranteeMessage')
 GUARANTEE_MESSAGE_MEMBERS = ('empty', 'bytes')
+# Bandersnatch guards cover every result instantiation plus private mutable native-owner storage.
+BS_PRIVATE = {f'bs_result_{name}_private': 'completed' for name in
+              ('key', 'setup', 'public', 'signature', 'proof', 'root', 'output', 'members')}
+BS_PRIVATE.update(bs_result_status_private='status', bs_result_retag='status', bs_result_forge='status',
+                  bs_result_error_write='error', bs_result_value_write='value',
+                  bs_key_state_private='state', bs_setup_state_private='state', bs_key_forge='state', bs_setup_forge='state')
+PRIVATE.update(BS_PRIVATE)
+NOMINAL.update(bs_key_as_setup='[1] expected: BsSetup but got: BsKey',
+               bs_signature_as_ring_proof='got: BsSignature but wanted: BsRingProof',
+               bs_output_as_public='got: BsOutput but wanted: BsPublicKey')
+BS_MEMBERS = ('key-short', 'key-zero', 'key-backend', 'setup-bounds', 'setup-backend',
+              'public-owner', 'public-short', 'signature-short', 'signature-owner', 'root-short',
+              'root-owner', 'proof-short', 'proof-owner', 'output-invalid', 'ring-output-owner', 'normalize-short')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -699,7 +712,7 @@ def command(arguments, name):
 
 
 # Use Nimony ARC/Clang release/LTO with bounds/contracts enabled; never use danger or noAssertions.
-def build(compiler, source, name, crypto_library=None):
+def build(compiler, source, name, crypto_library=None, native_libraries=(), cflags=()):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
              '--boundchecks:on', '--passC:-flto', '--passL:-flto']
     if platform.system() == 'Linux':
@@ -708,6 +721,12 @@ def build(compiler, source, name, crypto_library=None):
     if crypto_library is not None:
         # Crypto clients use the maintained public C header and one explicit native library.
         flags += [f'--passC:-I{ROOT/"native/crypto"}', f'--passL:{crypto_library}']
+    if native_libraries:
+        # Native Bandersnatch clients use one maintained header and explicit original/observer library paths.
+        flags += [f'--passC:-I{ROOT/"native/bandersnatch"}']
+        for library in native_libraries:
+            flags += [f'--passL:{library}', f'--passL:-Wl,-rpath,{library.parent}']
+    flags += ['--passC:'+flag for flag in cflags]
     binary = BUILD/name
     result = command([compiler, 'c', *flags, f'--nimcache:{BUILD/(name+"-cache")}',
                       f'--out:{binary}', source], name+'-build')
@@ -727,7 +746,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -759,7 +778,10 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
+    sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
+                'tests/test_bandersnatch.py', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
+                'native/bandersnatch/src/lib.rs', 'native/bandersnatch/Cargo.toml', 'native/bandersnatch/Cargo.lock',
+                'spec/bandersnatch-pins.json', '.github/workflows/nimony-linux.yml','src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
                 'tests/native/report_check.nim', 'tests/test_report_signature_harness.py','src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
                 'tests/assurance_crypto_oracle.py', 'tests/test_assurance_crypto_harness.py', 'vectors/assurance-context.json','tests/native/driver.nim', 'tests/native/fixed_driver.nim',
                 'tests/native/bounded_driver.nim', 'tests/native/composite_driver.nim', 'tests/native/digest_driver.nim',
@@ -797,6 +819,9 @@ def main():
     sys.path.insert(0, str(ROOT/'tests'))
     from nimony_crypto import prepare as prepare_crypto
     crypto_library, crypto_observer, report['crypto_native'] = prepare_crypto(BUILD)
+    from bandersnatch_native import prepare as prepare_bandersnatch, OWNER_DEFINES
+    bs_library, bs_observer, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
+    bs_libraries = (bs_observer, bs_library)
     from guarantees_oracle import record as guarantee_record
     guarantee_fixture = BUILD/'minimal-report.bin'
     guarantee_fixture.write_bytes(guarantee_record(0)['report'])
@@ -820,7 +845,9 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None,
+                                 native_libraries=bs_libraries if name == 'bandersnatch_owners' else (),
+                                 cflags=OWNER_DEFINES if name == 'bandersnatch_owners' else ())
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -1022,6 +1049,13 @@ def main():
             if release is not None:
                 # Public occupancy covers this workload only, not provider RSS or general leak freedom.
                 report['guarantee_message_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'bandersnatch_owners' and row['passed']:
+            # Real native allocation/free counters supplement this warmed Nim occupancy check.
+            release = re.search(r'BANDERSNATCH_OWNERS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # This key/import workload does not measure provider RSS or establish full proof/runtime parity.
+                report['bandersnatch_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
@@ -2013,6 +2047,18 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['guarantee_message'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' guarantee message '+member+' guard', passed)
+    # Actual/default result access must reject for every fixed proof/output, sequence and opaque native owner.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_bandersnatch_results.nim', 'bandersnatch-results',
+                             native_libraries=bs_libraries, cflags=OWNER_DEFINES)
+    report['bandersnatch_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Separate processes prevent prior contract failures or test-observer flags from concealing later checks.
+        for origin in ('default', 'error'):
+            for member in BS_MEMBERS:
+                result = command([binary, member, origin], 'bs-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['bandersnatch'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' Bandersnatch '+member+' guard', passed)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2513,7 +2559,10 @@ def main():
     for name, member in NOMINAL.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        if name in EARLY_NOMINAL:
+        if name == 'bs_key_as_setup':
+            # Scalar owners cannot select the allocator/domain of a native ring setup.
+            rejected = 'Error: Type mismatch at [position]' in result['output'] and 'commitRing(' in result['output'] and member in result['output']
+        elif name in EARLY_NOMINAL:
             # Require the intended domain rejection, not unrelated syntax, initialization or import failures.
             call, diagnostic = EARLY_NOMINAL[name]
             rejected = 'Error: Type mismatch at [position]' in result['output'] and call in result['output'] and diagnostic in result['output']
@@ -2622,6 +2671,8 @@ def main():
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and report['early_oracle_harness']['exit_code'] == 0
                    and all(report[family+'_corpus']['passed'] for family in ('natural', 'fixed', 'bounded', 'composite', 'digest'))
+                   and len(report['bandersnatch']) == 2*len(BS_MEMBERS)
+                   and all(row['passed'] for row in report['bandersnatch'])
                    and report['report_signature_corpus']['passed']
                    and len(report['guarantee_message']) == 2*len(GUARANTEE_MESSAGE_MEMBERS)
                    and all(row['passed'] for row in report['guarantee_message'])
