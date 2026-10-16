@@ -115,3 +115,7 @@ The documented M1 C.1/C.2 framing baseline remains covered. State chapters **1â€
 serializers; chapter 13 retains its [trace parity gate](state-statistics.md). Service entries and
 whole-state composition remain open. Next planned bounded increment: **whole-state composition/root evidence
 and parity review**. See the [M1 checklist](../docs/m1.md).
+
+The subsequent [pinned width investigation](state-widths.md) supports the next implementation
+migration: C12 dictionary IDs/gas to E4/E8 and C13 service keys to E4. Current codecs remain
+unchanged in that investigation; C13 gas and request-namespace policy remain unresolved.

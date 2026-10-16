@@ -114,7 +114,10 @@ published compositions and compiler/privacy diagnostics. Linux CI runs the same 
 native crypto construction and retains these results. Local macOS arm64 results require Linux
 confirmation after push. No timing, transition or valid-state correctness claim is made.
 
-M1 state parity remains **incomplete** pending C12/C13 width and request-domain clarification.
-Next bounded group: investigate nonempty pinned/reference C12 wire evidence and C13 service/gas
-widths, distinguishing upstream evidence from normative decisions. Proofs/persistence, PVM and
-state transitions remain separate work.
+M1 state parity remains **incomplete** pending the C12/C13 migration and resolution of the C13
+gas/request-domain conflicts. Next bounded group: implement the supported fixed-width migration
+described below. Proofs/persistence, PVM and state transitions remain separate work.
+
+The subsequent [pinned width investigation](state-widths.md) supports the next implementation
+migration: C12 dictionary IDs/gas to E4/E8 and C13 service keys to E4. Current codecs remain
+unchanged in that investigation; C13 gas and request-namespace policy remain unresolved.

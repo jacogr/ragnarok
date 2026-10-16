@@ -130,6 +130,11 @@ jobs:
           python3 tests/test_state_composition_harness.py
           python3 tests/test_state_composition.py 2>&1 | tee build/ci/state-composition.log
 
+      - name: State numeric-width reference evidence
+        run: |
+          python3 tests/test_state_widths_harness.py
+          python3 tests/test_state_widths.py 2>&1 | tee build/ci/state-widths.log
+
       - name: Entropy validator and timeslot state components
         run: |
           python3 tests/test_state_safrole_harness.py
@@ -256,6 +261,8 @@ jobs:
             build/state-composition/*.log
             build/state-composition/results.json
             build/state-composition/types/*.log
+            build/state-widths/*.log
+            build/state-widths/results.json
             build/state-requests/*.log
             build/state-requests/results.json
             build/state-requests/types/*.log

@@ -41,13 +41,13 @@ class StateRootsHarness(unittest.TestCase):
         self.assertEqual(len({x.split()[0] for x in expected[8:]}), 3)
         self.assertEqual(records[10]['variant'], 'added_present_empty')
 
-    # Nonempty reference bytes or normative clarification must resolve C12 before full typed parity is claimed.
-    @unittest.skip('Pending: reconcile T fixed-width state note with C12 natural service/gas dictionary; selected raw dictionaries are empty')
+    # Nonempty STF evidence now supports E4/E8; the production migration must pass before closing this gate.
+    @unittest.skip('Pending implementation: migrate C12 dictionary service/gas from natural to E4/E8; see spec/state-widths.md')
     def test_privilege_width_policy(self):
-        self.fail('Replace this gate with clarified service/gas widths and nonempty exact-wire evidence.')
+        self.fail('Replace this gate with passing E4/E8 production framing and the pinned nonempty reference checks.')
 
     # C13 natural-domain measures do not alone settle the bounded service-ID and gas-domain widths.
-    @unittest.skip('Pending: reconcile T state-width note with C13 E4 trace service keys and variable-width gas values')
+    @unittest.skip('Pending: migrate C13 service keys to E4; variable-width trace gas still conflicts with T fixed-width note')
     def test_statistics_width_policy(self):
         self.fail('Replace this gate with a normative width decision and complete-entry trace checks.')
 

@@ -69,8 +69,9 @@ Storage/preimage and request-history keyed entries are implemented. Request-leng
 policy also needs clarification. The [full-map root audit](../spec/state-roots.md) verifies fourteen
 published maps and records C(12) service/gas and C(13) key/gas width gates.
 [Typed composition](../spec/state-composition.md) now enforces exact component extents, common
-profiles, parent budgets and duplicate rejection. Next planned: investigate nonempty reference
-C(12) wires and C(13) service/gas widths; full M1 parity still requires normative clarification.
+profiles, parent budgets and duplicate rejection. The [width investigation](../spec/state-widths.md)
+supports C(12) E4 service/E8 gas and C(13) E4 service keys. Next planned: implement those migrations;
+C(13) gas and request namespace policy still need clarification before full M1 parity.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general
