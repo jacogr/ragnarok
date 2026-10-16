@@ -54,7 +54,7 @@ def main():
     for observation, verdict in zip(records, actual[1:]):
         observation['current_actual'] = verdict
     pin = json.loads((ROOT/'spec/pins.json').read_text())
-    summary = dict(status='passed', scope='migrated C12 E4/E8 and C13 E4 keys; C13 gas remains gated',
+    summary = dict(status='passed', scope='migrated C12 E4/E8 and C13 E4 keys; compact C13 gas accepted by maintainer policy',
         graypaper_commit=pin['graypaper']['commit'], vectors_commit=pin['vectors']['commit'],
         binary_privilege_fields=[e for _, e in binaries], raw_trace_observations=[e for _, _, e in traces],
         native_requests=len(lines), current_captures=records, build_command=command,
@@ -65,11 +65,11 @@ def main():
         environment=dict(system=platform.system(), machine=platform.machine(), python=platform.python_version(),
             nim=subprocess.check_output(['nim', '--version'], text=True).strip()),
         migration='complete: C12 E4 service/E8 gas; C13 E4 service keys',
-        remaining_gate='C13 natural gas still conflicts with the general T fixed-width note')
+        gas_encoding_policy='accepted canonical JAM compact naturals per maintainer; text discrepancy recorded; no fallback')
     (folder/'results.json').write_text(json.dumps(summary, indent=2)+'\n')
     print(f'PASS width investigation: {len(binaries)} nonempty binary privilege fields, '
           f'{len(traces)} raw trace observations, {len(lines)} checked native requests')
-    print('MIGRATION VERIFIED: all 36 published-value captures consume completely; C13 gas remains gated')
+    print('MIGRATION VERIFIED: all 36 published-value captures consume completely; compact C13 gas accepted by maintainer policy')
 
 
 # Importing the runner never compiles code or executes upstream libraries/generators.

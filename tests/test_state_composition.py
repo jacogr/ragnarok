@@ -54,12 +54,12 @@ def main():
         published_composed_states=whole_evidence,
         published_exact_captures=sum(x['verdict'] == 'ok' for x in evidence),
         request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-        scope='exact typed chapter capture plus whole-map composition; migrated dictionary widths; C13 gas remains gated; no transitions')
+        scope='exact typed chapter capture plus whole-map composition; migrated dictionary widths; compact C13 gas follows maintainer policy; no transitions')
     (folder/'results.json').write_text(json.dumps(summary, indent=2)+'\n')
     print(f'PASS typed state composition: {len(lines)} requests, two nominal/two privacy rejections, '
           f'{summary["published_exact_captures"]}/{len(evidence)} exact published component captures, '
           f'{len(whole_evidence)} published complete mappings composed')
-    print('M1 PARITY OPEN: C13 gas widths and request-length namespace policy; no full T(state) conformance claim')
+    print('M1 PARITY OPEN: parked request-length namespace policy; no full T(state) conformance claim')
 
 
 # Importing the runner never starts a compiler or executes upstream generators.

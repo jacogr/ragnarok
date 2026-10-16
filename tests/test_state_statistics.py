@@ -38,12 +38,12 @@ def main():
     assert sum(x['complete_component_match'] for x in traces)==6 and len(traces)==6
     summary=dict(status='passed',requests=len(lines),nominal_rejections=len(records),privacy_rejections=1,
         published_validator_sources=len(published_validators()),published_trace_components=traces,
-        trace_parity_gate='open: gas uses published natural framing despite general T fixed-width note; E4 service keys migrated',
+        gas_encoding_policy='accepted: published canonical JAM compact naturals; text discrepancy documented; no fallback',
         build_commands=commands,request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         scope='T chapter 13 framing; no statistics transitions or whole-state roots')
     (folder/'results.json').write_text(json.dumps(summary,indent=2)+'\n')
     print(f'PASS activity state: {len(lines)} requests, two nominal/one privacy rejections, eight partial validator sources')
-    print('TRACE KEYS MATCH: all six complete entries; C13 gas remains a normative/reference parity gate')
+    print('TRACE KEYS MATCH: all six complete entries; compact gas accepted by maintainer policy; no fallback')
 
 
 # Importing references never compiles code or executes upstream programs.

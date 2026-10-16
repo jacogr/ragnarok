@@ -126,6 +126,13 @@ def requests():
         cap(chapter, data, policy=(0, POLICY[1]))
         for cut in range(len(data)):
             cap(chapter, data[:cut])
+    # The accepted compact gas profile has no E8 fallback at the exact-entry boundary.
+    from state_widths_oracle import statistics_wire
+    gas_source=([bytes(144),bytes(144)],[[0]*7+[100000],[0]*8],
+        [(127,[0,0,0,128,0,0,0,0,0,0,256])])
+    cap(13,statistics_wire(gas_source,4,0))
+    assert capture(13,statistics_wire(gas_source,4,8))!='ok'
+    cap(13,statistics_wire(gas_source,4,8))
     rng = random.Random(0x434f4d504f5345)
     # Arbitrary raw bytes exercise failures after compilation independently of child codec round trips.
     for _ in range(160):
@@ -221,5 +228,5 @@ def requests():
             ''.join(' '+service_token(service) for service in services))
         expected.append(composed(raw_chapters, services, (MAX,)*4, MAX))
         whole_evidence.append(dict(provenance, service_values='opaque service-bound captures',
-            chapter_schema='migrated C12 E4/E8 and C13 E4 keys; natural statistics gas remains gated'))
+            chapter_schema='migrated C12 E4/E8 and C13 E4 keys; compact statistics gas accepted by maintainer policy'))
     return lines, expected, evidence, whole_evidence

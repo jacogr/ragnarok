@@ -1,4 +1,4 @@
-## GP 0.8.0 T composition with migrated dictionary widths; C13 natural gas remains explicitly gated.
+## GP 0.8.0 T composition with migrated dictionary widths; C13 gas follows the vector-compatible compact policy.
 ## Chapter snapshots are exact typed captures; this does not validate transitions or settle parity gates.
 import ./[bounded, assurances, guarantees, state_layout, state_trie, state_authorization,
   state_history,
@@ -157,7 +157,7 @@ proc captureStateChapter*(chapter: StateChapterId, input: openArray[byte], profi
   of StateChapterId.Statistics:
     read(decodeActivityState(input, ActivityConfig(cores: profile.cores, current: profile.current,
         previous: profile.previous, maxServices: policy.items,
-        maxBytes: policy.maxBytes))) # Statistics use E4 service keys; the natural-gas interpretation remains gated.
+        maxBytes: policy.maxBytes))) # Statistics use E4 keys and vector-compatible compact gas, without a format fallback.
   of StateChapterId.Ready:
     read(decodeReadyState(input, queues)) # Ready rows retain full report/dependency validation.
   of StateChapterId.Accumulated:

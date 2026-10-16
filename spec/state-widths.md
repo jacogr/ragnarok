@@ -17,12 +17,13 @@ The supported migration is now implemented and checked:
 | C12 always-accumulate service ID | T non-discriminator numbers use fixed widths; service IDs have a 32-bit domain. | Four nonempty STF Privileges fields uniquely match E4 IDs, including ID 1729. | Implemented E4 keys. |
 | C12 always-accumulate gas | Same T note; gas has a 64-bit domain. | Those four fields uniquely match E8 gas, including gas 100000. | Implemented E8 gas. |
 | C13 service dictionary ID | Same T note and 32-bit service-ID domain. | Thirteen nonempty raw entries match E4 keys; ten contain nonzero IDs, up to 3953987649. All diagnosed IDs identify existing full C(255,service) keys. | Implemented E4 keys. |
-| C13 gas fields | The T note and 64-bit gas domain suggest E8. | All sixteen selected raw entries reconstruct with natural gas, while E8 alternatives fail complete reconstruction. | Keep an explicit normative/reference conflict; do not invent a fallback or silently switch gas. |
+| C13 gas fields | The T note and 64-bit gas domain suggest E8. | All sixteen selected raw entries reconstruct with natural gas, while E8 alternatives fail complete reconstruction. | Accepted compact JAM naturals per maintainer; document the text discrepancy, with no fallback. |
 
 These are reasoning conclusions from the normative note plus cross-checks, not a newly published
 upstream erratum. The earlier argument that a dictionary lies outside a local E4 override is
 insufficient to disregard T's general fixed-width note for a bounded service-ID/gas domain.
-C12 has no observed conflicting raw wire evidence. C13 gas does, so it remains separately gated.
+C12 has no observed conflicting raw wire evidence. C13 gas differs from the general note; the
+maintainer accepts the vector-compatible compact profile and keeps the wording discrepancy recorded.
 The pinned ASN.1 schema confirms bounded service/gas domains but is not used as authority to assign
 fixed widths to every statistic: several measures are bounded there but general naturals in the
 paper. Integer domain annotations alone do not prove the encoded widths in a particular field.
@@ -30,8 +31,9 @@ paper. Integer domain annotations alone do not prove the encoded widths in a par
 **Production migration complete:** C12 now uses E4 service/E8 gas pairs and C13 uses E4 service
 keys. Canonical natural counts, numeric key ordering, item/byte policy, failure-only results and
 immutable ownership remain enforced. Nonempty encoded bytes change; empty dictionaries do not.
-The C12 pending implementation test is now active and passes. C13 natural gas is unchanged and
-remains a separate pending normative/reference gate, alongside request namespace admissibility.
+The C12 and C13 gas-policy tests are active and pass. C13 gas keeps its existing compact encoding
+under the [maintainer decision](state-clarifications.md), without an E8 fallback. Only the
+request-namespace question remains parked.
 
 ## Nonempty C12 reference evidence
 
@@ -105,14 +107,13 @@ All 36 published-value probes now capture completely. Their migrated whole-entry
 
 Before migration, seventeen of these whole-entry probes rejected. After migration, all match
 the supplied bytes. This closes the dictionary-width implementation work, but does not resolve
-the separate C13 gas conflict or close M1. Logs/results under
+the parked request-namespace question or claim an upstream textual correction. Logs/results under
 ignored `build/state-widths/` retain identities, SHA-256 hashes, candidates, offsets, decoded
 candidate fields/metadata associations, native actual/expected verdicts, build flags and compiler/
 Python/OS versions. The new exact blob hashes extend the existing vector pin; gitlinks/toolchains
 remain unchanged. Linux CI runs and retains the same checks; local macOS arm64 results do not
 claim Linux confirmation.
 
-The maintainer has [parked both specification questions](state-clarifications.md) pending
-Gray Paper 0.8.1/0.8.2 review. C13 gas and request namespace policy remain separate unresolved
-gates; current behavior and pending tests are preserved. Codec/body, boundary, ownership and complete-composition checks are
-recorded in their respective contracts; no transition or new client milestone is claimed.
+The maintainer accepts C13 compact gas as project policy; its textual discrepancy is retained.
+The request-namespace question remains [parked for 0.8.1/0.8.2 review](state-clarifications.md).
+No alternate gas representation is supported. Further implementation scope is selected separately.

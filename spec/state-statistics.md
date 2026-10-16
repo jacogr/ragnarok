@@ -4,7 +4,7 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` T chapter **13**, `text/statistics.tex` `eq:activityspec` and core/service
 activity domains, `text/accumulation.tex` accumulation statistics, and C.1 natural, E4, fixed/variable
 sequence and dictionary definitions. Exact hashes are in [pins.json](pins.json). No dependency,
-compiler or toolchain revisions change. Service keys now match published E4 framing; statistics gas policy remains **open**.
+compiler or toolchain revisions change. Service keys now match published E4 framing; statistics gas follows the **accepted compact vector policy**.
 
 ## Current T/C.1 interpretation and public domains
 
@@ -129,15 +129,20 @@ through 3953987649 and 55 same-state metadata-key associations. The E4 service-k
 complete; the former shorter-prefix and noncanonical verdicts no longer occur for these inputs.
 No fixture rewriting, format fallback or guessed tuple fields are introduced.
 
-**Remaining gas gate:** the general T note says non-discriminator numeric state fields use fixed
-widths, and gas has a bounded 64-bit domain. The selected published C13 values instead reconstruct
-with natural gas, including positive values and zero padding differences. This migration leaves
-those gas bytes unchanged and keeps an explicit pending test. Ordinary measures are general
-naturals in the paper; the reference ASN.1 domains are not used to invent fixed widths for them.
-Wire agreement under this recorded gas interpretation does not establish full normative parity.
+**Accepted compact gas policy:** the maintainer directs following the published compact
+representation, documenting the discrepancy and providing no fallback. Core, refinement and
+accumulation gas therefore use the existing canonical JAM natural codec (1–9 bytes). The general
+T fixed-width note and uint64 gas domain are retained as a text discrepancy, not a pending parity
+or implementation decision. The production encoding is unchanged by this policy decision.
+Ordinary measures remain natural; dictionary IDs and validator counters remain E4.
+
+A native known-answer regression checks gas 100000 -> `c1 a0 86`, 128 -> `80 80` and
+256 -> `81 00` at the three gas positions. Exact capture tests accept that compact component and
+reject a selected E8-gas alternative. The decoder never retries another representation when
+compact decoding fails. Diagnostic width comparisons in the test oracle are not decoder fallbacks.
 
 `build/state-statistics/results.json` retains corpus identity, build commands and per-entry raw
-SHA-256, complete-match flag and consumed/trailing counts alongside the open gate. Fixtures are
+SHA-256, complete-match flag and consumed/trailing counts alongside the accepted encoding policy. Fixtures are
 SHA-256 checked before parsing at exact pinned Git blob identities; partial clones may fetch
 promised objects without checkout/gitlink changes. No upstream generators run. Thirteen partial
 roots commit C(13) alone, not complete JAM state or proofs. Nim 2.2.12 ARC/Clang LTO keeps
@@ -145,8 +150,7 @@ assertion/bounds/range/field/overflow guards. Linux CI runs the suite and upload
 local results are macOS arm64, with Linux confirmation pending CI after push. Existing crypto
 gates remain unchanged.
 
-The C13 service-key migration is complete. All 224 selected chapter captures and fourteen
-published full-state mappings now pass [typed composition](state-composition.md), but M1 parity
-remains incomplete pending C13 gas and request namespace policy. Both questions are
-[parked for Gray Paper 0.8.1/0.8.2 review](state-clarifications.md); current behavior and pending
-tests remain.
+The C13 service-key migration and compact gas policy are settled. All 224 selected chapter
+captures and fourteen published full-state mappings pass [typed composition](state-composition.md).
+M1's remaining state-parity question is the [parked request namespace](state-clarifications.md).
+Further implementation scope is selected separately with the maintainer.

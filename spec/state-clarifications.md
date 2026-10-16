@@ -1,22 +1,24 @@
-# Parked M1 specification clarification questions
+# Parked M1 question and accepted encoding policy
 
 Pinned Gray Paper: v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`.
 Pinned reference vectors: v0.8.0 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
-This is a local review packet, not an upstream ruling or a submitted issue.
+This is a local record, not an upstream ruling or a submitted issue.
 
-## Status: parked by the maintainer
+## Status
 
-Revisit both questions when reviewing Gray Paper **0.8.1/0.8.2**. They remain unresolved parity
-gates, but are not active work. Preserve the current codecs, duplicate-key rejection, evidence and
-pending tests; no interim workaround or inferred protocol restriction is planned.
+The **request-namespace question remains parked** for Gray Paper 0.8.1/0.8.2 review. Preserve its
+witnesses, pending test, full request-length domain and duplicate-key rejection. It is not active
+implementation work.
 
-During that version review:
+The maintainer has **accepted vector-compatible compact encoding for C13 statistics gas**.
+It is no longer a pending implementation/parity decision. The general policy is: when published
+vectors encode a field compactly, use that compact representation and document any specification
+text discrepancy. Use one representation, with **no alternate-format fallback**.
 
-- Check request key prefixes, the blob-length domain, solicit rules and account invariants against
-  the two existing small-payload witnesses.
-- Check statistics gas definitions and T's width note against the release-matched raw vectors.
-- Record whether each question is resolved, unchanged or replaced before changing implementation
-  behavior or closing a pending test. Upgrade pins only within an authorized specification migration.
+During the next authorized specification upgrade, check whether the request domain/solicit rules
+or T key prefixes resolve the parked question, and record the result before changing behavior.
+The statistics wording discrepancy can also be checked then without reopening the accepted
+compact profile or blocking current work on an upstream textual correction.
 
 ## Request namespace versus fresh solicit
 
@@ -36,22 +38,19 @@ charged footprint/deposit fits the defined uint64 domains.
 Current behavior: retain the full E4 domain, preserve the exact formulas, reject duplicate mapping
 keys and keep the focused policy test pending. Do not choose one colliding value to overwrite.
 
-## Statistics gas width versus published wire
+## Accepted statistics gas policy; text discrepancy retained
 
-T's general note requires fixed-length non-discriminator state numbers; gas has a uint64 domain.
-However, all sixteen later raw C13 values in the [width evidence](state-widths.md) reconstruct
-with natural gas. E8 gas candidates fail exact reconstruction. For example,
+T's general note describes fixed-length non-discriminator state numbers and gas has a uint64
+domain. The pinned raw C13 values instead reconstruct with canonical JAM compact naturals
+(1–9 bytes); E8 candidates fail complete reconstruction. For example,
 `traces/fuzzy/00000025.json` pre-state's matching candidate has first-core gas 182161, occupying
-three natural bytes rather than eight. The E4 service-key migration is already verified separately.
+three natural bytes. The [width evidence](state-widths.md) retains the exact sources and comparisons.
 
-**Question:** Should T explicitly except these statistics gas fields from the fixed-width note,
-or should the reference raw state values use E8 for core/refinement/accumulation gas? Any other
-intended encoding needs an explicit definition and matching raw vectors.
+Maintainer decision: use the published compact encoding for core, refinement and accumulation
+statistics gas. The existing decoder already implements that encoding; there is no E8 fallback.
+Known compact byte checks and exact-entry rejection of a fixed-gas alternative now actively test
+that policy. E4 service keys and E8 C12 gas remain fixed as shown by their respective vectors.
 
-Current behavior: retain the published natural statistics-gas framing with an explicit pending
-normative/reference gate. No gas-width fallback, vector rewriting or full M1 parity claim.
-
-Next review trigger: evaluating Gray Paper 0.8.1/0.8.2, or an explicit maintainer request.
-No further clarification increment is scheduled against the current 0.8.0 pin.
-Codec families and selected whole-state mappings otherwise have the recorded implementation tests;
-this does not claim PVM, state-transition or production-validator completeness.
+M1's remaining state-parity question is the parked request namespace. Further implementation
+scope is chosen separately with the maintainer; this does not claim PVM, transitions or validator
+completeness, or that upstream has changed its text.

@@ -180,12 +180,11 @@ C12 E4-service/E8-gas dictionary and C13 E4 service-key migration. All 224 selec
 and fourteen full-state mappings now pass [typed composition](state-composition.md), including
 unchanged bytes that previously produced shorter-prefix/noncanonical verdicts.
 
-C13 statistics gas still uses the published natural framing despite its bounded 64-bit domain and
-the general T fixed-width note. This remains a focused pending normative/reference gate; successful
-wire reconstruction is not claimed as full normative parity.
+C13 statistics gas uses the published canonical JAM compact natural framing. The maintainer
+accepts that vector-compatible representation, with no fallback. The difference from T's general
+fixed-width note is documented rather than treated as a pending policy gate. Active known-answer
+and exact-capture checks enforce that decision; no upstream textual correction is claimed.
 
-The [request-history contract](state-requests.md) records the other cross-map question: E4 lengths
-fffffffe/ffffffff reproduce preimage/storage key prefixes. Full stated domains remain supported
-and the trie rejects duplicate keys. No inferred reserved-length restriction is installed.
-Request namespace and C13 gas questions are [parked by the maintainer](state-clarifications.md)
-pending Gray Paper 0.8.1/0.8.2 review. Current behavior, evidence and pending tests remain.
+The [request-history contract](state-requests.md) records the remaining cross-map question:
+E4 lengths fffffffe/ffffffff reproduce preimage/storage key prefixes. Full stated domains remain
+supported and duplicate keys reject. This question remains [parked for 0.8.1/0.8.2 review](state-clarifications.md).

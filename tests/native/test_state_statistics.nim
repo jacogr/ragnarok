@@ -39,8 +39,33 @@ proc captured(config: ActivityConfig): ActivitySnapshot =
   for i in 0..<wire.len: wire[i] = 0 # Retained copies must survive caller-wire destruction.
   source = default(ActivityState)
 
+## Known compact gas bytes enforce the maintainer-selected vector representation at all three gas positions.
+proc compactGas() =
+  var source: ActivityState
+  source.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](6)
+  source.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](6)
+  source.cores = newSeq[CoreActivity](2)
+  source.cores[0].gas = ActivityGas(100000)
+  source.services = @[ServiceStatisticsEntry(service: ServiceIndex(127), statistics:
+    ServiceActivity(refinementGas: ActivityGas(128), accumulationGas: ActivityGas(256)))]
+  let config = ActivityConfig(cores: CoreCount(2), current: ValidatorCount(6),
+    previous: ValidatorCount(6), maxServices: ElementLimit(1), maxBytes: ByteLimit(326))
+  let encoded = activityStateEntry(source, config)
+  doAssert encoded.error == ActivityError.None and encoded.value.value.len == 326
+  let wire = encoded.value.value
+  doAssert wire[297..299] == @[byte(0xc1), 0xa0, 0x86]
+  doAssert wire[316..317] == @[byte(0x80), 0x80]
+  doAssert wire[324..325] == @[byte(0x81), 0]
+  let decoded = decodeActivityState(wire, config)
+  doAssert decoded.error == ActivityError.None and decoded.value.consumed == 326
+  doAssert uint64(coreActivityAt(decoded.value.snapshot, StatisticsCoreIndex(0)).value.gas) == 100000
+  let service = serviceActivityAt(decoded.value.snapshot, StatisticsServiceIndex(0)).value
+  doAssert uint64(service.statistics.refinementGas) == 128 and uint64(
+      service.statistics.accumulationGas) == 256
+
 ## Every accessor returns copied fixed values with independent epoch/core/service index domains.
 proc main() =
+  compactGas() # Byte-level policy is checked alongside lifetime and result guards.
   doAssert sizeof(int) == 8 and sizeof(ServiceStatisticsEntry) == 96
   let config = ActivityConfig(cores: CoreCount(3), current: ValidatorCount(6),
       previous: ValidatorCount(9),

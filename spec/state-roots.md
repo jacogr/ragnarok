@@ -40,22 +40,22 @@ explicitly projected historical trie fixtures in [state-trie.md](state-trie.md).
 The general note after T says non-discriminator numeric state serialization is fixed-length
 according to the term's size. Explicit E4/E8 overrides are already used in role groups, validator
 counters, slots, account metadata and output service IDs. The subsequent investigation supports
-a migration of bounded dictionary domains while retaining the statistics-gas conflict:
+a migration of bounded dictionary domains while documenting the accepted compact statistics-gas profile:
 
 | Field | Current codec | Normative context / published evidence | Verdict |
 | --- | --- | --- | --- |
 | C(12) always-accumulate service/gas pairs | E4 service ID and E8 gas | Four pinned nonempty STF fields uniquely match E4 IDs/E8 gas, corroborating T and the bounded domains. Selected raw T12 dictionaries remain empty. | E4/E8 migration complete. |
 | C(13) service dictionary key | E4 service ID | Thirteen additional nonempty raw entries fit E4 keys; ten include nonzero IDs with exact same-state metadata-key associations. | E4 migration complete. |
-| C(13) gas fields | Natural gas | Gas has a 64-bit domain; selected trace gas fields are variable-width, despite the general T note. | Normative/reference conflict remains open. |
+| C(13) gas fields | Natural gas | Gas has a 64-bit domain; selected trace gas fields are variable-width, despite the general T note. | Accepted compact encoding per maintainer; text discrepancy recorded, no fallback. |
 | C(13) ordinary measures | Naturals | Statistics declares these as general naturals, unlike bounded service IDs/gas; arbitrary fixed widths cannot be inferred from their current values. | Do not invent a fixed width. |
 
 See [chapter 12](state-privileges.md) and [chapter 13](state-statistics.md) for existing API contracts
 and evidence. Their codecs and independent tests now use the supported dictionary widths, without
-fixture repair or format fallback. The natural statistics-gas interpretation remains unresolved. The former C12 pending test is active and passing; a pending C13 gas test remains
-before full typed-state parity can be claimed. The [width investigation](state-widths.md) supports
-E4/E8 C12 pairs and E4 C13 keys from the normative note plus nonempty binary/wide-ID evidence.
-Implementation migration is complete; the C13 gas conflict still needs clarification. Nonempty raw T12 entries remain unavailable
-in the selected sample; the corroborating nonempty bytes are explicitly STF fields.
+fixture repair or format fallback. C12 E4/E8 pairs and C13 E4 keys are implemented. The maintainer
+accepts compact statistics gas as used by the vectors; the text discrepancy is documented in
+[state-clarifications.md](state-clarifications.md) and is no longer a pending policy gate.
+Nonempty raw T12 entries remain unavailable in the selected sample; corroborating nonempty bytes
+are explicitly STF fields.
 
 ## Key-domain audit: still open
 
@@ -83,8 +83,8 @@ python3 tests/test_state_roots.py
 python3 tools/format.py --check
 ```
 
-Five active literal harness checks cover input widths, duplicate preservation, present-empty
-values, the request matrix and migrated C12 widths; the C13 gas gate remains explicitly skipped.
+Six active literal harness checks cover input widths, duplicate preservation, present-empty
+values, the request matrix, migrated C12 widths and accepted compact C13 gas with no fallback.
 Nim 2.2.12 ARC/Clang LTO retains assertions, bounds, range, field and overflow guards. The runner
 records compiler/Python/OS identities, build command, source hashes, each published root, byte/
 entry/node counts, corpus hash and per-request expected/actual verdicts in ignored
@@ -94,7 +94,6 @@ retains logs/results. Local macOS arm64 passing results do not certify Linux CI.
 [Typed composition](state-composition.md) now integrates exact chapter captures, typed metadata
 and typed or explicitly opaque service values, with parent limits and duplicate rejection. All fourteen
 published complete mappings compose and reproduce their roots under the recorded interpretation.
-M1 state parity remains incomplete pending **numeric-width/request-key policy resolution**.
-The maintainer has [parked both questions](state-clarifications.md) for Gray Paper 0.8.1/0.8.2
-review; there is no further active clarification increment against the current pin.
-The [namespace review](request-namespace.md) found local-rule counterexamples, not an exclusion. Trie proofs/persistence, state transitions and PVM execution remain separate work.
+M1 state parity remains qualified by the [parked request-namespace question](state-clarifications.md).
+Compact gas is accepted project policy, with the text discrepancy recorded. Further implementation
+scope is selected separately; trie proofs/persistence, transitions and PVM execution remain future work.

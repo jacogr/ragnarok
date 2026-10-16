@@ -118,5 +118,5 @@ These are STF fields, not independently published nonempty T12 trie entries.
 
 The C12 width migration is complete. Empty dictionary bytes are unchanged; nonempty entries use
 E4/E8 pairs exclusively. [Typed composition](state-composition.md) preserves the same bounds and
-ownership contracts. M1 state parity remains incomplete pending C13 gas and request namespace
-policy. Both questions are [parked for Gray Paper 0.8.1/0.8.2 review](state-clarifications.md).
+ownership contracts. Compact C13 gas is accepted by maintainer policy; M1 state parity remains
+incomplete pending request namespace policy. The request-namespace question is [parked for Gray Paper 0.8.1/0.8.2 review](state-clarifications.md).

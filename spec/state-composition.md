@@ -4,7 +4,8 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` T and trie equations, with the component-specific C.1/C.2 contracts linked
 from [M1](../docs/m1.md). Source/vector identities remain those in [pins.json](pins.json).
 Upstream pins and toolchains are unchanged. Dictionary widths now follow the supported migration;
-the [statistics-gas and request-namespace gates](state-roots.md) remain open.
+statistics gas follows the [accepted compact policy](state-clarifications.md); request namespace
+is the remaining parked state-parity question.
 
 ## Chapter capture and ownership
 
@@ -82,7 +83,7 @@ python3 tools/format.py --check
 
 Seven literal harness checks anchor exact chapter extents, failure precedence, service metadata,
 present-empty storage, complete parent accounting, opaque identities and both namespace overlaps.
-**14,469** checked native requests compare exact capture verdicts, every complete key/value entry,
+**14,471** checked native requests compare exact capture verdicts, every complete key/value entry,
 roots and entry/node counts against independent Python byte/list-partition/hashlib equations.
 Cases include every proper truncation of all sixteen authored chapter shapes, suffixes, stricter
 item/byte policies, invalid profiles, arbitrary raw inputs, independent parent ceilings, duplicate
@@ -110,8 +111,8 @@ published compositions and compiler/privacy diagnostics. Linux CI runs the same 
 native crypto construction and retains these results. Local macOS arm64 results require Linux
 confirmation after push. No timing, transition or valid-state correctness claim is made.
 
-M1 state parity remains **incomplete** pending C13 gas and request-namespace policy. The C12 E4/E8
-and C13 E4-key migrations are implemented; statistics gas retains the explicitly gated natural
-interpretation. The maintainer has [parked both questions](state-clarifications.md) for
-Gray Paper 0.8.1/0.8.2 review; current behavior and pending tests remain.
-Proofs/persistence, PVM and state transitions remain separate work.
+C13 gas follows the accepted vector-compatible compact policy, with no fallback. Two additional
+exact capture probes accept a known compact-gas component and reject its fixed-gas alternative.
+M1 state parity remains qualified by the [parked request-namespace question](state-clarifications.md).
+Further implementation scope is selected separately; proofs/persistence, PVM and transitions
+remain separate work.

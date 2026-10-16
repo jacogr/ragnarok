@@ -11,6 +11,12 @@ implementation. The existing codec, crypto and networking foundation is not a pr
 3. Pinned JAMNP-S networking specification.
 4. Other implementations are cross-checks, never replacements for the specification.
 
+For encoding-width discrepancies, the maintainer directs following the published vectors: if the
+vectors encode a field compactly, use that compact encoding and document the text discrepancy.
+Use exactly one representation, with no alternate-format fallback. This accepts C13 statistics gas
+as canonical JAM compact naturals (1–9 bytes); it is not a pending implementation/parity gate.
+Fixed encodings used by the vectors remain fixed.
+
 Never guess protocol semantics. Document ambiguity and add a focused failing/pending test. Cite
 pinned revisions and sections in protocol changes. `spec/` records interpretations and hashes;
 `vendor/` gitlinks pin upstream source identities.
@@ -44,10 +50,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   and document the remaining gate; do not tune acceptance to make a corpus pass.
 
 ## Working style
-- The M1 request-namespace and C13 statistics-gas questions are parked by the maintainer pending
-  Gray Paper 0.8.1/0.8.2 review. Preserve their evidence, pending tests and current codec behavior.
-  Revisit during that specification upgrade or on an explicit maintainer request; do not treat
-  resolving them as the next active increment or invent interim protocol restrictions.
+- The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
+  review. Preserve its evidence, pending test and current codec behavior. Revisit during that
+  specification upgrade or on an explicit maintainer request; do not invent interim restrictions.
 - Complete the authorized bounded increment and report it, then wait for the maintainer's next
   explicit go-ahead before starting another increment.
 - Read `docs/design.md` before architectural changes. State scope, applicable spec references and

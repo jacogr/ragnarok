@@ -122,7 +122,7 @@ footprints, balances, successful roots, rejection verdicts, compiler flags and e
 2.2.12 ARC/Clang LTO retains all runtime guards. Linux CI runs the same checks and retains results;
 local macOS arm64 validation does not claim Linux confirmation. No length-sized allocation occurs.
 
-M1 parity remains incomplete pending request namespace and C13 gas clarification. The maintainer
-has [parked both questions](state-clarifications.md) for Gray Paper 0.8.1/0.8.2 review. Preserve
+M1 parity remains incomplete pending request namespace clarification. The maintainer
+has [parked the request-namespace question](state-clarifications.md) for Gray Paper 0.8.1/0.8.2 review. Preserve
 current behavior and pending tests; no further clarification increment is scheduled against the
-current pin. The questions remain local; nothing has been posted externally.
+current pin. The question remains local; nothing has been posted externally.

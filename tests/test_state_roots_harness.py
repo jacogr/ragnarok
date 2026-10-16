@@ -50,10 +50,16 @@ class StateRootsHarness(unittest.TestCase):
         self.assertEqual(wire(source),expected)
         self.assertEqual(capture(12,expected,(2,6,6,12)),'ok')
 
-    # C13 natural-domain measures do not alone settle the bounded service-ID and gas-domain widths.
-    @unittest.skip('Pending: C13 keys are E4; variable-width trace gas still conflicts with T fixed-width note')
+    # Maintainer policy selects vector-compatible compact gas exclusively, with no E8 fallback.
     def test_statistics_width_policy(self):
-        self.fail('Replace this gate with a clarified statistics gas policy; complete-entry E4-key checks already pass.')
+        from state_widths_oracle import statistics_wire
+        from state_composition_oracle import capture
+        source=([bytes(144),bytes(144)],[[0]*7+[100000],[0]*8],
+            [(127,[0,0,0,128,0,0,0,0,0,0,256])])
+        compact=statistics_wire(source,4,0)
+        self.assertEqual(compact[297:300],b'\xc1\xa0\x86')
+        self.assertEqual(capture(13,compact),'ok')
+        self.assertNotEqual(capture(13,statistics_wire(source,4,8)),'ok')
 
 
 # Literal checks require no compiler, native library, network or upstream generator.
