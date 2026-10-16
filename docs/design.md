@@ -26,7 +26,7 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
 ## Implemented foundation
 
 - General naturals, fixed unsigned widths, strict Booleans, fixed/variable packed bitstrings,
-  bounded bytes/sequences, optional/work variants,
+  bounded bytes/sequences, canonical typed scalar sets/dictionaries, optional/work variants,
   preimage/ticket/guarantee/dispute extrinsics, work digests, complete reports, assurances,
   refinement contexts, work-package inputs, full/signing headers with epoch/winner markers,
   and complete extrinsic/block composition.
@@ -41,7 +41,7 @@ See [M1 codec progress](m1.md) for the remaining grouped codec increments.
 ## Outstanding work
 
 PVM execution, complete state transitions, block import, consensus and availability processing,
-remaining general/accumulation codecs, state coverage and production validator operation are not
+remaining specialized/accumulation codecs, state coverage and production validator operation are not
 implemented. The [M1 coverage audit](codec-coverage.md) distinguishes wire composition from those
 remaining codec and validation responsibilities. Current
 network tests use bounded controlled topologies; general multi-target networking and independent

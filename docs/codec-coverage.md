@@ -15,14 +15,21 @@ its own scope; PVM execution and state transitions are separate client work.
 | Optional/tagged alternatives | Implemented for optional blobs, work results and header markers; not a generic schema framework. |
 | Boolean | General strict 0/1 prefix API in `bitstrings.nim`, plus existing typed dispute paths. |
 | Bitstrings | General fixed/variable bitstrings in `bitstrings.nim`, immutable owners, logical bit limits and canonical padding; specialized assurance bitfields remain available. |
-| Canonical sets | Ordered unique prerequisites and evidence are specialized implementations; a reusable general set API remains. |
-| Canonical dictionaries | Specialized ordered report lookup paths exist; a reusable general dictionary API remains. |
+| Canonical sets | Reusable fixed/explicitly variable typed sets in `collections.nim`; naturals, E0..E8 unsigned values and fixed octets, with strict logical order and immutable snapshots. |
+| Canonical dictionaries | Reusable typed key/value tuples in `collections.nim` with one pair-count prefix, logical key order and immutable snapshots; the same scalar schema families are supported. |
 
 General Boolean/bitstring validation: 11,274 deterministic independent requests, six oracle
 known-answer checks, native lifetime/atomicity/alias/field-guard regressions, two nominal compiler
 rejections and one privacy rejection. Existing pinned tiny/full assurance bitfields and distinct
 dispute Boolean values are cross-checked through these APIs. See the
 [bitstring contract](../spec/bitstrings.md) for framing and padding rules.
+
+Canonical collection validation: 13,161 deterministic independent requests, seven oracle
+known-answer checks, native retention/copy/alias/atomicity/variant-guard regressions, three nominal,
+one unsupported-schema, two invalid-width and two privacy compiler rejections. The published
+report prerequisite/lookup samples are empty, so their checks establish empty framing only;
+authored nonempty numeric/octet cases provide the substantive order/association tests. See the
+[collection contract](../spec/collections.md) for schema scope and framing.
 
 ## Specialized records (C.2)
 
@@ -37,9 +44,11 @@ dispute Boolean values are cross-checked through these APIs. See the
 | Deferred transfers (`defxfer`) | Not implemented. |
 | Accumulation operands (`operandtuple`) | Not implemented. |
 
-The next coherent groups are reusable canonical sets/dictionaries and remaining C.2 records.
-A reusable schema framework is not required to close these concrete API gaps. State-dependent eligibility, hashing,
-signature/point validation, execution and authorization are not properties of the framing layer.
+The remaining concrete codec gaps are the C.2 records listed above. Collection element schemas beyond
+the supported value-only scalar families need explicit future adapters and ownership contracts;
+this increment does not provide an arbitrary child-codec framework. State-dependent eligibility,
+hashing, signature/point validation, execution and authorization are not properties of the framing
+layer.
 
 ## Published codec fixture inventory
 

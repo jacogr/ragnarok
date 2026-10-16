@@ -6,6 +6,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | Module | Scope |
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
+| `collections.nim` | Canonical typed sets and dictionaries over natural/fixed unsigned/fixed-octet scalars |
 | `bitstrings.nim` | Strict Boolean prefixes, fixed/variable packed bitstrings and immutable bit owners |
 | `bounded.nim` | Bounded byte strings and homogeneous fixed-width sequences |
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
@@ -60,3 +61,10 @@ count logical bits in variable prefixes and enforce zero unused padding. Fixed f
 count. Matching immutable owners expose copied metadata/indexed Booleans and support either
 framing without exposing mutable packed bytes. Specialized assurance/dispute codecs retain their
 existing APIs and semantics.
+
+[Canonical collection APIs](../spec/collections.md) enforce logical numeric or lexicographic
+octet order, reject duplicate keys, distinguish count-free fixed sets from explicitly variable
+sets, and give dictionaries one pair-count prefix. Supported scalar families are general naturals,
+E0..E8 unsigned values and fixed octets; each dictionary key/value schema is independent. Complete
+preflight precedes allocation or output writes, and retained typed snapshots expose only copied
+scalars/pairs. Additional child schemas require explicit codec and ownership work.
