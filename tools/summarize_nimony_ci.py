@@ -36,6 +36,11 @@ def summarize(report, kind):
         # Preserve each corpus verdict rather than presenting aggregate counts as a substitute for failures.
         for key, row in corpora.items():
             lines.append('| `'+key+'` | '+('Pass' if row['passed'] else 'Fail')+' | '+str(row.get('requests', 'vectors/threads'))+' |')
+        if 'quic_peer' in report:
+            # Keep authenticated exchanges distinct from pure corpora and failed-result contract probes.
+            peer = report['quic_peer']
+            lines += ['', 'Authenticated CE 143 peer matrix: '+('Pass' if peer['passed'] else 'Fail')+'.',
+                      'Matrix cases: '+str(peer.get('matrix_cases', 'N/A'))+'; repeated valid startups: '+str(peer.get('repeated_valid', 'N/A'))+'.']
     else:
         # Unknown report schemas must fail loudly instead of generating a misleading empty summary.
         raise ValueError('Unknown summary kind: '+kind)

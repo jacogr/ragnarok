@@ -1,9 +1,18 @@
 ## One synchronous owner drives nonblocking UDP readiness and deadlines without external Nim dependencies.
-import std/[os, strutils, monotimes, times, selectors]
+import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
+import std/posix/posix
 import ./transport
 import ./protocol
 import ./integration
 import ./offload
+
+# Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.
+# Harness readiness and cancellation gates must observe progress while this process still owns live sockets.
+template progress() {.varargs.} =
+  # Format each public diagnostic field through syncio, preserving exact existing marker bytes.
+  for field in unpack(): stdout.write(field)
+  stdout.write('\n')
+  stdout.flushFile()
 
 type
   # One bounded native stream owns application storage until its final close callback.
@@ -18,7 +27,7 @@ type
     query: PreimageKey
     fixture: int
     job: JobId
-  # This stack owner outlives every synchronous native callback and its selector/engine teardown.
+  # This stack owner outlives every synchronous native callback and its dispatcher/engine teardown.
   Peer = object
     transport: Transport
     expected: seq[byte]
@@ -60,15 +69,15 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
     inc peer.completed
     inc peer.healthy
     if peer.offloading and state.receivedLength == 37 and state.received[5] == LightHash[0]:
-      echo "OFFLOAD_LIGHT_DONE ", busyPool(peer.pool) # Exact reply FIN progressed during actual Rust calls, or an explicitly reported hold.
+      progress "OFFLOAD_LIGHT_DONE ", busyPool(peer.pool) # Exact reply FIN progressed during actual Rust calls, or an explicitly reported hold.
     # Progress alongside a genuinely parked writer is stronger evidence than an authenticated connection count.
     if peer.service:
       for other in peer.streams:
         if other.handle != NativeStream(nil) and other.blocked and not other.counted and samePeer(
             state.handle, other.handle) == 0:
-          echo "ISOLATED_HEALTHY"
+          progress "ISOLATED_HEALTHY"
           break
-    if peer.attack == "soak": echo (if peer.server: "SERVER_HEALTHY" else: "HEALTHY_OK") # Expose verified outcomes.
+    if peer.attack == "soak": progress (if peer.server: "SERVER_HEALTHY" else: "HEALTHY_OK") # Expose verified outcomes.
   elif peer.offloading:
     # Admission, cancellation and invalid proofs reject only their own stream.
     inc peer.completed
@@ -81,7 +90,7 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
     # An intentionally bad stream retires only its own buffers/callbacks.
     inc peer.completed
     inc peer.rejected
-    echo (if peer.server: "STREAM_REJECTED" else: "EXPECTED_REJECT")
+    progress (if peer.server: "STREAM_REJECTED" else: "EXPECTED_REJECT")
   else:
     # The one-shot rejection matrix fails the attempted application exchange.
     peer.failed = true
@@ -107,7 +116,7 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
       if payloadSize != 32: return (false, false) # CE query hash width remains normative.
       let index = findFixture(peer.bank, state.received.toOpenArray(5, 36))
       if index < 0:
-        echo "INTEGRATION_REJECT Lookup"
+        progress "INTEGRATION_REJECT Lookup"
         return (false, false) # A missing database key cannot select a default record.
       state.fixture = index
       let fixture = fixtureBytes(peer.bank, index)
@@ -117,18 +126,18 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
       var scratch = fixture.value
       let checked = captureDigest(scratch, key.value)
       if checked.error != IntegrationError.None:
-        echo "INTEGRATION_REJECT ", checked.error
+        progress "INTEGRATION_REJECT ", checked.error
         return (false, false) # Codec/ownership/crypto failure settles only this stream.
       state.verified = checked.value
-      echo "OWNED_VERIFIED"
+      progress "OWNED_VERIFIED"
     else:
       # Capture the actual received preimage; its query key is retained independently of source storage.
       let checked = captureDigest(state.received.toOpenArray(4, extent - 1), state.query)
       if checked.error != IntegrationError.None:
-        echo "INTEGRATION_REJECT ", checked.error
+        progress "INTEGRATION_REJECT ", checked.error
         return (false, false)
       state.verified = checked.value
-      echo "OWNED_VERIFIED"
+      progress "OWNED_VERIFIED"
     return (true, true)
   # Requests select only exact fixture hash keys, never a default/missing map entry.
   if accepting(peer, state):
@@ -253,11 +262,11 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
         if peer.offloading and state.received[5] != LightHash[0]:
           state.job = submitPool(peer.pool, state.received[5] == BadProofHash[0])
           if state.job == JobId(0):
-            echo "OFFLOAD_REJECT Capacity"
+            progress "OFFLOAD_REJECT Capacity"
             finishStream(peer, state, false)
             streamAbort(state.handle)
           else:
-            echo "OFFLOAD_ADMIT ", state.job
+            progress "OFFLOAD_ADMIT ", $state.job
           return # No reply allocation/write occurs until the I/O thread selects verified completion.
         if peer.integrated:
           let length = wireLength(state.verified)
@@ -320,14 +329,18 @@ proc writeStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
 # Native callbacks borrow this peer synchronously; only native close releases application buffers.
 proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
   let peer = cast[ptr Peer](user)
-  var state: ptr StreamState
-  # Resolve a currently retained native handle before accessing its application buffers.
-  for slot in peer.streams.mitems:
-    if slot.handle == handle: state = addr slot; break # Unique live stream ownership.
+  var state: nil ptr StreamState = nil # No callback slot has been resolved yet.
+                                       # Resolve a currently retained native handle before accessing its application buffers.
+  for index in 0..<peer.streams.len:
+    # Slot addresses stay inside this stack-stable peer through native callbacks and close.
+    let slot = addr peer.streams[index]
+    if slot.handle == handle: state = slot; break # Unique live stream ownership.
   if event == 0:
     # The fixed slot ceiling bounds concurrent requests and all associated application storage.
-    for slot in peer.streams.mitems:
-      if slot.handle == NativeStream(nil): state = addr slot; break # Allocate only a retired slot.
+    for index in 0..<peer.streams.len:
+      # Slot addresses stay inside this stack-stable peer through native callbacks and close.
+      let slot = addr peer.streams[index]
+      if slot.handle == NativeStream(nil): state = slot; break # Allocate only a retired slot.
     if state == nil:
       # At capacity a service rejects only this stream, preserving existing peers.
       if not peer.service: peer.failed = true
@@ -353,7 +366,7 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
     if not state.counted and not peer.stopping: finishStream(peer, state, false)
     # The cancelled large response must have reached owned capture before final close releases it.
     if peer.integrated and accepting(peer, state) and state.fixture == 6 and
-        wireLength(state.verified).error == IntegrationError.None: echo "OWNED_CANCEL_RELEASE"
+        wireLength(state.verified).error == IntegrationError.None: progress "OWNED_CANCEL_RELEASE"
     state[] = StreamState() # ARC releases both buffers; the slot holds no closure/reference back to Peer.
     return
   if event == 4:
@@ -369,29 +382,31 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
   of 2: writeStream(peer, state) # Write readiness preserves partial-write offsets across callbacks.
   else: peer.failed = true # Undefined bridge events are explicit integration failures.
 
-# Stream-local lifecycle deadlines run on the same selector thread as native transport timers.
+# Stream-local lifecycle deadlines run on the same dispatcher thread as native transport timers.
 proc soakTick(peer: ptr Peer) {.raises: [].} =
   # Only live, unsettled streams own deadline work; close callbacks may recycle slots synchronously.
-  for state in peer.streams.mitems:
+  for index in 0..<peer.streams.len:
+    # Resolve a stable slot by index; no mutable iterator temporary owns its ARC buffers.
+    let state = addr peer.streams[index]
     if state.handle == NativeStream(nil) or state.counted: continue # Retired streams have no pending timer.
     let elapsed = (getMonoTime() - state.started).inMilliseconds
     if peer.server:
       # A complete hash without request FIN must not retain its handler indefinitely.
       if not state.readFin and elapsed > (if peer.overload: 30000 else: 500):
-        echo "REQUEST_TIMEOUT"
-        finishStream(peer, addr state, false)
+        progress "REQUEST_TIMEOUT"
+        finishStream(peer, state, false)
         streamAbort(state.handle)
       elif state.sendLength > 65536 and state.sendOffset < state.sendLength and
           not state.blocked and elapsed > 100:
         # The pending large write proves real flow-control backpressure, not an artificial sleep alone.
         state.blocked = true
-        echo "BACKPRESSURE"
+        progress "BACKPRESSURE"
     elif state.attack == "cancel" and elapsed > (if peer.integrated: 500 elif peer.mixed: 700 else: 150):
       # Cancel while the remote large write is parked behind withheld receive credit.
       state.counted = true
       inc peer.completed
       inc peer.cancelled
-      echo "CANCEL_OK"
+      progress "CANCEL_OK"
       streamAbort(state.handle)
     elif state.attack == "slow" and state.paused and elapsed > (if peer.mixed: 1000 else: 350):
       # Resume application consumption so the native stream window can advance again.
@@ -407,26 +422,28 @@ proc offloadTick(peer: ptr Peer) =
     if not polled.ready: break # Pending has no completion data.
     let completion = polled.completion
     var matched = false
-    for state in peer.streams.mitems:
+    for index in 0..<peer.streams.len:
+      # Resolve a stable slot by index; no mutable iterator temporary owns its ARC buffers.
+      let state = addr peer.streams[index]
       if state.handle != NativeStream(nil) and state.job == completion.id and not state.counted:
         matched = true
         state.job = JobId(0) # The pool has retired its input; final stream close owns only application bytes.
         if completion.outcome != Verified:
-          echo "OFFLOAD_REJECT Proof"
-          finishStream(peer, addr state, false)
+          progress "OFFLOAD_REJECT Proof"
+          finishStream(peer, state, false)
           streamAbort(state.handle)
         else:
-          echo "OFFLOAD_VERIFIED ", completion.id
+          progress "OFFLOAD_VERIFIED ", $completion.id
           state.sending = @[3'u8, 0, 0, 0, 1, 2, 3]
           state.sendLength = 7
           wantWrite(state.handle, 1) # Only verified completion enables response readiness.
         break
-    if not matched: echo "OFFLOAD_STALE ", completion.id # A vanished/reused stream cannot receive old completion.
+    if not matched: progress "OFFLOAD_STALE ", $completion.id # A vanished/reused stream cannot receive old completion.
 
 # Own one bounded authentication/exchange attempt and release readiness before native callback destruction.
-proc runPeer(): bool =
+proc runPeer(): bool {.raises.} =
   # Trusted CLI inputs still have explicit shape and narrowing checks.
-  if paramCount() notin [7, 8]: raise newException(ValueError, "mode port cert key expected-key alpn timeout-ms")
+  if paramCount() notin [7, 8]: return false # Reject malformed trusted invocation before endpoint setup.
   let port = parseInt(paramStr(2))
   let timeout = parseInt(paramStr(7))
   if port < 1 or port > 65535 or timeout < 1 or timeout > (if paramCount() == 8 and paramStr(8) ==
@@ -475,7 +492,7 @@ proc runPeer(): bool =
       paramStr(4), paramStr(6), addr peer, verifyPeer,
           onStream, peer.service, ipv6 = load, profile = (
               if peer.overload or peer.offloading: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
-  if server: echo "READY" # Announce only after listener binding and native setup.
+  if server: progress "READY" # Announce only after listener binding and native setup.
   elif not connectTransport(peer.transport, uint16(port)): return false # Dial setup failed before authentication.
   let started = getMonoTime()
   let stopFile = getEnv("RAGNAROK_SERVICE_STOP")
@@ -488,16 +505,16 @@ proc runPeer(): bool =
   var lastCapacityConnections = 0
   var lastIdle = 0'u64
   var serviceStopped = false
-  var authenticated, opened: bool
-  # One selector loop services all streams, UDP reads and LSQUIC/application deadlines.
+  var authenticated, opened = false # Neither authentication nor application admission has happened at startup.
+ # One dispatcher loop services all streams, UDP reads and LSQUIC/application deadlines.
   while not peer.failed and (peer.service or peer.completed < target) and (getMonoTime() -
       started).inMilliseconds < timeout:
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
-    # Observe retirement while keeping the same socket, selector and native engine throughout every wave.
+    # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
     if peer.service:
       let active = int(peerMetric(peer.transport, 0))
       if active != lastActive:
-        echo "PEERS ", active
+        progress "PEERS ", active
         lastActive = active
       var live = 0
       # Only final native close releases application buffer ownership.
@@ -506,28 +523,28 @@ proc runPeer(): bool =
       # Emit state changes only, so burst input cannot create an unbounded diagnostic stream.
       if peer.overload and (active != lastLoadActive or live != lastLive or peer.capacityRejected !=
           lastCapacity or peerMetric(peer.transport, 5) != uint64(lastCapacityConnections)):
-        echo "LOAD_STATE ", active, " ", live, " ", peerMetric(peer.transport, 5), " ",
+        progress "LOAD_STATE ", active, " ", live, " ", peerMetric(peer.transport, 5), " ",
             peer.capacityRejected, " ", peer.peakStreams
         lastLoadActive = active
         lastLive = live; lastCapacity = peer.capacityRejected; lastCapacityConnections = int(
             peerMetric(peer.transport, 5))
       let accepted = peerMetric(peer.transport, 1)
       if active == 0 and live == 0 and accepted > lastIdle:
-        echo "SERVICE_IDLE ", accepted, " ", peerMetric(peer.transport, 2), " ", getOccupiedMem()
+        progress "SERVICE_IDLE ", accepted, " ", peerMetric(peer.transport, 2), " ", getOccupiedMem()
         lastIdle = accepted
       if fileExists(stopFile):
         serviceStopped = peer.offloading or (active == 0 and live == 0)
-        if peer.offloading: echo "OFFLOAD_SHUTDOWN_PENDING ",
+        if peer.offloading: progress "OFFLOAD_SHUTDOWN_PENDING ",
             live # Explicit test shutdown also exercises pending jobs.
         break
     let status = transportStatus(peer.transport)
     # Reusable IPv6 engines become idle after close; this CLI attempt cannot reconnect or finish without a live peer.
     if not server and peerMetric(peer.transport, 2) > 0 and peerMetric(peer.transport, 0) == 0:
-      echo "CONNECTION_CLOSED"
+      progress "CONNECTION_CLOSED"
       break # No stream callback exists if admission was refused before any request opened.
     if status < 0: break # Authentication or persistent UDP failure settles this bounded attempt.
     if status == 1 and not authenticated:
-      echo "AUTH_OK"
+      progress "AUTH_OK"
       authenticated = true
     if authenticated and not server and not opened and mode != "idle":
       # Open concurrent requests before waiting for replies; the soak introduces three later healthy siblings.
@@ -535,7 +552,9 @@ proc runPeer(): bool =
       for index in 0..<(if peer.attack == "soak": 5 else: target): openStream(peer.transport)
     # The controller releases cancellation only after observing actual worker execution.
     if mode == "proof-cancel" and fileExists(cancelFile):
-      for state in peer.streams.mitems:
+      for index in 0..<peer.streams.len:
+        # Resolve a stable slot by index; no mutable iterator temporary owns its ARC buffers.
+        let state = addr peer.streams[index]
         if state.handle != NativeStream(nil): streamAbort(state.handle) # Cancel this authenticated pending query.
       disconnectTransport(peer.transport)
       let grace = getMonoTime()
@@ -551,12 +570,12 @@ proc runPeer(): bool =
     if not pollTransport(peer.transport): break # Selector/UDP failure cannot become a successful exchange.
   # A final receive cycle can authenticate, finish requests and close; preserve handshake evidence without reopening work.
   if peerMetric(peer.transport, 4) > 0 and not authenticated:
-    echo "AUTH_OK"
+    progress "AUTH_OK"
     authenticated = true
   # A service succeeds only after the harness requests shutdown with every promoted connection and stream retired.
   if peer.service:
-    echo "SERVICE_DONE ", peerMetric(peer.transport, 1), " ", peerMetric(peer.transport, 2), " ",
-        peerMetric(peer.transport, 3)
+    progress "SERVICE_DONE ", peerMetric(peer.transport, 1), " ", peerMetric(peer.transport, 2),
+        " ", peerMetric(peer.transport, 3)
     return serviceStopped and not peer.failed and (peer.offloading or peerMetric(peer.transport,
         3) >= 3)
   result = authenticated and not peer.failed and peer.completed == target
@@ -565,7 +584,7 @@ proc runPeer(): bool =
     result = if peer.integrated: peer.healthy == 3 and peer.rejected == 4 and peer.cancelled ==
         1 else: peer.healthy == 5 and peer.rejected == 2 and peer.cancelled == 1
   if result:
-    echo "EXCHANGE_OK ", target # Authentication alone is insufficient without all terminal application outcomes.
+    progress "EXCHANGE_OK ", target # Authentication alone is insufficient without all terminal application outcomes.
     # Mixed/probe clients explicitly close while UDP remains active so the persistent server can retire their connection.
     if mode in ["mixed", "clean", "integrated", "probe", "proof", "light"]: disconnectTransport(peer.transport)
     let grace = getMonoTime()
@@ -574,7 +593,8 @@ proc runPeer(): bool =
       if not pollTransport(peer.transport): return false # Final I/O errors are still observable.
   else:
     # Print only framing counts/lifecycle state, never private-key or certificate buffer contents.
-    echo "proof rejected or timed out ", peer.completed, " ", peer.healthy, " ", peer.rejected, " ", peer.cancelled
+    progress "proof rejected or timed out ", peer.completed, " ", peer.healthy, " ", peer.rejected,
+        " ", peer.cancelled
 
 # Fuzz incremental framing and DER policy without creating a UDP endpoint or TLS engine.
 proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
@@ -586,13 +606,13 @@ proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
   for i, value in input: state.received[i] = value
   let extent = frameExtent(addr peer, addr state)
   # Complete frames are bounded, exact and cleanly terminated.
-  if extent.complete: doAssert extent.valid and fin and input.len == (if server: 37 else: 7)
-  if fin and input.len < (if server: 5 else: 4): doAssert not extent.valid # Partial-header EOF is immediate rejection.
+  if extent.complete: assert extent.valid and fin and input.len == (if server: 37 else: 7)
+  if fin and input.len < (if server: 5 else: 4): assert not extent.valid # Partial-header EOF is immediate rejection.
 
 # Deterministic malformed-input coverage remains independently testable before native transport setup.
 proc selfTest() =
-  doAssert checkedLength([0'u8, 0, 0, 0], 0).value == 0
-  doAssert checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None
+  assert checkedLength([0'u8, 0, 0, 0], 0).value == 0
+  assert checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None
   # Known valid frames exercise every partial prefix with and without FIN, complementing random malformed inputs.
   var request = newSeq[byte](37)
   request[0] = 143
@@ -605,21 +625,21 @@ proc selfTest() =
     var peer = Peer(server: server)
     for length in 0..wire.len:
       var frame = StreamState(received: wire, receivedLength: length)
-      doAssert frameExtent(addr peer, addr frame) == (false, true)
+      assert frameExtent(addr peer, addr frame) == (false, true)
       frame.readFin = true
       let extent = frameExtent(addr peer, addr frame)
-      doAssert extent == (length == wire.len, length == wire.len)
+      assert extent == (length == wire.len, length == wire.len)
   var state = 0x51554943'u64
   # Xorshift produces reproducible parser coverage bytes, not cryptographic randomness.
   for iteration in 0..<10000:
-    var input: array[128, byte]
-    for value in input.mitems:
+    var input = default(array[128, byte])
+    for index in 0..<input.len:
       state = state xor (state shl 13)
       state = state xor (state shr 7)
       state = state xor (state shl 17)
-      value = byte(state and 255)
+      input[index] = byte(state and 255)
     fuzzPeer(input.toOpenArray(0, iteration mod 129 - 1), iteration mod 2 == 0, iteration mod 3 == 0)
-  echo "Nim QUIC selftest: 10000 malformed DER/frame cases passed"
+  progress "Nim QUIC selftest: 10000 malformed DER/frame cases passed"
 
 include ./mesh
 
@@ -629,9 +649,9 @@ proc main(): int =
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if paramCount() >= 1 and paramStr(1) == "mesh":
       let baseline = getOccupiedMem()
-      if not runMesh(): return 2 # Both engines and their borrowed selector registrations have already retired.
+      if not runMesh(): return 2 # Both engines and their borrowed dispatcher registrations have already retired.
       let retained = getOccupiedMem()
-      echo "MESH_CLEAN ", baseline, " ", retained
+      progress "MESH_CLEAN ", baseline, " ", retained
       return (if retained <= baseline + 65536: 0 else: 2) # Fixed ARC bookkeeping is bounded after complete cleanup.
     if paramCount() == 1 and paramStr(1) == "--mesh-selftest": meshSelfTest(); return 0
     # The composition selftest needs only codec/crypto, with no TLS session or filesystem fixture.
@@ -670,23 +690,25 @@ proc main(): int =
         # The harness samples only after complete cleanup, then releases the next session explicitly.
         while not fileExists(control):
           if (getMonoTime() - started).inSeconds > 15: return 2 # Bound a dead/missing harness.
-          sleep(10) # No native endpoint is live while waiting at this external observation barrier.
+          var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 10_000_000)
+          var remaining = default(Timespec)
+          discard nanosleep(requested, remaining) # Interrupts return to the bounded outer deadline; no endpoint is live.
         if iteration == rounds: break # Hold the final idle sample until the harness permits normal exit.
-        if not runPeer(): return 2 # Deferred selector/native cleanup finishes before failure returns.
-        echo "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem()
-        echo "SESSION_DONE ", iteration
+        if not runPeer(): return 2 # Deferred dispatcher/native cleanup finishes before failure returns.
+        progress "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem()
+        progress "SESSION_DONE ", iteration
     elif paramCount() == 8 and paramStr(8) in ["service", "integration", "overload", "offload"]:
       # Final native callbacks and ARC release complete before observing the process-level application baseline.
       let baseline = getOccupiedMem()
       if not runPeer(): return 2
-      echo "SERVICE_CLEAN ", baseline, " ", getOccupiedMem()
+      progress "SERVICE_CLEAN ", baseline, " ", getOccupiedMem()
       if getOccupiedMem() > baseline + 65536: return 2 # Permit fixed runtime bookkeeping, not retained stream storage.
     elif not runPeer():
       return 2 # The one-shot rejection suite must distinguish failed exchange from successful authentication.
     0
-  except CatchableError as error:
+  except:
     # Setup/OS/control errors become bounded process failures after all native owners have retired.
-    stderr.writeLine(error.msg)
+    stderr.writeLine("Peer setup, filesystem or CLI control failed")
     2
 
-quit(main()) # Never exit while a selector or native callback still borrows a retiring Peer.
+quit(main()) # Never exit while a dispatcher or native callback still borrows a retiring Peer.

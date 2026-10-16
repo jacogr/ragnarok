@@ -176,7 +176,8 @@ native-boundary/concurrency coverage now also pass locally. M3 UDP/readiness and
 lifecycle checks now pass locally.
 Shared identity/DER/framing validation now also passes locally.
 CE 143 integration results and retained digest ownership now also pass locally.
-Next: the peer executable and authenticated CE 143 exchanges. Linux confirmation and normative
+The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
+Next: retained CE 143 service and integrated digest lifecycle coverage. Linux confirmation and normative
 policy gates remain separate.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the

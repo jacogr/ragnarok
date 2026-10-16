@@ -16,20 +16,21 @@ proc meshSelfTest() =
     for highB in [0'u8, 128'u8]:
       # Exercise both first-byte ordering outcomes for this parity combination.
       for firstA in [0'u8, 2'u8]:
-        var a, b: array[32, byte]
+        var a, b = default(array[32, byte])
         a[0] = firstA; b[0] = 1
         a[31] = highA; b[31] = highB
-        doAssert preferred(a, b) == ((highA != highB) xor (firstA < 1))
-        doAssert preferred(a, b) != preferred(b, a)
-  var a, b: array[32, byte]
+        assert preferred(a, b) == ((highA != highB) xor (firstA < 1))
+        assert preferred(a, b) != preferred(b, a)
+  var a, b = default(array[32, byte])
   b[31] = 127
-  doAssert preferred(a, b) # Ordering reaches the final byte without treating 127 as high.
+  assert preferred(a, b) # Ordering reaches the final byte without treating 127 as high.
   b[31] = 128
-  doAssert not preferred(a, b) # Exactly 128 changes the parity.
-  echo "MESH_POLICY_OK"
+  assert not preferred(a, b) # Exactly 128 changes the parity.
+  progress "MESH_POLICY_OK"
 
 # Count live stream owners; a settled reply alone does not prove all native close callbacks have retired.
 proc liveMesh(peer: ptr Peer): int {.raises: [].} =
+  result = 0 # An empty peer has no live stream owners; every increment starts from a defined count.
   # A slot owns its buffers until its handle becomes nil in the final close callback.
   for state in peer.streams:
     if state.handle != NativeStream(nil): inc result
@@ -49,12 +50,12 @@ proc pendingMesh(peer: ptr Peer): bool {.raises: [].} =
       inc local
   local == 4 and remote == 4
 
-# Drive both role engines from their one selector, surfacing framing or socket failures as bounded outcomes.
+# Drive both role engines from their one dispatcher, surfacing framing or socket failures as bounded outcomes.
 proc meshPoll(incoming, outgoing: var Peer): bool =
   pollPair(incoming.transport, outgoing.transport) and not incoming.failed and not outgoing.failed
 
 # Retain two IPv6 engines through sixteen externally gated reconnects and simultaneous CE queries.
-proc runMesh(): bool =
+proc runMesh(): bool {.raises.} =
   # Validate all trusted controls before opening sockets or narrowing ports.
   if paramCount() != 9: return false
   let localPort = parseInt(paramStr(2))
@@ -64,7 +65,7 @@ proc runMesh(): bool =
   let localKey = readFile(paramStr(6))
   let remoteKey = readFile(paramStr(7))
   if localKey.len != 32 or remoteKey.len != 32 or localKey == remoteKey: return false # No self/ambiguous peer.
-  var a, b: array[32, byte]
+  var a, b = default(array[32, byte])
   var expected = newSeq[byte](32)
   # Retain owned identity bytes across both engines' TLS callbacks, with no certificate pointer escaping.
   for index in 0..<32:
@@ -73,7 +74,7 @@ proc runMesh(): bool =
   let disrupted = getEnv("RAGNAROK_MESH_DISRUPT") == "1"
   let profile = if disrupted: CrashRecovery else: RetainedPeer
   let gate = paramStr(9)
-  let dispatcher = newSelector[int]()
+  let dispatcher = newDispatcher()
   defer: dispatcher.close() # Both borrowed endpoint registrations retire first, in reverse defer order.
   var incoming = Peer(server: true, mesh: true, expected: expected, attack: "valid")
   var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
@@ -88,9 +89,9 @@ proc runMesh(): bool =
   if not openTransport(outgoing.transport, false, false, 0, paramStr(4), paramStr(5),
       paramStr(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
           dispatcher = dispatcher, profile = profile): return false
-  echo "MESH_READY ", int(initiator)
+  progress "MESH_READY ", int(initiator)
   var authenticatedIn, authenticatedOut = 0'u64
-  # All rounds retain these exact stack/socket/selector/TLS/engine owners.
+  # All rounds retain these exact stack/socket/dispatcher/TLS/engine owners.
   for round in 0..<rounds:
     var started = getMonoTime()
     # External barriers permit both simultaneous dials and post-retirement resource observations.
@@ -124,20 +125,20 @@ proc runMesh(): bool =
         authenticatedIn or peerMetric(outgoing.transport, 4) < authenticatedOut:
       if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
     if not fallback:
-      echo "MESH_DUPLICATE ", round
+      progress "MESH_DUPLICATE ", round
       disconnectTransport(discarded.transport) # Local policy: keep the preferred-initiator direction.
     started = getMonoTime()
     # Never open application work on an engine whose duplicate close still owns a connection.
     while peerMetric(discarded.transport, 0) != 0:
       if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
     if peerMetric(kept.transport, 0) != 1: return false # The selected connection must survive duplicate retirement.
-    echo "MESH_CONNECTED ", round, " ", int(useOutgoing)
+    progress "MESH_CONNECTED ", round, " ", int(useOutgoing)
     # Four local queries share this connection with the remote peer's four queries.
     for query in 0..<4: openStream(kept.transport)
     started = getMonoTime()
     while kept.healthy != 8 or liveMesh(kept) != 0:
       if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
-    echo "MESH_EXCHANGED ", round, " ", kept.healthy
+    progress "MESH_EXCHANGED ", round, " ", kept.healthy
     # Opt-in crash rounds retain real incomplete request owners before the harness kills the other process.
     if lossRound:
       started = getMonoTime()
@@ -152,7 +153,7 @@ proc runMesh(): bool =
       while not pendingMesh(kept):
         if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds >
             10: return false
-      echo "MESH_PENDING ", round, " 8"
+      progress "MESH_PENDING ", round, " 8"
     started = getMonoTime()
     # Hold a live connection for resource/thread sampling until the harness permits orderly close.
     while not fileExists(gate / ("close-" & $round)):
@@ -167,12 +168,12 @@ proc runMesh(): bool =
     # Every pending request must settle exactly once when the vanished connection retires.
     if lossRound:
       if kept.rejected != 8: return false # Retained buffers cannot disappear without terminal outcomes.
-      echo "MESH_RECOVERED ", round, " ", kept.rejected
+      progress "MESH_RECOVERED ", round, " ", kept.rejected
     kept.healthy = 0; kept.completed = 0; kept.rejected = 0
     kept.recovering = false; kept.attack = "valid" # A malformed request in the next healthy phase remains a real failure.
-    echo "MESH_IDLE ", round, " ", getOccupiedMem(), " ", peerMetric(incoming.transport, 1), " ",
-        peerMetric(outgoing.transport, 1), " ", peerMetric(incoming.transport, 2), " ", peerMetric(
-            outgoing.transport, 2)
+    progress "MESH_IDLE ", round, " ", getOccupiedMem(), " ", peerMetric(incoming.transport, 1),
+        " ", peerMetric(outgoing.transport, 1), " ", peerMetric(incoming.transport, 2), " ",
+            peerMetric(outgoing.transport, 2)
   let started = getMonoTime()
   # Retain the final idle owner scope for the last sample before normal ARC/native teardown.
   while not fileExists(gate / "stop"):

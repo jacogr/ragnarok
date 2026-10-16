@@ -19,6 +19,9 @@ BUILD = ROOT / 'build/quic'
 PINS = json.loads((ROOT / 'spec/quic-proof-pins.json').read_text())
 
 THREAD_BASELINES = {'nim': 1}
+# The original bounded authentication and framing matrix is shared by the Nimony migration runner.
+SCENARIOS = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',
+             'wrong-server-key', 'wrong-alpn', 'bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')
 
 # Serialize only UDP reservation-to-readiness handoff; authenticated exchanges still run concurrently.
 STARTUP_LOCK = threading.Lock()
@@ -164,8 +167,10 @@ def wait_server_ready(process, path, case, seconds=3):
 
 
 # Execute one independently bounded localhost peer pair and retain diagnostics without printing any private-key contents.
-def attempt(case, folder):
+def attempt(case, folder, binaries=None, logs=None):
     server_language, client_language, scenario = case
+    # Compiler-specific trial binaries reuse the exact baseline workload without overwriting normal peers.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     client_identity = scenario if scenario in ('wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature') else 'b'
     server_identity = 'wrong-san' if scenario == 'bad-server-san' else 'a'
     expected = 'b' if scenario == 'wrong-server-key' else 'a'
@@ -173,15 +178,15 @@ def attempt(case, folder):
     client_alpn = 'jamnp-s/1/11111111' if scenario == 'wrong-alpn' else alpn
     cert = lambda name: str(folder / f'{name}.cert.pem')
     key = lambda name: str(folder / f'{name}.key.pem')
-    server = [str(BUILD / f'{server_language}-peer'), 'server', '0', cert(server_identity), key(server_identity), '-', alpn, '900']
-    client = [str(BUILD / f'{client_language}-peer'), 'client', '0',
+    server = [str(binaries[server_language]), 'server', '0', cert(server_identity), key(server_identity), '-', alpn, '900']
+    client = [str(binaries[client_language]), 'client', '0',
               '-' if scenario == 'missing-cert' else cert(client_identity),
               '-' if scenario == 'missing-cert' else key(client_identity), str(folder / f'{expected}.pub'), client_alpn, '900']
     application_failure = scenario in ('bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')
     if application_failure:
         client.append(scenario)
-    logs = BUILD / 'cases'
-    logs.mkdir(exist_ok=True)
+    logs = BUILD / 'cases' if logs is None else logs
+    logs.mkdir(parents=True, exist_ok=True)
     path = logs / '-'.join(case)
     process = None
     client_process = None
@@ -241,9 +246,7 @@ def main():
         run([BUILD / f'{language}-peer', '--selftest'])
         run([BUILD / f'{language}-peer', '--io-selftest'])
     folder = fixtures()
-    scenarios = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',
-                 'wrong-server-key', 'wrong-alpn', 'bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')
-    cases = [(server, client, scenario) for server, client in [(a, b) for a in peers for b in peers] for scenario in scenarios]
+    cases = [(server, client, scenario) for server, client in [(a, b) for a in peers for b in peers] for scenario in SCENARIOS]
     # Independent cases may overlap, but each native peer still owns a single event loop for all its streams.
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(lambda case: attempt(case, folder), cases))

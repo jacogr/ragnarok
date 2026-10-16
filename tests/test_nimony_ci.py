@@ -141,6 +141,16 @@ class NimonyCISafeguards(unittest.TestCase):
         with self.assertRaises(ValueError):
             summarize(dict(modules=[]), 'modules')
 
+    # A failed network matrix must remain visible without inflating corpus or contract-guard totals.
+    def test_peer_summary_scope(self):
+        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                      quic_peer=dict(passed=False, matrix_cases=16, repeated_valid=12))
+        text = summarize(report, 'slice')
+        self.assertIn('Authenticated CE 143 peer matrix: Fail', text)
+        self.assertIn('Matrix cases: 16; repeated valid startups: 12', text)
+        self.assertIn('Runtime misuse rejections: 0', text)
+        self.assertIn('Independent corpora: 0', text)
+
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
         report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],

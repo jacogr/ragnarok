@@ -1,7 +1,7 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **59 native suites, forty-one independent corpora, 1,368 runtime misuse rejections
+Status: **63 native suites, forty-one independent corpora, 1,368 runtime misuse rejections
 and 666 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
@@ -15,8 +15,8 @@ native key/setup ownership, contextual VRF/RingVRF and original native-boundary/
 coverage also pass locally. M2 migration regression parity is reached for the implemented
 release-reference scope. M3 now has a local UDP/readiness and linked native-transport lifecycle
 slice, plus shared SAN/DER identity, structural framing and enabled CE fixture composition.
-Authenticated peers,
-broader M3 coverage and Linux parity remain unverified.
+The one-shot authenticated CE 143 peer matrix now passes locally.
+Broader M3 lifecycle coverage and Linux parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -2174,10 +2174,70 @@ Implemented-scope M1/M2 regression parity and their documented normative gates r
 Authenticated exchanges, whole-peer/service/mesh/resilience/offload parity and Linux execution
 remain separate gates.
 
+## Forty-third bounded increment: authenticated peer executable
+
+The actual `src/quic/peer.nim` entry point now builds with the unchanged pinned compiler and
+LSQUIC/TLS ABI, under checked ARC/Clang release LTO. Explicit imports replace former implicit
+standard-library exports, stable indexed slot pointers replace mutable iteration, and the included
+mesh code uses the already migrated bounded dispatcher. Public POSIX `nanosleep` supplies the
+existing ten-millisecond observation-barrier pause only when no native endpoint is live. Trusted
+CLI/filesystem exceptions return a bounded process failure with a generic diagnostic. No runtime,
+compiler or dependency source is patched, and no dual-compiler path is introduced.
+
+Protocol behavior remains pinned JAMNP-S identity/SAN, exact ALPN, and CE 143 selector/E4/hash/FIN
+framing. `tests/nimony_peer.py` reuses the original `tests/test_quic.py` matrix with isolated binary
+and log paths, preserving all sixteen scenarios and their deadlines. Both endpoints must now have
+the expected exit code, rather than letting one failed endpoint hide success on the other.
+The valid case completes eight exact request/reply streams. Ten identity/TLS scenarios (including
+the valid case) and six authenticated framing failures retain their expectations. Twelve additional
+valid cold starts also pass. The no-FIN scenario observes **one OS thread per endpoint** while work
+is pending. Nine malformed role/arity/port/deadline controls reject before READY or authentication.
+
+Four additional positive suite invocations replay the real executable's 10,000-case malformed
+DER/frame selftest, 256 UDP retirement cases, mesh ordering policy selftest, and the crypto-enabled
+entry point's original 10,000 digest captures. The enabled binary is separately built and linked;
+its no-socket selftest does not establish integrated service lifecycle parity. The 28 live pairs
+and nine CLI cases are recorded separately from the 41 independent pure codec/crypto corpora and
+1,368 failed-result contract probes. Branch CI retains nested peer logs and reports the network
+matrix separately; a failure stays red. Shared startup and CI summary harness safeguards run too.
+
+Four observed compile/fix rounds preceded the first successful semantic check: a mechanical loop
+indentation repair; explicit formatting for nominal `JobId` diagnostics plus POSIX/calendar time
+disambiguation; the remaining distinct POSIX `Time` initializer; and explicit zero initialization
+of `liveMesh`'s count result. Nimony's definite-initialization diagnostic prevented the empty-peer
+count from reading an undefined accumulator. Logs `peer-first-check.log` through
+`peer-fifth-check.log` remain under `build/nimony-trial/`. The first linked build then passed.
+These are measured repair batches for this task, not reconstructed historical totals.
+
+Live testing/review found two further migration defects after compilation. First, this nightly's
+native stdout is fully buffered: an unflushed READY marker can appear only after the listener exits.
+A small local `progress` template uses public `syncio` writes/flush so lifecycle gates observe live
+owners, preserving marker bytes and the original deadlines. Second, the compiler accepted
+uninitialized local authentication/open flags and a nullable callback lookup pointer and emitted
+uninitialized C locals. These are now explicitly initialized to false/nil. Authentication callbacks
+and native counters were already successful in the failing live run; explicitly initializing those
+locals restored stream admission. Repeated cold startups retain coverage for that path. This is a
+**compiler safety limitation**, not an intentional arithmetic-wrapping difference; compilation alone does not prove
+initialization safety. The integer-accumulator diagnostic above does not cover every scalar kind.
+
+Cumulative coverage is **63 native suites, forty-one independent corpora, 1,368 runtime misuse
+rejections and 666 compilation rejections**, plus the **16-case peer matrix, twelve repeated valid
+startups and nine CLI rejections**. Compilation rejections remain 562 privacy, 94 nominal, five
+schema, four static contracts and one ownership-lowering check. Formatting covers **851 Nim files**.
+The full runner hashes **974 source/test/configuration files** and records commands and endpoint
+outputs in `build/nimony-trial/verification/results.json`. The all-source semantic audit is **44/45**: the
+standalone `mesh.nim` include fragment still fails without its parent peer context. Its policy
+selftest passes through the real peer; retained mesh lifecycle and standalone module structure
+remain separate migration work. Offload-enabled compilation remains unverified.
+
+Results are local macOS ARM64 on pinned Nimony 0.6.3. Implemented-scope M1/M2 regression parity and
+normative gates are unchanged. Service/integrated lifecycle, mesh/reconnect/resilience, proof
+offload, Linux execution and a normal build/CI cutover remain open.
+
 ## Remaining work and next bounded increment
 
-Next: port the peer executable and verify authenticated CE 143 exchanges using the migrated
-identity, framing and integration dependencies. Retained services, mesh/resilience and enabled
+Next: retained CE 143 service and integrated digest lifecycle coverage, including retired stream
+owners, backpressure/cancellation and post-failure recovery. Mesh/reconnect/resilience and enabled
 proof offload follow as bounded increments.
 
 Further port work remains:
@@ -2190,8 +2250,9 @@ Further port work remains:
   documented release-reference/draft-text and Ed25519 policy gates remain.
 - M3: bounded POSIX UDP/readiness, descriptor retirement and linked transport setup/teardown pass
   locally. Shared identity/DER, structural framing and enabled integration ownership/results pass
-  too. Whole-peer validation, authenticated exchanges, service, mesh, resilience and enabled offload
-  compilation/runtime coverage remain migration gates.
+  too. The actual peer and one-shot authentication/framing matrix now pass locally. Retained
+  service/integrated lifecycle, mesh/reconnect/resilience and enabled offload compilation/runtime
+  coverage remain migration gates.
 - Toolchain: branch Linux installation/pinning, formatter setup and trial CI are configured.
   Linux execution, normal build commands and main documentation/CI cutover remain gates until the
   port demonstrates equivalent safety.

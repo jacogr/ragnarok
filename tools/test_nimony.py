@@ -788,6 +788,7 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
+                'src/quic/mesh.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
                 'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
                 'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
                 'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
@@ -2176,6 +2177,39 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
                 announce('QUIC '+origin+' '+member+' guard', passed)
+    # Shared process-startup and summary safeguards must stay effective with isolated compiler-specific binary paths.
+    report['quic_peer_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_harness.py'], 'quic-peer-harness')
+    report['ci_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_nimony_ci.py'], 'ci-harness')
+    # Build the actual peer entry point without invoking the historical compiler/build path.
+    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer', quic_library=quic_library)
+    report['quic_peer_build'] = compiled
+    report['quic_peer'] = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        # Parser, readiness and mesh policy tests are separate positive suites, not network parity claims.
+        for name, flag in (('quic_peer_parser', '--selftest'), ('quic_peer_io', '--io-selftest'),
+                           ('quic_peer_mesh_policy', '--mesh-selftest')):
+            result = command([binary, flag], name)
+            report['suites'].append(dict(name=name, build=compiled, run=result, passed=result['exit_code'] == 0))
+            announce(name, result['exit_code'] == 0)
+        from nimony_peer import exchanges, controls
+        try:
+            # Reuse the original identity/framing matrix and retain both endpoint outputs in the evidence.
+            report['quic_peer'] = exchanges(binary, quic_fixtures, BUILD/'peer-cases')
+            report['quic_peer_controls'] = controls(binary, quic_fixtures)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # Preserve failure instead of allowing a later slice to turn a failed network attempt green.
+            report['quic_peer'] = dict(passed=False, failure=str(error))
+        announce('authenticated CE 143 peer matrix and repeated startup', report['quic_peer']['passed'])
+    # The enabled entry point must compile its migrated integration call sites and retain the original selftest.
+    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-integration', crypto_library,
+                             quic_library=quic_library, defines=('integration',))
+    row = dict(name='quic_peer_integration', build=compiled, passed=False)
+    if compiled['exit_code'] == 0:
+        # This no-socket selftest proves enabled composition wiring, not integrated service lifecycle parity.
+        row['run'] = command([binary, '--integration-selftest'], 'quic-peer-integration-selftest')
+        row['passed'] = row['run']['exit_code'] == 0
+    report['suites'].append(row)
+    announce('enabled peer integration entry point', row['passed'])
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -2831,6 +2865,8 @@ def main():
                    and all(row['passed'] for row in report['bandersnatch'])
                    and report['bandersnatch_corpus']['passed']
                    and report['quic_protocol_corpus']['passed']
+                   and report['quic_peer_harness']['exit_code'] == 0 and report['ci_harness']['exit_code'] == 0
+                   and report['quic_peer']['passed'] and report.get('quic_peer_controls', {}).get('passed', False)
                    and report['integration_corpus']['passed']
                    and len(report['integration']) == 2*len(INTEGRATION_MEMBERS) and all(row['passed'] for row in report['integration'])
                    and len(report['quic_protocol']) == 8 and all(row['passed'] for row in report['quic_protocol'])

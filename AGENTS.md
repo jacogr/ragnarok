@@ -50,6 +50,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   builds. Nimony arithmetic intentionally wraps; do not emulate Nim 2 overflow exceptions or treat
   wrapping as a compiler failure. Prove/check sizes before additions, multiplication and narrowing.
   Guard result access with supported contracts. Use ARC/Clang LTO and profile before optimization.
+  Initialize every local scalar/pointer explicitly on Nimony; do not assume Nim 2 zero initialization.
+  The pinned nightly accepted uninitialized boolean flags and a callback lookup pointer in the peer;
+  successful compilation does not prove initialization safety for every scalar kind. See the trial.
 - The exceptional-point Ed25519 acceptance policy is unresolved. Preserve actual backend verdicts
   and document the remaining gate; do not tune acceptance to make a corpus pass.
 

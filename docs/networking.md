@@ -39,13 +39,18 @@ The unchanged pinned native library also passes 16 standalone engine cycles and 
 including failure recovery and independent sibling retirement. Nimony Linux CI includes this slice;
 actual Linux confirmation remains separate.
 
-The peer executable and broad lifecycle claims above describe the historical implemented behavior;
-they are still migration gates on this branch. Shared identity/DER and structural CE framing now
+The broad service/mesh/resilience/offload lifecycle claims above describe the historical implemented
+behavior and remain migration gates on this branch. The actual peer executable now builds under
+checked Nimony ARC/Clang LTO and passes its original parser/readiness and mesh-policy selftests.
+The original sixteen one-shot authentication/framing scenarios and twelve additional valid cold
+startups pass, with one OS thread per endpoint observed during the no-FIN case. The enabled
+integration entry point also builds and passes its no-socket capture selftest. Startup/control
+validation rejects nine malformed CLI cases. These are local macOS ARM64 results; Linux is pending. Shared identity/DER and structural CE framing now
 also pass their parser selftest, independent oracle and guarded-result checks. The peer delegates
 these checks to `src/quic/protocol.nim`; fixture content and integration policy remain in the peer.
 Enabled CE 143 fixture composition now also passes: private retained digest snapshots survive
 receive-buffer overwrite, guarded results refuse failed access, and immutable fixture banks publish
 only complete successful reloads. This is an integration workload, not a new normative relationship
 between C.2 fields and CE query keys.
-Next: the peer executable and authenticated CE 143 exchanges, followed by services, mesh/resilience
-and proof offload. See the [cumulative Nimony evidence](nimony-trial.md).
+Next: retained CE 143 service and integrated digest lifecycle coverage, followed by
+mesh/resilience and proof offload. See the [cumulative Nimony evidence](nimony-trial.md).

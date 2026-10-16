@@ -58,5 +58,6 @@ draft-text discrepancy, Ed25519 policy and Linux confirmation remain separate ga
 UDP/readiness and linked transport lifecycle checks now pass locally.
 Shared identity/DER/framing validation now also passes locally.
 CE 143 integration results and retained digest ownership now also pass locally.
-Next: the peer executable and authenticated CE 143 exchanges. See the [cumulative
+The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
+Next: retained CE 143 service and integrated digest lifecycle coverage. See the [cumulative
 trial](nimony-trial.md).
