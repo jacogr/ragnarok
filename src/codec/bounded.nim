@@ -14,7 +14,7 @@ type
   # Encoder output is stored in the caller's buffer; only successful results carry written.
   WriteResult* = object
     case error*: ContainerError
-    of ContainerError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       written*: int
     else:
@@ -23,7 +23,7 @@ type
   # A validated span in the original input, not a retained pointer or an allocated byte string.
   BlobResult* = object
     case error*: ContainerError
-    of ContainerError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       offset*, length*, consumed*: int
     else:
@@ -32,7 +32,7 @@ type
   # Values are copied into caller-owned typed storage; count selects the initialized prefix.
   SequenceResult* = object
     case error*: ContainerError
-    of ContainerError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       count*, consumed*: int
     else:
@@ -41,7 +41,7 @@ type
   # Internal frame proof: count remains uint64 until a caller proves it fits host indexing.
   FrameResult = object
     case error: ContainerError
-    of ContainerError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       count: uint64
       offset, consumed: int

@@ -24,7 +24,7 @@ type
   # Success carries a bounded blob; all error variants contain only their tag.
   WorkOutput* = object
     case kind*: WorkKind
-    of WorkKind.Success:
+    of Success:
       # Span coordinates refer to the same caller-owned pool/wire as the result.
       blob*: BlobSpan
     else:
@@ -45,7 +45,7 @@ type
   # Encoded storage belongs to the caller; only success carries written.
   CompositeWrite* = object
     case error*: CompositeError
-    of CompositeError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       written*: int
     else:
@@ -54,7 +54,7 @@ type
   # A decoded optional value, referring to input by coordinates rather than an allocated copy.
   OptionalResult* = object
     case error*: CompositeError
-    of CompositeError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       value*: OptionalBlob
       consumed*: int
@@ -64,7 +64,7 @@ type
   # A decoded work-output variant and its completed prefix length.
   WorkResult* = object
     case error*: CompositeError
-    of CompositeError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       value*: WorkOutput
       consumed*: int
@@ -74,7 +74,7 @@ type
   # Selects initialized caller-owned record storage only after every nested record validates.
   PreimageResult* = object
     case error*: CompositeError
-    of CompositeError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       count*, consumed*: int
     else:
@@ -83,7 +83,7 @@ type
   # Internal discriminator proof before constructing public variants.
   TaggedResult = object
     case error: CompositeError
-    of CompositeError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       tag: uint64
       blob: BlobSpan
@@ -103,12 +103,12 @@ proc alias(a: pointer, alen: int, b: pointer, blen: int): bool {.raises: [].} =
 # Preserve nested blob failures; unrelated container statuses cannot occur in this blob-only path.
 proc blobError(error: ContainerError): CompositeError {.raises: [].} =
   case error
-  of ContainerError.None: CompositeError.None # Validation succeeded.
-  of ContainerError.Truncated: CompositeError.Truncated # Prefix/payload bytes are missing.
-  of ContainerError.NonCanonical: CompositeError.NonCanonical # Overlong natural count.
-  of ContainerError.LimitExceeded: CompositeError.LimitExceeded # Caller policy was exceeded.
-  of ContainerError.OutputTooSmall: CompositeError.OutputTooSmall # Complete destination required.
-  of ContainerError.AliasedBuffers: CompositeError.AliasedBuffers # Protect borrowed source storage.
+  of None: CompositeError.None # Validation succeeded.
+  of Truncated: CompositeError.Truncated # Prefix/payload bytes are missing.
+  of NonCanonical: CompositeError.NonCanonical # Overlong natural count.
+  of LimitExceeded: CompositeError.LimitExceeded # Caller policy was exceeded.
+  of OutputTooSmall: CompositeError.OutputTooSmall # Complete destination required.
+  of AliasedBuffers: CompositeError.AliasedBuffers # Protect borrowed source storage.
   else: CompositeError.InvalidSpan # Reject an unexpected status rather than interpreting it as success.
 
 # Validate both span endpoints by subtraction, including empty spans at the end of the pool.
@@ -321,5 +321,5 @@ proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
   # Keep parent acceptance compatible with later materialization through the existing typed preimage-owner API.
   if count > uint64(high(int) div sizeof(Preimage)):
     return PreimageResult(error: CompositeError.LengthOverflow)
-  var unused: array[0, Preimage]
+  var unused: array[0, Preimage] = default(array[0, Preimage])
   walk(input, int(prefix.consumed), int(count), limits, unused, false, wireLimit)

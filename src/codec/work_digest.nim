@@ -34,7 +34,7 @@ type
   # Check error before reading value; failures have no consumed count or digest fields.
   DigestResult* = object
     case error*: CompositeError
-    of CompositeError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       value*: WorkDigest
       consumed*: int
@@ -65,7 +65,7 @@ proc encodeDigestBorrowed*(source: WorkDigest, pool: openArray[byte], limit: Byt
   let work = measureWork(value.output, pool.len, limit)
   # Invalid work variants/spans/policies cannot write the fixed prefix.
   if work.error != CompositeError.None: return work
-  var suffix: array[5, EncodedNatural]
+  var suffix: array[5, EncodedNatural] = default(array[5, EncodedNatural])
   var required = 76
   # The work extent must be representable before adding it to the fixed fields.
   if work.written > high(int) - required: return CompositeWrite(
@@ -107,7 +107,7 @@ proc decodeDigestBorrowed*(input: openArray[byte], limit: ByteLimit): DigestResu
   # Reject incomplete/invalid work outputs before interpreting suffix metrics.
   if work.error != CompositeError.None: return DigestResult(error: work.error)
   var cursor = 76 + work.consumed
-  var numbers: array[5, uint64]
+  var numbers: array[5, uint64] = default(array[5, uint64])
   # Every metric must be canonical and complete; a failing final field returns no digest.
   for i in 0..<5:
     let parsed = natural.decode(input.toOpenArray(cursor, input.len - 1))
@@ -116,10 +116,11 @@ proc decodeDigestBorrowed*(input: openArray[byte], limit: ByteLimit): DigestResu
           natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
     numbers[i] = uint64(parsed.value)
     cursor += parsed.consumed
-  var value: WorkDigest
+  var value: WorkDigest = default(WorkDigest)
   value.service = ServiceIndex(uint32(uint64(decodeFixed(input, ByteWidth(4)).value)))
   value.accumulateGas = Gas(uint64(decodeFixed(input.toOpenArray(68, 75), ByteWidth(8)).value))
-  var code, payload: array[32, byte]
+  var code: array[32, byte] = default(array[32, byte])
+  var payload: array[32, byte] = default(array[32, byte])
   # Copy fixed hashes into owned value storage; only the output blob remains borrowed.
   for i in 0..<32:
     code[i] = input[4 + i]

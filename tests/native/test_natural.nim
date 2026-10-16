@@ -1,21 +1,22 @@
+import std/[assertions, syncio]
 import ../../src/codec/natural
 
 # Verify a value round-trips, rejects every incomplete encoding, and leaves trailing bytes unread.
 proc check(x: uint64) =
   let encoded = encode(JamNatural(x))
   let decoded = decode(encoded.bytes.toOpenArray(0, encoded.len - 1))
-  doAssert decoded.ok and uint64(decoded.value) == x
-  doAssert decoded.consumed == encoded.len
+  assert decoded.ok and uint64(decoded.value) == x
+  assert decoded.consumed == encoded.len
   # Remove bytes from every possible cut point, including the header, to verify truncation errors.
   for size in 0..<encoded.len:
     let short = decode(encoded.bytes.toOpenArray(0, size - 1))
-    doAssert not short.ok and short.error == truncated
+    assert not short.ok and short.error == truncated
   var padded = newSeq[byte](encoded.len + 1)
   # Copy just the encoded prefix so the appended sentinel acts as an unrelated next field.
   for i in 0..<encoded.len: padded[i] = encoded.bytes[i]
-  padded[^1] = 42
+  padded[padded.len - 1] = 42
   let prefix = decode(padded)
-  doAssert prefix.ok and prefix.consumed == encoded.len
+  assert prefix.ok and prefix.consumed == encoded.len
 
 # Exhaust the first 65,536 values, covering all one- and two-byte forms and part of the next size.
 for x in 0'u64..65535'u64: check(x)
@@ -28,18 +29,18 @@ for bits in 1..63:
 check(high(uint64))
 # Exercise every possible header with zero payload bytes and enough storage to avoid truncation.
 for first in 0..255:
-  var bytes: array[9, byte]
+  var bytes: array[9, byte] = default(array[9, byte])
   bytes[0] = byte(first)
   let decoded = decode(bytes)
   # These headers contain no value bits; with a zero payload they are overlong encodings of zero.
   if first in [128, 192, 224, 240, 248, 252, 254, 255]:
-    doAssert not decoded.ok and decoded.error == nonCanonical
+    assert not decoded.ok and decoded.error == nonCanonical
   else:
     # Other headers contain enough value bits to be canonical; verify the bytes remain unchanged.
-    doAssert decoded.ok
+    assert decoded.ok
     let encoded = encode(decoded.value)
     # For an accepted header, re-encoding must reproduce its consumed bytes exactly.
-    for i in 0..<encoded.len: doAssert encoded.bytes[i] == bytes[i]
+    for i in 0..<encoded.len: assert encoded.bytes[i] == bytes[i]
 
 # Deterministic fuzz entry point, usable by external harnesses too.
 # Check the canonical-prefix invariant for any supplied byte sequence; invalid inputs may return errors.
@@ -48,14 +49,14 @@ proc fuzzOne*(input: openArray[byte]) =
   # Only accepted inputs have a value to re-encode; errors are valid outcomes for arbitrary bytes.
   if decoded.ok:
     let encoded = encode(decoded.value)
-    doAssert encoded.len == decoded.consumed
+    assert encoded.len == decoded.consumed
     # Compare every consumed byte, rather than only checking that the decoded number round-trips.
-    for i in 0..<encoded.len: doAssert encoded.bytes[i] == input[i]
+    for i in 0..<encoded.len: assert encoded.bytes[i] == input[i]
 
 var state = 0x123456789abcdef'u64
 # Use a fixed seed and vary lengths from zero through twelve so failures are reproducible.
 for iteration in 0..<10000:
-  var bytes: array[12, byte]
+  var bytes: array[12, byte] = default(array[12, byte])
   # Generate each byte with xorshift; this is deterministic test data, not cryptographic randomness.
   for i in 0..<bytes.len:
     state = state xor (state shl 13)

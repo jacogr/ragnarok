@@ -106,3 +106,8 @@ Integration/offload build distinct Nim binaries against already-built native lib
 runners retain their timeout, memory, descriptor and one-dispatcher-thread gates. Offload additionally
 observes two fixed worker threads. These finite tests are not production-capacity or leak-freedom claims.
 All build products and diagnostics go under `build/`; native production sources stay under `src/`.
+
+## Experimental compiler trial
+
+The `nimony` branch retains a [partial nightly port and safety comparison](nimony-trial.md).
+Use its dedicated runner; it does not replace the normal Nim 2 verification commands above.

@@ -25,7 +25,7 @@ type
 proc encode*(value: JamNatural): EncodedNatural {.raises: [].} =
   result = EncodedNatural(len: 1)
   let x = uint64(value)
-  var tail = 0
+  var tail: range[0..8] = 0
   # Find the payload size: each extra byte contributes eight bits but uses one more header bit.
   # This raises the value limit by seven bits per step; stop at eight to keep shifts below 64.
   while tail < 8 and x >= (1'u64 shl (7 * (tail + 1))):
@@ -49,7 +49,7 @@ proc decode*(input: openArray[byte]): DecodeResult {.raises: [].} =
   # A header is required even for zero; an empty buffer cannot contain a value.
   if input.len == 0:
     return DecodeResult(ok: false, error: truncated)
-  var tail = 0
+  var tail: range[0..8] = 0
   var mask = 128
   # Each leading one announces another payload byte; a zero terminates the header prefix.
   # The all-ones ff header announces eight bytes.

@@ -50,6 +50,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   and document the remaining gate; do not tune acceptance to make a corpus pass.
 
 ## Working style
+- On the experimental `nimony` branch, follow [the nightly trial](docs/nimony-trial.md). Keep the
+  trial source focused on Nimony; do not add dual-compiler compatibility layers. Nim 2 is only
+  a safety-comparison control. Do not switch normal CI until equivalent safety and test coverage
+  are demonstrated. Report missing overflow/variant guards as failures, never skip them.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
   review. Preserve its evidence, pending test and current codec behavior. Revisit during that
   specification upgrade or on an explicit maintainer request; do not invent interim restrictions.
