@@ -1,29 +1,42 @@
 ## Trusted independent state-component adapter; every observation is copied before caller storage is destroyed.
-import std/[os, strutils]
+import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_safrole, state_layout, state_trie, bounded, assurances]
 
 ## Decode trusted hex with a separate token for an empty source.
 proc unhex(text: string): seq[byte] =
   if text == "-": return @[] # Empty malformed inputs remain expressible.
-  doAssert text.len mod 2 == 0
+  assert text.len mod 2 == 0
   result = newSeq[byte](text.len div 2)
   # Copy source octets without host integer reordering.
-  for i in 0..<result.len: result[i] = byte(parseHexInt(text[2*i..2*i+1]))
+  for i in 0..<result.len:
+    let pair = text[2*i..2*i+1]
+    # Trusted fixture hex contains exactly two lowercase digits per byte.
+    for c in pair: assert c in {'0'..'9', 'a'..'f'}
+    var octet: byte = 0
+    assert parseHex(pair, octet) == 2
+    result[i] = octet
 
 ## Display exact bytes, preserving leading zeroes.
 proc hex(bytes: openArray[byte]): string =
   if bytes.len == 0: return "-" # Retain one token for empty observations.
+  result = ""
   # Each output byte is independently observable by Python.
-  for b in bytes: result.add(toHex(b, 2).toLowerAscii())
+  for b in bytes: result.add(toHex(int(b), 2).toLowerAscii())
+
+# Append copied fixture octets through the supported single-element sequence API.
+proc append(output: var seq[byte], bytes: openArray[byte]) =
+  # Trusted output storage remains local to one observation.
+  for octet in bytes: output.add(octet)
 
 ## Fixed typed fields are constructed directly from source bytes, not from production decoder output.
-proc fixed[N: static int](bytes: openArray[byte], offset: int): array[N, byte] =
+proc fixed[N: static[int]](bytes: openArray[byte], offset: int): array[N, byte] =
+  result = default(array[N, byte])
   # Trusted request schemas establish exact field widths before this helper runs.
   for i in 0..<N: result[i] = bytes[offset+i]
 
 ## Reconstruct authored validator source records with exact field positions.
 proc records(bytes: seq[byte]): seq[StateValidator] =
-  doAssert bytes.len mod 336 == 0
+  assert bytes.len mod 336 == 0
   result = newSeq[StateValidator](bytes.len div 336)
   # Field swaps become visible in encoder output against the independent source wire.
   for i in 0..<result.len:
@@ -34,7 +47,8 @@ proc records(bytes: seq[byte]): seq[StateValidator] =
 
 ## Build a fixed entropy source without asking the production decoder to define its schema.
 proc entropy(bytes: seq[byte]): StateEntropy =
-  doAssert bytes.len == 128
+  result = default(StateEntropy)
+  assert bytes.len == 128
   # The four words retain their accumulator/history positions.
   for i in 0..<4: result[i] = StateEntropyWord(fixed[32](bytes, i*32))
 
@@ -42,21 +56,27 @@ proc entropy(bytes: seq[byte]): StateEntropy =
 proc emit(entry: StateEntry) =
   echo hex(array[31, byte](entry.key)) & " " & hex(entry.value)
 
+# Parse complete unsigned fixture values without narrowing through signed host integers.
+proc unsigned(text: string): uint64 =
+  var number: uint64 = 0
+  assert text.len > 0 and parseBiggestUInt(text, number) == text.len
+  number
+
 ## Read trusted policy tokens as distinct core/element/byte limits.
 proc config(parts: seq[string], start: int): ValidatorStateConfig =
-  ValidatorStateConfig(cores: CoreCount(parseBiggestUInt(parts[start])),
-    validators: ElementLimit(parseBiggestUInt(parts[start+1])), maxBytes: ByteLimit(
-        parseBiggestUInt(parts[start+2])))
+  ValidatorStateConfig(cores: CoreCount(unsigned(parts[start])),
+    validators: ElementLimit(unsigned(parts[start+1])), maxBytes: ByteLimit(
+        unsigned(parts[start+2])))
 
 ## Execute one trusted request, selecting complete success before any field/progress access.
-proc request(parts: seq[string]) =
+proc request(parts: seq[string]) {.raises.} =
   case parts[0]
   of "E":
     # Encoding copies the entire entropy tuple into a chapter-6 entry.
     emit(entropyEntry(entropy(unhex(parts[1]))))
   of "T":
     # E4 source values include native uint32 boundaries.
-    emit(timeEntry(StateTime(parseBiggestUInt(parts[1]))))
+    emit(timeEntry(StateTime(unsigned(parts[1]))))
   of "ED":
     # Destroy original entropy bytes after decoding, before reading the returned fixed history.
     var bytes = unhex(parts[1])
@@ -64,9 +84,9 @@ proc request(parts: seq[string]) =
     if parsed.error != StateComponentError.None: echo ($parsed.error).toLowerAscii() # Failure has no progress.
     else:
       for i in 0..<bytes.len: bytes[i] = 0 # Copied entropy must survive caller mutation.
-      var output: seq[byte]
+      var output: seq[byte] = @[]
       # Observe each history word separately rather than round-tripping through the encoder.
-      for word in parsed.value.value: output.add(array[32, byte](word))
+      for word in parsed.value.value: append(output, array[32, byte](word))
       echo $parsed.value.consumed & " " & hex(output)
   of "TD":
     # Timeslot decoding consumes exactly four bytes and retains no source pointer.
@@ -93,36 +113,42 @@ proc request(parts: seq[string]) =
       for i in 0..<bytes.len: bytes[i] = 0 # Snapshot field observations must remain intact.
       let owner = parsed.value.value
       let count = validatorCount(owner)
-      doAssert count.error == StateComponentError.None
-      var output: seq[byte]
+      assert count.error == StateComponentError.None
+      var output: seq[byte] = @[]
       # Read fixed copies through the retained owner, without access to its private backing sequence.
       for i in 0..<count.value:
         let item = validatorAt(owner, StateValidatorIndex(i))
-        doAssert item.error == StateComponentError.None
-        output.add(array[32, byte](item.value.bandersnatch))
-        output.add(array[32, byte](item.value.ed25519))
-        output.add(array[144, byte](item.value.bls))
-        output.add(array[128, byte](item.value.metadata))
+        assert item.error == StateComponentError.None
+        append(output, array[32, byte](item.value.bandersnatch))
+        append(output, array[32, byte](item.value.ed25519))
+        append(output, array[144, byte](item.value.bls))
+        append(output, array[128, byte](item.value.metadata))
       echo $parsed.value.consumed & " " & $count.value & " " & hex(output)
   of "R":
     # Compose exactly the five implemented chapters into the existing serialized-entry trie API.
-    var entries = @[entropyEntry(entropy(unhex(parts[1]))), timeEntry(StateTime(parseBiggestUInt(
-        parts[2])))]
+    var entries = @[entropyEntry(entropy(unhex(parts[1]))), timeEntry(StateTime(unsigned(parts[2])))]
     let source = records(unhex(parts[3]))
     let policy = ValidatorStateConfig(cores: CoreCount(341), validators: ElementLimit(1023),
         maxBytes: ByteLimit(1_000_000))
     # Same roster contents in distinct chapters must remain distinct trie identities.
     for chapter in [ValidatorChapter.Staging, ValidatorChapter.Active, ValidatorChapter.Previous]:
       let encoded = validatorEntry(chapter, source, policy)
-      doAssert encoded.error == StateComponentError.None
+      assert encoded.error == StateComponentError.None
       entries.add(encoded.value)
     let root = stateTrieRoot(entries, StateTrieLimits(items: ElementLimit(5), perValue: ByteLimit(
         1_000_000),
       totalValueBytes: ByteLimit(4_000_000), nodes: TrieNodeLimit(2_000)))
-    doAssert root.error == StateTrieError.None
+    assert root.error == StateTrieError.None
     echo hex(array[32, byte](root.value.root)) & " " & $root.value.nodes
-  else: doAssert false # Unknown operations must not accidentally select a protocol schema.
+  else: assert false # Unknown operations must not accidentally select a protocol schema.
 
-# Each request owns and releases its source storage independently.
-for line in lines(paramStr(1)):
-  if line.len > 0: request(line.splitWhitespace()) # Blank trusted lines have no protocol operation.
+# Keep trusted file/argument parsing separate from typed component failures.
+proc main() {.raises.} =
+  # Each request owns and releases its mutable sources independently.
+  for line in lines(paramStr(1)):
+    if line.len > 0: request(line.splitWhitespace()) # Empty batch lines have no operation.
+try:
+  main()
+except:
+  # Trusted transport errors must not count as ordinary protocol rejection.
+  quit(2)

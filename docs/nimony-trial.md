@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **25 native suites, fourteen independent family corpora, 602 runtime misuse rejections and
-343 compilation rejections pass locally**. Bounded state trie construction now joins the verified
-scalar, owned, report, extrinsic-family, work-package, header, block, bitstring, collection, C.2,
-raw-crypto and state-key/node-layout slices.
+Status: **26 native suites, fifteen independent family corpora, 641 runtime misuse rejections and
+359 compilation rejections pass locally**. Entropy, validator-roster and timeslot state codecs
+now join the verified scalar, owned, report, extrinsic-family, work-package, header, block,
+bitstring, collection, C.2, raw-crypto, state-key/node-layout and bounded trie slices.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged.
@@ -760,12 +760,65 @@ plus three runtime language probes. Formatting covers **544 Nim files**; the fin
 records **477 matching source/test hashes**. Verification remains local macOS ARM64, checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity remain unverified.
 Protocol/native dependency pins and pristine upstream/compiler sources are unchanged.
 
+## Nineteenth increment: entropy, validator rosters and timeslot state
+
+`src/codec/state_safrole.nim` now runs on the same pristine nightly. It preserves Gray Paper
+0.8.0 T(state) chapters 6–9 and 11: four ordered fixed entropy words, staging/active/previous
+variable validator rosters and the exact E4 most-recent timeslot. This is structural serialization,
+not Safrole execution, key/point verification or a complete state root. Protocol/native dependency
+pins and pristine upstream/compiler sources are unchanged.
+
+`StateComponentResult[T]` hides status/payload behind a read-only reason and success-precondition
+getter, covering fixed reads, entry payloads, sizes, retained rosters, copied records and consumed
+progress. Roster handles use private nullable acyclic ARC references and stable checked locals.
+The decoder proves the whole wire extent before allocating copied records; accessors reject missing
+owners and check uint64 ordinals before native indexing. Source entry bytes remain caller-owned
+mutable values; decoded roster storage stays private and immutable.
+
+All **3,068 unchanged independent requests** and **six literal oracle checks** pass. Coverage
+retains exact chapter keys/record fields, E4 endianness and entropy order, all proper fixed-prefix
+truncations, every truncation of a six-record roster, larger record/prefix boundaries, natural
+transitions, populations through 1,023 and beyond, invalid counts/configuration, complete-byte and
+element limits, massive counts/native extent overflow, overlong/random input and unrelated suffixes.
+Three five-entry trie integrations match the separate list-partition reference. Four pre/post
+tiny/full state sources retain their frozen file hashes; their component encodings are derived
+fixtures, not standalone published binary vectors or passed Safrole transitions.
+
+Population validation still uses divisibility and count/3 versus cores, avoiding a configuration
+multiplication. Native wire/typed extents are checked before count narrowing and multiplication;
+byte policy includes the count prefix. The maximum uint64 population has valid divisibility but
+returns LengthOverflow before allocation. Exact size and prefix-scan checks remain 2,017 bytes
+for six records. No wrapping exception emulation or unsafe sequence descriptor is introduced.
+
+Native ownership tests retain a roster returned from a callee whose typed source, entry and wire
+aliases have retired. Replacing one same-sized owner does not affect an alias; extracted record
+mutation and destructive caller mutation cannot rewrite the snapshot. Fixed entropy/time values
+remain independent copies. Generated-C inspection identified unchecked integer-to-enum conversion
+in this nightly. `validatorEntry` now explicitly rejects chapter representations outside 7–9 with
+InvalidTag before building an entry. All 256 underlying chapter-byte values are tested; allowed
+chapters retain their exact namespace keys. This closes a typed-source validation gap without
+changing any accepted roster encoding. After 100 warmups, **1,000 scoped cycles return live occupancy
+6,368 → 6,368 bytes**, including replaced/retained owners, entry/fixed-value temporaries and
+invalid owner/index/framing/count paths. This is workload-specific live allocator occupancy,
+not RSS or a general leak-freedom claim. Allocation exhaustion keeps the existing fail-stop policy.
+
+This increment adds **39 runtime misuse rejections**: 38 default/actual failure reads across fixed
+values, entries, owners, records, sizes and progress, plus the original direct-time default probe.
+Actual failures include InvalidConfig, InvalidCount, Truncated, NonCanonical, LimitExceeded,
+LengthOverflow, InvalidOwner, InvalidIndex and InvalidTag. Chapter-4 tag/variant behavior
+remains unported. **16 compilation rejections** cover 14 private/read-only result/owner
+checks and the two original entropy/time and Ed25519/Bandersnatch domain probes. Cumulative totals
+are **641 runtime result/variant/constructor rejections, 359 compilation rejections (309 privacy +
+45 nominal + five schema), 26 positive native suites and fifteen family corpora**, plus three
+runtime language probes. Formatting covers **558 Nim files**; the final evidence records
+**498 matching source/test hashes**. Results remain local macOS ARM64,
+checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity remain unverified.
+
 ## Remaining work and next bounded increment
 
-Next: port the related M1 entropy, staging/active/previous validator-roster and timeslot state
-codecs (`src/codec/state_safrole.nim`, chapters 6–9 and 11), including immutable roster ownership,
-result guards, structural population limits and the existing independent state-entry/root corpus.
-Other state components remain later bounded chunks.
+Next: port M1 authorization pools and queues (`src/codec/state_authorization.nim`, chapters 1–2),
+including ordered core rows, immutable retained hash extraction, whole-input sizing, guarded
+results and the existing independent entry/root corpus. Other state components remain later chunks.
 
 Further port work remains:
 
@@ -800,7 +853,7 @@ The runner now targets **only Nimony**. It writes commands, compiler/nightly met
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package/header/block/bits/collection/C.2
-and raw-crypto/state-key/node-layout/trie slices.
+and raw-crypto/state-key/node-layout/trie/entropy-roster-time slices.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

@@ -135,5 +135,7 @@ The raw crypto primitive dependency now passes its vector, result, seed-erasure 
 State keys and fixed node layout/hashing now pass their complete independent corpus, fixed-copy,
 result/variant, backend-failure and nominal-domain checks. Bounded trie roots now pass their
 complete independent corpus, preflight, result, scratch-release and nominal-domain checks.
-The next compiler-port increment is entropy, validator rosters and timeslot state
-(`state_safrole.nim`, chapters 6–9 and 11). M1 migration remains partial.
+Entropy, validator rosters and timeslot state now pass their complete independent corpus,
+guarded results, retained-owner/copy checks, arithmetic and scoped release workload.
+The next compiler-port increment is authorization pools and queues (`state_authorization.nim`,
+chapters 1–2). M1 migration remains partial.

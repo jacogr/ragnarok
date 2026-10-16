@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -444,6 +444,45 @@ PRIVATE.update(TRIE_PRIVATE)
 NOMINAL.update(state_root_as_node='StateRoot', state_bytes_as_nodes='got: ByteLimit but wanted: TrieNodeLimit')
 TRIE_ORIGINS = ('default', 'item-limit', 'per-value-limit', 'total-value-limit',
                 'node-limit', 'duplicate', 'backend-first', 'backend-late')
+SAFROLE_PRIVATE = dict(
+    safrole_result_entropy_private='completed',
+    safrole_result_time_private='completed',
+    safrole_result_snapshot_private='completed',
+    safrole_result_entry_private='completed',
+    safrole_result_integer_private='completed',
+    safrole_result_validator_private='completed',
+    safrole_result_direct_time_private='completed',
+    safrole_result_retag='status',
+    safrole_result_forge='status',
+    safrole_result_error_write='error',
+    safrole_result_value_write='value',
+    safrole_owner_data='data',
+    safrole_owner_rebind='data',
+)
+SAFROLE_PRIVATE['state_validator_private'] = 'data'
+PRIVATE.update(SAFROLE_PRIVATE)
+NOMINAL.update(state_ed_as_bs='got: StateEdKey but wanted: StateBsKey', state_entropy_as_time='StateEntropyWord')
+SAFROLE_MEMBERS = (
+    'entry-tag',
+    'entropy-value',
+    'entropy-consumed',
+    'time-value',
+    'time-consumed',
+    'entry',
+    'snapshot',
+    'snapshot-consumed',
+    'prefix',
+    'size',
+    'count',
+    'item',
+    'index',
+    'size-overflow',
+    'decode-overflow',
+    'decode-config',
+    'decode-count',
+    'decode-policy',
+    'decode-noncanonical',
+)
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -492,7 +531,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -527,7 +566,8 @@ def main():
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
+                'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
+                'tests/test_state_safrole_harness.py', 'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
@@ -553,7 +593,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name == 'state_trie' else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -629,6 +669,13 @@ def main():
                 if release is not None:
                     # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
                     report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_safrole' and row['passed']:
+            # Escaped/replaced immutable roster owners and fixed-entry temporaries must retire at final ARC release.
+            release = re.search(r'STATE_SAFROLE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
+                report['safrole_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_trie_private' and row['passed']:
             # Temporary sorted-key scratch must retire after success, preflight rejection and early/late backend failure.
             release = re.search(r'TRIE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1061,6 +1108,30 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['trie_corpus'] = corpus
     announce('independent bounded state trie root corpus', corpus['passed'])
+    # Preserve independent entropy/time/roster bytes, malformed inputs, published derived fixtures and partial roots.
+    from state_safrole_oracle import requests as safrole_requests, published as safrole_published
+    harness = command([sys.executable, ROOT/'tests/test_state_safrole_harness.py'], 'safrole-harness')
+    lines, expected = safrole_requests()
+    source = BUILD/'safrole-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/state_safrole_driver.nim', 'safrole-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_derived_state_sources=len(safrole_published()),
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Native fields/consumed counts and roots are compared only with independently authored expectations.
+        result = command([binary, source], 'safrole-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep the first mismatch and complete native output for independent diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['safrole_corpus'] = corpus
+    announce('independent entropy/validator-roster/timeslot state corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1363,6 +1434,19 @@ def main():
             passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
             report['trie'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' trie '+member+' guard', passed)
+    # Every default/failed component result must reject values, owners, copied records and consumed progress.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_safrole_results.nim', 'safrole-results', crypto_library)
+    report['safrole_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate every failure cause; preserve the historical direct-time default probe too.
+        cases = [(member, origin) for origin in ('default', 'error') for member in SAFROLE_MEMBERS]
+        cases += [('direct-time', 'default')]
+        for member, origin in cases:
+            # Require the intended success contract rather than a crash or unrelated assertion.
+            result = command([binary, member, origin], 'safrole-'+origin+'-'+member)
+            passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['safrole'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' safrole '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -1390,6 +1474,11 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'state_entropy_as_time':
+            # Fixed entropy words cannot fill the E4 timeslot argument despite both being copied values.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'timeEntry(' in result['output']
+                        and '[1] expected: StateTime but got: '+member in result['output'])
         elif name == 'swapped_import_identity':
             # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
             rejected = ('Error: Type mismatch at [position]' in result['output']
@@ -1427,6 +1516,9 @@ def main():
                    and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
+                   and report['safrole_corpus']['passed']
+                   and len(report['safrole']) == 2*len(SAFROLE_MEMBERS)+1
+                   and all(row['passed'] for row in report['safrole'])
                    and len(report['trie']) == 3*len(TRIE_ORIGINS)+2
                    and all(row['passed'] for row in report['trie'])
                    and len(report['layout']) == 2*len(LAYOUT_MEMBERS)+len(LAYOUT_VARIANTS)
