@@ -1,4 +1,4 @@
 ## A bit-count resource ceiling cannot be supplied as a byte budget.
-import ../../../src/[bitstrings, bounded]
+import ../../../src/codec/[bitstrings, bounded]
 var input: array[1, byte]
 discard decodeBits(input, ByteLimit(8))

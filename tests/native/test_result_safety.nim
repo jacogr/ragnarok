@@ -1,4 +1,4 @@
-import ../../src/[natural, fixed_unsigned, bounded, composite, work_digest]
+import ../../src/codec/[natural, fixed_unsigned, bounded, composite, work_digest]
 
 # Deliberate caller misuse must raise the checked field error, never expose a default decoded value.
 template unavailable(expression: untyped) =

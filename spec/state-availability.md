@@ -7,7 +7,7 @@ identities are recorded in [pins.json](pins.json). No dependency or toolchain re
 
 ## Exact value and standalone guarantees
 
-`src/state_availability.nim` provides `availabilityStateEntry(values, config)` for C(10) and
+`src/codec/state_availability.nim` provides `availabilityStateEntry(values, config)` for C(10) and
 `decodeAvailabilityState(input, config)` for one complete component prefix. There is exactly one
 optional assignment for every configured core, in core-position order, **without an outer count**:
 

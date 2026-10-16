@@ -1,6 +1,6 @@
 ## Trusted bounded fixture adapter for independent guarantee fields and immutable owner checks.
 import std/[os, strutils]
-import ../../src/[guarantees, report_owned, owned, bounded, assurances]
+import ../../src/codec/[guarantees, report_owned, owned, bounded, assurances]
 
 # Decode trusted bounded public fixture text; a dash preserves an empty field token.
 proc unhex(text: string): seq[byte] =

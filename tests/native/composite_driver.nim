@@ -1,7 +1,7 @@
 ## Trusted local adapters for optional/work variants and complete nested preimages.
 import std/[os, strutils]
 import ./ownership_checks
-import ../../src/[composite, bounded]
+import ../../src/codec/[composite, bounded]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.
 proc parseBytes(text: string): seq[byte] =

@@ -1,5 +1,5 @@
 ## Supplementary snapshot, domain, index, late-failure and runtime variant-guard contracts.
-import ../../src/[state_privileges, bounded]
+import ../../src/codec/[state_privileges, bounded]
 
 ## Failed/default results must reject access to success payloads in checked optimized builds.
 proc guarded[T](value: PrivilegeResult[T]) =

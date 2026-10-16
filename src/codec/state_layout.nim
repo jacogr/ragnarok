@@ -1,7 +1,7 @@
 ## GP 0.8.0 state-key constructors and 64-byte trie-node layout, not trie construction/state serialization.
 ## See spec/state-layout.md; all outputs are fixed independent value copies with no caller-buffer mutation.
 import ./[bounded, composite]
-import ./crypto/primitives
+import ../crypto/primitives
 
 type
   # Chapter namespace octet is distinct from a service identifier or raw integer.

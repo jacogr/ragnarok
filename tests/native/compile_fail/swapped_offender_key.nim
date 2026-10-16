@@ -1,5 +1,5 @@
 ## Intentional rejection protects the public disputes type/ownership boundary.
-import ../../../src/[disputes]
+import ../../../src/codec/[disputes]
 
 var value: Culprit
 value.key = DisputeHash(default(array[32, byte]))

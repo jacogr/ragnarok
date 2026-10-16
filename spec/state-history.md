@@ -8,7 +8,7 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 
 ## Exact entry and field order
 
-`src/state_history.nim` provides `historyStateEntry(source, config)` for C(3) and
+`src/codec/state_history.nim` provides `historyStateEntry(source, config)` for C(3) and
 `decodeHistoryState(input, config)` for one complete value prefix:
 
 ```text

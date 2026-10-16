@@ -1,6 +1,6 @@
 ## Trusted source fields and immutable raw-value observations for service storage/preimage entries.
 import std/[os, strutils]
-import ../../src/[state_service_values, state_trie, bounded]
+import ../../src/codec/[state_service_values, state_trie, bounded]
 
 ## Preserve empty logical keys/values without adding framing bytes.
 proc unhex(text: string): seq[byte] =

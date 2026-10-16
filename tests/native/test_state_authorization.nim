@@ -1,5 +1,5 @@
 ## Supplementary ownership, copied-hash, index and guarded-result checks for authorization state.
-import ../../src/[state_authorization, bounded, assurances]
+import ../../src/codec/[state_authorization, bounded, assurances]
 
 ## Retain Nim variant checks so failure/default results cannot masquerade as populated owners or hashes.
 proc guarded[T](parsed: AuthorizationResult[T]) =

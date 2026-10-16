@@ -1,6 +1,6 @@
 ## GP v0.8.0 assurancesig: fixed owned transcripts and stateless validator-key/parent verification.
 import ./primitives
-import ../assurances
+import ../codec/assurances
 
 type
   # Expected block parent is distinct from an assurance anchor and from a computed digest.

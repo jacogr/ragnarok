@@ -8,7 +8,7 @@ compiler or toolchain revisions change. Service keys now match published E4 fram
 
 ## Current T/C.1 interpretation and public domains
 
-`src/state_statistics.nim` provides `activityStateEntry(source, config)` for C(13) and
+`src/codec/state_statistics.nim` provides `activityStateEntry(source, config)` for C(13) and
 `decodeActivityState(input, config)` for one complete component prefix:
 
 ```text

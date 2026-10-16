@@ -1,6 +1,6 @@
 ## Independent source fields and copied-value observations for C(255, service) metadata.
 import std/[os, strutils]
-import ../../src/[state_accounts, state_trie, bounded]
+import ../../src/codec/[state_accounts, state_trie, bounded]
 
 ## Preserve hostile empty input rather than replacing it with a valid zero discriminator.
 proc unhex(text: string): seq[byte] =

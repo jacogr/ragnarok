@@ -38,7 +38,7 @@ def blob_at(data, offset, limit, decode):
 
 # Run new native checks then compare exact variants and full nested records against independent results.
 def verify_composite(build, nim_flags, run, encode, decode):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/composite.nim'])
+    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/composite.nim'])
     run(['nim', 'c', *nim_flags, f'--out:{build / "nim-composite-tests"}', '-r', ROOT / 'tests/native/test_composite.nim'])
     for name in ('raw_service_index', 'raw_work_variant', 'wrong_preimage_limit'):
         # These files deliberately violate nominal fields/union arguments, not syntax or protocol data.

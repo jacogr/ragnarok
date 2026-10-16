@@ -1,5 +1,5 @@
 ## Whole-parent retention, dictionary association, peak presence, copied fields and result/index guards.
-import ../../src/[state_history, bounded, assurances]
+import ../../src/codec/[state_history, bounded, assurances]
 
 ## Failed/default results cannot expose a fabricated value, snapshot or consumed cursor.
 proc guarded[T](parsed: HistoryResult[T]) =

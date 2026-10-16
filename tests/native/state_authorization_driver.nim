@@ -1,6 +1,6 @@
 ## Trusted source/observation adapter for independent authorization state equations.
 import std/[os, strutils]
-import ../../src/[state_authorization, state_trie, bounded, assurances]
+import ../../src/codec/[state_authorization, state_trie, bounded, assurances]
 
 ## Keep an empty byte source expressible as a single transport token.
 proc unhex(text: string): seq[byte] =

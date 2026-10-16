@@ -1,5 +1,5 @@
 ## Supplementary immutable snapshot, fixed-copy and default/failure guard contracts.
-import ../../src/[state_safrole, bounded, assurances]
+import ../../src/codec/[state_safrole, bounded, assurances]
 
 ## Reading an inactive success field must trigger the retained checked-build field guard.
 proc guarded[T](parsed: StateComponentResult[T]) =

@@ -1,6 +1,6 @@
 ## Independent fixed source fields and retained logical observations for T chapter 16.
 import std/[os, strutils]
-import ../../src/[state_outputs, state_trie, bounded]
+import ../../src/codec/[state_outputs, state_trie, bounded]
 
 ## Preserve empty input without adding an encoded zero to hostile wire cases.
 proc unhex(text: string): seq[byte] =

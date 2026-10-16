@@ -1,6 +1,6 @@
 ## Trusted independent source/observation adapter for canonical chapter-5 sets.
 import std/[os, strutils]
-import ../../src/[state_disputes, state_trie, bounded]
+import ../../src/codec/[state_disputes, state_trie, bounded]
 
 ## Preserve empty set/input tokens without inventing a wire byte.
 proc unhex(text: string): seq[byte] =

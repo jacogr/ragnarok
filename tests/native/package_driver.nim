@@ -1,6 +1,6 @@
 ## Trusted independent field adapter for context/import/commitment/item/package codecs.
 import std/[os, strutils]
-import ../../src/[work_package, work_report, work_digest, composite, bounded]
+import ../../src/codec/[work_package, work_report, work_digest, composite, bounded]
 
 # Test-only success selection checks the failure branch before accessing expected-good getter fields.
 proc checked[T](parsed: PackageResult[T]): T =

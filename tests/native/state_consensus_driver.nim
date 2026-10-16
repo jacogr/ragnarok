@@ -1,6 +1,6 @@
 ## Trusted independent source/field adapter for chapter-4 serialization and immutable parent ownership.
 import std/[os, strutils]
-import ../../src/[state_consensus, state_safrole, state_trie, bounded, assurances]
+import ../../src/codec/[state_consensus, state_safrole, state_trie, bounded, assurances]
 
 ## Decode trusted hex with a separate token for an empty source.
 proc unhex(text: string): seq[byte] =

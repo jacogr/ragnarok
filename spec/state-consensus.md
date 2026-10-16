@@ -7,7 +7,7 @@ published fixture hashes are in [pins.json](pins.json). No dependency or toolcha
 
 ## Exact schema and sources
 
-`src/state_consensus.nim` provides `safroleStateEntry(source, config)` for C(4) and
+`src/codec/state_consensus.nim` provides `safroleStateEntry(source, config)` for C(4) and
 `decodeSafroleState(input, config)` for one complete value prefix. Its serialization is:
 
 ```text

@@ -1,6 +1,6 @@
 ## Trusted batch adapter compares independent logical bits, exact wire prefixes and immutable owner behavior.
 import std/[os, strutils]
-import ../../src/bitstrings
+import ../../src/codec/bitstrings
 
 # Require success before observing any completed native result or progress.
 proc checked[T](parsed: BitResult[T]): T =

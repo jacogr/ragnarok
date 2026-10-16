@@ -1,6 +1,6 @@
 ## Supplementary ring/source/copy/child-lifetime, typed owner/index and failure-guard contracts.
 import std/os
-import ../../src/[state_workqueues, report_owned, owned, bounded]
+import ../../src/codec/[state_workqueues, report_owned, owned, bounded]
 
 ## A failed/default tagged result must reject reads of its inactive success payload under checked LTO.
 proc guarded[T](value: WorkQueueResult[T]) =

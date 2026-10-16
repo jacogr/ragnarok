@@ -1,6 +1,6 @@
 ## Trusted independent assurances adapter, including deliberate overlap and lifetime probes.
 import std/[os, strutils]
-import ../../src/assurances
+import ../../src/codec/assurances
 
 # Bound and validate test hex independently of the production wire decoder.
 proc unhex(text: string): seq[byte] =

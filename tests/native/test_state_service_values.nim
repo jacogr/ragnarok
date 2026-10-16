@@ -1,5 +1,5 @@
 ## Supplementary retained key/value lifetime, independent copies, atomic destination and result contracts.
-import ../../src/[state_service_values, bounded]
+import ../../src/codec/[state_service_values, bounded]
 
 ## Default/failed results must reject inactive successful-payload reads under checked optimized builds.
 proc guarded[T](value: ServiceValueResult[T]) =

@@ -1,6 +1,6 @@
 ## Trusted field adapter for independent GP state-key/node wire equations and fixed-value lifetime checks.
 import std/[os, strutils]
-import ../../src/[state_layout, bounded, composite]
+import ../../src/codec/[state_layout, bounded, composite]
 
 # Select complete success before reading key, node, hash or consumed progress.
 proc checked[T](parsed: StateLayoutResult[T]): T =

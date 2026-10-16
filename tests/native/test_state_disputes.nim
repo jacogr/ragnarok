@@ -1,5 +1,5 @@
 ## Supplementary whole-state ownership, type-separated fields, result/index and copied-value checks.
-import ../../src/[state_disputes, bounded]
+import ../../src/codec/[state_disputes, bounded]
 
 ## Failed/default results must retain inactive-field protection in checked optimized builds.
 proc guarded[T](parsed: DisputeStateResult[T]) =

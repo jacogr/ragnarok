@@ -8,7 +8,7 @@ No upstream, toolchain or primitive upgrade is involved.
 
 ## Implemented component group
 
-`src/state_safrole.nim` serializes one related group of top-level state components:
+`src/codec/state_safrole.nim` serializes one related group of top-level state components:
 
 | Entry | Source | Exact raw value |
 | --- | --- | --- |

@@ -1,5 +1,5 @@
 ## Focused lifetime, immutable-copy, atomicity, alias and runtime result-guard tests.
-import ../../src/bitstrings
+import ../../src/codec/bitstrings
 
 # Only a selected complete success can supply native metadata, owners or written extents.
 proc checked[T](parsed: BitResult[T]): T =

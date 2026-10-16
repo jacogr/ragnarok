@@ -1,6 +1,6 @@
 # Codec APIs and ownership
 
-Production modules live directly under `src/`. [Pinned normative contracts](../spec/codec.md)
+Production codec modules live under `src/codec/`. [Pinned normative contracts](../spec/codec.md)
 and the other files under `spec/` define the exact wire rules, resource ceilings and failure precedence.
 
 | Module | Scope |

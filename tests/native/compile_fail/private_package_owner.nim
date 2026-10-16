@@ -1,5 +1,5 @@
 ## Intentional rejection protects nominal work-package identities or private owner storage.
-import ../../../src/[work_package]
+import ../../../src/codec/[work_package]
 
 var owner: OwnedWorkPackage
 discard owner.data

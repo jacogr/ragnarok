@@ -8,7 +8,7 @@ Protocol target: Gray Paper 0.8.0; the Bandersnatch draft-text/reference discrep
 
 ## Architecture
 
-Codecs and consensus-facing types live in `src/`. Protocol logic remains native Nim. Private,
+Codecs and consensus-facing types live in `src/codec/`. Protocol logic remains native Nim. Private,
 acyclic ARC owners retain immutable wire snapshots; borrowed paths use explicit lifetime contracts
 and caller-owned storage. Default/failed tagged results carry no values or progress metadata.
 

@@ -1,6 +1,6 @@
 ## Bounded trusted batch adapter for the tickets codec; no Python code runs in production.
 import std/[os, strutils]
-import ../../src/tickets
+import ../../src/codec/tickets
 
 # Decode bounded public fixture text into owned bytes; a dash denotes an empty byte sequence.
 proc unhex(text: string): seq[byte] =

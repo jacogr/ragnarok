@@ -1,7 +1,7 @@
 ## Trusted local adapter for complete work-digest encoding and decoding.
 import std/[os, strutils]
 import ./ownership_checks
-import ../../src/[composite, bounded, work_digest]
+import ../../src/codec/[composite, bounded, work_digest]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.
 proc parseBytes(text: string): seq[byte] =

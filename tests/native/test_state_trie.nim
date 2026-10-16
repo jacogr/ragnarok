@@ -1,5 +1,5 @@
 ## Supplementary runtime contracts for copied roots and guarded failure-only variants.
-import ../../src/[state_trie, state_layout, bounded]
+import ../../src/codec/[state_trie, state_layout, bounded]
 
 ## Assert inactive commitment fields retain Nim's checked variant guard.
 proc guarded(parsed: StateTrieResult[StateTrieCommitment]) =

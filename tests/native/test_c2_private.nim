@@ -1,5 +1,5 @@
 ## White-box project-owned private-wire aliases; external compilation probes enforce that storage remains inaccessible.
-include ../../src/c2_records
+include ../../src/codec/c2_records
 
 # Private fixture inspection requires a completely validated owner.
 proc checked[T](parsed: RecordResult[T]): T =

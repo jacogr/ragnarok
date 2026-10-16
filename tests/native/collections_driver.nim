@@ -1,6 +1,6 @@
 ## Trusted adapter independently constructs logical scalars and observes immutable collection fields and exact wire.
 import std/[os, strutils]
-import ../../src/[collections, natural, fixed_unsigned, bounded]
+import ../../src/codec/[collections, natural, fixed_unsigned, bounded]
 
 # Select success before reading any completed value, metadata or extent.
 proc checked[T](parsed: CollectionResult[T]): T =

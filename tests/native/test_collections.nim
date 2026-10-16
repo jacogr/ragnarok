@@ -1,5 +1,5 @@
 ## Focused collection lifetime, copy independence, strict policy, zero-width and source alias regressions.
-import ../../src/[collections, natural, fixed_unsigned, bounded]
+import ../../src/codec/[collections, natural, fixed_unsigned, bounded]
 
 # Select complete success before reading metadata, scalars or retained handles.
 proc checked[T](parsed: CollectionResult[T]): T =

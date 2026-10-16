@@ -1,5 +1,5 @@
 ## A byte ceiling cannot silently become an aggregate authorizer-count ceiling.
-import ../../../src/[state_authorization, bounded]
+import ../../../src/codec/[state_authorization, bounded]
 var bytes: ByteLimit
 let policy = AuthorizationConfig(maxHashes: bytes)
 discard policy

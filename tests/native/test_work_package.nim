@@ -1,5 +1,5 @@
 ## Focused checked owner lifetimes, complete-output atomicity, alias and context/report consistency tests.
-import ../../src/[work_package, work_report, work_digest, composite, bounded]
+import ../../src/codec/[work_package, work_report, work_digest, composite, bounded]
 
 # Test-only success selection always checks the result branch before accessing a value.
 proc checked[T](parsed: PackageResult[T]): T =

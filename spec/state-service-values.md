@@ -8,7 +8,7 @@ not change.
 
 ## Key namespaces and exact raw values
 
-`src/state_service_values.nim` exposes separate source constructors:
+`src/codec/state_service_values.nim` exposes separate source constructors:
 
 ```text
 serviceStorageKey / serviceStorageEntry:

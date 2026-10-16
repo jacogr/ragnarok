@@ -1,6 +1,6 @@
 ## Trusted independent typed-source and field-observation adapter for header/marker codecs.
 import std/[os, strutils]
-import ../../src/[header, bounded, assurances, tickets]
+import ../../src/codec/[header, bounded, assurances, tickets]
 
 # Every expected-success getter selects the result branch before reading any value or progress.
 proc checked[T](parsed: HeaderResult[T]): T =

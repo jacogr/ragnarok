@@ -1,6 +1,6 @@
 ## Trusted independent state-component adapter; every observation is copied before caller storage is destroyed.
 import std/[os, strutils]
-import ../../src/[state_safrole, state_layout, state_trie, bounded, assurances]
+import ../../src/codec/[state_safrole, state_layout, state_trie, bounded, assurances]
 
 ## Decode trusted hex with a separate token for an empty source.
 proc unhex(text: string): seq[byte] =

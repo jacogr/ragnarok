@@ -1,5 +1,5 @@
 ## Tagged shape/result guards, fixed scope copies and explicit request-namespace overlap evidence.
-import ../../src/[state_requests, state_service_values, state_trie, bounded]
+import ../../src/codec/[state_requests, state_service_values, state_trie, bounded]
 
 ## Failed/default results must retain inactive-success-field protection in checked optimized builds.
 proc guarded[T](value: RequestResult[T]) =

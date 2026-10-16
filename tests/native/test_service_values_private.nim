@@ -1,5 +1,5 @@
 ## Privileged native misuse test: safe public APIs cannot expose a backing alias, but atomic copy still guards it.
-include ../../src/state_service_values
+include ../../src/codec/state_service_values
 
 ## Exact and shifted retained-storage destinations must reject before modifying any captured byte.
 proc main() =

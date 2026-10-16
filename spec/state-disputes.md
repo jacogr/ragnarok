@@ -7,7 +7,7 @@ recorded in [pins.json](pins.json). No upstream revision, dependency or toolchai
 
 ## Exact entry and canonical ordering
 
-`src/state_disputes.nim` provides `disputeStateEntry(source, config)` for C(5) and
+`src/codec/state_disputes.nim` provides `disputeStateEntry(source, config)` for C(5) and
 `decodeDisputeState(input, config)` for one complete component prefix. The raw value is:
 
 ```text

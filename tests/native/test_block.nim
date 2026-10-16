@@ -1,6 +1,7 @@
 ## Focused public composite ownership, child materialization, stricter-policy and atomicity regressions.
 import std/os
-import ../../src/[block_codec, bounded, composite, owned, tickets, assurances, guarantees, disputes, header]
+import ../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,
+    disputes, header]
 
 # Select complete successful parent values before reading fields/progress.
 proc checked[T](parsed: FrameResult[T]): T =

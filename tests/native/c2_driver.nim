@@ -1,6 +1,6 @@
 ## Independent source construction and copied-field observations for the remaining C.2 records.
 import std/[os, strutils]
-import ../../src/[c2_records, bounded, composite, work_digest, work_report, assurances]
+import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
 
 # Require complete success before reading any fixed fields, owner or consumed/written extent.
 proc checked[T](parsed: RecordResult[T]): T =

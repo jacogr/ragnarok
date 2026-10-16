@@ -1,6 +1,6 @@
 ## CE 143 test preimages are complete C.2 digests; codec/crypto policy stays native, outside the transport ABI.
 import std/[os]
-import ../[owned, bounded]
+import ../codec/[owned, bounded]
 when defined(integration):
   # Only explicitly integrated binaries link the existing pinned crypto ABI.
   import ../crypto/primitives

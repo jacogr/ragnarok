@@ -1,5 +1,5 @@
 ## Supplementary immutable lifetime, copied tuple, independent population and result/index guards.
-import ../../src/[state_statistics, bounded]
+import ../../src/codec/[state_statistics, bounded]
 
 ## Failed/default alternatives must retain active runtime protection against success-payload access.
 proc guarded[T](parsed: ActivityResult[T]) =

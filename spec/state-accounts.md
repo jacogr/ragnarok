@@ -8,7 +8,7 @@ existing parity gates do not change.
 
 ## Exact version-zero schema
 
-`src/state_accounts.nim` provides `serviceMetadataEntry(service, metadata, maxBytes)` and
+`src/codec/state_accounts.nim` provides `serviceMetadataEntry(service, metadata, maxBytes)` and
 `decodeServiceMetadata(input, maxBytes)`. The entry key uses existing `chapterServiceKey`:
 255 followed by the four little-endian service-ID octets at key positions 1,3,5,7, with all other
 key octets zero. The source service ID is **not** encoded again in the metadata payload:

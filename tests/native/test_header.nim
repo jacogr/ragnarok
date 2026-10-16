@@ -1,5 +1,5 @@
 ## Native full/unsigned/marker ownership, lifetime, atomicity, alias and guarded-alternative regressions.
-import ../../src/[header, bounded, assurances, tickets]
+import ../../src/codec/[header, bounded, assurances, tickets]
 
 # Expected-success paths select the result branch before accessing complete values/progress.
 proc checked[T](parsed: HeaderResult[T]): T =

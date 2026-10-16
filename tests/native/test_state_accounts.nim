@@ -1,5 +1,5 @@
 ## Fixed-value metadata contracts: no heap owner, independent source/input copies and failure guards.
-import ../../src/[state_accounts, bounded]
+import ../../src/codec/[state_accounts, bounded]
 
 ## Default and failed results must reject inactive successful-payload reads under checked optimized builds.
 proc guarded[T](parsed: ServiceMetadataResult[T]) =

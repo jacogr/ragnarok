@@ -1,5 +1,5 @@
 ## Intentional wrong-domain assignment must be rejected before runtime.
 import ../../../src/crypto/[primitives, assurance_context]
-import ../../../src/assurances
+import ../../../src/codec/assurances
 let value: AssuranceParent = default(AssuranceAnchor)
 discard value

@@ -1,5 +1,5 @@
 ## Supplementary scope retention, fixed-copy independence and result/owner/index guards for output logs.
-import ../../src/[state_outputs, bounded]
+import ../../src/codec/[state_outputs, bounded]
 
 ## Default/failed tagged alternatives must reject successful payload reads under checked optimized builds.
 proc guarded[T](value: OutputLogResult[T]) =

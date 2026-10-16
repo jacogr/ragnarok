@@ -25,5 +25,5 @@ zero. This holds even when the input contains bytes for subsequent fields.
 
 ## API and validation
 
-See [the Nim codec guide](../docs/codec.md) and source modules under `src/`.
+See [the Nim codec guide](../docs/codec.md) and source modules under `src/codec/`.
 Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.

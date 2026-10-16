@@ -1,5 +1,5 @@
 ## Native disputes default/variant, owner lifetime, atomicity and nested-alias regressions.
-import ../../src/[disputes, bounded, assurances]
+import ../../src/codec/[disputes, bounded, assurances]
 
 # Test-only success selection makes every expected-good getter check its failure branch explicitly.
 proc checked[T](parsed: DisputeResult[T]): T =

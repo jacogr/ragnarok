@@ -9,7 +9,7 @@ is the remaining parked state-parity question.
 
 ## Chapter capture and ownership
 
-`src/state_composition.nim` provides `captureStateChapter(chapter, bytes, profile, policy)` and
+`src/codec/state_composition.nim` provides `captureStateChapter(chapter, bytes, profile, policy)` and
 `composeState(chapters, services, limits, maxStorageKeyBytes)`.
 
 `StateChapterId` names all sixteen required slots. Capturing dispatches to the existing typed

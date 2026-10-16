@@ -1,4 +1,4 @@
-import ../../src/fixed_unsigned
+import ../../src/codec/fixed_unsigned
 
 # Check the value, exact byte count, all shorter prefixes and preservation of the next field.
 proc checkFixed(x: uint64, count: int) =

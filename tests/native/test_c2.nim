@@ -1,5 +1,5 @@
 ## Focused C.2 lifetime, resource, alias and selected-alternative regressions.
-import ../../src/[c2_records, bounded, composite, work_digest, work_report, assurances]
+import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
 
 # Complete success is required before reading application fields, retained owners or progress.
 proc checked[T](parsed: RecordResult[T]): T =

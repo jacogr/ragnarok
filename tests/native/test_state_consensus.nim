@@ -1,5 +1,5 @@
 ## Whole-parent ownership, variant and copied-child regression checks.
-import ../../src/[state_consensus, state_safrole, bounded, assurances]
+import ../../src/codec/[state_consensus, state_safrole, bounded, assurances]
 
 ## Failed/default alternatives must retain checked Nim inactive-field protection.
 proc guarded[T](parsed: StateComponentResult[T]) =

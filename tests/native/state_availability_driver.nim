@@ -1,6 +1,6 @@
 ## Trusted independent typed-source and retained-child observer for chapter 10.
 import std/[os, strutils]
-import ../../src/[state_availability, guarantees, report_owned, owned, state_trie, bounded, assurances]
+import ../../src/codec/[state_availability, guarantees, report_owned, owned, state_trie, bounded, assurances]
 
 ## Preserve empty malformed report/input tokens without inventing protocol bytes.
 proc unhex(text: string): seq[byte] =

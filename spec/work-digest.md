@@ -31,11 +31,11 @@ uint64 range supported by the pinned general-natural encoder. The codec does
 not check state-dependent limits, code availability or hash validity.
 
 Public functions are `encodeDigestBorrowed` and `decodeDigestBorrowed` /
-`decode_digest_borrowed`, in `src/work_digest.nim`.
+`decode_digest_borrowed`, in `src/codec/work_digest.nim`.
 `RefineLoad` groups the five typed metrics. The full tuple is
 `WorkDigest`.
 
 ## API and validation
 
-See [the Nim codec guide](../docs/codec.md) and source modules under `src/`.
+See [the Nim codec guide](../docs/codec.md) and source modules under `src/codec/`.
 Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.

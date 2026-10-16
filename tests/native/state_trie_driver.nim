@@ -1,6 +1,6 @@
 ## Trusted batch adapter exposes complete roots/counts or failure-only reasons.
 import std/[os, strutils]
-import ../../src/[state_trie, state_layout, bounded]
+import ../../src/codec/[state_trie, state_layout, bounded]
 
 ## Read exact trusted hex tokens; production state values remain raw bytes.
 proc unhex(text: string): seq[byte] =

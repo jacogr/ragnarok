@@ -1,6 +1,6 @@
 ## Independent trusted named-field construction for M2 assurance context tests.
 import std/[os, strutils]
-import ../../src/assurances
+import ../../src/codec/assurances
 import ../../src/crypto/[primitives, assurance_context]
 
 # Decode only bounded trusted test tokens; no production parsing behavior is hidden here.

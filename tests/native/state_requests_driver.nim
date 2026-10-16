@@ -1,6 +1,6 @@
 ## Independent tagged source histories and fixed-copy observations for service request entries.
 import std/[os, strutils]
-import ../../src/[state_requests, state_trie, bounded]
+import ../../src/codec/[state_requests, state_trie, bounded]
 
 ## Preserve malformed empty input without inserting a valid empty-history count.
 proc unhex(text: string): seq[byte] =

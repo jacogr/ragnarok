@@ -1,6 +1,6 @@
 ## Independent decimal-field source transport and copied-value observation for chapter 13.
 import std/[os, strutils]
-import ../../src/[state_statistics, state_trie, bounded]
+import ../../src/codec/[state_statistics, state_trie, bounded]
 
 ## Preserve empty arrays and malformed empty wire without inventing protocol bytes.
 proc unhex(text: string): seq[byte] =

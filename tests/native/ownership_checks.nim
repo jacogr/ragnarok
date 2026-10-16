@@ -1,5 +1,5 @@
 ## Shared adapter assertions: owned snapshots must match every successful borrowed conformance decode.
-import ../../src/[bounded, composite, work_digest, owned]
+import ../../src/codec/[bounded, composite, work_digest, owned]
 
 # Compare snapshot bytes to the independently checked canonical prefix and each validated payload.
 proc verifySnapshot(frame: OwnedFrame, wire: openArray[byte], consumed: int,

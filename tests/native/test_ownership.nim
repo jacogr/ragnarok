@@ -1,5 +1,5 @@
 ## Owned snapshot regressions: mutation, original lifetime, detached copies, typed failures and nested records.
-import ../../src/[bounded, composite, work_digest, owned]
+import ../../src/codec/[bounded, composite, work_digest, owned]
 import ./ownership_checks
 
 # Return a snapshot made from local stack storage; ARC must retain the copied bytes across this scope.

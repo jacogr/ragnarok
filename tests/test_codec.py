@@ -154,7 +154,7 @@ def official_fixed_cases():
 
 # Build the fixed-width adapters and compare valid, malformed and overflowing cases against the independent reference.
 def verify_fixed(build, nim_flags):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/fixed_unsigned.nim'])
+    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/fixed_unsigned.nim'])
     run(['nim', 'c', *nim_flags, f'--out:{build / "nim-fixed-tests"}', '-r',
          ROOT / 'tests/native/test_fixed_unsigned.nim'])
     # Domain distinctions must reject raw values, raw widths and general naturals in Nim.
@@ -239,7 +239,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='ragnarok-codec-') as temporary:
         build = Path(temporary)
         nim_flags = ['--mm:arc', f'--nimcache:{build / "nimcache"}']
-        run(['nim', 'check', '--mm:arc', ROOT / 'src/natural.nim'])
+        run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/natural.nim'])
         run(['nim', 'c', *nim_flags, f'--out:{build / "nim-tests"}', '-r', ROOT / 'tests/native/test_natural.nim'])
         # Result misuse is rejected even when a caller omits its success check; verify debug and release field guards.
         for mode in ([], ['-d:release']):

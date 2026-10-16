@@ -1,4 +1,4 @@
-import ../../src/[composite, bounded]
+import ../../src/codec/[composite, bounded]
 
 # Arbitrary-byte entry point: all successful values re-encode their consumed prefix, and errors preserve records.
 proc fuzzComposite*(input: openArray[byte]) =

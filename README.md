@@ -73,7 +73,7 @@ packages. Generated builds, temporary keys, observations and logs stay under ign
 
 | Path | Purpose |
 | --- | --- |
-| `src/` | Nim codecs and owned snapshots |
+| `src/codec/` | Nim codecs, consensus-facing types and owned snapshots |
 | `src/crypto/` | Blake2b-256, Ed25519, Keccak-256 and signing contexts |
 | `src/bandersnatch/` | Typed release-reference IETF VRF/RingVRF adapter and domain policy |
 | `src/quic/` | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload |

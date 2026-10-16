@@ -1,6 +1,6 @@
 ## Batch test/fuzz adapter. Request file is trusted local harness input.
 import std/[os, strutils]
-import ../../src/natural
+import ../../src/codec/natural
 
 # Process one trusted batch request at a time, producing one response for each nonempty line.
 for line in readFile(paramStr(1)).splitLines():

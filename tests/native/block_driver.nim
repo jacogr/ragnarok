@@ -1,6 +1,7 @@
 ## Trusted full-parent adapter: independent typed child sources, ownership checks and exact prefix observation.
 import std/[os, strutils]
-import ../../src/[block_codec, bounded, composite, owned, tickets, assurances, guarantees, disputes, header]
+import ../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,
+    disputes, header]
 
 # Select expected parent success before reading complete values or consumed progress.
 proc checked[T](parsed: FrameResult[T]): T =

@@ -1,6 +1,6 @@
 ## Verify complete report bytes and independently supplied guarantee credentials without timing code.
 import std/[os, strutils]
-import ../../src/[composite, work_report]
+import ../../src/codec/[composite, work_report]
 import ../../src/crypto/[primitives, guarantee]
 
 # Render every public byte so the Python fixture oracle can check exact transcript construction.

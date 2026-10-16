@@ -1,6 +1,6 @@
 ## Trusted field transport for independently authored chapter-12 source and wire requests.
 import std/[os, strutils]
-import ../../src/[state_privileges, state_trie, bounded]
+import ../../src/codec/[state_privileges, state_trie, bounded]
 
 ## Preserve empty malformed input without adding a byte to the protocol stream.
 proc unhex(text: string): seq[byte] =

@@ -31,7 +31,7 @@ def frame(data, width, limit, reference_decode):
 
 # Exercise byte strings and fixed-unsigned sequences using references and official unmodified blob spans.
 def verify_bounded(build, nim_flags, run, reference_encode, reference_decode):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/bounded.nim'])
+    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/bounded.nim'])
     run(['nim', 'c', *nim_flags, f'--out:{build / "nim-bounded-tests"}', '-r',
          ROOT / 'tests/native/test_bounded.nim'])
     # New limit/value distinctions must fail for both compilers, in addition to existing primitive checks.

@@ -80,7 +80,7 @@ def parse_digest(data, limit, decode):
 
 # Build/test both native codecs then compare exact full frames and decoded fields with the independent oracle.
 def verify_digest(build, nim_flags, run, encode, decode):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/work_digest.nim'])
+    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/work_digest.nim'])
     run(['nim', 'c', *nim_flags, f'--out:{build / "nim-digest-tests"}', '-r', ROOT / 'tests/native/test_work_digest.nim'])
     # Negative fixtures reject wrong nominal fields, rather than relying on runtime assertions.
     for name in ('swapped_digest_hash', 'raw_digest_gas', 'wrong_digest_metric'):

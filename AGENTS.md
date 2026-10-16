@@ -87,7 +87,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Suggesting a message does not authorize creating a commit; commit only when the maintainer asks.
 
 ## Layout
-- `src/`: Nim codec modules, `crypto/`, `bandersnatch/` and `quic/`.
+- `src/`: Nim modules grouped under `codec/`, `crypto/`, `bandersnatch/` and `quic/`.
 - `tests/`: independent Python references/runners; `native/` contains Nim fixtures and selftests.
 - `native/`: maintained C/Rust primitive and transport bridges.
 - `spec/`, `vectors/`, `vendor/`: protocol interpretation, project fixtures and pinned upstreams.

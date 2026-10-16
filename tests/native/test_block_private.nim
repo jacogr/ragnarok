@@ -1,5 +1,5 @@
 ## White-box project-owned alias regression; public probes separately prove these fields are inaccessible.
-include ../../src/block_codec
+include ../../src/codec/block_codec
 
 # Expected-good snapshots alone authorize private test backing-allocation setup.
 proc checked[T](parsed: FrameResult[T]): T =

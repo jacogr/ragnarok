@@ -1,4 +1,4 @@
-import ../../src/natural
+import ../../src/codec/natural
 
 # Verify a value round-trips, rejects every incomplete encoding, and leaves trailing bytes unread.
 proc check(x: uint64) =

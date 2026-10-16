@@ -1,6 +1,6 @@
 ## Retained full-guarantee/report lifetimes, optional fields, independent slots and failure/index guards.
 import std/os
-import ../../src/[state_availability, guarantees, report_owned, owned, bounded, assurances]
+import ../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances]
 
 ## Failed/default results cannot expose a fabricated owner or progress under optimized builds.
 proc guarded[T](parsed: AvailabilityResult[T]) =

@@ -1,6 +1,6 @@
 ## Trusted fixture transport and supplementary ownership/default/association guards.
 import std/[os, strutils]
-import ../../src/[state_composition, state_trie, state_layout, bounded, assurances,
+import ../../src/codec/[state_composition, state_trie, state_layout, bounded, assurances,
   state_consensus, state_safrole, state_privileges, state_accounts, state_service_values, state_requests]
 
 ## Empty payloads use one explicit token; all other bytes retain exact order.

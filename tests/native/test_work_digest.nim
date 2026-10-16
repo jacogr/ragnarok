@@ -1,4 +1,4 @@
-import ../../src/[work_digest, composite, bounded]
+import ../../src/codec/[work_digest, composite, bounded]
 
 # Arbitrary-input entry point checks successful metadata and exact full-prefix reconstruction without allocation.
 proc fuzzDigest*(input: openArray[byte]) =

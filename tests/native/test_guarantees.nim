@@ -1,6 +1,6 @@
 ## Native guarantee owner, late-failure, alias and default-result safety checks.
 import std/os
-import ../../src/[guarantees, report_owned, owned, bounded, assurances]
+import ../../src/codec/[guarantees, report_owned, owned, bounded, assurances]
 
 # Copy a fixture file into explicit owned octets without type-punning a mutable string.
 proc bytes(path: string): seq[byte] =

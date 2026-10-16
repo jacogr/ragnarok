@@ -1,6 +1,6 @@
 ## Trusted independent source and immutable observation adapter for state chapters 14/15.
 import std/[os, strutils]
-import ../../src/[state_workqueues, report_owned, owned, state_trie, bounded]
+import ../../src/codec/[state_workqueues, report_owned, owned, state_trie, bounded]
 
 ## Empty transport tokens preserve malformed empty input or an empty source set without a fake byte.
 proc unhex(text: string): seq[byte] =

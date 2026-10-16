@@ -1,6 +1,6 @@
 ## Trusted local batch adapter: FE <width> <value> or FD <width> <hex bytes>.
 import std/[os, strutils]
-import ../../src/fixed_unsigned
+import ../../src/codec/fixed_unsigned
 
 # Translate typed native errors into stable text labels for the shared harness.
 proc errorText(error: FixedError): string =
