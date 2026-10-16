@@ -797,7 +797,7 @@ def main():
                 'tests/native/compile_fail/quic_io_endpoint_copy.nim',
                 'tests/test_bandersnatch.py', 'tests/native/bandersnatch_driver.nim', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
                 'native/bandersnatch/src/lib.rs', 'native/bandersnatch/Cargo.toml', 'native/bandersnatch/Cargo.lock',
-                'spec/bandersnatch-pins.json', '.github/workflows/nimony-linux.yml','src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
+                'spec/bandersnatch-pins.json', '.github/workflows/linux.yml','src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
                 'tests/native/report_check.nim', 'tests/test_report_signature_harness.py','src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
                 'tests/assurance_crypto_oracle.py', 'tests/test_assurance_crypto_harness.py', 'vectors/assurance-context.json','tests/native/driver.nim', 'tests/native/fixed_driver.nim',
                 'tests/native/bounded_driver.nim', 'tests/native/composite_driver.nim', 'tests/native/digest_driver.nim',

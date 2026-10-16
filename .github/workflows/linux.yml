@@ -15,9 +15,7 @@ concurrency:
 
 jobs:
   linux:
-    # The experimental branch is checked by nimony-linux.yml using its selected compiler.
-    if: github.ref_name != 'nimony' && github.head_ref != 'nimony'
-    name: Nim codec, crypto and QUIC (Ubuntu 24.04 x86-64)
+    name: Nimony codec, crypto and QUIC (Ubuntu 24.04 x86-64)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -26,368 +24,105 @@ jobs:
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
-
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Pinned source submodules
-        run: python3 tools/setup_submodules.py
-
       - name: Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-
       - name: Native Linux dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y build-essential clang lld cmake zlib1g-dev openssl
-          mkdir -p build/ci
-          uname -a | tee build/ci/platform.log
-          clang --version | tee -a build/ci/platform.log
-
-      - name: Pinned Nim and bundled formatter
-        run: python3 tools/setup_ci_linux.py --destination "$RUNNER_TEMP/ragnarok-tools"
-
-      - name: Pinned Rust for Bandersnatch
+          mkdir -p build/nimony-ci
+          uname -a | tee build/nimony-ci/platform.log
+          clang --version | tee -a build/nimony-ci/platform.log
+      - name: Pinned Nimony and formatter
+        run: python3 tools/setup_nimony_ci_linux.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
+      - name: Pinned pristine source submodules
+        run: python3 tools/setup_submodules.py
+      - name: Pinned Rust and locked Bandersnatch registry dependencies
         run: |
           rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
           echo "RUSTUP_TOOLCHAIN=1.99.0" >> "$GITHUB_ENV"
-          rustup run 1.99.0 rustc --version
-
+          rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
+      - name: CI installer and reporting safeguards
+        run: python3 tests/test_nimony_ci.py
       - name: Protocol source and migration provenance
         run: python3 tests/test_spec.py
-
       - name: Formatting
         run: python3 tools/format.py --check
-
-      - name: Codec conformance and native tests
-        run: python3 tests/test_codec.py 2>&1 | tee build/ci/codec.log
-
-      - name: Boolean and general bitstring codecs
-        run: |
-          python3 tests/test_bits_harness.py
-          python3 tests/test_bits.py 2>&1 | tee build/ci/bits.log
-
-      - name: Canonical set and dictionary codecs
-        run: |
-          python3 tests/test_collections_harness.py
-          python3 tests/test_collections.py 2>&1 | tee build/ci/collections.log
-
-      - name: Availability and accumulation record codecs
-        run: |
-          python3 tests/test_c2_harness.py
-          python3 tests/test_c2.py 2>&1 | tee build/ci/c2.log
-
-      - name: Tickets and guarantees extrinsics
-        run: |
-          python3 tests/test_tickets_harness.py
-          python3 tests/test_guarantees_harness.py
-          python3 tests/test_tickets.py 2>&1 | tee build/ci/tickets.log
-          python3 tests/test_guarantees.py 2>&1 | tee build/ci/guarantees.log
-
-      - name: Disputes extrinsic
-        run: |
-          python3 tests/test_disputes_harness.py
-          python3 tests/test_disputes.py 2>&1 | tee build/ci/disputes.log
-
-      - name: Work-package input codecs
-        run: |
-          python3 tests/test_package_harness.py
-          python3 tests/test_work_package.py 2>&1 | tee build/ci/package.log
-
-      - name: Header and marker codecs
-        run: |
-          python3 tests/test_header_harness.py
-          python3 tests/test_header.py 2>&1 | tee build/ci/header.log
-
-      - name: Complete extrinsic and block codecs
-        run: |
-          python3 tests/test_block_harness.py
-          python3 tests/test_block.py 2>&1 | tee build/ci/block.log
-
-      - name: Crypto vectors, ownership and ABI checks
-        run: python3 tests/test_crypto.py --fetch 2>&1 | tee build/ci/crypto.log
-
-      - name: State key and node layout foundation
-        run: |
-          python3 tests/test_state_layout_harness.py
-          python3 tests/test_state_layout.py 2>&1 | tee build/ci/state-layout.log
-
-      - name: Serialized state trie roots
-        run: |
-          python3 tests/test_state_trie_harness.py
-          python3 tests/test_state_trie.py 2>&1 | tee build/ci/state-trie.log
-
-      - name: Published whole-state roots and parity audit
-        run: |
-          python3 tests/test_state_roots_harness.py
-          python3 tests/test_state_roots.py 2>&1 | tee build/ci/state-roots.log
-
-      - name: Typed whole-state composition
-        run: |
-          python3 tests/test_state_composition_harness.py
-          python3 tests/test_state_composition.py 2>&1 | tee build/ci/state-composition.log
-
-      - name: State numeric-width reference evidence
-        run: |
-          python3 tests/test_state_widths_harness.py
-          python3 tests/test_state_widths.py 2>&1 | tee build/ci/state-widths.log
-
-      - name: Entropy validator and timeslot state components
-        run: |
-          python3 tests/test_state_safrole_harness.py
-          python3 tests/test_state_safrole.py 2>&1 | tee build/ci/state-safrole.log
-
-      - name: Safrole basic state component
-        run: |
-          python3 tests/test_state_consensus_harness.py
-          python3 tests/test_state_consensus.py 2>&1 | tee build/ci/state-consensus.log
-
-      - name: Dispute judgment and offender state component
-        run: |
-          python3 tests/test_state_disputes_harness.py
-          python3 tests/test_state_disputes.py 2>&1 | tee build/ci/state-disputes.log
-
-      - name: Recent history and accumulation-output belt state
-        run: |
-          python3 tests/test_state_history_harness.py
-          python3 tests/test_state_history.py 2>&1 | tee build/ci/state-history.log
-
-      - name: Service request histories
-        run: |
-          python3 tests/test_state_requests_harness.py
-          python3 tests/test_state_requests.py 2>&1 | tee build/ci/state-requests.log
-
-      - name: Request namespace admissibility witnesses
-        run: |
-          python3 tests/test_request_namespace_harness.py
-          python3 tests/test_request_namespace.py 2>&1 | tee build/ci/request-namespace.log
-
-      - name: Service storage and preimage entries
-        run: |
-          python3 tests/test_state_service_values_harness.py
-          python3 tests/test_state_service_values.py 2>&1 | tee build/ci/state-service-values.log
-
-      - name: Service account metadata
-        run: |
-          python3 tests/test_state_accounts_harness.py
-          python3 tests/test_state_accounts.py 2>&1 | tee build/ci/state-accounts.log
-
-      - name: Last accumulation output state
-        run: |
-          python3 tests/test_state_outputs_harness.py
-          python3 tests/test_state_outputs.py 2>&1 | tee build/ci/state-outputs.log
-
-      - name: Ready and accumulated work state
-        run: |
-          python3 tests/test_state_workqueues_harness.py
-          python3 tests/test_state_workqueues.py 2>&1 | tee build/ci/state-workqueues.log
-
-      - name: Activity statistics state
-        run: |
-          python3 tests/test_state_statistics_harness.py
-          python3 tests/test_state_statistics.py 2>&1 | tee build/ci/state-statistics.log
-
-      - name: Privileged service configuration state
-        run: |
-          python3 tests/test_state_privileges_harness.py
-          python3 tests/test_state_privileges.py 2>&1 | tee build/ci/state-privileges.log
-
-      - name: Availability assignment state
-        run: |
-          python3 tests/test_state_availability_harness.py
-          python3 tests/test_state_availability.py 2>&1 | tee build/ci/state-availability.log
-
-      - name: Authorization pool and queue state components
-        run: |
-          python3 tests/test_state_authorization_harness.py
-          python3 tests/test_state_authorization.py 2>&1 | tee build/ci/state-authorization.log
-
-      - name: Report codecs, ownership and independent guarantee signatures
-        run: python3 tests/test_work_report.py 2>&1 | tee build/ci/report.log
-
-      - name: Report and assurance oracle/type safeguards
-        run: |
-          python3 tests/test_report_harness.py
-          python3 tests/test_report_types.py
-          python3 tests/test_assurances_harness.py
-          python3 tests/test_assurances_types.py
-          python3 tests/test_assurance_crypto_harness.py
-          python3 tests/test_assurance_crypto_types.py
-
-      - name: Assurance codecs and signing contexts
-        run: |
-          python3 tests/test_assurances.py 2>&1 | tee build/ci/assurances.log
-          python3 tests/test_assurance_crypto.py 2>&1 | tee build/ci/assurance-crypto.log
-
-      - name: Bandersnatch historical vectors and JAM tickets
-        run: python3 tests/test_bandersnatch.py --fetch 2>&1 | tee build/ci/bandersnatch.log
-
-      - name: QUIC startup and lifecycle harness regressions
-        run: |
-          python3 tests/test_quic_harness.py
-          python3 tests/test_quic_soak_harness.py
-
-      - name: Authenticated QUIC and native selftests
-        run: python3 tests/test_quic.py --fetch 2>&1 | tee build/ci/quic.log
-
-      - name: QUIC lifecycle soak
-        run: python3 tests/test_quic_soak.py --skip-build 2>&1 | tee build/ci/quic-soak.log
-
-      - name: Retained multi-peer service
-        run: python3 tests/test_quic_service.py --skip-build 2>&1 | tee build/ci/quic-service.log
-
-      - name: Bidirectional IPv6 peers
-        run: python3 tests/test_quic_mesh.py --skip-build 2>&1 | tee build/ci/quic-mesh.log
-
-      - name: Peer-loss recovery and admission saturation
-        run: python3 tests/test_quic_resilience.py --skip-build 2>&1 | tee build/ci/quic-resilience.log
-
-      - name: Integrated codec, crypto and QUIC
-        run: python3 tests/test_integration.py --reuse-native 2>&1 | tee build/ci/integration.log
-
-      - name: Bounded proof offload alongside QUIC
-        run: python3 tests/test_quic_offload.py --reuse-native 2>&1 | tee build/ci/quic-offload.log
-
-      # Certificates/private keys and dependency trees are excluded from uploaded diagnostics.
-      - name: Retain verification logs
+      - name: Migrated codec, crypto, UDP readiness and native-owner coverage
+        run: python3 tools/test_nimony.py --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/runtime.log
+      - name: Show measured partial coverage
+        if: always()
+        run: python3 tools/summarize_nimony_ci.py --kind slice --report build/nimony-trial/verification/results.json --output "$GITHUB_STEP_SUMMARY"
+      # Upload diagnostics only: never binaries, caches, dependency trees, certificates or private keys.
+      - name: Retain migrated slice evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-verification-${{ github.run_attempt }}
+          name: nimony-linux-runtime-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
-            build/ci/*.log
-            build/state-roots/*.log
-            build/state-roots/results.json
-            build/state-composition/*.log
-            build/state-composition/results.json
-            build/state-composition/types/*.log
-            build/state-widths/*.log
-            build/state-widths/results.json
-            build/state-requests/*.log
-            build/state-requests/results.json
-            build/state-requests/types/*.log
-            build/request-namespace/*.log
-            build/request-namespace/results.json
-            build/state-service-values/*.log
-            build/state-service-values/results.json
-            build/state-service-values/types/*.log
-            build/state-accounts/*.log
-            build/state-accounts/results.json
-            build/state-accounts/types/*.log
-            build/state-outputs/*.log
-            build/state-outputs/results.json
-            build/state-outputs/types/*.log
-            build/state-workqueues/*.log
-            build/state-workqueues/results.json
-            build/state-workqueues/types/*.log
-            build/state-statistics/*.log
-            build/state-statistics/results.json
-            build/state-statistics/types/*.log
-            build/state-privileges/*.log
-            build/state-privileges/results.json
-            build/state-privileges/types/*.log
-            build/state-availability/*.log
-            build/state-availability/results.json
-            build/state-availability/types/*.log
-            build/state-history/*.log
-            build/state-history/results.json
-            build/state-history/types/*.log
-            build/state-disputes/*.log
-            build/state-disputes/results.json
-            build/state-disputes/types/*.log
-            build/state-consensus/*.log
-            build/state-consensus/results.json
-            build/state-consensus/types/*.log
-            build/state-authorization/*.log
-            build/state-authorization/results.json
-            build/state-authorization/types/*.log
-            build/state-safrole/*.log
-            build/state-safrole/results.json
-            build/state-safrole/types/*.log
-            build/state-trie/*.log
-            build/state-trie/results.json
-            build/state-trie/types/*.log
-            build/state-layout/*.log
-            build/state-layout/results.json
-            build/state-layout/types/*.log
-            build/c2/*.log
-            build/c2/results.json
-            build/c2/types/*.log
-            build/collections/*.log
-            build/collections/results.json
-            build/collections/types/*.log
-            build/bits/*.log
-            build/bits/results.json
-            build/bits/types/*.log
-            build/tickets/*.log
-            build/tickets/results.json
-            build/tickets/types/*.log
-            build/tickets/types/results.json
-            build/guarantees/*.log
-            build/guarantees/results.json
-            build/guarantees/types/*.log
-            build/guarantees/types/results.json
-            build/disputes/*.log
-            build/disputes/results.json
-            build/disputes/types/*.log
-            build/disputes/types/results.json
-            build/package/*.log
-            build/package/results.json
-            build/package/types/*.log
-            build/package/types/results.json
-            build/header/*.log
-            build/header/results.json
-            build/header/types/*.log
-            build/header/types/results.json
-            build/block/*.log
-            build/block/results.json
-            build/block/types/*.log
-            build/block/types/results.json
-            build/crypto/*.log
-            build/crypto/results.json
-            build/bandersnatch/*.log
-            build/bandersnatch/results.json
+            build/nimony-ci/*.log
+            build/nimony-trial/verification/*.log
+            build/nimony-trial/verification/results.json
+            build/nimony-trial/verification/retained-service/*.log
+            build/nimony-trial/verification/retained-service/resources.json
+            build/nimony-trial/verification/retained-integration/*.log
+            build/nimony-trial/verification/retained-integration/resources.json
+            build/nimony-trial/verification/peer-cases/**/*.log
+            build/nimony-trial/verification/integration-requests.txt
+            build/nimony-trial/verification/quic-protocol-requests.txt
             build/quic/build.log
-            build/quic/results.json
-            build/quic/cases/*.server.log
-            build/quic/soak/results.json
-            build/quic/soak/*/*.log
-            build/quic/soak/*/resources.json
-            build/quic/service/results.json
-            build/quic/service/*/*.log
-            build/quic/service/*/resources.json
-            build/quic/mesh/results.json
-            build/quic/mesh/*/*.log
-            build/quic/mesh/*/resources.json
-            build/quic/resilience/results.json
-            build/quic/resilience/*/*.log
-            build/quic/resilience/*/resources.json
-            build/integration/*.log
-            build/integration/results.json
-            build/integration/*/*.log
-            build/integration/*/resources.json
-            build/offload/*.log
-            build/offload/results.json
-            build/offload/*/*.log
-            build/offload/*/resources.json
-            build/report/*.log
-            build/report/*correctness.json
-            build/report/types/*.log
-            build/report/types/results.json
-            build/assurances/*-build.log
-            build/assurances/checks-*/results.json
-            build/assurances/checks-*/stderr.log
-            build/assurances/types/*.log
-            build/assurances/types/results.json
-            build/assurance-crypto/*-build.log
-            build/assurance-crypto/checks-*/results.json
-            build/assurance-crypto/checks-*/stderr.log
-            build/assurance-crypto/types/*.log
-            build/assurance-crypto/types/results.json
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+
+  modules:
+    name: Nimony all-source compilation gate (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Compiler dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential clang lld
+          mkdir -p build/nimony-ci
+      - name: Pinned Nimony and formatter
+        run: python3 tools/setup_nimony_ci_linux.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
+      - name: Audit every source module
+        run: python3 tools/audit_nimony_modules.py --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/modules.log
+      - name: Show remaining build work
+        if: always()
+        run: python3 tools/summarize_nimony_ci.py --kind modules --report build/nimony-ci/modules/results.json --output "$GITHUB_STEP_SUMMARY"
+      - name: Retain source compilation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nimony-linux-modules-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/nimony-ci/*.log
+            build/nimony-ci/modules/*.log
+            build/nimony-ci/modules/results.json

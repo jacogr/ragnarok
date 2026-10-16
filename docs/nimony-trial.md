@@ -19,8 +19,10 @@ The one-shot authenticated CE 143 peer matrix and retained service/integrated di
 workloads now pass locally. Mesh/reconnect, broader resilience/offload and Linux parity remain
 unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
-Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
-execution remains pending the first workflow run.
+Protocol/dependency pins are unchanged. At the maintainer's request, the existing
+`.github/workflows/linux.yml` is now the single Linux workflow and uses the pinned Nimony nightly
+on every push, PR and manual run. The separate trial workflow has been removed. Actual Linux
+verification remains pending; CI consolidation is not a complete migration claim.
 
 ## Compiler and environment
 
@@ -940,7 +942,7 @@ remain unverified.
 ## Twenty-second bounded increment: branch Linux CI
 
 The maintainer requested Linux CI before further codec ports. The separate
-[trial workflow](../.github/workflows/nimony-linux.yml) targets pushes to `nimony`, PRs whose head
+[Linux workflow](../.github/workflows/linux.yml) targets pushes to `nimony`, PRs whose head
 branch is `nimony`, and manual dispatch. The historical Nim 2 Linux job skips this branch/PR;
 main-branch CI remains unchanged. This is trial infrastructure, not a completed compiler migration.
 
@@ -2301,6 +2303,28 @@ M1/M2 parity and normative gates are unchanged. Retained IPv6 client engines, du
 mesh/reconnect/resilience, enabled proof offload, Linux execution and normal build/CI cutover remain
 separate gates.
 
+## Linux workflow consolidation
+
+The maintainer explicitly requests converting the existing Linux workflow rather than keeping a
+parallel trial workflow. `.github/workflows/linux.yml` now installs the pinned Nimony nightly and
+formatter and runs the migrated runtime suite plus the independent strict all-source audit. Pushes,
+PRs and manual runs use this workflow on every branch, including after merge; neither job has a
+branch-name condition. `.github/workflows/nimony-linux.yml` is removed. No Nim 2 runtime CI job is
+retained, and no installer/action/compiler/dependency revision is advanced.
+
+The runtime job preserves protocol provenance checks, checked ARC/Clang LTO, original lifecycle
+budgets, failure summaries and diagnostic-only uploads. The module job remains independently red
+for unported sources: the local 44/45 audit and remaining standalone mesh fragment are unchanged.
+This consolidation is specifically authorized; earlier entries describing a separate trial workflow
+record the historical sequence. Runtime gaps, initialization safety limitations and Linux execution
+remain open, and ordinary local setup documentation is still a separate cutover task.
+
+Local validation parses the workflow YAML, verifies unrestricted push/PR/manual triggers and both
+jobs, and checks Bash syntax for all thirteen shell steps. Thirteen CI safeguard tests pass,
+including a regression check against duplicate Linux workflows and branch-name exemptions.
+Protocol provenance has two passing checks and the existing draft-29 discrepancy skip. This is a
+CI-only change; no new Linux execution or full runtime-suite result is claimed.
+
 ## Remaining work and next bounded increment
 
 Next: retained IPv6 mesh/reconnect lifecycle and standalone module structure, preserving duplicate
@@ -2320,11 +2344,12 @@ Further port work remains:
   too. The actual peer and one-shot authentication/framing matrix now pass locally. Retained
   service and integrated digest lifecycles now pass too. Retained IPv6 mesh/reconnect/resilience
   and enabled offload compilation/runtime coverage remain migration gates.
-- Toolchain: branch Linux installation/pinning, formatter setup and trial CI are configured.
-  Linux execution, normal build commands and main documentation/CI cutover remain gates until the
-  port demonstrates equivalent safety.
+- Toolchain: the canonical Linux workflow now uses pinned Nimony and the formatter on all
+  branches. Linux execution, normal local build commands and remaining setup documentation remain
+  gates until the port demonstrates equivalent safety.
 
-No full migration or normal-CI compiler switch has occurred. The M1 request-namespace question
+The Linux CI compiler switch is authorized and configured; full migration remains incomplete.
+The M1 request-namespace question
 remains parked for Gray Paper 0.8.1/0.8.2 review; this trial does not reopen protocol decisions.
 
 ## Reproduce
@@ -2352,5 +2377,6 @@ assurance signing contexts, guarantee/report credential composition and the boun
 result/import/native-owner and contextual proof/native-boundary/concurrency slices, plus the
 bounded UDP/readiness and linked native transport lifecycle suites, shared identity/frame selftests
 and their independent SAN/DER/framing corpus.
-A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
+A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or a passing Linux run. The canonical workflow now uses
+Nimony; formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

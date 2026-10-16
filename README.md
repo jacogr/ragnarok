@@ -21,8 +21,9 @@ JAM client or production validator. [M1 codec progress](docs/m1.md) and [design/
 ## Setup
 
 On the experimental `nimony` branch, follow the [nightly trial](docs/nimony-trial.md) instead of
-the historical baseline commands below. Its [Linux workflow](.github/workflows/nimony-linux.yml)
-checks the migrated runtime slice and every source module; full migration remains incomplete.
+the historical baseline commands below. The single [Linux workflow](.github/workflows/linux.yml)
+uses Nimony for every push and PR, checking the migrated runtime slice and every source module;
+full migration remains incomplete.
 
 Pinned baseline: Nim **2.2.12**, ARC, Clang; Rust **1.99.0** for the Bandersnatch primitive bridge.
 Python **3.12+** runs verification/setup tools. Native builds also need CMake, zlib and OpenSSL.
@@ -71,7 +72,9 @@ python3 tests/test_quic.py --fetch
 The crypto step builds the native primitive library used by report and assurance-context tests.
 `--fetch` initializes exact pinned sources; Bandersnatch also provisions missing locked Cargo
 packages. Generated builds, temporary keys, observations and logs stay under ignored `build/`.
-[Linux CI](.github/workflows/linux.yml) runs the correctness and lifecycle checks on Ubuntu 24.04.
+[Linux CI](.github/workflows/linux.yml) uses the pinned Nimony nightly on Ubuntu 24.04. It runs the
+migrated correctness/lifecycle coverage and a strict all-source compilation gate independently;
+unported coverage and Linux confirmation remain explicit migration gates.
 
 ## Code and verification
 

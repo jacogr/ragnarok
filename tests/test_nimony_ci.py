@@ -29,6 +29,21 @@ def archive(name, data=b'fixture'):
 
 # Rejection paths prevent archive substitution, source omissions and misleading green migration summaries.
 class NimonyCISafeguards(unittest.TestCase):
+    # Merging the compiler migration must not leave duplicate Linux workflows or branch-specific skipped gates.
+    def test_single_canonical_linux_workflow(self):
+        folder = ROOT/'.github/workflows'
+        names = sorted(path.name for path in folder.iterdir() if 'linux' in path.name.lower()
+                       and path.suffix in ('.yml', '.yaml'))
+        self.assertEqual(names, ['linux.yml'])
+        text = (folder/'linux.yml').read_text()
+        self.assertNotIn('github.head_ref', text)
+        self.assertNotIn('github.ref_name', text)
+        self.assertNotIn('branches:', text)
+        self.assertIn('tools/setup_nimony_ci_linux.py', text)
+        self.assertIn('tools/test_nimony.py --compiler', text)
+        self.assertIn('tools/audit_nimony_modules.py --compiler', text)
+        self.assertNotIn('python3 tools/setup_ci_linux.py --destination', text)
+
     # A stale/corrupt retained download must fail without trusting its filename or using the network.
     def test_cached_checksum_mismatch(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -59,10 +59,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 ## Working style
 - On the experimental `nimony` branch, follow [the nightly trial](docs/nimony-trial.md). Keep the
   trial source focused on Nimony; do not add dual-compiler compatibility layers. Nim 2 measurements
-  are historical controls, not a second supported target. The maintainer-authorized branch Linux CI
-  runs the migrated runtime slice and a strict all-source semantic compilation gate. Keep partial
-  results explicit; do not switch main-branch CI or claim full migration until equivalent protocol
-  safety and test coverage are demonstrated. Unprotected result access remains a failure;
+  are historical controls, not a second supported target. The maintainer-authorized canonical Linux
+  workflow (`.github/workflows/linux.yml`) now uses Nimony on pushes, PRs and manual runs, with the
+  migrated runtime slice and strict all-source semantic compilation gate. Keep partial results
+  explicit; CI consolidation does not establish complete migration or equivalent safety/coverage. Unprotected result access remains a failure;
   intentional arithmetic wrapping is accepted and needs explicit protocol-boundary tests.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
   review. Preserve its evidence, pending test and current codec behavior. Revisit during that
