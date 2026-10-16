@@ -31,7 +31,8 @@ indices; it is never sorted or deduplicated. Null and repeated records remain re
 Structural encoding does not validate curve points, possession, metadata meaning or eligibility.
 
 The chapter enum accepts staging/active/previous only. Pending keys belong to the multi-field
-chapter-4 Safrole state and are deliberately excluded here. This increment also excludes tickets,
+chapter-4 Safrole state and are deliberately excluded from this module; its separate
+[chapter-4 codec](state-consensus.md) now covers them. This increment also excludes tickets,
 sealer schedules, ring roots, epoch transitions and full Safrole execution. Other chapters and
 service-account entries remain separate serialization increments. A root over these five entries
 is a partial-mapping commitment, **not a complete JAM state root**.
@@ -95,3 +96,8 @@ privacy probe rejects access to retained roster storage.
 Linux CI runs this suite after crypto/trie construction and retains logs, compiler commands,
 request SHA-256 and results under ignored `build/state-safrole/`. Local verification is macOS arm64;
 Linux results require CI after push. Existing crypto parity gates remain unchanged.
+
+The allocation-free `stateValidatorSize` and `stateValidatorPrefixSize` APIs share this roster
+policy for chapter-4 whole-parent preflight. The standalone decoder uses the same prefix scan;
+its framing and error precedence remain unchanged. The shared result family also names chapter-4
+`InvalidTag` and `WrongVariant` errors; standalone roster framing has no tag or variant.

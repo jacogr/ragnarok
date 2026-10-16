@@ -125,6 +125,11 @@ jobs:
           python3 tests/test_state_safrole_harness.py
           python3 tests/test_state_safrole.py 2>&1 | tee build/ci/state-safrole.log
 
+      - name: Safrole basic state component
+        run: |
+          python3 tests/test_state_consensus_harness.py
+          python3 tests/test_state_consensus.py 2>&1 | tee build/ci/state-consensus.log
+
       - name: Authorization pool and queue state components
         run: |
           python3 tests/test_state_authorization_harness.py
@@ -186,6 +191,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/state-consensus/*.log
+            build/state-consensus/results.json
+            build/state-consensus/types/*.log
             build/state-authorization/*.log
             build/state-authorization/results.json
             build/state-authorization/types/*.log

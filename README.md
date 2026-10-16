@@ -41,6 +41,7 @@ python3 tests/test_crypto.py --fetch
 python3 tests/test_state_layout.py
 python3 tests/test_state_trie.py
 python3 tests/test_state_safrole.py
+python3 tests/test_state_consensus.py
 python3 tests/test_state_authorization.py
 python3 tests/test_bandersnatch.py --fetch
 python3 tests/test_work_report.py

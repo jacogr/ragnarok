@@ -90,7 +90,9 @@
       "vendor/jamtestvectors/codec/full/block.json": "c22b2ac920a414b6299371dbc4fda5b95bbe521d6b24ef822fa2311a81d772f9",
       "vendor/jamtestvectors/codec/full/block.bin": "c9c0de0d33c21b9b1873424267a7f3233e9dc41cde22b5120718d50f5d43af06",
       "vendor/jamtestvectors/stf/safrole/tiny/enact-epoch-change-with-no-tickets-1.json": "efe306c52e03f75efbaf812e4194283eff930bc1cf2759dead35aa32a4989c3c",
-      "vendor/jamtestvectors/stf/safrole/full/enact-epoch-change-with-no-tickets-1.json": "d565746ee0bc10b4d5226b0d92464643c58cfe198c477ad38121313464df1a10"
+      "vendor/jamtestvectors/stf/safrole/full/enact-epoch-change-with-no-tickets-1.json": "d565746ee0bc10b4d5226b0d92464643c58cfe198c477ad38121313464df1a10",
+      "vendor/jamtestvectors/stf/safrole/tiny/publish-tickets-with-mark-5.json": "47100be406a839af70122f96ca8b8d691faee1b8f351719e9793077c796b4462",
+      "vendor/jamtestvectors/stf/safrole/full/publish-tickets-with-mark-5.json": "1ec6493416e4a32fc77ca4c98020495490f1085c4dc8476209b4565acae71e5b"
     },
     "path": "vendor/jamtestvectors",
     "tag": "v0.8.0",

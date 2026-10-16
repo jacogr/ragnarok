@@ -72,6 +72,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   that describes the change, such as `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci` or `chore`.
 - Every AI run must include a suggested semantic commit message in its final report, accurately
   describing the changes made. If no files changed, explicitly report that no commit is needed.
+- For milestone increments, state current parity/remaining gaps and the next planned bounded chunk
+  when available. Explicitly report when the documented M1 scope is met; do not equate framing-only
+  coverage with complete state serialization.
 - Suggesting a message does not authorize creating a commit; commit only when the maintainer asks.
 
 ## Layout

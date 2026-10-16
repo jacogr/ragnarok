@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–2/6–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
+1–2/4/6–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
 state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -66,7 +66,7 @@ operand vectors. No standalone transfer/operand codec fixture family exists at t
 encodings from the pinned state-merklization chapter. It copies fixed metadata and hashes canonical
 node bytes through the existing primitive bridge. A decoded left child is a nominal **255-bit
 commitment**, never a fabricated full node hash. Root construction is covered separately below;
-proofs, persistence and state-component value serialization are not implemented.
+proofs and persistence remain separate; component serializers are covered below.
 
 Validation: 12,233 independent requests, six literal harness checks, three nominal compiler
 rejections and fixed-value/variant-guard tests. The pinned historical trie JSON uses 32-byte keys;
@@ -111,6 +111,21 @@ Validation: 7,059 independent requests, six literal harness checks, two nominal 
 compiler rejections, native ownership/copy/index/result guards and two partial trie integrations.
 Four published tiny/full pre/post JSON sources provide derived component fixtures. Other chapters
 and authorization transitions remain separate. See [the contract](../spec/state-authorization.md).
+
+## Safrole basic-state serialization
+
+`state_consensus.nim` implements T chapter 4: pending full validators, opaque 144-byte ring
+commitment, tagged ticket/key sealer schedule and bounded ticket accumulator. Fixed schedules omit
+counts; tickets use C.2's identifier/E1-attempt record. Whole-parent preflight precedes child/parent
+allocation. Immutable parent owners retain nested roster/schedule/accumulator storage privately.
+Sequence order is preserved; epoch transitions, score selection and proof/key validation remain
+separate responsibilities.
+
+Validation: 7,298 independent requests, six literal oracle checks, two nominal and one privacy
+compiler rejections, native ownership/copy/variant/index/result guards and ten partial single-entry
+trie integrations. Eight published tiny/full pre/post JSON sources provide derived component
+fixtures. Other state chapters remain open; next planned group is chapter 5 dispute state. See
+[the contract](../spec/state-consensus.md) and [M1 parity checklist](m1.md#m1-parity-checklist).
 
 ## Published codec fixture inventory
 

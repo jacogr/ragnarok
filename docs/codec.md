@@ -9,6 +9,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
 | `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
 | `state_authorization.nim` | Core-indexed authorization pools/queues, bounded entries and immutable snapshots |
+| `state_consensus.nim` | Chapter-4 pending roster, ring commitment, tagged fixed schedule and ticket accumulator |
 | `state_safrole.nim` | State entropy, full staging/active/previous validator rosters and E4 timeslot |
 | `c2_records.nim` | Standalone availability, deferred transfers, immutable operands and tagged accumulation inputs |
 | `collections.nim` | Canonical typed sets and dictionaries over natural/fixed unsigned/fixed-octet scalars |
@@ -90,5 +91,7 @@ call; returned roots are independent fixed copies. [State-component codecs](../s
 cover chapters 6–9 and 11, with immutable decoded validator snapshots and copied field access.
 [Authorization state codecs](../spec/state-authorization.md) add chapters 1–2 with per-core
 pool framing, fixed queues and private owner-bound copied hashes.
+[Safrole basic-state codecs](../spec/state-consensus.md) add chapter 4 with whole-parent preflight,
+retained immutable children and selected-variant copied extraction.
 Other state serialization, proofs and persistence remain future work. Run these native suites after
 building the primitive bridge.

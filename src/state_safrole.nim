@@ -36,7 +36,7 @@ type
   ## Failed/default results never expose values, owners or consumed progress.
   StateComponentError* {.pure.} = enum
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical,
-    LimitExceeded, LengthOverflow, InvalidOwner, InvalidIndex
+    LimitExceeded, LengthOverflow, InvalidOwner, InvalidIndex, InvalidTag, WrongVariant
   ## Select success before accessing a complete fixed value or immutable snapshot.
   StateComponentResult*[T] = object
     case error*: StateComponentError
@@ -137,29 +137,44 @@ proc validatorEntry*(chapter: ValidatorChapter, values: openArray[StateValidator
     put(array[128, byte](validator.metadata), entry.value, cursor)
   StateComponentResult[StateEntry](error: StateComponentError.None, value: entry)
 
-## Decode a canonical variable roster prefix into private immutable copied storage.
-proc decodeStateValidators*(input: openArray[byte],
-    config: ValidatorStateConfig): StateComponentResult[StateComponentRead[
-    ValidatorStateSnapshot]] =
+## Measure a borrowed canonical roster prefix without allocation, for whole-parent preflight.
+proc stateValidatorPrefixSize*(input: openArray[byte],
+    config: ValidatorStateConfig): StateComponentResult[int] =
   if uint64(config.cores) < 2:
-    return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
+    return StateComponentResult[int](
         error: StateComponentError.InvalidConfig) # Invalid policy never starts parsing.
   let count = natural.decode(input)
   if not count.ok:
     # Missing bytes and complete overlong forms remain distinct failure-only alternatives.
     if count.error == DecodeError.truncated:
-      return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
+      return StateComponentResult[int](
         error: StateComponentError.Truncated) # No partial population is available yet.
     else:
-      return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
+      return StateComponentResult[int](
         error: StateComponentError.NonCanonical) # A second encoding cannot identify the same population.
   let checked = extent(uint64(count.value), count.consumed, config)
   if checked.error != StateComponentError.None:
-    return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
+    return StateComponentResult[int](
         error: checked.error) # Untrusted counts cannot trigger allocation yet.
   if input.len < checked.value:
-    return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
+    return StateComponentResult[int](
         error: StateComponentError.Truncated) # Complete wire extent precedes snapshot allocation.
+  StateComponentResult[int](error: StateComponentError.None, value: checked.value)
+
+## Measure a typed roster source without allocation, preserving the same population/resource policy.
+proc stateValidatorSize*(count: ValidatorCount, config: ValidatorStateConfig): StateComponentResult[int] =
+  extent(uint64(count), natural.encode(JamNatural(uint64(count))).len, config)
+
+## Decode a canonical variable roster prefix into private immutable copied storage.
+proc decodeStateValidators*(input: openArray[byte],
+    config: ValidatorStateConfig): StateComponentResult[StateComponentRead[
+    ValidatorStateSnapshot]] =
+  let checked = stateValidatorPrefixSize(input, config)
+  if checked.error != StateComponentError.None:
+    return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
+        error: checked.error) # Parent and standalone validation agree.
+  let count = natural.decode(input)
+  doAssert count.ok # The stable source's canonical count was proved by the scan.
   let owner = ValidatorStateSnapshot(data: ValidatorStateData(records: newSeq[StateValidator](int(
       uint64(count.value)))))
   var cursor = int(count.consumed)

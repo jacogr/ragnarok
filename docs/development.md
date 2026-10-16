@@ -51,6 +51,8 @@ python3 tests/test_state_trie.py
 python3 tests/test_state_trie_harness.py
 python3 tests/test_state_safrole.py
 python3 tests/test_state_safrole_harness.py
+python3 tests/test_state_consensus.py
+python3 tests/test_state_consensus_harness.py
 python3 tests/test_state_authorization.py
 python3 tests/test_state_authorization_harness.py
 python3 tests/test_bandersnatch.py --fetch
