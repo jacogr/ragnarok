@@ -101,6 +101,24 @@ assert decodeSequence(huge.bytes, ByteWidth(8), ElementLimit(high(uint64)), valu
     ContainerError.Truncated
 assert decodeSequence(huge.bytes, ByteWidth(0), ElementLimit(2), values).error ==
     ContainerError.LimitExceeded
+# Default result reasons are readable, but their payloads require success through guarded accessors.
+let defaultBlob = default(BlobResult)
+let defaultWrite = default(WriteResult)
+let defaultSequence = default(SequenceResult)
+assert defaultBlob.error == ContainerError.Uninitialized
+assert defaultWrite.error == ContainerError.Uninitialized
+assert defaultSequence.error == ContainerError.Uninitialized
+# Wrapping arithmetic cannot turn a huge claimed count into a small valid span or output extent.
+for count in [uint64(high(int)) - 1, uint64(high(int)), uint64(high(int)) + 1, high(uint64)]:
+  let prefix = natural.encode(JamNatural(count))
+  # Division/length comparisons reject before multiplication, host-int conversion or output writes.
+  assert decodeBytesBorrowed(prefix.bytes, ByteLimit(high(uint64))).error ==
+      ContainerError.Truncated
+  assert decodeSequence(prefix.bytes, ByteWidth(8), ElementLimit(high(uint64)), values).error ==
+      ContainerError.Truncated
+  assert decodeSequence(prefix.bytes, ByteWidth(0), ElementLimit(high(uint64)), values).error ==
+      ContainerError.OutputTooSmall
+  assert uint64(values[0]) == 77 and uint64(values[1]) == 0
 # A late bad value must not leave a header or the earlier good element in output.
 var wire: array[32, byte] = default(array[32, byte])
 for b in wire.mitems: b = 77
