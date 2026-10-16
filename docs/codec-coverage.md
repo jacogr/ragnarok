@@ -4,9 +4,9 @@ This audit follows Appendix C.1/C.2 at the exact source/vector revisions in `spe
 The **C.1/C.2 framing baseline is implemented within the scope listed below**. Complete published
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
-now covers key construction/node encoding and roots over serialized entries; complete state
-serialization, trie proofs and persistence remain open. PVM execution and state transitions are
-separate client work.
+now covers key construction/node encoding, roots over serialized entries and state chapters
+6–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
+state transitions are separate client work.
 
 ## General encodings (C.1)
 
@@ -84,8 +84,21 @@ borrowed only for the call; returned roots are independent fixed values.
 Validation: 2,308 independent requests, six literal oracle checks, two nominal compiler rejections
 and native source-preservation/copied-root/variant-guard checks. All 11 frozen historical roots
 match only after explicit collision-free key projection; current authored 31-byte maps and the
-pinned equations remain authoritative. State-component serialization, proofs and persistence are
+pinned equations remain authoritative. Other state serialization, proofs and persistence are
 separate. See [the root contract](../spec/state-trie.md).
+
+## Safrole-related state serialization
+
+`state_safrole.nim` implements T chapters 6–9 and 11: four entropy words, full 336-byte validator
+rosters for staging/active/previous, and E4 timeslot. Variable rosters enforce canonical count
+framing, protocol population and explicit resource ceilings before allocation. Decoder snapshots
+retain private immutable copied records; owner-bound field extraction returns independent values.
+
+Validation: 3,068 independent requests, six literal harness checks, two nominal and one privacy
+compiler rejections, native retention/copy/field-guard checks and three partial trie integrations.
+Four published tiny/full pre/post JSON states provide derived component fixtures, not standalone
+published state encodings or passing STF claims. Other T chapters and service-account entries
+remain open. See [the component contract](../spec/state-safrole.md).
 
 ## Published codec fixture inventory
 

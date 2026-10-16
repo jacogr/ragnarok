@@ -8,6 +8,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
 | `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
 | `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
+| `state_safrole.nim` | State entropy, full staging/active/previous validator rosters and E4 timeslot |
 | `c2_records.nim` | Standalone availability, deferred transfers, immutable operands and tagged accumulation inputs |
 | `collections.nim` | Canonical typed sets and dictionaries over natural/fixed unsigned/fixed-octet scalars |
 | `bitstrings.nim` | Strict Boolean prefixes, fixed/variable packed bitstrings and immutable bit owners |
@@ -84,5 +85,7 @@ are independent fixed copies, so these APIs return new values rather than mutate
 Node hashing uses the existing Blake2b backend. The separate [trie-root API](../spec/state-trie.md)
 constructs order-independent roots from borrowed serialized entries, rejects duplicate keys and
 checks payload/topology budgets before hashing. Source storage must stay stable for the synchronous
-call; returned roots are independent fixed copies. State-component serialization, proofs and
-persistence remain future work. Run both native suites after building the primitive bridge.
+call; returned roots are independent fixed copies. [State-component codecs](../spec/state-safrole.md)
+now cover chapters 6–9 and 11, with immutable decoded validator snapshots and copied field access.
+Other state serialization, proofs and persistence remain future work. Run these native suites after
+building the primitive bridge.
