@@ -102,6 +102,7 @@ after primitive construction and retains diagnostics. Local results are macOS ar
 confirmation requires CI after push.
 
 M1's documented C.1/C.2 framing baseline remains covered; complete state serialization remains
-open. Next planned bounded chunk: **chapter 3's recent history and accumulation-output belt**.
+open. Chapter 3 now has a separate [recent-history codec](state-history.md). Next planned bounded
+chunk: **chapter 10's availability assignments**.
 The [M1 parity checklist](../docs/m1.md#m1-parity-checklist) records the remaining chapters,
 service-account entries and whole-state composition/root evidence.

@@ -135,6 +135,11 @@ jobs:
           python3 tests/test_state_disputes_harness.py
           python3 tests/test_state_disputes.py 2>&1 | tee build/ci/state-disputes.log
 
+      - name: Recent history and accumulation-output belt state
+        run: |
+          python3 tests/test_state_history_harness.py
+          python3 tests/test_state_history.py 2>&1 | tee build/ci/state-history.log
+
       - name: Authorization pool and queue state components
         run: |
           python3 tests/test_state_authorization_harness.py
@@ -196,6 +201,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/state-history/*.log
+            build/state-history/results.json
+            build/state-history/types/*.log
             build/state-disputes/*.log
             build/state-disputes/results.json
             build/state-disputes/types/*.log

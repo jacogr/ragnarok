@@ -55,6 +55,8 @@ python3 tests/test_state_consensus.py
 python3 tests/test_state_consensus_harness.py
 python3 tests/test_state_disputes.py
 python3 tests/test_state_disputes_harness.py
+python3 tests/test_state_history.py
+python3 tests/test_state_history_harness.py
 python3 tests/test_state_authorization.py
 python3 tests/test_state_authorization_harness.py
 python3 tests/test_bandersnatch.py --fetch

@@ -108,6 +108,7 @@ Checked Nim 2.2.12 ARC/Clang LTO builds retain all runtime guards. The native te
 and uploads diagnostics. Local validation is macOS arm64; Linux results require CI after push.
 
 M1 framing-baseline coverage remains distinct from full state serialization. Chapter 5 now has its
-separate [dispute-state codec](state-disputes.md). Next planned: chapter 3 recent history and
-accumulation-output belt. The [M1 checklist](../docs/m1.md) records all
-remaining state chapters and service entries; this increment does not close them.
+separate [dispute-state codec](state-disputes.md); chapter 3 has its
+[recent-history codec](state-history.md). Next planned: chapter 10 availability assignments.
+The [M1 checklist](../docs/m1.md) records remaining state chapters and service entries;
+this increment does not close them.

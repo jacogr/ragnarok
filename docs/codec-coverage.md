@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–2/4–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
+1–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
 state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -137,8 +137,21 @@ four sets are valid. Extraction retains nominal report/key separation and immuta
 Validation: 2,766 independent requests, six literal harness checks, two nominal and one privacy
 compiler rejections, native ownership/copy/index/failure guards and twelve partial C(5) root
 integrations. Twelve published pre/post JSON sources provide explicitly sorted derived set
-fixtures; no dispute-transition or signature-validity claim is made. Next planned: chapter 3
-recent history and accumulation-output belt. See [the contract](../spec/state-disputes.md).
+fixtures; no dispute-transition or signature-validity claim is made. Chapter 3 is now covered
+separately below. See [the contract](../spec/state-disputes.md).
+
+## Recent history and accumulation-output belt serialization
+
+`state_history.nim` implements T chapter 3's ordered recent records, canonical package/segment
+root dictionaries, E4 slots and variable optional belt peaks. It follows T's explicit
+header/super-peak/state-root order. Empty versus present-zero peaks retain distinct tagged values;
+holes and trailing absences remain unchanged. Whole-parent preflight precedes all retained storage.
+
+Validation: 1,985 independent requests, six literal harness checks, two nominal and one privacy
+compiler rejections, native retention/copy/index/result/optional-field guards and nine partial C(3)
+root integrations. Eight published tiny/full pre/post JSON sources supply explicitly derived named
+field/dictionary/peak cases. No history-transition, MMR algorithm or commitment-consistency claim
+is made. Next planned: chapter 10 availability assignments. See [the contract](../spec/state-history.md).
 
 ## Published codec fixture inventory
 
