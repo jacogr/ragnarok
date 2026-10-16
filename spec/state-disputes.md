@@ -103,7 +103,7 @@ confirmation requires CI after push.
 
 M1's documented C.1/C.2 framing baseline remains covered; complete state serialization remains
 open. Chapter 3 now has a separate [recent-history codec](state-history.md). Next planned bounded
-chunk: **chapters 14–15 ready and accumulated work**; chapter 10 now has its
+chunk: **chapter 16 last accumulation outputs**; chapter 10 now has its
 [availability-state codec](state-availability.md).
 The [M1 parity checklist](../docs/m1.md#m1-parity-checklist) records the remaining chapters,
 service-account entries and whole-state composition/root evidence.

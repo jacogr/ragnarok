@@ -57,6 +57,8 @@ python3 tests/test_state_disputes.py
 python3 tests/test_state_disputes_harness.py
 python3 tests/test_state_history.py
 python3 tests/test_state_history_harness.py
+python3 tests/test_state_workqueues.py
+python3 tests/test_state_workqueues_harness.py
 python3 tests/test_state_statistics.py
 python3 tests/test_state_statistics_harness.py
 python3 tests/test_state_privileges.py

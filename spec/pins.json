@@ -134,7 +134,13 @@
       "stf/statistics/full/stats_epoch_change_with_set_resize-1.json": "909c18c623c69359988801d577a89538833bf3c907560d9e7a7de927e6af3f87",
       "traces/fuzzy/00000001.json": "8bbe5c892288b533e815064607639d4db0370d33a5cf0e32ef82eba76411cb5a",
       "traces/fuzzy/00000002.json": "871de7dca138a21ea68d1134ed3e72c820263e4ee72fa619d43791255d1b55ab",
-      "traces/fuzzy/00000003.json": "d9240735d452e9d9d4a528b8c57ca3583bac86b6ece21bc78e9f8d8e6d3815a8"
+      "traces/fuzzy/00000003.json": "d9240735d452e9d9d4a528b8c57ca3583bac86b6ece21bc78e9f8d8e6d3815a8",
+      "stf/accumulate/tiny/accumulate_ready_queued_reports-1.json": "82e9dcdad90b842fdbff634b884edf97949a4c64766ca784c9575fa01a13e2f2",
+      "stf/accumulate/tiny/enqueue_and_unlock_chain-1.json": "ea948866aef21f8b1d3224a4e956b7b8f25eb2571996405667e363153f7c7ba5",
+      "stf/accumulate/tiny/enqueue_and_unlock_chain_wraps-1.json": "53483270eec8072aec0018119b2e5c41cc88c8505604e2bb3eb0ac8057d53f41",
+      "stf/accumulate/full/accumulate_ready_queued_reports-1.json": "a8e1282b56d1bcdd1df804ba9dbabcd05a81b93f7cb525fa91bb573e3d7af318",
+      "stf/accumulate/full/enqueue_and_unlock_chain-1.json": "9e8204089169a1c45e956376c6e9fed5d4ea4de6db3097db95d11c007414ada0",
+      "stf/accumulate/full/enqueue_and_unlock_chain_wraps-1.json": "0768a5ad8385dca4d43d0c4910a308af8ff8690c22857b96bc4b1282394b14f2"
     }
   },
   "toolchains": {

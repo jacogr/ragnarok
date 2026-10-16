@@ -109,7 +109,7 @@ commands, corpus SHA-256, verdicts and diagnostics; Linux CI runs the suite and 
 Local results are macOS arm64; Linux confirmation requires CI after push. Existing crypto gates
 remain unchanged.
 
-The documented M1 C.1/C.2 framing baseline remains covered. State chapters **1–13** now have typed
-serializers; chapter 13 retains its [trace parity gate](state-statistics.md). Chapters 14–16,
+The documented M1 C.1/C.2 framing baseline remains covered. State chapters **1–15** now have typed
+serializers; chapter 13 retains its [trace parity gate](state-statistics.md). Chapter 16,
 service entries and whole-state composition remain open. Next planned
-bounded increment: **chapters 14–15 ready and accumulated work**. See the [M1 checklist](../docs/m1.md).
+bounded increment: **chapter 16 last accumulation outputs**. See the [M1 checklist](../docs/m1.md).

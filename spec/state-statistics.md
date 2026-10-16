@@ -142,7 +142,7 @@ assertion/bounds/range/field/overflow guards. Linux CI runs the suite and upload
 local results are macOS arm64, with Linux confirmation pending CI after push. Existing crypto
 gates remain unchanged.
 
-The documented M1 framing baseline remains covered; chapters 1–13 now have typed serializers,
-with chapter 13's trace wire-parity gate open. Chapters 14–16, service entries and whole-state
-composition still remain. Next planned bounded group: **chapters 14–15 ready and accumulated
-work**. See the [M1 checklist](../docs/m1.md).
+The documented M1 framing baseline remains covered; chapters 1–15 now have typed serializers,
+with chapter 13's trace wire-parity gate open. Chapter 16, service entries and whole-state
+composition still remain. Next planned bounded group: **chapter 16 last accumulation
+outputs**. See the [M1 checklist](../docs/m1.md).

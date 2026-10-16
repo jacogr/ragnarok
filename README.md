@@ -44,6 +44,7 @@ python3 tests/test_state_safrole.py
 python3 tests/test_state_consensus.py
 python3 tests/test_state_disputes.py
 python3 tests/test_state_history.py
+python3 tests/test_state_workqueues.py
 python3 tests/test_state_statistics.py
 python3 tests/test_state_privileges.py
 python3 tests/test_state_availability.py

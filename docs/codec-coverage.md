@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–13 (chapter 13 has an open trace key-width gate); remaining state serialization, trie proofs
+1–15 (chapter 13 has an open trace key-width gate); remaining state serialization, trie proofs
 and persistence remain open. PVM execution and state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -197,8 +197,26 @@ validator-pair observations have explicit authored completion for their missing 
 Six exact raw trace entries are checked separately: one full match and five nonempty service
 entries leaving 3/5 trailing bytes under T/C.1 natural-key framing. Diagnostic E4-key parsing fits
 the latter exactly; upstream intent remains unresolved. This is an open wire-parity gate, not a
-successful full-component claim. Next planned: chapters 14–15 ready and accumulated work.
+successful full-component claim. Chapters 14–15 are now covered below.
 See [the contract and exact trace evidence](../spec/state-statistics.md).
+
+## Ready and accumulated work state extension
+
+`state_workqueues.nim` implements T chapters 14/15 as fixed epoch rings without an outer count.
+Ready slots contain count-prefixed ordered report/dependency-set pairs; accumulated slots contain
+count-prefixed canonical package-hash sets. Each report retains the existing child structural
+policy. Independent row/aggregate item, dependency, child-byte and parent-byte ceilings preflight
+the complete ring before any retained parent/child allocation. Private ARC owners expose copied
+hashes/counts and report handles that survive parent release.
+
+Validation: 2,904 independent requests, six literal oracle checks, three nominal and two privacy
+compiler rejections, native lifetime/copy/index/result guards and 48 partial C(14/15) roots.
+Twenty-four JSON-derived tiny/full component observations include dependency chains and wraparound;
+all set sorting is explicit transport derivation. Twelve unchanged trace entries match completely
+and re-emit identically; their ready rings are empty, and some accumulated sets are populated.
+Transitions/dependency resolution and full-state roots remain separate. The chapter-13 gate is
+unchanged. Next planned: chapter 16 last accumulation outputs.
+See [the contract](../spec/state-workqueues.md).
 
 ## Published codec fixture inventory
 

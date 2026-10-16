@@ -40,6 +40,8 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
   privileged-service roles, fixed core assigners and canonical always-accumulate service/gas dictionary.
   Chapter-13 activity statistics add E4 validator counters and natural core/service tuples;
   the published trace service-key width differs from pinned-paper framing and remains a parity gate.
+  Chapters 14/15 add fixed epoch rings of ordered ready reports/dependency sets and accumulated
+  package sets, with retained report children and canonical hash ordering.
   Other state components, proofs and persistence remain future work.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
@@ -54,9 +56,9 @@ See [M1 codec progress](m1.md) for baseline coverage and the next scope boundary
 PVM execution, complete state transitions, block import, consensus and availability processing,
 remaining state-component serialization, trie proofs/persistence and production validator operation
 are not implemented. Root construction accepts already serialized state-key/value entries; state
-chapters 1–13 now have typed serializers; chapter 13 retains a
-[trace key-width parity gate](../spec/state-statistics.md). Next planned: chapters 14–15 ready and
-accumulated work.
+chapters 1–15 now have typed serializers; chapter 13 retains a
+[trace key-width parity gate](../spec/state-statistics.md). Next planned: chapter 16 last
+accumulation outputs.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general
