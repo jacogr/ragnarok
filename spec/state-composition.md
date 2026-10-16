@@ -148,11 +148,12 @@ the exact success contract; fourteen private/read-only compiler probes protect r
 slot storage, and three nominal probes protect owner and entry/chapter index domains.
 
 Results are local macOS ARM64, checked ARC/Clang LTO. All production codec modules are ported.
-Unchanged width-evidence and parked namespace-witness regressions now replay through this driver
-in the Nimony runner. The five early primitive/composite independent corpora now pass too,
-completing local M1 validation migration parity for the documented implemented scope. Linux
-execution remains separate. M2 assurance and guarantee/report signing composition now pass.
-Bandersnatch owner/result safety now also passes locally. Next: contextual VRF/RingVRF vectors,
-JAM tickets and native-boundary/concurrency checks.
-No transition execution or new namespace rule is introduced. See the
-[trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3 work.
+Unchanged width-evidence and parked namespace-witness regressions now replay through this driver in
+the Nimony runner. The five early primitive/composite independent corpora now pass too, completing
+local M1 validation migration parity for the documented implemented scope. Linux execution remains
+separate. M2 assurance and guarantee/report signing composition now pass. Bandersnatch owner safety
+and original contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally.
+Next: M3 nonblocking UDP/socket readiness and registration retirement; Linux confirmation and
+documented normative policy gates remain separate. No transition execution or new namespace rule is
+introduced. See the [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3
+work.

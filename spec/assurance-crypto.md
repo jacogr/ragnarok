@@ -61,7 +61,9 @@ recovery without input mutation. Public live occupancy returns 192 to 192 bytes 
 scopes. Twenty-four isolated actual/default payload reads reject at their success contracts, and
 seven private/read-only plus two nominal compiler probes reject at the intended boundaries.
 
-Results are local macOS ARM64, checked ARC/Clang LTO; Linux and full M2/M3 parity remain separate.
-Guarantee/report signing composition now also passes. Bandersnatch owner/result safety now also passes locally. Next: contextual VRF/RingVRF vectors,
-JAM tickets and native-boundary/concurrency checks. See the
-[cumulative trial](../docs/nimony-trial.md); the exceptional-point policy remains unresolved.
+Results are local macOS ARM64, checked ARC/Clang LTO; Linux and full M3 parity remain separate.
+Guarantee/report signing composition now also passes. Bandersnatch owner safety and original
+contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally. Next: M3
+nonblocking UDP/socket readiness and registration retirement; Linux confirmation and documented
+normative policy gates remain separate. See the [cumulative trial](../docs/nimony-trial.md); the
+exceptional-point policy remains unresolved.

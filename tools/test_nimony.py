@@ -779,7 +779,7 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'tests/test_bandersnatch.py', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
+                'tests/test_bandersnatch.py', 'tests/native/bandersnatch_driver.nim', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
                 'native/bandersnatch/src/lib.rs', 'native/bandersnatch/Cargo.toml', 'native/bandersnatch/Cargo.lock',
                 'spec/bandersnatch-pins.json', '.github/workflows/nimony-linux.yml','src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
                 'tests/native/report_check.nim', 'tests/test_report_signature_harness.py','src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
@@ -813,6 +813,10 @@ def main():
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
+    # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
+    sys.path.insert(0, str(ROOT/'tests'))
+    from test_bandersnatch import fixture_path
+    sources += [fixture_path(name) for name in ('ietf.json', 'ring.json', 'jam-tiny.json', 'jam-full.json', 'jam-padding.json')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(sources)}
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
@@ -2059,6 +2063,36 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['bandersnatch'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' Bandersnatch '+member+' guard', passed)
+    # Replay the unchanged release-reference proof oracle through the production library, without observer interposition.
+    from test_bandersnatch import suite as bs_suite, generated_proofs as bs_generated, bridge_checks as bs_bridge, official_sources as bs_official
+    bs_official(False)
+    compiled, binary = build(compiler, ROOT/'tests/native/bandersnatch_driver.nim', 'bandersnatch-context',
+                             native_libraries=(bs_library,))
+    corpus = dict(build=compiled, passed=False, observations=[], reference='spec/bandersnatch-pins.json')
+    # Keep each exact fixture request/response and contract diagnostic as reproducible local/CI evidence.
+    def bs_query(binary, operation, *values):
+        arguments = [(value.hex() or '-') if isinstance(value, bytes) else str(value) for value in values]
+        result = command([binary, operation, *arguments], 'bs-context-'+str(len(corpus['observations'])))
+        corpus['observations'].append(result)
+        assert result['exit_code'] == 0, result
+        return result['output'].strip()
+    # Failed result access must reject before any default output can be observed.
+    def bs_failure(binary):
+        result = command([binary, 'F'], 'bs-context-failed-result')
+        corpus['failure_probe'] = result
+        return result['exit_code'], result['output']
+    if compiled['exit_code'] == 0:
+        # Preserve original oracle assertions; failures remain visible in the final partial-migration verdict.
+        try:
+            corpus['vectors'] = bs_suite(binary, query=bs_query, failure_probe=bs_failure)
+            corpus['generated'] = bs_generated(binary, query=bs_query)
+            corpus['native_boundary'] = bs_bridge()
+            corpus['passed'] = True
+        except (AssertionError, subprocess.SubprocessError) as error:
+            corpus['failure'] = repr(error)
+    corpus['requests'] = len(corpus['observations'])
+    report['bandersnatch_corpus'] = corpus
+    announce('contextual Bandersnatch vectors/native ABI', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2673,6 +2707,7 @@ def main():
                    and all(report[family+'_corpus']['passed'] for family in ('natural', 'fixed', 'bounded', 'composite', 'digest'))
                    and len(report['bandersnatch']) == 2*len(BS_MEMBERS)
                    and all(row['passed'] for row in report['bandersnatch'])
+                   and report['bandersnatch_corpus']['passed']
                    and report['report_signature_corpus']['passed']
                    and len(report['guarantee_message']) == 2*len(GUARANTEE_MESSAGE_MEMBERS)
                    and all(row['passed'] for row in report['guarantee_message'])

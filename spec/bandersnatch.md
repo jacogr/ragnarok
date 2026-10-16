@@ -124,8 +124,14 @@ scalar zeroization. The key/import workload returns live Nim occupancy 192 to 19
 result guards and seventeen privacy plus three nominal compiler probes pass. Three maintained
 Rust bridge tests and the locked/offline Rust 1.99.0 build also pass.
 
-These are local macOS ARM64 results under checked ARC/Clang LTO. Full module semantic success does
-not establish contextual VRF/RingVRF runtime parity or Linux execution. Next: replay the original
-ordinary/ring vectors, context-separated proofs, published JAM tickets, generated proofs and
-native-boundary/concurrency checks. The draft-text discrepancy remains unchanged. See the
-[cumulative trial](../docs/nimony-trial.md).
+The contextual fixture driver now also passes all seven ordinary vectors, seven ring vectors and
+seven published JAM tickets, including exact bytes/outputs and wrong-domain rejections. One
+generated ring proof and sixteen additional contextual messages pass. Four native workers each
+complete 32 signing/verification rounds with independent owners and joined lifetimes. Native ABI
+checks reject 99 ordinary widths, 785 ring widths and 64 mutated proofs without partial output.
+The runner records 131 driver requests plus a separate failed-result contract probe.
+
+These are local macOS ARM64 results under checked ARC/Clang LTO. Implemented release-reference M2
+regression coverage now passes; Linux confirmation and the draft-text discrepancy remain separate.
+Next: M3 nonblocking UDP/socket readiness and registration retirement. See the [cumulative
+trial](../docs/nimony-trial.md).

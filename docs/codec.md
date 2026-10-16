@@ -171,8 +171,9 @@ natural/fixed/bounded/composite/digest requests and their nominal/privacy safegu
 Local M1 validation migration parity is reached for the documented implemented scope; the parked
 namespace policy and Linux confirmation remain separate. M2 assurance signing contexts and
 validator-key/parent verification now pass too, alongside guarantee messages and complete-report
-signature composition. Bandersnatch owner/result safety now also passes locally. Next: contextual VRF/RingVRF vectors,
-JAM tickets and native-boundary/concurrency checks.
+signature composition. Bandersnatch owner safety and original contextual proof/JAM ticket/
+native-boundary/concurrency coverage now also pass locally. Next: M3 nonblocking UDP/socket
+readiness and registration retirement. Linux confirmation and normative policy gates remain separate.
 
 The experimental [Nimony Linux workflow](../.github/workflows/nimony-linux.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux

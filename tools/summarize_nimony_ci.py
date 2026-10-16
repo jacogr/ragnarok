@@ -30,8 +30,8 @@ def summarize(report, kind):
         lines = ['## Nimony migrated runtime slice', '', '**Status: '+report['status']+'**', '',
                  f'- Native suites: {len(report["suites"])}', f'- Independent corpora: {len(corpora)}',
                  f'- Runtime misuse rejections: {guards}', f'- Compilation rejections: {compilations}', '',
-                 'A passing migrated slice is partial evidence. Contextual crypto/',
-                 'Bandersnatch, QUIC and full integration/runtime checks are still migration gates.', '',
+                 'A passing migrated slice is partial evidence. QUIC, Linux confirmation and',
+                 'full integration/runtime checks remain migration gates; corpus verdicts are listed below.', '',
                  '| Corpus | Result | Requests |', '| --- | --- | --- |']
         # Preserve each corpus verdict rather than presenting aggregate counts as a substitute for failures.
         for key, row in corpora.items():

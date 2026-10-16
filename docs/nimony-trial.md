@@ -1,7 +1,7 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **54 native suites, thirty-eight independent corpora, 1,346 runtime misuse rejections
+Status: **54 native suites, thirty-nine independent corpora, 1,346 runtime misuse rejections
 and 636 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
@@ -11,7 +11,9 @@ the five early independent corpora and their original nominal/privacy safeguards
 validation migration parity is reached for the implemented scope; the parked request-namespace
 policy still qualifies normative state parity. The M2 assurance and guarantee/report
 signing-context slices now also pass locally. Bandersnatch guarded results, fixed imports and
-native key/setup ownership also pass; contextual VRF/RingVRF, M3 and Linux parity remain unverified.
+native key/setup ownership, contextual VRF/RingVRF and original native-boundary/concurrency
+coverage also pass locally. M2 migration regression parity is reached for the implemented
+release-reference scope; M3 and Linux parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
 execution remains pending the first workflow run.
@@ -1907,8 +1909,8 @@ schema + four static contracts), plus three language probes and the separately r
 No new full proof corpus is counted for these ownership/import checks. Formatting covers **810 Nim
 files**; the functional report records **900 matching source/test/configuration hashes**. Ten
 CI-helper tests pass. The all-source semantic audit advances to **39/43**: Bandersnatch and its dependent
-`src/quic/offload.nim` now pass. Four QUIC modules remain; offload runtime/lifecycle parity is
-still unverified.
+`src/quic/offload.nim` now pass with the optional offload body disabled. Four QUIC modules remain;
+offload-enabled compilation and runtime/lifecycle parity are still unverified.
 
 All results remain local macOS ARM64, checked ARC/Clang LTO on the pristine pinned Nimony nightly.
 Semantic compilation of the full Bandersnatch module is not full runtime conformance: original
@@ -1917,20 +1919,69 @@ data and concurrent/native boundary coverage still need migration/replay. The na
 Bandersnatch draft-text/reference discrepancy remains documented; Linux confirmation remains
 separate. Next is the contextual Bandersnatch/VRF/RingVRF vector and native-boundary slice.
 
+## Thirty-ninth bounded increment: contextual Bandersnatch conformance
+
+The original fixture driver now builds with public Nimony assertion, command-line, output and
+`std/rawthreads` APIs. Four stationary OS-thread records borrow four caller-owned integer identities;
+each worker creates its own ARC/native key owner. Every started worker is joined, including on
+partial thread-creation failure, before argument storage leaves scope. No owner is shared between
+threads and no compiler/private-runtime hook or dependency patch is introduced.
+
+The existing Python oracle is reused rather than replaced. The production Rust library is linked
+directly for these checks; test-only allocation interposition remains confined to the separate owner
+suite. Proof bytes, contexts, additional data, JAM domains, source/SRS identities, capacities and
+expected outputs remain unchanged.
+
+| Checked release/LTO evidence | Local result |
+| --- | --- |
+| Published ordinary contextual vectors | All seven reproduce public keys, exact 96-byte signatures and outputs; wrong context/additional data reject |
+| Published ring vectors | All seven reproduce 144-byte roots and verify 784-byte proofs/outputs |
+| Independent published JAM tickets | All seven tiny/full tickets verify with the exact ticket-seal transcript; padding fixture root matches |
+| Generated proofs | One randomized ring proof verifies; sixteen additional scalar/context messages sign and verify |
+| Native concurrency | Four workers each complete 32 signing/verification rounds with independent owners |
+| Native ABI boundaries | 99 wrong ordinary widths, 785 wrong ring widths and 64 mutated proofs reject; failed writes retain sentinel output |
+| Failed-result access | Stops at the supported success precondition, before exposing default output |
+
+The full corpus records **131 successful driver requests** plus its separately recorded deliberate
+failed-result probe. Rejected protocol operations are successful driver invocations returning typed
+failure, not process crashes. Exact commands/responses and per-command logs are retained in
+`bandersnatch_corpus` in `build/nimony-trial/verification/results.json`; source hashes cover the driver,
+shared oracle, consumed published fixtures, ABI and pins. Reproduce with the full runner below.
+
+There was **one measured compiler repair** in this bounded increment: fixed-array output through
+`echo` is unavailable in Nimony's output API, so the deliberate failed-result probe selects one byte
+instead. It still rejects at the same success contract before output. The initial diagnostic is
+retained locally in `build/nimony-trial/verification/bandersnatch-context-first-build.log`. Historical
+repair counts are not reconstructed. No production implementation behavior changed.
+
+Cumulative coverage is **54 native suites, thirty-nine independent corpora, 1,346 runtime misuse
+rejections and 636 compilation rejections** (533 privacy + 94 nominal + five schema + four static
+contracts), plus three language probes and three separately recorded Rust tests. This corpus does
+not inflate existing result-guard or compilation counts. Formatting still covers **810 Nim files**;
+source/test/configuration hashes total **906**. The unchanged all-source semantic baseline is
+**39/43**; optional offload-enabled compilation remains unverified.
+
+All results are local macOS ARM64, pinned pristine Nimony 0.6.3, checked ARC/Clang LTO and locked
+Rust 1.99.0. **Local M2 migration regression parity is reached for the implemented release-reference
+scope.** This preserves the Bandersnatch draft-text/reference discrepancy and exceptional-point
+Ed25519 policy gate; it does not claim an audit, normative resolution or Linux confirmation.
+M1's request-namespace policy remains parked.
+
 ## Remaining work and next bounded increment
 
-Next: port the Bandersnatch fixture driver and replay the original ordinary/ring vectors,
-context-separated proof checks, published JAM tickets, generated proofs and native-boundary/
-concurrency tests through the maintained Rust ABI. Preserve the pinned release-reference profile,
-SRS, proof widths and domain policy. Owner/result safety above remains the regression baseline.
+Next: M3 nonblocking UDP/socket readiness and registration retirement. Port the maintained
+transport dispatcher to supported public Nimony/OS interfaces, preserve bounded work and explicit
+resource lifetimes, and replay the existing I/O retirement selftest before advancing to peers,
+services, mesh/resilience and offload. This increment does not start that port.
 
 Further port work remains:
 
 - M1: local validation migration parity is reached for the documented implemented codec scope.
   The request-namespace normative policy remains parked; Linux execution is a separate gate.
 - M2: raw primitives, assurance contexts and guarantee/report signature composition pass locally.
-  Bandersnatch result/import/native-owner safety passes, but full contextual VRF/RingVRF runtime
-  conformance remains unverified.
+  Bandersnatch result/import/native-owner safety and original contextual VRF/RingVRF, JAM ticket,
+  generated-proof, concurrency and native-boundary regression coverage now pass locally. The
+  documented release-reference/draft-text and Ed25519 policy gates remain.
 - M3: `std/nativesockets`, `std/selectors` and top-level `posix` imports do not resolve in the nightly.
   Its alternative networking facilities require a dispatcher port and the existing lifecycle,
   service, mesh, resilience and offload tests.
@@ -1963,6 +2014,6 @@ authorization, state chapters 3–5/10/12–16, fixed service-account metadata a
 keyed values, request histories, exact chapter/service composition, raw whole-state roots, published width
 evidence, the unchanged parked namespace witnesses, the original five early codec corpora, stateless
 assurance signing contexts, guarantee/report credential composition and the bounded Bandersnatch
-result/import/native-owner slice.
+result/import/native-owner and contextual proof/native-boundary/concurrency slices.
 A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

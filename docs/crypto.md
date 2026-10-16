@@ -51,6 +51,9 @@ counts and constructor refusal/recovery; it neither hides frees nor reads freed 
 The pinned Rust build and three native bridge tests pass, with 32 result guards and 20 compiler
 probes in the Nimony runner. Key/import occupancy remains 192 bytes after 1,000 warmed scopes.
 
-Next: the original contextual VRF/RingVRF vectors, JAM tickets, generated proofs and native-boundary/
-concurrency checks. Full Bandersnatch runtime parity and Linux confirmation remain separate gates.
-See the [cumulative trial](nimony-trial.md).
+The original seven ordinary vectors, seven ring vectors, seven JAM tickets, generated proofs,
+four-thread signing and native-boundary checks now also pass through the production library. Local
+M2 migration regression parity is reached for the implemented release-reference scope; the
+draft-text discrepancy, Ed25519 policy and Linux confirmation remain separate gates. Next: M3
+nonblocking UDP/socket readiness and registration retirement. See the [cumulative
+trial](nimony-trial.md).
