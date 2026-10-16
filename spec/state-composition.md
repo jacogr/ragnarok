@@ -155,7 +155,8 @@ separate. M2 assurance and guarantee/report signing composition now pass. Bander
 and original contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally.
 M3 UDP/readiness and linked transport lifecycle checks now pass locally.
 Shared identity/DER/framing validation now also passes locally.
-Next: CE 143 integration results and retained digest ownership; Linux confirmation and
+CE 143 integration results and retained digest ownership now also pass locally.
+Next: the peer executable and authenticated CE 143 exchanges; Linux confirmation and
 documented normative policy gates remain separate. No transition execution or new namespace rule is
 introduced. See the [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3
 work.

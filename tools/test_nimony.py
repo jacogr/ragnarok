@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -691,6 +691,8 @@ PRIVATE.update(quic_length_payload='completed', quic_length_tag='status', quic_f
 NOMINAL.update(bs_key_as_setup='[1] expected: BsSetup but got: BsKey',
                bs_signature_as_ring_proof='got: BsSignature but wanted: BsRingProof',
                bs_output_as_public='got: BsOutput but wanted: BsPublicKey')
+PRIVATE.update(integration_key_payload='completed', integration_capture_payload='completed', integration_child_payload='completed', integration_count_payload='completed', integration_bytes_payload='completed', integration_status='status', integration_retag='status', integration_error_write='error', integration_value_write='value', integration_forge='status', integration_verified_private='data', integration_verified_rebind='data', integration_verified_forge='data', integration_bank_private='data', integration_bank_rebind='data', integration_bank_forge='data', integration_verified_wire='wire', integration_bank_wires='wires')
+INTEGRATION_MEMBERS = ('key', 'capture', 'child', 'length', 'copy', 'fixture-key', 'fixture-bytes')
 BS_MEMBERS = ('key-short', 'key-zero', 'key-backend', 'setup-bounds', 'setup-backend',
               'public-owner', 'public-short', 'signature-short', 'signature-owner', 'root-short',
               'root-owner', 'proof-short', 'proof-owner', 'output-invalid', 'ring-output-owner', 'normalize-short')
@@ -714,7 +716,7 @@ def command(arguments, name):
 
 
 # Use Nimony ARC/Clang release/LTO with bounds/contracts enabled; never use danger or noAssertions.
-def build(compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None):
+def build(compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=()):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
              '--boundchecks:on', '--passC:-flto', '--passL:-flto']
     if platform.system() == 'Linux':
@@ -732,6 +734,7 @@ def build(compiler, source, name, crypto_library=None, native_libraries=(), cfla
         flags += [f'--passC:-I{ROOT/"native/bandersnatch"}']
         for library in native_libraries:
             flags += [f'--passL:{library}', f'--passL:-Wl,-rpath,{library.parent}']
+    flags += ['-d:'+name for name in defines]
     flags += ['--passC:'+flag for flag in cflags]
     binary = BUILD/name
     result = command([compiler, 'c', *flags, f'--nimcache:{BUILD/(name+"-cache")}',
@@ -752,7 +755,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -785,6 +788,7 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
+                'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
                 'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
                 'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
                 'native/quic/transport_bridge.c', 'native/quic/transport_bridge.h', 'native/quic/cert_fields.c', 'native/quic/cert_fields.h',
@@ -827,6 +831,8 @@ def main():
     sys.path.insert(0, str(ROOT/'tests'))
     from test_bandersnatch import fixture_path
     sources += [fixture_path(name) for name in ('ietf.json', 'ring.json', 'jam-tiny.json', 'jam-full.json', 'jam-padding.json')]
+    sources += [ROOT/f'vendor/jamtestvectors/codec/{profile}/work_result_{number}.{suffix}'
+                for profile in ('tiny', 'full') for number in (0, 1) for suffix in ('json', 'bin')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(sources)}
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
@@ -838,6 +844,20 @@ def main():
     bs_libraries = (bs_observer, bs_library)
     from nimony_quic import prepare as prepare_quic
     quic_library, quic_fixtures, report['quic_native'] = prepare_quic()
+    # Reuse the original independently checked CE integration fixtures; no peer/compiler build runs here.
+    import test_integration as integration_fixture
+    integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
+    integration_wires, integration_keys = integration_fixture.corpus()
+    integration_reload = BUILD/'integration-reload'
+    integration_reload.mkdir(exist_ok=True)
+    # Different candidate bytes make a late refused reload detect partial publication rather than a no-op reload.
+    for index in range(8):
+        wire = bytearray((integration_wires/f'{index}.bin').read_bytes())
+        wire[0] ^= 128
+        (integration_reload/f'{index}.bin').write_bytes(wire)
+    report['integration_fixtures'] = dict(keys=integration_keys,
+        original={str(index): hashlib.sha256((integration_wires/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)},
+        reload={str(index): hashlib.sha256((integration_reload/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)})
     from guarantees_oracle import record as guarantee_record
     guarantee_fixture = BUILD/'minimal-report.bin'
     guarantee_fixture.write_bytes(guarantee_record(0)['report'])
@@ -860,16 +880,24 @@ def main():
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name in ('guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
+                                 crypto_observer if name in ('quic_integration', 'guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
                                  else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None,
                                  native_libraries=bs_libraries if name == 'bandersnatch_owners' else (),
                                  cflags=OWNER_DEFINES if name == 'bandersnatch_owners' else (),
-                                 quic_library=quic_library if name in ('quic_transport', 'quic_protocol') else None)
+                                 quic_library=quic_library if name in ('quic_transport', 'quic_protocol') else None,
+                                 defines=('integration',) if name == 'quic_integration' else ())
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [])], name+'-run')
+            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [integration_wires, integration_reload] if name == 'quic_integration' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
+            if name == 'quic_integration' and row['passed']:
+                # Every small retained parent/child/failure scope must release its final ARC references.
+                release = re.search(r'INTEGRATION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy covers this warmed workload, not RSS/native allocation freedom.
+                    report['integration_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
             if name == 'quic_io' and row['passed']:
                 # Custom resource destruction must release retained dispatcher metadata, not only OS sockets.
                 release = re.search(r'QUIC_IO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -2148,6 +2176,40 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
                 announce('QUIC '+origin+' '+member+' guard', passed)
+    # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
+    from integration_oracle import requests as integration_requests
+    lines, expected = integration_requests(integration_wires)
+    source = BUILD/'integration-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/integration_driver.nim', 'integration-driver', crypto_library, defines=('integration',))
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest(),
+                  scope='CE fixture codec/crypto composition; no authenticated transport or normative digest/preimage relationship')
+    if compiled['exit_code'] == 0:
+        # Compare complete serialized bytes and failure ordering, not only a self-generated round trip.
+        result = command([binary, source], 'integration-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        if not corpus['passed']:
+            # Retain the exact first mismatching observation and adjacent public request log for diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['integration_corpus'] = corpus
+    announce('independent CE digest capture/hash-binding corpus', corpus['passed'])
+    # Every default/actual integration result family must reject value access before use.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_integration_results.nim', 'integration-results', crypto_observer, defines=('integration',))
+    report['integration_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for member in INTEGRATION_MEMBERS:
+            # Child processes isolate failure reads across keys, snapshots, codec owners, counts and copied bytes.
+            for origin in ('default', 'error'):
+                result = command([binary, member, origin], 'integration-'+member+'-'+origin)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['integration'].append(dict(member=member, origin=origin, passed=passed, run=result))
+                announce('integration '+origin+' '+member+' guard', passed)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2769,6 +2831,8 @@ def main():
                    and all(row['passed'] for row in report['bandersnatch'])
                    and report['bandersnatch_corpus']['passed']
                    and report['quic_protocol_corpus']['passed']
+                   and report['integration_corpus']['passed']
+                   and len(report['integration']) == 2*len(INTEGRATION_MEMBERS) and all(row['passed'] for row in report['integration'])
                    and len(report['quic_protocol']) == 8 and all(row['passed'] for row in report['quic_protocol'])
                    and report['report_signature_corpus']['passed']
                    and len(report['guarantee_message']) == 2*len(GUARANTEE_MESSAGE_MEMBERS)

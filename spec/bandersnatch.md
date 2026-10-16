@@ -135,5 +135,6 @@ These are local macOS ARM64 results under checked ARC/Clang LTO. Implemented rel
 regression coverage now passes; Linux confirmation and the draft-text discrepancy remain separate.
 M3 UDP/readiness and linked transport lifecycle checks now pass locally.
 Shared identity/DER/framing validation now also passes locally.
-Next: CE 143 integration results and retained digest ownership. See the [cumulative
+CE 143 integration results and retained digest ownership now also pass locally.
+Next: the peer executable and authenticated CE 143 exchanges. See the [cumulative
 trial](../docs/nimony-trial.md).

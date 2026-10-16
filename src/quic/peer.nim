@@ -110,10 +110,12 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
         echo "INTEGRATION_REJECT Lookup"
         return (false, false) # A missing database key cannot select a default record.
       state.fixture = index
-      var scratch = newSeq[byte](peer.bank.wires[index].len)
-      for i, value in peer.bank.wires[index]: scratch[
-          i] = value # Keep the bank immutable while the receive/scratch owner is reused.
-      let checked = captureDigest(scratch, peer.bank.keys[index])
+      let fixture = fixtureBytes(peer.bank, index)
+      let key = fixtureKey(peer.bank, index)
+      if fixture.error != IntegrationError.None or key.error != IntegrationError.None:
+        return (false, false) # No default/missing bank entry can create a response snapshot.
+      var scratch = fixture.value
+      let checked = captureDigest(scratch, key.value)
       if checked.error != IntegrationError.None:
         echo "INTEGRATION_REJECT ", checked.error
         return (false, false) # Codec/ownership/crypto failure settles only this stream.
@@ -169,7 +171,12 @@ proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.r
     if index >= 8: peer.failed = true; streamAbort(handle); return # Trusted workload ceiling.
     inc peer.opened
     state.fixture = index
-    state.query = peer.bank.keys[index]
+    let key = fixtureKey(peer.bank, index)
+    if key.error != IntegrationError.None:
+      peer.failed = true
+      streamAbort(handle)
+      return # A missing bank cannot supply a default request identity.
+    state.query = key.value
     state.attack = if index == 6: "cancel" else: "valid"
     for i, value in array[32, byte](state.query): state.sending[5 + i] = value
     if index == 4: state.sending[5] = state.sending[5] xor 1 # Deliberately request an absent key.
@@ -253,10 +260,19 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
             echo "OFFLOAD_ADMIT ", state.job
           return # No reply allocation/write occurs until the I/O thread selects verified completion.
         if peer.integrated:
-          let wire = state.verified.wire
-          state.sending = newSeq[byte](wire.len + 4)
-          for i in 0..<4: state.sending[i] = byte((wire.len shr (8 * i)) and 255) # Native E4 response header.
-          for i, value in wire: state.sending[4 + i] = value # Serialize from the validated owner, not the overwritten scratch.
+          let length = wireLength(state.verified)
+          if length.error != IntegrationError.None or length.value > high(int) - 4:
+            finishStream(peer, state, false)
+            streamAbort(state.handle)
+            return # Missing/oversized snapshot metadata cannot choose a send allocation.
+          state.sending = newSeq[byte](length.value + 4)
+          for i in 0..<4: state.sending[i] = byte((length.value shr (8 * i)) and 255) # Native E4 header.
+          let copied = copyVerifiedWire(state.verified, state.sending.toOpenArray(4,
+              state.sending.len - 1))
+          if copied.error != IntegrationError.None:
+            finishStream(peer, state, false)
+            streamAbort(state.handle)
+            return # Failed copy cannot publish a partial response.
           if state.fixture == 5: state.sending[8] = state.sending[
               8] xor 1 # Test-only corrupt response remains a valid digest with the wrong preimage hash.
           state.sendLength = state.sending.len
@@ -337,7 +353,7 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
     if not state.counted and not peer.stopping: finishStream(peer, state, false)
     # The cancelled large response must have reached owned capture before final close releases it.
     if peer.integrated and accepting(peer, state) and state.fixture == 6 and
-        len(state.verified.wire) > 0: echo "OWNED_CANCEL_RELEASE"
+        wireLength(state.verified).error == IntegrationError.None: echo "OWNED_CANCEL_RELEASE"
     state[] = StreamState() # ARC releases both buffers; the slot holds no closure/reference back to Peer.
     return
   if event == 4:

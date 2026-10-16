@@ -43,5 +43,9 @@ The peer executable and broad lifecycle claims above describe the historical imp
 they are still migration gates on this branch. Shared identity/DER and structural CE framing now
 also pass their parser selftest, independent oracle and guarded-result checks. The peer delegates
 these checks to `src/quic/protocol.nim`; fixture content and integration policy remain in the peer.
-Next: codec/crypto integration results and retained digest ownership, followed by whole-peer
-validation, authenticated exchanges, services, mesh/resilience and proof offload. See the [cumulative Nimony evidence](nimony-trial.md).
+Enabled CE 143 fixture composition now also passes: private retained digest snapshots survive
+receive-buffer overwrite, guarded results refuse failed access, and immutable fixture banks publish
+only complete successful reloads. This is an integration workload, not a new normative relationship
+between C.2 fields and CE query keys.
+Next: the peer executable and authenticated CE 143 exchanges, followed by services, mesh/resilience
+and proof offload. See the [cumulative Nimony evidence](nimony-trial.md).

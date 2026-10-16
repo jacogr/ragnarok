@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **57 native suites, forty independent corpora, 1,354 runtime misuse rejections
-and 648 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+Status: **59 native suites, forty-one independent corpora, 1,368 runtime misuse rejections
+and 666 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
@@ -14,7 +14,8 @@ signing-context slices now also pass locally. Bandersnatch guarded results, fixe
 native key/setup ownership, contextual VRF/RingVRF and original native-boundary/concurrency
 coverage also pass locally. M2 migration regression parity is reached for the implemented
 release-reference scope. M3 now has a local UDP/readiness and linked native-transport lifecycle
-slice, plus shared SAN/DER identity and structural framing validation. Authenticated peers,
+slice, plus shared SAN/DER identity, structural framing and enabled CE fixture composition.
+Authenticated peers,
 broader M3 coverage and Linux parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -2113,11 +2114,71 @@ These are local macOS ARM64 results on the unchanged pinned Nimony 0.6.3, checke
 M1/M2 local regression parity retains its documented scope and normative gates. No authenticated
 exchange, whole-peer selftest, service/mesh/resilience/offload parity or Linux execution is claimed.
 
+## Forty-second bounded increment: CE digest integration ownership
+
+`src/quic/integration.nim` now passes both its enabled crypto-linked path and its disabled typed
+refusal path. This preserves the existing CE 143 test workload: capture one complete Gray Paper
+0.8.0 C.2 work digest, overwrite borrowed receive bytes, serialize the retained codec owner, then
+bind those bytes to the requested Blake2b-256 key. It introduces no normative relationship between
+an embedded C.2 field and that query key, and changes no specification, native ABI or dependency pin.
+
+Integration result status and payloads are private, with read-only reasons and success contracts.
+`VerifiedDigest` retains an immutable acyclic ARC snapshot containing its codec owner and exact
+serialization. Callers can retain the codec child, inspect a checked size or copy into preflighted
+caller storage; mutable backing bytes never escape. Peer call sites use those APIs, including a
+response-size overflow check, but the whole executable remains a migration gate.
+
+Fixture banks now retain private immutable data. Fixed keys are copied and wire extraction returns
+an explicit defensive copy. Default banks reject lookup, including an all-zero key. A complete
+candidate is published only after all eight bounded trusted file reads and hashes succeed; a late
+hash refusal or missing file preserves the prior bank and aliases. Successful reload tests use
+actually different fixture bytes so accidental partial publication cannot pass unnoticed.
+
+The enabled suite preserves the original 10,000 arbitrary captures and tests escaped aliases,
+children surviving all integration handles, source overwrite, output mutation/tail preservation,
+atomic short-output refusal, default handles, wrong keys and native refusal/recovery. Over 1,000
+warmed owner/refusal/recovery scopes, public occupied memory returns **736 to 736 bytes**, with
+outer fixtures live. This establishes release for that workload, not arbitrary service stability.
+
+A separate production-linked driver matches **10,748 independent requests** against the existing
+mathematical C.2 decoder and Python standard-library Blake2b. Inputs include the original eight
+integration fixtures, published tiny/full work-result sources, every small truncation, selected
+large boundaries, trailing bytes, wrong keys and the original arbitrary byte stream. Parse/trailing
+failures preserve source bytes; post-parse hash refusal retains the original deliberate overwrite
+behavior. Fourteen default/actual failed-result reads trap at success contracts, and eighteen
+compiler probes reject private storage, retagging, forged snapshots/banks and old mutable fields.
+
+One observed compiler repair was in the new test: equality is unavailable directly on the distinct
+`PreimageKey` role, so the test now explicitly compares its fixed byte representation, matching the
+existing implementation. The enabled production module passed its first semantic check. The
+initial diagnostic is retained in `build/nimony-trial/integration-first-build.log`; historical
+repair/time totals are not reconstructed.
+
+The first cumulative run also exposed a negative-test naming collision: five new privacy fixtures
+used `owned` for a local handle while importing the `owned` module. Three failed the strict
+diagnostic gate, while two emitted an additional rejection alongside their intended error. All
+five handles were renamed, retaining the strict gate and intended privacy checks. This is a
+second observed test repair batch, not a production defect; the corrected probes are rechecked
+before repeating the cumulative run.
+
+Cumulative coverage is **59 native suites, forty-one independent corpora, 1,368 runtime misuse
+rejections and 666 compilation rejections**: 562 privacy, 94 nominal, five schema, four static
+contracts and one ownership-lowering rejection. Formatting covers **851 Nim files**. The full
+runner hashes **971 source/test/configuration files** and records generated fixture hashes,
+commands and verdicts in `build/nimony-trial/verification/results.json`. The all-source semantic audit is
+**43/45**; peer and mesh remain. Enabled integration is built and executed separately, rather than
+inferred from the disabled module audit. Enabled proof-offload compilation remains unverified.
+
+Results are local macOS ARM64 on the unchanged pinned Nimony 0.6.3, checked ARC/Clang LTO.
+Implemented-scope M1/M2 regression parity and their documented normative gates remain unchanged.
+Authenticated exchanges, whole-peer/service/mesh/resilience/offload parity and Linux execution
+remain separate gates.
+
 ## Remaining work and next bounded increment
 
-Next: CE 143 codec/crypto integration results and retained digest ownership, including the enabled
-integration path and its original selftest. This dependency still blocks the peer executable;
-authenticated exchanges, retained services, mesh/resilience and enabled proof offload follow.
+Next: port the peer executable and verify authenticated CE 143 exchanges using the migrated
+identity, framing and integration dependencies. Retained services, mesh/resilience and enabled
+proof offload follow as bounded increments.
 
 Further port work remains:
 
@@ -2128,8 +2189,8 @@ Further port work remains:
   generated-proof, concurrency and native-boundary regression coverage now pass locally. The
   documented release-reference/draft-text and Ed25519 policy gates remain.
 - M3: bounded POSIX UDP/readiness, descriptor retirement and linked transport setup/teardown pass
-  locally. Shared identity/DER and structural framing now pass too. Integration ownership/results,
-  whole-peer validation, authenticated exchanges, service, mesh, resilience and enabled offload
+  locally. Shared identity/DER, structural framing and enabled integration ownership/results pass
+  too. Whole-peer validation, authenticated exchanges, service, mesh, resilience and enabled offload
   compilation/runtime coverage remain migration gates.
 - Toolchain: branch Linux installation/pinning, formatter setup and trial CI are configured.
   Linux execution, normal build commands and main documentation/CI cutover remain gates until the
