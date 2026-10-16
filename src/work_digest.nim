@@ -6,7 +6,8 @@ type
   CodeHash* = distinct array[32, byte]
   # Owned 32-byte payload hash, whose bytes are serialized in their supplied order.
   PayloadHash* = distinct array[32, byte]
-  # Gas units; accumulation gas uses E8 while refinement gas uses a canonical natural.
+  # Gas units; a work digest uses E8 for accumulation gas and a natural for refinement gas.
+  # The same units in a C.2 accumulation operand use a general natural rather than E8.
   Gas* = distinct uint64
   # Number of imported segments, serialized as a general natural.
   ImportCount* = distinct uint64

@@ -6,6 +6,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | Module | Scope |
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
+| `c2_records.nim` | Standalone availability, deferred transfers, immutable operands and tagged accumulation inputs |
 | `collections.nim` | Canonical typed sets and dictionaries over natural/fixed unsigned/fixed-octet scalars |
 | `bitstrings.nim` | Strict Boolean prefixes, fixed/variable packed bitstrings and immutable bit owners |
 | `bounded.nim` | Bounded byte strings and homogeneous fixed-width sequences |
@@ -39,7 +40,7 @@ are 2 cores / 6 validators; full is 341 / 1023. Structural codec acceptance does
 See `tests/test_codec.py`, `tests/test_work_report.py` and `tests/test_assurances.py` for independent
 oracles, official vectors, boundary/fuzz inputs, alias probes and output atomicity checks.
 
-[M1 progress and next coherent groups](m1.md) distinguish implemented codec families from remaining work.
+[M1 coverage and scope boundaries](m1.md) distinguish implemented framing from remaining client work.
 
 [Disputes](../spec/disputes.md) document variable judgment counts, per-section ordering, the
 published sample ordering discrepancy and the contextual checks left to state validation.
@@ -54,7 +55,7 @@ counts, fixed configured winner tuples and retained views that outlive full head
 an outer discriminator. Parent scans validate every child before capture; encoders revalidate
 all retained children before any write. Child materialization can allocate a separate family
 snapshot. The [coverage audit](codec-coverage.md) distinguishes complete published codec-family
-coverage from general encodings and accumulation records still missing in M1.
+coverage from broader state serialization and future collection schema extensions.
 
 [General Boolean and bitstring APIs](../spec/bitstrings.md) pack bits least-significant first,
 count logical bits in variable prefixes and enforce zero unused padding. Fixed framing omits the
@@ -68,3 +69,9 @@ sets, and give dictionaries one pair-count prefix. Supported scalar families are
 E0..E8 unsigned values and fixed octets; each dictionary key/value schema is independent. Complete
 preflight precedes allocation or output writes, and retained typed snapshots expose only copied
 scalars/pairs. Additional child schemas require explicit codec and ownership work.
+
+[Remaining specialized C.2 records](../spec/c2-records.md) separate fixed 104-byte availability
+values from context, include the transfer/operand outer tags in their standalone wire, preserve
+the 128-byte memo, and distinguish E8 transfer gas from natural operand gas. Fixed records are
+independent copies; operand snapshots bind result/trace extraction to their owner. Caller blob and
+wire ceilings are explicit. These codecs do not execute accumulation or verify state eligibility.

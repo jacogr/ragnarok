@@ -131,7 +131,10 @@ from marker state eligibility, header/extrinsic hashing and signature verificati
 Complete extrinsic/block wire composition is now implemented in [block_codec](block.md). Parent
 preflight preserves each existing child policy and does not calculate or verify the header
 extrinsic commitment. All published codec families have explicit fixture outcomes; the
-[coverage audit](../docs/codec-coverage.md) records general and accumulation codecs still absent.
+[coverage audit](../docs/codec-coverage.md) records the scoped C.1/C.2 baseline and wider boundaries.
+Later M1 increments also implement general Boolean/bitstring/typed collection APIs and
+[standalone availability/accumulation records](c2-records.md); this is framing coverage, not
+accumulation execution or state-serialization parity.
 
 ## Reproduction and observed validation
 

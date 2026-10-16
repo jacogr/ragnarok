@@ -75,6 +75,11 @@ jobs:
           python3 tests/test_collections_harness.py
           python3 tests/test_collections.py 2>&1 | tee build/ci/collections.log
 
+      - name: Availability and accumulation record codecs
+        run: |
+          python3 tests/test_c2_harness.py
+          python3 tests/test_c2.py 2>&1 | tee build/ci/c2.log
+
       - name: Tickets and guarantees extrinsics
         run: |
           python3 tests/test_tickets_harness.py
@@ -161,6 +166,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/c2/*.log
+            build/c2/results.json
+            build/c2/types/*.log
             build/collections/*.log
             build/collections/results.json
             build/collections/types/*.log

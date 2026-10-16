@@ -29,24 +29,25 @@ integration, not hidden JAM codecs, PVM or state logic. Native dependency source
   bounded bytes/sequences, canonical typed scalar sets/dictionaries, optional/work variants,
   preimage/ticket/guarantee/dispute extrinsics, work digests, complete reports, assurances,
   refinement contexts, work-package inputs, full/signing headers with epoch/winner markers,
-  and complete extrinsic/block composition.
+  complete extrinsic/block composition, standalone availability specifications, deferred transfers
+  and accumulation operands/input unions.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
   backpressure, cancellation, deadlines, peer-loss/admission recovery and bounded proof offload.
 - Official/vector references, native fuzz/selftests and Linux correctness/lifecycle CI.
 
-See [M1 codec progress](m1.md) for the remaining grouped codec increments.
+See [M1 codec progress](m1.md) for baseline coverage and the next scope boundary.
 
 ## Outstanding work
 
 PVM execution, complete state transitions, block import, consensus and availability processing,
-remaining specialized/accumulation codecs, state coverage and production validator operation are not
-implemented. The [M1 coverage audit](codec-coverage.md) distinguishes wire composition from those
-remaining codec and validation responsibilities. Current
-network tests use bounded controlled topologies; general multi-target networking and independent
-JAM-stack interoperability remain open. Full-ring capacity sizing and dependency/security audits
-remain necessary. The exceptional-point Ed25519 acceptance policy requires an explicit normative
+state serialization/Merkle layout and production validator operation are not implemented.
+The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
+[M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
+validation responsibilities. Current network tests use bounded controlled topologies; general
+multi-target networking and independent JAM-stack interoperability remain open. Full-ring capacity
+sizing and dependency/security audits remain necessary. The exceptional-point Ed25519 acceptance policy requires an explicit normative
 decision and focused independent tests before consensus-sensitive verification is finalized.
 
 Work proceeds in maintainer-authorized bounded increments. The language decision and its full

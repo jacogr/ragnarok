@@ -1,7 +1,8 @@
 # M1 coverage audit — Gray Paper 0.8.0
 
 This audit follows Appendix C.1/C.2 at the exact source/vector revisions in `spec/pins.json`.
-M1 remains **in progress**. Complete published fixture-family coverage does not mean every general
+The **C.1/C.2 framing baseline is implemented within the scope listed below**. Complete published
+fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. State encoding/Merkle layout needs
 its own scope; PVM execution and state transitions are separate client work.
 
@@ -36,19 +37,26 @@ authored nonempty numeric/octet cases provide the substantive order/association 
 | Term | Current implementation |
 | --- | --- |
 | Work outputs, digests and complete reports | `composite.nim`, `work_digest.nim`, `work_report.nim`, retained `report_owned.nim`. |
-| Availability specification | Complete wire fields embedded in the report header; standalone public record codec remains. |
+| Availability specification | Standalone 104-byte value codec in `c2_records.nim`, using existing nominal report fields and explicit core/byte policy. |
 | Refinement context, imports, input commitments, work items/packages | `work_package.nim`, standalone components and package aggregate policy. |
 | Tickets, preimages, guarantees, assurances, disputes | Dedicated family modules, exact framing and structural policies. |
 | Safrole winning ticket, epoch/winner markers, full/signing headers | `header.nim`, distinct sealed/unsigned owners and retained marker access. |
 | Complete extrinsic and block | `block_codec.nim`, typed components, complete preflight and retained children. |
-| Deferred transfers (`defxfer`) | Not implemented. |
-| Accumulation operands (`operandtuple`) | Not implemented. |
+| Deferred transfers (`defxfer`) | `c2_records.nim`: outer tag one, fixed service/balance/memo/gas fields and independent value copies. |
+| Accumulation operands (`operandtuple`) | `c2_records.nim`: outer tag zero, natural gas, all work-result alternatives, bounded trace/payloads and retained snapshots; union framing also implemented. |
 
-The remaining concrete codec gaps are the C.2 records listed above. Collection element schemas beyond
+The concrete C.2 record gaps recorded by the earlier audit are now covered. Collection schemas beyond
 the supported value-only scalar families need explicit future adapters and ownership contracts;
 this increment does not provide an arbitrary child-codec framework. State-dependent eligibility,
 hashing, signature/point validation, execution and authorization are not properties of the framing
 layer.
+
+Availability/accumulation validation: 26,090 independent requests, eight literal oracle checks,
+three nominal and one private-owner rejection, plus native retention, copied fields, stricter
+limits, aliases, atomicity and variant-guard checks. The exact availability prefixes are published
+report bytes; accumulator operands derived from named report fields are not published standalone
+operand vectors. No standalone transfer/operand codec fixture family exists at the pin. See
+[the record contract](../spec/c2-records.md) for source and state-validation boundaries.
 
 ## Published codec fixture inventory
 
