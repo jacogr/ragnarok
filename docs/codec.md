@@ -119,4 +119,6 @@ recorded in [owned snapshots](../spec/owned-snapshots.md). Complete work-report 
 lifetime/guard checks; see [the trial](nimony-trial.md). Assurance encoding, decoding and inspection
 also pass their independent corpus with guarded progress results. Guarantee sequences and
 standalone records now pass wire/semantic, inspection, parent/child lifetime and result checks.
-Ticket records/extrinsics are the next bounded compiler-port increment.
+Ticket encoding, decoding and inspection also pass their independent corpus, including lifetime,
+atomicity, alias and guarded-progress checks. Dispute codecs are the next bounded compiler-port
+increment.

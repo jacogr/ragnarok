@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -90,6 +90,15 @@ NOMINAL.update(swapped_guarantee_slot='got: LookupSlot but wanted: GuaranteeSlot
 GUARANTEE_MEMBERS = ('owner', 'count', 'consumed', 'single-value', 'single-consumed', 'selected',
                     'encoded', 'owned', 'measured', 'bytes', 'inspect-count', 'inspect-consumed',
                     'record-core', 'record-consumed')
+TICKET_PRIVATE = dict(tickets_write_private='byteWritten', tickets_write_retag='status',
+    tickets_write_forge='status', tickets_write_error='error', tickets_write_written='written',
+    tickets_read_private='recordCount', tickets_read_consumed='byteConsumed', tickets_read_retag='status',
+    tickets_read_forge='status', tickets_read_error='error', tickets_read_count='count',
+    tickets_read_progress='consumed')
+NOMINAL.update(raw_ticket_attempt='got: uint8 but wanted: TicketAttempt',
+               swapped_ticket_proof='got: TicketAttempt but wanted: TicketProof')
+TICKET_MEMBERS = ('written', 'count', 'consumed', 'inspect-count', 'inspect-consumed')
+PRIVATE.update(TICKET_PRIVATE)
 PRIVATE.update(GUARANTEE_PRIVATE)
 PRIVATE.update(ASSURANCE_PRIVATE)
 PRIVATE.update(REPORT_PRIVATE)
@@ -142,7 +151,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -153,7 +162,8 @@ def main():
                + [ROOT/'tests/native/ownership_checks.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
                + list((ROOT/'tests').glob('guarantees_*.py'))
-               + [ROOT/'tests/native/guarantees_driver.nim']
+               + [ROOT/'tests/native/guarantees_driver.nim', ROOT/'tests/native/tickets_driver.nim',
+                  ROOT/'tests/tickets_oracle.py', ROOT/'tests/test_tickets_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -275,6 +285,52 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['guarantee_corpus'] = corpus
     announce('independent guarantee extrinsic/inspection/standalone corpus', corpus['passed'])
+    # Keep every original ticket request and add unsigned policy extremes before direct inspections.
+    from tickets_oracle import requests as ticket_requests, decode as ticket_decode, encode as ticket_encode
+    from tickets_oracle import record as ticket_record, wire as ticket_wire
+    from test_codec import reference_encode as ticket_natural
+    lines, expected = ticket_requests()
+    original_count = len(lines)
+    for limit, data in ((2**64-1, ticket_natural(2**64-1)), (2**64-1, b'\0'),
+                        (0, b'\0'), (0, ticket_wire([ticket_record(255)]))):
+        # Huge permitted counts still need a complete raw extent; zero limits allow only empty records.
+        lines.append(f'D {limit} 1 {data.hex()}')
+        expected.append(ticket_decode(data, limit, 1))
+    for limit in (0, 2**64-1):
+        # Unsigned policy extremes must neither wrap nor narrow through the fixture parser.
+        records = [ticket_record(255)]
+        lines.append(f'E {limit} 786 {records[0].hex()}')
+        expected.append(ticket_encode(records, limit, 786))
+    codec_count = len(lines)
+    for line in list(lines):
+        # Inspect every original/new decoder input with no caller record capacity limitation.
+        fields = line.split()
+        if fields[0] == 'D':
+            data = bytes.fromhex(fields[3]) if fields[3] != '-' else b''
+            result = ticket_decode(data, int(fields[1]), len(data)//785+1)
+            parts = result.split()
+            lines.append(' '.join(['I', fields[1], '0', fields[3]]))
+            expected.append(parts[0]+' '+parts[2] if len(parts) == 3 else result)
+    source = BUILD/'ticket-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/tickets_driver.nim', 'tickets-codec')
+    corpus = dict(build=compiled, original_requests=original_count, codec_requests=codec_count,
+                  inspection_requests=len(lines)-codec_count, requests=len(lines), passed=False,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Exact attempts/proofs and consumed metadata are observed independently after source mutation.
+        result = command([binary, source], 'tickets-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Retain the first differing row plus complete output for a reproducible failure.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['ticket_corpus'] = corpus
+    announce('independent ticket codec/inspection corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -406,6 +462,19 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['guarantees'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' guarantee '+member+' guard', passed)
+    # Ticket write, decode and inspection APIs reject progress reads on defaults and actual typed failures.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_ticket_results.nim', 'ticket-results')
+    report['tickets_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Match each success contract separately so an unrelated crash cannot count as protection.
+        for origin in ('default', 'error'):
+            # Decode and inspection share a result type but both operation paths must be exercised.
+            for member in TICKET_MEMBERS:
+                result = command([binary, member, origin], 'ticket-'+origin+'-'+member)
+                passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
+                          and '[AssertionDefect]' in result['output'])
+                report['tickets'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' ticket '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -435,7 +504,8 @@ def main():
                    and len(report['composite']) == 29 and all(row['passed'] for row in report['composite'])
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
-                   and report['guarantee_corpus']['passed']
+                   and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
+                   and len(report['tickets']) == 10 and all(row['passed'] for row in report['tickets'])
                    and len(report['guarantees']) == 29 and all(row['passed'] for row in report['guarantees'])
                    and len(report['assurances']) == 10 and all(row['passed'] for row in report['assurances'])
                    and len(report['reports']) == 14 and all(row['passed'] for row in report['reports'])

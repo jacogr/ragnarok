@@ -270,12 +270,43 @@ factory's precondition. The four independent guarantee-oracle example tests also
 Verification remains local macOS ARM64 with checked ARC/Clang LTO; Linux is unverified.
 Credential verification, assignments and eligibility remain separate state/M2 work.
 
+## Eighth increment: ticket records and extrinsics
+
+`tickets.nim` now runs under the same pinned Nimony nightly. `TicketWrite` and `TicketRead` hide
+status/payload storage behind read-only outcomes and success preconditions on written/count/
+consumed. Defaults remain Uninitialized. Explicit local proof initialization supports definite
+assignment; fixed E1 attempts, opaque 784-byte proofs, framing, preflight order and caller-buffer
+atomicity are unchanged. Fully owned fixed records require no retained heap owner or ARC wrapper.
+
+All **22,939** existing independent ticket requests pass, including published hash-pinned tiny/full
+fixtures, every attempt octet (especially 128..255), conventional and multi-byte test count bounds,
+representative truncations, malformed natural prefixes, exact/short capacities and 3,500
+structured/random fuzz inputs. Six extra encoding/decoding cases exercise zero and uint64-maximum
+limits, including a huge permitted count that still fails the raw-extent proof before narrowing.
+Another **22,654** direct inspection requests cover every original/new decode input without typed
+capacity restrictions. Total ticket corpus: **45,599 comparisons**.
+
+The tenth positive suite preserves source-mutation lifetime, unused typed-output sentinels,
+short-output atomicity and both overlap directions. A new alias case places typed output wholly
+inside unrelated trailing input and requires rejection without changing any source byte. Trusted
+alias probes use fixed array views within real storage, with no compiler/runtime hooks. The shared
+adapter now overwrites caller input before observing successful proof values, preserves nonzero
+sentinel records across failures/unused capacity, and parses the complete unsigned fixture domain.
+The three independent ticket-oracle example tests also pass.
+
+This increment adds **10 runtime misuse rejections** and **14 compilation rejections** (12
+private/read-only result checks and two nominal attempt/proof checks). Cumulative coverage is
+**144 runtime result/variant/constructor rejections and 110 compilation rejections**, plus
+**10 positive suites**, the report/assurance/guarantee/ticket corpora and three runtime probes.
+Verification remains local macOS ARM64 with checked ARC/Clang LTO. No Linux, RingVRF verification
+or Safrole eligibility parity is claimed by this codec increment.
+
 ## Remaining work and next bounded increment
 
-Next: port ticket records and extrinsics (`tickets.nim`), preserving fixed E1 attempts and
-784-byte opaque proofs, guarded progress results, caller-buffer atomicity and the independent
-published/boundary/fuzz corpus. Cryptographic proof verification remains separate M2 work.
-Other M1 families and M2/M3 remain separate increments.
+Next: port dispute verdicts, judgments and culprit/fault evidence (`disputes.nim`), including
+canonical ordering, nominal identities, retained ownership, guarded results and the existing
+published/independent adversarial corpus. Signature verification and contextual quorum checks
+remain separate work. Other M1 families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -307,6 +338,7 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee slice. A missing check or failed guard
-still makes the runner exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket slice. A missing check or
+failed guard still makes the runner exit one. There is no claim of full-client parity or an already
+switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
