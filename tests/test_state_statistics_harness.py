@@ -19,16 +19,18 @@ class StatisticsHarness(unittest.TestCase):
     # Core and service statistics retain ordinary natural fields, including both service gas positions.
     def test_natural_tuples(self):
         source=([(0,)*6]*6,[(0,)*6]*6,[(0,)*8]*2,[(127,*range(1,12))])
-        self.assertEqual(wire(source)[290:],bytes(16)+b'\1\x7f'+bytes(range(1,12)))
+        self.assertEqual(wire(source)[290:],bytes(16)+b'\1\x7f'+bytes(3)+bytes(range(1,12)))
         source[2][0]=(128,0,0,0,0,0,0,MAX)
         self.assertEqual(wire(source)[290:307],b'\x80\x80'+bytes(6)+b'\xff'*9)
 
-    # Dictionary ordering is numeric; service keys still have the uint32 domain despite natural encoding.
+    # Dictionary ordering is numeric; E4 service keys retain the full uint32 domain.
     def test_keys(self):
         source=example();source[3][:]=[(256,*(0,)*11),(255,*(0,)*11)]
         self.assertEqual(encode(source,DEFAULT),'noncanonical')
         prefix=b'\6'+bytes(144)+b'\6'+bytes(144)+bytes(16)
-        self.assertEqual(decode(prefix+b'\1\xf1'+bytes(4)+bytes(11),DEFAULT),'invalidservice')
+        source=([(0,)*6]*6,[(0,)*6]*6,[(0,)*8]*2,[(2**32-1,*(0,)*11)])
+        self.assertEqual(wire(source)[307:311],b'\xff'*4)
+        self.assertTrue(decode(wire(source),DEFAULT).startswith('322 '))
 
     # Separate configured populations are required; malformed profiles cannot authorize reads.
     def test_populations(self):
@@ -45,12 +47,14 @@ class StatisticsHarness(unittest.TestCase):
         self.assertEqual(decode(data[:-1],DEFAULT),'truncated')
         self.assertEqual(decode(b'\x80\0',DEFAULT),'noncanonical')
 
-    # A published-style E4 key can yield a valid shorter prefix; suffix bytes forbid a full-component claim.
-    def test_e4_trace_mismatch(self):
+    # Published-style E4 keys now consume their complete fields; incomplete key padding remains truncated.
+    def test_e4_trace_extent(self):
         prefix=b'\6'+bytes(144)+b'\6'+bytes(144)+bytes(16)
         original=prefix+b'\1'+bytes(4)+bytes(11)
         self.assertEqual(len(original),322)
-        self.assertTrue(decode(original,DEFAULT).startswith('319 6:'))
+        self.assertTrue(decode(original,DEFAULT).startswith('322 6:'))
+        self.assertEqual(decode(prefix+b'\1'+bytes(3),DEFAULT),'truncated')
+        self.assertEqual(decode(original,(2,6,6,MAX,321)),'limitexceeded')
 
 
 # Importing harness code never invokes native builds or upstream generators.

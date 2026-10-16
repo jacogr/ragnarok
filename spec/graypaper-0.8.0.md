@@ -173,22 +173,18 @@ waves, 128 IPv6 queries, 12 peer-death and 12 overload waves, and 288 integrated
 proof-offload suite passes after the ark-vrf upgrade, with two workers and four owned job slots,
 so its result refers to the final release-reference backend.
 
-## Subsequent state-wire parity gate
+## Subsequent state-wire parity gates
 
-The [chapter-13 statistics contract](state-statistics.md) records a further discrepancy at these
-same pins: five nonempty trace C(13) values fit E4 service-dictionary keys, while the current
-T/C.1 interpretation uses natural keys. The implementation and exact raw fixture prefix observations
-are retained separately; successful prefix parsing is not complete-entry parity. Upstream
-clarification remains necessary before changing that key schema or claiming full state parity.
+The [width investigation](state-widths.md) and T's general fixed-width note support the implemented
+C12 E4-service/E8-gas dictionary and C13 E4 service-key migration. All 224 selected chapter captures
+and fourteen full-state mappings now pass [typed composition](state-composition.md), including
+unchanged bytes that previously produced shorter-prefix/noncanonical verdicts.
 
-The [request-history contract](state-requests.md) records another cross-map question: the stated
-E4 request-length domain includes fffffffe/ffffffff, reproducing the preimage/storage key prefixes.
-The component serializers preserve the stated domains and the trie rejects duplicate keys;
-a focused pending test records that admissible lengths or another normative constraint still
-need clarification before full state-parity claims. No inferred reserved-length rule is installed.
+C13 statistics gas still uses the published natural framing despite its bounded 64-bit domain and
+the general T fixed-width note. This remains a focused pending normative/reference gate; successful
+wire reconstruction is not claimed as full normative parity.
 
-The [whole-state audit](state-roots.md) also records T's general fixed-width note: bounded service
-IDs/gas in C(12), and service IDs/gas in C(13), need reconciliation with that interpretation.
-Fourteen unchanged published full mappings reproduce their roots in the independent reference and
-checked Nim trie; this is serialized-byte evidence, not typed T(state) composition or width-policy
-resolution.
+The [request-history contract](state-requests.md) records the other cross-map question: E4 lengths
+fffffffe/ffffffff reproduce preimage/storage key prefixes. Full stated domains remain supported
+and the trie rejects duplicate keys. No inferred reserved-length restriction is installed.
+Next bounded group: request-length namespace admissibility review.

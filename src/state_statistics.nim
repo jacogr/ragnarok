@@ -121,6 +121,19 @@ proc readNatural(input: openArray[byte], cursor: var int, config: ActivityConfig
       error: error) # Complete scalars still consume policy.
   ActivityResult[uint64](error: ActivityError.None, value: uint64(parsed.value))
 
+## Read one E4 dictionary service key with parent policy and presence checked before access.
+proc readService(input: openArray[byte], cursor: var int, config: ActivityConfig): ActivityResult[uint32] =
+  let start = cursor
+  let error = grow(cursor, 4, config)
+  if error != ActivityError.None: return ActivityResult[uint32](
+      error: error) # Fixed padding consumes the full budget.
+  if cursor > input.len: return ActivityResult[uint32](
+      error: ActivityError.Truncated) # No narrowing or partial key read.
+  var value = 0'u32
+  # Fixed E4 covers exactly the service domain without an additional natural-number discriminator.
+  for j in 0..<4: value = value or (uint32(input[start+j]) shl (j*8))
+  ActivityResult[uint32](error: ActivityError.None, value: value)
+
 ## Fixed local tuples validate all natural children without heap allocation or externally reusable spans.
 proc readFields[N: static int](input: openArray[byte], cursor: var int,
     config: ActivityConfig): ActivityResult[array[N, uint64]] =
@@ -170,14 +183,12 @@ proc scan(input: openArray[byte], config: ActivityConfig): ActivityResult[Layout
   var previous = 0'u64
   # Numeric ascending service keys are canonical; values retain tuple order and need not be sorted.
   for i in 0..<layout.services:
-    let key = readNatural(input, cursor, config)
+    let key = readService(input, cursor, config)
     if key.error != ActivityError.None: return ActivityResult[Layout](
-        error: key.error) # Missing/overlong key rejects all earlier data.
-    if key.value > uint64(high(uint32)): return ActivityResult[Layout](
-        error: ActivityError.InvalidService) # Never narrow an invalid service ID.
+        error: key.error) # Missing fixed key rejects all earlier data.
     if i > 0 and key.value <= previous:
       return ActivityResult[Layout](error: ActivityError.NonCanonical) # Equal and descending numeric IDs are invalid.
-    previous = key.value
+    previous = uint64(key.value)
     let fields = readFields[11](input, cursor, config)
     if fields.error != ActivityError.None: return ActivityResult[Layout](
         error: fields.error) # No partial record on late gas failure.
@@ -232,7 +243,7 @@ proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): Activ
   cursor = layout.serviceStart
   # Preserve key/value pairing with explicit gaps for the two gas fields.
   for i in 0..<layout.services:
-    let key = readNatural(input, cursor, config).value
+    let key = readService(input, cursor, config).value
     let fields = readFields[11](input, cursor, config).value
     var record = ServiceStatisticsEntry(service: ServiceIndex(key))
     for measure in ServiceMeasure:
@@ -285,8 +296,9 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
   for i, record in source.services:
     if i > 0 and uint32(record.service) <= uint32(source.services[i-1].service):
       return ActivityResult[StateEntry](error: ActivityError.NonCanonical) # Late duplicate/disorder invalidates all output.
-    let key = grow(size, natural.encode(JamNatural(uint32(record.service))).len, config)
-    if key != ActivityError.None: return ActivityResult[StateEntry](error: key) # Natural key is not E4.
+    let key = grow(size, 4, config)
+    if key != ActivityError.None: return ActivityResult[StateEntry](
+        error: key) # All four service-key bytes share parent policy.
     for field in serviceFields(record.statistics):
       let error = grow(size, natural.encode(JamNatural(field)).len, config)
       if error != ActivityError.None: return ActivityResult[StateEntry](
@@ -307,7 +319,10 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
     for field in coreFields(core): putNatural(field, entry.value, cursor) # No core-array count discriminator.
   putNatural(uint64(source.services.len), entry.value, cursor)
   for record in source.services:
-    putNatural(uint32(record.service), entry.value, cursor)
+    # Service keys retain all four little-endian octets; gas/counters keep the documented natural interpretation.
+    for j in 0..<4:
+      entry.value[cursor] = byte((uint32(record.service) shr (j*8)) and 255)
+      inc cursor
     for field in serviceFields(record.statistics): putNatural(field, entry.value,
         cursor) # Tuple has fixed arity, without its own count.
   ActivityResult[StateEntry](error: ActivityError.None, value: entry)

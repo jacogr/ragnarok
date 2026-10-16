@@ -10,10 +10,11 @@ class PrivilegesHarness(unittest.TestCase):
         self.assertEqual(wire((1,4,5,[2,3],[])),b'\1\0\0\0\2\0\0\0\3\0\0\0\4\0\0\0\5\0\0\0\0')
         self.assertEqual(decode(bytes(21)+b'extra',(2,0,21)),'21 0 0 0 2 0 0 0')
 
-    # Dictionary service and gas are naturals, with neither E4 key padding nor E8 gas padding.
-    def test_naturals(self):
-        self.assertEqual(wire((0,0,0,[0,0],[(127,128),(128,0)])),bytes(20)+b'\2\x7f\x80\x80\x80\x80\0')
-        self.assertEqual(decode(bytes(20)+b'\1\1\xff'+b'\xff'*8,(2,1,MAX)),f'31 0 0 0 2 0 0 1 1:{MAX}')
+    # Every dictionary pair occupies exactly E4 service plus E8 gas, independently of numeric magnitude.
+    def test_fixed_pairs(self):
+        source=(0,0,0,[0,0],[(127,128),(128,0)])
+        self.assertEqual(wire(source),bytes(20)+b'\2'+b'\x7f'+bytes(3)+b'\x80'+bytes(7)+b'\x80'+bytes(11))
+        self.assertEqual(decode(bytes(20)+b'\1'+b'\1'+bytes(3)+b'\xff'*8,(2,1,MAX)),f'33 0 0 0 2 0 0 1 1:{MAX}')
 
     # Numeric ordering differs from little-endian or variable-prefix encoded-byte sorting.
     def test_numeric_order(self):
@@ -22,10 +23,12 @@ class PrivilegesHarness(unittest.TestCase):
         for pairs in ([(256,0),(255,0)],[(0,1),(0,2)]):
             self.assertEqual(decode(wire((0,0,0,[0,0],pairs)),(2,2,MAX)),'noncanonical')
 
-    # Service narrowing and canonicality remain strict, while gas accepts every uint64.
+    # E4/E8 admit their complete unsigned domains; short natural-pair bytes cannot supply fixed fields.
     def test_domains(self):
-        self.assertEqual(decode(bytes(20)+b'\1\xf1'+bytes(4)+b'\0',(2,1,MAX)),'invalidservice')
-        self.assertEqual(decode(bytes(20)+b'\1\0\x80\0',(2,1,MAX)),'noncanonical')
+        source=(0,0,0,[0,0],[(2**32-1,MAX)])
+        self.assertEqual(wire(source)[21:],b'\xff'*12)
+        self.assertEqual(decode(bytes(20)+b'\1\1\0',(2,1,MAX)),'truncated')
+        self.assertEqual(decode(bytes(20)+b'\x80\0',(2,1,MAX)),'noncanonical')
 
     # Exact byte and count limits include the empty dictionary count and late gas bytes.
     def test_policy(self):
@@ -33,6 +36,14 @@ class PrivilegesHarness(unittest.TestCase):
         self.assertEqual(decode(bytes(20)+b'\1\0\0',(2,0,MAX)),'limitexceeded')
         self.assertEqual(encode((0,0,0,[0],[]),(2,0,MAX)),'invalidcount')
         self.assertEqual(decode(b'',(342,0,MAX)),'invalidconfig')
+
+    # Exact pair limits count padding even when both numeric fields are zero.
+    def test_pair_padding_budget(self):
+        data=wire((0,0,0,[0,0],[(0,0)]))
+        self.assertEqual(len(data),33)
+        self.assertTrue(decode(data,(2,1,33)).startswith('33 '))
+        self.assertEqual(decode(data,(2,1,32)),'limitexceeded')
+        self.assertEqual(decode(data[:-1],(2,1,33)),'truncated')
 
     # A complete key never licenses a missing final gas or a default earlier-state result.
     def test_truncation(self):

@@ -70,7 +70,7 @@ proc main() =
   guarded(duplicate)
   var late = empty.value.value
   late[20] = 1
-  late.add(0) # A complete count/key does not license a missing final gas value.
+  late.add(@[byte(0), 0, 0, 0]) # A complete E4 key does not license a missing E8 gas allowance.
   let truncated = decodePrivilegeState(late, config)
   doAssert truncated.error == PrivilegeError.Truncated
   guarded(truncated)

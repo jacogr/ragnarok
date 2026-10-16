@@ -15,8 +15,8 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `state_accounts.nim` | C(255, service) fixed version-zero account metadata; value-only copies, nominal fields and explicit version checks |
 | `state_outputs.nim` | Chapter-16 count-prefixed ordered E4 service/output-commitment pairs with immutable snapshots |
 | `state_workqueues.nim` | Chapters 14/15 fixed epoch rings, retained ordered reports, canonical dependency/accumulated package sets |
-| `state_statistics.nim` | Chapter-13 E4 validator counters, natural core/service statistics and immutable snapshots; service-key/gas width gates open |
-| `state_privileges.nim` | Chapter-12 E4 role services, fixed core assigners and canonical natural service/gas dictionary; general T fixed-width gate open |
+| `state_statistics.nim` | Chapter-13 E4 validator counters/service keys, natural core/service values and immutable snapshots; gas-width gate open |
+| `state_privileges.nim` | Chapter-12 E4 role services, fixed core assigners and canonical E4-service/E8-gas dictionary |
 | `state_availability.nim` | Chapter-10 fixed optional core slots, full guarantees and E4 registration timestamps |
 | `state_history.nim` | Chapter-3 recent records, package dictionaries and optional MMR belt peak encoding |
 | `state_disputes.nim` | Chapter-5 canonical judgment/offender sets, whole-parent preflight and immutable snapshots |

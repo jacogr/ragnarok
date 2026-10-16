@@ -221,5 +221,5 @@ def requests():
             ''.join(' '+service_token(service) for service in services))
         expected.append(composed(raw_chapters, services, (MAX,)*4, MAX))
         whole_evidence.append(dict(provenance, service_values='opaque service-bound captures',
-            chapter_schema='current recorded width interpretation; selected C12/C13 dictionaries empty'))
+            chapter_schema='migrated C12 E4/E8 and C13 E4 keys; natural statistics gas remains gated'))
     return lines, expected, evidence, whole_evidence

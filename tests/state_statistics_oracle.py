@@ -11,10 +11,10 @@ from test_support import ROOT
 DEFAULT=(2,6,6,MAX,MAX)
 
 
-# Counters in the two epoch arrays are E4; core/service/key fields use ordinary canonical naturals.
+# Counters in the two epoch arrays are E4; service keys use E4 while core/service values retain canonical naturals.
 def wire(source):
     current,previous,cores,services=source
-    return b''.join(natural(len(rows))+b''.join(x.to_bytes(4,'little') for row in rows for x in row) for rows in (current,previous))+b''.join(natural(x) for row in cores for x in row)+natural(len(services))+b''.join(natural(x) for row in services for x in row)
+    return b''.join(natural(len(rows))+b''.join(x.to_bytes(4,'little') for row in rows for x in row) for rows in (current,previous))+b''.join(natural(x) for row in cores for x in row)+natural(len(services))+b''.join(row[0].to_bytes(4,'little')+b''.join(natural(x) for x in row[1:]) for row in services)
 
 
 # Both roster profiles are explicit and independent; a previous roster may survive a current-set resize.
@@ -75,7 +75,10 @@ def encode(source,config):
         if previous is not None and row[0]<=previous:
             return 'noncanonical'
         previous=row[0]
-        for x in row:
+        size+=4
+        if size>config[4]:
+            return 'limitexceeded'
+        for x in row[1:]:
             error=charge(x)
             if error:
                 return error
@@ -129,13 +132,14 @@ def parse(data,config):
     if error:
         return error
     services=[];previous=None
-    # A natural service key must still fit uint32 and remain strictly ascending numerically.
+    # E4 service keys inherently fit uint32 and remain strictly ascending numerically.
     for _ in range(n):
-        key=read()
-        if isinstance(key,str):
-            return key
-        if key>2**32-1:
-            return 'invalidservice'
+        end=cursor+4
+        if end>config[4]:
+            return 'limitexceeded'
+        if end>len(data):
+            return 'truncated'
+        key=int.from_bytes(data[cursor:end],'little');cursor=end
         if previous is not None and key<=previous:
             return 'noncanonical'
         previous=key;row=[key]
@@ -184,7 +188,7 @@ def published_validators():
     return result
 
 
-# Trace keyvals expose a pinned-paper mismatch: nonempty service dictionaries use E4 keys.
+# Exact raw trace keyvals retain the migrated E4 service-key schema.
 def published_wires():
     result=[]
     # Raw bytes remain unchanged; complete consumption and trailing bytes are recorded separately.
@@ -201,10 +205,10 @@ def published_wires():
     return result
 
 
-# Diagnose the alternate key shape independently, without installing an E4 workaround in production.
+# Retain exact trace extent and independent E4-key reconstruction evidence after the migration.
 def trace_evidence():
     result=[]
-    # Exact parsing under an explicit diagnostic E4-key schema explains every original trailing byte.
+    # Independent E4-key reconstruction must reproduce the entire raw component, not a shorter prefix.
     for source,data,consumed in published_wires():
         current,previous,cores,_=source
         cursor=len(wire((current,previous,cores,[])))-1
@@ -218,8 +222,8 @@ def trace_evidence():
         assert cursor==len(data)
         fixed_wire=wire((current,previous,cores,[]))[:-1]+natural(count)+b''.join(row[0].to_bytes(4,'little')+b''.join(natural(x) for x in row[1:]) for row in pairs)
         assert fixed_wire==data
-        result.append(dict(bytes=len(data),normative_consumed=consumed,trailing_bytes=len(data)-consumed,
-            complete_normative_match=consumed==len(data),diagnostic_e4_key_match=True,
+        result.append(dict(bytes=len(data),consumed=consumed,trailing_bytes=len(data)-consumed,
+            complete_component_match=consumed==len(data),diagnostic_e4_key_match=True,
             sha256=hashlib.sha256(data).hexdigest()))
     return result
 
@@ -289,7 +293,7 @@ def requests():
     malformed=(b'',b'\x80',b'\xff',b'\x80\0',b'\xff'+bytes(8),natural(MAX),natural(2**60))
     for bad in malformed:
         dec(bad);dec(epochs[:145]+bad);dec(prefix+bad)
-    # Every natural core and service scalar gets explicit missing/overlong wire probes, including final gas.
+    # Natural core scalars and mixed fixed-key/service payloads receive malformed byte probes, including late gas.
     for slot in range(16):
         for bad in malformed[:5]:
             dec(epochs+bytes(slot)+bad)
@@ -312,9 +316,19 @@ def requests():
     # Published validator fields are unchanged; only absent component families receive explicit authored completion.
     for source,config in published_validators():
         enc(source,config);dec(wire(source),config)
-    # Exact raw traces are replayed without repairing E4 keys; prefix success is not full-component evidence.
+    # Exact raw traces now decode and reconstruct completely with migrated E4 keys; gas policy stays gated.
     for source,data,consumed in published_wires():
         dec(data)
         if consumed==len(data):
-            enc(source);enc(source,op='R') # Only the empty service dictionary is a complete normative match.
+            enc(source);enc(source,op='R') # Every complete entry is retained without fixture repair; gas policy remains explicitly gated.
+    # Wide service IDs cover every fixed-key octet boundary without changing natural gas/measure fields.
+    for key in (0,1,127,128,255,256,65535,65536,2**24-1,2**24,2**32-1):
+        source=example(services=1);source[3][:]=[(key,*source[3][0][1:])]
+        enc(source);dec(wire(source))
+    # Additional unchanged raw statistics values include nonzero wide IDs independently bound to metadata keys.
+    from state_widths_oracle import trace_values
+    for _,data,_ in trace_values():
+        source,consumed=parse(data,DEFAULT)
+        assert consumed==len(data) and wire(source)==data
+        dec(data);enc(source)
     return lines,expected

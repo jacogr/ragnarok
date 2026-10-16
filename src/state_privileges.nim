@@ -1,4 +1,4 @@
-## GP 0.8.0 T chapter 12: E4 role services and a natural-key/natural-gas dictionary.
+## GP 0.8.0 T chapter 12: E4 role services and a count-prefixed E4-service/E8-gas dictionary.
 ## Serialization preserves privileges; it does not authorize services or execute privilege changes.
 import ./[natural, bounded, composite, assurances, state_layout, state_trie]
 export ServiceIndex, CoreCount
@@ -83,11 +83,25 @@ proc readNatural(input: openArray[byte], cursor: var int,
     if parsed.error == DecodeError.truncated:
       return PrivilegeResult[uint64](error: PrivilegeError.Truncated) # Missing fields publish no partial progress.
     else:
-      return PrivilegeResult[uint64](error: PrivilegeError.NonCanonical) # No alternate count/key/gas representation.
+      return PrivilegeResult[uint64](error: PrivilegeError.NonCanonical) # No alternate dictionary count representation.
   let error = grow(cursor, parsed.consumed, config)
   if error != PrivilegeError.None: return PrivilegeResult[uint64](
       error: error) # Complete scalar still consumes policy.
   PrivilegeResult[uint64](error: PrivilegeError.None, value: uint64(parsed.value))
+
+## Copy one prevalidated E4 service with explicit little-endian shifts, retaining no input coordinates.
+proc serviceAt(input: openArray[byte], offset: int): ServiceIndex =
+  var value = 0'u32
+  # Every caller has already proved all four bytes present.
+  for j in 0..<4: value = value or (uint32(input[offset+j]) shl (j*8))
+  ServiceIndex(value)
+
+## Copy one proved E8 gas allowance without alignment or host-endian assumptions.
+proc gasAt(input: openArray[byte], offset: int): PrivilegeGas =
+  var value = 0'u64
+  # Whole-parent preflight proves all eight source bytes exist before capture.
+  for j in 0..<8: value = value or (uint64(input[offset+j]) shl (j*8))
+  PrivilegeGas(value)
 
 ## Preflight the full parent without allocation; key order is numeric, never encoded-octet order.
 proc scan(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[Layout] =
@@ -104,28 +118,25 @@ proc scan(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[Layo
   if error != PrivilegeError.None: return PrivilegeResult[Layout](error: error) # No announced-count allocation.
   let start = cursor
   var previous = 0'u64
-  # Validate every key and gas field before capturing even the earlier fixed roles.
+  # Fixed E4 keys and E8 gas are fully present and numerically ordered before any owner allocation.
   for i in 0..<int(count.value):
-    let key = readNatural(input, cursor, config)
-    if key.error != PrivilegeError.None: return PrivilegeResult[Layout](
-        error: key.error) # Incomplete/overlong key rejects parent.
-    if key.value > uint64(high(uint32)): return PrivilegeResult[Layout](
-        error: PrivilegeError.InvalidService) # Never truncate E(service).
-    if i > 0 and key.value <= previous:
-      return PrivilegeResult[Layout](error: PrivilegeError.NonCanonical) # Duplicates and descending numeric keys are invalid.
-    previous = key.value
-    let gas = readNatural(input, cursor, config)
-    if gas.error != PrivilegeError.None: return PrivilegeResult[Layout](
-        error: gas.error) # Late gas failures retain no owner.
+    let start = cursor
+    let keyError = grow(cursor, 4, config)
+    if keyError != PrivilegeError.None: return PrivilegeResult[Layout](
+        error: keyError) # Key padding consumes budget.
+    if cursor > input.len: return PrivilegeResult[Layout](
+        error: PrivilegeError.Truncated) # Require every E4 octet.
+    let key = uint64(uint32(serviceAt(input, start)))
+    if i > 0 and key <= previous:
+      return PrivilegeResult[Layout](error: PrivilegeError.NonCanonical) # Compare decoded numeric IDs, not little-endian octets.
+    previous = key
+    let gasError = grow(cursor, 8, config)
+    if gasError != PrivilegeError.None: return PrivilegeResult[Layout](
+        error: gasError) # Full E8 gas shares parent policy.
+    if cursor > input.len: return PrivilegeResult[Layout](
+        error: PrivilegeError.Truncated) # Late gas failure publishes no owner.
   PrivilegeResult[Layout](error: PrivilegeError.None,
     value: Layout(start: start, count: int(count.value), consumed: cursor))
-
-## Copy one prevalidated E4 service with explicit little-endian shifts, retaining no input coordinates.
-proc serviceAt(input: openArray[byte], offset: int): ServiceIndex =
-  var value = 0'u32
-  # Every caller has already proved all four bytes present.
-  for j in 0..<4: value = value or (uint32(input[offset+j]) shl (j*8))
-  ServiceIndex(value)
 
 ## Capture the complete component only after every late dictionary key/value has passed preflight.
 proc decodePrivilegeState*(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[
@@ -140,11 +151,10 @@ proc decodePrivilegeState*(input: openArray[byte], config: PrivilegeConfig): Pri
   # Fixed core positions have no per-array count prefix.
   for i in 0..<cores: data.state.assigners[i] = serviceAt(input, 4*(i+1))
   var cursor = checked.value.start
-  # Repeat only proved scalar reads to copy values into independent immutable storage.
+  # Repeat only proved fixed reads to copy values into independent immutable storage.
   for i in 0..<checked.value.count:
-    let key = readNatural(input, cursor, config)
-    let gas = readNatural(input, cursor, config)
-    data.state.always[i] = AlwaysAccumulate(service: ServiceIndex(key.value), gas: PrivilegeGas(gas.value))
+    data.state.always[i] = AlwaysAccumulate(service: serviceAt(input, cursor), gas: gasAt(input, cursor+4))
+    cursor += 12
   PrivilegeResult[PrivilegeRead](error: PrivilegeError.None,
     value: PrivilegeRead(snapshot: PrivilegeSnapshot(data: data), consumed: checked.value.consumed))
 
@@ -156,11 +166,18 @@ proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
     output[cursor] = encoded.bytes[i]
     inc cursor
 
-## Commit an E4 role without applying natural encoding to fixed role identifiers.
+## Commit an E4 service identifier for either a fixed role or a dictionary key.
 proc putService(value: ServiceIndex, output: var seq[byte], cursor: var int) =
   # Fixed E4 retains leading zeroes and every high service-index octet.
   for j in 0..<4:
     output[cursor] = byte((uint32(value) shr (j*8)) and 255)
+    inc cursor
+
+## Commit an E8 gas allowance only after complete parent extent and order validation.
+proc putGas(value: PrivilegeGas, output: var seq[byte], cursor: var int) =
+  # Every high and low gas octet is retained, including zero padding and uint64 maximum.
+  for j in 0..<8:
+    output[cursor] = byte((uint64(value) shr (j*8)) and 255)
     inc cursor
 
 ## Encode a stable exact-shape source into independent C(12) bytes after complete preflight.
@@ -181,12 +198,12 @@ proc privilegeStateEntry*(source: PrivilegeState, config: PrivilegeConfig): Priv
   for i, pair in source.always:
     if i > 0 and uint32(pair.service) <= uint32(source.always[i-1].service):
       return PrivilegeResult[StateEntry](error: PrivilegeError.NonCanonical) # Even a late duplicate invalidates all output.
-    error = grow(size, natural.encode(JamNatural(uint32(pair.service))).len, config)
+    error = grow(size, 4, config)
     if error != PrivilegeError.None: return PrivilegeResult[StateEntry](
-        error: error) # Natural key bytes consume parent policy.
-    error = grow(size, natural.encode(JamNatural(uint64(pair.gas))).len, config)
+        error: error) # All four key bytes consume parent policy.
+    error = grow(size, 8, config)
     if error != PrivilegeError.None: return PrivilegeResult[StateEntry](
-        error: error) # Full uint64 gas natural, not E8.
+        error: error) # All eight gas bytes consume parent policy.
   var entry = StateEntry(key: chapterKey(StateChapter(12)), value: newSeq[byte](size))
   var cursor = 0
   putService(source.manager, entry.value, cursor)
@@ -197,8 +214,8 @@ proc privilegeStateEntry*(source: PrivilegeState, config: PrivilegeConfig): Priv
   putNatural(uint64(source.always.len), entry.value, cursor)
   # All dictionary pairs now fit and have unique ascending numeric service keys.
   for pair in source.always:
-    putNatural(uint32(pair.service), entry.value, cursor)
-    putNatural(uint64(pair.gas), entry.value, cursor)
+    putService(pair.service, entry.value, cursor)
+    putGas(pair.gas, entry.value, cursor)
   PrivilegeResult[StateEntry](error: PrivilegeError.None, value: entry)
 
 ## Return copied scalar roles and cardinalities without exporting retained arrays.

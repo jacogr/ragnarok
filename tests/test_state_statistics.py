@@ -35,15 +35,15 @@ def main():
     diagnostics=private.stdout+private.stderr;(folder/'types/private.log').write_text(diagnostics)
     assert private.returncode!=0 and 'data' in diagnostics and 'undeclared field' in diagnostics,diagnostics
     traces=trace_evidence()
-    assert sum(x['complete_normative_match'] for x in traces)==1 and len(traces)==6
+    assert sum(x['complete_component_match'] for x in traces)==6 and len(traces)==6
     summary=dict(status='passed',requests=len(lines),nominal_rejections=len(records),privacy_rejections=1,
         published_validator_sources=len(published_validators()),published_trace_components=traces,
-        trace_parity_gate='open: diagnostic E4 trace keys differ from current natural interpretation; reconcile general T fixed-width note for service IDs/gas',
+        trace_parity_gate='open: gas uses published natural framing despite general T fixed-width note; E4 service keys migrated',
         build_commands=commands,request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         scope='T chapter 13 framing; no statistics transitions or whole-state roots')
     (folder/'results.json').write_text(json.dumps(summary,indent=2)+'\n')
     print(f'PASS activity state: {len(lines)} requests, two nominal/one privacy rejections, eight partial validator sources')
-    print('TRACE PARITY OPEN: one complete normative match; five E4-key entries leave 3/5 trailing bytes under pinned-paper framing')
+    print('TRACE KEYS MATCH: all six complete entries; C13 gas remains a normative/reference parity gate')
 
 
 # Importing references never compiles code or executes upstream programs.

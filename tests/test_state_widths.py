@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduce width alternatives and measure current exact-capture verdicts without changing codecs."""
+"""Reproduce width alternatives and verify migrated exact-capture verdicts against unchanged evidence."""
 import hashlib
 import json
 import platform
@@ -11,7 +11,7 @@ from state_layout_oracle import token
 from test_support import ROOT, nim_command
 
 
-# Pinned originals supply expectations before compilation; failing current layouts are recorded honestly.
+# Pinned originals supply expectations before compilation; complete matches still retain the explicit gas-policy gate.
 def main():
     codec_sources()
     binaries, traces = privilege_binaries(), trace_values()
@@ -47,13 +47,14 @@ def main():
     (folder/'stderr.log').write_text(result.stderr)
     actual = result.stdout.splitlines()
     assert len(actual) == len(expected), (len(actual), len(expected))
-    # Equality includes known rejections; a passing audit is not a claim that those layouts conform.
+    # Every original fixed-width privilege/statistics value must capture completely after migration.
     for index, (got, wanted) in enumerate(zip(actual, expected)):
         assert got == wanted, (index, got, wanted)
+    assert actual[1:] == ['ok']*36, 'Migrated published values must consume completely'
     for observation, verdict in zip(records, actual[1:]):
         observation['current_actual'] = verdict
     pin = json.loads((ROOT/'spec/pins.json').read_text())
-    summary = dict(status='passed', scope='width investigation; production migration remains pending',
+    summary = dict(status='passed', scope='migrated C12 E4/E8 and C13 E4 keys; C13 gas remains gated',
         graypaper_commit=pin['graypaper']['commit'], vectors_commit=pin['vectors']['commit'],
         binary_privilege_fields=[e for _, e in binaries], raw_trace_observations=[e for _, _, e in traces],
         native_requests=len(lines), current_captures=records, build_command=command,
@@ -63,11 +64,12 @@ def main():
         request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         environment=dict(system=platform.system(), machine=platform.machine(), python=platform.python_version(),
             nim=subprocess.check_output(['nim', '--version'], text=True).strip()),
-        next_migration='C12 E4 service/E8 gas; C13 E4 service keys. C13 gas remains unresolved.')
+        migration='complete: C12 E4 service/E8 gas; C13 E4 service keys',
+        remaining_gate='C13 natural gas still conflicts with the general T fixed-width note')
     (folder/'results.json').write_text(json.dumps(summary, indent=2)+'\n')
     print(f'PASS width investigation: {len(binaries)} nonempty binary privilege fields, '
           f'{len(traces)} raw trace observations, {len(lines)} checked native requests')
-    print('MIGRATION PENDING: C12 E4/E8 pairs and C13 E4 keys; C13 gas still conflicts with the general T fixed-width note')
+    print('MIGRATION VERIFIED: all 36 published-value captures consume completely; C13 gas remains gated')
 
 
 # Importing the runner never compiles code or executes upstream libraries/generators.

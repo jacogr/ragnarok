@@ -1,4 +1,4 @@
-"""Independent T chapter-12 fixed roles and numeric-key natural dictionary equations."""
+"""Independent T chapter-12 fixed roles and E4 service/E8 gas dictionary equations."""
 import hashlib
 import json
 import random
@@ -9,10 +9,10 @@ from state_trie_oracle import tree
 from test_support import ROOT
 
 
-# Fixed E4 role IDs precede the sole variable dictionary count and natural key/gas pairs.
+# Fixed E4 role IDs precede the sole variable dictionary count and fixed E4 key/E8 gas pairs.
 def wire(source):
     manager,delegator,registrar,assigners,pairs=source
-    return b''.join(x.to_bytes(4,'little') for x in [manager,*assigners,delegator,registrar])+natural(len(pairs))+b''.join(natural(k)+natural(g) for k,g in pairs)
+    return b''.join(x.to_bytes(4,'little') for x in [manager,*assigners,delegator,registrar])+natural(len(pairs))+b''.join(k.to_bytes(4,'little')+g.to_bytes(8,'little') for k,g in pairs)
 
 
 # Policy and native storage bounds are explicit; Python integer arithmetic is independently unbounded.
@@ -49,13 +49,13 @@ def encode(source,config):
     if cursor>config[2]:
         return 'limitexceeded'
     previous=None
-    # Charge each canonical key and gas separately so late policy failures remain independently modeled.
+    # Charge each fixed key and gas separately so late policy failures remain independently modeled.
     for key,gas in pairs:
         if previous is not None and key<=previous:
             return 'noncanonical'
         previous=key
-        for x in (key,gas):
-            cursor+=len(natural(x))
+        for width in (4,8):
+            cursor+=width
             if cursor>2**63-1:
                 return 'lengthoverflow'
             if cursor>config[2]:
@@ -63,7 +63,7 @@ def encode(source,config):
     return chapter_key(12).hex()+' '+wire(source).hex()
 
 
-# Parse canonical natural fields with a private cursor; malformed values never expose progress.
+# Parse a natural count and fixed pairs with a private cursor; malformed values never expose progress.
 def decode(data,config):
     error=valid(config)
     if error:
@@ -71,7 +71,7 @@ def decode(data,config):
     cursor=4*(config[0]+3)
     if len(data)<cursor:
         return 'truncated'
-    # Each count/key/gas read models primitive framing before whole-parent byte policy.
+    # The count read models primitive framing before whole-parent byte policy.
     def read():
         nonlocal cursor
         parsed=reference_decode(data[cursor:])
@@ -87,17 +87,25 @@ def decode(data,config):
     error=count_error(count,config)
     if error:
         return error
+    # Fixed fields charge complete padding before requiring all bytes to be present.
+    def fixed(width):
+        nonlocal cursor
+        end=cursor+width
+        if end>config[2]:
+            return 'limitexceeded'
+        if end>len(data):
+            return 'truncated'
+        value=int.from_bytes(data[cursor:end],'little');cursor=end
+        return value
     pairs=[];previous=None
-    # Canonical order applies to decoded numeric IDs, independently of E4 role order and wire octets.
+    # Numeric E4 IDs determine ordering, independently of little-endian byte order.
     for _ in range(count):
-        key=read()
+        key=fixed(4)
         if isinstance(key,str):
             return key
-        if key>2**32-1:
-            return 'invalidservice'
         if previous is not None and key<=previous:
             return 'noncanonical'
-        previous=key;gas=read()
+        previous=key;gas=fixed(8)
         if isinstance(gas,str):
             return gas
         pairs.append((key,gas))
@@ -145,11 +153,11 @@ def requests():
     # Complete fixed tuple and late dictionary fields are tested at every proper truncation.
     for cut in range(len(raw)):
         dec(raw[:cut])
-    # All full E4 service octets, including role reuse and max IDs, remain distinct from naturally encoded keys.
+    # All full E4 service octets, including role reuse and max IDs, remain distinct from fixed dictionary keys.
     for value in (0,1,127,128,255,256,65535,65536,2**24,2**32-1):
         state=(value,value,value,[value,value],[(value,0)])
         enc(state);dec(wire(state))
-    # Natural boundaries exercise key and gas widths separately; gas includes the entire unsigned domain.
+    # Numeric boundaries exercise fixed key and gas values separately; gas includes the entire unsigned domain.
     values=sorted({0,1,126,127,128,129,255,256,2**32-1,*[2**i-1 for i in range(7,64,7)],*[2**i for i in range(7,64,7)],MAX})
     for value in values:
         key=min(value,2**32-1);state=(0,0,0,[0,0],[(key,value)])
@@ -172,7 +180,7 @@ def requests():
     for pairs in ([(1,1),(1,2)],[(256,1),(255,2)],[(128,1),(127,2)],[(1,1),(3,1),(2,1)]):
         state=(0,0,0,[0,0],pairs);enc(state);dec(wire(state))
     fixed=bytes(20)
-    # Malformed count/key/gas scalars include overlong forms, huge announcements and all late-field truncations.
+    # Malformed natural counts and legacy natural-pair bytes probe truncation, ordering and exact-prefix behavior.
     for malformed in (b'',b'\x80',b'\xff',b'\x80\0',b'\xff'+bytes(8),natural(MAX),natural(2**60)):
         dec(fixed+malformed);dec(fixed+b'\1'+malformed);dec(fixed+b'\1\0'+malformed)
         dec(fixed+b'\2\0\0'+malformed);dec(fixed+b'\2\0\0\1'+malformed)
@@ -188,4 +196,9 @@ def requests():
     # Exact pinned JSON fields give success evidence for both profiles/phases; no standalone T binary is claimed.
     for state in published():
         config=(len(state[3]),MAX,MAX);enc(state);dec(wire(state),config);enc(state,op='R')
+    # Original nonempty STF privilege spans now decode completely, including the full/tiny padding.
+    from state_widths_oracle import privilege_binaries
+    for data,evidence in privilege_binaries():
+        cores=2 if '/tiny/' in evidence['path'] else 341
+        dec(data,(cores,1,len(data)));dec(data,(cores,1,len(data)-1))
     return lines,expected

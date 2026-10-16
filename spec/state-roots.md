@@ -4,8 +4,8 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` T and binary-trie equations, C.1 serialization,
 `text/accounts.tex` service/request domains, `text/statistics.tex` counter domains,
 `text/definitions.tex` gas/blob-length domains and `text/pvm_invocations.tex` solicit.
-Exact file hashes are recorded in [pins.json](pins.json). No toolchain, dependency revision or
-production codec behavior changes in this increment.
+Exact file hashes are recorded in [pins.json](pins.json). Toolchain and dependency revisions are
+unchanged; the subsequent dictionary-width migration is documented below.
 
 ## Unmodified full mappings
 
@@ -44,19 +44,17 @@ a migration of bounded dictionary domains while retaining the statistics-gas con
 
 | Field | Current codec | Normative context / published evidence | Verdict |
 | --- | --- | --- | --- |
-| C(12) always-accumulate service/gas pairs | Natural service ID and gas | Four pinned nonempty STF fields uniquely match E4 IDs/E8 gas, corroborating T and the bounded domains. Selected raw T12 dictionaries remain empty. | E4/E8 implementation migration pending. |
-| C(13) service dictionary key | Natural service ID | Thirteen additional nonempty raw entries fit E4 keys; ten include nonzero IDs with exact same-state metadata-key associations. | E4 implementation migration pending. |
+| C(12) always-accumulate service/gas pairs | E4 service ID and E8 gas | Four pinned nonempty STF fields uniquely match E4 IDs/E8 gas, corroborating T and the bounded domains. Selected raw T12 dictionaries remain empty. | E4/E8 migration complete. |
+| C(13) service dictionary key | E4 service ID | Thirteen additional nonempty raw entries fit E4 keys; ten include nonzero IDs with exact same-state metadata-key associations. | E4 migration complete. |
 | C(13) gas fields | Natural gas | Gas has a 64-bit domain; selected trace gas fields are variable-width, despite the general T note. | Normative/reference conflict remains open. |
 | C(13) ordinary measures | Naturals | Statistics declares these as general naturals, unlike bounded service IDs/gas; arbitrary fixed widths cannot be inferred from their current values. | Do not invent a fixed width. |
 
 See [chapter 12](state-privileges.md) and [chapter 13](state-statistics.md) for existing API contracts
-and evidence. Their current codecs and independently authored tests remain unchanged. The audit
-widens the recorded parity gate to C(12) and C(13) gas; it does not declare the current natural
-interpretation settled, install a trace-driven fallback or choose whichever width yields a root
-match. Two explicitly pending harness tests track the remaining migration and gas-policy work
+and evidence. Their codecs and independent tests now use the supported dictionary widths, without
+fixture repair or format fallback. The natural statistics-gas interpretation remains unresolved. The former C12 pending test is active and passing; a pending C13 gas test remains
 before full typed-state parity can be claimed. The [width investigation](state-widths.md) supports
-E4/E8 C12 pairs and E4 C13 keys from the normative note plus nonempty binary/wide-ID evidence. Implementation migration is
-next; the C13 gas conflict still needs clarification. Nonempty raw T12 entries remain unavailable
+E4/E8 C12 pairs and E4 C13 keys from the normative note plus nonempty binary/wide-ID evidence.
+Implementation migration is complete; the C13 gas conflict still needs clarification. Nonempty raw T12 entries remain unavailable
 in the selected sample; the corroborating nonempty bytes are explicitly STF fields.
 
 ## Key-domain audit: still open
@@ -85,8 +83,8 @@ python3 tests/test_state_roots.py
 python3 tools/format.py --check
 ```
 
-The four active literal harness checks cover input widths, duplicate preservation, present-empty
-values and the sensitivity/resource request matrix; two width gates are explicitly skipped.
+Five active literal harness checks cover input widths, duplicate preservation, present-empty
+values, the request matrix and migrated C12 widths; the C13 gas gate remains explicitly skipped.
 Nim 2.2.12 ARC/Clang LTO retains assertions, bounds, range, field and overflow guards. The runner
 records compiler/Python/OS identities, build command, source hashes, each published root, byte/
 entry/node counts, corpus hash and per-request expected/actual verdicts in ignored
@@ -94,9 +92,8 @@ entry/node counts, corpus hash and per-request expected/actual verdicts in ignor
 retains logs/results. Local macOS arm64 passing results do not certify Linux CI.
 
 [Typed composition](state-composition.md) now integrates exact chapter captures, typed metadata
-and typed or explicitly opaque service values, with parent limits and duplicate rejection. Five
+and typed or explicitly opaque service values, with parent limits and duplicate rejection. All fourteen
 published complete mappings compose and reproduce their roots under the recorded interpretation.
 M1 state parity remains incomplete pending **numeric-width/request-key policy resolution**.
-Next bounded group: migrate C12 dictionary IDs/gas to E4/E8 and C13 keys to E4 as described in
-[the evidence decision](state-widths.md); preserve the C13 gas and request-namespace gates.
-Trie proofs/persistence, state transitions and PVM execution remain separate work.
+Next bounded group: request-length namespace admissibility review; the C13 gas conflict remains
+explicit. Trie proofs/persistence, state transitions and PVM execution remain separate work.

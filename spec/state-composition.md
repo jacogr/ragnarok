@@ -3,8 +3,8 @@
 Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` T and trie equations, with the component-specific C.1/C.2 contracts linked
 from [M1](../docs/m1.md). Source/vector identities remain those in [pins.json](pins.json).
-This increment changes no upstream pins, toolchains or existing component wire interpretations.
-The [numeric-width and request-namespace gates](state-roots.md) remain open.
+Upstream pins and toolchains are unchanged. Dictionary widths now follow the supported migration;
+the [statistics-gas and request-namespace gates](state-roots.md) remain open.
 
 ## Chapter capture and ownership
 
@@ -82,7 +82,7 @@ python3 tools/format.py --check
 
 Seven literal harness checks anchor exact chapter extents, failure precedence, service metadata,
 present-empty storage, complete parent accounting, opaque identities and both namespace overlaps.
-**14,451** checked native requests compare exact capture verdicts, every complete key/value entry,
+**14,469** checked native requests compare exact capture verdicts, every complete key/value entry,
 roots and entry/node counts against independent Python byte/list-partition/hashlib equations.
 Cases include every proper truncation of all sixteen authored chapter shapes, suffixes, stricter
 item/byte policies, invalid profiles, arbitrary raw inputs, independent parent ceilings, duplicate
@@ -95,18 +95,14 @@ two further probes reject direct access to chapter and whole-state private stora
 
 The seven already-pinned trace blobs listed in [state-roots.md](state-roots.md) supply **224**
 unchanged component observations (16 chapters times 14 states), with exact blob/value hashes:
-**215 capture completely**, while **nine C(13) entries reject** (eight `TrailingBytes`, one
-`NonCanonical`). These nine observations are expected evidence of the open schema gate, not
-complete-entry conformance successes. No decoder fallback or fixture repair is installed.
-
-Five states have all sixteen exact chapter captures and can therefore be composed end to end:
-`fuzzy/00000001` pre; `storage/00000001` pre/post; `storage/00000002` pre; and
-`preimages/00000001` pre. Each complete mapping preserves original keys/values and reproduces its
-published root (three distinct roots). Metadata is decoded to fixed typed records and encoded
+**all 224 capture completely** after the dictionary-width migration. No decoder fallback or
+fixture repair is installed. All fourteen complete mappings compose end to end and reproduce
+their published roots (ten distinct roots). Metadata is decoded to fixed typed records and encoded
 again; remaining keyed service values use explicitly labelled opaque service-bound captures.
-Metadata identification checks the full C(255,service) key equation, not just its first byte.
-No request lookup identities or original storage keys are guessed from hashes. Selected C12/C13
-dictionaries are empty, so this evidence does not settle nonempty numeric widths.
+Metadata identification checks the full C(255,service) equation, not just its first byte. No request
+lookup identities or original storage keys are guessed from hashes. Selected raw C12 dictionaries
+remain empty; nonempty C13 dictionaries now match E4 keys. Nonempty C12 framing is independently
+covered by original STF binary spans and derived typed source cases.
 
 Nim 2.2.12 ARC/Clang LTO retains assertions, bounds, range, field and overflow checks. Ignored
 `build/state-composition/` records build commands, corpus hash, source observations, successful
@@ -114,10 +110,7 @@ published compositions and compiler/privacy diagnostics. Linux CI runs the same 
 native crypto construction and retains these results. Local macOS arm64 results require Linux
 confirmation after push. No timing, transition or valid-state correctness claim is made.
 
-M1 state parity remains **incomplete** pending the C12/C13 migration and resolution of the C13
-gas/request-domain conflicts. Next bounded group: implement the supported fixed-width migration
-described below. Proofs/persistence, PVM and state transitions remain separate work.
-
-The subsequent [pinned width investigation](state-widths.md) supports the next implementation
-migration: C12 dictionary IDs/gas to E4/E8 and C13 service keys to E4. Current codecs remain
-unchanged in that investigation; C13 gas and request-namespace policy remain unresolved.
+M1 state parity remains **incomplete** pending C13 gas and request-namespace policy. The C12 E4/E8
+and C13 E4-key migrations are implemented; statistics gas retains the explicitly gated natural
+interpretation. Next: request-length namespace admissibility review. Proofs/persistence, PVM and
+state transitions remain separate work.

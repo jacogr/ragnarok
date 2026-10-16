@@ -10,13 +10,13 @@ were read as data, never installed, imported or executed. No dependency revision
 
 ## Decision and current implementation
 
-The investigation supports a concrete next migration:
+The supported migration is now implemented and checked:
 
 | Field | Normative basis | New independent evidence | Decision |
 | --- | --- | --- | --- |
-| C12 always-accumulate service ID | T non-discriminator numbers use fixed widths; service IDs have a 32-bit domain. | Four nonempty STF Privileges fields uniquely match E4 IDs, including ID 1729. | Migrate natural keys to E4. |
-| C12 always-accumulate gas | Same T note; gas has a 64-bit domain. | Those four fields uniquely match E8 gas, including gas 100000. | Migrate natural gas to E8. |
-| C13 service dictionary ID | Same T note and 32-bit service-ID domain. | Thirteen nonempty raw entries match E4 keys; ten contain nonzero IDs, up to 3953987649. All diagnosed IDs identify existing full C(255,service) keys. | Migrate natural keys to E4. |
+| C12 always-accumulate service ID | T non-discriminator numbers use fixed widths; service IDs have a 32-bit domain. | Four nonempty STF Privileges fields uniquely match E4 IDs, including ID 1729. | Implemented E4 keys. |
+| C12 always-accumulate gas | Same T note; gas has a 64-bit domain. | Those four fields uniquely match E8 gas, including gas 100000. | Implemented E8 gas. |
+| C13 service dictionary ID | Same T note and 32-bit service-ID domain. | Thirteen nonempty raw entries match E4 keys; ten contain nonzero IDs, up to 3953987649. All diagnosed IDs identify existing full C(255,service) keys. | Implemented E4 keys. |
 | C13 gas fields | The T note and 64-bit gas domain suggest E8. | All sixteen selected raw entries reconstruct with natural gas, while E8 alternatives fail complete reconstruction. | Keep an explicit normative/reference conflict; do not invent a fallback or silently switch gas. |
 
 These are reasoning conclusions from the normative note plus cross-checks, not a newly published
@@ -27,11 +27,11 @@ The pinned ASN.1 schema confirms bounded service/gas domains but is not used as 
 fixed widths to every statistic: several measures are bounded there but general naturals in the
 paper. Integer domain annotations alone do not prove the encoded widths in a particular field.
 
-**Production codecs are unchanged in this investigation increment.** C12 still uses natural
-service/gas pairs and C13 still uses natural service keys/gas. Their migration is the next bounded
-implementation group, with existing canonical order, byte/item policies and ownership preserved.
-The pending C12 harness gate now explicitly tracks that implementation work. C13 gas and request
-namespace admissibility remain unresolved even after the proposed migration.
+**Production migration complete:** C12 now uses E4 service/E8 gas pairs and C13 uses E4 service
+keys. Canonical natural counts, numeric key ordering, item/byte policy, failure-only results and
+immutable ownership remain enforced. Nonempty encoded bytes change; empty dictionaries do not.
+The C12 pending implementation test is now active and passes. C13 natural gas is unchanged and
+remains a separate pending normative/reference gate, alongside request namespace admissibility.
 
 ## Nonempty C12 reference evidence
 
@@ -92,25 +92,26 @@ python3 tools/format.py --check
 ```
 
 Six literal harness checks anchor candidate byte identities, nonzero wide keys/gas, empty-map
-indistinguishability, exact extents and key ordering. The reference evaluates **80 width candidates**
+indistinguishability, exact extents and key ordering. The reference still evaluates **80 width candidates**
 (16 binary-field alternatives and 64 raw-statistics alternatives). **37 checked native requests**
 run the existing exact chapter capture API: one ownership selftest plus 36 published-value probes.
-They agree with the independent current-layout oracle, with these actual whole-entry results:
+All 36 published-value probes now capture completely. Their migrated whole-entry results are:
 
 | Input | Exact successes | TrailingBytes | NonCanonical |
 | --- | ---: | ---: | ---: |
-| Four nonempty binary Privileges fields | 0 | 4 | 0 |
+| Four nonempty binary Privileges fields | 4 | 0 | 0 |
 | Sixteen empty raw T(12) entries | 16 | 0 | 0 |
-| Sixteen raw T(13) entries | 3 | 5 | 8 |
+| Sixteen raw T(13) entries | 16 | 0 | 0 |
 
-Passing the audit means the evidence and current failures reproduce. It does **not** mean the
-seventeen rejected whole-entry probes conform, and it does not close M1. Logs/results under
+Before migration, seventeen of these whole-entry probes rejected. After migration, all match
+the supplied bytes. This closes the dictionary-width implementation work, but does not resolve
+the separate C13 gas conflict or close M1. Logs/results under
 ignored `build/state-widths/` retain identities, SHA-256 hashes, candidates, offsets, decoded
 candidate fields/metadata associations, native actual/expected verdicts, build flags and compiler/
 Python/OS versions. The new exact blob hashes extend the existing vector pin; gitlinks/toolchains
 remain unchanged. Linux CI runs and retains the same checks; local macOS arm64 results do not
 claim Linux confirmation.
 
-Next: implement **C12 E4/E8 pairs and C13 E4 dictionary keys** together, update framing/limits and
-boundary/ownership tests, then re-run exact capture and whole-state composition. C13 gas and
-request namespace policy remain separate unresolved gates. No new client milestone is claimed.
+Next: request-length namespace admissibility review. C13 gas and request namespace policy remain
+separate unresolved gates. Codec/body, boundary, ownership and complete-composition checks are
+recorded in their respective contracts; no transition or new client milestone is claimed.

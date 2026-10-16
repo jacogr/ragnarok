@@ -16,15 +16,14 @@ E4(manager)
 || E4(assigner[0]) || ... || E4(assigner[core_count - 1])
 || E4(delegator) || E4(registrar)
 || E(always_count)
-|| (E(service_id) || E(gas_allowance)) pairs in strictly increasing numeric service-ID order
+|| (E4(service_id) || E8(gas_allowance)) pairs in strictly increasing numeric service-ID order
 ```
 
 There is no tuple count or assigner-sequence count: its length is fixed by the configured core
-count. The four-byte override applies only to the manager/assigners/delegator/registrar group.
-The current implementation interprets the following dictionary using C.1's ordinary encoding:
-one canonical natural count and canonical natural keys and values. The general T fixed-width note
-needs reconciliation for these bounded service/gas domains; this is now an explicit
-[whole-state parity gate](state-roots.md), not a settled normative width decision. Dictionary service IDs have the uint32 service domain, while
+count. The general fixed-width note after T also governs the dictionary: one canonical natural
+count precedes fixed E4 service keys and E8 gas allowances. Every pair occupies exactly twelve
+bytes, including zero padding. This follows the bounded service/gas domains and the
+[pinned nonempty binary evidence](state-widths.md). Dictionary IDs have the uint32 domain, while
 gas accepts the entire uint64 domain, including zero and its maximum. Keys sort numerically,
 not by encoded bytes, gas value or little-endian role octets. Duplicate/descending keys reject;
 encoder sources are never silently sorted or deduplicated. Distinct core roles may share a
@@ -42,9 +41,10 @@ item ceiling and a complete encoded-byte ceiling. Invalid core profiles reject b
 access. The fixed E4 group must fit the byte policy before scanning; the dictionary count still
 consumes additional budget even when empty. Encoder sources must contain exactly one assigner
 per configured core. Announced dictionary count is checked against caller policy and native typed
-storage capacity before pair traversal/allocation. Every natural scalar is charged to the parent
-budget; arithmetic is checked before addition. Malformed scalars, overlong representations,
-service overflow, duplicate/descending keys and late gas failures publish no values or progress.
+storage capacity before pair traversal/allocation. The natural count and every fixed key/gas byte are charged to the parent budget; arithmetic is
+checked before addition. Malformed/overlong counts, incomplete fixed fields, duplicate/descending
+keys and late gas failures publish no values or progress. All E4/E8 bit patterns are valid numeric
+values; former compact-pair framing is not an alternate format.
 
 The decoder preflights every field without allocation, then copies the fixed roles, assigners
 and complete pairs into private acyclic ARC storage. Count policy bounds work; actual input
@@ -77,18 +77,18 @@ python3 tests/test_state_privileges.py
 python3 tools/format.py --check
 ```
 
-Six literal oracle checks anchor exact fixed/no-count framing, natural key/gas widths, full gas
-domain, numeric order, service overflow, byte/item policy, late truncation and huge-count overflow.
-**1,354** native requests compare entry keys/bytes, copied roles/assigners/pairs, consumed extents
+Seven literal oracle checks anchor exact fixed/no-count framing, E4/E8 padding, full gas
+domain, numeric order, byte/item policy, late truncation and huge-count overflow.
+**1,390** native requests compare entry keys/bytes, copied roles/assigners/pairs, consumed extents
 or failure-only reasons against independent Python byte equations computed before native execution.
 The native source adapter uses decimal fields, not production decode output. Decode observations
 extract logical values after destroying the input rather than using native round trips as answers.
 
-Cases include every proper truncation of a mixed-width parent; E4 and natural boundaries;
+Cases include every proper truncation of a fixed-pair parent; E4/E8 value and natural-count boundaries;
 0/1/127/128/129/255/256/1024 dictionary counts; empty dictionaries; shared role IDs; high service IDs;
 full uint64 gas; exact/one-below parent and count limits; wrong source shape; unsupported core
-profiles; 2/3/127/128/255/256/341 core arrays; malformed/overlong early and late count/key/gas fields;
-duplicate/descending keys; out-of-domain natural service IDs; hostile count announcements;
+profiles; 2/3/127/128/255/256/341 core arrays; malformed/overlong counts and incomplete key/gas fields;
+duplicate/descending keys; legacy compact-pair byte probes; hostile count announcements;
 250 deterministic valid sources with single-byte and arbitrary raw mutations; suffixes; and
 24 partial C(12)-only trie roots. Supplementary native tests cover retained scope, independent
 source/input/pair copies, default owners, nominal indices and runtime result guards. Two negative
@@ -111,11 +111,12 @@ commands, corpus SHA-256, verdicts and diagnostics; Linux CI runs the suite and 
 Local results are macOS arm64; Linux confirmation requires CI after push. Existing crypto gates
 remain unchanged.
 
-The documented M1 C.1/C.2 framing baseline remains covered. State chapters **1–16** now have typed
-serializers; chapter 13 retains its [trace parity gate](state-statistics.md). Service entries and
-whole-state composition remain open. Next planned bounded increment: **whole-state composition/root evidence
-and parity review**. See the [M1 checklist](../docs/m1.md).
+The four original nonempty STF Privileges spans described in [state-widths.md](state-widths.md)
+now decode completely under exact/one-below byte limits. Their field offsets, original hashes,
+fixed numeric values and candidate comparison remain reproducible without running upstream scripts.
+These are STF fields, not independently published nonempty T12 trie entries.
 
-The subsequent [pinned width investigation](state-widths.md) supports the next implementation
-migration: C12 dictionary IDs/gas to E4/E8 and C13 service keys to E4. Current codecs remain
-unchanged in that investigation; C13 gas and request-namespace policy remain unresolved.
+The C12 width migration is complete. Empty dictionary bytes are unchanged; nonempty entries use
+E4/E8 pairs exclusively. [Typed composition](state-composition.md) preserves the same bounds and
+ownership contracts. M1 state parity remains incomplete pending C13 gas and request namespace
+policy. Next: request-length namespace admissibility review, keeping the C13 gas conflict explicit.

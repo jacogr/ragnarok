@@ -41,15 +41,19 @@ class StateRootsHarness(unittest.TestCase):
         self.assertEqual(len({x.split()[0] for x in expected[8:]}), 3)
         self.assertEqual(records[10]['variant'], 'added_present_empty')
 
-    # Nonempty STF evidence now supports E4/E8; the production migration must pass before closing this gate.
-    @unittest.skip('Pending implementation: migrate C12 dictionary service/gas from natural to E4/E8; see spec/state-widths.md')
+    # Literal reproduction of the pinned nonempty span anchors the now-migrated C12 width policy.
     def test_privilege_width_policy(self):
-        self.fail('Replace this gate with passing E4/E8 production framing and the pinned nonempty reference checks.')
+        from state_privileges_oracle import wire
+        from state_composition_oracle import capture
+        source=(0,0,0,[0,0],[(1729,100000)])
+        expected=bytes(20)+b'\1\xc1\6\0\0\xa0\x86\1'+bytes(5)
+        self.assertEqual(wire(source),expected)
+        self.assertEqual(capture(12,expected,(2,6,6,12)),'ok')
 
     # C13 natural-domain measures do not alone settle the bounded service-ID and gas-domain widths.
-    @unittest.skip('Pending: migrate C13 service keys to E4; variable-width trace gas still conflicts with T fixed-width note')
+    @unittest.skip('Pending: C13 keys are E4; variable-width trace gas still conflicts with T fixed-width note')
     def test_statistics_width_policy(self):
-        self.fail('Replace this gate with a normative width decision and complete-entry trace checks.')
+        self.fail('Replace this gate with a clarified statistics gas policy; complete-entry E4-key checks already pass.')
 
 
 # Literal checks require no compiler, native library, network or upstream generator.

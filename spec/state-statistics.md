@@ -4,7 +4,7 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` T chapter **13**, `text/statistics.tex` `eq:activityspec` and core/service
 activity domains, `text/accumulation.tex` accumulation statistics, and C.1 natural, E4, fixed/variable
 sequence and dictionary definitions. Exact hashes are in [pins.json](pins.json). No dependency,
-compiler or toolchain revisions change. Published nonempty trace service-key parity is **open**.
+compiler or toolchain revisions change. Service keys now match published E4 framing; statistics gas policy remains **open**.
 
 ## Current T/C.1 interpretation and public domains
 
@@ -15,14 +15,14 @@ compiler or toolchain revisions change. Published nonempty trace service-key par
 E(current_validator_count) || current_validator_count * (six E4 counters)
 || E(previous_validator_count) || previous_validator_count * (six E4 counters)
 || core_count * (eight ordinary natural fields)
-|| E(service_count) || (E(service_id) || eleven ordinary natural fields) pairs
+|| E(service_count) || (E4(service_id) || eleven ordinary natural fields) pairs
 ```
 
 There is no outer tuple count, core-array count or per-record field count. The first two
 variable arrays have separate natural count prefixes; E4 applies recursively only to each
 validator tuple. Core and service tuples use ordinary naturals, including their gas fields.
-The service dictionary follows C.1 numeric-key order and ordinary natural key encoding, with a
-uint32 service domain. Encoder inputs must already be strictly ascending/unique; no silent
+The service dictionary follows C.1 numeric-key order with fixed E4 keys, following T's general
+fixed-width note and the uint32 service domain. Encoder inputs must already be strictly ascending/unique; no silent
 sorting, duplicate merging or source repair occurs. Values need not be monotonic.
 
 `ValidatorActivity` is a fixed array indexed by the named `ValidatorMeasure` enum: blocks,
@@ -50,7 +50,7 @@ Canonical counts and fixed-array extents are checked before fixed reads. Service
 and native typed-storage capacity are checked before pair traversal or allocation. All count,
 key, counter and gas bytes consume the complete parent budget. Checked addition and profile
 bounds prevent native arithmetic/conversion overflow. Invalid configuration, wrong roster/source
-shape, missing or overlong naturals, service overflow, duplicate/descending keys and late gas
+shape, missing or overlong naturals, incomplete E4 keys, duplicate/descending keys and late gas
 failures return typed reasons without values, owners or progress.
 
 The decoder scans every nested field without heap allocation, then captures independent fixed
@@ -62,7 +62,7 @@ Allocation exhaustion follows the existing Nim fail-stop policy.
 `ActivityResult` defaults/failures contain only a reason. Complete prefix success binds the
 retained snapshot to its consumed extent; suffix bytes remain with the caller. Complete-entry
 callers must additionally require consumed == supplied value length. A successful prefix is
-not proof that an entire entry matches the schema, as the trace evidence below demonstrates.
+not proof that an entire entry matches the schema; composition enforces exact extents.
 
 `ActivitySnapshot` value copies retain immutable private storage. `activityInfo` returns fixed
 counts. `validatorActivityAt`, `coreActivityAt` and `serviceActivityAt` check their nominal indices
@@ -89,7 +89,7 @@ python3 tools/format.py --check
 
 Seven literal oracle checks anchor no-count/fixed/natural framing, separate populations, key
 order/domain, full gas values, late truncation, resource ceilings and the prefix-versus-complete
-E4-key mismatch. **2,547** native requests compare complete entry keys/bytes, logical copied
+E4-key exact extent. **2,615** native requests compare complete entry keys/bytes, logical copied
 fields/consumed extents or failure-only reasons against independent Python equations computed
 before native execution. Decimal source fields are built without production decoding. Decoder
 observations use the public owner accessors after destroying original input, rather than native
@@ -97,11 +97,11 @@ round trips as expected answers.
 
 Cases cover every proper truncation of a mixed-field parent; each validator field's E4 boundaries;
 each core/service field across every 7-bit natural width transition through full uint64; numeric
-service key ordering and uint32 overflow; separate current/previous populations including 6/1023
+service key ordering and every E4 octet boundary; separate current/previous populations including 6/1023
 and count-prefix boundaries; core counts 2/3/43/86/341; wrong source/announced shapes; invalid
 profiles; exact/one-below count/byte ceilings; 0/1/127/128/129/255/256 service counts; malformed,
 overlong, missing and huge counts/scalars at early/late positions; 150 deterministic valid sources
-with single-byte and arbitrary raw mutations; suffixes; and eight partial C(13) trie roots.
+with single-byte and arbitrary raw mutations; suffixes; and thirteen partial C(13) trie roots.
 Native supplementary tests protect retained scope, copied counter/gas/key records, independent
 resized epochs, owner/index/result guards and private storage. Two negative compiler probes
 reject gas-as-validator-counter and service-ordinal-as-core; one rejects access to owner storage.
@@ -113,50 +113,39 @@ full-profile post-state. Their six named fields are mapped exactly and unchanged
 omit core/service statistics: their **zero core tuples and empty service dictionary are explicitly
 authored completion**, not published full-state data or STF execution evidence.
 
-The three `traces/fuzzy/0000000{1,2,3}.json` blobs supply six exact pre/post C(13) key/value entries.
-These original bytes are replayed unchanged. Results under the pinned-paper schema are:
+The three `traces/fuzzy/0000000{1,2,3}.json` blobs supply six exact pre/post C(13) entries.
+All six now decode to complete immutable records and re-emit the original bytes unchanged:
 
-| Trace / phase | Supplied bytes | Prefix consumed | Trailing bytes | Complete entry match |
-| --- | ---: | ---: | ---: | --- |
-| 1 pre | 307 | 307 | 0 | Yes; service dictionary empty. |
-| 1 post; 2 pre | 329 | 326 | 3 | No. |
-| 2 post; 3 pre | 332 | 327 | 5 | No. |
-| 3 post | 329 | 326 | 3 | No. |
+| Trace / phase | Supplied bytes | Consumed | Trailing bytes |
+| --- | ---: | ---: | ---: |
+| 1 pre | 307 | 307 | 0 |
+| 1 post; 2 pre | 329 | 329 | 0 |
+| 2 post; 3 pre | 332 | 332 | 0 |
+| 3 post | 329 | 329 | 0 |
 
-**Parity gate:** the five nonempty entries reconstruct exactly with a diagnostic-only E4 service-key
-layout. T(13) places the service dictionary outside the explicit E4 override; C.1's dictionary equation
-applies ordinary E(key), but service IDs have a bounded 32-bit domain and T's general fixed-width
-note also applies to the width review. The empty dictionary cannot
-distinguish these alternatives. The selected nonempty samples have key zero; the diagnostic fit
-explains offsets but does not settle which upstream source should change. No production E4-key
-fallback, fixture rewriting, guessed tuple fields or broader parity claim is introduced. Prefix
-success in those five cases is explicitly **not** complete-entry conformance, and decoded fields
-must not be treated as the trace producer's intended service statistics. Resolution requires
-normative/reference clarification and focused evidence before changing service-key framing.
+Sixteen additional exact values from the eight later snapshots in
+[state-widths.md](state-widths.md) decode and re-emit completely, including nonzero service IDs
+through 3953987649 and 55 same-state metadata-key associations. The E4 service-key migration is
+complete; the former shorter-prefix and noncanonical verdicts no longer occur for these inputs.
+No fixture rewriting, format fallback or guessed tuple fields are introduced.
 
-T also includes a general note that non-discriminator state numbers use fixed widths according
-to their domains. This is additional normative context for the key-width discrepancy, alongside
-C.1's generic dictionary equation. It must be reconciled with the traces' variable-width core/
-service numeric fields before closing the gate. In particular, gas has a bounded 64-bit domain,
-while ordinary core/service measures are general naturals. The [whole-state audit](state-roots.md)
-also records the chapter-12 service/gas width gate and exact raw full-map root evidence.
-The current implementation is the recorded T/C.1 interpretation, not a claim that this broader note has been resolved; no statistics behavior is
-changed by the service-metadata increment.
+**Remaining gas gate:** the general T note says non-discriminator numeric state fields use fixed
+widths, and gas has a bounded 64-bit domain. The selected published C13 values instead reconstruct
+with natural gas, including positive values and zero padding differences. This migration leaves
+those gas bytes unchanged and keeps an explicit pending test. Ordinary measures are general
+naturals in the paper; the reference ASN.1 domains are not used to invent fixed widths for them.
+Wire agreement under this recorded gas interpretation does not establish full normative parity.
 
 `build/state-statistics/results.json` retains corpus identity, build commands and per-entry raw
 SHA-256, complete-match flag and consumed/trailing counts alongside the open gate. Fixtures are
 SHA-256 checked before parsing at exact pinned Git blob identities; partial clones may fetch
-promised objects without checkout/gitlink changes. No upstream generators run. Eight partial
+promised objects without checkout/gitlink changes. No upstream generators run. Thirteen partial
 roots commit C(13) alone, not complete JAM state or proofs. Nim 2.2.12 ARC/Clang LTO keeps
 assertion/bounds/range/field/overflow guards. Linux CI runs the suite and uploads diagnostics;
 local results are macOS arm64, with Linux confirmation pending CI after push. Existing crypto
 gates remain unchanged.
 
-The documented M1 framing baseline remains covered; chapters 1–16 now have typed serializers,
-with chapter 13's trace wire-parity gate open. Service entries and whole-state
-composition still remain. Next planned bounded group: **whole-state composition/root evidence
-and parity review**. See the [M1 checklist](../docs/m1.md).
-
-The subsequent [pinned width investigation](state-widths.md) supports the next implementation
-migration: C12 dictionary IDs/gas to E4/E8 and C13 service keys to E4. Current codecs remain
-unchanged in that investigation; C13 gas and request-namespace policy remain unresolved.
+The C13 service-key migration is complete. All 224 selected chapter captures and fourteen
+published full-state mappings now pass [typed composition](state-composition.md), but M1 parity
+remains incomplete pending C13 gas and request namespace policy. Next: request-length namespace
+admissibility review; C13 gas still requires normative/reference clarification.
