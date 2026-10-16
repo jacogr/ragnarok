@@ -172,3 +172,11 @@ from local execution. The full local lifecycle suites also pass: 40 soak session
 waves, 128 IPv6 queries, 12 peer-death and 12 overload waves, and 288 integrated streams. The ten-wave
 proof-offload suite passes after the ark-vrf upgrade, with two workers and four owned job slots,
 so its result refers to the final release-reference backend.
+
+## Subsequent state-wire parity gate
+
+The [chapter-13 statistics contract](state-statistics.md) records a further discrepancy at these
+same pins: five nonempty trace C(13) values fit E4 service-dictionary keys, while T(13)/C.1 specify
+ordinary natural keys. The pinned-paper implementation and exact raw fixture prefix observations
+are retained separately; successful prefix parsing is not complete-entry parity. Upstream
+clarification remains necessary before changing that key schema or claiming full state parity.

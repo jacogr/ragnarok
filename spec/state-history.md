@@ -115,6 +115,6 @@ Nim 2.2.12 ARC/Clang LTO builds retain assertions/bounds/range/field/overflow gu
 and uploads diagnostics. Local results are macOS arm64; Linux confirmation requires CI after push.
 
 M1's C.1/C.2 framing baseline remains covered; complete state serialization remains open. Next
-planned bounded chunk: **chapter 13's activity statistics**; chapter 10 now has its
+planned bounded chunk: **chapters 14–15 ready and accumulated work**; chapter 10 now has its
 [availability-state codec](state-availability.md). The [M1 parity checklist](../docs/m1.md)
 tracks remaining chapters, service entries and whole-state composition/root evidence.

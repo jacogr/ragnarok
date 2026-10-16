@@ -131,5 +131,5 @@ results. Linux CI runs the suite and uploads diagnostics; local results are macO
 confirmation requires CI after push. Existing crypto parity gates remain unchanged.
 
 M1's C.1/C.2 framing baseline remains covered; complete state serialization remains open. Next
-planned bounded chunk: **chapter 13's activity statistics**. The
-[M1 checklist](../docs/m1.md) tracks chapters 13–16, service entries and whole-state integration.
+planned bounded chunk: **chapters 14–15 ready and accumulated work**. The
+[M1 checklist](../docs/m1.md) tracks chapters 14–16, service entries and whole-state integration.
