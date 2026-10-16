@@ -9,6 +9,7 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
 | `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
 | `state_authorization.nim` | Core-indexed authorization pools/queues, bounded entries and immutable snapshots |
+| `state_availability.nim` | Chapter-10 fixed optional core slots, full guarantees and E4 registration timestamps |
 | `state_history.nim` | Chapter-3 recent records, package dictionaries and optional MMR belt peak encoding |
 | `state_disputes.nim` | Chapter-5 canonical judgment/offender sets, whole-parent preflight and immutable snapshots |
 | `state_consensus.nim` | Chapter-4 pending roster, ring commitment, tagged fixed schedule and ticket accumulator |
@@ -99,5 +100,7 @@ retained immutable children and selected-variant copied extraction.
 and nominally separate report/key extraction.
 [Recent-history state codecs](../spec/state-history.md) add chapter 3 with whole-parent preflight,
 key/value association and owner-bound optional peak copies.
+[Availability state codecs](../spec/state-availability.md) add chapter 10 with shared standalone
+guarantee records, whole-parent preflight and independently retained child reports.
 Other state serialization, proofs and persistence remain future work. Run these native suites after
 building the primitive bridge.

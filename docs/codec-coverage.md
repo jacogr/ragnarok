@@ -5,7 +5,7 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–9/11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
+1–11; remaining state serialization, trie proofs and persistence remain open. PVM execution and
 state transitions are separate client work.
 
 ## General encodings (C.1)
@@ -151,7 +151,22 @@ Validation: 1,985 independent requests, six literal harness checks, two nominal 
 compiler rejections, native retention/copy/index/result/optional-field guards and nine partial C(3)
 root integrations. Eight published tiny/full pre/post JSON sources supply explicitly derived named
 field/dictionary/peak cases. No history-transition, MMR algorithm or commitment-consistency claim
-is made. Next planned: chapter 10 availability assignments. See [the contract](../spec/state-history.md).
+is made. Chapter 10 is now covered below. See [the contract](../spec/state-history.md).
+
+## Availability-assignment state serialization
+
+`state_availability.nim` implements T chapter 10's fixed core sequence of optional full guarantees
+and separate E4 registration times. Standalone scan/measure/capture/encoding helpers share the
+existing guarantee record rules; extrinsic inter-record core ordering remains intact. Every slot
+and nested child validates before parent/child allocation. Extracted guarantees retain immutable
+reports independently of the parent lifetime; no mutable backing arrays are exposed.
+
+Validation: 2,949 independent requests, six literal oracle checks, two nominal and one privacy
+compiler rejections, native lifetime/copy/presence/index/result guards and four partial C(10) roots.
+Twelve derived published JSON-state observations preserve eight successful assurance states and
+four expected raw dispute-state decoder rejections. No child policy or fixture field is weakened.
+Assignment transitions and cryptographic verification remain separate. Next planned: chapter 12
+privileged-service configuration. See [the contract](../spec/state-availability.md).
 
 ## Published codec fixture inventory
 

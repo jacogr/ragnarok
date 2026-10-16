@@ -110,7 +110,13 @@
       "stf/history/tiny/progress_blocks_history-1.json": "c3b63c5ecda49515d53a8fa2cabb589e44fc431434d8b22ffc0a7d89a610aefa",
       "stf/history/tiny/progress_blocks_history-4.json": "7586c0d649f742811e83ee09229f5ee87c66ba96dabf800d3e025b51890dd77f",
       "stf/history/full/progress_blocks_history-1.json": "c3b63c5ecda49515d53a8fa2cabb589e44fc431434d8b22ffc0a7d89a610aefa",
-      "stf/history/full/progress_blocks_history-4.json": "7586c0d649f742811e83ee09229f5ee87c66ba96dabf800d3e025b51890dd77f"
+      "stf/history/full/progress_blocks_history-4.json": "7586c0d649f742811e83ee09229f5ee87c66ba96dabf800d3e025b51890dd77f",
+      "stf/assurances/tiny/no_assurances-1.json": "925bd6b888e92ca806bd16e71457e7e8eb68023e1cebe8d36aacb11d04c74499",
+      "stf/assurances/tiny/some_assurances-1.json": "9d4af78bd0defae5ed2d1f1dbc34d1a7e4f519259d7e14d65c0fcf7810042848",
+      "stf/assurances/full/no_assurances-1.json": "e5eb7f6c347a4b444cef682448e074bb40d296f917bfa4c5484896db216cebcb",
+      "stf/assurances/full/some_assurances-1.json": "b45e09553125bc57af3997ea75bf467a689faddf02513877a6d6514f23b5142a",
+      "stf/disputes/tiny/progress_invalidates_avail_assignments-1.json": "a9942665d37a62508420c63cd3b64fc285b61adce87d6baae4f76e18c0bc23f6",
+      "stf/disputes/full/progress_invalidates_avail_assignments-1.json": "efc496d503c3722a561f80fba7f712e879ed905e2eca8b5c3dceab999030e412"
     }
   },
   "toolchains": {
