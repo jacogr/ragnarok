@@ -57,8 +57,7 @@ Allocation exhaustion follows the existing Nim fail-stop policy.
 
 This module does not execute accumulation, hash service output, build the accumulation belt,
 validate service accounts, enforce eligibility or calculate state transitions. Opaque commitments
-are serialized without cryptographic verification. Existing crypto and chapter-13 trace parity
-gates remain unchanged.
+are serialized without cryptographic verification. Existing crypto parity gates remain unchanged.
 
 ## Evidence and reproduction
 
@@ -105,7 +104,30 @@ Nim 2.2.12 ARC/Clang LTO retains assertions/bounds/range/field/overflow checks. 
 suite and retains diagnostic artifacts. Local validation is macOS arm64; Linux confirmation
 requires CI after push.
 
-State chapters **1–16** now have typed serializers to pinned-paper framing, with chapter 13's
-trace key-width gate still open. **M1 state parity is not complete**: keyed service storage/
+State chapters **1–16** now have typed serializers to pinned-paper framing. Chapter 13 follows
+the accepted compact gas and numeric service-key policy; no alternate-width fallback is supported. **M1 state parity is not complete**: keyed service storage/
 preimage/request entries and whole-state composition/root evidence remain. Next planned bounded
 increment: **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
+
+
+## Nimony branch verification
+
+The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
+its wire format, resource policies, sequence semantics and failure precedence. `OutputLogResult[T]`
+hides status/payload behind a read-only reason and a success-only accessor, including internal
+extent proofs. Nullable owner storage is checked through stable retained locals; extracted fixed
+pairs remain independent copies. No upstream patches or private runtime hooks are used.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
+trial compiler. The runner includes the original 1,901-request corpus, six literal checks, eight
+exact published empty-log components and 21 partial C(16) roots. Two native suites also exercise
+retained/replaced owners, escaped fixed pairs, copied fields and explicit native arithmetic
+boundaries. Thirty-two isolated actual/default payload reads reject through the exact success
+contract, ten private/read-only compiler probes reject bypasses, and two nominal probes reject
+root/commitment and service/index substitutions. The scoped 1,000-cycle lifetime workload returns
+public live occupancy from 192 to 192 bytes on local macOS ARM64, checked ARC/Clang LTO.
+
+Linux confirmation remains CI work. Typed chapters 1–16 are ported, but full M1 migration still
+requires service-keyed state and whole-state composition. The next bounded Nimony family is
+C(255, service) account metadata. See the [trial](../docs/nimony-trial.md) for cumulative totals
+and remaining gates; no accumulation transition or output-log commitment parity is claimed here.

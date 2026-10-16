@@ -1,10 +1,10 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
-Status: **42 native suites, twenty-three independent family corpora, 1,090 runtime misuse rejections
-and 506 compilation rejections pass locally**. Chapters 14/15 work queues join the verified
+Status: **44 native suites, twenty-four independent family corpora, 1,122 runtime misuse rejections
+and 518 compilation rejections pass locally**. Chapter-16 last accumulation outputs joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
-state-key/node, bounded trie, entropy/roster/time, authorization and state chapters 3–5/10/12–15.
+state-key/node, bounded trie, entropy/roster/time, authorization and state chapters 3–5/10/12–16.
 M1 migration remains partial; broader M2, M3 and Linux parity remain unverified. This branch targets
 Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. Branch Linux CI is now configured; actual Linux
@@ -1322,11 +1322,57 @@ thirteen remaining failures. Branch Linux CI uses the expanded runner automatica
 here is macOS ARM64, checked ARC/Clang LTO. Actual Linux execution and full M1/M2/M3 runtime parity
 remain separate gates. Chapter-16 last accumulation outputs is the next bounded family.
 
+## Twenty-ninth bounded increment: chapter-16 last accumulation outputs
+
+`src/codec/state_outputs.nim` now targets the same pristine pinned Nimony 0.6.3 nightly. Gray
+Paper 0.8.0 T(state) chapter 16 retains one canonical natural pair count followed by fixed E4
+service IDs and opaque 32-byte commitments. Source order, descending/repeated service IDs and
+repeated pairs remain unchanged. No sorting, deduplication, output commitment verification or
+accumulation execution is introduced; protocol and dependency pins remain unchanged.
+
+`OutputLogResult[T]` now hides status/payload behind read-only reasons and a success precondition,
+covering public entries/reads/counts/pairs and private native extent proofs. Owner storage is
+explicitly nullable and checked through stable retained locals. Whole-parent count/extent preflight
+still precedes allocation, including the final commitment byte. Division/subtraction checks prove
+wire and typed-record extents before multiplication, addition and narrowing. Extracted pairs are
+independent fixed values; no mutable owner arrays or detached coordinates are public.
+
+The port uses explicit fixed-array initialization and supported nullable references. The trusted
+test driver uses explicit initialization and nonthrowing complete-token integer/hex parsing.
+The existing native selftest and driver both passed their first targeted checked-LTO builds;
+new private-lifetime and isolated-result binaries also compiled on their first targeted builds.
+These are observed builds for this increment, not invented historical compiler-repair totals.
+No compiler patches or private-runtime hooks were needed.
+
+All **1,901 unchanged independent requests** and **six literal reference checks** pass. Coverage
+includes every representative proper truncation, every commitment octet, E4 service boundaries,
+canonical count boundaries, sequence order/repetition, exact/one-below limits, hostile native count
+announcements, deterministic mutations and **21 partial component trie roots**. Eight pinned raw
+pre/post trace entries consume completely and re-emit unchanged. All eight are empty logs;
+nonempty field/order/policy coverage is authored, not claimed as published nonempty conformance.
+The isolated retain/replace/drop workload returns public live occupancy from **192 to 192 bytes**
+after **1,000 warmed cycles**, including detached fixed pairs and late malformed parents. This
+is a scoped allocator observation, not an RSS or general leak-freedom claim.
+
+This increment adds **32 runtime misuse rejections** (sixteen actual/default result pairs) and
+**12 compilation rejections** (ten private/read-only result/owner probes plus root-as-commitment
+and service-as-sequence-index substitutions). Cumulative totals are **1,122 runtime misuse
+rejections, 518 compilation rejections (446 privacy + 64 nominal + five schema + three static
+contracts), 44 positive native suites and twenty-four family corpora**, plus three separate language
+probes. Formatting covers **706 Nim files**; the functional report records **712 matching source/test
+hashes**. These safety counts are separate from compiler-repair measurements.
+
+The local all-source semantic audit advances from 30/43 to **31/43 passing modules**, retaining
+the twelve remaining failures. Branch Linux CI automatically uses the expanded runner. Results
+here remain local macOS ARM64, checked ARC/Clang LTO; actual Linux execution and full M1/M2/M3
+runtime parity are separate gates. Chapters 1–16 now have their existing typed serializers ported,
+but service-keyed state and whole-state composition remain. Next is C(255, service) account metadata.
+
 ## Remaining work and next bounded increment
 
-Next: port M1 chapter-16 last accumulation outputs (`src/codec/state_outputs.nim`), preserving
-the ordered count-prefixed sequence, fixed E4 service IDs and 32-byte commitments, repeated pairs,
-nominal indices, whole-parent preflight and the existing independent entry/root corpus.
+Next: port M1 C(255, service) account metadata (`src/codec/state_accounts.nim`), preserving the
+fixed version-zero record, nominal balance/gas/storage/time domains, chapter/service key layout,
+whole-record preflight and the existing independent entry/root corpus.
 Other state components remain later bounded chunks.
 
 Further port work remains:
@@ -1364,6 +1410,6 @@ hashes and individual verdicts to `build/nimony-trial/verification/results.json`
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
 verified codec, owned-snapshot, report/extrinsic, package, header/block, packed-bit, collection and
 C.2 slices, alongside raw crypto, state keys/node layouts, bounded trie, entropy/rosters/time,
-authorization and state chapters 3–5/10/12/13. A missing check or failed guard still makes the runner
+authorization and state chapters 3–5/10/12–16. A missing check or failed guard still makes the runner
 exit one. There is no claim of full-client parity or an already switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.

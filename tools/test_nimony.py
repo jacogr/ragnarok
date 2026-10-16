@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -611,6 +611,11 @@ NOMINAL.update(workqueue_hash_as_item="[3] expected: ReadyItemIndex but got: Wor
                workqueue_item_as_slot="[2] expected: WorkQueueSlot but got: ReadyItemIndex",
                workqueue_wrong_owner="[1] expected: ReadySnapshot but got: AccumulatedSnapshot")
 WORKQUEUES_MEMBERS = ('ready-entry-config', 'ready-entry-count', 'ready-entry-policy', 'ready-entry-report', 'ready-entry-child', 'ready-entry-dependencies', 'ready-entry-order', 'ready-entry-bytes', 'acc-entry-count', 'acc-entry-order', 'acc-entry-policy', 'ready-owner', 'ready-consumed', 'ready-config', 'ready-overflow', 'ready-framing', 'ready-child', 'ready-dependencies', 'ready-bytes', 'acc-owner', 'acc-consumed', 'acc-order', 'acc-overflow', 'ready-info', 'acc-info', 'ready-slot-owner', 'ready-slot-index', 'acc-slot-owner', 'acc-slot-index', 'item-owner', 'item-slot', 'item-index', 'dep-owner', 'dep-slot', 'dep-item', 'dep-index', 'hash-owner', 'hash-slot', 'hash-index', 'count-truncated', 'count-noncanonical', 'ready-layout', 'acc-layout')
+# All chapter-16 result shapes and retained storage remain private/read-only to application callers.
+OUTPUTS_PRIVATE = {'output_result_entry_private': 'completed', 'output_result_read_private': 'completed', 'output_result_count_private': 'completed', 'output_result_pair_private': 'completed', 'output_result_retag': 'status', 'output_result_forge': 'status', 'output_result_error_write': 'error', 'output_result_value_write': 'value', 'output_owner_rebind': 'data', 'output_snapshot_private': 'data'}
+PRIVATE.update(OUTPUTS_PRIVATE)
+NOMINAL.update(output_root_as_commitment="got: StateNodeHash but wanted: OutputCommitment", output_service_as_index="OutputLogIndex")
+OUTPUTS_MEMBERS = ('entry-items', 'entry-bytes', 'owner', 'consumed', 'decode-framing', 'decode-items', 'decode-bytes', 'decode-overflow', 'decode-tail', 'count-owner', 'at-owner', 'at-index', 'at-empty', 'extent-items', 'extent-overflow', 'extent-bytes')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
@@ -659,7 +664,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], contracts=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], contracts=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -690,7 +695,8 @@ def main():
                   ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('src/crypto/primitives.nim', 'tests/native/crypto_driver.nim',
+    sources += [ROOT/path for path in ('tests/native/state_outputs_driver.nim', 'tests/state_outputs_oracle.py',
+                'tests/test_state_outputs_harness.py', 'src/crypto/primitives.nim', 'tests/native/crypto_driver.nim',
                 'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
                 'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
                 'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
@@ -732,7 +738,7 @@ def main():
     for name in SUITES:
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('crypto_seeds', 'state_layout', 'state_trie_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private') else None)
+                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private') else None)
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
@@ -864,6 +870,13 @@ def main():
             if release is not None:
                 # Live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
                 report['safrole_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        if name == 'state_outputs_private' and row['passed']:
+            # Replaced log owners and detached fixed pairs retire after their final scoped reference.
+            release = re.search(r'OUTPUTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+            row['passed'] = release is not None and release[1] == release[2]
+            if release is not None:
+                # Observe public live allocator occupancy for this workload, never RSS or private counts.
+                report['outputs_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_workqueues_private' and row['passed']:
             # Escaped report children and replaced ring owners release their final references at scope exit.
             release = re.search(r'WORKQUEUES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -1529,6 +1542,39 @@ def main():
     corpus['passed'] = corpus['passed'] and len(traces) == 12 and all(row['complete_component_match'] for row in traces)
     report['workqueues_corpus'] = corpus
     announce('independent chapters 14/15 ready/accumulated queue corpus', corpus['passed'])
+    # Chapter 16 preserves the independent ordered fixed-pair corpus and exact empty published traces.
+    from state_outputs_oracle import requests as outputs_requests, published as outputs_published, parse as outputs_parse, wire as outputs_wire, DEFAULT as outputs_default
+    harness = command([sys.executable, ROOT/'tests/test_state_outputs_harness.py'], 'outputs-harness')
+    lines, expected = outputs_requests()
+    source = BUILD/'outputs-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    traces = []
+    # Selected trace entries are empty logs; authored cases supply nonempty field/order coverage.
+    for entry in outputs_published():
+        values, consumed = outputs_parse(entry['wire'], outputs_default)
+        traces.append(dict(path=entry['path'], phase=entry['phase'], bytes=len(entry['wire']),
+                           items=len(values), consumed=consumed, sha256=hashlib.sha256(entry['wire']).hexdigest(),
+                           complete_component_match=consumed == len(entry['wire']) and outputs_wire(values) == entry['wire']))
+    compiled, binary = build(compiler, ROOT/'tests/native/state_outputs_driver.nim', 'state_outputs-codec', crypto_library)
+    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+                  published_trace_components=traces,
+                  scope='ordered fixed pairs; published traces empty, nonempty coverage authored; no accumulation execution',
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # All expected fields/bytes/reasons come from independent equations computed before native execution.
+        result = command([binary, source], 'state_outputs-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Preserve the first disagreement and full observation log for reproduction.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    corpus['passed'] = corpus['passed'] and len(traces) == 8 and all(row['complete_component_match'] for row in traces)
+    report['outputs_corpus'] = corpus
+    announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1937,6 +1983,17 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['workqueues'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' workqueues '+member+' guard', passed)
+    # Public entry/read/count/pair payloads and internal extent proofs retain exact success contracts.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_outputs_results.nim', 'outputs-results', crypto_library)
+    report['outputs_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Actual and default failures execute independently so no rejected access conceals another.
+        for origin in ('default', 'error'):
+            for member in OUTPUTS_MEMBERS:
+                result = command([binary, member, origin], 'outputs-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['outputs'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' outputs '+member+' guard', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -1971,6 +2028,11 @@ def main():
             rejected = ('Error: Type mismatch at [position]' in result['output']
                         and 'encodeStateBranch(' in result['output']
                         and '[1] expected: StateNodeHash but got: '+member in result['output'])
+        elif name == 'output_service_as_index':
+            # Protocol service identities cannot address a retained sequence position.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'outputLogAt(' in result['output']
+                        and '[2] expected: '+member+' but got: ServiceIndex' in result['output'])
         elif name.startswith('workqueue_'):
             # Nominal row/item/hash positions and owner kinds cannot be substituted.
             rejected = 'Error: Type mismatch at [position]' in result['output'] and member in result['output']
@@ -2057,6 +2119,9 @@ def main():
                    and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
                    and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
+                   and report['outputs_corpus']['passed']
+                   and len(report['outputs']) == 2*len(OUTPUTS_MEMBERS)
+                   and all(row['passed'] for row in report['outputs'])
                    and report['workqueues_corpus']['passed']
                    and len(report['workqueues']) == 2*len(WORKQUEUES_MEMBERS)
                    and all(row['passed'] for row in report['workqueues'])

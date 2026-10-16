@@ -1,0 +1,4 @@
+## Result success payloads cannot be read outside the guarded accessor.
+import ../../../src/codec/[state_outputs, state_trie]
+let parsed = default(OutputLogResult[AccumulationOutput])
+discard parsed.completed
