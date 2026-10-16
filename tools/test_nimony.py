@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
-SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes')
+SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -107,6 +107,23 @@ NOMINAL.update(swapped_dispute_epoch='got: GuaranteeSlot but wanted: DisputeEpoc
                swapped_dispute_signature='got: GuaranteeSignature but wanted: DisputeSignature')
 DISPUTE_MEMBERS = ('owner', 'decoded-info', 'info', 'verdict', 'verdict-judgments', 'judgment',
                    'culprit', 'fault', 'written', 'owned-written', 'inspect-verdicts', 'inspect-consumed')
+PACKAGE_PRIVATE = dict(package_result_private='completed', package_result_item_private='completed',
+    package_result_retag='status', package_result_forge='status', package_result_error='error',
+    package_result_value='value', private_package_owner='data', private_item_owner='data',
+    package_owner_forge='data', package_item_forge='data', package_item_index='index',
+    package_item_rebind='index', import_root_private='rootIdentity', import_package_private='packageIdentity',
+    import_retag='referenceKind', import_public_kind='kind', import_forge='referenceKind',
+    import_root_write='root', import_package_write='package')
+NOMINAL.update(swapped_import_index='got: ValidatorIndex but wanted: ImportIndex',
+               swapped_authorizer_host='got: ServiceIndex but wanted: AuthorizerHost',
+               swapped_import_identity='[1] expected: ReportHash but got: ReportHash',
+               swapped_extrinsic_length='got: BundleLength but wanted: ExtrinsicLength')
+PACKAGE_MEMBERS = ('context-value', 'context-consumed', 'import-value', 'import-consumed',
+    'commitment-value', 'commitment-consumed', 'package-owner', 'package-consumed', 'item-owner',
+    'item-consumed', 'package-info', 'item-info', 'child', 'selected-import', 'selected-commitment',
+    'context-written', 'import-written', 'commitment-written', 'item-written', 'package-written',
+    'payload', 'blob', 'owned-item', 'owned-package')
+PRIVATE.update(PACKAGE_PRIVATE)
 PRIVATE.update(DISPUTE_PRIVATE)
 PRIVATE.update(TICKET_PRIVATE)
 PRIVATE.update(GUARANTEE_PRIVATE)
@@ -161,7 +178,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -175,7 +192,8 @@ def main():
                + [ROOT/'tests/native/guarantees_driver.nim', ROOT/'tests/native/tickets_driver.nim',
                   ROOT/'tests/tickets_oracle.py', ROOT/'tests/test_tickets_harness.py',
                   ROOT/'tests/disputes_oracle.py', ROOT/'tests/native/disputes_driver.nim',
-                  ROOT/'tests/test_disputes_harness.py']
+                  ROOT/'tests/test_disputes_harness.py', ROOT/'tests/package_oracle.py',
+                  ROOT/'tests/native/package_driver.nim', ROOT/'tests/test_package_harness.py']
                + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
                   ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json']
                + list((ROOT/'tests/native').glob('nimony_*.nim'))
@@ -224,6 +242,13 @@ def main():
                 if release is not None:
                     # Public live occupancy covers this workload, not private reference counts or RSS.
                     report['dispute_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+            if name == 'work_package' and row['passed']:
+                # Independent retained children must release their parent snapshots at the last child reference.
+                release = re.search(r'PACKAGE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
+                row['passed'] = release is not None and release[1] == release[2]
+                if release is not None:
+                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
+                    report['package_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Run the unchanged independent report oracle through a codec-only adapter; M2 signatures remain separate.
@@ -410,6 +435,29 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['dispute_corpus'] = corpus
     announce('independent dispute codec/inspection corpus', corpus['passed'])
+    # The unchanged package oracle covers context, import, commitment, standalone item and complete package APIs.
+    from package_oracle import requests as package_requests
+    lines, expected = package_requests()
+    groups = {kind: sum(line.split(' ', 2)[1] == kind for line in lines) for kind in ('C', 'R', 'X', 'I', 'P')}
+    source = BUILD/'package-requests.txt'
+    source.write_text('\n'.join(lines)+'\n')
+    compiled, binary = build(compiler, ROOT/'tests/native/package_driver.nim', 'package-codec')
+    corpus = dict(build=compiled, request_groups=groups, requests=len(lines), passed=False,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    if compiled['exit_code'] == 0:
+        # Every typed field/payload is observed independently after original input mutation; failures retain sentinels.
+        result = command([binary, source], 'package-corpus')
+        output = result.pop('output')
+        actual = output.splitlines()
+        corpus['run'] = result
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
+        corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
+        corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
+        if not corpus['passed']:
+            # Keep the first semantic disagreement and adjacent complete log for reproducible diagnosis.
+            corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
+    report['package_corpus'] = corpus
+    announce('independent context/import/commitment/item/package corpus', corpus['passed'])
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -567,6 +615,20 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['disputes'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' dispute '+member+' guard', passed)
+    # Every public package result instantiation and both import identity alternatives retain checked access.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_package_results.nim', 'package-results')
+    report['packages_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Default and actual failed result paths are isolated, along with both wrong-identity reads.
+        cases = [(member, origin) for origin in ('default', 'error') for member in PACKAGE_MEMBERS]
+        cases += [('wrong-root', 'package'), ('wrong-package', 'default'), ('wrong-package', 'root')]
+        for member, origin in cases:
+            result = command([binary, member, origin], 'package-'+origin+'-'+member)
+            sentinel = ('value.referenceKind == Root' if member == 'wrong-root' else
+                        'value.referenceKind == Package' if member == 'wrong-package' else 'value.status == None')
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['packages'].append(dict(origin=origin, member=member, passed=passed, run=result))
+            announce(origin+' package '+member+' guard', passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
@@ -586,7 +648,14 @@ def main():
     for name, member in NOMINAL.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        passed = result['exit_code'] != 0 and 'Error: type mismatch: '+member in result['output']
+        if name == 'swapped_import_identity':
+            # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
+            rejected = ('Error: Type mismatch at [position]' in result['output']
+                        and 'rootImport(' in result['output'] and member in result['output'])
+        else:
+            # Other nominal fields provide precise got/wanted domain names.
+            rejected = 'Error: type mismatch: '+member in result['output']
+        passed = result['exit_code'] != 0 and rejected
         report['nominal'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
     step_passed = (all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
@@ -597,7 +666,8 @@ def main():
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
                    and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
                    and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
-                   and report['dispute_corpus']['passed']
+                   and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
+                   and len(report['packages']) == 51 and all(row['passed'] for row in report['packages'])
                    and len(report['disputes']) == 25 and all(row['passed'] for row in report['disputes'])
                    and len(report['tickets']) == 10 and all(row['passed'] for row in report['tickets'])
                    and len(report['guarantees']) == 29 and all(row['passed'] for row in report['guarantees'])

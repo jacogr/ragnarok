@@ -122,4 +122,5 @@ standalone records now pass wire/semantic, inspection, parent/child lifetime and
 Ticket encoding, decoding and inspection also pass their independent corpus, including lifetime,
 atomicity, alias and guarded-progress checks. Dispute verdict/evidence snapshots, inspection,
 result safety and release checks now pass as well. Work-package inputs and retained package/item
-snapshots are the next bounded compiler-port increment.
+snapshots also pass their complete independent corpus, guarded import alternatives and release
+checks. Header and marker codecs are the next bounded compiler-port increment.

@@ -1,4 +1,5 @@
 ## GP 0.8.0 C.2 work-package inputs; see spec/work-package.md for policy and ownership.
+import std/assertions
 import ./[natural, bounded, composite, work_digest, work_report]
 
 type
@@ -21,12 +22,12 @@ type
   # The tagged identity prevents a package hash from being silently used as a segment root.
   ImportReference* = object
     index*: ImportIndex
-    case kind*: ImportKind
-    of ImportKind.Root:
-      root*: SegmentRoot    # A direct export-tree commitment requires no package lookup.
-    of ImportKind.Package:
-      package*: PackageHash # A dependency needs resolution to an export-tree commitment.
-                            # Extrinsic input identity is distinct from code/package hashes of the same width.
+    case referenceKind: ImportKind
+    of Root:
+      rootIdentity: SegmentRoot    # A direct export-tree commitment requires no package lookup.
+    of Package:
+      packageIdentity: PackageHash # A dependency needs resolution to an export-tree commitment.
+                                   # Extrinsic input identity is distinct from code/package hashes of the same width.
   ExtrinsicHash* = distinct array[32, byte]
   # Extrinsic input byte count uses fixed E4, independently from sequence counts.
   ExtrinsicLength* = distinct uint32
@@ -62,12 +63,12 @@ type
     OutputTooSmall, AliasedBuffers, InvalidOwner, InvalidIndex
   # Application values exist exclusively after selecting the successful branch.
   PackageResult*[T] = object
-    case error*: PackageError
-    of PackageError.None:
-      value*: T # Success alone authorizes access to the complete value.
+    case status: PackageError
+    of None:
+      completed: T # Success alone authorizes access to the complete value.
     else:
-      discard   # A failed/default result has no payload or progress.
-                # Fully owned context metadata and exact successful prefix length.
+      discard      # A failed/default result has no payload or progress.
+                   # Fully owned context metadata and exact successful prefix length.
   ContextRead* = object
     value*: RefinementContext
     consumed*: int
@@ -110,10 +111,10 @@ type
     layout: Layout
   # The package handle exports no mutable wire sequence or detached metadata offsets.
   OwnedWorkPackage* = object
-    data: PackageData
+    data: nil PackageData
   # An item retains its complete parent snapshot; the index is private and cannot be rebound by callers.
   OwnedWorkItem* = object
-    data: PackageData
+    data: nil PackageData
     index: int
   # Success binds exact package consumption to its immutable owner.
   PackageRead* = object
@@ -135,6 +136,28 @@ const
   MaxBundleBytes* = 13_791_360
   SegmentFootprint* = 4488
 
+# Read a generic outcome without exposing its private discriminator for mutation.
+func error*[T](value: PackageResult[T]): PackageError = value.status
+# Only complete operations expose application values, retained owners or progress.
+func value*[T](value: PackageResult[T]): T {.inline, requires: value.status == PackageError.None.} =
+  value.completed
+# Read the selected nominal import role without allowing safe-code retagging.
+func kind*(value: ImportReference): ImportKind = value.referenceKind
+# Direct-root access requires the corresponding selected identity domain; returned bytes are copied.
+func root*(value: ImportReference): SegmentRoot {.inline, requires: value.referenceKind ==
+    ImportKind.Root.} =
+  value.rootIdentity
+# Package-reference access requires a dependency identity; returned bytes are independent copies.
+func package*(value: ImportReference): PackageHash {.inline, requires: value.referenceKind ==
+    ImportKind.Package.} =
+  value.packageIdentity
+# Construct a direct-root source; the encoder still validates the supplied fifteen-bit index domain.
+func rootImport*(root: SegmentRoot, index: ImportIndex): ImportReference =
+  ImportReference(referenceKind: ImportKind.Root, rootIdentity: root, index: index)
+# Construct a package dependency source without implicitly converting a segment-root identity.
+func packageImport*(package: PackageHash, index: ImportIndex): ImportReference =
+  ImportReference(referenceKind: ImportKind.Package, packageIdentity: package, index: index)
+
 # Construct the published full-profile gas ceilings while retaining an explicit caller byte budget.
 proc fullPackageConfig*(maxBytes: ByteLimit): PackageConfig {.raises: [].} =
   PackageConfig(refineGas: Gas(5_000_000_000'u64), accumulateGas: Gas(10_000_000),
@@ -146,11 +169,13 @@ proc validConfig(config: PackageConfig): bool {.raises: [].} =
 
 # Read previously extent-checked E2/E4/E8 scalar octets without a narrowing conversion.
 proc scalar(input: openArray[byte], start, width: int): uint64 {.raises: [].} =
+  result = 0
   # Every shift stays within the declared eight-byte maximum.
   for i in 0..<width: result = result or (uint64(input[start+i]) shl (8*i))
 
 # Copy fixed identity encodings into owned arrays after their enclosing extent is proved.
-proc fixed[N: static int](input: openArray[byte], start: int): array[N, byte] {.raises: [].} =
+proc fixed[N: static[int]](input: openArray[byte], start: int): array[N, byte] {.raises: [].} =
+  result = default(array[N, byte])
   # No input pointer escapes this exact-byte value copy.
   for i in 0..<N: result[i] = input[start+i]
 
@@ -180,31 +205,31 @@ proc number(input: openArray[byte], cursor: var int, ceiling: int,
   let parsed = natural.decode(input.toOpenArray(cursor, input.high))
   # Incomplete and overlong encodings remain distinct typed failures.
   if not parsed.ok:
-    return PackageResult[int](error: if parsed.error == natural.truncated: PackageError.Truncated
+    return PackageResult[int](status: if parsed.error == natural.truncated: PackageError.Truncated
       else: PackageError.NonCanonical) # Multiple encodings of one count are forbidden.
   cursor += int(parsed.consumed)
   # Both prefix cost and unsigned count are bounded before host narrowing.
   if uint64(cursor) > uint64(limit) or uint64(parsed.value) > uint64(ceiling):
-    return PackageResult[int](error: PackageError.LimitExceeded)
-  PackageResult[int](error: PackageError.None, value: int(uint64(parsed.value)))
+    return PackageResult[int](status: PackageError.LimitExceeded)
+  PackageResult[int](status: PackageError.None, completed: int(uint64(parsed.value)))
 
 # Validate canonical prerequisite sets before exposing or serializing a context.
 proc contextSize(value: RefinementContext): PackageResult[int] {.raises: [].} =
   # The fixed array must not be indexed using an invalid active count.
   if value.prerequisiteCount < 0 or value.prerequisiteCount > 8:
-    return PackageResult[int](error: PackageError.LimitExceeded)
+    return PackageResult[int](status: PackageError.LimitExceeded)
   # Sorted unique prerequisites use the same nominal hash domain as work reports.
   for i in 1..<value.prerequisiteCount:
     if not less(value.prerequisites[i-1], value.prerequisites[i]):
-      return PackageResult[int](error: PackageError.NonCanonical) # Duplicate/reversed hashes cannot be normalized silently.
-  PackageResult[int](error: PackageError.None, value: 169+32*value.prerequisiteCount)
+      return PackageResult[int](status: PackageError.NonCanonical) # Duplicate/reversed hashes cannot be normalized silently.
+  PackageResult[int](status: PackageError.None, completed: 169+32*value.prerequisiteCount)
 
 # Decode a complete fixed context plus bounded prerequisites without input-derived allocation.
 proc decodeRefinementContext*(input: openArray[byte]): PackageResult[ContextRead] {.raises: [].} =
   # The complete seven-field fixed prefix must exist before reading any scalar or root.
   if input.len < 168:
-    return PackageResult[ContextRead](error: PackageError.Truncated)
-  var value: RefinementContext
+    return PackageResult[ContextRead](status: PackageError.Truncated)
+  var value: RefinementContext = default(RefinementContext)
   value.anchor = BlockHash(bytes: fixed[32](input, 0))
   value.anchorSlot = AnchorSlot(scalar(input, 32, 4))
   value.stateRoot = StateRoot(bytes: fixed[32](input, 36))
@@ -216,11 +241,11 @@ proc decodeRefinementContext*(input: openArray[byte]): PackageResult[ContextRead
   let count = number(input, cursor, 8, ByteLimit(high(uint64)))
   # Count framing fails before any prerequisite storage is inspected.
   if count.error != PackageError.None:
-    return PackageResult[ContextRead](error: count.error)
+    return PackageResult[ContextRead](status: count.error)
   let checked = extent(input, cursor, count.value, 32, ByteLimit(high(uint64)))
   # Every hash must be backed by input before copying fixed prerequisite metadata.
   if checked != PackageError.None:
-    return PackageResult[ContextRead](error: checked)
+    return PackageResult[ContextRead](status: checked)
   value.prerequisiteCount = count.value
   # A fixed eight-slot array owns exact prerequisite bytes without retaining input storage.
   for i in 0..<count.value:
@@ -229,8 +254,8 @@ proc decodeRefinementContext*(input: openArray[byte]): PackageResult[ContextRead
   let measured = contextSize(value)
   # Duplicate or descending prerequisites never publish a successful context.
   if measured.error != PackageError.None:
-    return PackageResult[ContextRead](error: measured.error)
-  PackageResult[ContextRead](error: PackageError.None, value: ContextRead(value: value,
+    return PackageResult[ContextRead](status: measured.error)
+  PackageResult[ContextRead](status: PackageError.None, completed: ContextRead(value: value,
       consumed: cursor))
 
 # Write a previously measured scalar; every caller proves destination capacity and exact field width.
@@ -284,9 +309,9 @@ proc encodeRefinementContext*(value: RefinementContext, output: var openArray[by
     return measured
   # Require the whole prefix.
   if output.len < measured.value:
-    return PackageResult[int](error: PackageError.OutputTooSmall)
+    return PackageResult[int](status: PackageError.OutputTooSmall)
   if overlaps(unsafeAddr value, sizeof(value), addr output[0], measured.value):
-    return PackageResult[int](error: PackageError.AliasedBuffers) # Source arrays must survive all writes.
+    return PackageResult[int](status: PackageError.AliasedBuffers) # Source arrays must survive all writes.
   var cursor = 0
   putContext(value, output, cursor)
   measured
@@ -295,19 +320,17 @@ proc encodeRefinementContext*(value: RefinementContext, output: var openArray[by
 proc decodeImportReference*(input: openArray[byte]): PackageResult[ImportRead] {.raises: [].} =
   # Identity and packed E2 selector/index are one fixed 34-byte record.
   if input.len < 34:
-    return PackageResult[ImportRead](error: PackageError.Truncated)
+    return PackageResult[ImportRead](status: PackageError.Truncated)
   let packed = uint16(scalar(input, 32, 2))
   let index = ImportIndex(packed and 0x7fff)
   # The high bit changes identity domain rather than offsetting the segment index itself.
   if (packed and 0x8000) == 0:
-    return PackageResult[ImportRead](error: PackageError.None, value: ImportRead(consumed: 34,
-      value: ImportReference(kind: ImportKind.Root, root: SegmentRoot(bytes: fixed[32](input, 0)),
-          index: index)))
+    return PackageResult[ImportRead](status: PackageError.None, completed: ImportRead(consumed: 34,
+      value: rootImport(SegmentRoot(bytes: fixed[32](input, 0)), index)))
   else:
     # Package references require dependency resolution during later guaranteeing/state validation.
-    return PackageResult[ImportRead](error: PackageError.None, value: ImportRead(consumed: 34,
-      value: ImportReference(kind: ImportKind.Package, package: PackageHash(bytes: fixed[32](input,
-          0)), index: index)))
+    return PackageResult[ImportRead](status: PackageError.None, completed: ImportRead(consumed: 34,
+      value: packageImport(PackageHash(bytes: fixed[32](input, 0)), index)))
 
 # Write a preflighted import using its nominal selected identity and packed E2 selector.
 proc putImport(value: ImportReference, output: var openArray[byte], cursor: var int) {.raises: [].} =
@@ -324,22 +347,22 @@ proc encodeImportReference*(value: ImportReference, output: var openArray[byte])
     int] {.raises: [].} =
   # Validate before any source alias or capacity can authorize a write.
   if uint16(value.index) > 32767:
-    return PackageResult[int](error: PackageError.LimitExceeded)
+    return PackageResult[int](status: PackageError.LimitExceeded)
   # Both identity and E2 must fit.
   if output.len < 34:
-    return PackageResult[int](error: PackageError.OutputTooSmall)
+    return PackageResult[int](status: PackageError.OutputTooSmall)
   if overlaps(unsafeAddr value, sizeof(value), addr output[0], 34):
-    return PackageResult[int](error: PackageError.AliasedBuffers) # Reject overlapping fixed source metadata.
+    return PackageResult[int](status: PackageError.AliasedBuffers) # Reject overlapping fixed source metadata.
   var cursor = 0
   putImport(value, output, cursor)
-  PackageResult[int](error: PackageError.None, value: cursor)
+  PackageResult[int](status: PackageError.None, completed: cursor)
 
 # Decode an opaque input-data hash plus its fixed E4 advertised preimage length.
 proc decodeExtrinsicCommitment*(input: openArray[byte]): PackageResult[CommitmentRead] {.raises: [].} =
   # The complete fixed record precedes any hash or length access.
   if input.len < 36:
-    return PackageResult[CommitmentRead](error: PackageError.Truncated)
-  PackageResult[CommitmentRead](error: PackageError.None, value: CommitmentRead(consumed: 36,
+    return PackageResult[CommitmentRead](status: PackageError.Truncated)
+  PackageResult[CommitmentRead](status: PackageError.None, completed: CommitmentRead(consumed: 36,
     value: ExtrinsicCommitment(hash: ExtrinsicHash(fixed[32](input, 0)), length: ExtrinsicLength(
         scalar(input, 32, 4)))))
 
@@ -354,12 +377,12 @@ proc encodeExtrinsicCommitment*(value: ExtrinsicCommitment, output: var openArra
     byte]): PackageResult[int] {.raises: [].} =
   # Both fixed fields must fit before examining destination addresses.
   if output.len < 36:
-    return PackageResult[int](error: PackageError.OutputTooSmall)
+    return PackageResult[int](status: PackageError.OutputTooSmall)
   if overlaps(unsafeAddr value, sizeof(value), addr output[0], 36):
-    return PackageResult[int](error: PackageError.AliasedBuffers) # Fixed source bytes remain stable through commit.
+    return PackageResult[int](status: PackageError.AliasedBuffers) # Fixed source bytes remain stable through commit.
   var cursor = 0
   putCommitment(value, output, cursor)
-  PackageResult[int](error: PackageError.None, value: cursor)
+  PackageResult[int](status: PackageError.None, completed: cursor)
 
 # Add nonnegative resources by subtraction before addition, preserving strict gas ceilings without overflow.
 proc charge(state: var Budget, imports, exports, extrinsics, bytes: int, refineGas,
@@ -407,12 +430,12 @@ proc dependency(state: var Budget, reference: ImportReference): PackageError {.r
 # Scan one item into fixed private metadata without allocating payload/import/extrinsic collections.
 proc scanItem(input: openArray[byte], cursor: var int, config: PackageConfig,
     state: var Budget): PackageResult[ItemLayout] {.raises: [].} =
-  var layout: ItemLayout
+  var layout: ItemLayout = default(ItemLayout)
   layout.start = cursor
   let checked = extent(input, cursor, 1, 54, config.maxBytes)
   # E4 service/hash/E8 gas/E8 gas/E2 exports must all exist before scalar interpretation.
   if checked != PackageError.None:
-    return PackageResult[ItemLayout](error: checked)
+    return PackageResult[ItemLayout](status: checked)
   layout.info.service = ServiceIndex(scalar(input, cursor, 4))
   layout.info.codeHash = CodeHash(fixed[32](input, cursor+4))
   layout.info.refineGas = Gas(scalar(input, cursor+36, 8))
@@ -423,61 +446,61 @@ proc scanItem(input: openArray[byte], cursor: var int, config: PackageConfig,
   let payload = number(input, cursor, MaxBundleBytes, config.maxBytes)
   # Canonical payload length and complete borrowed payload precede later manifest fields.
   if payload.error != PackageError.None:
-    return PackageResult[ItemLayout](error: payload.error)
+    return PackageResult[ItemLayout](status: payload.error)
   let payloadExtent = extent(input, cursor, payload.value, 1, config.maxBytes)
   # No partial payload spans escape.
   if payloadExtent != PackageError.None:
-    return PackageResult[ItemLayout](error: payloadExtent)
+    return PackageResult[ItemLayout](status: payloadExtent)
   layout.payload = cursor
   layout.info.payloadBytes = payload.value
   cursor += payload.value
   let imports = number(input, cursor, 3072, config.maxBytes)
   # Import count bounds multiplication and iteration independently from the remaining input.
   if imports.error != PackageError.None:
-    return PackageResult[ItemLayout](error: imports.error)
+    return PackageResult[ItemLayout](status: imports.error)
   let importExtent = extent(input, cursor, imports.value, 34, config.maxBytes)
   # Require complete records.
   if importExtent != PackageError.None:
-    return PackageResult[ItemLayout](error: importExtent)
+    return PackageResult[ItemLayout](status: importExtent)
   layout.imports = cursor
   layout.info.imports = imports.value
   # Identity selectors are interpreted only within the previously proved complete manifest extent.
   for i in 0..<imports.value:
     let reference = decodeImportReference(input.toOpenArray(cursor, cursor+33))
-    doAssert reference.error == PackageError.None
+    assert reference.error == PackageError.None
     let added = dependency(state, reference.value.value)
     # Distinct dependencies are globally bounded.
     if added != PackageError.None:
-      return PackageResult[ItemLayout](error: added)
+      return PackageResult[ItemLayout](status: added)
     cursor += 34
   let extrinsics = number(input, cursor, 128, config.maxBytes)
   # The fixed extrinsic section needs a bounded canonical count and complete backing bytes.
   if extrinsics.error != PackageError.None:
-    return PackageResult[ItemLayout](error: extrinsics.error)
+    return PackageResult[ItemLayout](status: extrinsics.error)
   let xtExtent = extent(input, cursor, extrinsics.value, 36, config.maxBytes)
   # Reject incomplete commitment tails.
   if xtExtent != PackageError.None:
-    return PackageResult[ItemLayout](error: xtExtent)
+    return PackageResult[ItemLayout](status: xtExtent)
   layout.extrinsics = cursor
   layout.info.extrinsics = extrinsics.value
   let charged = charge(state, imports.value, exports, extrinsics.value, payload.value,
       uint64(layout.info.refineGas), uint64(layout.info.accumulateGas), config)
   # Source-independent aggregate limits apply before adding any declared preimage costs.
   if charged != PackageError.None:
-    return PackageResult[ItemLayout](error: charged)
+    return PackageResult[ItemLayout](status: charged)
   let segmentCost = charge(state, 0, 0, 0, imports.value*SegmentFootprint, 0, 0, config)
   # Counted segments include proof footprint.
   if segmentCost != PackageError.None:
-    return PackageResult[ItemLayout](error: segmentCost)
+    return PackageResult[ItemLayout](status: segmentCost)
   # Advertised E4 lengths contribute their full value even though data preimages are supplied elsewhere.
   for i in 0..<extrinsics.value:
     let length = scalar(input, cursor+32, 4)
     if length > uint64(MaxBundleBytes-state.bundleBytes):
-      return PackageResult[ItemLayout](error: PackageError.LimitExceeded) # Compare unsigned before narrowing E4 on 32-bit hosts.
+      return PackageResult[ItemLayout](status: PackageError.LimitExceeded) # Compare unsigned before narrowing E4 on 32-bit hosts.
     state.bundleBytes += int(length)
     cursor += 36
   layout.info.consumed = cursor-layout.start
-  PackageResult[ItemLayout](error: PackageError.None, value: layout)
+  PackageResult[ItemLayout](status: PackageError.None, completed: layout)
 
 # Validate every typed item field and aggregate cost before capacity checks or serialization.
 proc measureItem(value: WorkItem, config: PackageConfig, state: var Budget): PackageResult[
@@ -485,35 +508,35 @@ proc measureItem(value: WorkItem, config: PackageConfig, state: var Budget): Pac
   # These ceilings prove all later host arithmetic and loops before reading nested sources.
   if value.payload.len > MaxBundleBytes or value.imports.len > 3072 or value.extrinsics.len > 128 or
       uint64(value.exports) > 3072:
-    return PackageResult[int](error: PackageError.LimitExceeded)
+    return PackageResult[int](status: PackageError.LimitExceeded)
   # Preserve import order and duplicates: these are sequences, not canonical sets.
   for reference in value.imports:
     # Enforce fifteen-bit source indices.
     if uint16(reference.index) > 32767:
-      return PackageResult[int](error: PackageError.LimitExceeded)
+      return PackageResult[int](status: PackageError.LimitExceeded)
     let added = dependency(state, reference)
     # Count distinct package dependencies globally.
     if added != PackageError.None:
-      return PackageResult[int](error: added)
+      return PackageResult[int](status: added)
   let charged = charge(state, value.imports.len, int(uint64(value.exports)), value.extrinsics.len,
       value.payload.len, uint64(value.refineGas), uint64(value.accumulateGas), config)
   # Strict aggregate gas/count/byte limits precede writes.
   if charged != PackageError.None:
-    return PackageResult[int](error: charged)
+    return PackageResult[int](status: charged)
   let segmentCost = charge(state, 0, 0, 0, value.imports.len*SegmentFootprint, 0, 0, config)
   # Each import includes its proof footprint.
   if segmentCost != PackageError.None:
-    return PackageResult[int](error: segmentCost)
+    return PackageResult[int](status: segmentCost)
   # Every declared preimage length consumes bundle budget, even for repeated identical commitments.
   for commitment in value.extrinsics:
     let length = uint64(uint32(commitment.length))
     if length > uint64(MaxBundleBytes-state.bundleBytes):
-      return PackageResult[int](error: PackageError.LimitExceeded) # Bound before conversion/addition.
+      return PackageResult[int](status: PackageError.LimitExceeded) # Bound before conversion/addition.
     state.bundleBytes += int(length)
   let required = 54+int(natural.encode(JamNatural(value.payload.len)).len)+value.payload.len +
       int(natural.encode(JamNatural(value.imports.len)).len)+34*value.imports.len +
       int(natural.encode(JamNatural(value.extrinsics.len)).len)+36*value.extrinsics.len
-  PackageResult[int](error: PackageError.None, value: required)
+  PackageResult[int](status: PackageError.None, completed: required)
 
 # Commit an item only after every source, aggregate, capacity and alias check for the whole operation.
 proc putItem(value: WorkItem, output: var openArray[byte], cursor: var int) {.raises: [].} =
@@ -544,7 +567,7 @@ proc encodeWorkItem*(value: WorkItem, config: PackageConfig, output: var openArr
     byte]): PackageResult[int] {.raises: [].} =
   # Caller gas domains must admit at least a zero-gas item before source traversal.
   if not validConfig(config):
-    return PackageResult[int](error: PackageError.InvalidConfig)
+    return PackageResult[int](status: PackageError.InvalidConfig)
   var state = Budget(dependencyLimit: 8)
   let measured = measureItem(value, config, state)
   # Full source preflight always precedes output capacity.
@@ -552,16 +575,16 @@ proc encodeWorkItem*(value: WorkItem, config: PackageConfig, output: var openArr
     return measured
   # Wire storage is separate policy.
   if uint64(measured.value) > uint64(config.maxBytes):
-    return PackageResult[int](error: PackageError.LimitExceeded)
+    return PackageResult[int](status: PackageError.LimitExceeded)
   # Require complete output.
   if output.len < measured.value:
-    return PackageResult[int](error: PackageError.OutputTooSmall)
+    return PackageResult[int](status: PackageError.OutputTooSmall)
   # Include every nested source.
   if itemAlias(value, output, measured.value):
-    return PackageResult[int](error: PackageError.AliasedBuffers)
+    return PackageResult[int](status: PackageError.AliasedBuffers)
   var cursor = 0
   putItem(value, output, cursor)
-  doAssert cursor == measured.value
+  assert cursor == measured.value
   measured
 
 # Capture only validated bytes; no caller pointer or mutable sequence remains in the immutable owner.
@@ -575,41 +598,42 @@ proc decodeWorkItem*(input: openArray[byte], config: PackageConfig): PackageResu
     ItemRead] {.raises: [].} =
   # Reject default caller domains first.
   if not validConfig(config):
-    return PackageResult[ItemRead](error: PackageError.InvalidConfig)
+    return PackageResult[ItemRead](status: PackageError.InvalidConfig)
   var cursor = 0
   var state = Budget(dependencyLimit: 8)
   let scanned = scanItem(input, cursor, config, state)
   # No partial ownership escapes.
   if scanned.error != PackageError.None:
-    return PackageResult[ItemRead](error: scanned.error)
-  var layout: Layout
+    return PackageResult[ItemRead](status: scanned.error)
+  var layout: Layout = default(Layout)
   layout.items[0] = scanned.value
   layout.info.items = 1
   layout.info.consumed = cursor
-  PackageResult[ItemRead](error: PackageError.None,
-    value: ItemRead(owner: OwnedWorkItem(data: capture(input, layout), index: 0), consumed: cursor))
+  PackageResult[ItemRead](status: PackageError.None,
+    completed: ItemRead(owner: OwnedWorkItem(data: capture(input, layout), index: 0),
+        consumed: cursor))
 
 # Encode a package only after all nested item resources, dependencies and sources pass preflight.
 proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var openArray[
     byte]): PackageResult[int] {.raises: [].} =
   # Validate chain gas domains first.
   if not validConfig(config):
-    return PackageResult[int](error: PackageError.InvalidConfig)
+    return PackageResult[int](status: PackageError.InvalidConfig)
   let context = contextSize(value.context)
   # No context normalization or partial writes.
   if context.error != PackageError.None:
     return context
   # Bound the nonempty item sequence before traversing any nested sources.
   if value.items.len < 1 or value.items.len > 16:
-    return PackageResult[int](error: PackageError.LimitExceeded)
+    return PackageResult[int](status: PackageError.LimitExceeded)
   # Each blob length must be bounded before adding the shared authorization footprint.
   if value.authorization.len > MaxBundleBytes or value.configuration.len > MaxBundleBytes:
-    return PackageResult[int](error: PackageError.LimitExceeded)
+    return PackageResult[int](status: PackageError.LimitExceeded)
   var state = Budget(dependencyLimit: 8-value.context.prerequisiteCount)
   let authCost = charge(state, 0, 0, 0, value.authorization.len+value.configuration.len, 0, 0, config)
   # Auth blobs share the auditable-bundle budget.
   if authCost != PackageError.None:
-    return PackageResult[int](error: authCost)
+    return PackageResult[int](status: authCost)
   var required = 36+context.value+1
   required += int(natural.encode(JamNatural(value.authorization.len)).len)+value.authorization.len
   required += int(natural.encode(JamNatural(value.configuration.len)).len)+value.configuration.len
@@ -622,28 +646,28 @@ proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var o
     required += measured.value
   # Independent wire resource ceiling.
   if uint64(required) > uint64(config.maxBytes):
-    return PackageResult[int](error: PackageError.LimitExceeded)
+    return PackageResult[int](status: PackageError.LimitExceeded)
   # Whole package capacity precedes address access.
   if output.len < required:
-    return PackageResult[int](error: PackageError.OutputTooSmall)
+    return PackageResult[int](status: PackageError.OutputTooSmall)
   # Outer descriptors, item records and both authorization blobs must survive the entire commit.
   template aliases(items: untyped): bool =
     items.len > 0 and overlaps(unsafeAddr items[0], items.len*sizeof(items[0]), addr output[0], required)
   let outerAlias = overlaps(unsafeAddr value, sizeof(value), addr output[0], required)
   # Reject the outer fixed context/descriptors independently of nested sequence storage.
   if outerAlias:
-    return PackageResult[int](error: PackageError.AliasedBuffers)
+    return PackageResult[int](status: PackageError.AliasedBuffers)
   # Item records contain fixed fields and the nested sequence descriptors used during commit.
   if aliases(value.items):
-    return PackageResult[int](error: PackageError.AliasedBuffers)
+    return PackageResult[int](status: PackageError.AliasedBuffers)
   # Either borrowed authorization blob must be disjoint from the whole destination.
   if aliases(value.authorization) or aliases(value.configuration):
-    return PackageResult[int](error: PackageError.AliasedBuffers)
+    return PackageResult[int](status: PackageError.AliasedBuffers)
   # Check each child's sources against the whole destination, not merely that child's output slice.
   for item in value.items:
     # Reject cross-item overlap.
     if itemAlias(item, output, required):
-      return PackageResult[int](error: PackageError.AliasedBuffers)
+      return PackageResult[int](status: PackageError.AliasedBuffers)
   var cursor = 0
   putScalar(uint32(value.host), 4, output, cursor)
   put(array[32, byte](value.codeHash), output, cursor)
@@ -655,44 +679,44 @@ proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var o
   putNumber(value.items.len, output, cursor)
   # Preflight proved all nested item fields before this first package write.
   for item in value.items: putItem(item, output, cursor)
-  doAssert cursor == required
-  PackageResult[int](error: PackageError.None, value: required)
+  assert cursor == required
+  PackageResult[int](status: PackageError.None, completed: required)
 
 # Scan/capture the complete package; standalone and embedded items share exactly one structural policy.
 proc decodeWorkPackage*(input: openArray[byte], config: PackageConfig): PackageResult[
     PackageRead] {.raises: [].} =
   # Configuration cannot be inferred from bytes.
   if not validConfig(config):
-    return PackageResult[PackageRead](error: PackageError.InvalidConfig)
-  var layout: Layout
+    return PackageResult[PackageRead](status: PackageError.InvalidConfig)
+  var layout: Layout = default(Layout)
   var cursor = 0
   let prefix = extent(input, cursor, 1, 36, config.maxBytes)
   # Prove host and authorization-code hash first.
   if prefix != PackageError.None:
-    return PackageResult[PackageRead](error: prefix)
+    return PackageResult[PackageRead](status: prefix)
   layout.info.host = AuthorizerHost(scalar(input, 0, 4))
   layout.info.codeHash = CodeHash(fixed[32](input, 4))
   cursor = 36
   let context = decodeRefinementContext(input.toOpenArray(cursor, input.high))
   # Malformed contexts never authorize a package.
   if context.error != PackageError.None:
-    return PackageResult[PackageRead](error: context.error)
+    return PackageResult[PackageRead](status: context.error)
   layout.info.context = context.value.value
   cursor += context.value.consumed
   # A complete context consumes serialized-byte budget before any later auth count is inspected.
   if uint64(cursor) > uint64(config.maxBytes):
-    return PackageResult[PackageRead](error: PackageError.LimitExceeded)
+    return PackageResult[PackageRead](status: PackageError.LimitExceeded)
   var state = Budget(dependencyLimit: 8-layout.info.context.prerequisiteCount)
   # Both authorization blobs contribute to one package-wide footprint budget before any item scan.
-  for field in PackageBlob:
+  for field in [PackageBlob.Authorization, PackageBlob.Configuration]:
     let length = number(input, cursor, MaxBundleBytes, config.maxBytes)
     # Bound canonical byte lengths before narrowing.
     if length.error != PackageError.None:
-      return PackageResult[PackageRead](error: length.error)
+      return PackageResult[PackageRead](status: length.error)
     let blobExtent = extent(input, cursor, length.value, 1, config.maxBytes)
     # Complete blob bytes must be present.
     if blobExtent != PackageError.None:
-      return PackageResult[PackageRead](error: blobExtent)
+      return PackageResult[PackageRead](status: blobExtent)
     case field
     of PackageBlob.Authorization:
       layout.authorization = cursor # Metadata is private and remains bound to captured bytes.
@@ -703,134 +727,151 @@ proc decodeWorkPackage*(input: openArray[byte], config: PackageConfig): PackageR
     let charged = charge(state, 0, 0, 0, length.value, 0, 0, config)
     # Shared bundle budget includes both blobs.
     if charged != PackageError.None:
-      return PackageResult[PackageRead](error: charged)
+      return PackageResult[PackageRead](status: charged)
     cursor += length.value
   let count = number(input, cursor, 16, config.maxBytes)
   # No attacker-derived item allocation.
   if count.error != PackageError.None:
-    return PackageResult[PackageRead](error: count.error)
+    return PackageResult[PackageRead](status: count.error)
   # Packages require at least one item.
   if count.value == 0:
-    return PackageResult[PackageRead](error: PackageError.LimitExceeded)
+    return PackageResult[PackageRead](status: PackageError.LimitExceeded)
   layout.info.items = count.value
   # A fixed sixteen-entry layout records only complete validated item metadata.
   for i in 0..<count.value:
     let item = scanItem(input, cursor, config, state)
     # Late manifest errors discard the whole scan.
     if item.error != PackageError.None:
-      return PackageResult[PackageRead](error: item.error)
+      return PackageResult[PackageRead](status: item.error)
     layout.items[i] = item.value
   layout.info.consumed = cursor
-  PackageResult[PackageRead](error: PackageError.None,
-    value: PackageRead(owner: OwnedWorkPackage(data: capture(input, layout)), consumed: cursor))
+  PackageResult[PackageRead](status: PackageError.None,
+    completed: PackageRead(owner: OwnedWorkPackage(data: capture(input, layout)), consumed: cursor))
 
 # Select private retained item coordinates only through their original parent snapshot.
 proc selected(owner: OwnedWorkItem): PackageResult[ItemLayout] {.raises: [].} =
   # Defaults carry no validated bytes.
-  if owner.data.isNil:
-    return PackageResult[ItemLayout](error: PackageError.InvalidOwner)
-  if owner.index < 0 or owner.index >= owner.data.layout.info.items:
-    return PackageResult[ItemLayout](error: PackageError.InvalidIndex) # Defensive guard for private handle invariants.
-  PackageResult[ItemLayout](error: PackageError.None, value: owner.data.layout.items[owner.index])
+  let data = owner.data
+  if data == nil:
+    return PackageResult[ItemLayout](status: PackageError.InvalidOwner)
+  if owner.index < 0 or owner.index >= data.layout.info.items:
+    return PackageResult[ItemLayout](status: PackageError.InvalidIndex) # Defensive guard for private handle invariants.
+  PackageResult[ItemLayout](status: PackageError.None, completed: data.layout.items[owner.index])
 
 # Copy fixed package metadata; callers cannot modify retained context or sequence storage.
 proc workPackageInfo*(owner: OwnedWorkPackage): PackageResult[PackageInfo] {.raises: [].} =
   # Reject uninitialized owners.
-  if owner.data.isNil:
-    return PackageResult[PackageInfo](error: PackageError.InvalidOwner)
-  PackageResult[PackageInfo](error: PackageError.None, value: owner.data.layout.info)
+  let data = owner.data
+  if data == nil:
+    return PackageResult[PackageInfo](status: PackageError.InvalidOwner)
+  PackageResult[PackageInfo](status: PackageError.None, completed: data.layout.info)
 
 # Retain an owner-bound child handle without copying/exposing wire or detached spans.
 proc workItemAt*(owner: OwnedWorkPackage, index: int): PackageResult[OwnedWorkItem] {.raises: [].} =
   # Default owners do not describe empty packages.
-  if owner.data.isNil:
-    return PackageResult[OwnedWorkItem](error: PackageError.InvalidOwner)
-  if index < 0 or index >= owner.data.layout.info.items:
-    return PackageResult[OwnedWorkItem](error: PackageError.InvalidIndex) # Signed bounds precede metadata selection.
-  PackageResult[OwnedWorkItem](error: PackageError.None, value: OwnedWorkItem(data: owner.data, index: index))
+  let data = owner.data
+  if data == nil:
+    return PackageResult[OwnedWorkItem](status: PackageError.InvalidOwner)
+  if index < 0 or index >= data.layout.info.items:
+    return PackageResult[OwnedWorkItem](status: PackageError.InvalidIndex) # Signed bounds precede metadata selection.
+  PackageResult[OwnedWorkItem](status: PackageError.None, completed: OwnedWorkItem(data: data, index: index))
 
 # Copy item scalar metadata/lengths without allowing callers to rebind its private coordinates.
 proc workItemInfo*(owner: OwnedWorkItem): PackageResult[ItemInfo] {.raises: [].} =
   let item = selected(owner)
   # No partial metadata on invalid handles.
   if item.error != PackageError.None:
-    return PackageResult[ItemInfo](error: item.error)
-  PackageResult[ItemInfo](error: PackageError.None, value: item.value.info)
+    return PackageResult[ItemInfo](status: item.error)
+  PackageResult[ItemInfo](status: PackageError.None, completed: item.value.info)
 
 # Copy one exact import value from its retained item's manifest.
 proc importAt*(owner: OwnedWorkItem, index: int): PackageResult[ImportReference] {.raises: [].} =
+  # Retain the exact backing snapshot independently of nested selector calls.
+  let data = owner.data
+  if data == nil: return PackageResult[ImportReference](status: PackageError.InvalidOwner)
   let item = selected(owner)
   # Select the owner before offsets.
   if item.error != PackageError.None:
-    return PackageResult[ImportReference](error: item.error)
+    return PackageResult[ImportReference](status: item.error)
   if index < 0 or index >= item.value.info.imports:
-    return PackageResult[ImportReference](error: PackageError.InvalidIndex) # Never narrow or multiply an invalid index.
+    return PackageResult[ImportReference](status: PackageError.InvalidIndex) # Never narrow or multiply an invalid index.
   let start = item.value.imports+34*index
-  let parsed = decodeImportReference(owner.data.wire.toOpenArray(start, start+33))
-  doAssert parsed.error == PackageError.None
-  PackageResult[ImportReference](error: PackageError.None, value: parsed.value.value)
+  let parsed = decodeImportReference(data.wire.toOpenArray(start, start+33))
+  assert parsed.error == PackageError.None
+  PackageResult[ImportReference](status: PackageError.None, completed: parsed.value.value)
 
 # Copy a fixed input commitment through the same parent-bound item identity.
 proc extrinsicAt*(owner: OwnedWorkItem, index: int): PackageResult[ExtrinsicCommitment] {.raises: [].} =
+  # Retain the exact backing snapshot independently of nested selector calls.
+  let data = owner.data
+  if data == nil: return PackageResult[ExtrinsicCommitment](status: PackageError.InvalidOwner)
   let item = selected(owner)
   # Invalid handles carry no bytes.
   if item.error != PackageError.None:
-    return PackageResult[ExtrinsicCommitment](error: item.error)
+    return PackageResult[ExtrinsicCommitment](status: item.error)
   if index < 0 or index >= item.value.info.extrinsics:
-    return PackageResult[ExtrinsicCommitment](error: PackageError.InvalidIndex) # Bounds precede address arithmetic.
+    return PackageResult[ExtrinsicCommitment](status: PackageError.InvalidIndex) # Bounds precede address arithmetic.
   let start = item.value.extrinsics+36*index
-  let parsed = decodeExtrinsicCommitment(owner.data.wire.toOpenArray(start, start+35))
-  doAssert parsed.error == PackageError.None
-  PackageResult[ExtrinsicCommitment](error: PackageError.None, value: parsed.value.value)
+  let parsed = decodeExtrinsicCommitment(data.wire.toOpenArray(start, start+35))
+  assert parsed.error == PackageError.None
+  PackageResult[ExtrinsicCommitment](status: PackageError.None, completed: parsed.value.value)
 
 # Copy one prevalidated private byte interval atomically; offsets never cross the public boundary.
 proc copy(data: PackageData, start, length: int, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
   # Complete destination before any write.
   if output.len < length:
-    return PackageResult[int](error: PackageError.OutputTooSmall)
+    return PackageResult[int](status: PackageError.OutputTooSmall)
   if length > 0 and overlaps(unsafeAddr data.wire[0], data.wire.len, addr output[0], length):
-    return PackageResult[int](error: PackageError.AliasedBuffers) # Protect immutable retained storage even from foreign fabricated buffers.
+    return PackageResult[int](status: PackageError.AliasedBuffers) # Protect immutable retained storage even from foreign fabricated buffers.
   # Empty blobs touch no source/destination addresses; nonempty intervals were proved during scan.
   for i in 0..<length: output[i] = data.wire[start+i]
-  PackageResult[int](error: PackageError.None, value: length)
+  PackageResult[int](status: PackageError.None, completed: length)
 
 # Copy the item's payload, selected only by the matching retained owner.
 proc copyItemPayload*(owner: OwnedWorkItem, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  # Retain the exact backing snapshot independently of nested selector calls.
+  let data = owner.data
+  if data == nil: return PackageResult[int](status: PackageError.InvalidOwner)
   let item = selected(owner)
   # No default payload for invalid owners.
   if item.error != PackageError.None:
-    return PackageResult[int](error: item.error)
-  copy(owner.data, item.value.payload, item.value.info.payloadBytes, output)
+    return PackageResult[int](status: item.error)
+  copy(data, item.value.payload, item.value.info.payloadBytes, output)
 
 # Copy authorization/configuration bytes without exporting a mutable snapshot or arbitrary span.
 proc copyPackageBlob*(owner: OwnedWorkPackage, field: PackageBlob, output: var openArray[
     byte]): PackageResult[int] {.raises: [].} =
   # Default handles cannot authorize extraction.
-  if owner.data.isNil:
-    return PackageResult[int](error: PackageError.InvalidOwner)
+  let data = owner.data
+  if data == nil:
+    return PackageResult[int](status: PackageError.InvalidOwner)
   case field
   of PackageBlob.Authorization:
-    copy(owner.data, owner.data.layout.authorization, owner.data.layout.info.authorizationBytes,
+    copy(data, data.layout.authorization, data.layout.info.authorizationBytes,
         output) # Exact auth-token interval.
   of PackageBlob.Configuration:
-    copy(owner.data, owner.data.layout.configuration, owner.data.layout.info.configurationBytes,
+    copy(data, data.layout.configuration, data.layout.info.configurationBytes,
         output) # Exact code-configuration interval.
 
 # Re-emit one retained item atomically, independently of the parent package handle's lifetime.
 proc encodeOwnedWorkItem*(owner: OwnedWorkItem, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  # Retain the exact backing snapshot independently of nested selector calls.
+  let data = owner.data
+  if data == nil: return PackageResult[int](status: PackageError.InvalidOwner)
   let item = selected(owner)
   # Reject invalid handles before extraction.
   if item.error != PackageError.None:
-    return PackageResult[int](error: item.error)
-  copy(owner.data, item.value.start, item.value.info.consumed, output)
+    return PackageResult[int](status: item.error)
+  copy(data, item.value.start, item.value.info.consumed, output)
 
 # Re-emit the complete immutable package prefix while preserving unrelated destination suffix bytes.
 proc encodeOwnedWorkPackage*(owner: OwnedWorkPackage, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
   # No fabricated empty package for defaults.
-  if owner.data.isNil:
-    return PackageResult[int](error: PackageError.InvalidOwner)
-  copy(owner.data, 0, owner.data.layout.info.consumed, output)
+  let data = owner.data
+  if data == nil:
+    return PackageResult[int](status: PackageError.InvalidOwner)
+  copy(data, 0, data.layout.info.consumed, output)

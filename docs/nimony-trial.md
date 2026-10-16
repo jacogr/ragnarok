@@ -341,11 +341,55 @@ The former FieldDefect catch is replaced by independent exact-contract subproces
 public result type and failure construction. Verification remains local macOS ARM64 with checked
 ARC/Clang LTO. Linux, contextual quorum/epoch eligibility and signature verification remain separate.
 
+## Tenth increment: work-package inputs and retained item snapshots
+
+`work_package.nim` now runs under the same pinned Nimony nightly. `PackageResult[T]` keeps status/
+value private and guards application access on success. Default results remain Uninitialized.
+Package/item handles use private nullable references, retained in stable checked locals before
+access or extraction. Child indices remain private. A child retains its complete original parent
+snapshot after package handles are dropped or replaced; no second source pool can be supplied.
+
+Import identities now hide their discriminator and variant payloads. Read-only `kind` selects
+success-precondition `root`/`package` getters returning copied nominal identities. `rootImport`
+and `packageImport` construct the corresponding typed source; encoder preflight still validates
+the fifteen-bit index. Defaults remain Root with index zero and a zero root. No wire, resource,
+ordering, duplicate/dependency or gas policy changed. Published profile hashes remain pinned.
+
+All **8,123** existing independent requests pass: **1,460 contexts**, **991 imports**, **959
+commitments**, **1,607 standalone items** and **3,106 complete packages**. Coverage includes exact
+published tiny/full context/item/package bytes, complete field observation after caller mutation,
+E2/E4/E8 and natural boundaries, strict gas inequalities, unsigned aggregate-overflow attempts,
+inclusive bundle footprints, cross-item limits, tagged dependency counting, canonical context
+sets, truncations, late failures, atomic output and 4,500 structured/random malformed cases.
+The eight independent oracle example tests also pass.
+
+The twelfth positive suite preserves every original blob/payload/import/commitment/descriptor
+alias check and all default-owner, short-output, escaped-child and context/report consistency
+checks. It adds same-sized parent replacement, retained aliases, both named blobs, copied import
+identities and orphaned child manifest/payload access. After 100 warmups, 1,000 isolated parent/
+child retain/replace/copy/drop cycles leave public live occupancy unchanged: **30,400 → 30,400
+bytes** on this Mac, with outer fixtures still live. This measures that workload, not RSS or
+general leak freedom.
+
+The nightly lacks enum-type iteration; the two blob roles are enumerated explicitly in their
+existing order. The adapter's procedure-symbol template and subsequent expression form exposed
+unsupported template/overload binding. Three concrete fixed-record branches preserve all prior
+checks. The nominal import probe now calls the typed factory; Nimony rejects the wrong domain but
+prints `ReportHash` on both sides without static arguments. These changes use public language
+features, with no compiler patches or private runtime hooks.
+
+This increment adds **51 runtime misuse rejections** (48 failed/default result reads and three
+wrong import-identity reads) and **23 compilation rejections** (19 result/owner/variant privacy
+checks and four nominal-domain checks). Cumulative coverage is **220 runtime result/variant/
+constructor rejections and 145 compilation rejections**, plus **12 positive suites**, six family
+corpora and three runtime probes. Formatting passes. Verification remains local macOS ARM64 with
+checked ARC/Clang LTO; Linux and M2/M3 remain unverified. M1 migration remains partial.
+
 ## Remaining work and next bounded increment
 
-Next: port work-package inputs and immutable package/item snapshots (`work_package.nim`),
-including retained item handles, owner-bound payload extraction, guarded results and the existing
-independent wire/semantic/lifetime corpus. Other M1 families and M2/M3 remain separate increments.
+Next: port header and marker codecs (`header.nim`), including full/signing header forms,
+epoch/winner alternatives, retained owners, guarded results and the independent published/
+boundary/lifetime corpus. Other M1 families and M2/M3 remain separate increments.
 
 Further port work remains:
 
@@ -377,7 +421,7 @@ python3 tools/format.py --check
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test
 hashes and individual verdicts to `build/nimony-trial/verification/results.json`, with adjacent logs.
 `protected_results_increment: passed`, `status: partial-checks-passed` and exit **0** record the
-verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute slice. A missing
-check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
+verified scalar/composite/digest/owned/report/assurance/guarantee/ticket/dispute/package slice.
+A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or an already
 switched normal CI. Formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
