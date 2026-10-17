@@ -141,7 +141,7 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
     # Enabled workers use the same maintained Rust/QUIC ABIs and original queue/cancellation workload.
     from test_quic_offload import corpus as offload_fixture, selftests as offload_selftests, exercise as offload_exercise
     offload_wire, offload_metadata = offload_fixture(BUILD/'offload')
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-offload',
+    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-offload', crypto_library,
                              native_libraries=(bs_library,), quic_library=quic_library, defines=('offload',))
     report['quic_offload_build'] = compiled
     report['quic_offload'] = dict(passed=False, fixture=offload_metadata)
