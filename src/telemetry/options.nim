@@ -138,6 +138,15 @@ type IncomingAttempts* = object
 proc observeIncoming*(client: var Client, attempts: var IncomingAttempts, slot: cuint,
     event: cint, address: ptr ConstByte, port: uint16, der: ptr ConstByte, length: csize_t) =
   let stamp = eventTimestamp()
+  if event == AdmissionRefused:
+    if address == nil:
+      client.omit(stamp) # A real refusal without endpoint metadata is a dropped observation.
+      return
+    var remote = default(array[16, byte])
+    let source = cast[ptr UncheckedArray[byte]](address)
+    for i in 0..<16: remote[i] = source[i] # The native stack borrow ends with this callback.
+    client.refusing(getMonoTime().ticks div 1_000_000, stamp, remote, port)
+    return # Refusals neither allocate nor settle handshake correlation slots.
   if event == HandshakeDropped or slot >= cuint(IncomingHandshakeSlots):
     client.omit(stamp) # Overflow or missing primitive metadata cannot fabricate an attempt.
     return
