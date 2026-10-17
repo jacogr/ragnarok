@@ -127,6 +127,13 @@ def peer_registration(binary, certificates, chain, folder):
                     assert closed[8] == 27 and closed[9:41] == (certificates/'a.pub').read_bytes()
                     assert closed[41:] == b'\0\0' # Unknown terminator and reason remain explicitly absent.
                     assert outgoing.recv(1) == b'' # Exactly one closure, followed by exporter shutdown.
+                incoming = frame(connection)
+                assert incoming[8] == 21 and incoming[9:25] == bytes.fromhex('00000000000000000000ffff7f000001')
+                assert int.from_bytes(incoming[25:27], 'little') > 0
+                accepted = frame(connection)
+                assert accepted[8] == 23 and int.from_bytes(accepted[9:17], 'little') == 1
+                assert accepted[17:] == (certificates/'b.pub').read_bytes()
+                assert connection.recv(1) == b'' # Successful SSL destruction cannot emit a second terminal outcome.
             stdout, stderr = process.communicate(timeout=5)
             (folder/'peer.log').write_bytes(stdout + stderr)
             assert process.returncode == 0 and b'EXCHANGE_OK 8' in stdout, (stdout, stderr)
@@ -216,3 +223,48 @@ def peer_loss(binary, certificates, chain, folder):
         # The silent application peer must never survive a failed telemetry assertion.
         stop(server)
     return dict(passed=True, address='::1', disconnects=1, application_exchange='incomplete')
+
+
+# Reject a real certificate against the server pin and settle the incoming attempt during native teardown.
+def incoming_failure(binary, certificates, chain, folder):
+    folder.mkdir(parents=True, exist_ok=True)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        port = reservation.getsockname()[1]
+    with listener() as collector:
+        endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
+        server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
+            str(certificates/'a.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe', '1500',
+            '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            connection, _ = collector.accept()
+            with connection:
+                connection.settimeout(5)
+                assert frame(connection)[0] == 1
+                client = subprocess.run([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
+                    str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
+                    '1800', 'clean'], capture_output=True, timeout=5)
+                assert client.returncode != 0
+                attempt = None
+                for event_id in range(4):
+                    # Status timing may vary; failure must reference the actual incoming event position.
+                    event = frame(connection)
+                    if event[8] == 21:
+                        assert attempt is None
+                        attempt = event_id
+                    elif event[8] == 22:
+                        assert attempt is not None and int.from_bytes(event[9:17], 'little') == attempt
+                        assert event[17:] == b'\0'
+                        break
+                    else:
+                        assert event[8] == 10 # Neither an authenticated identity nor a disconnect may be invented.
+                else:
+                    raise AssertionError('incoming failure was not observed')
+                assert connection.recv(1) == b''
+            stdout, stderr = server.communicate(timeout=5)
+            (folder/'incoming-failure.log').write_bytes(stdout + stderr)
+            assert server.returncode != 0 and b'AUTH_OK' not in stdout
+        finally:
+            # TLS and collector failures still retire every test process.
+            stop(server)
+    return dict(passed=True, outcome='failed', reason='unknown')

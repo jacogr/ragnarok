@@ -1,8 +1,8 @@
 # Initial JIP-3 telemetry
 
 Ragnarök's bounded proof peer can register with a JAM Tart collector and report its current
-authenticated peer count approximately every two seconds, plus outgoing connection attempts
-and their authentication outcomes and observed closures. Telemetry is disabled by default.
+authenticated peer count approximately every two seconds, incoming handshake lifecycles, and
+outgoing attempts, authentication outcomes and observed closures. Telemetry is disabled by default.
 This is a JIP-3 version-1 subset, not a claim of full telemetry or validator functionality.
 
 ## Run
@@ -45,6 +45,10 @@ it does not validate genesis consensus rules or recompute `genesis_state`.
 - Event 10: status, with current authenticated peers. Validator-role count, block-announcement
   streams, guarantee pools, availability shards and block-production preimage pools are zero:
   these facilities are not implemented by this peer. CE fixture responses are not a preimage pool.
+- Events 21–23: incoming TLS handshake start, failure and success. Start captures the actual
+  remote address before authentication; terminal events reference its event ID. Success copies
+  the authenticated certificate's Ed25519 identity. Destruction of an unfinished handshake
+  settles failure with an empty reason, including endpoint shutdown.
 - Event 24: outgoing connection attempt, with the pinned remote Ed25519 identity and actual
   loopback destination address/port, emitted immediately before initiating the QUIC dial.
 - Events 25/26: failed/successful outgoing authentication, referencing the attempt's event ID.
@@ -59,13 +63,24 @@ it does not validate genesis consensus rules or recompute `genesis_state`.
 - Event 0: dropped observations, with first/last timestamps and the exact number of omitted
   events when the fixed send buffer cannot accept them.
 
-Incoming connection events (20–23), incoming-peer disconnections, best/finalized blocks, sync, authoring,
-execution, service, ticket and work-package events remain unimplemented. The current acceptor
-callback follows authentication; it cannot truthfully supply JIP-3's pre-handshake event 21.
+Incoming refusals (20), incoming-peer disconnections, best/finalized blocks, sync, authoring,
+execution, service, ticket and work-package events remain unimplemented. Incoming observations
+use the pinned libraries' public TLS handshake start/done and SSL ex-data destruction callbacks,
+with public LSQUIC socket-address access. TLS success precedes connection-slot admission and does
+not imply an application exchange succeeded. Packets rejected before TLS starts remain outside
+this observation point.
+
+The incoming observer retains 64 fixed slots until each SSL object is destroyed. Overflow drops
+observations rather than changing TLS admission; each untracked start and terminal outcome is
+accounted for through event 0. Overflow terminal loss is observed at SSL destruction. Missing
+address or certificate metadata is also counted as loss, never replaced with invented identity.
+Callbacks only copy borrowed data into bounded queued frames. The exporter and correlation table
+outlive engine teardown; shutdown makes one final nonblocking send and never waits for delivery.
+
 Outgoing disconnections are limited to closes observed while the transport is alive, including
 graceful closes and idle expiry. Destroying an otherwise live endpoint does not fabricate a close
-observation. A future incoming lifecycle increment needs per-peer native observations with
-identity, address and attempt correlation. Mesh remains outside this integration.
+observation. Incoming disconnections need a separate authenticated peer-lifetime observation.
+Mesh remains outside this integration.
 
 Frames use E4 little-endian payload length, then canonical JAM encoding. Strings use the existing
 natural codec. Status's core array has no length prefix. Event timestamps are microseconds from
@@ -123,12 +138,18 @@ The binary is not a project dependency, and no downloaded executable is needed f
 
 `make check-unit` includes native wire/metadata tests, malformed chain JSON/hex cases, independent
 hash expectations, a saturated socket pair, partial-send continuation and ordered dropped/status
-frames, outgoing event layouts, correlation across dropped samples, and event-ID exhaustion.
+frames, incoming/outgoing event layouts, correlation across dropped samples, and event-ID exhaustion.
+The native transport suite holds 65 unfinished TLS handshakes against the 64 observation slots
+on both IPv4 and IPv6, then completes one, closes it, reuses its slot, and checks tracked failures
+and overflow
+losses during destruction.
 `make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
 `make check-e2e` includes a reset/reconnect collector and a real certificate-backed proof-peer
 exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome
 spanning a collector reset. It also checks exactly one disconnect after a graceful outgoing close,
 no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete
-application exchange. Python is only the independent collector/test orchestrator;
+application exchange. Incoming cases check success identity/address/correlation, certificate
+rejection, and no duplicate terminal event on successful SSL destruction. Python is only the
+independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.

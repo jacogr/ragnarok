@@ -30,6 +30,8 @@ type
   # This stack owner outlives every synchronous native callback and its dispatcher/engine teardown.
   Peer = object
     transport: Transport
+    telemetry: nil ptr Client
+    incoming: IncomingAttempts
     expected: seq[byte]
     server, failed, stopping, service, mixed, integrated, mesh, recovering, overload: bool
     streams: array[64, StreamState]
@@ -58,6 +60,14 @@ const LargeHash = [138'u8, 90, 122, 157, 195, 207, 32, 62, 211, 116, 176, 161, 2
 proc verifyPeer(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   let peer = cast[ptr Peer](user)
   cint(validPeer(cast[ptr byte](der), length, peer.expected))
+
+# Both stack owners remain alive through SSL teardown; callback memory is copied synchronously.
+proc onHandshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
+    port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].} =
+  let peer = cast[ptr Peer](user)
+  let exporter = peer.telemetry
+  if exporter != nil: # Only explicitly configured server telemetry installs this callback.
+    exporter[].observeIncoming(peer.incoming, slot, event, address, port, der, length)
 
 # Settle one stream exactly once; soak rejections preserve healthy siblings on the same connection.
 proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: [].} =
@@ -491,6 +501,9 @@ proc runPeer*(): bool {.raises.} =
   defer:
     peer.stopping = true
     closeTransport(peer.transport)
+    if peer.telemetry != nil: # SSL destruction can settle unfinished incoming attempts.
+      peer.telemetry = nil
+      telemetry.observe(0) # One nonblocking send while the exporter still owns its descriptor.
   if not openTransport(peer.transport, server, peer.attack == "soak", uint16(port), paramStr(3),
       paramStr(4), paramStr(6), addr peer, verifyPeer,
           onStream, peer.service, ipv6 = load, profile = (
@@ -499,6 +512,9 @@ proc runPeer*(): bool {.raises.} =
   if not telemetry.setup(paramStr(3), localPort(peer.transport), load):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
+  if server and requested(): # Install before processing the first UDP packet.
+    peer.telemetry = addr telemetry
+    if not observeHandshakes(peer.transport, onHandshake): return false # No partial observer setup.
   var telemetryAttempt = EventId(0)
   var telemetryPending = false
   # Settle a still-pending dial on timeout, synchronous failure, cancellation or an early return.

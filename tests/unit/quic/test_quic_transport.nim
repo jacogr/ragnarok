@@ -1,11 +1,104 @@
 ## Link the real maintained transport bridge; no protocol peer migration is claimed by these tests.
 import std/[assertions, envvars, syncio]
-import ../../../src/quic/transport
+include ../../../src/quic/transport
 
 # The real transport invokes identity validation only while the stack owner remains alive.
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl.} = 0
 # Setup/teardown should create no application streams, but preserve a valid synchronous callback.
 proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl.} = discard
+
+# This lifecycle-only test accepts its generated fixture; JAM certificate policy is tested separately.
+proc acceptFixture(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl.} = 1
+
+# Test-owned observations retain counters only; all native pointers are borrowed for one callback.
+type HandshakeCounts = object
+  starts, successes, failures, dropped: int
+  ipv6: bool
+  active: array[IncomingHandshakeSlots, bool]
+
+# Observe real native attempts and ensure teardown settles each tracked slot exactly once.
+proc handshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
+    port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].} =
+  let counts = cast[ptr HandshakeCounts](user)
+  if event == HandshakeDropped:
+    inc counts.dropped # Overflow carries no invented correlation or identity.
+    return
+  assert slot < cuint(IncomingHandshakeSlots)
+  let index = int(slot)
+  if event == HandshakeStarted:
+    assert not counts.active[index] and address != nil and port != 0
+    let remote = cast[ptr UncheckedArray[byte]](address)
+    assert remote[15] == 1
+    if counts.ipv6:
+      for i in 0..<15: assert remote[i] == 0 # IPv6 loopback is copied directly.
+    else:
+      for i in 0..<10: assert remote[i] == 0 # IPv4 loopback uses the mapped address prefix.
+      assert remote[10] == 255 and remote[11] == 255 and remote[12] == 127
+      assert remote[13] == 0 and remote[14] == 0
+    counts.active[index] = true
+    inc counts.starts
+  elif event == HandshakeSucceeded:
+    assert counts.active[index] and der != nil and length > 0
+    counts.active[index] = false
+    inc counts.successes
+  else:
+    assert event == HandshakeFailed and counts.active[index]
+    counts.active[index] = false
+    inc counts.failures
+
+# Hold client handshakes before their server response; the extra attempt exceeds observation storage only.
+proc saturation(cert, key: string, ipv6: bool) =
+  var counts = default(HandshakeCounts)
+  counts.ipv6 = ipv6
+  var server = default(Transport)
+  var clients = default(array[IncomingHandshakeSlots + 1, Transport])
+  defer:
+    server.closeTransport() # All callbacks finish while the counter owner still lives.
+    for i in 0..<clients.len: clients[i].closeTransport() # Every native engine owns one cleanup.
+  assert server.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+      addr counts, acceptFixture, stream, ipv6 = ipv6)
+  assert server.observeHandshakes(handshake)
+  assert not server.observeHandshakes(handshake) # An observer cannot replace an installed callback.
+  for i in 0..<clients.len:
+    assert clients[i].openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000",
+        addr counts, acceptFixture, stream, ipv6 = ipv6)
+    assert not clients[i].observeHandshakes(handshake) # Outgoing engines cannot install incoming observers.
+    assert clients[i].connectTransport(server.localPort)
+    assert clients[i].pollTransport(0) # Emit ClientHello once; never consume the server's response.
+    for turn in 0..<300:
+      process(clients[i].engine) # Flush paced ClientHello fragments without consuming server responses.
+      assert server.pollTransport(1) # Drain bounded UDP work before the next client starts.
+      if counts.starts + counts.dropped == i + 1: break # No wall-clock ordering assumption between packets.
+    assert counts.starts + counts.dropped == i + 1, "start " & $i & " observed=" & $(counts.starts +
+        counts.dropped)
+  assert counts.starts == IncomingHandshakeSlots and counts.dropped == 1
+  assert counts.successes == 0 and counts.failures == 0
+  for turn in 0..<300:
+    assert clients[0].pollTransport(1) # Complete only one handshake; all other clients remain pending.
+    assert server.pollTransport(1)
+    if counts.successes == 1 and clients[0].authenticatedConnections == 1: break
+  assert counts.successes == 1 and clients[0].authenticatedConnections == 1, "complete successes=" &
+      $counts.successes
+  clients[0].disconnectTransport()
+  for turn in 0..<300:
+    assert clients[0].pollTransport(1) # Send a graceful close before retiring the completed client's engine.
+    assert server.pollTransport(1)
+    if server.closedConnections == 1: break # The successful SSL must be destroyed before slot reuse.
+  assert server.closedConnections == 1, "close count=" & $server.closedConnections
+  clients[0].closeTransport()
+  assert clients[0].openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000",
+      addr counts, acceptFixture, stream, ipv6 = ipv6)
+  assert clients[0].connectTransport(server.localPort)
+  assert clients[0].pollTransport(0)
+  for turn in 0..<300:
+    process(clients[0].engine) # Flush the new attempt without reading its response.
+    assert server.pollTransport(1) # A fresh SSL must occupy the released slot, not overflow.
+    if counts.starts == IncomingHandshakeSlots + 1: break
+  assert counts.starts == IncomingHandshakeSlots + 1 and counts.dropped == 1, "reuse starts=" &
+      $counts.starts & " dropped=" & $counts.dropped
+  server.closeTransport()
+  assert counts.failures == IncomingHandshakeSlots and counts.dropped == 2
+  for active in counts.active: assert not active # Every tracked lifetime settled before storage retirement.
 
 # Exercise native construction failure and success with the exact production I/O owner and LSQUIC engine.
 proc main() {.raises.} =
@@ -45,6 +138,8 @@ proc main() {.raises.} =
     incoming.closeTransport()
     assert outgoing.pollTransport(0)
     outgoing.closeTransport()
+  for ipv6 in [false, true]: # Reuse the process-wide SSL observer index across complete engine retirement.
+    saturation(args[0], args[1], ipv6)
   echo "Nimony shared transport: 4 IPv4/IPv6 engine pairs passed"
   echo "Nimony transport: 16 IPv4/IPv6 native setup/teardown cycles passed"
 
