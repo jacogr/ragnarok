@@ -92,7 +92,9 @@ ceilings with ordinary bounded inputs. Observer checks prove a one-below topolog
 before any hashing and preserves the old head. No unsafe huge sequence is fabricated.
 
 The scoped storage checklist is complete locally. View-only and snapshot-only returns also
-survive destruction of every originating store/result/local in their producer scopes. Non-PVM state-transition
-execution is the next suggested PR; disk persistence, incremental trie updates, proofs and the
+survive destruction of every originating store/result/local in their producer scopes.
+The first bounded non-PVM execution slice now uses this store for
+[authorization pool advancement](authorization-transition.md). The complete execution pipeline,
+disk persistence, incremental trie updates, proofs and the
 separate light-store contract remain future work. The request-domain release checkpoint and all
 other [upstream policy dispositions](state-clarifications.md) remain unchanged.
