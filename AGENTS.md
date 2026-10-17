@@ -61,10 +61,11 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 
 ## Working style
 - Use `make setup` for pinned tools/dependencies, `make` for the current proof-peer build and
-  `make check` (alias `make test`) for complete verification. These delegate to the existing
-  `tools/setup_nimony.py`, `tools/build.py` and `tools/test.py` commands. CI uses the same installer
-  and command plan. Nim 2 is a historical measurement control, never a second production target. Keep compiler and dependency
-  sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
+  `make check` (alias `make test`) for complete verification. Make owns setup dependencies and
+  command sequencing; `make clean` removes all of `build/`.
+  `make check` must provision tools/sources/native dependencies without project-specific pre-steps.
+  CI invokes the same Make targets. Nim 2 is a historical measurement control, never a second
+  production target. Keep compiler and dependency sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
   Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
   review. Preserve its evidence, pending test and current codec behavior. Revisit during that
@@ -84,7 +85,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Keep upstream code/vectors in pinned submodules. Initialize with `python3 tools/setup_submodules.py`.
   Do not overwrite upstream edits, advance gitlinks or change locked versions without an authorized upgrade.
 - Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
-  to `tests/unit/` through the pinned Hastur native runner (`tools/test.py --suite unit`). All 59
+  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 59
   ordinary suites are migrated; preserve explicit output, linking and fixture contracts. Preserve
   independent Python references and process/tooling orchestration. Remove superseded standalone
   runners once the supported path preserves their coverage; do not keep duplicate build entry points.

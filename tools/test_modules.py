@@ -43,7 +43,7 @@ def audit(compiler, folder):
         print(('PASS ' if row['passed'] else 'FAIL ')+row['source'], flush=True)
     if not rows:
         raise ValueError('Source tree has no Nim modules')
-    report = dict(status='compile-checks-passed' if all(row['passed'] for row in rows) else 'migration-incomplete',
+    report = dict(status='compile-checks-passed' if all(row['passed'] for row in rows) else 'compile-checks-failed',
                   scope='semantic module compilation only; linking and runtime parity remain separate',
                   environment=dict(system=platform.system(), machine=platform.machine()), compiler=version.strip(),
                   project_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), modules=rows)
@@ -55,7 +55,7 @@ def audit(compiler, folder):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
-    parser.add_argument('--output', type=Path, default=ROOT/'build/nimony-ci/modules')
+    parser.add_argument('--output', type=Path, default=ROOT/'build/tests/modules')
     args = parser.parse_args()
     report = audit(args.compiler.resolve(), args.output.resolve())
     passed = sum(row['passed'] for row in report['modules'])

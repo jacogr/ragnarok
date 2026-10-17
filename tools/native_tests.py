@@ -3,6 +3,8 @@ from pathlib import Path
 import json
 import hashlib
 import os
+import subprocess
+import sys
 import platform
 from setup_nimony import ROOT, cache_directory
 
@@ -109,13 +111,13 @@ def unit_command(compiler, name=None, libraries=None):
         flags.append('--passL:-fuse-ld=lld')
     # Isolated processes preserve each test's initialization/lifetime scope and keep generated drivers out of source.
     return [str(runner), '--bindir:'+str(compiler.parent),
-            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/nim-tests', 'unit-'+name if name in UNIT_LINKS else 'unit')),
+            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', 'unit-'+name if name in UNIT_LINKS else 'unit')),
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
 
 
 # Locate evidence beside compiler-isolated caches, without placing generated observations in source.
 def unit_evidence_directory(compiler):
-    return cache_directory(compiler, ROOT/'build/nim-tests', 'unit').parent/'evidence'
+    return cache_directory(compiler, ROOT/'build/tests/native', 'unit').parent/'evidence'
 
 
 # Retire old observations before each native run so stale measurements cannot satisfy a new result.
@@ -174,3 +176,56 @@ def unit_runtime_fixtures(certificates, original, reload):
     wires = tuple((folder/(str(index)+'.bin'), hashlib.sha256((folder/(str(index)+'.bin')).read_bytes()).hexdigest())
                   for folder in (original, reload) for index in range(8))
     return {'quic_transport': (None, transport, cert_files), 'quic_integration': (None, integration, wires)}
+
+
+# Discover pure codecs once and link each remaining suite with its required native profile.
+def unit_plan(compiler, libraries):
+    return [unit_command(compiler)]+[unit_command(compiler, name, libraries) for name in UNIT_LINKS]
+
+
+# Prepare pinned native fixtures and run every ordinary suite with strict output/ARC evidence.
+def main():
+    from setup_nimony import installed
+    compiler, _ = installed()
+    selected = dict(os.environ)
+    # Reuse the same pristine pinned crypto, Rust and QUIC preparations as CI.
+    sys.path.insert(0, str(ROOT/'tests'))
+    from nimony_crypto import prepare
+    folder = ROOT/'build/tests/native/preparation'
+    folder.mkdir(parents=True, exist_ok=True)
+    crypto, observer, evidence = prepare(folder)
+    (folder/'preparation.json').write_text(json.dumps(evidence, indent=2)+'\n')
+    libraries = dict(crypto=crypto, observer=observer)
+    from bandersnatch_native import prepare as prepare_bandersnatch
+    bs, bs_observer, bs_evidence = prepare_bandersnatch(folder)
+    libraries.update(bandersnatch=bs, bandersnatch_observer=bs_observer)
+    (folder/'bandersnatch-preparation.json').write_text(json.dumps(bs_evidence, indent=2)+'\n')
+    from nimony_quic import prepare as prepare_quic
+    quic, certificates, quic_evidence = prepare_quic()
+    libraries['quic'] = quic
+    (folder/'quic-preparation.json').write_text(json.dumps(quic_evidence, indent=2)+'\n')
+    import test_integration as integration_fixture
+    integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
+    wires, _ = integration_fixture.corpus()
+    reload = folder/'integration-reload'
+    reload.mkdir(exist_ok=True)
+    for index in range(8):
+        # Different candidate bytes expose a refused bank reload that accidentally publishes partial data.
+        wire = bytearray((wires/(str(index)+'.bin')).read_bytes())
+        wire[0] ^= 128
+        (reload/(str(index)+'.bin')).write_bytes(wire)
+    fixtures = unit_runtime_fixtures(certificates, wires, reload)
+    # All fixture hashes are verified and old observations retired before any native suite runs.
+    selected = unit_environment(compiler, base=selected, fixtures=fixtures)
+    for arguments in unit_plan(compiler, libraries):
+        # Every failed compile, assertion or output mismatch must stop the invocation.
+        print('+ '+' '.join(arguments), flush=True)
+        subprocess.run(arguments, cwd=ROOT, env=selected, check=True)
+    for name in ARC_SUITES:
+        # Preserve measured live occupancy rather than baking host heap sizes into goldens.
+        print('ARC '+name+': '+json.dumps(unit_evidence(compiler, name), sort_keys=True), flush=True)
+
+
+# Imports expose profiles without provisioning dependencies or running tests.
+if __name__ == '__main__':
+    main()

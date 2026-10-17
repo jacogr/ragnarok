@@ -10,14 +10,14 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import native_tests
-from test import plan
+from native_tests import unit_plan
 
 
 # Prevent empty suites, missing evidence and an accidental global/unchecked compiler from producing green tests.
 class NativeUnitHarness(unittest.TestCase):
     # All ordinary suite identities and checked-in native files must be scheduled exactly once.
     def test_complete_native_inventory(self):
-        from test_nimony import SUITES
+        from test_runtime import SUITES
         self.assertEqual(set(SUITES), set(native_tests.UNIT_SUITES))
         self.assertEqual(len(SUITES), len(native_tests.UNIT_SUITES))
         actual = set((ROOT/'tests/unit').rglob('*.nim'))
@@ -83,7 +83,7 @@ class NativeUnitHarness(unittest.TestCase):
             for path in libraries.values():
                 # Separate files make accidental observer/production substitution visible in the command plan.
                 path.touch()
-            commands = plan('unit', folder/'nimony', libraries)
+            commands = unit_plan(folder/'nimony', libraries)
             self.assertEqual(len(commands), 1+len(native_tests.UNIT_LINKS))
             self.assertEqual(Path(commands[0][0]), (folder/'hastur').resolve())
             self.assertEqual(commands[0][-1], str(native_tests.UNIT_ROOT))

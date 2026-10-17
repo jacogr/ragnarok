@@ -12,9 +12,9 @@ Install Python 3.12+, Clang/C++, CMake, zlib, OpenSSL and Rust 1.99.0. On macOS 
 command-line SDK; Linux also needs lld. Then run:
 
 ```sh
-make setup
-make
+make clean
 make check
+make
 ```
 
 The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
@@ -24,16 +24,17 @@ Repeated setup verifies retained archives; unknown hosts fail before executing m
 Upstream source submodules remain pristine.
 
 `source build/toolchain/env.sh` optionally exports NIMONY, NIMPRETTY and compiler/formatter-only
-PATH entries. The normal runner resolves the installation automatically. Nimpretty comes from
+PATH entries. Make activates this managed environment for compiler/formatter commands. Nimpretty comes from
 pinned Nim 2.2.12, but its compiler is not exported or supported as a production target. Its generic
 banner is 0.2; archive and installed binary hashes retain its provenance.
 
 ## Verification and formatting
 
-`python3 tools/test.py` audits every production module, checks formatting and protocol provenance,
+`make check` audits every production module, checks formatting and protocol provenance,
 rebuilds native primitives and checked drivers, and runs all migrated codec, crypto, networking,
 lifecycle and enabled proof-offload workloads. It then discovers every `test_*harness.py` suite.
-Cargo runs locked/offline after explicit provisioning. Failures stop the command. The parked
+Make first ensures the pinned compiler, pristine source submodules and locked Cargo dependencies;
+native builds then run Cargo locked/offline. Failures stop the command. The parked
 request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.
 
 `make unit` runs all 59 ordinary application suites through the pinned Hastur runner, preparing
@@ -44,6 +45,7 @@ reference, negative-probe and orchestration responsibilities.
 | Command | Action |
 | --- | --- |
 | `make` / `make build` | Build `build/ragnarok`, the current authenticated proof peer |
+| `make clean` | Remove all of `build/`, including installed tools and cached archives |
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
 | `make unit` | All 59 Hastur suites with their exact native/fixture profiles |
@@ -52,13 +54,17 @@ reference, negative-probe and orchestration responsibilities.
 | `make format` / `make format-check` | Apply or check the pinned formatter |
 | `make help` | List commands without provisioning/building |
 
-Make targets delegate to the existing Python tooling. `PYTHON=/path/to/python3` selects the host
-interpreter; Rust comes from `spec/bandersnatch-pins.json`, not the global default. Ordinary targets
-check the compiler manifest, binaries and pin hash via `setup_nimony.py --ensure`; healthy tools
-are reused. Missing/damaged tools or changed pins use normal checksum/identity-verified setup.
-Archives are cached by checksum, so a new pin selects a new archive without trusting or deleting
-an old one. A corrupt archive still fails verification. Explicit `make setup` provisions submodules
-and Rust/Cargo dependencies; host OS packages and rustup must already be installed.
+Make owns setup dependencies, logging and verification sequencing. `make clean` followed by
+`make check` needs no activation, manual directories, downloads or native-build pre-steps.
+`make`, `make runtime` and `make unit` also provision their dependencies automatically.
+`PYTHON=/path/to/python3` selects the host interpreter; Rust comes from the shared pin.
+Healthy compiler/formatter installations are verified and reused; missing or changed tools use
+checksum/identity-verified installation. Archives are cached by checksum, and corrupt archives fail.
+
+Make and Python 3.12+ are bootstrap prerequisites. Ubuntu's missing native packages are installed
+by Make through apt/sudo. On macOS, Apple's command-line tools, CMake, zlib and OpenSSL must be
+available. The Rust manager `rustup` must be installed; Make installs the pinned Rust/rustfmt and
+fetches locked registry dependencies. No project-specific setup commands are required first.
 
 The default executable enables the existing `integration` and `offload` profiles together. It links
 only the real maintained crypto/Bandersnatch/QUIC ABIs, without test observers, and retains ARC,
@@ -66,20 +72,37 @@ Clang, checked optimized builds, LTO and Linux lld. Its compiler-location-isolat
 libraries remain under `build/`; the executable is a development proof peer, not a full client.
 Top-level Make targets run serially because native preparation and verification share build caches.
 
-CI splits the same plan into `--suite modules` and `--suite runtime` for independent verdicts.
-An explicit `--compiler` is intended for CI, whose installer also exports NIMPRETTY. Superseded
-standalone codec/state Python runners have been removed. Retained Python modules provide independent
-references, fixture/native preparation, strict negative probes and process/tooling checks. Use
-`make check` for their supported execution path; older commands recorded in specification evidence
-describe historical runs, not additional supported runners.
+CI invokes `make modules` and `make runtime` as independent checks after checkout/Python setup.
+The workflow has no separate directory, compiler, source, Rust or OS-package bootstrap recipes.
+`make summary-modules` / `make summary-runtime` render existing reports even after a failed job;
+`SUMMARY_OUTPUT` selects the local Markdown file or GitHub step summary.
+Superseded standalone codec/state Python runners are removed. Older commands recorded in
+specification/trial evidence describe historical runs, not additional supported runners.
 
 ```sh
 make format
 make format-check
 ```
 
-Reports/logs remain under `build/nimony-trial/verification/` and `build/nimony-ci/modules/`.
+Reports/logs remain under `build/tests/runtime/`, `build/tests/modules/` and `build/ci/`.
 Temporary TLS keys never belong in commits or diagnostic artifacts. CI uploads logs/reports only.
+
+## Tooling audit
+
+Command sequencing moved from `tools/test.py` into Make; that helper is removed. Shell setup,
+Rust installation/fetch, directories, logging and cleanup are direct recipes. Retained Python is
+logic that would become longer, less portable or harder to validate as shell commands:
+
+| Helpers | Responsibility |
+| --- | --- |
+| `setup_nimony.py`, `toolchain_archives.py` | Host/archive identity, checksums, safe extraction and installed binary validation |
+| `setup_submodules.py` | Pinned/clean gitlink validation and focused vector checkout |
+| `build.py` | Checked platform-specific linker profile and maintained native library preparation |
+| `format.py` | Canonical formatter comparison without modifying files in check mode |
+| `native_tests.py` | Hastur discovery, linking profiles, fixture integrity and ARC observations |
+| `test_modules.py`, `test_runtime.py` | Complete source inventory and native/reference/negative/process verification |
+| `summarize_tests.py` | Structured evidence rendering and explicit missing/failed report handling |
+| `compare_nimony.py` | Optional historical compiler performance control; excluded from normal builds/tests |
 
 ## Bounded performance control
 

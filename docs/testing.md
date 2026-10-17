@@ -43,7 +43,7 @@ location cache isolation. ARC, Clang, checked release speed optimization and LTO
 explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and `-flto`.
 
 ```sh
-python3 tools/test.py --suite unit
+make unit
 ```
 
 That command runs **21 codec, 29 state, four crypto and five QUIC suites** through Hastur.
@@ -55,7 +55,7 @@ keys and generated data remain under ignored `build/`. Python supplies setup, pa
 flags; Hastur owns application test verdicts. Direct Hastur use must retain those exact flags and
 fixture environment paths.
 
-The cumulative `python3 tools/test.py` path delegates **all 59 ordinary suites** to Hastur and
+The cumulative `make check` path delegates **all 59 ordinary suites** to Hastur and
 hashes every source and `.output` file. The old Python positive-suite build/run branch is removed;
 there is no fallback to old file locations. A registry/discovery safeguard rejects missing or extra
 suite identities. All **31 ARC report fields** retain fresh numeric observations and native
@@ -265,15 +265,15 @@ Named `suite`/`test` syntax can be revisited if the pinned compiler supplies a s
 
 The obsolete Nim 2 `FieldDefect` probe and its Python entry point have been removed. Their
 Nimony successors remain the strict primitive/bounded/composite default/error payload-access
-processes in `tools/test_nimony.py`, plus positive zero-width, empty-count and work-error cases
+processes in `tools/test_runtime.py`, plus positive zero-width, empty-count and work-error cases
 in the native codec suites. No exception-catching shim or weaker Hastur exit-code expectation
 replaces those checks.
 
 ### Retiring superseded Python runners
 
 After all 59 ordinary suites migrated, 34 unreferenced standalone Python runners were removed.
-This cleanup reduces top-level Python test code from 131 files / 15,424 lines to 97 files /
-13,561 lines: 1,863 fewer lines, including retired shared build/rejection helpers. These are
+The runner-removal increment reduced top-level Python test code from 131 files / 15,424 lines
+to 97 files / 13,561 lines: 1,863 fewer lines, including retired shared build/rejection helpers. These are
 physical source lines, including comments and blank lines; they are not implementation LOC metrics.
 Their application assertions already run through Hastur; their independent corpus comparisons
 and specific compiler/privacy rejection probes remain in the cumulative verifier. The old Nim 2
@@ -294,6 +294,33 @@ vary in the remaining QUIC corpus; its observations still match its independent 
 Evidence: `build/nim-tests/cleanup/full-check.log` and `comparison.json`. Linux CI is not inferred.
 
 
+
+## Clean bootstrap and canonical CI commands
+
+Make owns setup, command ordering and diagnostic directories. Linux CI invokes `make modules`
+and `make runtime`, then the corresponding `make summary-*` target; it has no separate compiler,
+submodule, Rust, package or directory setup commands. Normal reports live under
+`build/tests/modules/`, `build/tests/runtime/` and `build/ci/`. The older trial paths below are
+historical evidence. `tools/test.py` is removed; native fixture/profile logic remains in
+`tools/native_tests.py`. See [the tooling audit](development.md#tooling-audit) for retained helpers.
+
+On 2026-10-17, local macOS ARM64 verification ran `make clean`, confirmed that `build/` was absent,
+and ran `make check` without restoring archives, tools or caches. Make reinstalled the pinned
+compiler/formatter and prepared sources, pinned Rust/Cargo dependencies and native libraries.
+The complete run passed: 45 production modules, 59 Hastur suites / 65 native profiles, 41 corpora,
+1,372 runtime misuse probes, 676 compiler rejections, 247 harness tests (one existing skip),
+23 setup/CI safeguards and formatting of 863 Nim files. All 40 deterministic corpus records match
+the preceding run; the generated-certificate QUIC corpus matches its independent expectations.
+Test inventories are unchanged, and every recorded source hash matches the checked working tree.
+The standalone `make unit` also passes all 59 suites and 31 ARC observations. Plain `make` builds
+`build/ragnarok`; its parser and I/O selftests pass.
+
+The isolated Make safeguard checks clean bootstrap and deliberately failed runtime execution:
+logging through `tee` must preserve failure on both macOS Make 3.81 and Linux Make. Both summary
+targets were exercised against real reports. Full logs are `/tmp/ragnarok-cold-check.log` and
+`/tmp/ragnarok-make-unit.log`; the generated comparison is
+`build/ci/cold-verification.json`. This is local verification; the revised Linux workflow still
+requires CI after push.
 
 ## Verification of the first increment
 

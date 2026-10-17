@@ -1,6 +1,9 @@
 """Check that the Make front end preserves pinned tooling and the checked public native build profile."""
 from pathlib import Path
 import tempfile
+import os
+import shutil
+import subprocess
 import sys
 import unittest
 from unittest.mock import patch
@@ -44,6 +47,71 @@ class MakeHarness(unittest.TestCase):
                 self.assertEqual(installer.call_count, 1)
                 self.assertTrue((destination/'environment.json').is_file())
                 self.assertTrue((destination/'env.sh').is_file())
+
+    # Real Make must recover from an absent build tree and preserve a failed command through tee.
+    def test_clean_bootstrap_and_failure_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
+            (folder/'spec').mkdir()
+            shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
+            (folder/'tools').mkdir()
+            (folder/'tests').mkdir()
+            (folder/'bin').mkdir()
+            # Avoid OS package provisioning while exercising Make on any host.
+            uname = folder/'bin/uname'
+            uname.write_text('#!/bin/sh\nprintf Linux\n')
+            uname.chmod(0o755)
+            for name in ('dpkg-query', 'apt-get', 'sudo'):
+                # Missing-package queries and inert sudo exercise Ubuntu setup without touching the host.
+                command = folder/'bin'/name
+                command.write_text('#!/bin/sh\nexit '+('1' if name == 'dpkg-query' else '0')+'\n')
+                command.chmod(0o755)
+            rustup = folder/'bin/rustup'
+            rustup.write_text('#!/bin/sh\nexit 0\n')
+            rustup.chmod(0o755)
+            stub = """from pathlib import Path
+import os
+import sys
+name = Path(__file__).name
+with Path('calls').open('a') as output:
+    output.write(name+'\\n')
+# Model the installer output contract without downloading or executing native tools.
+if name == 'setup_nimony.py':
+    Path('build/toolchain').mkdir(parents=True, exist_ok=True)
+    Path('build/toolchain/env.sh').write_text('export NIMONY=/fixture/nimony\\n')
+# A failing runtime must not turn green merely because tee successfully wrote its log.
+if name == 'test_runtime.py' and os.environ.get('FAIL_RUNTIME'):
+    print('deliberate runtime failure')
+    sys.exit(7)
+"""
+            for name in ('setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'format'):
+                # The test exercises Make ordering/status; native behavior has its own application coverage.
+                (folder/'tools'/(name+'.py')).write_text(stub)
+            for name in ('test_spec', 'test_nimony_ci'):
+                # Tooling and provenance commands are inert in this isolated command-plan fixture.
+                (folder/'tests'/(name+'.py')).write_text(stub)
+            (folder/'tests/test_fixture_harness.py').write_text(
+                'import unittest\n# Provide one discoverable inert tooling fixture.\n'
+                'class Fixture(unittest.TestCase):\n'
+                '    # Discovery itself is the behavior exercised by this fixture.\n'
+                '    def test_discovery(self): pass\n')
+            environment = {**os.environ, 'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH']}
+            arguments = ['make', '--no-print-directory', 'PYTHON='+sys.executable]
+            (folder/'build/nested').mkdir(parents=True)
+            (folder/'build/nested/stale').write_text('old artifact')
+            subprocess.run(arguments+['clean'], cwd=folder, env=environment, check=True, capture_output=True)
+            self.assertFalse((folder/'build').exists())
+            result = subprocess.run(arguments+['check'], cwd=folder, env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            calls = (folder/'calls').read_text().splitlines()
+            self.assertEqual(calls.count('setup_nimony.py'), 1)
+            self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
+            self.assertTrue((folder/'build/ci/runtime.log').is_file())
+            failed = subprocess.run(arguments+['runtime'], cwd=folder,
+                                    env={**environment, 'FAIL_RUNTIME': '1'}, capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn('deliberate runtime failure', (folder/'build/ci/runtime.log').read_text())
 
     # Both host profiles must keep ARC/checks/LTO, enable both maintained features and exclude every observer ABI.
     def test_checked_build_profile(self):

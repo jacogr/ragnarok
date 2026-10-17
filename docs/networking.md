@@ -32,7 +32,7 @@ unregister before close; private session owners remain stable through native tea
 proof pool uses public raw threads, exactly two workers and four owned slots, guarded completion
 access, monotonic generations and joined shutdown. No compiler or upstream dependency is patched.
 
-`python3 tools/test.py` runs the original identity/framing matrix, retained service/integration,
+`make check` runs the original identity/framing matrix, retained service/integration,
 IPv6 mesh/reconnect, peer-loss and admission recovery, forty-session endpoint soak and ten-wave
 actual-Rust offload workload. Finite resource budgets and fixed thread counts remain enforced.
 See [the cumulative compiler record](nimony-trial.md) for exact local evidence and Linux status.

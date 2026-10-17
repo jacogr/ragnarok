@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the Nimony-only partial port, guarded codec results and immutable owned snapshots."""
+"""Verify checked native suites, independent corpora, ownership contracts and networking lifecycles."""
 import argparse
 import os
 import hashlib
@@ -13,7 +13,7 @@ from setup_nimony import cache_directory
 from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = ROOT/'build/nimony-trial/verification'
+BUILD = ROOT/'build/tests/runtime'
 SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
 PRIVATE = dict(bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
@@ -727,7 +727,7 @@ def build(compiler, source, name, crypto_library=None, native_libraries=(), cfla
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
              '--boundchecks:on', '--passC:-flto', '--passL:-flto']
     if platform.system() == 'Linux':
-        # Preserve the established Linux LTO linker choice when the trial reaches that host.
+        # Preserve the established Linux LTO linker choice on that host.
         flags += ['--passL:-fuse-ld=lld']
     if crypto_library is not None:
         # Crypto clients use the maintained public C header and one explicit native library.
@@ -754,7 +754,7 @@ def announce(name, passed):
     print(('PASS ' if passed else 'FAIL ')+name, flush=True)
 
 
-# Verify the coherent scalar/composite/digest/report slice; other families remain outside this partial trial.
+# Verify implemented application coverage; passing tests do not establish full JAM client functionality.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
@@ -772,7 +772,7 @@ def main():
                + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
                + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
                + unit_fixture_sources()
-               + [ROOT/'tools/native_tests.py', ROOT/'tools/test.py', ROOT/'tests/test_native_units_harness.py']
+               + [ROOT/'tools/native_tests.py', ROOT/'Makefile', ROOT/'tests/test_native_units_harness.py']
                + [ROOT/'tests/support/ownership_checks.nim', ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
                + list((ROOT/'tests').glob('guarantees_*.py'))
@@ -798,7 +798,7 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'tools/test.py', 'tools/audit_nimony_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
+                'Makefile', 'tools/test_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
                 'spec/toolchain.json', 'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
                 'tests/test_quic_offload_harness.py',
                 'tests/native/compile_fail/offload_pool_copy.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
@@ -806,7 +806,7 @@ def main():
                 'tests/test_quic_mesh.py', 'tests/test_quic_resilience.py', 'tests/test_quic_mesh_harness.py',
                 'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
                 'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
-                'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_nimony_ci.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
+                'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_tests.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
                 'native/quic/transport_bridge.c', 'native/quic/transport_bridge.h', 'native/quic/cert_fields.c', 'native/quic/cert_fields.h',
                 'tests/native/compile_fail/quic_io_endpoint_copy.nim',
                 'tests/test_bandersnatch.py', 'tests/native/bandersnatch_driver.nim', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
@@ -2887,11 +2887,11 @@ def main():
                    and len(report['privacy']) == len(PRIVATE)
                    and all(row['passed'] for row in report['privacy']))
     report['protected_results_increment'] = 'passed' if step_passed else 'failed'
-    report['status'] = 'partial-checks-passed' if step_passed else 'blocked'
+    report['status'] = 'checks-passed' if step_passed else 'failed'
     (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
-    print(f'Protected results: {report["protected_results_increment"]}; migration trial: {report["status"]}')
+    print(f'Protected results: {report["protected_results_increment"]}; verification: {report["status"]}')
     print(f'Evidence: {BUILD.relative_to(ROOT)}/results.json')
-    raise SystemExit(0 if report['status'] == 'partial-checks-passed' else 1)
+    raise SystemExit(0 if report['status'] == 'checks-passed' else 1)
 
 
 # Importing this runner never downloads dependencies or starts a compiler.

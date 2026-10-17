@@ -27,14 +27,14 @@ provides the maintained Bandersnatch primitive bridge; Python **3.12+** runs too
 OpenSSL and Clang are required; Linux additionally uses lld. See [development](docs/development.md).
 
 ```sh
-make setup   # Provision pinned tools, pristine submodules and locked Cargo dependencies.
-make         # Build the current proof peer as build/ragnarok.
-make check   # Run complete verification (make test is an alias).
+make clean   # Remove build/ completely (optional).
+make check   # Provision dependencies, build and run complete verification.
+make         # Provision dependencies and build the proof peer as build/ragnarok.
 ```
 
-Make uses the existing Python commands; `make help` lists the bounded test and formatting targets.
-`make setup` reuses an intact compiler/formatter and refreshes them when pins change. System
-packages and rustup remain prerequisites. The default artifact is the current authenticated QUIC
+Make owns setup and test sequencing; `make help` lists the bounded test and formatting targets.
+`make setup` reuses an intact compiler/formatter and refreshes them when pins change. Make/Python and rustup are bootstrap prerequisites; Make installs missing Ubuntu native packages.
+macOS requires its native development tools. The default artifact is the current authenticated QUIC
 proof peer with integration and bounded offload enabled; it is not a full validator executable.
 
 The normal verification command resolves the installed compiler and formatter automatically;
@@ -43,7 +43,7 @@ same tools in a shell. Only `nimpretty` is exposed from its pinned formatter arc
 verification never invokes the historical Nim 2 compiler.
 
 Verification includes the all-source audit, protocol provenance, formatting, independent Python
-harnesses and checked codec/crypto/networking/offload suites. Linux CI uses the same command plan
+harnesses and checked codec/crypto/networking/offload suites. Linux CI uses the same Make targets
 in separate runtime and module jobs. Generated builds, fixture keys and logs stay under ignored
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).

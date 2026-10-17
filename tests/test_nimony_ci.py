@@ -14,9 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from toolchain_archives import download, extract
 from setup_nimony import verify_identity, verify_version, host_pins, install, installed, cache_directory
-from summarize_nimony_ci import summarize
-import audit_nimony_modules as modules
-from test import plan
+from summarize_tests import summarize
+import test_modules as modules
 import test_bandersnatch as bandersnatch
 
 
@@ -42,10 +41,12 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('github.head_ref', text)
         self.assertNotIn('github.ref_name', text)
         self.assertNotIn('branches:', text)
-        self.assertIn('tools/setup_nimony.py', text)
-        self.assertIn('tools/test.py --suite runtime --compiler', text)
-        self.assertIn('tools/test.py --suite modules --compiler', text)
-        self.assertNotIn('python3 tools/setup_ci_linux.py --destination', text)
+        self.assertIn('run: make runtime', text)
+        self.assertIn('run: make modules', text)
+        self.assertNotIn('mkdir', text)
+        self.assertNotIn('nimony-trial', text)
+        self.assertNotIn('tools/setup_nimony.py', text)
+        self.assertNotIn('cargo fetch', text)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
@@ -82,16 +83,16 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Local and CI entry points must retain native runtime, every-source audit and all independent Python harnesses.
     def test_supported_command_plan(self):
-        compiler = Path('/fixture/nimony')
-        runtime = plan('runtime', compiler)
-        modules_only = plan('modules', compiler)
-        self.assertEqual(plan('all', compiler), modules_only+runtime)
-        self.assertTrue(any('tools/test_nimony.py' in row for row in runtime))
-        self.assertTrue(any('tools/audit_nimony_modules.py' in row for row in modules_only))
-        self.assertTrue(any('test_*harness.py' in row for row in runtime))
-        self.assertFalse(any('nim' in row for row in runtime+modules_only))
-        with self.assertRaises(ValueError):
-            plan('unknown', compiler)
+        command = ['make', '--no-print-directory', '-n']
+        runtime = subprocess.check_output(command+['runtime'], cwd=ROOT, text=True)
+        module_plan = subprocess.check_output(command+['modules'], cwd=ROOT, text=True)
+        self.assertIn('tools/test_runtime.py', runtime)
+        self.assertIn('tools/setup_submodules.py', runtime)
+        self.assertIn('cargo fetch --locked', runtime)
+        self.assertIn('test_*harness.py', runtime)
+        self.assertIn('tools/test_modules.py', module_plan)
+        self.assertNotIn('cargo fetch', module_plan)
+        self.assertNotIn('tools/test.py', runtime+module_plan)
 
     # Extracting a formatter archive must expose only nimpretty, with safe repeated symlink handling.
     def test_formatter_only_installation(self):
@@ -227,7 +228,7 @@ class NimonyCISafeguards(unittest.TestCase):
                 return dict(source=str(source.relative_to(root)), passed=source.name != 'b.nim')
             with patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check), patch.object(modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout', new=io.StringIO()):
                 report = modules.audit(root/'nimony', root/'evidence')
-            self.assertEqual(report['status'], 'migration-incomplete')
+            self.assertEqual(report['status'], 'compile-checks-failed')
             self.assertEqual(len(report['modules']), 3)
             self.assertEqual([row['source'] for row in report['modules']], ['src/a.nim', 'src/b.nim', 'src/new.nim'])
             self.assertTrue((root/'evidence/results.json').is_file())
@@ -249,7 +250,7 @@ class NimonyCISafeguards(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output = root/'summary.md'
-            result = subprocess.run([sys.executable, str(ROOT/'tools/summarize_nimony_ci.py'), '--kind', 'slice',
+            result = subprocess.run([sys.executable, str(ROOT/'tools/summarize_tests.py'), '--kind', 'runtime',
                                      '--report', str(root/'missing.json'), '--output', str(output)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)
             self.assertIn('No usable verification report', output.read_text())
@@ -267,7 +268,7 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_peer_summary_scope(self):
         report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                       quic_peer=dict(passed=False, matrix_cases=16, repeated_valid=12))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'runtime')
         self.assertIn('Authenticated CE 143 peer matrix: Fail', text)
         self.assertIn('Matrix cases: 16; repeated valid startups: 12', text)
         self.assertIn('Runtime misuse rejections: 0', text)
@@ -279,7 +280,7 @@ class NimonyCISafeguards(unittest.TestCase):
                       quic_service=dict(passed=True, result=dict(rounds=16, idle=[{}]*16,
                                                                accepted_and_retired_connections=66)),
                       quic_integration_service=dict(passed=False, failure='cancelled owner remained live'))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'runtime')
         self.assertIn('Retained CE 143 service: Pass', text)
         self.assertIn('Waves: 16; retired connections: 66', text)
         self.assertIn('Integrated digest service: Fail', text)
@@ -291,7 +292,7 @@ class NimonyCISafeguards(unittest.TestCase):
         report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                       quic_mesh=dict(passed=True, result=dict(rounds=16, bidirectional_queries=128)),
                       quic_mesh_disruption=dict(passed=False, failure='pending owners not settled'))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'runtime')
         self.assertIn('Retained IPv6 mesh: Pass', text)
         self.assertIn('Reconnect rounds: 16; bidirectional queries: 128', text)
         self.assertIn('IPv6 peer-death recovery: Fail', text)
@@ -304,7 +305,7 @@ class NimonyCISafeguards(unittest.TestCase):
             with self.subTest(passed=passed):
                 report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                               quic_endpoint_soak=dict(passed=passed, result=dict(rounds=40)))
-                text = summarize(report, 'slice')
+                text = summarize(report, 'runtime')
                 self.assertIn('Same-process endpoint teardown soak: '+('Pass' if passed else 'Fail'), text)
                 self.assertEqual('Sessions: 40;' in text, passed)
                 self.assertIn('Independent corpora: 0', text)
@@ -316,7 +317,7 @@ class NimonyCISafeguards(unittest.TestCase):
                       quic_admission=dict(passed=True, result=dict(waves=12, retired_connections=312,
                                                                  healthy_queries_after_release=12)),
                       quic_closed_before_request=dict(passed=False))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'runtime')
         self.assertIn('Connection/stream admission recovery: Pass', text)
         self.assertIn('Waves: 12; retired connections: 312; healthy queries after release: 12', text)
         self.assertIn('Authenticated connection loss before request: Fail', text)
@@ -324,7 +325,7 @@ class NimonyCISafeguards(unittest.TestCase):
         # Exercise the inverse outcomes as well; successful close detection must retain its zero-stream observation.
         report['quic_admission'] = dict(passed=False)
         report['quic_closed_before_request'] = dict(passed=True, result=dict(application_streams=0, closed_seconds=2.0))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'runtime')
         self.assertIn('Connection/stream admission recovery: Fail', text)
         self.assertIn('Application streams: 0; close detection seconds: 2.0', text)
 
@@ -336,7 +337,7 @@ class NimonyCISafeguards(unittest.TestCase):
                 report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                               quic_offload=dict(passed=passed, result=dict(rounds=10, workers=2, job_cap=4,
                                                                           verified_jobs=30, healthy_light_queries=70)))
-                text = summarize(report, 'slice')
+                text = summarize(report, 'runtime')
                 self.assertIn('Bounded proof offload: '+('Pass' if passed else 'Fail'), text)
                 self.assertEqual('workers: 2; job cap: 4' in text, passed)
                 self.assertIn('Independent corpora: 0', text)
@@ -344,16 +345,16 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
-        report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],
+        report = dict(status='checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],
                       fields=[dict(passed=True), dict(passed=True)], privacy=[dict(passed=True)], nominal=[], schemas=[], contracts=[dict(passed=True)],
                       ownership_compile=[dict(passed=True)], example_corpus=dict(passed=False, requests=3))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'runtime')
         self.assertIn('Runtime misuse rejections: 2', text)
         self.assertIn('Compilation rejections: 3', text)
         self.assertIn('partial evidence', text)
         self.assertIn('| `example_corpus` | Fail | 3 |', text)
         with self.assertRaises(KeyError):
-            summarize({}, 'slice')
+            summarize({}, 'runtime')
 
 
 # Imports expose inert test helpers without downloading tools or starting compilation.
