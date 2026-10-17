@@ -39,7 +39,7 @@ Make first ensures the pinned compiler, pristine source submodules and locked Ca
 native builds then run Cargo locked/offline. Failures stop the command. The parked
 request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.
 
-`make unit` runs all 79 ordinary application suites through the pinned Hastur runner, preparing
+`make unit` runs all 80 ordinary application suites through the pinned Hastur runner, preparing
 the maintained native crypto, Rust and QUIC libraries and required fixtures. The cumulative path
 runs the same suites; see [native test migration](testing.md) for coverage and retained Python
 reference, negative-probe and orchestration responsibilities.
@@ -50,12 +50,12 @@ reference, negative-probe and orchestration responsibilities.
 | `make clean` | Remove all of `build/`, including installed tools and cached archives |
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
-| `make unit` | All 79 Hastur suites with their exact native/fixture profiles |
+| `make unit` | All 80 Hastur suites with their exact native/fixture profiles |
 | `make check-modules` / `make modules` | Every-source semantic compilation gate |
 | `make check-python` | Python reference/tooling/provenance tests |
 | `make check-unit` / `make runtime` | Native unit suites and independent corpora |
 | `make check-failures` | Runtime assertion/contract probes and positive controls |
-| `make check-guards` | Compiler rejection guards (707 probes) |
+| `make check-guards` | Compiler rejection guards (709 probes) |
 | `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
 | `make format` / `make format-check` | Apply or check both pinned Nim and Rust formatters |
 | `make help` | List commands without provisioning/building |

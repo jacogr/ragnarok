@@ -237,7 +237,27 @@
       "stf/safrole/full/publish-tickets-with-mark-3.json": "5bab45da9d309f5ca052de952d7cd3aff7ea1f25817070037325de3ff1b3cc71",
       "stf/safrole/full/publish-tickets-with-mark-4.json": "b48ed4700881bfea09a7f579bfca6cd37d8fcdf8862935fb84d6a3b54270c102",
       "stf/safrole/full/publish-tickets-with-mark-5.json": "1ec6493416e4a32fc77ca4c98020495490f1085c4dc8476209b4565acae71e5b",
-      "stf/safrole/full/enact-epoch-change-with-set-resize-4.json": "4f9e41e9ff6c8b32bbbb0db31ab3c2db36ff98b5567f75e8073c238ae3f1ef86"
+      "stf/safrole/full/enact-epoch-change-with-set-resize-4.json": "4f9e41e9ff6c8b32bbbb0db31ab3c2db36ff98b5567f75e8073c238ae3f1ef86",
+      "traces/fallback/00000001.json": "cbc75d1e204e2416675ebbdf6e7051b5ad1da865a45533a5f9bb23a2cc84b678",
+      "traces/fallback/00000011.json": "7876afdf3e4c32b87e2348e0c83ec7787e11cfd861401ab461dd5d8f90ee9bad",
+      "traces/fallback/00000012.json": "51085b69d4cf2fe1eda67c0ebcb1f9514e761eeaa26b2667c91b992c32743648",
+      "traces/fallback/00000013.json": "c2812358cff24c623195b308a392e0a8c3693cf446493e32df6e2f9d9c7baf79",
+      "traces/fallback/00000024.json": "5d1fc8f28423d56f4e64213cbea18d057de8bd53b705bf98a6a728704286f0c9",
+      "traces/fallback/00000025.json": "a039522f9645709e44564f12dd361db7965d7d6449b6bfcd0c0484d2e11a2108",
+      "traces/fallback/00000048.json": "ba85990092a86a9f20e445ee452b488b1ac30b1b4f13676a4d59691488e396dd",
+      "traces/fallback/00000049.json": "0546cf5e7568f6f954fe92929aae897140b84e8025d9c16f5a586eb64dce197d",
+      "traces/fallback/00000099.json": "39f20d64f738426c6d13d52f5220ce13fe1f4286f722d8824d3695da474df8d7",
+      "traces/fallback/00000100.json": "b66d6d7226a216216db5c394821505d06bc4c99cf8d8731de1fa741bfe272600",
+      "traces/safrole/00000001.json": "cbc75d1e204e2416675ebbdf6e7051b5ad1da865a45533a5f9bb23a2cc84b678",
+      "traces/safrole/00000011.json": "7876afdf3e4c32b87e2348e0c83ec7787e11cfd861401ab461dd5d8f90ee9bad",
+      "traces/safrole/00000012.json": "b7e0332da44f0efed48adfceaeb2d26daeb9e8cdcdda13271f5bc71bbde66801",
+      "traces/safrole/00000013.json": "c2943030b3d69f7f4d04abc0c2c5cbf759a89ffccbfb6f8e6f0d4bd2b9f0667d",
+      "traces/safrole/00000024.json": "8adf17a0086afcae19d5cc1cc52ca127143a9149b74c6be269497600fcfa480d",
+      "traces/safrole/00000025.json": "5402cea08e420312a898daa9b5778b8a7fa77584eeb15c7bf8d0b6edb3aee31c",
+      "traces/safrole/00000048.json": "5cbaae2b7bbc2a148c598cec25bb2842582aa7d689909f35087792fc7210068c",
+      "traces/safrole/00000049.json": "93d75d5b47565056c70f58686822d57a4b7228d28d0a5b517069a2490e5d0ab8",
+      "traces/safrole/00000099.json": "f7fb06a1f2ba2017b1e8e6db674117df1079736b0e1e612e0b93222b7b9db22c",
+      "traces/safrole/00000100.json": "85599614e6f48aa49df3fd4d526ba7ea7455fe89dd905fd733884211568750b7"
     }
   },
   "toolchains": {
