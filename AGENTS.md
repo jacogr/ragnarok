@@ -104,6 +104,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   This applies to implementation, tests and tooling.
 - Use `nimpretty` through `python3 tools/format.py`, then verify with `--check`. Nim uses two-space
   indentation and a 100-column target. Preserve explanatory comments through formatting.
+- Format project Rust code with the pinned `rustfmt` defaults (four spaces, 100-column target).
+  Use `cargo fmt --manifest-path native/bandersnatch/Cargo.toml` with the pinned Rust toolchain;
+  native verification already checks it with `-- --check`. Keep C sources and headers at four-space
+  indentation, matching `.editorconfig` and the existing bridges.
 - Keep upstream code/vectors in pinned submodules. Initialize with `python3 tools/setup_submodules.py`.
   Do not overwrite upstream edits, advance gitlinks or change locked versions without an authorized upgrade.
 - Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
