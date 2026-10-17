@@ -1,6 +1,7 @@
+import ../../support/arc_evidence
 ## Project-only chapter-16 ownership, preflight and arithmetic checks; no private runtime hooks.
 import std/[assertions, syncio]
-include ../../src/codec/state_outputs
+include ../../../src/codec/state_outputs
 
 ## Independent source pairs preserve descending/repeated services and all fixed commitment octets.
 proc source(marker: byte): seq[AccumulationOutput] =
@@ -87,5 +88,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "OUTPUTS_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_outputs_private", 1000, beforeRelease, afterRelease)
+echo "OUTPUTS_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapter 16: retained/replaced owners, escaped fixed pairs and scoped ARC release passed"

@@ -2,7 +2,7 @@
 
 Branch: `nim-tests`, based on merged Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **37/59 ordinary suites migrated; 22 remaining**.
+Current total: **45/59 ordinary suites migrated; 14 remaining**.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
 ## What the investigation found
@@ -46,17 +46,17 @@ explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and
 python3 tools/test.py --suite unit
 ```
 
-That command runs the pure codec directory and sixteen separately linked state tests. It now
+That command runs the pure codec directory and 24 separately linked state tests. It now
 prepares the existing pristine pinned native crypto bridge and test-only observer (initialized
 crypto submodules, CMake and Clang are required), without network or Bandersnatch builds. Python
 supplies paths, native preparation and checked flags; Hastur owns application test verdicts.
 After sourcing `build/toolchain/env.sh`, Hastur can also be invoked directly using its documented
 CLI. Retain the flags and explicit library profile printed by the supported command.
 
-The cumulative `python3 tools/test.py` path delegates all 37 migrated suite identities to Hastur,
+The cumulative `python3 tools/test.py` path delegates all 45 migrated suite identities to Hastur,
 records its command/log/verdict and hashes each source and `.output` file. There is no second
 Python compile/run path for those suites in the supported cumulative runner. The remaining
-22 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
+14 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
 profiles and negative checks. CI already calls that cumulative path, so the native runner migration
 needs no duplicate workflow/job or second execution of migrated suites.
 
@@ -492,3 +492,13 @@ Local checked-LTO verification: **37 suites**, **18 ARC observations**, and **5,
 requests** (2,949 availability; 2,904 work queues) pass. **239 harness tests** pass with the existing
 skip. Evidence: `build/nim-tests/remaining/state-reports-*` and `state-reports/corpora.json`.
 Migration total: **37/59; 22 remaining**. Next: fixed/numeric state families. Linux CI pending.
+
+
+## Fixed/numeric state batch
+
+Privileges, statistics, outputs and account metadata public/private suites pass through Hastur
+with original assertion bodies and production crypto profiles. **45 suites**, **22 ARC observations**,
+and **7,700 independent requests** pass (1,390 privileges; 2,615 statistics; 1,901 outputs;
+1,794 accounts), plus **239 harness tests** with the existing skip. Evidence:
+`build/nim-tests/remaining/state-fixed-*` and `state-fixed/corpora.json`.
+Migration total: **45/59; 14 remaining**. Next: service values, requests and composition.

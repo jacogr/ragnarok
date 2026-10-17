@@ -1,6 +1,6 @@
 ## Supplementary immutable lifetime, copied tuple, independent population and result/index guards.
 import std/[assertions, syncio]
-import ../../src/codec/[state_statistics, bounded]
+import ../../../src/codec/[state_statistics, bounded]
 
 ## The retained snapshot outlives local source/wire arrays and preserves all statistical families.
 proc captured(config: ActivityConfig): ActivitySnapshot =

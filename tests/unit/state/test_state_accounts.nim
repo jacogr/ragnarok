@@ -1,6 +1,6 @@
 ## Fixed-value metadata contracts: no heap owner, independent source/input copies and failure guards.
 import std/[assertions, syncio]
-import ../../src/codec/[state_accounts, bounded]
+import ../../../src/codec/[state_accounts, bounded]
 
 ## All fixed decoded fields survive both input mutation and local scope exit without a retained owner.
 proc captured(): ServiceMetadataRead =

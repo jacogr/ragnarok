@@ -924,20 +924,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_statistics_private' and row['passed']:
-            # Independent epoch, core and service copies retire with all retained/replaced owner handles.
-            release = re.search(r'STATISTICS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
-                report['statistics_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_privileges_private' and row['passed']:
-            # Immutable roles/assigners/pairs and all retained/replaced handles retire at final ARC release.
-            release = re.search(r'PRIVILEGES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
-                report['privileges_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_composition_private' and row['passed']:
             # Replaced snapshots, copied entries and late native refusals release all final scoped references.
             release = re.search(r'COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -959,20 +945,6 @@ def main():
             if release is not None:
                 # Public live occupancy describes this warmed workload, not RSS or general leak freedom.
                 report['service_values_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_accounts_private' and row['passed']:
-            # Metadata copies contain no references; every fresh encoded entry must still retire at scope exit.
-            release = re.search(r'ACCOUNTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # This public allocator observation covers only the warmed workload, never RSS or general leak freedom.
-                report['accounts_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_outputs_private' and row['passed']:
-            # Replaced log owners and detached fixed pairs retire after their final scoped reference.
-            release = re.search(r'OUTPUTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Observe public live allocator occupancy for this workload, never RSS or private counts.
-                report['outputs_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'crypto_seeds' and row['passed']:
             # Exact-storage wipe checks run while memory is live; occupancy must return after final-owner release.
             release = re.search(r'CRYPTO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

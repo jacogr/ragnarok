@@ -1,6 +1,7 @@
+import ../../support/arc_evidence
 ## Project-only fixed-copy, preflight and byte-position checks; metadata has no heap-backed owner.
 import std/[assertions, syncio]
-include ../../src/codec/state_accounts
+include ../../../src/codec/state_accounts
 
 ## Construct complete fixed fields independently of decoder offsets or encoded payloads.
 proc source(marker: byte): ServiceMetadata =
@@ -76,5 +77,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "ACCOUNTS_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_accounts_private", 1000, beforeRelease, afterRelease)
+echo "ACCOUNTS_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony account metadata: escaped/replaced fixed values, byte positions and scoped release passed"

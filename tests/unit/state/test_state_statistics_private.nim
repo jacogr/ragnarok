@@ -1,6 +1,7 @@
+import ../../support/arc_evidence
 ## Project-only ownership, copied statistics, selector and arithmetic checks; no private runtime hooks.
 import std/[assertions, syncio]
-include ../../src/codec/state_statistics
+include ../../../src/codec/state_statistics
 
 ## Independent current/previous populations model a resized epoch with bounded core/service work.
 proc policy(): ActivityConfig =
@@ -125,5 +126,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "STATISTICS_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_statistics_private", 1000, beforeRelease, afterRelease)
+echo "STATISTICS_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapter 13: resized epochs, retained/replaced families, copied values and scoped ARC release passed"

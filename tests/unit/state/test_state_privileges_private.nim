@@ -1,6 +1,7 @@
+import ../../support/arc_evidence
 ## Project-only lifetime, numeric-order, copied-value and host-arithmetic tests; no private runtime hooks.
 import std/[assertions, syncio]
-include ../../src/codec/state_privileges
+include ../../../src/codec/state_privileges
 
 ## Small explicit per-component work and byte ceilings include every fixed role and dictionary count.
 proc policy(): PrivilegeConfig =
@@ -101,5 +102,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "PRIVILEGES_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_privileges_private", 1000, beforeRelease, afterRelease)
+echo "PRIVILEGES_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapter 12: retained/replaced roles, numeric dictionaries, copied fields and scoped ARC release passed"

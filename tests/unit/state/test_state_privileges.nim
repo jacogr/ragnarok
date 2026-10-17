@@ -1,6 +1,6 @@
 ## Supplementary snapshot, domain, index, late-failure and runtime variant-guard contracts.
 import std/[assertions, syncio]
-import ../../src/codec/[state_privileges, bounded]
+import ../../../src/codec/[state_privileges, bounded]
 
 ## A snapshot copied out of local scope retains independent fixed role/pair values.
 proc captured(config: PrivilegeConfig): PrivilegeSnapshot =
