@@ -68,7 +68,7 @@ class VerificationGroups(unittest.TestCase):
 
     # The compiler group must account for every historical check, including schemas and owner lowering.
     def test_guards_complete_inventory(self):
-        self.assertEqual(sum(test_guards.COUNTS.values()), 680)
+        self.assertEqual(sum(test_guards.COUNTS.values()), 681)
         report = {key: [dict(name=str(i), passed=True) for i in range(count)]
                   for key, count in test_guards.COUNTS.items()}
         self.assertTrue(test_guards.passed(report))

@@ -30,6 +30,18 @@ state, callbacks and retained mesh coordination; only lifecycle entry points are
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.
 
+## Full and light node modes
+
+The client will support full and light operation selected by a command-line mode flag. Startup
+will choose the corresponding mode-specific database; full and light data/schema requirements
+must remain separate. In-memory backends may also differ, sharing only operations with matching
+semantics. No database backend or mode flag is implemented by the current storage increment.
+
+`src/state/store.nim` is a complete-map in-memory execution store. Light-node verified roots,
+partial state and proofs require a separate appropriate contract; hashing partial data through
+this complete-map calculator cannot establish the full state root. Codecs and Merklization
+primitives remain shared, with mode selection at the application boundary.
+
 ## Implemented foundation
 
 - General naturals, fixed unsigned widths, strict Booleans, fixed/variable packed bitstrings,

@@ -5,6 +5,14 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 values. It reuses [the existing root calculator](state-trie.md); it neither changes T(state)
 nor interprets service namespaces. Sources and vectors remain at [their pins](pins.json).
 
+## Full/light mode boundary
+
+This store holds complete mappings for full-state execution. The planned CLI mode selects separate
+full-node and light-node databases, and may select distinct in-memory implementations. Light-node
+partial state, proof-backed reads and verified roots need a separate contract; a partial-map hash
+is not a complete state commitment. Shared codecs/crypto remain mode-independent. This PR adds no
+placeholder mode flag, light-state implementation, persistence schema or backend factory.
+
 ## First increment
 
 `src/state/store.nim` provides an owned map with atomic mutation batches and retained immutable
@@ -51,7 +59,7 @@ handles, all small resource ceilings and atomic failures. A 64-batch determinist
 checked against a separate four-slot model after every update. The observer profile injects first-hash
 and late-hash refusal, checks rollback/recovery and no-op/preflight behavior, and asserts equal
 live allocator occupancy across 1,000 isolated success/failure cycles after warmup.
-Four privacy probes run in `make check-guards`. The all-source gate discovers the new module.
+Five privacy probes run in `make check-guards`. The all-source gate discovers the new module.
 Existing trie/root corpora continue to own independent Merklization conformance evidence.
 
 ## Published mapping replay
@@ -70,7 +78,21 @@ views, deleted-key absence, and atomic rejection with an insufficient batch-coun
 The main unit report retains all fourteen source identities and the generated fixture hash.
 This is storage replay, not execution of the published blocks or their state transitions.
 
-Next: complete public accessor misuse/contract probes and the remaining boundary/resource
-regressions, then close this bounded storage PR. The request-domain release checkpoint and all
-other [upstream policy dispositions](state-clarifications.md) remain unchanged. Disk storage,
-proofs, incremental trie updates and non-PVM execution belong to separate work.
+## Public contracts and boundary completion
+
+Nine isolated runtime probes reject extraction from default/failed construction, atomic-write and
+lookup results, and reject commitment/length/byte reads through default snapshots/views. Each
+requires the intended checked precondition, `AssertionDefect` and exit status 1; valid controls
+must succeed under the same native profile. Five privacy probes also prevent exposing owners,
+coordinates/payload storage or retagging a result into success.
+
+Native boundary tests cover empty/1/31/32/33-byte leaf updates, final-bit key divergence (250-node
+exact topology), deleting an absent key with zero map/node budgets, and maximum uint64 policy
+ceilings with ordinary bounded inputs. Observer checks prove a one-below topology budget rejects
+before any hashing and preserves the old head. No unsafe huge sequence is fabricated.
+
+The scoped storage checklist is complete locally. View-only and snapshot-only returns also
+survive destruction of every originating store/result/local in their producer scopes. Non-PVM state-transition
+execution is the next suggested PR; disk persistence, incremental trie updates, proofs and the
+separate light-store contract remain future work. The request-domain release checkpoint and all
+other [upstream policy dispositions](state-clarifications.md) remain unchanged.

@@ -24,8 +24,27 @@ proc read(snapshot: StateStoreSnapshot, index: byte): seq[byte] =
   assert view.byteLength == copied.len
   copied
 
+## Return only a retained view so all originating stores, results, snapshots and caller bytes die here.
+proc scopedValue(): StateValue =
+  var source = @[StateEntry(key: key(3), value: @[41'u8, 42, 43])]
+  let made = newStateStore(source, policy())
+  assert made.error == StateStoreError.None
+  result = made.value.snapshot.value.lookup(key(3)).value
+  source[0].value[0] = 99
+  source.setLen(0)
+
+## Return only a snapshot; it must retain its mapping after every originating local leaves scope.
+proc scopedSnapshot(): StateStoreSnapshot =
+  let made = newStateStore(@[StateEntry(key: key(2), value: @[51'u8, 52])], policy())
+  assert made.error == StateStoreError.None
+  made.value.snapshot.value
+
 ## Cover owned input/output, atomic mixed writes, snapshots, missing/empty and independent handles.
 proc semantics() =
+  let escaped = scopedValue()
+  assert escaped.bytes == @[41'u8, 42, 43]
+  let historical = scopedSnapshot()
+  assert historical.read(2) == @[51'u8, 52]
   let limits = policy()
   let absent = default(StateStoreResult[StateStore])
   assert absent.error == StateStoreError.Uninitialized
@@ -186,7 +205,70 @@ proc histories() =
     assert array[32, byte](root.value.root) == array[32, byte](applied.value.commitment.root)
     assert array[32, byte](before.commitment.root) == oldRoot
 
+## Cover leaf representation transitions, full-key ordering and zero/high resource domains without unsafe inputs.
+proc boundaries() =
+  let limits = policy()
+  let made = newStateStore([], limits)
+  assert made.error == StateStoreError.None
+  var state = made.value
+  # Replace the same leaf through empty, inline and hashed-value sizes, retaining the preceding view.
+  for size in [0, 1, 31, 32, 33, 32, 1, 0]:
+    let before = state.snapshot.value
+    var bytes = newSeq[byte](size)
+    for i in 0..<bytes.len: bytes[i] = byte(i+size) # Distinct payloads detect stale/hash-boundary updates.
+    let expected = stateTrieRoot(@[StateEntry(key: key(0), value: bytes)], limits.trie)
+    assert expected.error == StateTrieError.None
+    let changed = state.apply(@[StateWrite(key: key(0), kind: StateWriteKind.Put, value: bytes)])
+    assert changed.error == StateStoreError.None
+    assert array[32, byte](changed.value.commitment.root) == array[32, byte](expected.value.root)
+    let held = changed.value.lookup(key(0)).value
+    assert held.byteLength == size and held.bytes == bytes
+    if before.commitment.entries == 1:
+      # Even resizing across the leaf boundary cannot mutate the old retained version.
+      assert before.lookup(key(0)).error == StateStoreError.None
+    if size > 0:
+      # Mutating the caller buffer after apply must not alter the retained view.
+      let original = held.bytes[0]
+      bytes[0] = bytes[0] xor 255
+      assert held.bytes[0] == original
+  var last = default(array[31, byte])
+  last[30] = 1
+  let close = StateKey(last)
+  let deep = StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(2), perValue: ByteLimit(1),
+    totalValueBytes: ByteLimit(2), nodes: TrieNodeLimit(250)), writes: ElementLimit(2),
+        writeValueBytes: ByteLimit(2))
+  let empty = newStateStore([], deep)
+  assert empty.error == StateStoreError.None
+  state = empty.value
+  let changed = state.apply(@[StateWrite(key: close, kind: StateWriteKind.Put, value: @[2'u8]),
+    StateWrite(key: key(0), kind: StateWriteKind.Put, value: @[1'u8])])
+  assert changed.error == StateStoreError.None and changed.value.commitment.nodes == 250
+  assert changed.value.lookup(close).value.bytes == @[2'u8]
+  assert changed.value.lookup(key(0)).value.bytes == @[1'u8]
+  let removed = state.apply(@[StateWrite(key: close, kind: StateWriteKind.Delete)])
+  assert removed.error == StateStoreError.None and removed.value.commitment.nodes == 1
+  assert removed.value.lookup(close).error == StateStoreError.MissingKey
+  var zero = default(StateStoreLimits)
+  zero.writes = ElementLimit(1)
+  let none = newStateStore([], zero)
+  assert none.error == StateStoreError.None
+  state = none.value
+  # An absent delete fits zero map/value/node budgets and must not insert an empty leaf.
+  let absent = state.apply(@[StateWrite(key: key(3), kind: StateWriteKind.Delete)])
+  assert absent.error == StateStoreError.None and absent.value.commitment.entries == 0
+  assert array[32, byte](absent.value.commitment.root) == default(array[32, byte])
+  let maximum = StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(high(uint64)),
+    perValue: ByteLimit(high(uint64)), totalValueBytes: ByteLimit(high(uint64)),
+        nodes: TrieNodeLimit(high(uint64))),
+    writes: ElementLimit(high(uint64)), writeValueBytes: ByteLimit(high(uint64)))
+  let wide = newStateStore([], maximum)
+  assert wide.error == StateStoreError.None
+  state = wide.value
+  assert state.apply(@[StateWrite(key: key(0), kind: StateWriteKind.Put, value: newSeq[byte](
+      33))]).error == StateStoreError.None
+
 semantics()
 policies()
 histories()
+boundaries()
 echo "PASS state store: owned values, stable snapshots, atomic batches and exact resource policies"

@@ -51,6 +51,28 @@ proc cycle() =
   assert after.value.lookup(zero).value.bytes == @[9'u8]
   assert retained.bytes == newSeq[byte](33)
 
+## Topology rejection drops the candidate before hashing, including at maximum shared-prefix depth.
+proc topology() =
+  fail(0)
+  var raw = default(array[31, byte])
+  raw[30] = 1
+  let limits = StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(2), perValue: ByteLimit(0),
+    totalValueBytes: ByteLimit(0), nodes: TrieNodeLimit(249)), writes: ElementLimit(1),
+        writeValueBytes: ByteLimit(0))
+  let made = newStateStore(@[StateEntry(key: default(StateKey))], limits)
+  assert made.error == StateStoreError.None
+  var state = made.value
+  let before = state.snapshot.value
+  fail(1)
+  let denied = state.apply(@[StateWrite(key: StateKey(raw), kind: StateWriteKind.Put)])
+  assert denied.error == StateStoreError.LimitExceeded and hashCalls() == 0
+  assert state.snapshot.value.commitment.entries == 1
+  assert array[32, byte](before.commitment.root) == array[32, byte](
+      state.snapshot.value.commitment.root)
+  fail(0)
+
+topology()
+
 # Warm allocator setup before checking acyclic owners are released through success and rollback.
 for i in 0..<25: cycle()
 let beforeRelease = getOccupiedMem()
