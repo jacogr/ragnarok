@@ -13,17 +13,19 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 73 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
+| `check-unit` | 73 native suites and 41 corpora | Native units/codecs |
+| `check-failures` | 1,402 runtime behavior/contract probes plus store positive controls | Runtime failures/contracts |
 | `check-guards` | 695 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
-`make check` runs all five locally; CI schedules them independently and concurrently on separate
+`make check` runs all six locally; CI schedules them independently and concurrently on separate
 VMs. Each target provisions its own dependencies and writes its own report. There is no CI
 `needs` chain or duplicated Python discovery. `make unit` remains a quick native-only subset;
 `make runtime` aliases `check-unit`, and `make modules` aliases `check-modules`.
 
 Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
-`build/tests/guards/` (compiler rejections) and `build/tests/e2e/`. Combined native coverage remains
+`build/tests/failures/` (runtime contracts), `build/tests/guards/` (compiler rejections) and
+`build/tests/e2e/`. Combined native coverage remains
 73 + 6 = 79 profiles. The new [state store](../spec/state-store.md) has three native profiles and
 five privacy probes and nine isolated runtime misuse checks. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
@@ -54,6 +56,27 @@ The [validator rotation](../spec/validator-rotation.md) adds two native suites, 
 roster/root projections and four compiler/four runtime result guards. Atomic C(4)/C(8)/C(9)
 publication preserves schedules/accumulators and is verified against ring/store refusal, exact
 chapter parsing, aggregate budgets and historical snapshot lifetimes.
+
+## Runtime failure job split (2026-10-17)
+
+`make check-failures` selects `tools/test_runtime.py --group failures`; the default remains
+unit/corpus verification. Both groups reuse the same checked native build profile and retain
+separate caches, logs, stale-report invalidation and summaries. Compiler rejection checks remain
+in `check-guards`. No new Python launcher or production behavior is introduced.
+
+Against a fresh combined run on master `573f000`, the separated runs preserve all 73 suite
+identities/verdicts, all 45 runtime families (1,402 records) in their original order, and the store
+positive controls. All 41 corpora pass; 40 stable corpus records match after excluding process
+logging/timing. The QUIC corpus regenerates certificates during existing setup, so its DER-derived
+request count and hashes vary between runs (25,655 versus 25,654 here). An AST comparison also
+confirms that all 503 original workload statements occur exactly once across the extracted groups,
+excluding the clarified runtime log labels.
+
+Reproduce with `make check-unit check-failures check-guards check-python`. Local baseline, split
+logs and inventory comparison are under `build/tests/failure-split-baseline/`; group reports remain
+at the paths above. The Python safeguards check missing/duplicate/failed records, disjoint report
+ownership, independent summaries, clean Make bootstrap and failure propagation through `tee`.
+Linux scheduling and elapsed-time effects require the PR CI run; no speedup is claimed locally.
 
 ## What the investigation found
 

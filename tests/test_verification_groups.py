@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
+import test_runtime
 import test_guards
 import test_e2e
 import test_python
@@ -41,7 +42,7 @@ class VerificationGroups(unittest.TestCase):
             # Command planning exercises both hosts without executing an unrelated compiler or native ABI.
             with self.subTest(system=system), patch('native_checks.platform.system', return_value=system):
                 caches = set()
-                for group in ('unit', 'e2e'):
+                for group in ('unit', 'failures', 'e2e'):
                     # Equal source names in different groups must never share executable or compiler outputs.
                     checks = NativeChecks(ROOT/'build/fixture-groups'/group)
                     with patch.object(checks, 'command', return_value=dict(exit_code=0)) as command:
@@ -55,7 +56,7 @@ class VerificationGroups(unittest.TestCase):
                         self.assertIn(flag, arguments)
                     self.assertEqual('--passL:-fuse-ld=lld' in arguments, system == 'Linux')
                     caches.add(next(arg for arg in arguments if str(arg).startswith('--nimcache:')))
-                self.assertEqual(len(caches), 2)
+                self.assertEqual(len(caches), 3)
 
     # The native unit runner cannot silently grow another full Python discovery or live E2E invocation.
     def test_unit_group_has_no_e2e_or_discovery(self):
@@ -84,6 +85,53 @@ class VerificationGroups(unittest.TestCase):
         tree = ast.parse((ROOT/'tools/test_runtime.py').read_text())
         functions = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
         self.assertNotIn('compile_rejections', functions)
+
+    # Missing, duplicate and failed probes fail their own job without borrowing unit/corpus success.
+    def test_runtime_failure_inventory(self):
+        self.assertEqual(sum(test_runtime.FAILURE_COUNTS.values()), 1402)
+        report = {key: [dict(name=str(index), passed=True) for index in range(count)]
+                  for key, count in test_runtime.FAILURE_COUNTS.items()}
+        report['store_controls'] = dict(passed=True)
+        self.assertTrue(test_runtime.failures_passed(report))
+        for key in test_runtime.FAILURE_COUNTS:
+            # A fixed complete inventory rejects missing rows, duplicates and a failed diagnostic predicate.
+            with self.subTest(group=key):
+                self.assertFalse(test_runtime.failures_passed({**report, key: report[key][1:]}))
+                self.assertFalse(test_runtime.failures_passed({**report, key: [report[key][0]]*len(report[key])}))
+                self.assertFalse(test_runtime.failures_passed({**report, key: [dict(row, passed=False) for row in report[key]]}))
+        self.assertFalse(test_runtime.failures_passed({**report, 'store_controls': dict(passed=False)}))
+        self.assertFalse(test_runtime.failures_passed({**report, 'suites': []}))
+        self.assertFalse(test_runtime.failures_passed({**report, 'extra_corpus': dict(passed=True)}))
+
+    # All suite identities and reference corpora must appear exactly once in the unit-owned evidence.
+    def test_unit_complete_inventory(self):
+        report = dict(suites=[dict(name=name, passed=True) for name in UNIT_SUITES],
+                      **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES})
+        self.assertEqual(len(test_runtime.CORPUS_NAMES), 41)
+        self.assertTrue(test_runtime.unit_passed(report))
+        self.assertFalse(test_runtime.unit_passed({**report, 'suites': report['suites'][1:]}))
+        self.assertFalse(test_runtime.unit_passed({**report, 'suites': [report['suites'][0]]*len(UNIT_SUITES)}))
+        self.assertFalse(test_runtime.unit_passed({**report, 'runtime': []}))
+        for name in test_runtime.CORPUS_NAMES:
+            # Every independent reference is mandatory; no extra or failed corpus may disappear into an aggregate.
+            with self.subTest(corpus=name):
+                missing = dict(report)
+                del missing[name]
+                self.assertFalse(test_runtime.unit_passed(missing))
+                self.assertFalse(test_runtime.unit_passed({**report, name: dict(passed=False)}))
+        self.assertFalse(test_runtime.unit_passed({**report, 'extra_corpus': dict(passed=True)}))
+
+    # Runtime summary rows report their actual verdicts independently of both other native jobs.
+    def test_failure_summary_scope(self):
+        from summarize_tests import summarize
+        report = dict(status='failed', store_controls=dict(passed=False),
+                      **{key: [dict(passed=False)] for key in test_runtime.FAILURE_COUNTS})
+        text = summarize(report, 'failures')
+        self.assertIn('| store | 0 | 1 |', text)
+        self.assertIn('Store positive controls: Fail', text)
+        self.assertNotIn('Native suites:', text)
+        self.assertNotIn('Independent corpora:', text)
+        self.assertNotIn('Compilation rejections:', text)
 
     # Even a successful unittest exit must not claim coverage when discovery found no tests.
     def test_empty_python_discovery_fails_fresh(self):

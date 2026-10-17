@@ -83,9 +83,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   `make check` (alias `make test`) for complete verification. Make owns setup dependencies and
   command sequencing; `make clean` removes all of `build/`.
   `make check` must provision tools/sources/native dependencies without project-specific pre-steps.
-  CI runs `check-modules`, `check-python`, `check-unit`, `check-guards` and `check-e2e` as independent parallel
-  jobs; use the affected group locally and `make check` for all five. Nim 2 is a historical measurement control, never a second
-  production target. Keep compiler and dependency sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
+  CI runs `check-modules`, `check-python`, `check-unit`, `check-failures`, `check-guards` and
+  `check-e2e` as independent parallel jobs; use the affected group locally and `make check` for
+  all six. Nim 2 is a historical measurement control, never a second production target. Keep compiler and dependency sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
   Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
   review. Upstream #542 now resolves the domain overlap, but adoption awaits compatible pins.
@@ -127,7 +127,8 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   Native unit/corpus checks and E2E networking must not launch duplicate Python discovery or
   claim another group's verdict. Preserve every group's inventory, standalone setup, failure status,
   logs and summary. E2E owns peer-entry selftests and live peer/service/resilience/soak/offload work;
-  unit checks own component suites, independent corpora and runtime misuse probes;
+  unit checks own component suites and independent corpora;
+  `check-failures` owns runtime assertion/contract probes and their positive controls;
   compiler guards own all 695 contract/privacy/nominal/schema/ownership rejection checks.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
