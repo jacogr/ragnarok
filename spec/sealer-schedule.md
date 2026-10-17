@@ -65,10 +65,40 @@ Two compiler privacy checks and two runtime extraction probes protect the result
 hashes and native evidence remain under ignored `build/tests/`. M1 codec behavior and outstanding
 specification checkpoints are unchanged; these tests do not establish complete Safrole execution.
 
-## Next bounded work in this PR
+## Atomic working-store publication
 
-Add atomic working-store publication of the candidate C(4), retaining the parent snapshot through
-rotation, entropy/time and ticket admission. Check all required stage inputs and test no-op,
-rollback/budget refusal, snapshot lifetime and published pipeline projections. Header epoch/winner
-marker validation follows as a separate slice; seal authentication and complete block execution
-remain later work.
+`src/state/sealer_state.nim` exposes `selectSafroleScheduleState`: the caller retains the immutable
+parent snapshot before rotation/admission and supplies the staged full-state store, target slot and
+finite schedule policy. Parent C(4)/C(11) supply the original contest and time. Staged
+C(4)/C(6)/C(8)/C(11) supply admitted state, posterior entropy, posterior active roster and recorded
+target time. Missing chapters return `MissingState`; default handles return `Uninitialized`.
+Fixed chapters must be exact, dynamic byte ceilings are checked before dynamic copies, and staged
+time must equal target. The core then applies its exact parsing, canonical contest and slot rules.
+
+Only C(4) can change. A differing candidate is committed through the store's private one-entry
+batch; hash, map, batch or chapter refusal preserves every entry and root at adapter entry.
+Parent snapshots survive both success and failure. A byte-identical validated candidate returns
+the existing snapshot without writes or root hashing, including under a zero-write budget.
+Fallback derivation still performs its required hashes before byte equality can be established.
+The private publication result has guarded extraction and no failure payload.
+
+This is a working-store substep, not an atomic whole-Safrole transition. Refusal does not undo
+previous rotation, entropy/time or admission work. Recorded time does not prove the lineage of
+supplied stage inputs; the eventual coordinator must authenticate ordering and publish canonical
+state only after every stage succeeds. This complete-map contract is for full nodes, not partial
+light-state Merklization.
+
+The second native profile verifies all 33 accepted published cases through actual entropy/time,
+authenticated ticket admission and this adapter. Pending/root and active rotation projections are
+supplied from the same pinned vectors; this suite does not claim to execute rotation or authenticate
+the entropy VRF. Every complete posterior C(4) matches, other staged chapters remain unchanged,
+and the parent remains readable. Authored cases cover exact/one-short resource budgets, required
+chapter damage, stage-time mismatch, first/late fallback and store-hash refusal, recovery, extracted
+copy independence, zero-write no-ops and 1,000 scoped ARC cycles. Two compiler privacy guards and
+two isolated runtime extraction probes protect publication results.
+
+## Next bounded work
+
+Schedule selection and atomic C(4) working-store publication complete this PR's scope. Next is
+header epoch/winner marker validation in a separate PR. Seal authentication and whole-block
+execution remain later increments; retain the parent contest for marker selection as well.

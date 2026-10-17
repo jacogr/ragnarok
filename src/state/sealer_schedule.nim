@@ -10,7 +10,7 @@ type
     tailStart*: EpochSlots
   ## Failure alternatives carry no schedule, partial fallback keys or candidate chapter.
   SealerScheduleError* {.pure.} = enum
-    Uninitialized, None, InvalidConfig, InvalidSlot, InvalidState, LimitExceeded,
+    Uninitialized, None, MissingState, InvalidConfig, InvalidSlot, InvalidState, LimitExceeded,
       LengthOverflow, BackendFailure
   ## Only complete success retains a private immutable C(4) candidate, with no borrowed input lifetime.
   SealerScheduleResult* = object

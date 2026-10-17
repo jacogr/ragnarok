@@ -29,7 +29,12 @@ def prepare(folder):
             staged = {**after, 'gamma_s': before['gamma_s']}
             rows.append(' '.join(map(str, [profile+'/'+name.rsplit('/', 1)[-1], cores, epoch, tail,
                 before['tau'], case['input']['slot'], after['eta'][2][2:], safrole(before),
-                safrole(staged), roster(after['kappa']), safrole(after)])))
+                safrole(staged), roster(after['kappa']), safrole(after),
+                safrole({**before, 'gamma_k': after['gamma_k'], 'gamma_z': after['gamma_z']}),
+                ''.join(word[2:] for word in before['eta']), case['input']['entropy'][2:],
+                ''.join(word[2:] for word in after['eta']),
+                ''.join(f"{v['attempt']:02x}"+v['signature'][2:] for v in case['input']['extrinsic']) or '-',
+                3 if profile == 'tiny' else 16])))
             sources.append(dict(path=name, sha256=digest))
     assert len(rows) == 33 # Missing published cases cannot silently shrink the native workload.
     folder.mkdir(parents=True, exist_ok=True)

@@ -139,7 +139,6 @@ publication result. Runtime assertion probes run in the independent `check-failu
 ## Next bounded work
 
 Ticket admission and its C(4) adapter are complete within this documented scope. The next
-[schedule-selection core](sealer-schedule.md) is implemented; atomic working-store publication
-is its follow-up. Header epoch/winner marker validation follows separately. Seal authentication
+[schedule selection and atomic working-store publication](sealer-schedule.md) are implemented. Header epoch/winner marker validation follows separately. Seal authentication
 and complete Safrole/block execution remain later increments. Retain the parent accumulator
 through all stages rather than using newly admitted tickets for schedule/marker selection.

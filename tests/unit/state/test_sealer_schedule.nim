@@ -266,7 +266,7 @@ proc published(text: string) =
   assert rows.len == 33
   for line in rows:
     let fields = line.splitWhitespace
-    assert fields.len == 11
+    assert fields.len == 17
     var config = policy(int(number(fields[2])), int(number(fields[3])))
     config.state.validators = rotationRosterConfig(int(number(fields[1])))
     let seed = unhex(fields[6])
