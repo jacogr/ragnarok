@@ -219,7 +219,18 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
         self.assertEqual(variable, 'RAGNAROK_BLOCK_FIXTURES')
         sources = {path for path, _ in required} | {native_tests.UNIT_FIXTURES['guarantees'][1]}
-        self.assertEqual(set(native_tests.unit_fixture_sources()), sources)
+        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT})
+
+    # State report consumers must retain the same independently authored byte fixture and checksum.
+    def test_state_report_reference(self):
+        from state_availability_oracle import record
+        self.assertEqual(native_tests.STATE_REPORT.read_bytes(), record(0)['report'])
+        for case in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private'):
+            # Each public/private consumer must validate its exact input before native execution.
+            variable, target, required = native_tests.UNIT_FIXTURES[case]
+            self.assertEqual(variable, 'RAGNAROK_STATE_REPORT')
+            self.assertEqual(target, native_tests.STATE_REPORT)
+            self.assertEqual(required, ((target, hashlib.sha256(target.read_bytes()).hexdigest()),))
 
     # One valid sibling cannot mask a missing or changed later fixture in the same directory.
     def test_block_fixture_group_rejection(self):

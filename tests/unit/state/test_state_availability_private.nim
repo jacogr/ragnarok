@@ -1,11 +1,13 @@
+import ../../support/arc_evidence
 ## Project-only retained child/report, immutable copy and arithmetic checks using public allocator observations.
-import std/[assertions, cmdline, syncio]
-import ../../src/codec/[report_owned, owned]
-include ../../src/codec/state_availability
+import std/[assertions, envvars, syncio]
+import ../../../src/codec/[report_owned, owned]
+include ../../../src/codec/state_availability
 var fixture: seq[byte] = @[]
 # Fixture I/O is trusted setup; unavailable input cannot count as coverage.
 try:
-  let text = readFile(paramStr(1))
+  assert getEnv("RAGNAROK_STATE_REPORT").len > 0, "missing independent report fixture"
+  let text = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   fixture = newSeq[byte](text.len)
   # Copy explicit octets rather than relying on string/sequence layouts.
   for i in 0..<text.len: fixture[i] = byte(text[i])
@@ -110,5 +112,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle(fixture)
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "AVAILABILITY_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_availability_private", 1000, beforeRelease, afterRelease)
+echo "AVAILABILITY_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapter 10: escaped/replaced parents, independent assignments, retained reports and scoped ARC release passed"

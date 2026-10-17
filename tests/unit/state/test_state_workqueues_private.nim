@@ -1,10 +1,12 @@
+import ../../support/arc_evidence
 ## Project-only ready/accumulated lifetime, copied-child and arithmetic checks; no private runtime hooks.
-import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_workqueues
+import std/[assertions, envvars, syncio]
+include ../../../src/codec/state_workqueues
 var fixture: seq[byte] = @[]
 # Fixture bytes come from the independent Python report equations and must be available before testing.
 try:
-  let text = readFile(paramStr(1))
+  assert getEnv("RAGNAROK_STATE_REPORT").len > 0, "missing independent report fixture"
+  let text = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   fixture = newSeq[byte](text.len)
   # Copy explicit octets without representation casts.
   for i in 0..<text.len: fixture[i] = byte(text[i])
@@ -170,5 +172,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle(fixture)
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "WORKQUEUES_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_workqueues_private", 1000, beforeRelease, afterRelease)
+echo "WORKQUEUES_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapters 14/15: retained/replaced rings, escaped reports, copied sets and scoped ARC release passed"

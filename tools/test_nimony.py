@@ -938,13 +938,6 @@ def main():
             if release is not None:
                 # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
                 report['privileges_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_availability_private' and row['passed']:
-            # Independent assignment/report children survive parent retirement and release with their final handles.
-            release = re.search(r'AVAILABILITY_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live occupancy covers this warmed fixture workload, not RSS or general leak freedom.
-                report['availability_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_composition_private' and row['passed']:
             # Replaced snapshots, copied entries and late native refusals release all final scoped references.
             release = re.search(r'COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
@@ -980,13 +973,6 @@ def main():
             if release is not None:
                 # Observe public live allocator occupancy for this workload, never RSS or private counts.
                 report['outputs_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_workqueues_private' and row['passed']:
-            # Escaped report children and replaced ring owners release their final references at scope exit.
-            release = re.search(r'WORKQUEUES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
-                report['workqueues_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'crypto_seeds' and row['passed']:
             # Exact-storage wipe checks run while memory is live; occupancy must return after final-owner release.
             release = re.search(r'CRYPTO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

@@ -39,3 +39,12 @@ directory. A missing/changed later child cannot be hidden by valid siblings. Har
 compare all six snapshots to the original oracle and ensure each member is included in cumulative
 source hashes. The native test requires explicit fixture configuration and rejects unavailable
 input; there is no fallback or production-encoder fixture generation.
+
+
+## State report input
+
+`state-report.bin` is exactly `state_availability_oracle.record(0)['report']`, the independent
+report previously generated for availability/work-queue tests. Its SHA-256 is
+`3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371`.
+The launcher verifies these bytes before setting `RAGNAROK_STATE_REPORT`; harness coverage
+compares them with the original oracle. Production codec output is never used to refresh it.

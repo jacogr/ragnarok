@@ -1,6 +1,6 @@
 ## Supplementary ring/source/copy/child-lifetime, typed owner/index and failure-guard contracts.
-import std/[assertions, cmdline, syncio]
-import ../../src/codec/[state_workqueues, report_owned, owned, bounded]
+import std/[assertions, envvars, syncio]
+import ../../../src/codec/[state_workqueues, report_owned, owned, bounded]
 
 ## Scope exit must not release the child report retained through a copied item observation.
 proc detached(report: OwnedReport, config: WorkQueueConfig): OwnedReport =
@@ -21,7 +21,8 @@ proc main() {.raises.} =
       perSlot: ElementLimit(3),
     totalItems: ElementLimit(3), perDependencies: ElementLimit(3), totalDependencies: ElementLimit(4),
     reportBytes: ByteLimit(100000), maxBytes: ByteLimit(100000))
-  let text = readFile(paramStr(1))
+  assert getEnv("RAGNAROK_STATE_REPORT").len > 0, "missing independent report fixture"
+  let text = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](text.len)
   for i in 0..<bytes.len: bytes[i] = byte(text[i]) # Authored fixture bytes, independent of parent construction.
   let report = decodeOwnedReport(bytes, 2)

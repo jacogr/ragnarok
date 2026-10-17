@@ -7,23 +7,13 @@ import platform
 from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
-UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private')
+UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'state_layout', 'state_trie', 'state_trie_private', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private')
 # These cases keep numeric allocation evidence as well as native equality assertions.
-ARC_SUITES = {'ownership': 'arc_release', 'report_snapshots': 'report_arc_release',
-              'guarantees': 'guarantee_arc_release', 'disputes': 'dispute_arc_release',
-              'work_package': 'package_arc_release', 'header': 'header_arc_release', 'block': 'block_arc_release',
-              'bits': 'bits_arc_release', 'collections': 'collection_arc_release', 'c2': 'c2_arc_release', 'state_trie_private': 'trie_arc_release',
-              'state_safrole': 'safrole_arc_release', 'state_authorization_private': 'authorization_arc_release',
-              'state_consensus_private': 'consensus_arc_release', 'state_disputes_private': 'state_disputes_arc_release',
-              'state_history_private': 'history_arc_release'}
+ARC_SUITES = {'ownership': 'arc_release', 'report_snapshots': 'report_arc_release', 'guarantees': 'guarantee_arc_release', 'disputes': 'dispute_arc_release', 'work_package': 'package_arc_release', 'header': 'header_arc_release', 'block': 'block_arc_release', 'bits': 'bits_arc_release', 'collections': 'collection_arc_release', 'c2': 'c2_arc_release', 'state_trie_private': 'trie_arc_release', 'state_safrole': 'safrole_arc_release', 'state_authorization_private': 'authorization_arc_release', 'state_consensus_private': 'consensus_arc_release', 'state_disputes_private': 'state_disputes_arc_release', 'state_history_private': 'history_arc_release', 'state_availability_private': 'availability_arc_release', 'state_workqueues_private': 'workqueues_arc_release'}
 UNIT_ROOT = ROOT/'tests/unit/codec'
 STATE_ROOT = ROOT/'tests/unit/state'
 # Preserve the production-only trie profile and observer-only refusal profiles in separate processes.
-UNIT_LINKS = {'state_layout': 'observer', 'state_trie': 'crypto', 'state_trie_private': 'observer',
-              'state_safrole': 'crypto', 'state_authorization': 'crypto', 'state_authorization_private': 'crypto',
-              'state_consensus': 'crypto', 'state_consensus_private': 'crypto',
-              'state_disputes': 'crypto', 'state_disputes_private': 'crypto',
-              'state_history': 'crypto', 'state_history_private': 'crypto'}
+UNIT_LINKS = {'state_layout': 'observer', 'state_trie': 'crypto', 'state_trie_private': 'observer', 'state_safrole': 'crypto', 'state_authorization': 'crypto', 'state_authorization_private': 'crypto', 'state_consensus': 'crypto', 'state_consensus_private': 'crypto', 'state_disputes': 'crypto', 'state_disputes_private': 'crypto', 'state_history': 'crypto', 'state_history_private': 'crypto', 'state_availability': 'crypto', 'state_availability_private': 'crypto', 'state_workqueues': 'crypto', 'state_workqueues_private': 'crypto'}
 # Fixture targets may be files or directories; each entry lists every byte source that must match its pin.
 GUARANTEE_FIXTURE = ROOT/'tests/fixtures/guarantee-report.bin'
 BLOCK_FIXTURES = ROOT/'tests/fixtures/block-tiny'
@@ -39,6 +29,12 @@ UNIT_FIXTURES = {
         (BLOCK_FIXTURES/'header.bin', 'c4f4658a9c04bca5d249c7ca5f14845bd012311213f6bb24076dcdddbb268fa2'),
     )),
 }
+
+# Shared independent report bytes retain availability and queued-report fixture identity.
+STATE_REPORT = ROOT/'tests/fixtures/state-report.bin'
+for case in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private'):
+    # Every consumer verifies the same exact source bytes before its native assertions execute.
+    UNIT_FIXTURES[case] = ('RAGNAROK_STATE_REPORT', STATE_REPORT, ((STATE_REPORT, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'),))
 
 
 # Resolve a migrated suite without introducing a second copy or a fallback to its old native path.

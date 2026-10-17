@@ -1,6 +1,6 @@
 ## Retained full-guarantee/report lifetimes, optional fields, independent slots and failure/index guards.
-import std/[assertions, cmdline, syncio]
-import ../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances]
+import std/[assertions, envvars, syncio]
+import ../../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances]
 
 ## Return a copied child after the temporary parent and all its handles leave scope.
 proc detachedChild(input: openArray[byte], config: AvailabilityConfig): AvailabilityAssignment =
@@ -15,7 +15,8 @@ proc main() {.raises.} =
   let config = AvailabilityConfig(guarantee: GuaranteeConfig(cores: CoreCount(2),
       validators: ValidatorCount(6),
     maxBytes: ByteLimit(2_000_000)), maxPresent: ElementLimit(2), maxBytes: ByteLimit(4_000_000))
-  let raw = readFile(paramStr(1))
+  assert getEnv("RAGNAROK_STATE_REPORT").len > 0, "missing independent report fixture"
+  let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var reportWire = newSeq[byte](raw.len)
   for i in 0..<raw.len: reportWire[i] = byte(raw[i]) # Fixture is independently encoded by the Python reference.
   let report = decodeOwnedReport(reportWire, 2)
