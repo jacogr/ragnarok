@@ -54,8 +54,23 @@ live allocator occupancy across 1,000 isolated success/failure cycles after warm
 Four privacy probes run in `make check-guards`. The all-source gate discovers the new module.
 Existing trie/root corpora continue to own independent Merklization conformance evidence.
 
-Next: replay the pinned published pre/post mappings through this store as initial state plus
-explicit write differences, checking every lookup and both roots. That will test storage updates;
-it will not claim execution of the blocks that produced those states. Published storage replay is
-not yet evidence supplied by this first increment. The request-domain release checkpoint and all
-other [upstream policy dispositions](state-clarifications.md) remain unchanged.
+## Published mapping replay
+
+A third native Hastur suite, `state_store_replay`, loads the original fourteen mappings from the
+seven sources listed in [the whole-state root audit](state-roots.md). The fixture preparer checks
+each already-pinned Git blob hash and independent root before preserving its original keys,
+values, root and node count in trusted text. No state component is re-encoded or repaired.
+Generated text and provenance JSON stay under `build/`; both native entry points prepare and
+hash-check their own fixture, so no earlier test run or inherited environment path is required.
+
+Native assertions derive unique-key write differences by a linear scan, separate from the store's
+sorted merge. Every pair checks all pre/post lookups, exact counts/nodes and published root bytes;
+forward batches, reversed batch order, inverse batches, retained pre/post snapshots and lookup
+views, deleted-key absence, and atomic rejection with an insufficient batch-count budget.
+The main unit report retains all fourteen source identities and the generated fixture hash.
+This is storage replay, not execution of the published blocks or their state transitions.
+
+Next: complete public accessor misuse/contract probes and the remaining boundary/resource
+regressions, then close this bounded storage PR. The request-domain release checkpoint and all
+other [upstream policy dispositions](state-clarifications.md) remain unchanged. Disk storage,
+proofs, incremental trie updates and non-PVM execution belong to separate work.

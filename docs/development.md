@@ -50,7 +50,7 @@ reference, negative-probe and orchestration responsibilities.
 | `make clean` | Remove all of `build/`, including installed tools and cached archives |
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
-| `make unit` | All 61 Hastur suites with their exact native/fixture profiles |
+| `make unit` | All 62 Hastur suites with their exact native/fixture profiles |
 | `make check-modules` / `make modules` | Every-source semantic compilation gate |
 | `make check-python` | Python reference/tooling/provenance tests |
 | `make check-unit` / `make runtime` | Native unit suites, independent corpora and runtime misuse probes |

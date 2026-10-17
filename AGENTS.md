@@ -88,7 +88,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Keep upstream code/vectors in pinned submodules. Initialize with `python3 tools/setup_submodules.py`.
   Do not overwrite upstream edits, advance gitlinks or change locked versions without an authorized upgrade.
 - Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
-  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 61
+  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 62
   ordinary suites run through the native runner; preserve explicit output, linking and fixture contracts. Preserve
   independent Python references and process/tooling orchestration. Remove superseded standalone
   runners once the supported path preserves their coverage; do not keep duplicate build entry points.

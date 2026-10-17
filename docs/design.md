@@ -14,8 +14,8 @@ and caller-owned storage. Default/failed tagged results carry no values or progr
 
 `src/state/` owns the in-memory serialized-state store: atomic write batches publish complete
 immutable snapshots and recompute roots through the existing Merklization implementation.
-See [the storage contract](../spec/state-store.md). Published pre/post storage replay is the next
-bounded increment; this is not state-transition execution.
+See [the storage contract](../spec/state-store.md). Native replay verifies seven published pre/post mapping pairs; this is not state-transition
+execution.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
