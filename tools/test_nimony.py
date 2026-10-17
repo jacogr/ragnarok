@@ -2267,6 +2267,19 @@ def main():
             report['quic_mesh_disruption'] = dict(passed=False, failure=str(error))
     announce('retained IPv6 mesh/reconnect and wrong identity', report['quic_mesh']['passed'])
     announce('retained IPv6 peer-death recovery', report['quic_mesh_disruption']['passed'])
+    # Recreate both endpoints in the same processes; retained-engine tests cannot establish post-destruction cleanup.
+    report['quic_endpoint_soak'] = dict(passed=False)
+    if report['quic_peer_build']['exit_code'] == 0:
+        from test_quic_soak import pairing as endpoint_soak
+        try:
+            # Preserve the original forty sessions, eight warmup samples, mixed streams and finite budgets.
+            result = endpoint_soak('nim', 'nim', quic_fixtures, 40, 8,
+                                   binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'endpoint-soak')
+            report['quic_endpoint_soak'] = dict(passed=True, result=result)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # Finalizers retain resource evidence and kill live peers; later corpus success cannot hide failure.
+            report['quic_endpoint_soak'] = dict(passed=False, failure=str(error))
+    announce('same-process endpoint teardown soak', report['quic_endpoint_soak']['passed'])
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -2927,6 +2940,7 @@ def main():
                    and report['quic_protocol_corpus']['passed']
                    and report['quic_mesh_harness']['exit_code'] == 0
                    and report['quic_mesh']['passed'] and report['quic_mesh_disruption']['passed']
+                   and report['quic_endpoint_soak']['passed']
                    and report['quic_lifecycle_harness']['exit_code'] == 0
                    and report['quic_service']['passed'] and report['quic_integration_service']['passed']
                    and report['quic_peer_harness']['exit_code'] == 0 and report['ci_harness']['exit_code'] == 0

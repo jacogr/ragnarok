@@ -1,6 +1,6 @@
 # Nimony nightly trial
 
-Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-16.
+Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-17.
 Status: **63 native suites, forty-one independent corpora, 1,368 runtime misuse rejections
 and 670 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
@@ -17,8 +17,9 @@ release-reference scope. M3 now has a local UDP/readiness and linked native-tran
 slice, plus shared SAN/DER identity, structural framing and enabled CE fixture composition.
 The one-shot authenticated CE 143 peer matrix and retained service/integrated digest lifecycle
 workloads now pass locally. Retained IPv6 mesh/reconnect and twelve peer-death recovery rounds
-now pass too; all 45 production modules pass independent semantic compilation. Remaining
-admission/resilience, enabled offload and Linux parity remain unverified.
+now pass too; same-process endpoint destruction also passes forty sessions. All 45 production
+modules pass independent semantic compilation. Remaining admission/resilience, enabled offload
+and Linux runtime parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. At the maintainer's request, the existing
 `.github/workflows/linux.yml` is now the single Linux workflow and uses the pinned Nimony nightly
@@ -2394,11 +2395,68 @@ Results are local macOS ARM64 on pinned Nimony 0.6.3. Implemented-scope M1/M2 re
 normative gates are unchanged. Same-process repeated endpoint teardown, remaining admission/
 resilience coverage, enabled proof offload, Linux execution and local setup cutover remain open.
 
+## Forty-sixth bounded increment: same-process endpoint destruction soak
+
+The original `tests/test_quic_soak.py` workload now accepts isolated compiler binary and evidence
+paths, matching the retained service/mesh harnesses. The cumulative Nimony runner gates its own
+checked peer through **forty sessions in the same two processes**, discarding only the original
+eight warmup observations. Each session destroys both transports, UDP sockets, dispatcher
+registrations, callback owners and stream buffers before the next sample/release barrier. This
+is distinct from retained-engine idle sampling. No production behavior, protocol setting,
+dependency pin, timeout, warmup or resource allowance changes.
+
+Each session requires five healthy CE 143 exchanges, two malformed-request rejections and one
+cancellation, alongside actual large-response backpressure and missing-FIN timeout markers.
+Across forty sessions this is **200 healthy exchanges and 120 adversarial streams**, including
+forty cancellations. Both endpoints must report all eight terminal outcomes each session and
+exit normally after the last cleanup sample. The existing occurrence-counted READY barriers
+prevent a previous listener from authorizing the next dial.
+
+The targeted run took **42.225 seconds** on macOS ARM64. Post-warmup observations:
+
+| Observation | Server | Client |
+| --- | ---: | ---: |
+| Live Nim allocation range | 0 | 0 |
+| Idle descriptor range | 0 | 0 |
+| Observed OS threads | 1 | 1 |
+| Idle RSS range, bytes | 196,608 | 229,376 |
+| Active RSS high water, bytes | 7,897,088 | 10,993,664 |
+
+Evidence is under `build/nimony-trial/verification/endpoint-soak-targeted/` with the returned
+measurements in adjacent `endpoint-soak-targeted-results.json`. The unchanged limits are 64 KiB
+language-allocation range, 16 MiB idle RSS range, two idle descriptors and 256 MiB active RSS;
+these finite observations do not establish arbitrary leak freedom. The cumulative gate retains
+separate `endpoint-soak/` logs/resource JSON, verdict and measurements. Canonical Linux CI uploads
+that evidence and displays its own pass/fail summary without counting sessions as codec corpora,
+compiler repairs or failed-result guard probes.
+
+Two focused safeguards protect isolated binary routing/failure evidence and honest summary
+verdicts. All twelve lifecycle-harness checks and sixteen CI safeguards pass. No production Nim
+source changed and no new compiler repair cycle was required. Existing M1/M2 implemented-scope
+regression parity and normative gates are unchanged.
+
+The cumulative rerun also passes: **63 native suites, forty-one independent corpora, 1,368 runtime
+misuse rejections and 670 compilation rejections** (566 privacy, 94 nominal, five schema, four
+static contracts and one ownership-lowering rejection). All **984 recorded source/test/config
+hashes** match the checked files. Its independently rebuilt peer completed forty soak sessions in
+**47.969 seconds**, with zero post-warmup allocation/descriptor range, one thread per peer and
+idle RSS ranges of 278,528 server / 212,992 client bytes. Formatting passes for all **855 Nim
+files**. The 45-module compilation inventory is unchanged; no production source was modified.
+The new network gate adds no compiler rejection cases, implementation LOC or compiler repairs.
+Reproduce the complete checks with the commands below; `endpoint-soak-full.log` retains this
+run's transcript and `verification/results.json` retains the cumulative verdict/measurements.
+
+The first canonical Linux run at `658b5a9` passed the 45-module semantic gate but stopped before
+runtime checks because the shared Bandersnatch builder did not create its output directory.
+Commit `4f73ac5` fixes that clean-checkout setup defect and adds a missing/reused-directory check;
+this was Python build infrastructure, not a Nimony compiler or protocol failure. A passing local
+run is not a new Linux CI verdict. Linux runtime confirmation remains open.
+
 ## Remaining work and next bounded increment
 
-Next: same-process repeated endpoint teardown/soak and remaining connection/stream admission
-recovery coverage, preserving finite resource budgets. Enabled proof offload follows as a separate
-bounded increment.
+Next: remaining connection/stream admission recovery and authenticated connection loss before
+the first request, preserving the original finite resource budgets. Enabled proof offload follows
+as a separate bounded increment.
 
 Further port work remains:
 
@@ -2412,8 +2470,8 @@ Further port work remains:
   locally. Shared identity/DER, structural framing and enabled integration ownership/results pass
   too. The actual peer and one-shot authentication/framing matrix now pass locally. Retained
   service and integrated digest lifecycles pass too, alongside retained IPv6 mesh/reconnect and
-  twelve peer-death recovery rounds. Same-process endpoint soak, remaining admission/resilience
-  and enabled offload compilation/runtime coverage remain migration gates.
+  twelve peer-death recovery rounds and same-process endpoint teardown soak. Remaining admission/
+  resilience and enabled offload compilation/runtime coverage remain migration gates.
 - Toolchain: the canonical Linux workflow now uses pinned Nimony and the formatter on all
   branches. Linux execution, normal local build commands and remaining setup documentation remain
   gates until the port demonstrates equivalent safety.

@@ -211,6 +211,19 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('IPv6 peer-death recovery: Fail', text)
         self.assertIn('Runtime misuse rejections: 0', text)
 
+    # A teardown failure remains distinct from passing retained-engine work and never inflates codec metrics.
+    def test_endpoint_soak_summary_scope(self):
+        for passed in (False, True):
+            # Exercise both verdicts so incomplete evidence cannot be rendered as successful session coverage.
+            with self.subTest(passed=passed):
+                report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                              quic_endpoint_soak=dict(passed=passed, result=dict(rounds=40)))
+                text = summarize(report, 'slice')
+                self.assertIn('Same-process endpoint teardown soak: '+('Pass' if passed else 'Fail'), text)
+                self.assertEqual('Sessions: 40;' in text, passed)
+                self.assertIn('Independent corpora: 0', text)
+                self.assertIn('Runtime misuse rejections: 0', text)
+
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
         report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],

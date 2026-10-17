@@ -53,6 +53,13 @@ def summarize(report, kind):
                     rounds = result.get('rounds', len(result['idle']))
                     connections = result['accepted_and_retired_connections'] if key == 'quic_service' else result['connections']
                     lines += ['Waves: '+str(rounds)+'; retired connections: '+str(connections)+'.']
+        if 'quic_endpoint_soak' in report:
+            # Endpoint destruction is separate from retained listeners and must keep its own failing verdict.
+            row = report['quic_endpoint_soak']
+            lines += ['', 'Same-process endpoint teardown soak: '+('Pass' if row['passed'] else 'Fail')+'.']
+            if row['passed']:
+                # Count sessions once per pair, not twice for its two endpoints or as codec/compiler tests.
+                lines += ['Sessions: '+str(row['result']['rounds'])+'; five healthy and three adversarial streams/session.']
         for key, label in (('quic_mesh', 'Retained IPv6 mesh'),
                            ('quic_mesh_disruption', 'IPv6 peer-death recovery')):
             if key in report:
