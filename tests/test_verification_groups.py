@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
+import test_guards
 import test_e2e
 import test_python
 from native_checks import NativeChecks
@@ -64,6 +65,25 @@ class VerificationGroups(unittest.TestCase):
                                    'test_quic_resilience', 'test_quic_soak', 'e2e_checks'})
         functions = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
         self.assertNotIn('python_tests', functions)
+
+    # The compiler group must account for every historical check, including schemas and owner lowering.
+    def test_guards_complete_inventory(self):
+        self.assertEqual(sum(test_guards.COUNTS.values()), 676)
+        report = {key: [dict(name=str(i), passed=True) for i in range(count)]
+                  for key, count in test_guards.COUNTS.items()}
+        self.assertTrue(test_guards.passed(report))
+        for key in test_guards.COUNTS:
+            # Missing and duplicate records cannot satisfy a fixed complete-inventory contract.
+            with self.subTest(group=key):
+                missing = {**report, key: report[key][1:]}
+                self.assertFalse(test_guards.passed(missing))
+                duplicate = {**report, key: [report[key][0]]*len(report[key])}
+                self.assertFalse(test_guards.passed(duplicate))
+                failed = {**report, key: [dict(row, passed=False) for row in report[key]]}
+                self.assertFalse(test_guards.passed(failed))
+        tree = ast.parse((ROOT/'tools/test_runtime.py').read_text())
+        functions = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        self.assertNotIn('compile_rejections', functions)
 
     # Even a successful unittest exit must not claim coverage when discovery found no tests.
     def test_empty_python_discovery_fails_fresh(self):

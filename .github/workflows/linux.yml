@@ -83,6 +83,31 @@ jobs:
             build/tests/python/*.log
             build/tests/python/results.json
 
+  guards:
+    name: Compiler rejection guards
+    timeout-minutes: 30
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: Compiler rejection guards
+        run: make check-guards
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-guards-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/guards/*.log
+            build/tests/guards/results.json
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+
   unit:
     name: Native unit and codec tests
     timeout-minutes: 30

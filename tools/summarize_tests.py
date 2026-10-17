@@ -25,7 +25,7 @@ def summarize(report, kind):
         groups = {key: value for key, value in report.items() if isinstance(value, list) and value
                   and all(isinstance(row, dict) and 'passed' in row for row in value)}
         guards = sum(len(rows) for key, rows in groups.items() if key not in ('suites', 'runtime', 'privacy', 'nominal', 'schemas', 'contracts', 'ownership_compile'))
-        compilations = sum(len(report[key]) for key in ('privacy', 'nominal', 'schemas'))+len(report.get('contracts', []))+len(report.get('ownership_compile', []))
+        compilations = sum(len(report.get(key, [])) for key in ('privacy', 'nominal', 'schemas'))+len(report.get('contracts', []))+len(report.get('ownership_compile', []))
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
         lines = ['## Native unit and codec verification', '', '**Status: '+report['status']+'**', '',
                  f'- Native suites: {len(report["suites"])}', f'- Independent corpora: {len(corpora)}',
@@ -36,6 +36,14 @@ def summarize(report, kind):
         # Preserve each corpus verdict rather than presenting aggregate counts as a substitute for failures.
         for key, row in corpora.items():
             lines.append('| `'+key+'` | '+('Pass' if row['passed'] else 'Fail')+' | '+str(row.get('requests', 'vectors/threads'))+' |')
+    elif kind == 'guards':
+        # Compiler rejections have their own verdict and inventory, never inferred from a unit result.
+        lines = ['## Compiler rejection guards', '', '**Status: '+report['status']+'**', '',
+                 '| Group | Passed | Total |', '| --- | --- | --- |']
+        for key in ('privacy', 'nominal', 'contracts', 'schemas', 'ownership_compile'):
+            # Failed checks remain visible within their original diagnostic family.
+            rows = report[key]
+            lines.append('| '+key+' | '+str(sum(row['passed'] for row in rows))+' | '+str(len(rows))+' |')
     elif kind == 'python':
         # This group owns discovery only; it never claims native or networking coverage.
         lines = ['## Python reference/tooling verification', '', '**Status: '+report['status']+'**', '',
@@ -116,7 +124,7 @@ def summarize(report, kind):
 # Missing reports produce an explicit summary and a failing helper, preserving the preceding job failure.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'e2e'), required=True)
+    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'guards', 'e2e'), required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()

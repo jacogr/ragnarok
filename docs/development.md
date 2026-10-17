@@ -30,9 +30,10 @@ banner is 0.2; archive and installed binary hashes retain its provenance.
 
 ## Verification and formatting
 
-`make check` runs four independently selectable groups: source compilation, Python discovery,
-native unit/corpus/negative checks and E2E networking. Use the affected group during development;
-CI schedules all four concurrently on separate runners. Python references/tooling/provenance
+`make check` runs five independently selectable groups: source compilation, Python discovery,
+native unit/corpus/runtime misuse checks, compiler rejection guards and E2E networking.
+Use the affected group during development;
+CI schedules all five concurrently on separate runners. Python references/tooling/provenance
 unittests execute once in their own group; native and E2E groups do not rerun that discovery.
 Make first ensures the pinned compiler, pristine source submodules and locked Cargo dependencies;
 native builds then run Cargo locked/offline. Failures stop the command. The parked
@@ -52,7 +53,8 @@ reference, negative-probe and orchestration responsibilities.
 | `make unit` | All 59 Hastur suites with their exact native/fixture profiles |
 | `make check-modules` / `make modules` | Every-source semantic compilation gate |
 | `make check-python` | Python reference/tooling/provenance tests |
-| `make check-unit` / `make runtime` | Native unit suites, independent corpora and rejection probes |
+| `make check-unit` / `make runtime` | Native unit suites, independent corpora and runtime misuse probes |
+| `make check-guards` | Compiler rejection guards (676 probes) |
 | `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
 | `make format` / `make format-check` | Apply or check the pinned formatter |
 | `make help` | List commands without provisioning/building |
@@ -75,9 +77,9 @@ Clang, checked optimized builds, LTO and Linux lld. Its compiler-location-isolat
 libraries remain under `build/`; the executable is a development proof peer, not a full client.
 Top-level Make targets run serially because native preparation and verification share build caches.
 
-CI invokes the four `make check-*` targets independently after checkout/Python setup.
+CI invokes the five `make check-*` targets independently after checkout/Python setup.
 The workflow has no separate directory, compiler, source, Rust or OS-package bootstrap recipes.
-`make summary-modules`, `summary-python`, `summary-unit` and `summary-e2e` render existing reports
+`make summary-modules`, `summary-python`, `summary-unit`, `summary-guards` and `summary-e2e` render existing reports
 even after a failed job;
 `SUMMARY_OUTPUT` selects the local Markdown file or GitHub step summary.
 Superseded standalone codec/state Python runners are removed. Older commands recorded in
@@ -104,7 +106,7 @@ logic that would become longer, less portable or harder to validate as shell com
 | `build.py` | Checked platform-specific linker profile and maintained native library preparation |
 | `format.py` | Canonical formatter comparison without modifying files in check mode |
 | `native_tests.py` | Hastur discovery, linking profiles, fixture integrity and ARC observations |
-| `test_modules.py`, `test_runtime.py` | Source inventory and native unit/reference/rejection checks |
+| `test_modules.py`, `test_runtime.py`, `test_guards.py` | Source inventory, units/references and compiler guards |
 | `test_python.py` | Single independent Python unittest discovery and report |
 | `test_e2e.py`, `e2e_checks.py` | Peer-entry selftests and unchanged live networking/resource workloads |
 | `native_checks.py` | Shared checked compiler/linker profile and command diagnostics |

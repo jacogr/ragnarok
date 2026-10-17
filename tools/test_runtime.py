@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Verify checked native suites, independent corpora, ownership contracts and networking lifecycles."""
+"""Verify checked native suites, independent corpora, runtime misuse contracts."""
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 import os
 import hashlib
 import json
@@ -10,8 +9,6 @@ import re
 from pathlib import Path
 import subprocess
 import sys
-import time
-from setup_nimony import cache_directory
 from native_checks import NativeChecks, announce
 from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
 
@@ -719,21 +716,6 @@ checks = NativeChecks(BUILD)
 command, build = checks.command, checks.build
 
 
-# Compile independent rejection probes in private caches; consume results in original registry order.
-def compile_rejections(compiler, expectations):
-    # A worker owns one compiler process, output log and cache; diagnostic interpretation stays on the caller.
-    def check(item):
-        name, expected = item
-        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{cache_directory(compiler, BUILD, name)}',
-                          ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        return name, expected, result
-
-    with ThreadPoolExecutor(max_workers=unit_jobs()) as executor:
-        # Ordered consumption preserves the historical evidence layout even when processes finish out of order.
-        yield from executor.map(check, expectations.items())
-
-
 # Verify implemented application coverage; passing tests do not establish full JAM client functionality.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -744,7 +726,7 @@ def main():
     # A failed or timed-out new invocation must never leave an earlier successful report current.
     (BUILD/'results.json').unlink(missing_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -2203,24 +2185,6 @@ def main():
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['collections'].append(dict(origin=origin, member=member, passed=passed, run=result))
             announce(origin+' collection '+member+' guard', passed)
-    # Closed family checks and direct static scalar contracts reject unsupported schemas before execution.
-    for name, domain in (('unsupported_collection_scalar', 'string'),
-                         ('negative_collection_width', 'CollectionUInt'), ('wide_collection_width', 'CollectionUInt'),
-                         ('scalar_collection_negative_width', '-1'), ('scalar_collection_wide_width', '9')):
-        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        if name.startswith('scalar_collection_'):
-            # Constant-invalid direct helper calls fail at the supported precondition during compilation.
-            rejected = ('Error: contract violated:' in result['output']
-                        and '0 <= '+domain+' and '+domain+' <= 8' in result['output'])
-        else:
-            # No unsupported mutable schema or E width can instantiate a collection decoder.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'does not match constraint' in result['output'] and domain in result['output']
-                        and 'decodeVariableSet(' in result['output'])
-        passed = result['exit_code'] != 0 and rejected
-        report['schemas'].append(dict(name=name, passed=passed, check=result))
-        announce(name, passed)
     # Guard every C.2 result and selected work/source/metadata/decoded union alternative independently.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_c2_results.nim', 'c2-results')
     report['c2_build'] = compiled
@@ -2451,149 +2415,6 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['composition'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' composition '+member+' guard', passed)
-    # Unique socket ownership is checked by lowering/code generation, not by semantic checking alone.
-    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/quic_io_endpoint_copy.nim', 'quic-endpoint-copy')
-    passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <UdpEndpoint>" in compiled['output']
-    report['ownership_compile'].append(dict(name='quic_io_endpoint_copy', passed=passed, check=compiled))
-    announce('unique UDP endpoint copy rejection', passed)
-    # RawThread membership alone did not reject pool copies; the exported pool-level contract must reject during lowering.
-    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/offload_pool_copy.nim', 'offload-pool-copy',
-                        native_libraries=(bs_library,), defines=('offload',))
-    passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <OffloadPool>" in compiled['output']
-    report['ownership_compile'].append(dict(name='offload_pool_copy', passed=passed, check=compiled))
-    announce('unique offload pool copy rejection', passed)
-    # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
-    rejection_started = time.monotonic()
-    report['compiler_rejection_jobs'] = unit_jobs()
-    for name, sentinel, result in compile_rejections(compiler, CONTRACTS):
-        passed = result['exit_code'] != 0 and 'Error: contract violated: '+sentinel in result['output']
-        report['contracts'].append(dict(name=name, passed=passed, check=result))
-        announce(name, passed)
-    # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
-    for name, member, result in compile_rejections(compiler, PRIVATE):
-        if name == 'private_collection_commit':
-            # Generic concept support must never export the unchecked writer.
-            rejected = "undeclared identifier: 'put'" in result['output']
-        elif name.startswith('session_'):
-            # Moving the implementation into a module must not export raw owners or callback/buffer helpers.
-            rejected = ("undeclared identifier in module: '"+member+"'") in result['output']
-        elif name == 'wrong_owner_pool':
-            # The second argument must be an index, never a replacement source buffer.
-            rejected = 'Type mismatch' in result['output'] and '[2] expected: int64 but got: array' in result['output']
-        else:
-            # Every raw-state bypass must fail for its private/read-only member.
-            rejected = ('undeclared field' in result['output'] or 'cannot assign' in result['output']
-                        or 'cannot be assigned' in result['output'])
-        passed = result['exit_code'] != 0 and member in result['output'] and rejected
-        report['privacy'].append(dict(name=name, passed=passed, check=result))
-        announce(name, passed)
-    # Report and assurance identity, index and configuration domains must remain statically distinct under Nimony.
-    for name, member, result in compile_rejections(compiler, NOMINAL):
-        if name == 'bs_key_as_setup':
-            # Scalar owners cannot select the allocator/domain of a native ring setup.
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and 'commitRing(' in result['output'] and member in result['output']
-        elif name in EARLY_NOMINAL:
-            # Require the intended domain rejection, not unrelated syntax, initialization or import failures.
-            call, diagnostic = EARLY_NOMINAL[name]
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and call in result['output'] and diagnostic in result['output']
-        elif name in ('state_key_as_hash', 'state_partial_as_hash', 'state_value_as_node_hash', 'state_root_as_node'):
-            # A key, truncated left commitment or value hash cannot fill a complete child-hash argument.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'encodeStateBranch(' in result['output']
-                        and '[1] expected: StateNodeHash but got: '+member in result['output'])
-        elif name in ('composition_service_as_entry', 'composition_service_as_chapter_index'):
-            # Service identities cannot address a whole-map entry or the fixed nominal chapter container.
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and member in result['output']
-        elif name in ('request_length_as_slot', 'request_slot_as_length'):
-            # Slot and advertised-length domains stay distinct through safe source constructors and key derivation.
-            call, position, actual = (('availableHistory(', 1, 'RequestLength') if name == 'request_length_as_slot'
-                                      else ('serviceRequestKey(', 3, 'RequestSlot'))
-            rejected = ('Error: Type mismatch at [position]' in result['output'] and call in result['output']
-                        and f'[{position}] expected: {member} but got: {actual}' in result['output'])
-        elif name in ('service_value_code_as_preimage', 'service_value_hash_as_key'):
-            # Equal-purpose hashes and final trie keys retain distinct nominal identities and widths.
-            call, position, actual = (('servicePreimageKey(', 2, 'CodeHash') if name == 'service_value_code_as_preimage'
-                                      else ('captureServiceValue(', 2, 'ServicePreimageHash'))
-            rejected = ('Error: Type mismatch at [position]' in result['output'] and call in result['output']
-                        and f'[{position}] expected: {member} but got: {actual}' in result['output'])
-        elif name == 'output_service_as_index':
-            # Protocol service identities cannot address a retained sequence position.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'outputLogAt(' in result['output']
-                        and '[2] expected: '+member+' but got: ServiceIndex' in result['output'])
-        elif name.startswith('workqueue_'):
-            # Nominal row/item/hash positions and owner kinds cannot be substituted.
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and member in result['output']
-        elif name == 'statistics_gas_as_counter':
-            # A nominal natural gas value cannot fill an E4 validator array element, even for small numeric values.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and '[3] expected: ValidatorCounter but got: '+member in result['output'])
-        elif name == 'statistics_service_as_core':
-            # Service dictionary ordinals cannot select core statistics.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'coreActivityAt(' in result['output']
-                        and '[2] expected: StatisticsCoreIndex but got: '+member in result['output'])
-        elif name == 'privilege_entry_as_core':
-            # Always-accumulate dictionary ordinals cannot select a core assigner.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'privilegeAssignerAt(' in result['output']
-                        and '[2] expected: PrivilegeCoreIndex but got: '+member in result['output'])
-        elif name in ('assignment_guarantee_slot', 'assignment_validator_as_core'):
-            # Guarantee evaluation time and guarantor indices cannot fill registration/core domains.
-            call, position, expected = (('presentAssignment(', 2, 'AssignmentSlot') if name == 'assignment_guarantee_slot'
-                                        else ('availabilityAt(', 2, 'AssignmentCoreIndex'))
-            rejected = ('Error: Type mismatch at [position]' in result['output'] and call in result['output']
-                        and '['+str(position)+'] expected: '+expected+' but got: '+member in result['output'])
-        elif name == 'history_block_as_peak':
-            # Recent block ordinals cannot select an MMR belt peak.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'historyPeakAt(' in result['output']
-                        and '[2] expected: HistoryPeakIndex but got: '+member in result['output'])
-        elif name == 'state_bytes_as_dispute_index':
-            # Byte budgets cannot substitute for ordinals in the offender set.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'stateOffenderAt(' in result['output']
-                        and '[2] expected: DisputeStateIndex but got: '+member in result['output'])
-        elif name == 'state_validator_as_slot':
-            # Pending validator ordinals cannot fill the distinct schedule-slot argument.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'sealerTicketAt(' in result['output']
-                        and '[2] expected: SafroleStateIndex but got: '+member in result['output'])
-        elif name == 'auth_core_as_position':
-            # Core ordinals cannot fill the distinct per-row hash-position argument.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'authorizerAt(' in result['output']
-                        and '[3] expected: AuthorizationIndex but got: '+member in result['output'])
-        elif name == 'state_entropy_as_time':
-            # Fixed entropy words cannot fill the E4 timeslot argument despite both being copied values.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'timeEntry(' in result['output']
-                        and '[1] expected: StateTime but got: '+member in result['output'])
-        elif name == 'swapped_import_identity':
-            # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'rootImport(' in result['output'] and member in result['output'])
-        elif name in ('raw_bit_count', 'swapped_bit_limit', 'raw_collection_count',
-                      'swapped_collection_schema', 'dictionary_as_set'):
-
-            # The second parameter must retain its logical-bit domain, independently of array-view diagnostics.
-            call = dict(raw_bit_count='decodeFixedBits(', swapped_bit_limit='decodeBits(',
-                        raw_collection_count='decodeSet(', swapped_collection_schema='encodeOwnedVariableSet(',
-                        dictionary_as_set='setCount(')[name]
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and call in result['output'] and member in result['output'])
-        elif name in ('unsigned_as_full_header', 'block_as_extrinsic'):
-            # Sealed output accepts only the full owner type, never a signing-only retained view.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and ('extrinsicInfo(' if name == 'block_as_extrinsic' else 'encodeOwnedHeader(') in result['output']
-                        and member in result['output'])
-        else:
-            # Other nominal fields provide precise got/wanted domain names.
-            rejected = 'Error: type mismatch: '+member in result['output']
-        passed = result['exit_code'] != 0 and rejected
-        report['nominal'].append(dict(name=name, passed=passed, check=result))
-        announce(name, passed)
-    report['compiler_rejections_elapsed_seconds'] = round(time.monotonic()-rejection_started, 6)
     step_passed = (all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
                    and all(row['passed'] for row in report['runtime']) and len(report['bounded']) == 12
                    and all(row['passed'] for row in report['bounded'])
@@ -2654,9 +2475,6 @@ def main():
                    and report['history_corpus']['passed']
                    and len(report['history']) == 2*len(HISTORY_MEMBERS)+3
                    and all(row['passed'] for row in report['history'])
-                   and len(report['contracts']) == len(CONTRACTS)
-                   and all(row['passed'] for row in report['contracts'])
-                   and len(report['ownership_compile']) == 2 and all(row['passed'] for row in report['ownership_compile'])
                    and report['state_disputes_corpus']['passed']
                    and len(report['state_disputes']) == 2*len(STATE_DISPUTES_MEMBERS)
                    and all(row['passed'] for row in report['state_disputes'])
@@ -2676,7 +2494,6 @@ def main():
                    and all(row['passed'] for row in report['c2'])
                    and len(report['collections']) == 2*len(COLLECTION_MEMBERS)
                    and all(row['passed'] for row in report['collections'])
-                   and len(report['schemas']) == 5 and all(row['passed'] for row in report['schemas'])
                    and len(report['bits']) == 2*len(BITS_MEMBERS) and all(row['passed'] for row in report['bits'])
                    and len(report['blocks']) == 2*len(BLOCK_MEMBERS)+3+len(BLOCK_WRONG)
                    and all(row['passed'] for row in report['blocks'])
@@ -2686,10 +2503,7 @@ def main():
                    and len(report['tickets']) == 10 and all(row['passed'] for row in report['tickets'])
                    and len(report['guarantees']) == 29 and all(row['passed'] for row in report['guarantees'])
                    and len(report['assurances']) == 10 and all(row['passed'] for row in report['assurances'])
-                   and len(report['reports']) == 14 and all(row['passed'] for row in report['reports'])
-                   and len(report['nominal']) == len(NOMINAL) and all(row['passed'] for row in report['nominal'])
-                   and len(report['privacy']) == len(PRIVATE)
-                   and all(row['passed'] for row in report['privacy']))
+                   and len(report['reports']) == 14 and all(row['passed'] for row in report['reports']))
     report['protected_results_increment'] = 'passed' if step_passed else 'failed'
     report['status'] = 'checks-passed' if step_passed else 'failed'
     (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')

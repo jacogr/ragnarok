@@ -85,7 +85,7 @@ if name == 'test_runtime.py' and os.environ.get('FAIL_RUNTIME'):
     print('deliberate runtime failure')
     sys.exit(7)
 """
-            for name in ('setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_e2e', 'format'):
+            for name in ('setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
                 # The test exercises Make ordering/status; native behavior has its own application coverage.
                 (folder/'tools'/(name+'.py')).write_text(stub)
             for name in ('test_spec', 'test_nimony_ci'):
@@ -108,7 +108,7 @@ if name == 'test_runtime.py' and os.environ.get('FAIL_RUNTIME'):
             self.assertEqual(calls.count('setup_nimony.py'), 1)
             self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
             self.assertTrue((folder/'build/ci/runtime.log').is_file())
-            for name in ('test_python.py', 'test_modules.py', 'test_runtime.py', 'test_e2e.py'):
+            for name in ('test_python.py', 'test_modules.py', 'test_runtime.py', 'test_guards.py', 'test_e2e.py'):
                 # Each group is scheduled once after clean; setup dependencies are shared by Make.
                 self.assertEqual(calls.count(name), 1)
             self.assertTrue((folder/'build/ci/python.log').is_file())

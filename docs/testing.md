@@ -11,16 +11,18 @@ Production code, wire behavior, bounds/ownership contracts and independent refer
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 59 native suites, 41 corpora, runtime/compiler rejection probes | Native units/codecs |
+| `check-unit` | 59 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
+| `check-guards` | 676 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
-`make check` runs all four locally; CI schedules them independently and concurrently on separate
+`make check` runs all five locally; CI schedules them independently and concurrently on separate
 VMs. Each target provisions its own dependencies and writes its own report. There is no CI
 `needs` chain or duplicated Python discovery. `make unit` remains a quick native-only subset;
 `make runtime` aliases `check-unit`, and `make modules` aliases `check-modules`.
 
-Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus)
-and `build/tests/e2e/`. Combined native coverage remains 59 + 6 = 65 profiles. E2E retains the
+Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
+`build/tests/guards/` (compiler rejections) and `build/tests/e2e/`. Combined native coverage remains
+59 + 6 = 65 profiles. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
 build uses the same shared checked native compiler profile as the unit verifier.
 
