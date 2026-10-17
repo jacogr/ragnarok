@@ -2,7 +2,7 @@
 
 Original migration branch: `nim-tests`, based on Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **73 ordinary native suites**, including three state-store, two authorization-transition and
+Current total: **75 ordinary native suites**, including three state-store, two authorization-transition and
 two history-transition, two entropy/time, two validator-rotation and two telemetry profiles; all original 59 suites remain migrated.
 The migration preserved wire behavior, bounds/ownership contracts and independent references.
 Subsequent native suites cover the new storage foundation as recorded below.
@@ -13,8 +13,8 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 73 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
-| `check-guards` | 695 compiler rejection probes | Compiler rejection guards |
+| `check-unit` | 75 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
+| `check-guards` | 699 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
 `make check` runs all five locally; CI schedules them independently and concurrently on separate
@@ -24,7 +24,7 @@ VMs. Each target provisions its own dependencies and writes its own report. Ther
 
 Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
 `build/tests/guards/` (compiler rejections) and `build/tests/e2e/`. Combined native coverage remains
-73 + 6 = 79 profiles. The new [state store](../spec/state-store.md) has three native profiles and
+75 + 6 = 81 profiles. The new [state store](../spec/state-store.md) has three native profiles and
 five privacy probes and nine isolated runtime misuse checks. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
 build uses the same shared checked native compiler profile as the unit verifier.
@@ -54,6 +54,11 @@ The [validator rotation](../spec/validator-rotation.md) adds two native suites, 
 roster/root projections and four compiler/four runtime result guards. Atomic C(4)/C(8)/C(9)
 publication preserves schedules/accumulators and is verified against ring/store refusal, exact
 chapter parsing, aggregate budgets and historical snapshot lifetimes.
+
+The [ticket admission](../spec/ticket-admission.md) adds two native suites, 28 published
+proof/accumulator projections, four compiler privacy checks and four runtime result guards. The
+store profile tests actual entropy/time handoff, atomic C(4) publication, exact budget boundaries,
+first/late hash and primitive refusal, both schedule alternatives and 1,000 no-op ARC cycles.
 
 ## What the investigation found
 
@@ -311,7 +316,7 @@ published derived inputs and strict negative compiler/runtime probes retain thei
 
 ## Tenth converted group: history state
 
-The consensus/dispute increment is committed as `316977e`. Public history state and its private
+The consensus/dispute increment is committed as `316997e`. Public history state and its private
 ownership companion move with `git mv` into `tests/unit/state/`. The public body changes only its
 relative import path. The private body additionally sends the same 1,000-cycle allocation
 observations through the existing evidence helper and emits a portable completion marker.

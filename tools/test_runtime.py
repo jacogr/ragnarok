@@ -10,12 +10,12 @@ from pathlib import Path
 import subprocess
 import sys
 from native_checks import NativeChecks, announce
-from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures, unit_store_fixture, unit_authorization_fixture, unit_history_fixture, unit_signing_fixture, unit_entropy_fixture, unit_validator_fixture
+from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures, unit_store_fixture, unit_authorization_fixture, unit_history_fixture, unit_signing_fixture, unit_entropy_fixture, unit_validator_fixture, unit_ticket_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
-SUITES = ('telemetry', 'telemetry_chain', 'natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'authorization_transition', 'authorization_transition_failure', 'history_transition', 'history_transition_failure', 'entropy_transition', 'entropy_transition_failure', 'validator_rotation', 'validator_state', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
-PRIVATE = dict(validator_state_private='completed', validator_state_retag='status', validator_rotation_private='completed', validator_rotation_retag='status', entropy_transition_private='completed', entropy_transition_retag='status', history_transition_private='completed', history_transition_retag='status', authorization_transition_private='completed', authorization_transition_retag='status', store_result_retag='status', store_head_private='head', store_snapshot_private='data',
+SUITES = ('telemetry', 'telemetry_chain', 'natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'authorization_transition', 'authorization_transition_failure', 'history_transition', 'history_transition_failure', 'entropy_transition', 'entropy_transition_failure', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
+PRIVATE = dict(ticket_state_private='completed', ticket_state_retag='status', ticket_admission_private='completed', ticket_admission_retag='status', validator_state_private='completed', validator_state_retag='status', validator_rotation_private='completed', validator_rotation_retag='status', entropy_transition_private='completed', entropy_transition_retag='status', history_transition_private='completed', history_transition_retag='status', authorization_transition_private='completed', authorization_transition_retag='status', store_result_retag='status', store_head_private='head', store_snapshot_private='data',
                store_value_private='owner', store_result_private='completed', bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -732,7 +732,7 @@ def main():
     # A failed or timed-out new invocation must never leave an earlier successful report current.
     (BUILD/'results.json').unlink(missing_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], store=[], authorization_transition=[], history_transition=[], entropy_transition=[], validator_rotation=[], validator_state=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[])
+                  python=platform.python_version()), suites=[], runtime=[], store=[], authorization_transition=[], history_transition=[], entropy_transition=[], validator_rotation=[], validator_state=[], ticket_admission=[], ticket_state=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -814,7 +814,7 @@ def main():
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
-    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
+    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
     # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
     sys.path.insert(0, str(ROOT/'tests'))
     from test_bandersnatch import fixture_path
@@ -869,7 +869,9 @@ def main():
     entropy_fixtures, report['entropy_stf_fixture'] = unit_entropy_fixture(BUILD)
     fixtures.update(entropy_fixtures)
     validator_fixtures, report['validator_stf_fixture'] = unit_validator_fixture(BUILD)
+    ticket_fixtures, report['ticket_stf_fixture'] = unit_ticket_fixture(BUILD)
     fixtures.update(validator_fixtures)
+    fixtures.update(ticket_fixtures)
     for batch, members, target in unit_batches():
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
         checked = command(unit_command(compiler, target, libraries), batch+'-hastur',
@@ -968,6 +970,28 @@ def main():
             passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
             report['validator_state'].append(dict(origin=origin, passed=passed, run=result))
             announce('validator state '+origin+' guard', passed)
+    # Default and real failed admission candidates reject owner extraction through the intended contract.
+    compiled, binary = build(compiler, ROOT/'tests/native/ticket_admission_results.nim', 'ticket-admission-results',
+                             crypto_library, native_libraries=(bs_library,))
+    report['ticket_admission_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Selector failures and unrelated assertions cannot stand in for guarded candidate access.
+            result = command([binary, origin], 'ticket-admission-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['ticket_admission'].append(dict(origin=origin, passed=passed, run=result))
+            announce('ticket admission '+origin+' guard', passed)
+    # Publication snapshots require successful selection for both default and actually refused results.
+    compiled, binary = build(compiler, ROOT/'tests/native/ticket_state_results.nim', 'ticket-state-results',
+                             crypto_library, native_libraries=(bs_library,))
+    report['ticket_state_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Require the intended snapshot extraction precondition rather than an unrelated failure.
+            result = command([binary, origin], 'ticket-state-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['ticket_state'].append(dict(origin=origin, passed=passed, run=result))
+            announce('ticket state '+origin+' guard', passed)
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
     from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode
     from bounded_checks import batch_requests as bounded_requests
@@ -2510,7 +2534,9 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['composition'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' composition '+member+' guard', passed)
-    step_passed = (len(report['validator_state']) == 2 and all(row['passed'] for row in report['validator_state'])
+    step_passed = (len(report['ticket_state']) == 2 and all(row['passed'] for row in report['ticket_state'])
+                   and len(report['ticket_admission']) == 2 and all(row['passed'] for row in report['ticket_admission'])
+                   and len(report['validator_state']) == 2 and all(row['passed'] for row in report['validator_state'])
                    and len(report['validator_rotation']) == 2 and all(row['passed'] for row in report['validator_rotation'])
                    and len(report['entropy_transition']) == 4 and all(row['passed'] for row in report['entropy_transition'])
                    and len(report['history_transition']) == 6 and all(row['passed'] for row in report['history_transition'])
