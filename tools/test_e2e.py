@@ -44,7 +44,7 @@ def main():
         # Preserve compiler/revision and native pin evidence independently of any other CI job.
         metadata = compiler.parent.parent/'NIGHTLY.txt'
         report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
-        sources = [Path(__file__), ROOT/'tools/e2e_checks.py', ROOT/'tools/native_checks.py',
+        sources = [Path(__file__), ROOT/'tools/e2e_checks.py', ROOT/'tools/native_checks.py', ROOT/'tools/native_dependencies.py', ROOT/'tools/build_crypto.py', ROOT/'tools/build_bandersnatch.py', ROOT/'tools/build_quic.py',
                    ROOT/'spec/toolchain.json', ROOT/'spec/quic-proof-pins.json',
                    ROOT/'spec/bandersnatch-pins.json', *sorted((ROOT/'src/quic').glob('*.nim')),
                    *sorted((ROOT/'src/telemetry').glob('*.nim')), ROOT/'tests/telemetry_checks.py', ROOT/'tests/fixtures/telemetry-dev.json',

@@ -4,7 +4,6 @@ import json
 import os
 import platform
 import subprocess
-import sys
 from setup_nimony import ROOT, installed, cache_directory
 
 
@@ -31,10 +30,9 @@ def main():
     compiler, _ = installed()
     pins = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())
     os.environ['RUSTUP_TOOLCHAIN'] = pins['rust']
-    sys.path.insert(0, str(ROOT/'tests'))
-    from test_crypto import dependencies as crypto_sources, build_native as build_crypto
-    from test_bandersnatch import sources as bandersnatch_sources, build_native as build_bandersnatch
-    from test_quic import dependencies as quic_sources, build_native as build_quic
+    from build_crypto import dependencies as crypto_sources, build_native as build_crypto
+    from build_bandersnatch import sources as bandersnatch_sources, build_native as build_bandersnatch
+    from build_quic import dependencies as quic_sources, build_native as build_quic
     crypto = build_crypto(crypto_sources(False))
     bandersnatch_sources(False)
     bandersnatch = build_bandersnatch(False)

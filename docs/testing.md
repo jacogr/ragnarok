@@ -102,6 +102,12 @@ rejection, exact output hashes, first-mismatch indices and build-failure refusal
 existing command runner's timeout and full logs. Specialized signature, proof and reused-driver
 checks retain their explicit paths.
 
+Production and test adapters share `tools/build_crypto.py`, `tools/build_bandersnatch.py` and
+`tools/build_quic.py`. `tools/native_dependencies.py` owns pristine submodule checks and logged
+build commands. Production builds do not import test harnesses; independent equations, published
+fixture checks, observation libraries and network scenarios remain in `tests/`. Dependency pins,
+compiler flags, locked/offline Cargo builds and release adapter tests are unchanged.
+
 ## What the investigation found
 
 Most application assertions already live in Nim under `tests/native/`; Python currently compiles,

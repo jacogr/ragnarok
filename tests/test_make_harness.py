@@ -18,6 +18,14 @@ import setup_nimony
 
 # Tooling checks run no native code or download; executable validation is a separate smoke test.
 class MakeHarness(unittest.TestCase):
+    # Production dependency preparation must not load reference suites or test-process orchestration.
+    def test_build_imports_without_test_harnesses(self):
+        command = [sys.executable, '-c',
+                   'import sys; sys.path.insert(0, "tools"); '
+                   'import build, build_crypto, build_bandersnatch, build_quic; '
+                   'assert not any(name.startswith("test_") for name in sys.modules)']
+        subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
+
     # Healthy setup must reuse the installed pinned binaries without extracting archives or consulting the network.
     def test_ensure_reuses_verified_tools(self):
         with patch.object(sys, 'argv', ['setup_nimony.py', '--ensure']), patch.object(

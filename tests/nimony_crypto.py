@@ -1,7 +1,8 @@
 """Build pristine native crypto and test-only observation without changing production or upstream sources."""
 import platform
 import subprocess
-from test_crypto import ROOT, BUILD, dependencies, build_native, bridge_checks, test, generated_signatures, PINS
+from test_crypto import ROOT, BUILD, bridge_checks, test, generated_signatures, PINS
+from build_crypto import dependencies, build_native
 
 
 # Record each test-only compile/link command and fail before using any stale object or library.
