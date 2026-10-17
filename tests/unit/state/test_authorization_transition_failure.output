@@ -1,0 +1,1 @@
+PASS authorization transition failures: malformed state, atomic rollback, backend recovery and ARC release

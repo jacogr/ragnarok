@@ -206,7 +206,7 @@ class NativeUnitHarness(unittest.TestCase):
     def test_runtime_fixture_required(self):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=Path(temporary)):
-                for name in ('quic_transport', 'quic_integration', 'state_store_replay'):
+                for name in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition'):
                     # An old environment path is insufficient without a newly supplied required-file manifest.
                     with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'prepared native unit fixtures'):
                         native_tests.unit_environment(Path('/fixture/nimony'), name, {'RAGNAROK_TEST_CERT': '/old'})
