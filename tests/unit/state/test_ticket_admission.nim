@@ -184,7 +184,7 @@ proc published(text: string) =
   assert lines.len == 29
   for i in 0..<28:
     let fields = lines[i].splitWhitespace()
-    assert fields.len == 11
+    assert fields.len == 14
     let policy = TicketAdmissionConfig(state: SafroleStateConfig(validators: rotationRosterConfig(
         int(number(fields[0]))),
       epochSlots: EpochSlots(number(fields[1])), maxAccumulator: ElementLimit(number(fields[1])),

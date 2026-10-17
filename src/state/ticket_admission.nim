@@ -12,7 +12,8 @@ type
   ## Default/failure alternatives expose no candidate accumulator, snapshot or partial accepted prefix.
   TicketAdmissionError* {.pure.} = enum
     Uninitialized, None, InvalidConfig, InvalidSlot, InvalidState, LimitExceeded, LengthOverflow,
-      UnexpectedTicket, InvalidAttempt, InvalidProof, BadOrder, Duplicate, NotRetained, BackendFailure
+      UnexpectedTicket, InvalidAttempt, InvalidProof, BadOrder, Duplicate, NotRetained,
+        BackendFailure, MissingState
   ## Only complete success contains the private immutable candidate C(4) owner.
   TicketAdmissionResult* = object
     case status: TicketAdmissionError

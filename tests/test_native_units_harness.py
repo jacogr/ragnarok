@@ -181,11 +181,11 @@ class NativeUnitHarness(unittest.TestCase):
                         else:
                             self.assertFalse(any('--passC:-I' in arg for arg in args))
                         self.assertEqual('--forward:-d:integration' in args, name == 'quic_integration')
-                        if name in ('validator_state', 'ticket_admission'):
+                        if name in ('validator_state', 'ticket_admission', 'ticket_state'):
                             # Rotation combines real ring primitives with independent setup/commit/hash refusal observers.
                             for key in ('bandersnatch', 'bandersnatch_observer'):
                                 self.assertIn('--forward:--passL:'+str(libraries[key].resolve()), args)
-                            for function in ('setup_new', 'setup_free', 'ring_verify' if name == 'ticket_admission' else 'commit'):
+                            for function in ('setup_new', 'setup_free', 'ring_verify' if name in ('ticket_admission', 'ticket_state') else 'commit'):
                                 self.assertIn('--forward:--passC:-Dbs_'+function+'=bo_'+function, args)
                         if name == 'bandersnatch_owners':
                             # Both real and observed Rust ABIs plus exact call-site defines are required.
@@ -212,7 +212,7 @@ class NativeUnitHarness(unittest.TestCase):
     def test_runtime_fixture_required(self):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=Path(temporary)):
-                for name in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission'):
+                for name in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state'):
                     # An old environment path is insufficient without a newly supplied required-file manifest.
                     with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'prepared native unit fixtures'):
                         native_tests.unit_environment(Path('/fixture/nimony'), name, {'RAGNAROK_TEST_CERT': '/old'})

@@ -30,7 +30,9 @@ def prepare(folder):
             expected = safrole({**prepared,'gamma_a':after['gamma_a']}) if accepted else '-'
             rows.append(' '.join(map(str,[2 if profile=='tiny' else 341,epoch,tail,limit,before['tau'],
                 case['input']['slot'],'ok' if accepted else case['output']['err'],entropy[2:],
-                safrole(prepared),submitted.hex() or '-',expected])))
+                safrole(prepared),submitted.hex() or '-',expected,
+                ''.join(word[2:] for word in before['eta']),case['input']['entropy'][2:],
+                ''.join(word[2:] for word in after['eta']) if accepted else '-'])))
             sources.append(dict(path=path,sha256=digest,accepted=accepted))
     folder.mkdir(parents=True,exist_ok=True)
     path = folder/'ticket-admission.txt'

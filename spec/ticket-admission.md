@@ -1,4 +1,4 @@
-# Safrole ticket admission: first slice
+# Safrole ticket admission
 
 Target: Gray Paper **0.8.0**, revision `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/safrole.tex`, The Extrinsic and Tickets (`ticketsextrinsic`, `enforceticketlimit`,
@@ -14,9 +14,9 @@ parent/new slots and explicit chain/resource parameters. The C(4) input must alr
 posterior pending validators and their ring root, while retaining the prior accumulator and
 schedule. The result is a complete immutable candidate C(4) snapshot; no state store is modified.
 
-The caller must preserve the parent slot before time advancement. A future working-state adapter
-will coordinate the existing roster rotation and entropy/time substeps, retaining parent inputs
-for later schedule/marker rules. Supplying authenticated header entropy, posterior disputes
+The caller must preserve the parent slot before time advancement. The working-state adapter described below reads the staged
+C(4)/C(6)/C(11) from one immutable store snapshot. The caller coordinates roster rotation and
+entropy/time, retaining parent inputs for later schedule/marker rules. Supplying authenticated header entropy, posterior disputes
 results and correct stage inputs remains the caller's responsibility. This API does not prove
 those earlier stages occurred or treat an isolated candidate as an executed whole block.
 
@@ -93,10 +93,54 @@ hashes, native logs and reports live under ignored `build/tests/`. Existing inde
 remain unchanged. Networking behavior and [M1 specification checkpoints](state-clarifications.md)
 are outside this increment.
 
-## Remaining PR work
+## Atomic working-store adapter
 
-Next: a bounded working-store adapter for atomic C(4) publication, preserving unrelated chapters,
-with hash refusal, byte/write budgets and retained historical snapshot tests. Schedule generation,
-epoch/winner markers, seal authentication and complete Safrole/block execution remain separate
-increments. Keep the parent accumulator available for those future schedule/marker rules rather
-than treating the admitted candidate's accumulator as every stage's input.
+`src/state/ticket_state.nim` adds `admitSafroleTicketsState`. The caller supplies the retained
+parent slot and target slot. Run roster/root rotation first, then entropy/time advancement, then
+this admission step on the private working store. Exact C(11) must already equal the target slot;
+C(6) must be exactly 128 bytes. The adapter obtains entropy[2] from that same retained snapshot,
+checks the C(4) byte ceiling before copying it, and delegates complete admission to the core.
+
+Only C(4) is published, through the existing atomic one-write store batch. C(6), C(11) and every
+unrelated chapter remain byte-for-byte unchanged. A fully validated candidate identical to the
+stored C(4) returns the prior snapshot, without a store hash or write-budget requirement. Empty
+same-epoch tail admission therefore works with zero permitted writes and unavailable primitive
+backends. Default stores, missing required chapters, wrong stage time and malformed values refuse.
+
+The publication result has a private discriminator/payload with the same reason family as core
+admission, extended by `MissingState`. Failure exposes no snapshot, accepted prefix or root.
+First/late commitment hash refusal and all value/map/batch budget refusals preserve the complete
+prior mapping and its root. Retained snapshots and explicit extracted byte copies remain independent
+of later store replacement or caller mutation. No callback, borrowed pointer or ownership cycle is
+introduced. Re-encoding copies only a candidate already validated under the same finite policy.
+
+This is substep atomicity: an admission failure does not undo prior changes in the private working
+store. Canonical whole-block publication must wait until all stages succeed. Matching recorded time
+does not authenticate earlier stages or the header; the caller must supply the correct validated
+pipeline context and retain parent values. Partial light state must not be hashed through this
+complete-map store as a full chain state root.
+
+The additional native `ticket_state` profile runs all 28 source projections after the **actual**
+entropy/time store implementation. Eighteen accepted cases compare all four posterior entropy
+words to their upstream values as well as the exact projected C(4); ten refused cases propagate
+the exact protocol cause and preserve the complete staged mapping. Input rotation remains supplied
+by the existing fixture projection; this is not full Safrole STF execution.
+
+Authored publication cases cover setup/verification refusal, first/late store-hash refusal, zero/
+one-write budgets, exact/one-byte-below batch/per-value/whole-map byte ceilings, every missing/
+truncated/suffixed required chapter, stage-order refusal before native work, the pre-copy C(4)
+ceiling, recovery, escaped snapshots, extraction-copy mutation and both schedule alternatives.
+A scoped 1,000-cycle empty-admission workload requires identical live Nim allocation occupancy;
+its fixture/store allocations remain retained throughout. Native setup live counts also return
+to zero after calls. These are workload-specific lifecycle checks, not a general memory audit.
+Two additional compiler privacy checks and two isolated runtime extraction probes protect the
+publication result. Runtime assertion probes remain in the existing unit group for this PR;
+moving them into an independent CI job is deferred to the next testing PR.
+
+## Next bounded work
+
+Ticket admission and its C(4) adapter are complete within this documented scope. Next: Safrole
+sealer schedule selection (ticket outside-in permutation and fallback generation), followed by
+header epoch/winner marker validation. Seal authentication and complete Safrole/block execution
+remain separate increments. Keep the parent accumulator available for those schedule/marker rules
+rather than using the newly admitted accumulator as every stage's input.
