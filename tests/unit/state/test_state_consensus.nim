@@ -1,6 +1,6 @@
 ## Whole-parent ownership, variant and copied-child regression checks.
 import std/[assertions, syncio]
-import ../../src/codec/[state_consensus, state_safrole, bounded, assurances]
+import ../../../src/codec/[state_consensus, state_safrole, bounded, assurances]
 
 ## Confirm complete parent snapshots retain only independent private copies of every selected field.
 proc main() =

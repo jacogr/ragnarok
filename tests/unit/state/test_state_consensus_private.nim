@@ -1,6 +1,7 @@
 ## Project-only ownership, source-alternative and arithmetic checks; no private compiler/runtime interface is used.
 import std/[assertions, syncio]
-include ../../src/codec/state_consensus
+import ../../support/arc_evidence
+include ../../../src/codec/state_consensus
 
 # Use the exact tiny structural widths with independently configurable source bytes.
 proc policy(): SafroleStateConfig =
@@ -112,5 +113,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "CONSENSUS_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_consensus_private", 1000, beforeRelease, afterRelease)
+echo "CONSENSUS_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapter 4: escaped/replaced parents, retained children, source/field copies and scoped ARC release passed"

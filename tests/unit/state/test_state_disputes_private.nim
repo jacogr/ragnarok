@@ -1,6 +1,7 @@
 ## Project-only arithmetic, retained-owner and scoped ARC checks; no compiler/private-runtime hooks.
 import std/[assertions, syncio]
-include ../../src/codec/state_disputes
+import ../../support/arc_evidence
+include ../../../src/codec/state_disputes
 
 ## Small explicit per-set and whole-parent ceilings include all four canonical count prefixes.
 proc policy(): DisputeStateConfig =
@@ -97,5 +98,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "STATE_DISPUTES_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_disputes_private", 1000, beforeRelease, afterRelease)
+echo "STATE_DISPUTES_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapter 5: canonical domain separation, escaped/replaced owners, copied fields and scoped ARC release passed"

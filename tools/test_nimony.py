@@ -952,20 +952,6 @@ def main():
             if release is not None:
                 # Public allocator occupancy measures this warmed workload, not RSS or general leak freedom.
                 report['history_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_disputes_private' and row['passed']:
-            # Retained/replaced chapter-5 parents and copied set identities retire at their final ARC owner.
-            release = re.search(r'STATE_DISPUTES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live occupancy measures this warmed workload, never RSS or general leak freedom.
-                report['state_disputes_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_consensus_private' and row['passed']:
-            # Both parent modes, escaped children and copied source arrays must retire at final ARC release.
-            release = re.search(r'CONSENSUS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live allocator occupancy is workload-specific, not RSS or general leak freedom.
-                report['consensus_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_composition_private' and row['passed']:
             # Replaced snapshots, copied entries and late native refusals release all final scoped references.
             release = re.search(r'COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
