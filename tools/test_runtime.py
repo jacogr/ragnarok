@@ -717,161 +717,94 @@ COMPOSITE_MEMBERS = ('optional-value', 'optional-consumed', 'work-value', 'work-
 MEMBERS = ('offset', 'length', 'blob-consumed', 'written', 'count', 'sequence-consumed')
 
 
-# Unit/corpus commands own their workspace; E2E uses an independent instance of the same profile.
+# Each selected workload owns its workspace; other jobs use independent native-check instances.
 checks = NativeChecks(BUILD)
 command, build = checks.command, checks.build
 
 
-# Verify implemented application coverage; passing tests do not establish full JAM client functionality.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--compiler', type=Path, required=True)
-    args = parser.parse_args()
-    compiler = args.compiler.resolve()
-    BUILD.mkdir(parents=True, exist_ok=True)
-    # A failed or timed-out new invocation must never leave an earlier successful report current.
-    (BUILD/'results.json').unlink(missing_ok=True)
-    report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], store=[], authorization_transition=[], history_transition=[], entropy_transition=[], validator_rotation=[], validator_state=[], ticket_admission=[], ticket_state=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[])
-    metadata = compiler.parent.parent/'NIGHTLY.txt'
-    report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
-    report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
-    report['clang_version'] = command(['clang', '--version'], 'clang-version')
-    report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
-    sources = (list((ROOT/'src/codec').glob('*.nim'))
-               + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
-               + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
-               + unit_fixture_sources()
-               + [ROOT/'tools/native_tests.py', ROOT/'Makefile', ROOT/'tests/test_native_units_harness.py']
-               + [ROOT/'tests/support/ownership_checks.nim', ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/native/report_codec_driver.nim']
-               + list((ROOT/'tests').glob('report_*.py'))
-               + list((ROOT/'tests').glob('guarantees_*.py'))
-               + [ROOT/'tests/native/guarantees_driver.nim', ROOT/'tests/native/tickets_driver.nim',
-                  ROOT/'tests/tickets_oracle.py', ROOT/'tests/test_tickets_harness.py',
-                  ROOT/'tests/disputes_oracle.py', ROOT/'tests/native/disputes_driver.nim',
-                  ROOT/'tests/test_disputes_harness.py', ROOT/'tests/package_oracle.py',
-                  ROOT/'tests/native/package_driver.nim', ROOT/'tests/test_package_harness.py',
-                  ROOT/'tests/header_oracle.py', ROOT/'tests/native/header_driver.nim',
-                  ROOT/'tests/test_header_harness.py', ROOT/'tests/block_oracle.py',
-                  ROOT/'tests/native/block_driver.nim', ROOT/'tests/test_block_harness.py',
-                  ROOT/'tests/native/bits_driver.nim', ROOT/'tests/bits_oracle.py',
-                  ROOT/'tests/test_bits_harness.py', ROOT/'tests/native/collections_driver.nim',
-                  ROOT/'tests/collections_oracle.py', ROOT/'tests/test_collections_harness.py',
-                  ROOT/'tests/native/c2_driver.nim', ROOT/'tests/c2_oracle.py', ROOT/'tests/test_c2_harness.py']
-               + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
-                  ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json',
-                  ROOT/'tests/test_report_harness.py', ROOT/'tests/test_assurances_harness.py']
-               + list((ROOT/'tests/native').glob('nimony_*.nim'))
-               + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL, *CONTRACTS)]
-               + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in
-                  ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
-                   'scalar_collection_negative_width', 'scalar_collection_wide_width')]
-               + [Path(__file__).resolve()])
-    sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'Makefile', 'tools/native_checks.py', 'tools/test_python.py', 'tools/test_e2e.py',
-                'tools/e2e_checks.py', 'tools/test_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
-                'spec/toolchain.json', 'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
-                'tests/test_quic_offload_harness.py',
-                'tests/native/compile_fail/offload_pool_copy.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
-                'tests/test_quic_service.py', 'tests/test_quic_soak.py', 'tests/test_quic_soak_harness.py',
-                'tests/test_quic_mesh.py', 'tests/test_quic_resilience.py', 'tests/test_quic_mesh_harness.py',
-                'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
-                'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
-                'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_tests.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
-                'native/quic/transport_bridge.c', 'native/quic/transport_bridge.h', 'native/quic/cert_fields.c', 'native/quic/cert_fields.h',
-                'tests/native/compile_fail/quic_io_endpoint_copy.nim',
-                'tests/test_bandersnatch.py', 'tests/native/bandersnatch_driver.nim', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
-                'native/bandersnatch/src/lib.rs', 'native/bandersnatch/Cargo.toml', 'native/bandersnatch/Cargo.lock',
-                'spec/bandersnatch-pins.json', '.github/workflows/linux.yml','src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
-                'tests/native/report_check.nim', 'tests/test_report_signature_harness.py','src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
-                'tests/assurance_crypto_oracle.py', 'tests/test_assurance_crypto_harness.py', 'vectors/assurance-context.json','tests/native/driver.nim', 'tests/native/fixed_driver.nim',
-                'tests/native/bounded_driver.nim', 'tests/native/composite_driver.nim', 'tests/native/digest_driver.nim',
-                'tests/native/batch_support.nim', 'tests/test_early_codec_harness.py', 'tests/bounded_checks.py', 'tests/composite_checks.py',
-                'vectors/natural-boundaries.json', 'vectors/fixed-unsigned-boundaries.json',
-                'vectors/bounded-containers.json','tests/native/state_composition_driver.nim', 'tests/state_composition_oracle.py',
-                'tests/test_state_composition_harness.py', 'tests/state_roots_oracle.py',
-                'tests/test_state_roots_harness.py', 'tests/test_state_widths_harness.py',
-                'tests/request_namespace_oracle.py', 'tests/test_request_namespace_harness.py',
-                'tests/test_spec.py', 'tests/dependencies.py', 'tests/native/composition_fixture.nim',
-                'tests/native/state_requests_driver.nim', 'tests/state_requests_oracle.py',
-                'tests/test_state_requests_harness.py', 'tests/native/state_service_values_driver.nim', 'tests/state_service_values_oracle.py',
-                'tests/test_state_service_values_harness.py', 'tests/native/state_accounts_driver.nim', 'tests/state_accounts_oracle.py',
-                'tests/test_state_accounts_harness.py', 'tests/native/state_outputs_driver.nim', 'tests/state_outputs_oracle.py',
-                'tests/test_state_outputs_harness.py', 'src/crypto/primitives.nim', 'tests/native/crypto_driver.nim',
-                'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
-                'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
-                'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
-                'tests/native/state_workqueues_driver.nim', 'tests/state_workqueues_oracle.py',
-                'tests/test_state_workqueues_harness.py', 'tests/native/state_statistics_driver.nim', 'tests/state_statistics_oracle.py',
-                'tests/test_state_statistics_harness.py', 'tests/state_widths_oracle.py', 'tests/native/state_privileges_driver.nim', 'tests/state_privileges_oracle.py',
-                'tests/test_state_privileges_harness.py', 'tests/native/state_availability_driver.nim', 'tests/state_availability_oracle.py',
-                'tests/test_state_availability_harness.py', 'tests/native/state_history_driver.nim', 'tests/state_history_oracle.py',
-                'tests/test_state_history_harness.py', 'tests/native/state_disputes_driver.nim', 'tests/state_disputes_oracle.py',
-                'tests/test_state_disputes_harness.py', 'tests/native/state_consensus_driver.nim', 'tests/state_consensus_oracle.py',
-                'tests/test_state_consensus_harness.py', 'tests/native/state_authorization_driver.nim', 'tests/state_authorization_oracle.py',
-                'tests/test_state_authorization_harness.py', 'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
-                'tests/test_state_safrole_harness.py', 'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
-                'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
-                'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
-                'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
-    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
-    # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
-    sys.path.insert(0, str(ROOT/'tests'))
-    from test_bandersnatch import fixture_path
-    sources += [fixture_path(name) for name in ('ietf.json', 'ring.json', 'jam-tiny.json', 'jam-full.json', 'jam-padding.json')]
-    sources += [ROOT/f'vendor/jamtestvectors/codec/{profile}/work_result_{number}.{suffix}'
-                for profile in ('tiny', 'full') for number in (0, 1) for suffix in ('json', 'bin')]
-    report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                              for path in sorted(sources)}
-    # The existing native guarantee suite consumes an independently authored minimal report fixture.
-    sys.path.insert(0, str(ROOT/'tests'))
-    from nimony_crypto import prepare as prepare_crypto
-    crypto_library, crypto_observer, report['crypto_native'] = prepare_crypto(BUILD)
-    from bandersnatch_native import prepare as prepare_bandersnatch, OWNER_DEFINES
-    bs_library, bs_observer, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
-    bs_libraries = (bs_observer, bs_library)
-    from nimony_quic import prepare as prepare_quic
-    quic_library, quic_fixtures, report['quic_native'] = prepare_quic()
-    # Reuse the original independently checked CE integration fixtures; no peer/compiler build runs here.
-    import test_integration as integration_fixture
-    integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
-    integration_wires, integration_keys = integration_fixture.corpus()
-    integration_reload = BUILD/'integration-reload'
-    integration_reload.mkdir(exist_ok=True)
-    # Different candidate bytes make a late refused reload detect partial publication rather than a no-op reload.
-    for index in range(8):
-        wire = bytearray((integration_wires/f'{index}.bin').read_bytes())
-        wire[0] ^= 128
-        (integration_reload/f'{index}.bin').write_bytes(wire)
-    report['integration_fixtures'] = dict(keys=integration_keys,
-        original={str(index): hashlib.sha256((integration_wires/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)},
-        reload={str(index): hashlib.sha256((integration_reload/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)})
-    from state_availability_oracle import record as availability_record
-    availability_fixture = BUILD/'availability-report.bin'
-    availability_fixture.write_bytes(availability_record(0)['report'])
-    # Composition ownership probes consume independent literal chapters, not native round-trip fixtures.
-    from state_composition_oracle import chapters as composition_chapters
-    composition_fixture = BUILD/'composition-chapters.txt'
-    composition_fixture.write_text('\n'.join(raw.hex() for raw in composition_chapters())+'\n')
-    # Every ordinary suite now has one native runner path; omitted/extra identities are a migration failure.
-    assert set(SUITES) == set(UNIT_SUITES) and len(SUITES) == len(UNIT_SUITES)
-    libraries = dict(crypto=crypto_library, observer=crypto_observer, bandersnatch=bs_library,
-                     bandersnatch_observer=bs_observer, quic=quic_library)
-    fixtures = unit_runtime_fixtures(quic_fixtures, integration_wires, integration_reload)
-    store_fixtures, report['store_replay_fixture'] = unit_store_fixture(BUILD)
-    fixtures.update(store_fixtures)
-    authorization_fixtures, report['authorization_stf_fixture'] = unit_authorization_fixture(BUILD)
-    fixtures.update(authorization_fixtures)
-    history_fixtures, report['history_stf_fixture'] = unit_history_fixture(BUILD)
-    fixtures.update(history_fixtures)
-    signing_fixtures, report['signing_domain_fixture'] = unit_signing_fixture(BUILD)
-    fixtures.update(signing_fixtures)
-    entropy_fixtures, report['entropy_stf_fixture'] = unit_entropy_fixture(BUILD)
-    fixtures.update(entropy_fixtures)
-    validator_fixtures, report['validator_stf_fixture'] = unit_validator_fixture(BUILD)
-    ticket_fixtures, report['ticket_stf_fixture'] = unit_ticket_fixture(BUILD)
-    fixtures.update(validator_fixtures)
-    fixtures.update(ticket_fixtures)
+# Fixed inventories retain every historical diagnostic family when jobs execute independently.
+FAILURE_COUNTS = {
+    'ticket_state': 2,
+    'ticket_admission': 2,
+    'validator_state': 2,
+    'validator_rotation': 2,
+    'entropy_transition': 4,
+    'history_transition': 6,
+    'authorization_transition': 4,
+    'store': 9,
+    'runtime': 3,
+    'bounded': 12,
+    'primitive': 13,
+    'composite': 29,
+    'owned': 27,
+    'bandersnatch': 2 * len(BS_MEMBERS),
+    'offload': 4,
+    'integration': 2 * len(INTEGRATION_MEMBERS),
+    'quic_protocol': 8,
+    'guarantee_message': 2 * len(GUARANTEE_MESSAGE_MEMBERS),
+    'assurance_context': 2 * len(ASSURANCE_CONTEXT_MEMBERS),
+    'composition': 2 * len(COMPOSITION_MEMBERS),
+    'requests': 2 * len(REQUESTS_MEMBERS) + 2 * len(REQUESTS_FIELDS) + 6,
+    'service_values': 2 * len(SERVICE_VALUES_MEMBERS),
+    'accounts': 2 * len(ACCOUNTS_MEMBERS),
+    'outputs': 2 * len(OUTPUTS_MEMBERS),
+    'workqueues': 2 * len(WORKQUEUES_MEMBERS),
+    'statistics': 2 * len(STATISTICS_MEMBERS),
+    'privileges': 2 * len(PRIVILEGES_MEMBERS),
+    'availability': 2 * len(AVAILABILITY_MEMBERS) + 6,
+    'history': 2 * len(HISTORY_MEMBERS) + 3,
+    'state_disputes': 2 * len(STATE_DISPUTES_MEMBERS),
+    'consensus': 2 * len(CONSENSUS_MEMBERS) + 2,
+    'authorization': 2 * len(AUTHORIZATION_MEMBERS),
+    'safrole': 2 * len(SAFROLE_MEMBERS) + 1,
+    'trie': 3 * len(TRIE_ORIGINS) + 2,
+    'layout': 2 * len(LAYOUT_MEMBERS) + len(LAYOUT_VARIANTS),
+    'crypto': 2 * len(CRYPTO_MEMBERS),
+    'c2': 2 * len(C2_MEMBERS) + len(C2_VARIANTS),
+    'collections': 2 * len(COLLECTION_MEMBERS),
+    'bits': 2 * len(BITS_MEMBERS),
+    'blocks': 2 * len(BLOCK_MEMBERS) + 3 + len(BLOCK_WRONG),
+    'headers': 81,
+    'packages': 51,
+    'disputes': 25,
+    'tickets': 10,
+    'guarantees': 29,
+    'assurances': 10,
+    'reports': 14,
+}
+CORPUS_NAMES = ('accounts_corpus', 'assurance_context_corpus', 'assurance_corpus', 'authorization_corpus', 'availability_corpus', 'bandersnatch_corpus', 'bits_corpus', 'block_corpus', 'bounded_corpus', 'c2_corpus', 'collection_corpus', 'composite_corpus', 'composition_corpus', 'consensus_corpus', 'crypto_corpus', 'digest_corpus', 'dispute_corpus', 'fixed_corpus', 'guarantee_corpus', 'header_corpus', 'history_corpus', 'integration_corpus', 'layout_corpus', 'natural_corpus', 'outputs_corpus', 'package_corpus', 'privileges_corpus', 'quic_protocol_corpus', 'report_corpus', 'report_signature_corpus', 'request_namespace_corpus', 'requests_corpus', 'safrole_corpus', 'service_values_corpus', 'state_disputes_corpus', 'state_roots_corpus', 'state_widths_corpus', 'statistics_corpus', 'ticket_corpus', 'trie_corpus', 'workqueues_corpus')
+
+
+# Require every native suite and independent corpus, without borrowing another job's verdict.
+def unit_passed(report):
+    rows = report.get('suites', [])
+    names = [row.get('name') for row in rows]
+    return (len(names) == len(UNIT_SUITES) and set(names) == set(UNIT_SUITES)
+            and all(row.get('passed') is True for row in rows)
+            and {key for key in report if key.endswith('_corpus')} == set(CORPUS_NAMES)
+            and all(report[name].get('passed') is True for name in CORPUS_NAMES)
+            and not set(FAILURE_COUNTS).intersection(report))
+
+
+# Missing, duplicate or failed contract probes cannot be masked by successful sibling families.
+def failures_passed(report):
+    for family, count in FAILURE_COUNTS.items():
+        # Each historical workload must produce exactly its original ordered set of distinct records.
+        rows = report.get(family, [])
+        identities = [json.dumps({key: value for key, value in row.items()
+                                 if key not in ('run', 'check', 'passed')}, sort_keys=True) for row in rows]
+        if len(rows) != count or len(set(identities)) != count or not all(row.get('passed') is True for row in rows):
+            # Incomplete evidence remains a failing job even when all emitted rows happened to pass.
+            return False
+    return (report.get('store_controls', {}).get('passed') is True and 'suites' not in report
+            and not any(key.endswith('_corpus') for key in report))
+
+
+# Execute ordinary Hastur suites and independent references with the existing fixture/linking contracts.
+def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires):
+    crypto_library = libraries['crypto']
+    bs_library = libraries['bandersnatch']
+    quic_library = libraries['quic']
     for batch, members, target in unit_batches():
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
         checked = command(unit_command(compiler, target, libraries), batch+'-hastur',
@@ -894,104 +827,6 @@ def main():
                     row['evidence_error'] = str(error)
             report['suites'].append(row)
             announce(name+' (Hastur)', row['passed'])
-    # Public store payloads/views require their own contracts, independent of ordinary success suites.
-    compiled, binary = build(compiler, ROOT/'tests/native/state_store_results.nim', 'state-store-results', crypto_library)
-    report['store_build'] = compiled
-    report['store_controls'] = dict(passed=False)
-    if compiled['exit_code'] == 0:
-        # Actual and default failures cover every public generic payload family.
-        cases = [(member, origin, 'outcome.status == None')
-                 for member in ('store', 'snapshot', 'lookup') for origin in ('default', 'error')]
-        cases += [('metadata', 'default', 'not snapshot.data == nil'),
-                  ('length', 'default', 'not view.owner.data == nil'),
-                  ('bytes', 'default', 'not view.owner.data == nil')]
-        for member, origin, sentinel in cases:
-            # Match the supported precondition and exit status, never an unrelated crash or fixture error.
-            result = command([binary, member, origin], 'store-'+member+'-'+origin)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['store'].append(dict(member=member, origin=origin, passed=passed, run=result))
-            announce('store '+member+' '+origin+' guard', passed)
-        controls = {member: command([binary, member, 'valid'], 'store-'+member+'-valid')
-                    for member in ('metadata', 'length', 'bytes')}
-        report['store_controls'] = dict(checks=controls,
-            passed=all(row['exit_code'] == 0 and row['output'].strip() == ('1' if member == 'metadata' else '0')
-                       for member, row in controls.items()))
-    # Proposed entry and committed-snapshot payloads are independently guarded on default and real failures.
-    compiled, binary = build(compiler, ROOT/'tests/native/authorization_transition_results.nim', 'authorization-transition-results', crypto_library)
-    report['authorization_transition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for member in ('entry', 'state'):
-            for origin in ('default', 'error'):
-                # Require the intended payload precondition, not a bad selector or unrelated native crash.
-                result = command([binary, member, origin], 'authorization-transition-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['authorization_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('authorization transition '+member+' '+origin+' guard', passed)
-    # Root, proposed entry and committed snapshot payload families require independent checked guards.
-    compiled, binary = build(compiler, ROOT/'tests/native/history_transition_results.nim', 'history-transition-results', crypto_library)
-    report['history_transition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for member in ('root', 'entry', 'state'):
-            for origin in ('default', 'error'):
-                # Require the intended precondition and status, not an unrelated crash or selector error.
-                result = command([binary, member, origin], 'history-transition-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['history_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('history transition '+member+' '+origin+' guard', passed)
-    # Updated fixed words/time and committed snapshots each require default and actual failure guards.
-    compiled, binary = build(compiler, ROOT/'tests/native/entropy_transition_results.nim', 'entropy-transition-results', crypto_library)
-    report['entropy_transition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for member in ('update', 'state'):
-            for origin in ('default', 'error'):
-                # Require the exact result-access precondition, not an unrelated crash or harness selector failure.
-                result = command([binary, member, origin], 'entropy-transition-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['entropy_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('entropy transition '+member+' '+origin+' guard', passed)
-    # Both default and actual failed plans reject payload extraction through the intended checked contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/validator_rotation_results.nim', 'validator-rotation-results', crypto_library)
-    report['validator_rotation_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # A selector failure, unrelated assertion or native crash cannot stand in for payload protection.
-            result = command([binary, origin], 'validator-rotation-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['validator_rotation'].append(dict(origin=origin, passed=passed, run=result))
-            announce('validator rotation '+origin+' guard', passed)
-    # Isolate default and actual failed publication results; require the intended access contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/validator_state_results.nim', 'validator-state-results',
-                             crypto_library, native_libraries=(bs_library,))
-    report['validator_state_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # No unrelated crash or selector error can satisfy snapshot payload protection.
-            result = command([binary, origin], 'validator-state-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['validator_state'].append(dict(origin=origin, passed=passed, run=result))
-            announce('validator state '+origin+' guard', passed)
-    # Default and real failed admission candidates reject owner extraction through the intended contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/ticket_admission_results.nim', 'ticket-admission-results',
-                             crypto_library, native_libraries=(bs_library,))
-    report['ticket_admission_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Selector failures and unrelated assertions cannot stand in for guarded candidate access.
-            result = command([binary, origin], 'ticket-admission-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['ticket_admission'].append(dict(origin=origin, passed=passed, run=result))
-            announce('ticket admission '+origin+' guard', passed)
-    # Publication snapshots require successful selection for both default and actually refused results.
-    compiled, binary = build(compiler, ROOT/'tests/native/ticket_state_results.nim', 'ticket-state-results',
-                             crypto_library, native_libraries=(bs_library,))
-    report['ticket_state_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Require the intended snapshot extraction precondition rather than an unrelated failure.
-            result = command([binary, origin], 'ticket-state-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['ticket_state'].append(dict(origin=origin, passed=passed, run=result))
-            announce('ticket state '+origin+' guard', passed)
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
     from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode
     from bounded_checks import batch_requests as bounded_requests
@@ -1931,40 +1766,6 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
         report[family+'_corpus'] = corpus
         announce('unchanged '+family+' regression corpus', passed)
-    # Transcript and count access on every actual/default context failure must terminate at the success contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
-    report['assurance_context_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Isolate every read so an earlier contract failure cannot conceal a later unguarded payload.
-        for origin in ('default', 'error'):
-            for member in ASSURANCE_CONTEXT_MEMBERS:
-                result = command([binary, member, origin], 'assurance-context-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['assurance_context'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' assurance context '+member+' guard', passed)
-    # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_guarantee_message_results.nim', 'guarantee-message-results', crypto_observer)
-    report['guarantee_message_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Empty/nonempty raw inputs are isolated, and each default is separate from the actual provider refusal.
-        for origin in ('default', 'error'):
-            for member in GUARANTEE_MESSAGE_MEMBERS:
-                result = command([binary, member, origin], 'guarantee-message-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['guarantee_message'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' guarantee message '+member+' guard', passed)
-    # Actual/default result access must reject for every fixed proof/output, sequence and opaque native owner.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_bandersnatch_results.nim', 'bandersnatch-results',
-                             native_libraries=bs_libraries, cflags=OWNER_DEFINES)
-    report['bandersnatch_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Separate processes prevent prior contract failures or test-observer flags from concealing later checks.
-        for origin in ('default', 'error'):
-            for member in BS_MEMBERS:
-                result = command([binary, member, origin], 'bs-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['bandersnatch'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' Bandersnatch '+member+' guard', passed)
     # Replay the unchanged release-reference proof oracle through the production library, without observer interposition.
     from test_bandersnatch import suite as bs_suite, generated_proofs as bs_generated, bridge_checks as bs_bridge, official_sources as bs_official
     bs_official(False)
@@ -2018,35 +1819,6 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['quic_protocol_corpus'] = corpus
     announce('independent SAN/DER/frame boundary corpus', corpus['passed'])
-    # Default/failed/pending frame metadata and default/failed E4 lengths cannot bypass result access contracts.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_quic_protocol_results.nim', 'quic-protocol-results', quic_library=quic_library)
-    report['quic_protocol_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # One rejected read per child process prevents a preceding contract trap from hiding another accessor.
-        for member in ('length', 'size', 'extent'):
-            for origin in (('default', 'error') if member == 'length' else ('default', 'error', 'pending')):
-                result = command([binary, member, origin], 'quic-protocol-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('QUIC '+origin+' '+member+' guard', passed)
-    # Completion guards need only their public fixture, not the E2E network/soak workloads.
-    from test_quic_offload import corpus as offload_fixture
-    offload_wire, _ = offload_fixture(BUILD/'offload-fixture')
-    # The same guarded completion API must reject defaults and actual empty polls in both build profiles.
-    for enabled in (False, True):
-        compiled, binary = build(compiler, ROOT/'tests/native/nimony_offload_results.nim',
-                                 'offload-results-'+str(enabled), native_libraries=(bs_library,) if enabled else (),
-                                 defines=('offload',) if enabled else ())
-        report['offload_results_'+str(enabled)] = compiled
-        if compiled['exit_code'] == 0:
-            # Enabled empty-poll probes start and join their own workers before attempting the invalid read.
-            for origin in ('default', 'empty'):
-                environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(offload_wire),
-                               'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': ''}
-                result = command([binary, origin], 'offload-result-'+str(enabled)+'-'+origin, environment)
-                passed = result['exit_code'] == 1 and 'value.hasCompletion' in result['output'] and '[AssertionDefect]' in result['output']
-                report['offload'].append(dict(enabled=enabled, origin=origin, passed=passed, run=result))
-                announce('offload '+str(enabled)+' '+origin+' completion guard', passed)
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -2070,6 +1842,189 @@ def main():
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
     report['integration_corpus'] = corpus
     announce('independent CE digest capture/hash-binding corpus', corpus['passed'])
+    # Preserve every independent primitive vector, ownership check and joined native-thread workload.
+    compiled, binary = build(compiler, ROOT/'tests/native/crypto_driver.nim', 'crypto-driver', crypto_library)
+    corpus = dict(build=compiled, passed=False)
+    if compiled['exit_code'] == 0:
+        # The production-linked corpus has no failure injection or observation wrappers.
+        corpus['run'] = command([sys.executable, ROOT/'tests/test_nimony_crypto.py', '--binary', binary], 'crypto-corpus')
+        corpus['passed'] = corpus['run']['exit_code'] == 0
+        if corpus['passed']:
+            # Retain structured independent equation/thread counts alongside the exact reproduction command.
+            corpus['counts'] = json.loads(corpus['run']['output'])
+    report['crypto_corpus'] = corpus
+    announce('crypto corpus', corpus['passed'])
+
+
+# Execute strict crash/contract probes separately; compilation alone cannot prove these preconditions.
+def run_failures(compiler, report, libraries, availability_fixture, composition_fixture):
+    from bandersnatch_native import OWNER_DEFINES
+    crypto_library = libraries['crypto']
+    crypto_observer = libraries['observer']
+    bs_library = libraries['bandersnatch']
+    bs_libraries = (libraries['bandersnatch_observer'], bs_library)
+    quic_library = libraries['quic']
+    # Public store payloads/views require their own contracts, independent of ordinary success suites.
+    compiled, binary = build(compiler, ROOT/'tests/native/state_store_results.nim', 'state-store-results', crypto_library)
+    report['store_build'] = compiled
+    report['store_controls'] = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        # Actual and default failures cover every public generic payload family.
+        cases = [(member, origin, 'outcome.status == None')
+                 for member in ('store', 'snapshot', 'lookup') for origin in ('default', 'error')]
+        cases += [('metadata', 'default', 'not snapshot.data == nil'),
+                  ('length', 'default', 'not view.owner.data == nil'),
+                  ('bytes', 'default', 'not view.owner.data == nil')]
+        for member, origin, sentinel in cases:
+            # Match the supported precondition and exit status, never an unrelated crash or fixture error.
+            result = command([binary, member, origin], 'store-'+member+'-'+origin)
+            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
+            report['store'].append(dict(member=member, origin=origin, passed=passed, run=result))
+            announce('store '+member+' '+origin+' runtime guard', passed)
+        controls = {member: command([binary, member, 'valid'], 'store-'+member+'-valid')
+                    for member in ('metadata', 'length', 'bytes')}
+        report['store_controls'] = dict(checks=controls,
+            passed=all(row['exit_code'] == 0 and row['output'].strip() == ('1' if member == 'metadata' else '0')
+                       for member, row in controls.items()))
+    # Proposed entry and committed-snapshot payloads are independently guarded on default and real failures.
+    compiled, binary = build(compiler, ROOT/'tests/native/authorization_transition_results.nim', 'authorization-transition-results', crypto_library)
+    report['authorization_transition_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for member in ('entry', 'state'):
+            for origin in ('default', 'error'):
+                # Require the intended payload precondition, not a bad selector or unrelated native crash.
+                result = command([binary, member, origin], 'authorization-transition-'+member+'-'+origin)
+                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['authorization_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
+                announce('authorization transition '+member+' '+origin+' runtime guard', passed)
+    # Root, proposed entry and committed snapshot payload families require independent checked guards.
+    compiled, binary = build(compiler, ROOT/'tests/native/history_transition_results.nim', 'history-transition-results', crypto_library)
+    report['history_transition_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for member in ('root', 'entry', 'state'):
+            for origin in ('default', 'error'):
+                # Require the intended precondition and status, not an unrelated crash or selector error.
+                result = command([binary, member, origin], 'history-transition-'+member+'-'+origin)
+                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['history_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
+                announce('history transition '+member+' '+origin+' runtime guard', passed)
+    # Updated fixed words/time and committed snapshots each require default and actual failure guards.
+    compiled, binary = build(compiler, ROOT/'tests/native/entropy_transition_results.nim', 'entropy-transition-results', crypto_library)
+    report['entropy_transition_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for member in ('update', 'state'):
+            for origin in ('default', 'error'):
+                # Require the exact result-access precondition, not an unrelated crash or harness selector failure.
+                result = command([binary, member, origin], 'entropy-transition-'+member+'-'+origin)
+                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['entropy_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
+                announce('entropy transition '+member+' '+origin+' runtime guard', passed)
+    # Both default and actual failed plans reject payload extraction through the intended checked contract.
+    compiled, binary = build(compiler, ROOT/'tests/native/validator_rotation_results.nim', 'validator-rotation-results', crypto_library)
+    report['validator_rotation_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # A selector failure, unrelated assertion or native crash cannot stand in for payload protection.
+            result = command([binary, origin], 'validator-rotation-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['validator_rotation'].append(dict(origin=origin, passed=passed, run=result))
+            announce('validator rotation '+origin+' runtime guard', passed)
+    # Isolate default and actual failed publication results; require the intended access contract.
+    compiled, binary = build(compiler, ROOT/'tests/native/validator_state_results.nim', 'validator-state-results',
+                             crypto_library, native_libraries=(bs_library,))
+    report['validator_state_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # No unrelated crash or selector error can satisfy snapshot payload protection.
+            result = command([binary, origin], 'validator-state-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['validator_state'].append(dict(origin=origin, passed=passed, run=result))
+            announce('validator state '+origin+' runtime guard', passed)
+    # Default and real failed admission candidates reject owner extraction through the intended contract.
+    compiled, binary = build(compiler, ROOT/'tests/native/ticket_admission_results.nim', 'ticket-admission-results',
+                             crypto_library, native_libraries=(bs_library,))
+    report['ticket_admission_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Selector failures and unrelated assertions cannot stand in for guarded candidate access.
+            result = command([binary, origin], 'ticket-admission-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['ticket_admission'].append(dict(origin=origin, passed=passed, run=result))
+            announce('ticket admission '+origin+' runtime guard', passed)
+    # Publication snapshots require successful selection for both default and actually refused results.
+    compiled, binary = build(compiler, ROOT/'tests/native/ticket_state_results.nim', 'ticket-state-results',
+                             crypto_library, native_libraries=(bs_library,))
+    report['ticket_state_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Require the intended snapshot extraction precondition rather than an unrelated failure.
+            result = command([binary, origin], 'ticket-state-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['ticket_state'].append(dict(origin=origin, passed=passed, run=result))
+            announce('ticket state '+origin+' runtime guard', passed)
+    # Transcript and count access on every actual/default context failure must terminate at the success contract.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
+    report['assurance_context_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Isolate every read so an earlier contract failure cannot conceal a later unguarded payload.
+        for origin in ('default', 'error'):
+            for member in ASSURANCE_CONTEXT_MEMBERS:
+                result = command([binary, member, origin], 'assurance-context-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['assurance_context'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' assurance context '+member+' runtime guard', passed)
+    # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_guarantee_message_results.nim', 'guarantee-message-results', crypto_observer)
+    report['guarantee_message_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Empty/nonempty raw inputs are isolated, and each default is separate from the actual provider refusal.
+        for origin in ('default', 'error'):
+            for member in GUARANTEE_MESSAGE_MEMBERS:
+                result = command([binary, member, origin], 'guarantee-message-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['guarantee_message'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' guarantee message '+member+' runtime guard', passed)
+    # Actual/default result access must reject for every fixed proof/output, sequence and opaque native owner.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_bandersnatch_results.nim', 'bandersnatch-results',
+                             native_libraries=bs_libraries, cflags=OWNER_DEFINES)
+    report['bandersnatch_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # Separate processes prevent prior contract failures or test-observer flags from concealing later checks.
+        for origin in ('default', 'error'):
+            for member in BS_MEMBERS:
+                result = command([binary, member, origin], 'bs-'+origin+'-'+member)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['bandersnatch'].append(dict(origin=origin, member=member, passed=passed, run=result))
+                announce(origin+' Bandersnatch '+member+' runtime guard', passed)
+    # Default/failed/pending frame metadata and default/failed E4 lengths cannot bypass result access contracts.
+    compiled, binary = build(compiler, ROOT/'tests/native/nimony_quic_protocol_results.nim', 'quic-protocol-results', quic_library=quic_library)
+    report['quic_protocol_build'] = compiled
+    if compiled['exit_code'] == 0:
+        # One rejected read per child process prevents a preceding contract trap from hiding another accessor.
+        for member in ('length', 'size', 'extent'):
+            for origin in (('default', 'error') if member == 'length' else ('default', 'error', 'pending')):
+                result = command([binary, member, origin], 'quic-protocol-'+member+'-'+origin)
+                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
+                announce('QUIC '+origin+' '+member+' runtime guard', passed)
+    # Completion guards need only their public fixture, not the E2E network/soak workloads.
+    from test_quic_offload import corpus as offload_fixture
+    offload_wire, _ = offload_fixture(BUILD/'offload-fixture')
+    # The same guarded completion API must reject defaults and actual empty polls in both build profiles.
+    for enabled in (False, True):
+        compiled, binary = build(compiler, ROOT/'tests/native/nimony_offload_results.nim',
+                                 'offload-results-'+str(enabled), native_libraries=(bs_library,) if enabled else (),
+                                 defines=('offload',) if enabled else ())
+        report['offload_results_'+str(enabled)] = compiled
+        if compiled['exit_code'] == 0:
+            # Enabled empty-poll probes start and join their own workers before attempting the invalid read.
+            for origin in ('default', 'empty'):
+                environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(offload_wire),
+                               'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': ''}
+                result = command([binary, origin], 'offload-result-'+str(enabled)+'-'+origin, environment)
+                passed = result['exit_code'] == 1 and 'value.hasCompletion' in result['output'] and '[AssertionDefect]' in result['output']
+                report['offload'].append(dict(enabled=enabled, origin=origin, passed=passed, run=result))
+                announce('offload '+str(enabled)+' '+origin+' completion runtime guard', passed)
     # Every default/actual integration result family must reject value access before use.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_integration_results.nim', 'integration-results', crypto_observer, defines=('integration',))
     report['integration_build'] = compiled
@@ -2080,7 +2035,7 @@ def main():
                 result = command([binary, member, origin], 'integration-'+member+'-'+origin)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['integration'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('integration '+origin+' '+member+' guard', passed)
+                announce('integration '+origin+' '+member+' runtime guard', passed)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -2105,7 +2060,7 @@ def main():
                 passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
                           and '[AssertionDefect]' in result['output'])
                 report['bounded'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' '+member+' guard', passed)
+                announce(origin+' '+member+' runtime guard', passed)
     # Primitive success payloads are guarded on defaults/errors; error reasons are guarded on success.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_primitive_results.nim', 'primitive-results')
     report['primitive_build'] = compiled
@@ -2118,7 +2073,7 @@ def main():
             passed = (result['exit_code'] == 1 and 'value.success' in result['output']
                       and '[AssertionDefect]' in result['output'])
             report['primitive'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' '+member+' guard', passed)
+            announce(origin+' '+member+' runtime guard', passed)
     # Composite results, nested variants and explicit constructor preconditions are independently guarded.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_composite_results.nim', 'composite-results')
     report['composite_build'] = compiled
@@ -2145,7 +2100,7 @@ def main():
             else:
                 passed = passed and 'not reason == None' in result['output']
             report['composite'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' '+member+' guard', passed)
+            announce(origin+' '+member+' runtime guard', passed)
     # Generic owned payloads, absent/error metadata and explicit factories retain independent guards.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_owned_results.nim', 'owned-results')
     report['owned_build'] = compiled
@@ -2172,7 +2127,7 @@ def main():
             else:
                 passed = passed and 'not kind == Success' in result['output']
             report['owned'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' '+member+' guard', passed)
+            announce(origin+' '+member+' runtime guard', passed)
     # Report/header and newly instantiated owned results reject all failed/default payload access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_report_results.nim', 'report-results')
     report['reports_build'] = compiled
@@ -2185,7 +2140,7 @@ def main():
                 passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
                           and '[AssertionDefect]' in result['output'])
                 report['reports'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' '+member+' guard', passed)
+                announce(origin+' '+member+' runtime guard', passed)
     # Decoder and inspection progress share the same result type but must reject each failing operation independently.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_results.nim', 'assurance-results')
     report['assurances_build'] = compiled
@@ -2198,7 +2153,7 @@ def main():
                 passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
                           and '[AssertionDefect]' in result['output'])
                 report['assurances'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' assurance '+member+' guard', passed)
+                announce(origin+' assurance '+member+' runtime guard', passed)
     # Every public guarantee result instantiation must protect failed/default values, including inspection tuples.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_guarantee_results.nim', 'guarantee-results')
     report['guarantees_build'] = compiled
@@ -2211,7 +2166,7 @@ def main():
             sentinel = 'not reason == None' if member == 'factory' else 'value.status == None'
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['guarantees'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' guarantee '+member+' guard', passed)
+            announce(origin+' guarantee '+member+' runtime guard', passed)
     # Ticket write, decode and inspection APIs reject progress reads on defaults and actual typed failures.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_ticket_results.nim', 'ticket-results')
     report['tickets_build'] = compiled
@@ -2224,7 +2179,7 @@ def main():
                 passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
                           and '[AssertionDefect]' in result['output'])
                 report['tickets'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' ticket '+member+' guard', passed)
+                announce(origin+' ticket '+member+' runtime guard', passed)
     # Every public dispute result type and explicit failure construction retain success contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_dispute_results.nim', 'dispute-results')
     report['disputes_build'] = compiled
@@ -2237,7 +2192,7 @@ def main():
             sentinel = 'not reason == None' if member == 'factory' else 'value.status == None'
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['disputes'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' dispute '+member+' guard', passed)
+            announce(origin+' dispute '+member+' runtime guard', passed)
     # Every public package result instantiation and both import identity alternatives retain checked access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_package_results.nim', 'package-results')
     report['packages_build'] = compiled
@@ -2251,7 +2206,7 @@ def main():
                         'value.referenceKind == Package' if member == 'wrong-package' else 'value.status == None')
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['packages'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' package '+member+' guard', passed)
+            announce(origin+' package '+member+' runtime guard', passed)
     # Guard all public header result instantiations and both source/metadata optional alternatives.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_header_results.nim', 'header-results')
     report['headers_build'] = compiled
@@ -2266,7 +2221,7 @@ def main():
                         'not reason == None' if member == 'factory' else 'value.status == None')
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['headers'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' header '+member+' guard', passed)
+            announce(origin+' header '+member+' runtime guard', passed)
     # Parent values and nested component reasons require independent checked alternatives.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_block_results.nim', 'block-results')
     report['blocks_build'] = compiled
@@ -2280,7 +2235,7 @@ def main():
             result = command([binary, member, origin], 'block-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['blocks'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' block '+member+' guard', passed)
+            announce(origin+' block '+member+' runtime guard', passed)
     # All Boolean/bitstring result types and public operations retain success-only value access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_bits_results.nim', 'bits-results')
     report['bits_build'] = compiled
@@ -2292,7 +2247,7 @@ def main():
                 result = command([binary, member, origin], 'bits-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['bits'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' bits '+member+' guard', passed)
+                announce(origin+' bits '+member+' runtime guard', passed)
     # Every collection/scalar result shape keeps failure/default application access guarded.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_collection_results.nim', 'collection-results')
     report['collections_build'] = compiled
@@ -2303,7 +2258,7 @@ def main():
             result = command([binary, member, origin], 'collection-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['collections'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' collection '+member+' guard', passed)
+            announce(origin+' collection '+member+' runtime guard', passed)
     # Guard every C.2 result and selected work/source/metadata/decoded union alternative independently.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_c2_results.nim', 'c2-results')
     report['c2_build'] = compiled
@@ -2315,19 +2270,7 @@ def main():
             result = command([binary, member, origin], 'c2-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['c2'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' c2 '+member+' guard', passed)
-    # Preserve every independent primitive vector, ownership check and joined native-thread workload.
-    compiled, binary = build(compiler, ROOT/'tests/native/crypto_driver.nim', 'crypto-driver', crypto_library)
-    corpus = dict(build=compiled, passed=False)
-    if compiled['exit_code'] == 0:
-        # The production-linked corpus has no failure injection or observation wrappers.
-        corpus['run'] = command([sys.executable, ROOT/'tests/test_nimony_crypto.py', '--binary', binary], 'crypto-corpus')
-        corpus['passed'] = corpus['run']['exit_code'] == 0
-        if corpus['passed']:
-            # Retain structured independent equation/thread counts alongside the exact reproduction command.
-            corpus['counts'] = json.loads(corpus['run']['output'])
-    report['crypto_corpus'] = corpus
-    announce('crypto corpus', corpus['passed'])
+            announce(origin+' c2 '+member+' runtime guard', passed)
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_crypto_results.nim', 'crypto-results', crypto_observer)
     report['crypto_build'] = compiled
     if compiled['exit_code'] == 0:
@@ -2338,7 +2281,7 @@ def main():
                 result = command([binary, member, origin], 'crypto-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['crypto'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' crypto '+member+' guard', passed)
+                announce(origin+' crypto '+member+' runtime guard', passed)
     # Guard every default/failed layout result and both wrong alternatives for every metadata field.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_layout_results.nim', 'layout-results', crypto_observer)
     report['layout_build'] = compiled
@@ -2351,7 +2294,7 @@ def main():
             result = command([binary, member, origin], 'layout-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['layout'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' layout '+member+' guard', passed)
+            announce(origin+' layout '+member+' runtime guard', passed)
     # Public commitment and private recursive child-hash results must reject failed/default payload reads.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_trie_results.nim', 'trie-results', crypto_observer)
     report['trie_build'] = compiled
@@ -2364,7 +2307,7 @@ def main():
             result = command([binary, member, origin], 'trie-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
             report['trie'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' trie '+member+' guard', passed)
+            announce(origin+' trie '+member+' runtime guard', passed)
     # Every default/failed component result must reject values, owners, copied records and consumed progress.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_safrole_results.nim', 'safrole-results', crypto_library)
     report['safrole_build'] = compiled
@@ -2377,7 +2320,7 @@ def main():
             result = command([binary, member, origin], 'safrole-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
             report['safrole'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' safrole '+member+' guard', passed)
+            announce(origin+' safrole '+member+' runtime guard', passed)
     # Public authorization fields and internal framing tuples must reject every default/failed payload read.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_authorization_results.nim', 'authorization-results', crypto_library)
     report['authorization_build'] = compiled
@@ -2389,7 +2332,7 @@ def main():
                 result = command([binary, member, origin], 'authorization-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['authorization'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' authorization '+member+' guard', passed)
+                announce(origin+' authorization '+member+' runtime guard', passed)
     # Chapter-local results and closed source alternatives guard every inactive/default observation.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_consensus_results.nim', 'consensus-results', crypto_library)
     report['consensus_build'] = compiled
@@ -2402,7 +2345,7 @@ def main():
             result = command([binary, member, origin], 'consensus-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['consensus'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' consensus '+member+' guard', passed)
+            announce(origin+' consensus '+member+' runtime guard', passed)
     # All public result shapes and private scan layouts require success before payload access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_state_disputes_results.nim', 'state-disputes-results', crypto_library)
     report['state_disputes_build'] = compiled
@@ -2413,7 +2356,7 @@ def main():
                 result = command([binary, member, origin], 'state-disputes-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['state_disputes'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' chapter-5 '+member+' guard', passed)
+                announce(origin+' chapter-5 '+member+' runtime guard', passed)
     # Public/private results and runtime-selected absent peak copies require exact supported contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_history_results.nim', 'history-results', crypto_library)
     report['history_build'] = compiled
@@ -2425,7 +2368,7 @@ def main():
             result = command([binary, member, origin], 'history-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['history'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' history '+member+' guard', passed)
+            announce(origin+' history '+member+' runtime guard', passed)
     # Every public/private result and each inactive assignment field must retain its exact contract.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_availability_results.nim', 'availability-results', crypto_library)
     report['availability_build'] = compiled
@@ -2437,7 +2380,7 @@ def main():
             result = command([binary, member, origin, availability_fixture], 'availability-'+origin+'-'+member)
             passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
             report['availability'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' availability '+member+' guard', passed)
+            announce(origin+' availability '+member+' runtime guard', passed)
     # Every public result shape and private natural/layout proof requires success before payload access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_privileges_results.nim', 'privileges-results', crypto_library)
     report['privileges_build'] = compiled
@@ -2448,7 +2391,7 @@ def main():
                 result = command([binary, member, origin], 'privileges-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['privileges'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' privileges '+member+' guard', passed)
+                announce(origin+' privileges '+member+' runtime guard', passed)
     # All public and internal tuple/natural/layout payloads require exact successful selection.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_statistics_results.nim', 'statistics-results', crypto_library)
     report['statistics_build'] = compiled
@@ -2459,7 +2402,7 @@ def main():
                 result = command([binary, member, origin], 'statistics-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['statistics'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' statistics '+member+' guard', passed)
+                announce(origin+' statistics '+member+' runtime guard', passed)
     # Both queue domains and internal count/layout proofs require successful payload selection.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_workqueues_results.nim', 'workqueues-results', crypto_library)
     report['workqueues_build'] = compiled
@@ -2470,7 +2413,7 @@ def main():
                 result = command([binary, member, origin, availability_fixture], 'workqueues-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['workqueues'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' workqueues '+member+' guard', passed)
+                announce(origin+' workqueues '+member+' runtime guard', passed)
     # Public entry/read/count/pair payloads and internal extent proofs retain exact success contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_outputs_results.nim', 'outputs-results', crypto_library)
     report['outputs_build'] = compiled
@@ -2481,7 +2424,7 @@ def main():
                 result = command([binary, member, origin], 'outputs-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['outputs'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' outputs '+member+' guard', passed)
+                announce(origin+' outputs '+member+' runtime guard', passed)
     # Fixed metadata and encoded entries require exact success, even though records need no retained heap owner.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_accounts_results.nim', 'accounts-results', crypto_library)
     report['accounts_build'] = compiled
@@ -2492,7 +2435,7 @@ def main():
                 result = command([binary, member, origin], 'accounts-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'parsed.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['accounts'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' accounts '+member+' guard', passed)
+                announce(origin+' accounts '+member+' runtime guard', passed)
     # Backend refusals and private alias misuse execute through a test-only observer, never production binaries.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_service_values_results.nim', 'service-values-results', crypto_observer)
     report['service_values_build'] = compiled
@@ -2503,7 +2446,7 @@ def main():
                 result = command([binary, member, origin], 'service-values-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['service_values'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' service values '+member+' guard', passed)
+                announce(origin+' service values '+member+' runtime guard', passed)
     # Result payloads and every inactive timestamp require supported success/shape contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_requests_results.nim', 'requests-results', crypto_observer)
     report['requests_build'] = compiled
@@ -2514,7 +2457,7 @@ def main():
                 result = command([binary, member, origin], 'requests-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['requests'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' requests '+member+' guard', passed)
+                announce(origin+' requests '+member+' runtime guard', passed)
         cases = [(field, origin, mode, tag) for origin in ('source', 'decoded') for field, mode, tag in REQUESTS_FIELDS]
         cases += [(field, 'default', 0, tag) for field, mode, tag in REQUESTS_FIELDS if mode == 0]
         # All six fields reject every inactive source/decoded mode and the empty default shape independently.
@@ -2522,7 +2465,7 @@ def main():
             result = command([binary, 'field-'+field, origin, mode], f'requests-{origin}-{mode}-{field}')
             passed = result['exit_code'] == 1 and 'history.mode == '+tag in result['output'] and '[AssertionDefect]' in result['output']
             report['requests'].append(dict(origin=origin, member=field, inactive_mode=mode, passed=passed, run=result))
-            announce(f'{origin} requests {mode}/{field} shape guard', passed)
+            announce(f'{origin} requests {mode}/{field} shape runtime guard', passed)
     # Complete composition payloads require exact success, including backend and association failures.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_composition_results.nim', 'composition-results', crypto_observer)
     report['composition_build'] = compiled
@@ -2533,109 +2476,185 @@ def main():
                 result = command([binary, member, origin, composition_fixture], 'composition-'+origin+'-'+member)
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['composition'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' composition '+member+' guard', passed)
-    step_passed = (len(report['ticket_state']) == 2 and all(row['passed'] for row in report['ticket_state'])
-                   and len(report['ticket_admission']) == 2 and all(row['passed'] for row in report['ticket_admission'])
-                   and len(report['validator_state']) == 2 and all(row['passed'] for row in report['validator_state'])
-                   and len(report['validator_rotation']) == 2 and all(row['passed'] for row in report['validator_rotation'])
-                   and len(report['entropy_transition']) == 4 and all(row['passed'] for row in report['entropy_transition'])
-                   and len(report['history_transition']) == 6 and all(row['passed'] for row in report['history_transition'])
-                   and len(report['authorization_transition']) == 4 and all(row['passed'] for row in report['authorization_transition'])
-                   and len(report['store']) == 9 and all(row['passed'] for row in report['store'])
-                   and report['store_controls']['passed']
-                   and all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
-                   and all(row['passed'] for row in report['runtime']) and len(report['bounded']) == 12
-                   and all(row['passed'] for row in report['bounded'])
-                   and len(report['primitive']) == 13 and all(row['passed'] for row in report['primitive'])
-                   and len(report['composite']) == 29 and all(row['passed'] for row in report['composite'])
-                   and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
-                   and all(report[family+'_corpus']['passed'] for family in ('natural', 'fixed', 'bounded', 'composite', 'digest'))
-                   and len(report['bandersnatch']) == 2*len(BS_MEMBERS)
-                   and all(row['passed'] for row in report['bandersnatch'])
-                   and report['bandersnatch_corpus']['passed']
-                   and report['quic_protocol_corpus']['passed']
-                   and len(report['offload']) == 4 and all(row['passed'] for row in report['offload'])
-                   and report['integration_corpus']['passed']
-                   and len(report['integration']) == 2*len(INTEGRATION_MEMBERS) and all(row['passed'] for row in report['integration'])
-                   and len(report['quic_protocol']) == 8 and all(row['passed'] for row in report['quic_protocol'])
-                   and report['report_signature_corpus']['passed']
-                   and len(report['guarantee_message']) == 2*len(GUARANTEE_MESSAGE_MEMBERS)
-                   and all(row['passed'] for row in report['guarantee_message'])
-                   and report['assurance_context_corpus']['passed']
-                   and len(report['assurance_context']) == 2*len(ASSURANCE_CONTEXT_MEMBERS)
-                   and all(row['passed'] for row in report['assurance_context'])
-                   and report['report_corpus']['passed'] and report['assurance_corpus']['passed']
-                   and report['guarantee_corpus']['passed'] and report['ticket_corpus']['passed']
-                   and report['dispute_corpus']['passed'] and report['package_corpus']['passed']
-                   and report['header_corpus']['passed'] and report['block_corpus']['passed']
-                   and report['bits_corpus']['passed'] and report['collection_corpus']['passed']
-                   and report['c2_corpus']['passed'] and report['crypto_corpus']['passed']
-                   and report['layout_corpus']['passed'] and report['trie_corpus']['passed']
-                   and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
-                   and report['composition_corpus']['passed'] and report['state_roots_corpus']['passed']
-                   and report['state_widths_corpus']['passed'] and report['request_namespace_corpus']['passed']
-                   and len(report['composition']) == 2*len(COMPOSITION_MEMBERS)
-                   and all(row['passed'] for row in report['composition'])
-                   and report['requests_corpus']['passed']
-                   and len(report['requests']) == 2*len(REQUESTS_MEMBERS)+2*len(REQUESTS_FIELDS)+6
-                   and all(row['passed'] for row in report['requests'])
-                   and report['service_values_corpus']['passed']
-                   and len(report['service_values']) == 2*len(SERVICE_VALUES_MEMBERS)
-                   and all(row['passed'] for row in report['service_values'])
-                   and report['accounts_corpus']['passed']
-                   and len(report['accounts']) == 2*len(ACCOUNTS_MEMBERS)
-                   and all(row['passed'] for row in report['accounts'])
-                   and report['outputs_corpus']['passed']
-                   and len(report['outputs']) == 2*len(OUTPUTS_MEMBERS)
-                   and all(row['passed'] for row in report['outputs'])
-                   and report['workqueues_corpus']['passed']
-                   and len(report['workqueues']) == 2*len(WORKQUEUES_MEMBERS)
-                   and all(row['passed'] for row in report['workqueues'])
-                   and report['statistics_corpus']['passed']
-                   and len(report['statistics']) == 2*len(STATISTICS_MEMBERS)
-                   and all(row['passed'] for row in report['statistics'])
-                   and report['privileges_corpus']['passed']
-                   and len(report['privileges']) == 2*len(PRIVILEGES_MEMBERS)
-                   and all(row['passed'] for row in report['privileges'])
-                   and report['availability_corpus']['passed']
-                   and len(report['availability']) == 2*len(AVAILABILITY_MEMBERS)+6
-                   and all(row['passed'] for row in report['availability'])
-                   and report['history_corpus']['passed']
-                   and len(report['history']) == 2*len(HISTORY_MEMBERS)+3
-                   and all(row['passed'] for row in report['history'])
-                   and report['state_disputes_corpus']['passed']
-                   and len(report['state_disputes']) == 2*len(STATE_DISPUTES_MEMBERS)
-                   and all(row['passed'] for row in report['state_disputes'])
-                   and len(report['consensus']) == 2*len(CONSENSUS_MEMBERS)+2
-                   and all(row['passed'] for row in report['consensus'])
-                   and len(report['authorization']) == 2*len(AUTHORIZATION_MEMBERS)
-                   and all(row['passed'] for row in report['authorization'])
-                   and len(report['safrole']) == 2*len(SAFROLE_MEMBERS)+1
-                   and all(row['passed'] for row in report['safrole'])
-                   and len(report['trie']) == 3*len(TRIE_ORIGINS)+2
-                   and all(row['passed'] for row in report['trie'])
-                   and len(report['layout']) == 2*len(LAYOUT_MEMBERS)+len(LAYOUT_VARIANTS)
-                   and all(row['passed'] for row in report['layout'])
-                   and len(report['crypto']) == 2*len(CRYPTO_MEMBERS)
-                   and all(row['passed'] for row in report['crypto'])
-                   and len(report['c2']) == 2*len(C2_MEMBERS)+len(C2_VARIANTS)
-                   and all(row['passed'] for row in report['c2'])
-                   and len(report['collections']) == 2*len(COLLECTION_MEMBERS)
-                   and all(row['passed'] for row in report['collections'])
-                   and len(report['bits']) == 2*len(BITS_MEMBERS) and all(row['passed'] for row in report['bits'])
-                   and len(report['blocks']) == 2*len(BLOCK_MEMBERS)+3+len(BLOCK_WRONG)
-                   and all(row['passed'] for row in report['blocks'])
-                   and len(report['headers']) == 81 and all(row['passed'] for row in report['headers'])
-                   and len(report['packages']) == 51 and all(row['passed'] for row in report['packages'])
-                   and len(report['disputes']) == 25 and all(row['passed'] for row in report['disputes'])
-                   and len(report['tickets']) == 10 and all(row['passed'] for row in report['tickets'])
-                   and len(report['guarantees']) == 29 and all(row['passed'] for row in report['guarantees'])
-                   and len(report['assurances']) == 10 and all(row['passed'] for row in report['assurances'])
-                   and len(report['reports']) == 14 and all(row['passed'] for row in report['reports']))
-    report['protected_results_increment'] = 'passed' if step_passed else 'failed'
+                announce(origin+' composition '+member+' runtime guard', passed)
+
+
+# Select one independent workload and invalidate stale evidence before any setup or compilation.
+def main():
+    global BUILD, checks, command, build
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--compiler', type=Path, required=True)
+    parser.add_argument('--group', choices=('unit', 'failures'), default='unit')
+    args = parser.parse_args()
+    # Private reports, caches and logs allow the two workloads to run on independent CI runners.
+    BUILD = ROOT/('build/tests/runtime' if args.group == 'unit' else 'build/tests/failures')
+    checks = NativeChecks(BUILD)
+    command, build = checks.command, checks.build
+    compiler = args.compiler.resolve()
+    BUILD.mkdir(parents=True, exist_ok=True)
+    # A failed or timed-out new invocation must never leave an earlier successful report current.
+    (BUILD/'results.json').unlink(missing_ok=True)
+    report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
+                  python=platform.python_version()), verification_group=args.group)
+    if args.group == 'unit':
+        # Unit evidence owns suites/corpora only; runtime contracts have a different report.
+        report['suites'] = []
+    else:
+        # Every runtime family must be populated by this invocation, including after a prior successful run.
+        report.update({family: [] for family in FAILURE_COUNTS})
+    metadata = compiler.parent.parent/'NIGHTLY.txt'
+    report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
+    report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
+    report['clang_version'] = command(['clang', '--version'], 'clang-version')
+    report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
+    sources = (list((ROOT/'src/codec').glob('*.nim'))
+               + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
+               + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
+               + unit_fixture_sources()
+               + [ROOT/'tools/native_tests.py', ROOT/'Makefile', ROOT/'tests/test_native_units_harness.py']
+               + [ROOT/'tests/support/ownership_checks.nim', ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/native/report_codec_driver.nim']
+               + list((ROOT/'tests').glob('report_*.py'))
+               + list((ROOT/'tests').glob('guarantees_*.py'))
+               + [ROOT/'tests/native/guarantees_driver.nim', ROOT/'tests/native/tickets_driver.nim',
+                  ROOT/'tests/tickets_oracle.py', ROOT/'tests/test_tickets_harness.py',
+                  ROOT/'tests/disputes_oracle.py', ROOT/'tests/native/disputes_driver.nim',
+                  ROOT/'tests/test_disputes_harness.py', ROOT/'tests/package_oracle.py',
+                  ROOT/'tests/native/package_driver.nim', ROOT/'tests/test_package_harness.py',
+                  ROOT/'tests/header_oracle.py', ROOT/'tests/native/header_driver.nim',
+                  ROOT/'tests/test_header_harness.py', ROOT/'tests/block_oracle.py',
+                  ROOT/'tests/native/block_driver.nim', ROOT/'tests/test_block_harness.py',
+                  ROOT/'tests/native/bits_driver.nim', ROOT/'tests/bits_oracle.py',
+                  ROOT/'tests/test_bits_harness.py', ROOT/'tests/native/collections_driver.nim',
+                  ROOT/'tests/collections_oracle.py', ROOT/'tests/test_collections_harness.py',
+                  ROOT/'tests/native/c2_driver.nim', ROOT/'tests/c2_oracle.py', ROOT/'tests/test_c2_harness.py']
+               + [ROOT/'tests/native/assurances_driver.nim', ROOT/'tests/assurances_oracle.py',
+                  ROOT/'tests/test_codec.py', ROOT/'tests/digest_checks.py', ROOT/'spec/pins.json',
+                  ROOT/'tests/test_report_harness.py', ROOT/'tests/test_assurances_harness.py']
+               + list((ROOT/'tests/native').glob('nimony_*.nim'))
+               + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL, *CONTRACTS)]
+               + [ROOT/f'tests/native/compile_fail/{name}.nim' for name in
+                  ('unsupported_collection_scalar', 'negative_collection_width', 'wide_collection_width',
+                   'scalar_collection_negative_width', 'scalar_collection_wide_width')]
+               + [Path(__file__).resolve()])
+    sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
+                'Makefile', 'tools/native_checks.py', 'tools/test_python.py', 'tools/test_e2e.py',
+                'tools/e2e_checks.py', 'tools/test_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
+                'spec/toolchain.json', 'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
+                'tests/test_quic_offload_harness.py',
+                'tests/native/compile_fail/offload_pool_copy.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
+                'tests/test_quic_service.py', 'tests/test_quic_soak.py', 'tests/test_quic_soak_harness.py',
+                'tests/test_quic_mesh.py', 'tests/test_quic_resilience.py', 'tests/test_quic_mesh_harness.py',
+                'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
+                'src/quic/io.nim', 'src/quic/transport.nim', 'src/quic/peer.nim', 'src/quic/protocol.nim',
+                'tests/native/quic_protocol_driver.nim', 'tests/quic_protocol_oracle.py', 'tests/test_quic_protocol_harness.py', 'vendor/jam-np/simple.md', 'tests/test_nimony_ci.py', 'tools/summarize_tests.py', 'tests/nimony_quic.py', 'spec/quic-proof-pins.json',
+                'native/quic/transport_bridge.c', 'native/quic/transport_bridge.h', 'native/quic/cert_fields.c', 'native/quic/cert_fields.h',
+                'tests/native/compile_fail/quic_io_endpoint_copy.nim',
+                'tests/test_bandersnatch.py', 'tests/native/bandersnatch_driver.nim', 'tests/native/bandersnatch_observer.c', 'native/bandersnatch/bridge.h',
+                'native/bandersnatch/src/lib.rs', 'native/bandersnatch/Cargo.toml', 'native/bandersnatch/Cargo.lock',
+                'spec/bandersnatch-pins.json', '.github/workflows/linux.yml','src/crypto/guarantee.nim', 'tests/native/report_driver.nim',
+                'tests/native/report_check.nim', 'tests/test_report_signature_harness.py','src/crypto/assurance_context.nim', 'tests/native/assurance_crypto_driver.nim',
+                'tests/assurance_crypto_oracle.py', 'tests/test_assurance_crypto_harness.py', 'vectors/assurance-context.json','tests/native/driver.nim', 'tests/native/fixed_driver.nim',
+                'tests/native/bounded_driver.nim', 'tests/native/composite_driver.nim', 'tests/native/digest_driver.nim',
+                'tests/native/batch_support.nim', 'tests/test_early_codec_harness.py', 'tests/bounded_checks.py', 'tests/composite_checks.py',
+                'vectors/natural-boundaries.json', 'vectors/fixed-unsigned-boundaries.json',
+                'vectors/bounded-containers.json','tests/native/state_composition_driver.nim', 'tests/state_composition_oracle.py',
+                'tests/test_state_composition_harness.py', 'tests/state_roots_oracle.py',
+                'tests/test_state_roots_harness.py', 'tests/test_state_widths_harness.py',
+                'tests/request_namespace_oracle.py', 'tests/test_request_namespace_harness.py',
+                'tests/test_spec.py', 'tests/dependencies.py', 'tests/native/composition_fixture.nim',
+                'tests/native/state_requests_driver.nim', 'tests/state_requests_oracle.py',
+                'tests/test_state_requests_harness.py', 'tests/native/state_service_values_driver.nim', 'tests/state_service_values_oracle.py',
+                'tests/test_state_service_values_harness.py', 'tests/native/state_accounts_driver.nim', 'tests/state_accounts_oracle.py',
+                'tests/test_state_accounts_harness.py', 'tests/native/state_outputs_driver.nim', 'tests/state_outputs_oracle.py',
+                'tests/test_state_outputs_harness.py', 'src/crypto/primitives.nim', 'tests/native/crypto_driver.nim',
+                'tests/native/crypto_observer.c', 'tests/nimony_crypto.py', 'tests/test_nimony_crypto.py',
+                'tests/test_crypto.py', 'tests/test_quic.py', 'native/crypto/primitive_bridge.c',
+                'native/crypto/primitive_bridge.h', 'spec/crypto-pins.json',
+                'tests/native/state_workqueues_driver.nim', 'tests/state_workqueues_oracle.py',
+                'tests/test_state_workqueues_harness.py', 'tests/native/state_statistics_driver.nim', 'tests/state_statistics_oracle.py',
+                'tests/test_state_statistics_harness.py', 'tests/state_widths_oracle.py', 'tests/native/state_privileges_driver.nim', 'tests/state_privileges_oracle.py',
+                'tests/test_state_privileges_harness.py', 'tests/native/state_availability_driver.nim', 'tests/state_availability_oracle.py',
+                'tests/test_state_availability_harness.py', 'tests/native/state_history_driver.nim', 'tests/state_history_oracle.py',
+                'tests/test_state_history_harness.py', 'tests/native/state_disputes_driver.nim', 'tests/state_disputes_oracle.py',
+                'tests/test_state_disputes_harness.py', 'tests/native/state_consensus_driver.nim', 'tests/state_consensus_oracle.py',
+                'tests/test_state_consensus_harness.py', 'tests/native/state_authorization_driver.nim', 'tests/state_authorization_oracle.py',
+                'tests/test_state_authorization_harness.py', 'tests/native/state_safrole_driver.nim', 'tests/state_safrole_oracle.py',
+                'tests/test_state_safrole_harness.py', 'tests/native/state_trie_driver.nim', 'tests/state_trie_oracle.py',
+                'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
+                'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
+                'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
+    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
+    # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
+    sys.path.insert(0, str(ROOT/'tests'))
+    from test_bandersnatch import fixture_path
+    sources += [fixture_path(name) for name in ('ietf.json', 'ring.json', 'jam-tiny.json', 'jam-full.json', 'jam-padding.json')]
+    sources += [ROOT/f'vendor/jamtestvectors/codec/{profile}/work_result_{number}.{suffix}'
+                for profile in ('tiny', 'full') for number in (0, 1) for suffix in ('json', 'bin')]
+    report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+                              for path in sorted(sources)}
+    # The existing native guarantee suite consumes an independently authored minimal report fixture.
+    sys.path.insert(0, str(ROOT/'tests'))
+    from nimony_crypto import prepare as prepare_crypto
+    crypto_library, crypto_observer, report['crypto_native'] = prepare_crypto(BUILD)
+    from bandersnatch_native import prepare as prepare_bandersnatch, OWNER_DEFINES
+    bs_library, bs_observer, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
+    bs_libraries = (bs_observer, bs_library)
+    from nimony_quic import prepare as prepare_quic
+    quic_library, quic_fixtures, report['quic_native'] = prepare_quic()
+    # Reuse the original independently checked CE integration fixtures; no peer/compiler build runs here.
+    import test_integration as integration_fixture
+    integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
+    integration_wires, integration_keys = integration_fixture.corpus()
+    integration_reload = BUILD/'integration-reload'
+    integration_reload.mkdir(exist_ok=True)
+    # Different candidate bytes make a late refused reload detect partial publication rather than a no-op reload.
+    for index in range(8):
+        wire = bytearray((integration_wires/f'{index}.bin').read_bytes())
+        wire[0] ^= 128
+        (integration_reload/f'{index}.bin').write_bytes(wire)
+    report['integration_fixtures'] = dict(keys=integration_keys,
+        original={str(index): hashlib.sha256((integration_wires/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)},
+        reload={str(index): hashlib.sha256((integration_reload/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)})
+    from state_availability_oracle import record as availability_record
+    availability_fixture = BUILD/'availability-report.bin'
+    availability_fixture.write_bytes(availability_record(0)['report'])
+    # Composition ownership probes consume independent literal chapters, not native round-trip fixtures.
+    from state_composition_oracle import chapters as composition_chapters
+    composition_fixture = BUILD/'composition-chapters.txt'
+    composition_fixture.write_text('\n'.join(raw.hex() for raw in composition_chapters())+'\n')
+    libraries = dict(crypto=crypto_library, observer=crypto_observer, bandersnatch=bs_library,
+                     bandersnatch_observer=bs_observer, quic=quic_library)
+    if args.group == 'unit':
+        # Expensive state replay/rotation fixtures belong only to the ordinary native suites.
+        # Every ordinary suite now has one native runner path; omitted/extra identities are a migration failure.
+        assert set(SUITES) == set(UNIT_SUITES) and len(SUITES) == len(UNIT_SUITES)
+        fixtures = unit_runtime_fixtures(quic_fixtures, integration_wires, integration_reload)
+        store_fixtures, report['store_replay_fixture'] = unit_store_fixture(BUILD)
+        fixtures.update(store_fixtures)
+        authorization_fixtures, report['authorization_stf_fixture'] = unit_authorization_fixture(BUILD)
+        fixtures.update(authorization_fixtures)
+        history_fixtures, report['history_stf_fixture'] = unit_history_fixture(BUILD)
+        fixtures.update(history_fixtures)
+        signing_fixtures, report['signing_domain_fixture'] = unit_signing_fixture(BUILD)
+        fixtures.update(signing_fixtures)
+        entropy_fixtures, report['entropy_stf_fixture'] = unit_entropy_fixture(BUILD)
+        fixtures.update(entropy_fixtures)
+        validator_fixtures, report['validator_stf_fixture'] = unit_validator_fixture(BUILD)
+        ticket_fixtures, report['ticket_stf_fixture'] = unit_ticket_fixture(BUILD)
+        fixtures.update(validator_fixtures)
+        fixtures.update(ticket_fixtures)
+        run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires)
+        step_passed = unit_passed(report)
+    else:
+        # Contract checks keep their diagnostic predicates and positive controls unchanged.
+        run_failures(compiler, report, libraries, availability_fixture, composition_fixture)
+        step_passed = failures_passed(report)
+    if args.group == 'failures':
+        # Preserve the protected-result verdict in its owning job only.
+        report['protected_results_increment'] = 'passed' if step_passed else 'failed'
     report['status'] = 'checks-passed' if step_passed else 'failed'
     (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
-    print(f'Protected results: {report["protected_results_increment"]}; verification: {report["status"]}')
+    print(f'{args.group} verification: {report["status"]}')
     print(f'Evidence: {BUILD.relative_to(ROOT)}/results.json')
     raise SystemExit(0 if report['status'] == 'checks-passed' else 1)
 

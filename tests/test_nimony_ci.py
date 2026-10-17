@@ -109,9 +109,14 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('cargo', python_plan)
         self.assertNotIn('tools/test_e2e.py', runtime)
         complete = subprocess.check_output(command+['check'], cwd=ROOT, text=True)
-        for runner in ('test_python', 'test_modules', 'test_runtime', 'test_guards', 'test_e2e'):
+        for runner in ('test_python', 'test_modules', 'test_guards', 'test_e2e'):
             # Complete local verification owns exactly one invocation of every independently selectable group.
             self.assertEqual(complete.count('tools/'+runner+'.py'), 1)
+        self.assertEqual(complete.count('tools/test_runtime.py'), 2)
+        self.assertEqual(complete.count('--group failures'), 1)
+        failures = subprocess.check_output(command+['check-failures'], cwd=ROOT, text=True)
+        self.assertIn('--group failures', failures)
+        self.assertNotIn('--group failures', runtime)
 
     # A fresh failed Python group must publish failure rather than reuse stale successful discovery.
     def test_python_gate_failure(self):
@@ -413,14 +418,14 @@ class NimonyCISafeguards(unittest.TestCase):
                 self.assertNotIn('Independent corpora:', text)
                 self.assertNotIn('Runtime misuse rejections:', text)
 
-    # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
+    # Unit summaries cannot claim another job's runtime or compiler evidence.
     def test_slice_summary_scope(self):
         report = dict(status='checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],
                       fields=[dict(passed=True), dict(passed=True)], privacy=[dict(passed=True)], nominal=[], schemas=[], contracts=[dict(passed=True)],
                       ownership_compile=[dict(passed=True)], example_corpus=dict(passed=False, requests=3))
         text = summarize(report, 'runtime')
-        self.assertIn('Runtime misuse rejections: 2', text)
-        self.assertIn('Compilation rejections: 3', text)
+        self.assertNotIn('Runtime misuse rejections:', text)
+        self.assertNotIn('Compilation rejections:', text)
         self.assertIn('partial evidence', text)
         self.assertIn('| `example_corpus` | Fail | 3 |', text)
         with self.assertRaises(KeyError):
