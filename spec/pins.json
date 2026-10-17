@@ -176,7 +176,13 @@
       "traces/fuzzy_light/00000200.json": "0bf04a80114f2c0972fe9b4e8e96ba13fe20f65b47af28dbc852069bfefe913f",
       "traces/preimages/00000100.json": "7654fe0ce55592836dc1caeb7011e544e9cb7bc60b79999838a98536c865709a",
       "traces/schema.asn": "959ffaf20028fd075f5b255de15505d18b27ab53cc0c41c507f9b89b1a35e4b7",
-      "traces/storage/00000100.json": "aa67bbb493a8c9096bf98687cbe3b039a86b600867b78e25c494a6884de72dd5"
+      "traces/storage/00000100.json": "aa67bbb493a8c9096bf98687cbe3b039a86b600867b78e25c494a6884de72dd5",
+      "stf/authorizations/tiny/progress_authorizations-2.json": "1f35c55a66c3bd9bf9035129d4ed3c547e31565a80624977885b4964f66b6f90",
+      "stf/authorizations/tiny/progress_authorizations-3.json": "86148a4b0fd9438f4785b8e1e2e43b14856ae80337160ed70bec7408172c6db7",
+      "stf/authorizations/full/progress_authorizations-2.json": "52d3e4ce1431a6900a303579a751c4e94b68321d32766d27bfd8368d465997ea",
+      "stf/authorizations/full/progress_authorizations-3.json": "f65fcff82308570d975574515399c1f82658f381399a585d9c58b1db4303f4b2",
+      "stf/authorizations/authorizations.asn": "53c809d7e354ad2945efd86e433d4dc3c4102766e66b1797bbcccc2d3e345fb3",
+      "stf/authorizations/README.md": "23e89030d3be5e43c933470f4a294a24b46d25bf18cdf4c430863c57efb45638"
     }
   },
   "toolchains": {

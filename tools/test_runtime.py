@@ -10,12 +10,12 @@ from pathlib import Path
 import subprocess
 import sys
 from native_checks import NativeChecks, announce
-from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures, unit_store_fixture
+from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures, unit_store_fixture, unit_authorization_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
-SUITES = ('telemetry', 'telemetry_chain', 'natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
-PRIVATE = dict(store_result_retag='status', store_head_private='head', store_snapshot_private='data',
+SUITES = ('telemetry', 'telemetry_chain', 'natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'authorization_transition', 'authorization_transition_failure', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
+PRIVATE = dict(authorization_transition_private='completed', authorization_transition_retag='status', store_result_retag='status', store_head_private='head', store_snapshot_private='data',
                store_value_private='owner', store_result_private='completed', bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
                bounded_error_write='error', bounded_forge='status')
@@ -705,6 +705,8 @@ BS_MEMBERS = ('key-short', 'key-zero', 'key-backend', 'setup-bounds', 'setup-bac
               'public-owner', 'public-short', 'signature-short', 'signature-owner', 'root-short',
               'root-owner', 'proof-short', 'proof-owner', 'output-invalid', 'ring-output-owner', 'normalize-short')
 PRIMITIVE_MEMBERS = ('natural-value', 'natural-consumed', 'fixed-value', 'fixed-consumed', 'fixed-encoded')
+NOMINAL.update(authorization_core_as_slot='AuthorizationCoreIndex')
+EARLY_NOMINAL.update(authorization_core_as_slot=('advanceAuthorization(', '[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex'))
 PRIMITIVE_ERRORS = ('natural-error', 'fixed-decode-error', 'fixed-encode-error')
 OWNED_MEMBERS = ('frame', 'info', 'optional', 'work', 'digest', 'service', 'integer', 'boolean')
 COMPOSITE_MEMBERS = ('optional-value', 'optional-consumed', 'work-value', 'work-consumed',
@@ -727,7 +729,7 @@ def main():
     # A failed or timed-out new invocation must never leave an earlier successful report current.
     (BUILD/'results.json').unlink(missing_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], store=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[])
+                  python=platform.python_version()), suites=[], runtime=[], store=[], authorization_transition=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -809,7 +811,7 @@ def main():
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
-    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/native/state_store_results.nim']
+    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
     # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
     sys.path.insert(0, str(ROOT/'tests'))
     from test_bandersnatch import fixture_path
@@ -855,6 +857,8 @@ def main():
     fixtures = unit_runtime_fixtures(quic_fixtures, integration_wires, integration_reload)
     store_fixtures, report['store_replay_fixture'] = unit_store_fixture(BUILD)
     fixtures.update(store_fixtures)
+    authorization_fixtures, report['authorization_stf_fixture'] = unit_authorization_fixture(BUILD)
+    fixtures.update(authorization_fixtures)
     for batch, members, target in unit_batches():
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
         checked = command(unit_command(compiler, target, libraries), batch+'-hastur',
@@ -899,6 +903,17 @@ def main():
         report['store_controls'] = dict(checks=controls,
             passed=all(row['exit_code'] == 0 and row['output'].strip() == ('1' if member == 'metadata' else '0')
                        for member, row in controls.items()))
+    # Proposed entry and committed-snapshot payloads are independently guarded on default and real failures.
+    compiled, binary = build(compiler, ROOT/'tests/native/authorization_transition_results.nim', 'authorization-transition-results', crypto_library)
+    report['authorization_transition_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for member in ('entry', 'state'):
+            for origin in ('default', 'error'):
+                # Require the intended payload precondition, not a bad selector or unrelated native crash.
+                result = command([binary, member, origin], 'authorization-transition-'+member+'-'+origin)
+                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+                report['authorization_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
+                announce('authorization transition '+member+' '+origin+' guard', passed)
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
     from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode
     from bounded_checks import batch_requests as bounded_requests
@@ -2441,7 +2456,8 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['composition'].append(dict(origin=origin, member=member, passed=passed, run=result))
                 announce(origin+' composition '+member+' guard', passed)
-    step_passed = (len(report['store']) == 9 and all(row['passed'] for row in report['store'])
+    step_passed = (len(report['authorization_transition']) == 4 and all(row['passed'] for row in report['authorization_transition'])
+                   and len(report['store']) == 9 and all(row['passed'] for row in report['store'])
                    and report['store_controls']['passed']
                    and all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
                    and all(row['passed'] for row in report['runtime']) and len(report['bounded']) == 12

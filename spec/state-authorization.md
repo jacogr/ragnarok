@@ -28,7 +28,9 @@ and returns a new independent `StateEntry` payload for the existing [trie API](s
 It never retains caller storage, reorders hashes or silently deduplicates rows. Its mutable entry
 payload belongs to the caller and must remain stable during a subsequent root-construction call.
 
-This increment covers serialization only. It does not progress authorization pools, remove used
+This codec increment covers serialization only. Pool advancement is now implemented separately in
+[the authorization transition](authorization-transition.md). The codec itself remains unchanged.
+It covers serialization only. It does not progress authorization pools, remove used
 authorizers, cycle queue positions by timeslot, execute is-authorized code, derive authorizer hashes
 from code/configuration, or validate package eligibility. Other state chapters remain separate.
 A commitment over these two entries alone is a partial mapping root, not a complete JAM state root.
@@ -125,5 +127,5 @@ hash-budget and signed native prefix/stride boundaries without unsafe enormous s
 Native tests retain callee-local pool/queue owners across source retirement, replacement and hash
 copy mutation. After warmup, 1,000 scoped ownership/error cycles return live allocator occupancy
 to baseline. This is workload-specific ARC evidence, not general leak freedom or recoverable
-allocation-failure support. Full M1, authorization execution, broader crypto and Linux parity
+allocation-failure support. Full M1, complete authorization-code execution, broader crypto and Linux parity
 remain separate gates; no dependency/compiler patch or alternate wire representation is introduced.

@@ -1,7 +1,7 @@
 # Ragnarök design
 
 **Language:** Nimony 0.6.3 (pinned nightly), ARC. **Target:** native Linux. **State:** protocol foundation;
-full JAM execution, state transitions and validator operation remain future work.
+full JAM execution, the complete state-transition pipeline and validator operation remain future work.
 
 Protocol target: Gray Paper 0.8.0; the Bandersnatch draft-text/reference discrepancy remains an explicit
 [parity gate](../spec/graypaper-0.8.0.md).
@@ -16,6 +16,11 @@ and caller-owned storage. Default/failed tagged results carry no values or progr
 immutable snapshots and recompute roots through the existing Merklization implementation.
 See [the storage contract](../spec/state-store.md). Native replay verifies seven published pre/post mapping pairs; this is not state-transition
 execution.
+
+`src/state/authorization.nim` implements the first bounded non-PVM transition: authorization
+pool advancement from validated guarantee projections and post-accumulation queues. Its store
+adapter atomically replaces C(1), preserving C(2) and unrelated entries. See
+[the transition contract](../spec/authorization-transition.md); whole-block execution remains open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
