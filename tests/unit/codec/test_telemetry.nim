@@ -64,6 +64,13 @@ let refused = connectOutFailed(Timestamp(20), EventId(7))
 assert refused.len == 22 and number(refused, 0, 4) == 18 and refused[12] == 25
 assert number(refused, 13, 8) == 7 and refused[21] == 0 # Empty reason is canonical.
 
+# Disconnection carries the authenticated peer identity, an absent terminator and an empty reason.
+let closed = disconnected(Timestamp(23), remoteIdentity)
+assert closed.len == 47 and number(closed, 0, 4) == 43
+assert number(closed, 4, 8) == 23 and closed[12] == 27
+assert closed[13] == 123 and closed[45] == 0 and closed[46] == 0
+for i in 14..<45: assert closed[i] == 0 # Identity bytes are fixed-width, without a sequence prefix.
+
 # Strict numeric endpoint parsing fails atomically and never creates descriptors.
 for endpoint in ["", "localhost", "localhost:0", "localhost:65536", "127.0.0.1:-1",
     "127.0.0.1: 1", "127.0.0.1:1:2", "127.0.0.999:9000", "127.0.0.1\0x:9000"]:

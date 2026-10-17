@@ -13,6 +13,8 @@ const StatusEvent = 10'u8 # JIP-3 event 10: current peer counts and pool sizes.
 const ConnectingOutEvent = 24'u8 # JIP-3 event 24: an outgoing connection attempt starts.
 const ConnectOutFailedEvent = 25'u8 # JIP-3 event 25: that outgoing attempt fails.
 const ConnectedOutEvent = 26'u8 # JIP-3 event 26: that outgoing attempt succeeds.
+const DisconnectedEvent = 27'u8 # JIP-3 event 27: an authenticated peer connection closes.
+const UnknownConnectionSide = 0'u8 # JIP-3 Option<Connection Side>: absent terminator attribution.
 
 type
   # Microseconds since the JAM Common Era, deliberately distinct from Unix time.
@@ -143,4 +145,15 @@ proc connectOutFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
   result.add(ConnectOutFailedEvent)
   result.fixed(uint64(attempt), 8)
   result.text("")
+  result.frame()
+
+# Record an observed authenticated connection close without guessing its initiator or native reason.
+proc disconnected*(timestamp: Timestamp, identity: array[32, byte]): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(DisconnectedEvent)
+  # The public peer identity is fixed-width and copied into the returned frame.
+  for item in identity: result.add(item)
+  result.add(UnknownConnectionSide)
+  result.text("") # The transport does not expose a reliable diagnostic for this close.
   result.frame()
