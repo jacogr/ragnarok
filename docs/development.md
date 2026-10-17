@@ -50,11 +50,11 @@ reference, negative-probe and orchestration responsibilities.
 | `make clean` | Remove all of `build/`, including installed tools and cached archives |
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
-| `make unit` | All 59 Hastur suites with their exact native/fixture profiles |
+| `make unit` | All 61 Hastur suites with their exact native/fixture profiles |
 | `make check-modules` / `make modules` | Every-source semantic compilation gate |
 | `make check-python` | Python reference/tooling/provenance tests |
 | `make check-unit` / `make runtime` | Native unit suites, independent corpora and runtime misuse probes |
-| `make check-guards` | Compiler rejection guards (676 probes) |
+| `make check-guards` | Compiler rejection guards (680 probes) |
 | `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
 | `make format` / `make format-check` | Apply or check the pinned formatter |
 | `make help` | List commands without provisioning/building |

@@ -12,6 +12,11 @@ Codecs and consensus-facing types live in `src/codec/`. Protocol logic remains n
 acyclic ARC owners retain immutable wire snapshots; borrowed paths use explicit lifetime contracts
 and caller-owned storage. Default/failed tagged results carry no values or progress metadata.
 
+`src/state/` owns the in-memory serialized-state store: atomic write batches publish complete
+immutable snapshots and recompute roots through the existing Merklization implementation.
+See [the storage contract](../spec/state-store.md). Published pre/post storage replay is the next
+bounded increment; this is not state-transition execution.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
