@@ -506,3 +506,60 @@ def mesh_shutdown(binary, certificates, chain, folder, silent=False):
             for handle in handles.values():
                 handle.close()
 
+
+# A full real listener refuses one additional authenticated connection without displacing admitted peers.
+def capacity_refusal(binary, certificates, chain, folder):
+    from test_quic_mesh import ports
+    from test_quic_resilience import watch, states
+    folder.mkdir(parents=True, exist_ok=True)
+    port = ports()[0]
+    gate = folder/f'stop-{time.time_ns()}'
+    children, handles = [], []
+    server_log = folder/'server.log'
+    with listener() as collector:
+        try:
+            output = server_log.open('w'); handles.append(output)
+            server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
+                str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000', 'overload',
+                '--chain', str(chain), '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}'],
+                env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(gate)}, stdout=output, stderr=subprocess.STDOUT)
+            children.append(server)
+            # Observe native admission counters before creating the excess connection.
+            def state(predicate):
+                return watch({'server': server}, {'server': server_log}, {'server': predicate},
+                             {'server': {}}, thread_limits={'server': 1})
+            state(lambda text: 'READY' in text.splitlines())
+            for index in range(17):
+                output = (folder/f'client-{index}.log').open('w'); handles.append(output)
+                child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
+                    str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
+                    '30000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
+                children.append(child)
+                if index < 16:
+                    state(lambda text: bool(states(text)) and states(text)[-1][0] == index + 1)
+                else:
+                    state(lambda text: any(row[2] == 1 for row in states(text)))
+            assert all(child.poll() is None for child in children[1:17])
+            gate.touch() # End with admitted peers alive; destruction must not manufacture close observations.
+            assert server.wait(timeout=5) == 2, server_log.read_text()
+            _, events = completed_capture(collector)
+            starts, refusals, successes = {}, [], 0
+            for event_id, event in enumerate(events):
+                tag = event[8]
+                if tag == 21:
+                    starts[event_id] = event[9:27]
+                elif tag == 23:
+                    assert int.from_bytes(event[9:17], 'little') in starts
+                    successes += 1
+                elif tag == 20:
+                    assert len(event) == 27 and event[9:25] == socket.inet_pton(socket.AF_INET6, '::1')
+                    assert event[9:27] in starts.values() # Refusal identifies the actual attempted endpoint.
+                    refusals.append(event[9:27])
+                else:
+                    assert tag == 10, tag # Neither drops, failed TLS nor admitted-peer closes are expected.
+            assert len(starts) == 17 and successes == 17 and len(refusals) == 1
+            return dict(passed=True, admitted=16, refused=1)
+        finally:
+            # Every failure releases children and logs; no process escapes this bounded scenario.
+            for child in children: stop(child)
+            for output in handles: output.close()

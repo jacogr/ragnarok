@@ -46,6 +46,10 @@ it does not validate genesis consensus rules or recompute `genesis_state`.
 - Event 10: status, with current authenticated peers. Validator-role count, block-announcement
   streams, guarantee pools, availability shards and block-production preimage pools are zero:
   these facilities are not implemented by this peer. CE fixture responses are not a preimage pool.
+- Event 20: explicit incoming refusal at the native connection-capacity limit, with the actual
+  remote address and port. The current limit is checked after TLS authentication, so events
+  21/23 precede this refusal. Refused connections occupy no admitted-peer slot and produce no
+  incoming event 27. Missing address metadata produces a dropped observation instead.
 - Events 21–23: incoming TLS handshake start, failure and success. Start captures the actual
   remote address before authentication; terminal events reference its event ID. Success copies
   the authenticated certificate's Ed25519 identity. Destruction of an unfinished handshake
@@ -65,7 +69,7 @@ it does not validate genesis consensus rules or recompute `genesis_state`.
 - Event 0: dropped observations, with first/last timestamps and the exact number of omitted
   events when the fixed send buffer cannot accept them.
 
-Incoming refusals (20), best/finalized blocks, sync, authoring,
+Pre-TLS refusals, best/finalized blocks, sync, authoring,
 execution, service, ticket and work-package events remain unimplemented. Incoming observations
 use the pinned libraries' public TLS handshake start/done and SSL ex-data destruction callbacks,
 with public LSQUIC socket-address access. TLS success precedes connection-slot admission and does
@@ -123,7 +127,7 @@ protocol constraints. All relevant input is copied into owned bounded metadata b
 Normative references:
 
 - [JIP-3](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-3.md):
-  connection option, message encoding, node information, timestamps and events 0/10/21–27.
+  connection option, message encoding, node information, timestamps and events 0/10/20–27.
 - [JIP-4](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-4.md):
   `protocol_parameters` and `genesis_header` chain-file fields.
 - The existing Gray Paper pin `07f041dabd073f9018b418e9ee72e79dd2185401`, GP 0.8.0:
@@ -173,6 +177,12 @@ close after duplicate arbitration. Python is only the
 independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.
+
+Capacity checks cover both IPv4 and IPv6 native listeners and a real IPv6 collector capture:
+16 admitted connections remain live while the seventeenth is explicitly refused. Saturating the
+separate handshake-observation table does not report a refusal. The pinned public
+`lsquic_engine_packet_in` return values also cover version negotiation, resets and ignored packets;
+they cannot establish a pre-TLS admission refusal and are not translated into event 20.
 
 Expiry/teardown collectors use observed authentication and explicit stop gates: a child cannot
 expire merely because startup or the CI scheduler took longer than a subsecond fixture lifetime.

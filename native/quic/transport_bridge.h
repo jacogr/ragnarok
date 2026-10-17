@@ -7,11 +7,12 @@ typedef struct rq_transport rq_transport;
 typedef int (*rq_verify_cb)(void *, const uint8_t *, size_t);
 typedef void (*rq_stream_cb)(void *, void *, int);
 typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, uint16_t);
-/* Optional TLS observations borrow address/DER only during the callback, before engine teardown ends. */
+/* Optional TLS/admission observations borrow address/DER only during the callback, before engine teardown ends. */
 enum { RQ_HANDSHAKE_SLOTS = 64, RQ_HANDSHAKE_STARTED = 0, RQ_HANDSHAKE_SUCCEEDED = 1,
-       RQ_HANDSHAKE_FAILED = 2, RQ_HANDSHAKE_DROPPED = 3 };
+       RQ_HANDSHAKE_FAILED = 2, RQ_HANDSHAKE_DROPPED = 3, RQ_ADMISSION_REFUSED = 4 };
 typedef void (*rq_handshake_cb)(void *, unsigned, int, const uint8_t *, uint16_t,
                                const uint8_t *, size_t);
+/* Admission refusal uses no handshake slot; a NULL address means missing metadata. */
 /* Enable once on an idle server; slot-count agreement protects the native-language fixed table. */
 int rq_observe_handshakes(rq_transport *, unsigned slots, rq_handshake_cb);
 /* Admitted server peers use the existing connection table; DER is borrowed only on admission. */
