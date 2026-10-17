@@ -20,9 +20,12 @@ workloads now pass locally. Retained IPv6 mesh/reconnect and twelve peer-death r
 now pass too; same-process endpoint destruction also passes forty sessions. All 45 production
 modules pass independent semantic compilation. Connection/stream admission recovery and
 authenticated loss before the first request now pass locally too. Enabled proof offload also passes
-locally, reaching implemented-scope M1/M2/M3 migration regression parity. Normal local setup,
-a bounded performance comparison and Linux confirmation of the new profile remain open.
-This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
+locally, reaching implemented-scope M1/M2/M3 migration regression parity. The supported local
+setup and bounded checked-LTO performance comparison are now implemented and verified separately
+below; the final combined local verification passes. Linux confirmation of this expanded profile
+remains open.
+This branch targets Nimony directly, without dual-compiler source support. Nim 2.2.12 is retained
+only as the historical performance control.
 Protocol/dependency pins are unchanged. At the maintainer's request, the existing
 `.github/workflows/linux.yml` is now the single Linux workflow and uses the pinned Nimony nightly
 on every push, PR and manual run. The separate trial workflow has been removed. The maintainer reports an earlier pushed snapshot passed PR CI; the expanded offload profile
@@ -44,8 +47,8 @@ binary archive and extends the source port and runtime checks.
   enabled; neither danger mode nor `noAssertions` is used.
 - Nimony range subtypes use compile-time proofs. Compact-natural tail counters state their
   existing `0..8` invariant explicitly.
-- Local implemented-scope migration regression parity is recorded below. Performance comparison
-  and Linux confirmation of the newly expanded offload profile remain separate gates.
+- Local implemented-scope migration regression parity and the bounded performance comparison
+  are recorded below. Linux confirmation of the expanded profile remains a separate gate.
 
 ## Arithmetic policy
 
@@ -963,7 +966,7 @@ Both jobs retain summaries and scoped logs/reports even on failure. No binaries,
 vendor trees or generated keys are uploaded. The overall workflow can remain red while the
 migrated runtime job passes; this makes the unfinished port visible in the PR.
 
-[Linux toolchain pins](../spec/nimony-ci-toolchain.json) select Ubuntu 24.04 x86_64, Python 3.12
+[Linux toolchain pins](../spec/toolchain.json) select Ubuntu 24.04 x86_64, Python 3.12
 and official Nimony 0.6.3 nightly `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410` (2026-10-15).
 The `linux_amd64` archive SHA-256 is
 `39f3493ad68418a38da0fc7c8e048ef67b2a96b60c7e6a97246f6ec595ee19c9`, verified against the
@@ -991,7 +994,7 @@ Local verification on macOS ARM64:
 Reproduce the CI safeguards with `python3 tests/test_nimony_ci.py`. Run the independent module gate
 with `python3 tools/audit_nimony_modules.py --compiler /absolute/path/to/nimony`; it writes every
 command, source hash and verdict under `build/nimony-ci/modules/`. The workflow records Linux
-compiler/environment metadata and uses `tools/setup_nimony_ci_linux.py` for verified installation.
+compiler/environment metadata and uses `tools/setup_nimony.py` for verified installation.
 Full Linux runtime evidence still awaits CI execution after publishing these changes.
 
 ## Twenty-third bounded increment: chapter-5 dispute judgment/offender state
@@ -2598,13 +2601,122 @@ the current committed state. No run ID or exact revision was supplied here; that
 Linux pass for the earlier snapshot, not verification of this newly enabled offload profile.
 The remaining uninitialized scalar/pointer compiler limitation remains documented and unchanged.
 
+## Forty-ninth completion increment: supported setup and verification cutover
+
+The offload increment was committed as `4986d05`. The maintainer explicitly requested completing
+all remaining local migration tasks while retaining a single final push for Linux CI. No push or
+merge was performed during this completion work.
+
+`tools/setup_nimony.py` is now the shared local/CI installer, moved with `git mv` from the
+Linux-only trial installer. `spec/toolchain.json` is the corresponding moved/consolidated pin
+file: the compiler revision and existing Linux archive hashes are unchanged; the already selected
+macOS ARM64 compiler archive and official formatter archive are now pinned there too. Common
+checksum/safe-extraction code lives in the moved `tools/toolchain_archives.py`; the old Nim 2
+installer entry point and separate historical CI archive pin file are removed. The formatter is
+still official nimpretty from Nim 2.2.12; only its binary is exposed, never a supported Nim 2
+production compiler. Both hosts use exact archive identity checks and checksum verification,
+with installed compiler/formatter hashes retained for normal local verification.
+
+A fresh project-local installation under `build/toolchain/` and a repeated installation both pass
+on macOS ARM64. `environment.json` lets tools resolve it automatically; `env.sh` optionally exports
+quoted NIMONY/NIMPRETTY/PATH settings. Unknown hosts, changed archives, changed installed tools,
+wrong identities/versions and unrelated formatter-path collisions reject. No upstream installer
+script runs. Linux setup uses the identical platform selector and installer; it retains its
+previously pinned official binary/formatter assets.
+
+`python3 tools/test.py` is the supported command. Its `all` plan combines the independent every-
+source audit, formatting, CI/toolchain safeguards, protocol provenance, the complete checked
+native runner and discovery of every independent `test_*harness.py`. CI uses that same plan split
+into `modules` and `runtime` jobs; redundant separate preflight steps were removed. Normal tests
+never select a global Nim 2 compiler. Historical individual runners retain reference/build helper
+functions used by the cumulative verification, but their Nim 2 entry points are no longer the
+supported workflow. README, development, design, networking, crypto and agent instructions now
+state the active compiler and commands.
+
+Cutover testing exposed a concrete infrastructure issue: Nimony dependency indexes cached under
+the old compiler location caused full builds at the new location to report missing
+`sys9kudoj1.s.deps.nif` files. An identical compiler archive is not sufficient to reuse those
+location-dependent caches. Both native/negative builds and semantic audits now namespace caches
+by resolved compiler location, without deleting historical evidence or patching the compiler.
+A location-isolation regression check and a native natural-codec smoke build pass. This is build-
+cache routing friction, not a new decoder/runtime failure. A separate new test initially compared
+macOS `/var` and `/private/var` paths without resolving both; that test correction is recorded
+separately. Twenty-three setup/CI safeguards pass. All 223 independent Python harness tests pass,
+with one existing normative-policy skip.
+
+## Fiftieth completion increment: bounded checked-LTO performance control
+
+The [measured comparison](nimony-performance.md) and opt-in `tools/compare_nimony.py` close the
+local performance question. Historical source is extracted from pre-port commit
+`aea27ad0789ddb0abbea24c3923d0eb192a67e3a`; current source is copied into a separate ignored
+snapshot. Both compile the identical checked workload with ARC, Clang `-O3` and LTO. The same
+native crypto library is shared; the observer is separately compiled without LTO to prevent
+result pruning. No production compatibility path, compiler/dependency patch or speed optimization
+was introduced. The baseline remains a historical control, not a second maintained target.
+
+Nine cases include observer overhead, compact decoding, 4,096-element E4 sequence encode/decode,
+64-KiB owned byte capture/encoding, Blake2b, Keccak and Ed25519 verification. Seven raw native
+batch samples alternate process order with equal calibrated iteration counts and matching result
+fingerprints. Setup, compilation, preflight, warmup and process startup are outside native timing.
+The observed sequence paths take **54–55% of the Nim 2 baseline time**; owned bytes are within
+about **2%**, and common-provider crypto is within about **0.1%**. Tiny-call overhead differs and
+is reported without subtraction. Near-unity differences are not demonstrated wins or regressions.
+This single-host controlled sample reveals no broad regression in the measured paths, but is not
+a full-client, contention, cold-cache, network-throughput or Linux performance claim. Correctness
+coverage remains separate. Raw samples, source/build/library identities, tool versions and
+isolated artifacts are retained in `build/nimony-comparison/`.
+
+## Final verification: UDP readiness test correction
+
+The first combined run exposed an intermittent assertion in the shared UDP test. Its two sends
+succeeded, but the first `poll` could report only one ready socket. A successful datagram send does
+not promise simultaneous delivery/readiness for both sockets. The test now drains and validates
+both owners' payload/source identities over successive readiness events under the original single
+10 ms budget. It still rejects duplicate/foreign descriptors and failed readiness. No production
+networking code or deadline was changed. The corrected executable passed 100 consecutive runs.
+A longer stress run also observed a separate scoped single-socket wait return zero after about
+11 ms; its existing 10 ms limit is retained, with elapsed-time and OS-context diagnostics added.
+That observation is test/environment timing evidence, not proof of a compiler or adapter defect.
+
+At the maintainer's request, the two canonical CI job labels now omit the compiler name:
+`Codec, crypto and QUIC (Ubuntu 24.04 x86-64)` and `All-source compilation gate (Linux)`.
+
+## Final combined local result and merge assessment
+
+`python3 tools/test.py` exits **0** with `PASS supported Nimony verification: all` on the pinned
+macOS ARM64 installation. It includes **45/45 production modules**, formatting of **863 Nim source
+files**, twenty-three setup/CI safeguards, protocol provenance, **65 native suites, forty-one
+independent corpora, 1,372 runtime misuse rejections and 676 compilation rejections**. The latter
+remain 571 privacy + 94 nominal + five schema + four static contracts + two ownership-lowering
+rejections. All 223 independent Python harness tests pass with one existing normative-policy skip;
+the separate provenance suite also retains its existing parked-policy skip. All **1,000 recorded
+source/test/config hashes** match the final checkout after the run. The cumulative report retains
+`partial-checks-passed` because this is implemented-scope migration coverage, not full JAM parity.
+
+Evidence is retained in `build/nimony-trial/final-local-verification.log`,
+`build/nimony-trial/verification/results.json` and `build/nimony-ci/modules/results.json`, with
+individual build/run logs alongside them. The measured performance report is separate. The
+completion changes are prepared for review; only the earlier offload increment was committed,
+and nothing was pushed.
+
+I recommend merging this compiler migration **if the expanded final Linux profile passes**.
+The planned local setup, compilation, regression, lifecycle/offload and bounded performance gates
+are complete without upstream patches, private-runtime hooks or a second production compiler path.
+This is a recommendation for this pinned project/toolchain profile, not a claim that Nimony is
+universally safer or ready for every application. Explicit initialization, guarded result access,
+non-copyable owner contracts and reviewed foreign lifetimes remain requirements. The strict
+10 ms UDP timing sensitivity observed during extended stress is retained explicitly above;
+passing one complete run does not erase it. Specification/acceptance-policy gates remain unchanged.
+The next planned action is the maintainer's final push and Linux CI verification, followed by a
+merge decision; no additional feature increment is started here.
+
 ## Remaining work and next bounded increment
 
-Next: normal local build/setup cutover to the pinned Nimony toolchain. Then perform a bounded
-checked-LTO performance comparison with the retained Nim 2 baseline before a merge recommendation.
-Linux confirmation must include the newly enabled offload gate.
+The normal local setup/verification cutover and bounded checked-LTO comparison are implemented.
+The final combined local verification passes; the maintainer will push for Linux confirmation
+after reviewing this completion. That confirmation must include the newly enabled offload gate.
 
-Further port work remains:
+Scope and remaining external/specification gates:
 
 - M1: local validation migration parity is reached for the documented implemented codec scope.
   The request-namespace normative policy remains parked; Linux execution is a separate gate.
@@ -2620,25 +2732,28 @@ Further port work remains:
   admission recovery, authenticated pre-request connection loss and enabled bounded proof
   offload. Implemented-scope M3 migration regression parity now passes locally; Linux confirmation
   of the expanded profile remains separate.
-- Toolchain: the canonical Linux workflow now uses pinned Nimony and the formatter on all
-  branches. Linux execution, normal local build commands and remaining setup documentation remain
-  gates until the port demonstrates equivalent safety.
+- Toolchain: normal local setup, supported verification commands and documentation now use the
+  same pinned Nimony/formatter installation as the single canonical Linux workflow. The final
+  combined local verification passes; expanded Linux execution remains a gate.
 
-The Linux CI compiler switch is authorized and configured; full migration remains incomplete.
+The Linux CI compiler switch is authorized and configured. All planned local migration tasks are
+complete; final Linux confirmation remains before merge.
 The M1 request-namespace question
 remains parked for Gray Paper 0.8.1/0.8.2 review; this trial does not reopen protocol decisions.
 
 ## Reproduce
 
-Download the exact macOS ARM64 release asset above, verify its SHA-256 and extract under ignored
-`build/nimony-trial/`. It supplies `nimony/bin/nimony` and libraries; no upstream build scripts
-are required. A C/C++ compiler, CMake and the pinned BoringSSL/XKCP/Wycheproof submodules must be
-available.
-The runner rebuilds the maintained primitive ABI and separate test-only observer.
+Install the prerequisites in [development](development.md), then use the shared pinned installer
+and normal verification entry point. No upstream compiler build scripts or global Nim 2 compiler
+are needed. Native dependencies and Rust registry packages must be provisioned before the runner's
+locked/offline native builds.
 
 ```sh
-python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony
-python3 tools/format.py --check
+python3 tools/setup_nimony.py
+python3 tools/setup_submodules.py
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
+rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
+python3 tools/test.py
 ```
 
 The runner now targets **only Nimony**. It writes commands, compiler/nightly metadata, source/test

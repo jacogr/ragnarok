@@ -45,6 +45,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   Check/select success before reading fields. On the Nimony port, hide result discriminators and
   payloads behind read-only accessors with success preconditions; raw variant fields are not guarded.
   Roll this out in tested groups; unported public results remain explicit migration gates.
+- Give composite native/thread owners their own explicit non-copyable contracts and lowering
+  probes; membership in a non-copyable field alone is not sufficient evidence. Keep worker-pool
+  addresses stable until join.
 - Release native resources on every exit/cancellation path. Never export mutable snapshot storage.
 - Preserve assertions, bounds checks and explicit protocol range/overflow validation in optimized
   builds. Nimony arithmetic intentionally wraps; do not emulate Nim 2 overflow exceptions or treat
@@ -57,13 +60,11 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   and document the remaining gate; do not tune acceptance to make a corpus pass.
 
 ## Working style
-- On the experimental `nimony` branch, follow [the nightly trial](docs/nimony-trial.md). Keep the
-  trial source focused on Nimony; do not add dual-compiler compatibility layers. Nim 2 measurements
-  are historical controls, not a second supported target. The maintainer-authorized canonical Linux
-  workflow (`.github/workflows/linux.yml`) now uses Nimony on pushes, PRs and manual runs, with the
-  migrated runtime slice and strict all-source semantic compilation gate. Keep partial results
-  explicit; CI consolidation does not establish complete migration or equivalent safety/coverage. Unprotected result access remains a failure;
-  intentional arithmetic wrapping is accepted and needs explicit protocol-boundary tests.
+- Use the pinned Nimony compiler/formatter from `python3 tools/setup_nimony.py`; run supported
+  verification with `python3 tools/test.py`. CI uses the same installer/command plan. Nim 2 is a
+  historical measurement control, never a second production target. Keep compiler and dependency
+  sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
+  Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
   review. Preserve its evidence, pending test and current codec behavior. Revisit during that
   specification upgrade or on an explicit maintainer request; do not invent interim restrictions.

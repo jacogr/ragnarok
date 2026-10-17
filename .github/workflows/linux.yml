@@ -1,4 +1,4 @@
-name: Linux checks
+name: Linux
 
 "on":
   push:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   linux:
-    name: Nimony codec, crypto and QUIC (Ubuntu 24.04 x86-64)
+    name: Codec, crypto and QUIC (Ubuntu 24.04 x86-64)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -41,7 +41,7 @@ jobs:
           uname -a | tee build/nimony-ci/platform.log
           clang --version | tee -a build/nimony-ci/platform.log
       - name: Pinned Nimony and formatter
-        run: python3 tools/setup_nimony_ci_linux.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
+        run: python3 tools/setup_nimony.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
       - name: Pinned pristine source submodules
         run: python3 tools/setup_submodules.py
       - name: Pinned Rust and locked Bandersnatch registry dependencies
@@ -49,14 +49,8 @@ jobs:
           rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
           echo "RUSTUP_TOOLCHAIN=1.99.0" >> "$GITHUB_ENV"
           rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
-      - name: CI installer and reporting safeguards
-        run: python3 tests/test_nimony_ci.py
-      - name: Protocol source and migration provenance
-        run: python3 tests/test_spec.py
-      - name: Formatting
-        run: python3 tools/format.py --check
-      - name: Migrated codec, crypto, UDP readiness and native-owner coverage
-        run: python3 tools/test_nimony.py --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/runtime.log
+      - name: Checked codec, crypto, networking and independent harness coverage
+        run: python3 tools/test.py --suite runtime --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/runtime.log
       - name: Show measured partial coverage
         if: always()
         run: python3 tools/summarize_nimony_ci.py --kind slice --report build/nimony-trial/verification/results.json --output "$GITHUB_STEP_SUMMARY"
@@ -97,7 +91,7 @@ jobs:
             build/bandersnatch/cargo-features.log
 
   modules:
-    name: Nimony all-source compilation gate (Linux)
+    name: All-source compilation gate (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -121,9 +115,9 @@ jobs:
           sudo apt-get install --no-install-recommends -y build-essential clang lld
           mkdir -p build/nimony-ci
       - name: Pinned Nimony and formatter
-        run: python3 tools/setup_nimony_ci_linux.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
+        run: python3 tools/setup_nimony.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
       - name: Audit every source module
-        run: python3 tools/audit_nimony_modules.py --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/modules.log
+        run: python3 tools/test.py --suite modules --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/modules.log
       - name: Show remaining build work
         if: always()
         run: python3 tools/summarize_nimony_ci.py --kind modules --report build/nimony-ci/modules/results.json --output "$GITHUB_STEP_SUMMARY"

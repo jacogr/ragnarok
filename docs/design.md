@@ -1,6 +1,6 @@
 # Ragnarök design
 
-**Language:** Nim 2.2.12, ARC. **Target:** native Linux. **State:** protocol foundation;
+**Language:** Nimony 0.6.3 (pinned nightly), ARC. **Target:** native Linux. **State:** protocol foundation;
 full JAM execution, state transitions and validator operation remain future work.
 
 Protocol target: Gray Paper 0.8.0; the Bandersnatch draft-text/reference discrepancy remains an explicit

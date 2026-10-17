@@ -1,5 +1,6 @@
 """CI safeguards for trusted archives, complete source inventories and honest partial-coverage reporting."""
 import io
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -11,10 +12,11 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from setup_ci_linux import download, extract
-from setup_nimony_ci_linux import verify_identity, verify_version
+from toolchain_archives import download, extract
+from setup_nimony import verify_identity, verify_version, host_pins, install, installed, cache_directory
 from summarize_nimony_ci import summarize
 import audit_nimony_modules as modules
+from test import plan
 import test_bandersnatch as bandersnatch
 
 
@@ -40,9 +42,9 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('github.head_ref', text)
         self.assertNotIn('github.ref_name', text)
         self.assertNotIn('branches:', text)
-        self.assertIn('tools/setup_nimony_ci_linux.py', text)
-        self.assertIn('tools/test_nimony.py --compiler', text)
-        self.assertIn('tools/audit_nimony_modules.py --compiler', text)
+        self.assertIn('tools/setup_nimony.py', text)
+        self.assertIn('tools/test.py --suite runtime --compiler', text)
+        self.assertIn('tools/test.py --suite modules --compiler', text)
         self.assertNotIn('python3 tools/setup_ci_linux.py --destination', text)
 
     # The shared native builder must work before any historical driver has created its output directory.
@@ -64,6 +66,88 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertEqual(library.parent, folder/'target/release')
             self.assertEqual([call.args[0][1] for call in run.call_args_list],
                              ['fmt', 'test', 'build']*2)
+
+    # The same immutable nightly revision must select the correct platform archive and reject unknown hosts.
+    def test_local_and_ci_host_selection(self):
+        pins = json.loads((ROOT/'spec/toolchain.json').read_text())
+        for system, machine, name in (('Linux', 'x86_64', 'linux_amd64'), ('Darwin', 'arm64', 'macos_arm64')):
+            # Host selection changes archive identity, never the selected compiler revision.
+            with self.subTest(system=system):
+                selected = host_pins(pins, system, machine)
+                self.assertEqual(selected['platform'], name)
+                self.assertEqual(selected['commit'], pins['commit'])
+                self.assertIn('sha256', selected['formatter_download'])
+        with self.assertRaises(ValueError):
+            host_pins(pins, 'Linux', 'unknown')
+
+    # Local and CI entry points must retain native runtime, every-source audit and all independent Python harnesses.
+    def test_supported_command_plan(self):
+        compiler = Path('/fixture/nimony')
+        runtime = plan('runtime', compiler)
+        modules_only = plan('modules', compiler)
+        self.assertEqual(plan('all', compiler), modules_only+runtime)
+        self.assertTrue(any('tools/test_nimony.py' in row for row in runtime))
+        self.assertTrue(any('tools/audit_nimony_modules.py' in row for row in modules_only))
+        self.assertTrue(any('test_*harness.py' in row for row in runtime))
+        self.assertFalse(any('nim' in row for row in runtime+modules_only))
+        with self.assertRaises(ValueError):
+            plan('unknown', compiler)
+
+    # Extracting a formatter archive must expose only nimpretty, with safe repeated symlink handling.
+    def test_formatter_only_installation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            compiler, formatter = folder/'compiler', folder/'formatter'
+            for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'lib/std/system.nim'):
+                # Inert fixture files exercise layout validation; no fabricated compiler is executed.
+                path = compiler/relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('fixture')
+            (compiler/'NIGHTLY.txt').write_text('nimony-commit: pinned\ndate: today\nplatform: fixture\n')
+            (formatter/'bin').mkdir(parents=True)
+            (formatter/'bin/nimpretty').write_text('formatter fixture')
+            pins = dict(commit='pinned', date='today', platform='fixture', download={}, formatter_download={})
+            with patch('setup_nimony.download', return_value=b'fixture'), patch(
+                    'setup_nimony.extract', side_effect=[compiler, formatter]*3):
+                root, paths, metadata = install(folder/'tools', pins)
+                self.assertEqual(paths, [compiler/'bin', folder/'tools/formatter-bin'])
+                self.assertNotIn(formatter/'bin', paths)
+                self.assertEqual((paths[1]/'nimpretty').resolve(), (formatter/'bin/nimpretty').resolve())
+                install(folder/'tools', pins)
+                (paths[1]/'nimpretty').unlink()
+                (paths[1]/'nimpretty').write_text('unrelated file')
+                with self.assertRaisesRegex(ValueError, 'unrelated'):
+                    install(folder/'tools', pins)
+
+    # Normal local verification must reject modified tools and changed pins before running any workload.
+    def test_installed_binary_integrity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            compiler, formatter = folder/'nimony', folder/'nimpretty'
+            compiler.write_bytes(b'compiler fixture')
+            formatter.write_bytes(b'formatter fixture')
+            digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+            manifest = dict(compiler=str(compiler), formatter=str(formatter),
+                            compiler_sha256=digest(compiler), formatter_sha256=digest(formatter),
+                            pins_sha256=digest(ROOT/'spec/toolchain.json'))
+            (folder/'environment.json').write_text(json.dumps(manifest))
+            with patch('setup_nimony.verify_identity'), patch('setup_nimony.verify_version'):
+                self.assertEqual(installed(folder), (compiler, formatter))
+                formatter.write_bytes(b'changed formatter')
+                with self.assertRaisesRegex(ValueError, 'formatter'):
+                    installed(folder)
+                compiler.write_bytes(b'changed compiler')
+                with self.assertRaisesRegex(ValueError, 'compiler'):
+                    installed(folder)
+
+    # Same-version compilers at different paths cannot reuse Nimony dependency indexes from an old installation.
+    def test_compiler_location_cache_isolation(self):
+        folder = Path('/fixture/results')
+        before = cache_directory(Path('/fixture/old/bin/nimony'), folder, 'codec')
+        after = cache_directory(Path('/fixture/new/bin/nimony'), folder, 'codec')
+        self.assertNotEqual(before, after)
+        self.assertEqual(after, cache_directory(Path('/fixture/new/bin/nimony'), folder, 'codec'))
+        self.assertEqual(after.parent.parent, folder)
 
     # A stale/corrupt retained download must fail without trusting its filename or using the network.
     def test_cached_checksum_mismatch(self):
@@ -97,7 +181,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Same-version archives for a different platform or commit are not accepted as the selected nightly.
     def test_identity_mismatch(self):
-        pins = json.loads((ROOT/'spec/nimony-ci-toolchain.json').read_text())
+        pins = host_pins(json.loads((ROOT/'spec/toolchain.json').read_text()), 'Linux', 'x86_64')
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root/'NIGHTLY.txt').write_text('nimony-commit: '+pins['commit']+'\ndate: '+pins['date']+'\nplatform: macos_arm64\n')
@@ -120,7 +204,7 @@ class NimonyCISafeguards(unittest.TestCase):
                     self.assertEqual(command, ['/fixture/nimony', '--version'])
                     script = 'import sys; sys.'+stream+'.write('+repr(banner)+'); sys.exit('+str(code)+')'
                     return real_output([sys.executable, '-c', script], **options)
-                with patch('setup_nimony_ci_linux.subprocess.check_output', side_effect=output):
+                with patch('setup_nimony.subprocess.check_output', side_effect=output):
                     if failure is None:
                         # The exact banner is retained for CI diagnostics as well as pin validation.
                         self.assertEqual(verify_version(Path('/fixture/nimony'), '0.6.3'), banner)

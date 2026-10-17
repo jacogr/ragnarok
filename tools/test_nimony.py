@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 import subprocess
 import sys
+from setup_nimony import cache_directory
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
@@ -742,7 +743,7 @@ def build(compiler, source, name, crypto_library=None, native_libraries=(), cfla
     flags += ['-d:'+name for name in defines]
     flags += ['--passC:'+flag for flag in cflags]
     binary = BUILD/name
-    result = command([compiler, 'c', *flags, f'--nimcache:{BUILD/(name+"-cache")}',
+    result = command([compiler, 'c', *flags, f'--nimcache:{cache_directory(compiler, BUILD, name)}',
                       f'--out:{binary}', source], name+'-build')
     return result, binary
 
@@ -793,7 +794,8 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
+                'tools/test.py', 'tools/audit_nimony_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
+                'spec/toolchain.json', 'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
                 'tests/test_quic_offload_harness.py',
                 'tests/native/compile_fail/offload_pool_copy.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
                 'tests/test_quic_service.py', 'tests/test_quic_soak.py', 'tests/test_quic_soak_harness.py',
@@ -2608,7 +2610,7 @@ def main():
                          ('negative_collection_width', 'CollectionUInt'), ('wide_collection_width', 'CollectionUInt'),
                          ('scalar_collection_negative_width', '-1'), ('scalar_collection_wide_width', '9')):
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
         if name.startswith('scalar_collection_'):
             # Constant-invalid direct helper calls fail at the supported precondition during compilation.
             rejected = ('Error: contract violated:' in result['output']
@@ -2865,7 +2867,7 @@ def main():
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
         passed = result['exit_code'] != 0 and 'Error: contract violated: '+sentinel in result['output']
         report['contracts'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
@@ -2873,7 +2875,7 @@ def main():
     for name, member in PRIVATE.items():
         source = ROOT/f'tests/native/compile_fail/{name}.nim'
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{BUILD/(name+"-cache")}', source], name)
+                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', source], name)
         if name == 'private_collection_commit':
             # Generic concept support must never export the unchecked writer.
             rejected = "undeclared identifier: 'put'" in result['output']
@@ -2893,7 +2895,7 @@ def main():
     # Report and assurance identity, index and configuration domains must remain statically distinct under Nimony.
     for name, member in NOMINAL.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{BUILD/(name+"-cache")}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
         if name == 'bs_key_as_setup':
             # Scalar owners cannot select the allocator/domain of a native ring setup.
             rejected = 'Error: Type mismatch at [position]' in result['output'] and 'commitRing(' in result['output'] and member in result['output']

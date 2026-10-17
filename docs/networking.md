@@ -24,49 +24,15 @@ See [development commands](development.md). General validator-set management, mu
 independent JAM-stack interoperability, production sizing and full protocol/state coverage remain open.
 Pinned networking source is recorded in `spec/quic-proof-pins.json` and `vendor/jam-np`.
 
-## Nimony migration slice
+## Compiler and verification
 
-The experimental branch now uses `src/quic/io.nim` for nonblocking loopback UDP and a synchronous
-poll dispatcher capped at two sockets and ten milliseconds. It uses public OS headers/bindings,
-with no worker pool or compiler/dependency patches. Non-copyable endpoint owners unregister before
-close on explicit retirement or scope exit; dispatcher ownership is acyclic. Native engines still
-require explicit teardown while their callback owners remain stable.
+The supported Nimony implementation uses `src/quic/io.nim` for nonblocking UDP and a synchronous
+poll dispatcher capped at two sockets and ten milliseconds. Non-copyable endpoint owners
+unregister before close; private session owners remain stable through native teardown. The enabled
+proof pool uses public raw threads, exactly two workers and four owned slots, guarded completion
+access, monotonic generations and joined shutdown. No compiler or upstream dependency is patched.
 
-Local checked ARC/Clang LTO tests pass 1,024 idle/ready retirement cases over IPv4/IPv6, including
-scope exit and port rebind, shared readiness/data routing, flags, admission and setup failures.
-A further 1,000 warmed explicit/automatic scopes check release of retained ARC dispatcher metadata.
-The unchanged pinned native library also passes 16 standalone engine cycles and four shared pairs,
-including failure recovery and independent sibling retirement. Nimony Linux CI includes this slice;
-actual Linux confirmation remains separate.
-
-The remaining broad admission/resilience/offload lifecycle claims above describe the historical
-implemented behavior and remain migration gates on this branch. The actual peer executable now builds under
-checked Nimony ARC/Clang LTO and passes its original parser/readiness and mesh-policy selftests.
-The original sixteen one-shot authentication/framing scenarios and twelve additional valid cold
-startups pass, with one OS thread per endpoint observed during the no-FIN case. The enabled
-integration entry point also builds and passes its no-socket capture selftest. Startup/control
-validation rejects nine malformed CLI cases. These are local macOS ARM64 results; Linux is pending.
-Shared identity/DER and structural CE framing now
-also pass their parser selftest, independent oracle and guarded-result checks. The session delegates
-these checks to `src/quic/protocol.nim`; fixture content and integration policy remain in the peer.
-Enabled CE 143 fixture composition now also passes: private retained digest snapshots survive
-receive-buffer overwrite, guarded results refuse failed access, and immutable fixture banks publish
-only complete successful reloads. This is an integration workload, not a new normative relationship
-between C.2 fields and CE query keys.
-The original retained service workload now passes sixteen waves and 66 retired connections,
-including two forced peer deaths, rejected authentication, parked large writes and healthy sibling
-progress. The integrated digest listener passes twelve waves, 36 retired connections and 36
-cancelled-snapshot release observations. Both retain one server engine across all their waves;
-clients use fresh processes/connections. Post-warmup language allocation and descriptor ranges are
-zero in the targeted local run; RSS ranges remain below the unchanged 16 MiB budget. Final engine
-teardown passes the separate 64 KiB language-allocation allowance. These finite controlled runs do
-not establish leak freedom or general JAM interoperability.
-The standalone `session.nim` now retains private peer/stream state and both IPv6 role engines;
-`peer.nim` provides CLI controls. All **45/45** production modules pass independent semantic checks.
-The original sixteen-round IPv6 workload passes its five-second fallback, fifteen duplicate
-arbitrations, reconnects and 128 bidirectional queries, plus wrong expected-identity rejection.
-One keeper also survives twelve killed peers, settles 96 pending operations and completes 104
-healthy queries including final recovery. The two role engines stay alive in each peer throughout
-the relevant workload; post-warmup allocation and descriptor ranges stay flat. These remain finite
-local macOS ARM64 observations, separate from enabled offload and Linux execution.
-Next: same-process endpoint soak and remaining admission/resilience coverage, then proof offload. See the [cumulative Nimony evidence](nimony-trial.md).
+`python3 tools/test.py` runs the original identity/framing matrix, retained service/integration,
+IPv6 mesh/reconnect, peer-loss and admission recovery, forty-session endpoint soak and ten-wave
+actual-Rust offload workload. Finite resource budgets and fixed thread counts remain enforced.
+See [the cumulative compiler record](nimony-trial.md) for exact local evidence and Linux status.
