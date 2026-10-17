@@ -55,16 +55,44 @@ additional data, another entropy key and first/second backend refusal. A scoped 
 workload retires temporary rejected candidates. Test-only ordinary-verification observation is
 separate from RingVRF counters and leaves successful production output and dependency sources
 unchanged. Two result privacy checks and two runtime extraction probes protect authentication.
+A failure-only result factory lets the context adapter preserve reasons without duplicating successful
+payloads. Its success-forgery precondition is checked both by a compiler rejection and an isolated
+runtime probe (the pinned diagnostic is `not reason == None`). Full-profile authored credentials
+also cover E600 phase 599 and active index 1022 in a 1,023-record population.
 
 Run `make check-modules check-unit check-failures check-guards check-python`; reports and fixture
 hashes remain under ignored `build/tests/`. Cryptographic success is not a backend security audit.
 
-## Remaining work in this PR
+## Read-only store context and entropy handoff
 
-Add the read-only store-context adapter over parent C(6)/C(11) and posterior C(4)/C(8), preserving
-the pre-entropy-publication ordering. Check missing/malformed/bounded chapters, historical snapshot
-lifetime and native refusal, and round out full-profile boundaries. This branch needs #18.
+`src/state/authentication_state.nim` reads parent C(6)/C(11) and supplied posterior C(4)/C(8)
+from retained immutable full-state snapshots. Fixed chapter shapes and both dynamic byte ceilings
+are checked before copying. Missing chapters are `MissingState`, default snapshots `Uninitialized`,
+and malformed exact shapes `InvalidState`. Native refusal and invalid proof/schedule/author causes
+remain those of the core; no store write or root hashing is performed by authentication.
 
-The next increment is complete Safrole stage coordination and atomic whole-stage publication.
-Marker validation, schedule selection/rotation lineage, parent/extrinsic commitments, clock admission
-and the rest of block execution are not established by this authentication component alone.
+Staged C(6)/C(11) are deliberately **not inputs**. The existing entropy updater needs authenticated
+entropy to compute the new accumulator; reading it as a prerequisite would create circular trust.
+The history needed for seal verification is a fixed rotation of parent words and can be determined
+first. The eventual coordinator must similarly derive schedule/admission history without committing
+an unauthenticated accumulator, then publish canonical state only after all stages succeed.
+
+The context suite checks all twenty published records even with malformed/absent staged entropy
+and time, binds exact causes for required parent/posterior chapter damage, checks preflight ceilings,
+first/second native refusal, complete map/root stability, zero store hashing and historical header/
+map lifetimes. A separate correctly staged working map consumes the authenticated output through
+`advanceEntropyTimeState`, reproducing each complete published posterior C(6) and target C(11)
+while preserving schedule, active keys and unrelated state. Other state transitions are supplied
+projections, not claimed as executed by this component suite.
+
+The complete-map storage contract remains full-node specific. Future light-node context must use
+its own verified state/proof contract; these operations do not compute roots over partial maps or
+force full/light schemas into one database.
+
+## Completed scope and next work
+
+This completes the bounded author/seal/entropy authentication increment. This branch is stacked on
+#18. The next planned slice is complete Safrole stage coordination and atomic whole-stage
+publication, combining the existing rotation, admission, schedule, marker and authentication pieces.
+Parent/extrinsic commitments, wall-clock admission and complete block execution remain separate
+checks. Component authentication does not itself establish prior stage lineage or full JAM parity.

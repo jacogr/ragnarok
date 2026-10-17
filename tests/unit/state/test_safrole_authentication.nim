@@ -65,13 +65,14 @@ proc transcript(domain: string, seed: array[32, byte], attempt = -1): seq[byte] 
 ## The provisional seal is verified before its output seeds entropy; the final seal binds the complete unsigned header.
 proc authored(ticketed: bool, previous, target: StateTime, parentEntropy: StateEntropy,
     config: SafroleAuthConfig, sealDollar = false, entropyDollar = false,
-    entropyAdditional = false, wrongEntropyKey = false, author = 2): tuple[raw, schedule,
-        active: seq[byte], output: array[32, byte]] =
+    entropyAdditional = false, wrongEntropyKey = false, author = 2, population = 6): tuple[raw,
+        schedule, active: seq[byte], output: array[32, byte]] =
   var scalar = default(array[32, byte])
   scalar[0] = 1
   let key = importScalar(scalar).value
   let public = publicKey(key).value
-  let crossed = uint32(target) div 12 > uint32(previous) div 12
+  let epoch = int(uint64(config.state.epochSlots))
+  let crossed = uint64(uint32(target)) div uint64(epoch) > uint64(uint32(previous)) div uint64(epoch)
   let seed = array[32, byte](parentEntropy[if crossed: 2 else: 3])
   let domain = (if sealDollar: "$" else: "") & (if ticketed: "jam_ticket_seal" else: "jam_fallback_seal")
   let input = transcript(domain, seed, (if ticketed: 200 else: -1))
@@ -92,8 +93,9 @@ proc authored(ticketed: bool, previous, target: StateTime, parentEntropy: StateE
   source.unsigned.epoch = absentEpoch()
   source.unsigned.winners = absentWinners()
   source.unsigned.entropyProof = HeaderEntropyProof(array[96, byte](proof))
-  let headerPolicy = HeaderConfig(cores: CoreCount(4), authorValidators: ValidatorCount(12),
-      epochSlots: EpochSlots(12), maxBytes: ByteLimit(100000))
+  let cores = max(4, int(uint64(config.state.validators.cores)))
+  let headerPolicy = HeaderConfig(cores: CoreCount(uint64(cores)), authorValidators: ValidatorCount(
+      uint64(cores)*3), epochSlots: config.state.epochSlots, maxBytes: ByteLimit(100000))
   var unsigned = newSeq[byte](100000)
   let measured = encodeUnsignedHeader(source.unsigned, headerPolicy, unsigned).value
   unsigned.setLen(measured)
@@ -101,21 +103,21 @@ proc authored(ticketed: bool, previous, target: StateTime, parentEntropy: StateE
   var wire = newSeq[byte](100000)
   let size = encodeHeader(source, headerPolicy, wire).value
   wire.setLen(size)
-  var records = rotationRecords(6, 1)
+  var records = rotationRecords(population, 1)
   for i in 0..<records.len:
     records[i].bandersnatch = StateBsKey(array[32, byte](
         public)) # Actual posterior roster contains the signing key at the indexed author.
   let active = validatorEntry(ValidatorChapter.Active, records, config.state.validators).value.value
   var state = SafroleState(pending: records, root: default(StateRingRoot), accumulator: @[],
-      schedule: keySchedule(newSeq[StateBsKey](12)))
+      schedule: keySchedule(newSeq[StateBsKey](epoch)))
   if ticketed:
-    var selected = newSeq[WinningTicket](12)
-    for i in 0..<12: selected[i] = WinningTicket(id: WinningTicketId(array[32, byte](output)),
+    var selected = newSeq[WinningTicket](epoch)
+    for i in 0..<epoch: selected[i] = WinningTicket(id: WinningTicketId(array[32, byte](output)),
         attempt: TicketAttempt(200)) # Full E1 values remain legal schedule records.
     state.schedule = ticketSchedule(selected)
   else:
-    var selected = newSeq[StateBsKey](12)
-    for i in 0..<12: selected[i] = StateBsKey(array[32, byte](
+    var selected = newSeq[StateBsKey](epoch)
+    for i in 0..<epoch: selected[i] = StateBsKey(array[32, byte](
         public)) # Fallback selection requires exact key equality.
     state.schedule = keySchedule(selected)
   if wrongEntropyKey: close(entropyKey) # Release the independent authored secret after all signatures are copied.
@@ -213,6 +215,21 @@ proc boundaries() =
         let after = getOccupiedMem()
         assert before == after
         recordArcRelease("safrole_authentication", 1000, before, after)
+  # Full-profile endpoints exercise E600 phase 599 and author 1022 in the largest legal actual population.
+  var full = config
+  full.state.validators = rotationRosterConfig(341)
+  full.state.epochSlots = EpochSlots(600)
+  full.state.maxAccumulator = ElementLimit(600)
+  full.state.maxBytes = ByteLimit(1000000)
+  for ticketed in [false, true]:
+    reset(0)
+    let fixture = authored(ticketed, StateTime(598), StateTime(599), entropy, full, author = 1022,
+        population = 1023)
+    reset(0)
+    let result = authenticateSafroleSeal(capture(fixture.raw, full, 341), fixture.schedule,
+        fixture.active, StateTime(598), entropy, full)
+    assert result.error == SafroleAuthError.None and result.value.ticketed == ticketed and
+        verifications() == 2
   reset(0)
 
 ## Published headers and parent/posterior state bytes are supplied independently; no signing keys are generated for this evidence.
@@ -229,7 +246,7 @@ proc published(text: string) =
     let schedule = unhex(f[4])
     let active = unhex(f[5])
     let expected = unhex(f[6])
-    let owner = capture(raw, config)
+    var owner = capture(raw, config)
     reset(0)
     let outcome = authenticateSafroleSeal(owner, schedule, active, previous, entropy, config)
     assert outcome.error == SafroleAuthError.None and verifications() == 2
@@ -240,7 +257,8 @@ proc published(text: string) =
     assert advanced.error == EntropyTransitionError.None
     assert entropyEntry(advanced.value.entropy).value ==
         expected # Independent published posterior accumulator/history binds the authenticated output.
-    assert fullBytes(outcome.value.header) == raw
+    owner = default(OwnedHeader)
+    assert fullBytes(outcome.value.header) == raw # The result is now the only retained header owner.
   reset(0)
 
 boundaries()

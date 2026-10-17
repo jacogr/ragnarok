@@ -33,6 +33,11 @@ func error*(outcome: SafroleAuthResult): SafroleAuthError = outcome.status
 func value*(outcome: SafroleAuthResult): SafroleAuthentication {.inline,
     requires: outcome.status == SafroleAuthError.None.} = outcome.completed
 
+## Context adapters can preserve a failure reason, but cannot manufacture success without authenticated data.
+func safroleAuthFailure*(reason: SafroleAuthError): SafroleAuthResult {.requires: reason !=
+    SafroleAuthError.None.} =
+  SafroleAuthResult(status: reason)
+
 ## Preserve policy/native extent errors while rejecting malformed serialized stage state.
 func codecError(reason: StateComponentError): SafroleAuthError =
   case reason

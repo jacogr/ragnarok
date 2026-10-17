@@ -14,7 +14,7 @@ from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directo
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
-SUITES = ('telemetry', 'telemetry_chain', 'natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'authorization_transition', 'authorization_transition_failure', 'history_transition', 'history_transition_failure', 'entropy_transition', 'entropy_transition_failure', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
+SUITES = ('telemetry', 'telemetry_chain', 'natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'assurances', 'guarantees', 'tickets', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'crypto_seeds', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'authorization_transition', 'authorization_transition_failure', 'history_transition', 'history_transition_failure', 'entropy_transition', 'entropy_transition_failure', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'safrole_auth_state', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
 PRIVATE = dict(safrole_auth_private='completed', safrole_auth_retag='status', safrole_marker_private='completed', safrole_marker_retag='status', safrole_epoch_private='epochValue', safrole_winners_private='winnersValue', sealer_state_private='completed', sealer_state_retag='status', sealer_schedule_private='completed', sealer_schedule_retag='status', ticket_state_private='completed', ticket_state_retag='status', ticket_admission_private='completed', ticket_admission_retag='status', validator_state_private='completed', validator_state_retag='status', validator_rotation_private='completed', validator_rotation_retag='status', entropy_transition_private='completed', entropy_transition_retag='status', history_transition_private='completed', history_transition_retag='status', authorization_transition_private='completed', authorization_transition_retag='status', store_result_retag='status', store_head_private='head', store_snapshot_private='data',
                store_value_private='owner', store_result_private='completed', bounded_blob_private='byteLength', bounded_write_private='byteWritten',
                bounded_sequence_private='elementCount', bounded_retag='status',
@@ -593,7 +593,7 @@ HISTORY_PRIVATE = {'history_result_entry_private': 'completed', 'history_result_
 PRIVATE.update(HISTORY_PRIVATE)
 # The nightly abbreviates static ReportHash domains in constructor diagnostics; the hashed probe preserves the exact substitution.
 NOMINAL.update(history_segment_as_package="got: ReportHash but wanted: ReportHash", history_block_as_peak="HistoryBlockIndex")
-CONTRACTS = {"history_known_absent_hash": "peak.isPresent"}
+CONTRACTS = {"safrole_auth_success_forge": "not reason == None", "history_known_absent_hash": "peak.isPresent"}
 HISTORY_MEMBERS = ('entry-config', 'entry-count', 'entry-policy', 'entry-pairs', 'entry-order', 'entry-peaks', 'entry-bytes', 'decode-config', 'decode-count', 'decode-framing', 'decode-pairs', 'decode-order', 'decode-tag', 'decode-peaks', 'decode-bytes', 'decode-overflow', 'owner', 'consumed', 'info', 'block-owner', 'block-index', 'package-owner', 'package-block', 'package-index', 'peak-owner', 'peak-index', 'count-value', 'count-size', 'layout-blocks', 'layout-consumed')
 AVAILABILITY_PRIVATE = {'availability_result_entry_private': 'completed', 'availability_result_read_private': 'completed', 'availability_result_info_private': 'completed', 'availability_result_assignment_private': 'completed', 'availability_result_retag': 'status', 'availability_result_forge': 'status', 'availability_result_error_write': 'error', 'availability_result_value_write': 'value', 'availability_owner_rebind': 'data', 'assignment_tag_private': 'isPresent', 'assignment_child_private': 'child', 'assignment_registration_private': 'registration', 'assignment_retag': 'isPresent', 'assignment_forge': 'isPresent', 'assignment_present_write': 'present', 'assignment_guarantee_write': 'guarantee', 'assignment_registered_write': 'registered', 'assignment_snapshot_private': 'data'}
 PRIVATE.update(AVAILABILITY_PRIVATE)
@@ -724,7 +724,7 @@ command, build = checks.command, checks.build
 
 # Fixed inventories retain every historical diagnostic family when jobs execute independently.
 FAILURE_COUNTS = {
-    'safrole_authentication': 2,
+    'safrole_authentication': 3,
     'safrole_markers': 2,
     'sealer_schedule': 2,
     'sealer_state': 2,
@@ -2000,10 +2000,10 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     compiled, binary = build(compiler, ROOT/'tests/native/safrole_authentication_results.nim', 'safrole-authentication-results', crypto_library, native_libraries=(bs_library,))
     report['safrole_authentication_build'] = compiled
     if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
+        for origin in ('default', 'error', 'forge'):
             # Require the supported extraction contract, not a selector failure or unrelated crash.
-            result = command([binary, origin], 'safrole-authentication-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            result = command([binary, origin, 'none'], 'safrole-authentication-'+origin)
+            passed = result['exit_code'] == 1 and ('not reason == None' if origin == 'forge' else 'outcome.status == None') in result['output'] and '[AssertionDefect]' in result['output']
             report['safrole_authentication'].append(dict(origin=origin, passed=passed, run=result))
             announce('Safrole authentication '+origin+' runtime guard', passed)
     # Transcript and count access on every actual/default context failure must terminate at the success contract.

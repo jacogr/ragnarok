@@ -2,7 +2,7 @@
 
 Original migration branch: `nim-tests`, based on Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **80 ordinary native suites**, including three state-store, two authorization-transition and
+Current total: **81 ordinary native suites**, including three state-store, two authorization-transition and
 two history-transition, two entropy/time, two validator-rotation and two telemetry profiles; all original 59 suites remain migrated.
 The migration preserved wire behavior, bounds/ownership contracts and independent references.
 Subsequent native suites cover the new storage foundation as recorded below.
@@ -13,9 +13,9 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 80 native suites and 41 corpora | Native units/codecs |
-| `check-failures` | 1,414 runtime behavior/contract probes plus store positive controls | Runtime failures/contracts |
-| `check-guards` | 709 compiler rejection probes | Compiler rejection guards |
+| `check-unit` | 81 native suites and 41 corpora | Native units/codecs |
+| `check-failures` | 1,415 runtime behavior/contract probes plus store positive controls | Runtime failures/contracts |
+| `check-guards` | 710 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
 `make check` runs all six locally; CI schedules them independently and concurrently on separate
@@ -26,7 +26,7 @@ VMs. Each target provisions its own dependencies and writes its own report. Ther
 Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
 `build/tests/failures/` (runtime contracts), `build/tests/guards/` (compiler rejections) and
 `build/tests/e2e/`. Combined native coverage remains
-80 + 6 = 86 profiles. The new [state store](../spec/state-store.md) has three native profiles and
+81 + 6 = 87 profiles. The new [state store](../spec/state-store.md) has three native profiles and
 five privacy probes and nine isolated runtime misuse checks. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
 build uses the same shared checked native compiler profile as the unit verifier.
@@ -84,8 +84,12 @@ success and rejection do no backend work and preserve every snapshot value/root.
 The [Safrole authentication core](../spec/safrole-authentication.md) adds twenty published ticket/fallback
 credential/entropy projections (eighteen unique source blobs), plus real authored ticket/fallback
 proofs, transcript corruption, author/schedule binding, refusal and ARC coverage. Two compiler
-privacy checks and two runtime probes protect the successful entropy/header payload. Store-context
-and full-profile integration follow in this PR; eighteen records use fallback and two use tickets.
+privacy checks protect the successful entropy/header payload. A failure-only factory adds one
+compiler rejection and a third runtime contract probe; it cannot manufacture success. The second
+native profile checks the same twenty contexts before entropy publication, real atomic entropy/time
+handoff, missing/truncated/suffixed state, byte bounds, backend refusal, zero store hashing and
+retained maps/header lifetime. Authored full-profile checks cover phase 599 and author 1022 with
+1,023 actual active records. Eighteen external records use fallback and two use tickets.
 
 ## Runtime failure job split (2026-10-17)
 
