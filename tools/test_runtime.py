@@ -726,6 +726,10 @@ def command(arguments, name, environment=None):
 def python_tests():
     result = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'],
                      'python-tests')
+    if result['exit_code'] != 0:
+        # Surface captured unittest failures in CI while retaining the complete diagnostic artifact.
+        announce('Python verification', False)
+        print(result['output'], flush=True)
     return {key: value for key, value in result.items() if key != 'output'}
 
 

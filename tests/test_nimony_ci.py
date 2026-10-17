@@ -40,7 +40,10 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (folder/'linux.yml').read_text()
         self.assertNotIn('github.head_ref', text)
         self.assertNotIn('github.ref_name', text)
-        self.assertNotIn('branches:', text)
+        # Pushes check master once; PR updates retain their independent, unfiltered gate.
+        triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
+        self.assertEqual(triggers.strip(),
+                         'push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:')
         self.assertIn('run: make runtime', text)
         self.assertIn('run: make modules', text)
         self.assertNotIn('mkdir', text)
@@ -103,10 +106,13 @@ class NimonyCISafeguards(unittest.TestCase):
             failed = dict(command=['fixture'], exit_code=7, log='fixture.log', output='failed test')
             with patch.object(test_runtime, 'BUILD', folder), patch.object(sys, 'argv',
                     ['test_runtime.py', '--compiler', '/fixture/nimony']), patch.object(
-                    test_runtime, 'command', return_value=failed) as run:
+                    test_runtime, 'command', return_value=failed) as run, patch(
+                    'sys.stdout', new_callable=io.StringIO) as output:
                 with self.assertRaises(SystemExit) as stopped:
                     test_runtime.main()
             self.assertEqual(stopped.exception.code, 1)
+            self.assertIn('failed test', output.getvalue())
+            self.assertIn('FAIL Python verification', output.getvalue())
             self.assertEqual(run.call_count, 1)
             self.assertIn('test_*.py', run.call_args.args[0])
             report = json.loads((folder/'results.json').read_text())
