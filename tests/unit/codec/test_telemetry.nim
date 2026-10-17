@@ -48,6 +48,22 @@ assert loss.len == 29 and number(loss, 0, 4) == 25
 assert number(loss, 4, 8) == 11 and loss[12] == 0
 assert number(loss, 13, 8) == 19 and number(loss, 21, 8) == 3
 
+# Outgoing event layouts use fixed identity/address fields and little-endian correlation IDs.
+var remoteIdentity = default(array[32, byte])
+var remoteAddress = default(array[16, byte])
+remoteIdentity[0] = 123
+remoteAddress[15] = 1
+let dialing = connectingOut(Timestamp(17), remoteIdentity, remoteAddress, 9000)
+assert dialing.len == 63 and number(dialing, 0, 4) == 59
+assert number(dialing, 4, 8) == 17 and dialing[12] == 24
+assert dialing[13] == 123 and dialing[60] == 1 and number(dialing, 61, 2) == 9000
+let established = connectedOut(Timestamp(19), EventId(0x0102030405060708'u64))
+assert established.len == 21 and number(established, 0, 4) == 17 and established[12] == 26
+assert number(established, 13, 8) == 0x0102030405060708'u64
+let refused = connectOutFailed(Timestamp(20), EventId(7))
+assert refused.len == 22 and number(refused, 0, 4) == 18 and refused[12] == 25
+assert number(refused, 13, 8) == 7 and refused[21] == 0 # Empty reason is canonical.
+
 # Strict numeric endpoint parsing fails atomically and never creates descriptors.
 for endpoint in ["", "localhost", "localhost:0", "localhost:65536", "127.0.0.1:-1",
     "127.0.0.1: 1", "127.0.0.1:1:2", "127.0.0.999:9000", "127.0.0.1\0x:9000"]:

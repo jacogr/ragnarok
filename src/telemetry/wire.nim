@@ -8,6 +8,8 @@ const MaxCores* = 1024
 type
   # Microseconds since the JAM Common Era, deliberately distinct from Unix time.
   Timestamp* = distinct uint64
+  # Implicit position in the telemetry event stream, preserved across collector reconnects.
+  EventId* = distinct uint64
   # Operator-supplied network parameters, genesis, identity and advertised address.
   Metadata* = object
     bytes: array[MetadataSize, byte]
@@ -104,3 +106,32 @@ proc dropped*(first, last: Timestamp, count: uint64): seq[byte] =
 # Publish a typed configuration failure without exposing partially parsed metadata.
 func invalidMetadata*(reason: MetadataError): MetadataResult =
   MetadataResult(success: false, reason: reason)
+
+# Record a real outgoing dial using its pinned identity and copied IPv6-format destination.
+proc connectingOut*(timestamp: Timestamp, identity: array[32, byte], address: array[16, byte],
+    port: uint16): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(24)
+  # Both fields have fixed protocol extents and no length prefixes.
+  for item in identity: result.add(item)
+  for item in address: result.add(item)
+  result.fixed(port, 2)
+  result.frame()
+
+# Link authentication success to the original attempt, never to a status observation.
+proc connectedOut*(timestamp: Timestamp, attempt: EventId): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(26)
+  result.fixed(uint64(attempt), 8)
+  result.frame()
+
+# Link failure to its attempt; an empty normative Reason avoids inventing a native TLS diagnosis.
+proc connectOutFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(25)
+  result.fixed(uint64(attempt), 8)
+  result.text("")
+  result.frame()
