@@ -67,9 +67,11 @@ libraries remain under `build/`; the executable is a development proof peer, not
 Top-level Make targets run serially because native preparation and verification share build caches.
 
 CI splits the same plan into `--suite modules` and `--suite runtime` for independent verdicts.
-An explicit `--compiler` is intended for CI, whose installer also exports NIMPRETTY. Historical
-individual Python runners retain references, fixtures and native-build helpers used by the
-cumulative suite; their old Nim 2 build entry points are not the supported way to run this tree.
+An explicit `--compiler` is intended for CI, whose installer also exports NIMPRETTY. Superseded
+standalone codec/state Python runners have been removed. Retained Python modules provide independent
+references, fixture/native preparation, strict negative probes and process/tooling checks. Use
+`make check` for their supported execution path; older commands recorded in specification evidence
+describe historical runs, not additional supported runners.
 
 ```sh
 make format

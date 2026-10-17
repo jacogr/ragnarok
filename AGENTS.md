@@ -86,9 +86,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
   to `tests/unit/` through the pinned Hastur native runner (`tools/test.py --suite unit`). All 59
   ordinary suites are migrated; preserve explicit output, linking and fixture contracts. Preserve
-  independent Python references and process/tooling orchestration. This nightly has no
-  `std/unittest`; do not vendor Nim 2's library or invent a replacement DSL. Retain strict compiler-
-  failure/crash probes until native runner semantics prove equally strong; `.exitcode` alone does
+  independent Python references and process/tooling orchestration. Remove superseded standalone
+  runners once the supported path preserves their coverage; do not keep duplicate build entry points.
+  This nightly has no `std/unittest`; do not vendor Nim 2's library or invent a replacement DSL.
+  Retain strict compiler-failure/crash probes until native runner semantics prove equally strong; `.exitcode` alone does
   not require failure in the current Hastur. See [the migration plan](docs/testing.md).
 - Add important negative compilation checks and malformed/truncated/overflow/fuzz cases for decoders.
   Retain official vectors and independent test-only references; no Python production protocol runtime.

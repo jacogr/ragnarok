@@ -54,8 +54,10 @@ require full consumption. Assurances decode into fully owned fixed records suppl
 so no backing-buffer owner or release handle is needed for those fields. Tiny profile parameters
 are 2 cores / 6 validators; full is 341 / 1023. Structural codec acceptance does not imply chain eligibility.
 
-See `tests/test_codec.py`, `tests/test_work_report.py` and `tests/test_assurances.py` for independent
-oracles, official vectors, boundary/fuzz inputs, alias probes and output atomicity checks.
+See `tests/test_codec.py`, `tests/report_oracle.py` and `tests/assurances_oracle.py` for independent
+references and official vectors. Native boundary/fuzz, alias and output atomicity assertions live
+in `tests/unit/codec/`; run `make unit` for these suites or `make check` to include the independent
+corpora and strict negative probes.
 
 [M1 coverage and scope boundaries](m1.md) distinguish implemented framing from remaining client work.
 

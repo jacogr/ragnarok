@@ -1,27 +1,12 @@
 #!/usr/bin/env python3
-"""Verify Nim against pinned fixtures and independent references. Python stdlib only."""
-from test_support import codec_commands
-import argparse
+"""Independent primitive codec references and pinned fixture cases. Python stdlib only."""
 import hashlib
 import json
 from pathlib import Path
-import platform
 import random
-import subprocess
 import struct
-from bounded_checks import verify_bounded
-from composite_checks import verify_composite
-from digest_checks import verify_digest
-import tempfile
-from dependencies import codec_sources
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-# Run a command visibly and stop the suite if it fails, so reported results reflect executed checks.
-def run(args, **kwargs):
-    print('+ ' + ' '.join(map(str, args)), flush=True)
-    return subprocess.run(list(map(str, args)), check=True, text=True, **kwargs)
 
 
 # Compute expected bytes from the mathematical definition independently of either native encoder.
@@ -152,36 +137,6 @@ def official_fixed_cases():
     return requests, expected
 
 
-# Build the fixed-width adapters and compare valid, malformed and overflowing cases against the independent reference.
-def verify_fixed(build, nim_flags):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/fixed_unsigned.nim'])
-    run(['nim', 'c', *nim_flags, f'--out:{build / "nim-fixed-tests"}', '-r',
-         ROOT / 'tests/unit/codec/test_fixed_unsigned.nim'])
-    # Domain distinctions must reject raw values, raw widths and general naturals in Nim.
-    for name in ('fixed_raw_value', 'fixed_raw_width', 'natural_as_fixed'):
-        commands = [['nim', 'check', '--mm:arc', ROOT / f'tests/native/compile_fail/{name}.nim']]
-        # Require an encoder type-mismatch diagnostic rather than accepting any unrelated compiler failure.
-        for command in commands:
-            result = subprocess.run(list(map(str, command)), capture_output=True, text=True)
-            assert result.returncode != 0, command
-            assert 'encodeFixed' in result.stderr or 'encode_fixed' in result.stderr, result.stderr
-    nim_driver = build / 'nim-fixed-driver'
-    run(['nim', 'c', *nim_flags, f'--out:{nim_driver}', ROOT / 'tests/native/fixed_driver.nim'])
-    requests, expected, official_count, fixtures = fixed_requests()
-    request_file = build / 'fixed-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    # Each native implementation must match the same independent results, including empty output lines.
-    for driver in codec_commands(build, (nim_driver,), 'fixed'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        # Keep the exact failing request and observed/expected response in the diagnostic.
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS fixed unsigned: {len(requests)} independent Nim requests; '
-          f'{official_count} official field checks; {len(fixtures)} boundary fixtures; '
-          '3 negative compilation checks', flush=True)
-
-
 # Author the original fixed-width corpus independently of native compilation or execution.
 def fixed_requests():
     requests, expected = official_fixed_cases()
@@ -273,64 +228,3 @@ def natural_requests():
     requests.extend(['E 18446744073709551616', 'E -1'])
     expected.extend(['inputerror', 'inputerror'])
     return requests, expected, official_count, fixtures
-
-
-# Build and check Nim, then compare the same request corpus with the reference results.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    args = parser.parse_args()
-    codec_sources()
-    nim_version = run(['nim', '--version'], capture_output=True).stdout
-    assert 'Version 2.2.12 ' in nim_version, nim_version
-    # Keep all binaries and generated inputs in temporary storage that is cleaned up even on failure.
-    with tempfile.TemporaryDirectory(prefix='ragnarok-codec-') as temporary:
-        build = Path(temporary)
-        nim_flags = ['--mm:arc', f'--nimcache:{build / "nimcache"}']
-        run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/natural.nim'])
-        run(['nim', 'c', *nim_flags, f'--out:{build / "nim-tests"}', '-r', ROOT / 'tests/unit/codec/test_natural.nim'])
-        # Result misuse is rejected even when a caller omits its success check; verify debug and release field guards.
-        for mode in ([], ['-d:release']):
-            run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-result-tests"}', '-r', ROOT / 'tests/native/test_result_safety.nim'])
-        # Ownership regressions run in both caller build modes; ARC must retain isolated snapshots.
-        for mode in ([], ['-d:release']):
-            run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-ownership-tests"}', '-r', ROOT / 'tests/unit/codec/test_ownership.nim'])
-        # Neither API exposes mutable snapshot storage or accepts an unrelated source pool.
-        for language, fixture, needle in (('nim', 'mutable_owner.nim', 'data'), ('nim', 'wrong_owner_pool.nim', 'copyOwnedBlob')):
-            command = [language, 'check', *['--mm:arc'], str(ROOT / 'tests/native/compile_fail' / fixture), *[]]
-            result = subprocess.run(command, capture_output=True, text=True)
-            assert result.returncode != 0 and needle in result.stderr, result.stderr
-        # These public result APIs must reject payload construction/access from a failure or an unselected union.
-        for language, fixture, flags in (('nim', 'failed_digest_payload.nim', ['check', '--mm:arc']),):
-            result = subprocess.run([language, *flags, str(ROOT / 'tests/native/compile_fail' / fixture), *[]], capture_output=True, text=True)
-            assert result.returncode != 0 and 'value' in result.stderr, result.stderr
-        negatives = [['nim', 'check', '--mm:arc', ROOT / 'tests/native/compile_fail/raw_integer.nim']]
-        # These programs must fail for the intended type mismatch; unexpected compilation success is a failure.
-        for command in negatives:
-            result = subprocess.run(list(map(str, command)), capture_output=True, text=True)
-            assert result.returncode != 0, f'Expected type rejection: {command}'
-            assert 'encode' in result.stderr and ('uint64' in result.stderr or 'u64' in result.stderr), result.stderr
-        print('Raw-integer nominal safeguard passed', flush=True)
-        nim_driver = build / 'nim-driver'
-        run(['nim', 'c', *nim_flags, f'--out:{nim_driver}', ROOT / 'tests/native/driver.nim'])
-        requests, expected, official_count, fixtures = natural_requests()
-        request_file = build / 'requests.txt'
-        request_file.write_text('\n'.join(requests) + '\n')
-        # Run each native adapter on the exact same request file and require one response per request.
-        for driver in codec_commands(build, (nim_driver,), 'natural'):
-            output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-            assert len(output) == len(expected), (driver, len(output), len(expected))
-            # Compare each response with its expected value/error and retain the failing request in the diagnostic.
-            for index, (actual, wanted) in enumerate(zip(output, expected)):
-                assert actual == wanted, (driver, index, requests[index], actual, wanted)
-        verify_fixed(build, nim_flags)
-        verify_bounded(build, nim_flags, run, reference_encode, reference_decode)
-        verify_composite(build, nim_flags, run, reference_encode, reference_decode)
-        verify_digest(build, nim_flags, run, reference_encode, reference_decode)
-        print(f'PASS: {len(requests)} independent Nim requests; '
-              f'{official_count} official prefix checks; {len(fixtures)} boundary fixtures; '
-              'native tests and negative compilation checks', flush=True)
-
-
-# Execute the suite only when this file is launched, allowing helper functions to be imported safely.
-if __name__ == '__main__':
-    main()

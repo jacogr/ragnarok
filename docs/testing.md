@@ -263,12 +263,36 @@ toolchain safeguards and process/resource orchestration. Revisit those negative 
 Hastur provides a demonstrably equivalent contract; never use permissive `.exitcode` expectations.
 Named `suite`/`test` syntax can be revisited if the pinned compiler supplies a supported API.
 
-The old `tests/native/test_result_safety.nim` is a historical Nim 2 `FieldDefect` probe used
-only by the historical Nim 2 entry point in `tests/test_codec.py`; it is not one of the 59
-selected-toolchain suites. Its Nimony successors are the strict primitive/bounded/composite
-default/error payload-access processes in `tools/test_nimony.py`, plus positive zero-width,
-empty-count and work-error cases in the native codec suites. No Nim 2 exception-catching shim
-or weaker Hastur exit-code expectation is introduced to run that historical probe.
+The obsolete Nim 2 `FieldDefect` probe and its Python entry point have been removed. Their
+Nimony successors remain the strict primitive/bounded/composite default/error payload-access
+processes in `tools/test_nimony.py`, plus positive zero-width, empty-count and work-error cases
+in the native codec suites. No exception-catching shim or weaker Hastur exit-code expectation
+replaces those checks.
+
+### Retiring superseded Python runners
+
+After all 59 ordinary suites migrated, 34 unreferenced standalone Python runners were removed.
+This cleanup reduces top-level Python test code from 131 files / 15,424 lines to 97 files /
+13,561 lines: 1,863 fewer lines, including retired shared build/rejection helpers. These are
+physical source lines, including comments and blank lines; they are not implementation LOC metrics.
+Their application assertions already run through Hastur; their independent corpus comparisons
+and specific compiler/privacy rejection probes remain in the cumulative verifier. The old Nim 2
+entry points were also removed from the primitive, bounded, composite and digest reference modules.
+Every retained reference function has the same parsed body as before this cleanup. The retained
+`test_codec.py` name is an import interface, not an executable test command.
+
+Use `make unit` for native application tests and `make check` for the complete supported path.
+Commands in older specification/trial evidence describe historical runs; removed standalone
+scripts are not required to reproduce current coverage. Python remains for independent oracles,
+pinned native preparation, process/resource orchestration and strict/tooling safeguards.
+
+Local verification: `make check` passes on macOS ARM64 with the pinned compiler and checked LTO:
+45 production modules, 59 Hastur suites / 65 total native profiles, all 41 corpora, strict negative
+and lifecycle checks, 246 harness tests (one existing skip), 23 setup/CI checks and formatting.
+All 40 deterministic corpus records match the pre-cleanup baseline. Fresh certificate DER lengths
+vary in the remaining QUIC corpus; its observations still match its independent expectations.
+Evidence: `build/nim-tests/cleanup/full-check.log` and `comparison.json`. Linux CI is not inferred.
+
 
 
 ## Verification of the first increment

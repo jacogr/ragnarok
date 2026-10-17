@@ -1,9 +1,7 @@
-"""Independent bounded-container reference cases and native native correctness checks (stdlib only)."""
-from test_support import codec_commands
+"""Independent bounded-container reference cases (stdlib only)."""
 import json
 from pathlib import Path
 import random
-import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,37 +25,6 @@ def frame(data, width, limit, reference_decode):
     if count * width > len(data) - offset:
         return 'truncated'
     return count, offset, offset + count * width
-
-
-# Exercise byte strings and fixed-unsigned sequences using references and official unmodified blob spans.
-def verify_bounded(build, nim_flags, run, reference_encode, reference_decode):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/bounded.nim'])
-    run(['nim', 'c', *nim_flags, f'--out:{build / "nim-bounded-tests"}', '-r',
-         ROOT / 'tests/unit/codec/test_bounded.nim'])
-    # New limit/value distinctions must fail for both compilers, in addition to existing primitive checks.
-    for name in ('raw_byte_limit', 'wrong_limit_domain', 'raw_sequence_values'):
-        commands = [['nim', 'check', '--mm:arc', ROOT / f'tests/native/compile_fail/{name}.nim']]
-        for command in commands:
-            result = subprocess.run(list(map(str, command)), capture_output=True, text=True)
-            assert result.returncode != 0, command
-            assert 'type mismatch' in result.stderr or 'Cannot assign value' in result.stderr, result.stderr
-            assert any(name in result.stderr for name in
-                       ('ByteLimit', 'Byte_Limit', 'FixedUnsigned', 'Fixed_Unsigned')), result.stderr
-    nim_driver = build / 'nim-bounded-driver'
-    run(['nim', 'c', *nim_flags, f'--out:{nim_driver}', ROOT / 'tests/native/bounded_driver.nim'])
-    requests, expected, official_count, fixtures = batch_requests(reference_encode, reference_decode)
-    request_file = build / 'bounded-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    # Each adapter also asserts that every failing write/decode preserves the entire supplied destination.
-    for driver in codec_commands(build, (nim_driver,), 'bounded'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        # Preserve the failing request in the assertion so any semantic mismatch can be replayed exactly.
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS bounded: {len(requests)} independent Nim requests; '
-          f'{official_count} official blob checks; {len(fixtures)} project fixtures; '
-          '3 negative compilation checks', flush=True)
 
 
 # Construct the unchanged independent corpus without building or executing a native adapter.
