@@ -72,6 +72,8 @@ jobs:
             build/nimony-ci/*.log
             build/nimony-trial/verification/*.log
             build/nimony-trial/verification/results.json
+            build/nimony-trial/verification/offload/*.log
+            build/nimony-trial/verification/offload/resources.json
             build/nimony-trial/verification/admission/*.log
             build/nimony-trial/verification/admission/resources.json
             build/nimony-trial/verification/closed-before-request/*.log

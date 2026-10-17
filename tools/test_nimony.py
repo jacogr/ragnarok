@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify the Nimony-only partial port, guarded codec results and immutable owned snapshots."""
 import argparse
+import os
 import hashlib
 import json
 import platform
@@ -692,6 +693,8 @@ NOMINAL.update(bs_key_as_setup='[1] expected: BsSetup but got: BsKey',
                bs_signature_as_ring_proof='got: BsSignature but wanted: BsRingProof',
                bs_output_as_public='got: BsOutput but wanted: BsPublicKey')
 PRIVATE.update(integration_key_payload='completed', integration_capture_payload='completed', integration_child_payload='completed', integration_count_payload='completed', integration_bytes_payload='completed', integration_status='status', integration_retag='status', integration_error_write='error', integration_value_write='value', integration_forge='status', integration_verified_private='data', integration_verified_rebind='data', integration_verified_forge='data', integration_bank_private='data', integration_bank_rebind='data', integration_bank_forge='data', integration_verified_wire='wire', integration_bank_wires='wires')
+PRIVATE.update(offload_poll_tag_private='hasCompletion', offload_poll_payload_private='completed',
+               offload_poll_retag='ready', offload_poll_forge='hasCompletion', offload_poll_write='completion')
 PRIVATE.update(session_peer_private='Peer', session_stream_private='StreamState',
                session_frame_private='frameExtent', session_callback_private='verifyPeer')
 INTEGRATION_MEMBERS = ('key', 'capture', 'child', 'length', 'copy', 'fixture-key', 'fixture-bytes')
@@ -707,9 +710,9 @@ MEMBERS = ('offset', 'length', 'blob-consumed', 'written', 'count', 'sequence-co
 
 
 # Keep exact arguments, status and output for every build/run, including intentional rejections.
-def command(arguments, name):
+def command(arguments, name, environment=None):
     result = subprocess.run([str(arg) for arg in arguments], cwd=ROOT,
-                            capture_output=True, text=True, timeout=180)
+                            capture_output=True, text=True, timeout=180, env=environment)
     output = result.stdout+result.stderr
     log = BUILD/(name+'.log')
     log.write_text(output)
@@ -757,7 +760,7 @@ def main():
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
-                  python=platform.python_version()), suites=[], runtime=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
+                  python=platform.python_version()), suites=[], runtime=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -790,7 +793,9 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'src/quic/session.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
+                'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
+                'tests/test_quic_offload_harness.py',
+                'tests/native/compile_fail/offload_pool_copy.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
                 'tests/test_quic_service.py', 'tests/test_quic_soak.py', 'tests/test_quic_soak_harness.py',
                 'tests/test_quic_mesh.py', 'tests/test_quic_resilience.py', 'tests/test_quic_mesh_harness.py',
                 'src/quic/integration.nim', 'tests/test_integration.py', 'tests/integration_oracle.py', 'tests/native/integration_driver.nim',
@@ -2303,6 +2308,44 @@ def main():
             report['quic_closed_before_request'] = dict(passed=False, failure=str(error))
     announce('connection/stream admission recovery', report['quic_admission']['passed'])
     announce('authenticated connection loss before request', report['quic_closed_before_request']['passed'])
+    # Preserve independent fixture identity, missing-marker rejection and failed-server cleanup in CI.
+    report['quic_offload_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_offload_harness.py'], 'quic-offload-harness')
+    # Enabled workers use the same maintained Rust/QUIC ABIs and original queue/cancellation workload.
+    from test_quic_offload import corpus as offload_fixture, selftests as offload_selftests, exercise as offload_exercise
+    offload_wire, offload_metadata = offload_fixture(BUILD/'offload')
+    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-offload',
+                             native_libraries=(bs_library,), quic_library=quic_library, defines=('offload',))
+    report['quic_offload_build'] = compiled
+    report['quic_offload'] = dict(passed=False, fixture=offload_metadata)
+    if compiled['exit_code'] == 0:
+        try:
+            # Completed jobs retain capacity; held workers must join without a controller ever releasing their gate.
+            for row in offload_selftests(binary, offload_wire, BUILD/'offload'):
+                row['build'] = compiled
+                report['suites'].append(row)
+            # Ten waves preserve two workers, four job slots and 128 real verifications per accepted job.
+            result = offload_exercise('nim', quic_fixtures, offload_wire, 10, 2, 128,
+                                      binaries={'nim': binary}, directory=BUILD/'offload')
+            report['quic_offload'] = dict(passed=True, fixture=offload_metadata, result=result)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # A selftest, callback, resource or joined-shutdown failure cannot be hidden by another workload.
+            report['quic_offload'] = dict(passed=False, fixture=offload_metadata, failure=str(error))
+    announce('bounded proof offload and joined shutdown', report['quic_offload']['passed'])
+    # The same guarded completion API must reject defaults and actual empty polls in both build profiles.
+    for enabled in (False, True):
+        compiled, binary = build(compiler, ROOT/'tests/native/nimony_offload_results.nim',
+                                 'offload-results-'+str(enabled), native_libraries=(bs_library,) if enabled else (),
+                                 defines=('offload',) if enabled else ())
+        report['offload_results_'+str(enabled)] = compiled
+        if compiled['exit_code'] == 0:
+            # Enabled empty-poll probes start and join their own workers before attempting the invalid read.
+            for origin in ('default', 'empty'):
+                environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(offload_wire),
+                               'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': ''}
+                result = command([binary, origin], 'offload-result-'+str(enabled)+'-'+origin, environment)
+                passed = result['exit_code'] == 1 and 'value.hasCompletion' in result['output'] and '[AssertionDefect]' in result['output']
+                report['offload'].append(dict(enabled=enabled, origin=origin, passed=passed, run=result))
+                announce('offload '+str(enabled)+' '+origin+' completion guard', passed)
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -2813,6 +2856,12 @@ def main():
     passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <UdpEndpoint>" in compiled['output']
     report['ownership_compile'].append(dict(name='quic_io_endpoint_copy', passed=passed, check=compiled))
     announce('unique UDP endpoint copy rejection', passed)
+    # RawThread membership alone did not reject pool copies; the exported pool-level contract must reject during lowering.
+    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/offload_pool_copy.nim', 'offload-pool-copy',
+                        native_libraries=(bs_library,), defines=('offload',))
+    passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <OffloadPool>" in compiled['output']
+    report['ownership_compile'].append(dict(name='offload_pool_copy', passed=passed, check=compiled))
+    announce('unique offload pool copy rejection', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     for name, sentinel in CONTRACTS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
@@ -2965,6 +3014,8 @@ def main():
                    and report['quic_mesh']['passed'] and report['quic_mesh_disruption']['passed']
                    and report['quic_endpoint_soak']['passed']
                    and report['quic_admission']['passed'] and report['quic_closed_before_request']['passed']
+                   and report['quic_offload']['passed'] and report['quic_offload_harness']['exit_code'] == 0
+                   and len(report['offload']) == 4 and all(row['passed'] for row in report['offload'])
                    and report['quic_lifecycle_harness']['exit_code'] == 0
                    and report['quic_service']['passed'] and report['quic_integration_service']['passed']
                    and report['quic_peer_harness']['exit_code'] == 0 and report['ci_harness']['exit_code'] == 0
@@ -3020,7 +3071,7 @@ def main():
                    and all(row['passed'] for row in report['history'])
                    and len(report['contracts']) == len(CONTRACTS)
                    and all(row['passed'] for row in report['contracts'])
-                   and len(report['ownership_compile']) == 1 and all(row['passed'] for row in report['ownership_compile'])
+                   and len(report['ownership_compile']) == 2 and all(row['passed'] for row in report['ownership_compile'])
                    and report['state_disputes_corpus']['passed']
                    and len(report['state_disputes']) == 2*len(STATE_DISPUTES_MEMBERS)
                    and all(row['passed'] for row in report['state_disputes'])

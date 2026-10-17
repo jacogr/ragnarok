@@ -53,6 +53,16 @@ def summarize(report, kind):
                     rounds = result.get('rounds', len(result['idle']))
                     connections = result['accepted_and_retired_connections'] if key == 'quic_service' else result['connections']
                     lines += ['Waves: '+str(rounds)+'; retired connections: '+str(connections)+'.']
+        if 'quic_offload' in report:
+            # Actual Rust activity, bounded worker counts and joined shutdown have their own lifecycle verdict.
+            row = report['quic_offload']
+            lines += ['', 'Bounded proof offload: '+('Pass' if row['passed'] else 'Fail')+'.']
+            if row['passed']:
+                # Network/worker observations are not independent codec corpora or compiler rejection probes.
+                result = row['result']
+                lines += ['Waves: '+str(result['rounds'])+'; workers: '+str(result['workers'])+
+                          '; job cap: '+str(result['job_cap'])+'; verified jobs: '+str(result['verified_jobs'])+
+                          '; lightweight queries: '+str(result['healthy_light_queries'])+'.']
         if 'quic_endpoint_soak' in report:
             # Endpoint destruction is separate from retained listeners and must keep its own failing verdict.
             row = report['quic_endpoint_soak']

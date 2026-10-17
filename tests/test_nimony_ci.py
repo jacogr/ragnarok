@@ -242,6 +242,20 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('Connection/stream admission recovery: Fail', text)
         self.assertIn('Application streams: 0; close detection seconds: 2.0', text)
 
+    # A worker lifecycle failure cannot hide behind passing networking or inflate codec/compiler totals.
+    def test_offload_summary_scope(self):
+        for passed in (False, True):
+            # Both verdicts must remain visible, and counts belong only to a completed workload.
+            with self.subTest(passed=passed):
+                report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                              quic_offload=dict(passed=passed, result=dict(rounds=10, workers=2, job_cap=4,
+                                                                          verified_jobs=30, healthy_light_queries=70)))
+                text = summarize(report, 'slice')
+                self.assertIn('Bounded proof offload: '+('Pass' if passed else 'Fail'), text)
+                self.assertEqual('workers: 2; job cap: 4' in text, passed)
+                self.assertIn('Independent corpora: 0', text)
+                self.assertIn('Runtime misuse rejections: 0', text)
+
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
         report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],

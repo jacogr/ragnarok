@@ -40,14 +40,17 @@ def build(fetch, reuse_native):
 
 
 # Pack the independently sourced tiny ticket into fixed copied fields; the worker constructs no implicit domain.
-def corpus():
+def corpus(directory=None):
     item = json.loads((bs.FIXTURES / 'jam-tiny.json').read_text())
     ticket = item['tickets'][0]
     domain = b'jam_ticket_seal' + bytes.fromhex(item['entropy'][2:]) + bytes([ticket['attempt']])
     wire = (item['capacity'].to_bytes(4, 'little') + bytes.fromhex(item['root'][2:]) +
             bytes.fromhex(ticket['signature'][2:]) + domain + bytes.fromhex(ticket['output'][2:]))
     assert len(domain) == 48 and len(wire) == 1012
-    path = BUILD / 'ticket.bin'
+    # Isolated compiler runs retain their own trusted fixture without changing any source bytes.
+    directory = BUILD if directory is None else directory
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / 'ticket.bin'
     path.write_bytes(wire)
     # Independent keys name the exact cheap/verified/invalid-policy CE lookup fixtures.
     return path, {'fixture_sha256': hashlib.sha256(wire).hexdigest(),
@@ -55,11 +58,34 @@ def corpus():
                                     for start in (1, 4, 7)]}
 
 
+# Keep no-network completion capacity and held shutdown checks identical for direct and cumulative runners.
+def selftests(binary, fixture, directory):
+    directory.mkdir(parents=True, exist_ok=True)
+    results = []
+    # These holds belong only to this harness and are never used to claim actual Rust execution.
+    for name, flag, gate, markers in (
+            ('offload_capacity', '--offload-selftest', '', ('OFFLOAD_SELFTEST 4', 'OFFLOAD_EXHAUSTED', 'OFFLOAD_JOINED 2')),
+            ('offload_held_shutdown', '--offload-held-shutdown', str(directory/f'held-{time.time_ns()}'),
+             ('OFFLOAD_HELD_SHUTDOWN 4', 'OFFLOAD_STATE 2 2 0 0 0 0 4', 'OFFLOAD_JOINED 2'))):
+        path = directory/(name+'.log')
+        environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(fixture),
+                       'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': gate}
+        with path.open('w') as output:
+            process = subprocess.run([str(binary), flag], env=environment, stdout=output,
+                                     stderr=subprocess.STDOUT, timeout=30)
+        transcript = path.read_text()
+        assert process.returncode == 0 and all(marker in transcript.splitlines() for marker in markers), transcript
+        results.append(dict(name=name, passed=True, run=dict(exit_code=process.returncode, log=str(path))))
+    return results
+
+
 # One process survives repeated queue pressure, cancellation and proof errors without replacing its listener/workers.
-def exercise(language, certificates, fixture, rounds, warmup, repeats, ):
+def exercise(language, certificates, fixture, rounds, warmup, repeats, *, binaries=None, directory=None):
+    # Use only explicitly selected checked peers; queue pressure, deadlines and finite budgets are unchanged.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     fixed_threads = THREAD_BASELINES[language] + 2
-    directory = BUILD / language
-    directory.mkdir(exist_ok=True)
+    directory = BUILD / language if directory is None else directory
+    directory.mkdir(parents=True, exist_ok=True)
     gate = directory / f'release-{time.time_ns()}'
     stop = directory / f'stop-{time.time_ns()}'
     cancel = directory / f'cancel-{time.time_ns()}'
@@ -73,7 +99,7 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats, ):
     environment = {**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop), 'RAGNAROK_OFFLOAD_GATE': str(gate),
                    'RAGNAROK_OFFLOAD_FIXTURE': str(fixture), 'RAGNAROK_OFFLOAD_REPEATS': str(repeats), 'RAGNAROK_OFFLOAD_CANCEL': str(cancel)}
     output = log.open('w'); handles.append(output)
-    server = subprocess.Popen([str(BUILD / f'{language}-peer'), 'server', str(port),
+    server = subprocess.Popen([str(binaries[language]), 'server', str(port),
         str(certificates / 'a.cert.pem'), str(certificates / 'a.key.pem'), '-', 'jamnp-s/1/00000000',
         '300000', 'offload'], env=environment, stdout=output, stderr=subprocess.STDOUT)
     children.append(server)
@@ -107,7 +133,7 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats, ):
         # Cycle native clients without changing queue generations, capacity or cancellation counts.
         path = directory / f'{accepted}-{implementation}-{mode}.log'
         handle = path.open('w'); handles.append(handle)
-        process = subprocess.Popen([str(BUILD / f'{implementation}-peer'), 'client', str(port),
+        process = subprocess.Popen([str(binaries[implementation]), 'client', str(port),
             str(certificates / 'b.cert.pem'), str(certificates / 'b.key.pem'), str(certificates / 'a.pub'),
             'jamnp-s/1/00000000', '20000', mode], env=environment, stdout=handle, stderr=subprocess.STDOUT)
         children.append(process)
@@ -234,23 +260,9 @@ def main():
     peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES, 'offload')
     fixture, metadata = corpus()
     certificates = fixtures(BUILD / 'fixtures')
-    # Focused completion-capacity checks use one real verification per job and no external hold or network loop.
+    # The same explicit selftests are used by the isolated compiler migration runner.
     for language in peers:
-        with (BUILD / f'{language}-selftest.log').open('w') as output:
-            process = subprocess.run([str(BUILD / f'{language}-peer'), '--offload-selftest'],
-                env={**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(fixture), 'RAGNAROK_OFFLOAD_REPEATS': '1',
-                     'RAGNAROK_OFFLOAD_GATE': ''}, stdout=output, stderr=subprocess.STDOUT, timeout=30)
-        transcript = (BUILD / f'{language}-selftest.log').read_text()
-        assert process.returncode == 0 and 'OFFLOAD_SELFTEST 4' in transcript.splitlines(), transcript
-        # A separate held shutdown proves that joining cannot deadlock on the externally controlled test barrier.
-        with (BUILD / f'{language}-held-shutdown.log').open('w') as output:
-            process = subprocess.run([str(BUILD / f'{language}-peer'), '--offload-held-shutdown'],
-                env={**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(fixture), 'RAGNAROK_OFFLOAD_REPEATS': '1',
-                     'RAGNAROK_OFFLOAD_GATE': str(BUILD / f'held-{time.time_ns()}')},
-                stdout=output, stderr=subprocess.STDOUT, timeout=30)
-        transcript = (BUILD / f'{language}-held-shutdown.log').read_text()
-        assert process.returncode == 0 and 'OFFLOAD_HELD_SHUTDOWN 4' in transcript.splitlines(), transcript
-        assert 'OFFLOAD_STATE 2 2 0 0 0 0 4' in transcript.splitlines() and 'OFFLOAD_JOINED 2' in transcript.splitlines(), transcript
+        selftests(BUILD/f'{language}-peer', fixture, BUILD/language)
     results = [exercise(language, certificates, fixture, args.rounds, args.warmup, args.repeats)
                for language in peers]
     (BUILD / 'results.json').write_text(json.dumps({'fixture': metadata, 'services': results}, indent=2)+'\n')

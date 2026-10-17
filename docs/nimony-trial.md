@@ -1,8 +1,8 @@
 # Nimony nightly trial
 
 Branch: `nimony`, based on `aea27ad` (the codec-directory move). Trial date: 2026-10-17.
-Status: **63 native suites, forty-one independent corpora, 1,368 runtime misuse rejections
-and 670 compilation rejections pass locally**. Exact chapter/service composition joins the verified
+Status: **65 native suites, forty-one independent corpora, 1,372 runtime misuse rejections
+and 676 compilation rejections pass locally**. Exact chapter/service composition joins the verified
 scalar, owned, report/extrinsic, package, header/block, bitstring, collection, C.2, raw-crypto,
 state-key/node, bounded trie, entropy/roster/time, authorization, state chapters 3–5/10/12–16
 and fixed C(255, service) account records, retained raw service values and request-history framing.
@@ -19,13 +19,14 @@ The one-shot authenticated CE 143 peer matrix and retained service/integrated di
 workloads now pass locally. Retained IPv6 mesh/reconnect and twelve peer-death recovery rounds
 now pass too; same-process endpoint destruction also passes forty sessions. All 45 production
 modules pass independent semantic compilation. Connection/stream admission recovery and
-authenticated loss before the first request now pass locally too. Enabled proof offload and Linux
-runtime parity remain unverified.
+authenticated loss before the first request now pass locally too. Enabled proof offload also passes
+locally, reaching implemented-scope M1/M2/M3 migration regression parity. Normal local setup,
+a bounded performance comparison and Linux confirmation of the new profile remain open.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. At the maintainer's request, the existing
 `.github/workflows/linux.yml` is now the single Linux workflow and uses the pinned Nimony nightly
-on every push, PR and manual run. The separate trial workflow has been removed. Actual Linux
-verification remains pending; CI consolidation is not a complete migration claim.
+on every push, PR and manual run. The separate trial workflow has been removed. The maintainer reports an earlier pushed snapshot passed PR CI; the expanded offload profile
+awaits its own Linux result. CI consolidation alone is not a complete migration claim.
 
 ## Compiler and environment
 
@@ -43,7 +44,8 @@ binary archive and extends the source port and runtime checks.
   enabled; neither danger mode nor `noAssertions` is used.
 - Nimony range subtypes use compile-time proofs. Compact-natural tail counters state their
   existing `0..8` invariant explicitly.
-- No Linux result, performance comparison or full M1/M2/M3 parity is claimed.
+- Local implemented-scope migration regression parity is recorded below. Performance comparison
+  and Linux confirmation of the newly expanded offload profile remain separate gates.
 
 ## Arithmetic policy
 
@@ -2507,11 +2509,100 @@ These are finite controlled workloads, not proof of arbitrary leak freedom or in
 with another JAM implementation. M1/M2 implemented-scope parity and their normative gates are
 unchanged; enabled proof offload, Linux runtime confirmation and local setup cutover remain open.
 
+## Forty-eighth bounded increment: enabled bounded proof offload
+
+The enabled peer now uses public Nimony `std/rawthreads` create/join operations for the original
+fixed two workers. Each worker creates, uses and closes its own Rust setup; only copied fixed
+proof/root/context/output arrays cross the mutex-protected four-slot queue. Neither ARC owners,
+stream pointers nor TLS state cross into workers. The shared pool remains stack-stable until both
+workers join. Explicit imports/effects, initialized local pools/counters/arrays, indexed stable
+slot access and POSIX selftest sleeps replace the historical compiler assumptions. Public
+`syncio` diagnostics flush complete lifecycle markers on the I/O thread. The pinned compiler,
+checked ARC/Clang LTO profile, native ABI, dependency sources and protocol policy are unchanged.
+
+`OffloadPollResult` now hides its discriminator and payload. Read-only readiness selects a
+success-only completion accessor; four independent child probes reject default/actual-empty
+completion reads with the expected contract diagnostic, in both disabled and enabled builds.
+Enabled empty-poll probes start and join workers before attempting the invalid read. Five
+compiler probes reject private-state inspection, public retagging, success forgery and completion
+assignment. A full lowering probe rejects duplicating `OffloadPool`: containing `RawThread`
+alone did not reject the composite copy probe, so the pool now exports its own explicit forbidden
+copy contract. It must not be moved while workers borrow its address.
+
+Job generations reject exhaustion before intentional integer wrapping can reuse an ID. The
+no-network capacity selftest still proves four uncollected completions occupy all four slots,
+then checks delivery of `high(uint64)` and rejection of the following submission. The separate
+held-shutdown selftest still joins two held-running workers and drops two queued inputs without
+requiring a controller to release the hold. Actual Rust execution is measured separately.
+
+The original live workload passes **ten waves**, two warmup/eight retained samples and **128
+RingVRF verification repetitions configured per job**; invalid proofs stop at the first failure. It verifies queue pressure, cheap networking while both workers
+are held and while both are actually inside Rust, queued cancellation, held-running cancellation,
+cancellation during real Rust work, wrong-domain rejection, stale-generation exclusion and joined
+shutdown with **four jobs pending**. The targeted results are:
+
+| Observation | Result |
+| --- | ---: |
+| Verified jobs delivered | 30 |
+| Healthy lightweight queries | 70 |
+| Capacity / wrong-domain rejections | 10 / 10 |
+| Queued / held-running / actual-crypto cancellations | 10 / 10 / 10 |
+| Fixed listener threads, including workers | 3 |
+| Job slots / worker threads | 4 / 2 |
+| Post-warmup Nim allocation / descriptor ranges | 0 / 0 |
+| Idle RSS range, bytes | 409,600 |
+| Active RSS high water, bytes | 11,075,584 |
+| Elapsed seconds | 61.073 |
+
+The original 64 KiB language-allocation, 16 MiB idle RSS, two-descriptor and 256 MiB active RSS
+budgets and all observation/retirement deadlines remain. Language occupancy measures the I/O
+thread; whole-process RSS and joined shutdown cover a different scope and are not proof of
+arbitrary worker/native leak freedom. Evidence is in
+`build/nimony-trial/verification/offload-targeted/results.json` and adjacent endpoint/resource
+logs. Cumulative CI retains `offload/` diagnostics and a separate offload verdict, without counting
+live jobs or queries as codec corpora or contract probes. Three independent offload-harness tests
+freeze the original official tiny-ticket wire hash and reject missing completion/join observations
+or a dead server; eighteen CI safeguards pass.
+
+There were **three measured production-port compile/fix rounds**: explicit imports/public raw
+thread operations, nominal job-ID diagnostic formatting, then fixture-I/O effect propagation.
+The first linked enabled peer passed. Logs are `quic-peer-offload-first-build.log` through
+`quic-peer-offload-fourth-build.log` under `verification/`. A subsequent ownership review found
+the accepted composite pool copy; the explicit pool contract now produces the expected full-build
+rejection, and the production peer still builds. One separate test-fixture correction batch
+replaced direct `default(...).field` expressions with named locals in two privacy probes: the
+former produced an unrelated variant-construction diagnostic instead of proving privacy. This is
+not counted as two independent production/compiler defects. No historical totals are reconstructed.
+The ordinary module audit passes **45/45**, including the shared completion API; enabled linking
+and runtime evidence are recorded separately. Formatting covers **862 Nim files**.
+
+The complete cumulative rerun passes **65 native suites, forty-one independent corpora, 1,372
+runtime misuse rejections and 676 compilation rejections**: 571 privacy, 94 nominal, five schema,
+four static contracts and two ownership-lowering rejections. All **994 recorded source/test/config
+hashes** match. Its freshly rebuilt offload peer repeats the ten waves in **63.892 seconds**,
+with three fixed listener threads, zero post-warmup language-allocation/descriptor range, an idle
+RSS range of **163,840 bytes** and active RSS high water of **10,747,904 bytes**. Both capacity/
+held-shutdown selftests, all four completion guards and the pool copy rejection pass. The fresh
+45-module audit also matches every current production source hash. Cumulative evidence is in
+`verification/results.json`, `verification/offload/` and `offload-full.log` under
+`build/nimony-trial/`; the independent audit is `build/nimony-ci/modules/results.json`.
+
+**Local M1/M2/M3 migration regression parity is reached for the documented implemented scope.**
+This includes the original enabled proof-offload workload, not full JAM validator functionality
+or resolution of the parked normative policy gates. These correctness workloads are not a
+performance comparison with Nim 2. Normal build/setup cutover, that bounded comparison and
+Linux execution of the newly expanded profile remain separate completion gates.
+
+On 2026-10-17 the maintainer reported that an earlier pushed state passed PR CI and was pushing
+the current committed state. No run ID or exact revision was supplied here; that is a reported
+Linux pass for the earlier snapshot, not verification of this newly enabled offload profile.
+The remaining uninitialized scalar/pointer compiler limitation remains documented and unchanged.
+
 ## Remaining work and next bounded increment
 
-Next: enabled proof-offload compilation and runtime coverage, preserving the original bounded
-worker/job queues, cancellation/generation checks and joined shutdown. Local setup cutover
-follows once the remaining compiler/runtime gates are established.
+Next: normal local build/setup cutover to the pinned Nimony toolchain. Then perform a bounded
+checked-LTO performance comparison with the retained Nim 2 baseline before a merge recommendation.
+Linux confirmation must include the newly enabled offload gate.
 
 Further port work remains:
 
@@ -2526,8 +2617,9 @@ Further port work remains:
   too. The actual peer and one-shot authentication/framing matrix now pass locally. Retained
   service and integrated digest lifecycles pass too, alongside retained IPv6 mesh/reconnect and
   twelve peer-death recovery rounds, same-process endpoint teardown soak, connection/stream
-  admission recovery and authenticated pre-request connection loss. Enabled proof-offload
-  compilation/runtime coverage remains a migration gate.
+  admission recovery, authenticated pre-request connection loss and enabled bounded proof
+  offload. Implemented-scope M3 migration regression parity now passes locally; Linux confirmation
+  of the expanded profile remains separate.
 - Toolchain: the canonical Linux workflow now uses pinned Nimony and the formatter on all
   branches. Linux execution, normal local build commands and remaining setup documentation remain
   gates until the port demonstrates equivalent safety.
@@ -2561,6 +2653,7 @@ assurance signing contexts, guarantee/report credential composition and the boun
 result/import/native-owner and contextual proof/native-boundary/concurrency slices, plus the
 bounded UDP/readiness and linked native transport lifecycle suites, shared identity/frame selftests
 and their independent SAN/DER/framing corpus.
-A missing check or failed guard still makes the runner exit one. There is no claim of full-client parity or a passing Linux run. The canonical workflow now uses
-Nimony; formatting passes.
+A missing check or failed guard still makes the runner exit one. There is no claim of full-client
+parity. The maintainer reports an earlier snapshot passed Linux PR CI; the newly expanded offload
+profile still requires its own Linux result. The canonical workflow uses Nimony; formatting passes.
 Historical Nim 2 measurements are references, not an ongoing second source-support requirement.
