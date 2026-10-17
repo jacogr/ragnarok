@@ -48,8 +48,9 @@ publishes only C(4) after checking staged C(4)/C(6)/C(8)/C(11). The
 [schedule contract](../spec/sealer-schedule.md) defines this substep's rollback boundary; header
 marker derivation/comparison now lives in `src/state/safrole_markers.nim`. It binds parent
 entropy/contest and posterior pending keys to immutable expected header fields. See
-[the marker contract](../spec/safrole-markers.md); contextual header validation and complete block
-execution remain open.
+[the marker contract](../spec/safrole-markers.md). `src/state/marker_state.nim` checks decoded
+unsigned headers against retained parent and staged snapshots without writes or hashing. Entropy-VRF,
+seal authentication and complete block execution remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2

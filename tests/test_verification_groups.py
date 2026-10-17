@@ -33,7 +33,7 @@ class VerificationGroups(unittest.TestCase):
                 missing[name] = dict(passed=False)
                 self.assertFalse(test_e2e.passed(missing))
         self.assertFalse(test_e2e.passed({**report, 'suites': []}))
-        self.assertEqual(len(UNIT_SUITES)+len(test_e2e.SELFTESTS), 84)
+        self.assertEqual(len(UNIT_SUITES)+len(test_e2e.SELFTESTS), 85)
         self.assertFalse(set(UNIT_SUITES) & set(test_e2e.SELFTESTS))
 
     # Unit and E2E compilation must retain identical checked platform profiles in independent workspaces.

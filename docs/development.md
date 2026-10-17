@@ -39,7 +39,7 @@ Make first ensures the pinned compiler, pristine source submodules and locked Ca
 native builds then run Cargo locked/offline. Failures stop the command. The parked
 request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.
 
-`make unit` runs all 78 ordinary application suites through the pinned Hastur runner, preparing
+`make unit` runs all 79 ordinary application suites through the pinned Hastur runner, preparing
 the maintained native crypto, Rust and QUIC libraries and required fixtures. The cumulative path
 runs the same suites; see [native test migration](testing.md) for coverage and retained Python
 reference, negative-probe and orchestration responsibilities.
@@ -50,7 +50,7 @@ reference, negative-probe and orchestration responsibilities.
 | `make clean` | Remove all of `build/`, including installed tools and cached archives |
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
-| `make unit` | All 78 Hastur suites with their exact native/fixture profiles |
+| `make unit` | All 79 Hastur suites with their exact native/fixture profiles |
 | `make check-modules` / `make modules` | Every-source semantic compilation gate |
 | `make check-python` | Python reference/tooling/provenance tests |
 | `make check-unit` / `make runtime` | Native unit suites and independent corpora |
@@ -123,7 +123,7 @@ snapshot into ignored storage and builds an identical workload against it and cu
 python3 tools/compare_nimony.py --baseline-compiler /absolute/path/to/nim-2.2.12
 ```
 
-This requires Git object `aea27ad0789ddb0abbea24c3923d0eb192a67e3a` and the already-built pinned
+This requires Git object `aea27ad0799ddb0abbea24c3923d0eb192a67e3a` and the already-built pinned
 crypto library. Both builds use ARC, Clang, LTO and checked profiles. Seven samples alternate
 execution order with equal iteration counts. Setup, startup, compilation and preflight are outside
 native timing. A separate non-LTO observer prevents result pruning; overhead is reported without

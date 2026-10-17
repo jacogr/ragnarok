@@ -10,7 +10,7 @@ type
   ## Refusals carry no partial markers; mismatches distinguish epoch and winning-ticket fields.
   SafroleMarkerError* {.pure.} = enum
     Uninitialized, None, MissingState, InvalidConfig, InvalidSlot, InvalidState,
-    LimitExceeded, LengthOverflow, InvalidEpochMarker, InvalidWinnersMarker
+    LimitExceeded, LengthOverflow, InvalidHeader, InvalidEpochMarker, InvalidWinnersMarker
   ## Two immutable codec owners retain their exact marker bytes independently of supplied state.
   SafroleMarkers* = object
     epochValue: OwnedEpochMarker

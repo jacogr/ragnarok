@@ -47,10 +47,31 @@ Run `make check-modules check-unit check-failures check-guards check-python`. Pr
 hashes, native ARC evidence and reports live under ignored `build/tests/`. These are component
 projections, not complete Safrole execution or seal authentication.
 
-## Remaining work in this PR
+## Read-only header context
 
-Add read-only validation of structurally decoded unsigned-header markers against retained parent
-and staged working-map snapshots. Check required chapter/time handoff, immutable history and all
-published marker projections, then round out authored eligibility/ownership boundary cases.
-This branch needs PR #16. Complete Safrole coordination, entropy-VRF and seal authentication remain
-separate increments; full/light execution must not share a misleading partial-map root contract.
+`src/state/marker_state.nim` exposes `validateSafroleHeaderMarkers`. It accepts retained immutable
+parent/staged full-state snapshots and an owned structurally decoded unsigned header. Parent
+C(4)/C(6)/C(11) provide the original contest, entropy and slot; staged C(4)/C(11) provide posterior
+pending keys and recorded target time. Staged time must equal the header slot. Missing chapters
+return `MissingState`, default snapshots `Uninitialized`, malformed exact chapters `InvalidState`,
+and a default header `InvalidHeader`. Both C(4) byte ceilings precede dynamic copies.
+
+After derivation, comparison uses marker owners selected from the same retained header. No
+write, store-root calculation or native cryptographic operation is performed. Every snapshot value,
+root and historical owner survives success and refusal. The second native suite checks all 33
+published pairs through decoded unsigned headers and authored missing/truncated/suffixed input,
+slot, marker mismatch, resource and lifetime cases; refusing hash instrumentation observes zero
+calls throughout validation. Source rotation/admission/time projections are supplied from vectors,
+not claimed as transition execution by this component suite.
+
+These complete-map snapshots are for full-node execution. They neither require a shared full/light
+schema nor establish a complete root for a partial light-node map. Owned header marker primitives
+remain reusable by future light-node tracking with its own verified context contract.
+
+## Completed scope and next work
+
+Marker derivation and contextual validation complete this PR's bounded scope. This branch was
+stacked on #16; the dependency is now merged into master. The next planned slice is Safrole header
+entropy-VRF and author/sealing authentication. Whole-Safrole coordination must still authenticate
+stage lineage and publish canonical state only after all checks succeed. This validator alone
+neither authenticates header signatures/VRF outputs nor executes a complete block transition.

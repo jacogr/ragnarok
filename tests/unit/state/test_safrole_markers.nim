@@ -51,6 +51,97 @@ proc cycle(parent, staged: seq[byte], previous, target: StateTime, entropy: Stat
   assert deriveSafroleMarkers(parent, staged, previous, target, entropy, config).error ==
       SafroleMarkerError.None
 
+## Construct distinct parent/staged contests and pending keys independently of published expected outputs.
+proc authoredState(count: int, offset, key: byte): SafroleState =
+  result = SafroleState(pending: rotationRecords(6, key), root: default(StateRingRoot),
+    schedule: keySchedule(newSeq[StateBsKey](12)), accumulator: newSeq[WinningTicket](count))
+  for i in 0..<count:
+    var id = default(array[32, byte])
+    id[0] = byte(i)+offset # Strict identifier order makes source ordinal and outside-in order observable.
+    result.accumulator[i] = WinningTicket(id: WinningTicketId(id), attempt: TicketAttempt(byte(i mod 4)))
+
+## Exercise exact marker predicates, independent parent/staged roles, invalid policies and copied-owner lifetimes.
+proc boundaries() =
+  let config = policy()
+  var entropy = default(StateEntropy)
+  var first, second = default(array[32, byte])
+  first[0] = 17
+  second[0] = 29
+  entropy[0] = StateEntropyWord(first)
+  entropy[1] = StateEntropyWord(second)
+  let parentSource = authoredState(12, 0, 1)
+  let stagedSource = authoredState(12, 40, 2)
+  var parent = safroleStateEntry(parentSource, config.state).value.value
+  var staged = safroleStateEntry(stagedSource, config.state).value.value
+  let winner = deriveSafroleMarkers(parent, staged, StateTime(9), StateTime(10), entropy, config)
+  assert winner.error == SafroleMarkerError.None
+  assert not epochMarkerInfo(winner.value.epochMarker).value.present
+  assert winnersMarkerInfo(winner.value.winnersMarker).value.present
+  for i in 0..<12:
+    let ordinal = if i mod 2 == 0: i div 2 else: 11-i div 2 # Independent explicit expected Z for the authored twelve-slot contest.
+    let ticket = winningTicketAt(winner.value.winnersMarker, i).value
+    assert array[32, byte](ticket.id)[0] == byte(ordinal)
+    assert byte(ticket.attempt) == byte(ordinal mod 4)
+  for pair in [(8'u32, 9'u32), (10'u32, 11'u32), (9'u32, 12'u32), (9'u32, 34'u32)]:
+    let outcome = deriveSafroleMarkers(parent, staged, StateTime(pair[0]), StateTime(pair[1]),
+        entropy, config)
+    assert outcome.error == SafroleMarkerError.None
+    assert not winnersMarkerInfo(outcome.value.winnersMarker).value.present # No early, repeated, crossing-epoch or skipped-epoch winner marker.
+  let shortParent = safroleStateEntry(authoredState(11, 0, 1), config.state).value.value
+  let unsaturated = deriveSafroleMarkers(shortParent, staged, StateTime(9), StateTime(10), entropy, config)
+  assert unsaturated.error == SafroleMarkerError.None
+  assert not winnersMarkerInfo(unsaturated.value.winnersMarker).value.present # A full staged contest cannot create parent eligibility.
+  let crossed = deriveSafroleMarkers(parent, staged, StateTime(11), StateTime(12), entropy, config)
+  assert crossed.error == SafroleMarkerError.None
+  let info = epochMarkerInfo(crossed.value.epochMarker).value
+  assert info.present and array[32, byte](info.entropy) == first and array[32, byte](
+      info.ticketsEntropy) == second
+  assert array[32, byte](epochValidatorAt(crossed.value.epochMarker, 0).value.bandersnatch)[0] == 2
+  let empty = deriveSafroleMarkers(parent, staged, StateTime(8), StateTime(9), entropy, config).value
+  assert validateSafroleMarkers(empty, crossed.value.epochMarker, empty.winnersMarker) ==
+      SafroleMarkerError.InvalidEpochMarker
+  assert validateSafroleMarkers(empty, empty.epochMarker, winner.value.winnersMarker) ==
+      SafroleMarkerError.InvalidWinnersMarker
+  for damagedSide in 0..<2:
+    var invalid = authoredState(12, 0, 1)
+    invalid.accumulator[1] = parentSource.accumulator[
+        0] # Duplicate identifiers cannot be repaired while deriving absence or presence.
+    let broken = safroleStateEntry(invalid, config.state).value.value
+    let outcome = if damagedSide == 0:
+      deriveSafroleMarkers(broken, staged, StateTime(9), StateTime(10), entropy, config) # Invalid parent contest.
+    else:
+      deriveSafroleMarkers(parent, broken, StateTime(9), StateTime(10), entropy, config) # Invalid staged contest.
+    assert outcome.error == SafroleMarkerError.InvalidState
+  for tail in [0, 12, 13]:
+    var invalid = config
+    invalid.tailStart = EpochSlots(uint64(tail))
+    assert deriveSafroleMarkers(parent, staged, StateTime(9), StateTime(10), entropy,
+        invalid).error == SafroleMarkerError.InvalidConfig
+  var invalid = config
+  invalid.state.epochSlots = EpochSlots(0)
+  assert deriveSafroleMarkers(parent, staged, StateTime(9), StateTime(10), entropy,
+      invalid).error == SafroleMarkerError.InvalidConfig
+  invalid.state.epochSlots = EpochSlots(high(uint64))
+  assert deriveSafroleMarkers(parent, staged, StateTime(9), StateTime(10), entropy,
+      invalid).error == SafroleMarkerError.LengthOverflow
+  for slots in [(10'u32, 9'u32), (high(uint32), 0'u32)]:
+    assert deriveSafroleMarkers(parent, staged, StateTime(slots[0]), StateTime(slots[1]), entropy,
+        config).error == SafroleMarkerError.InvalidSlot
+  for side in 0..<2:
+    var small = config
+    small.state.maxBytes = ByteLimit(uint64((if side == 0: parent.len else: staged.len)-1))
+    assert deriveSafroleMarkers(parent, staged, StateTime(9), StateTime(10), entropy,
+        small).error == SafroleMarkerError.LimitExceeded
+  let retainedEpoch = epochBytes(crossed.value.epochMarker)
+  let retainedWinners = winnerBytes(winner.value.winnersMarker)
+  parent[0] = 255
+  staged[0] = 255
+  parent = @[]
+  staged = @[]
+  assert epochBytes(crossed.value.epochMarker) == retainedEpoch
+  assert winnerBytes(winner.value.winnersMarker) ==
+      retainedWinners # Both owned marker kinds survive mutated and retired caller inputs.
+
 ## Every accepted tiny/full case supplies both expected optional markers, independent of native predicates.
 proc published(text: string) =
   let lines = text.splitLines()
@@ -132,6 +223,7 @@ proc published(text: string) =
   assert validateSafroleMarkers(default(SafroleMarkers), default(OwnedEpochMarker), default(
       OwnedWinnersMarker)) == SafroleMarkerError.Uninitialized
 
+boundaries()
 try:
   published(readFile(getEnv("RAGNAROK_SAFROLE_MARKERS"))) # Prepared transport is mandatory; no upstream case is silently skipped.
 except:
