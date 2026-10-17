@@ -18,8 +18,9 @@ slice, plus shared SAN/DER identity, structural framing and enabled CE fixture c
 The one-shot authenticated CE 143 peer matrix and retained service/integrated digest lifecycle
 workloads now pass locally. Retained IPv6 mesh/reconnect and twelve peer-death recovery rounds
 now pass too; same-process endpoint destruction also passes forty sessions. All 45 production
-modules pass independent semantic compilation. Remaining admission/resilience, enabled offload
-and Linux runtime parity remain unverified.
+modules pass independent semantic compilation. Connection/stream admission recovery and
+authenticated loss before the first request now pass locally too. Enabled proof offload and Linux
+runtime parity remain unverified.
 This branch targets Nimony directly, without dual-compiler source support. The main branch remains on Nim 2.2.12.
 Protocol/dependency pins are unchanged. At the maintainer's request, the existing
 `.github/workflows/linux.yml` is now the single Linux workflow and uses the pinned Nimony nightly
@@ -2452,11 +2453,65 @@ Commit `4f73ac5` fixes that clean-checkout setup defect and adds a missing/reuse
 this was Python build infrastructure, not a Nimony compiler or protocol failure. A passing local
 run is not a new Linux CI verdict. Linux runtime confirmation remains open.
 
+## Forty-seventh bounded increment: admission recovery and pre-request connection loss
+
+The remaining original IPv6 resilience workloads now accept isolated compiler binary/evidence
+paths. Every server and load source uses the checked Nimony peer, while explicit per-role thread
+limits preserve one dispatcher thread independently of the executable filename. This changes
+only test routing and cumulative gates; production Nim, LSQUIC settings, protocol policy,
+dependency pins and time/resource budgets are unchanged.
+
+The original **twelve admission/recovery waves**, with four warmup samples and eight retained
+observations, now pass locally. Each wave fills sixteen authenticated connections and rejects a
+seventeenth without displacing the accepted peers. After those peers retire, eight holders fill
+exactly **64 pending stream slots**. An excess stream rejects, killing one holder frees eight
+slots, and a healthy query completes while the other seven loaded peers stay alive. All owners
+then retire before the idle sample. Native state counters must retain the exact 16-connection/
+64-stream ceilings and each cumulative rejection count.
+
+The targeted run completed in **69.492 seconds** with **312 accepted/retired connections**, twelve
+connection-capacity rejections, twelve stream-capacity rejections and twelve healthy queries after
+release. Its server remained on one OS thread; post-warmup allocation and descriptor ranges were
+zero. Idle RSS range was **65,536 bytes** and active RSS high water was **5,783,552 bytes**, within
+the unchanged 64 KiB language-allocation, two-descriptor, 16 MiB idle RSS and 256 MiB active RSS
+budgets. Neither the five-second probe retirement limit nor the original server/load deadlines
+were widened.
+
+The separate authenticated-close regression kills the server after `AUTH_OK` while the client
+has deliberately opened **zero application streams**. The client must return failure with
+`CONNECTION_CLOSED`, no fabricated `EXCHANGE_OK`, and settle within five seconds. The targeted
+observation was **1.843 seconds**. Handshake history alone cannot authorize application success;
+there is no stream callback available to settle this particular failure.
+
+Targeted evidence is `build/nimony-trial/verification/admission-targeted-results.json`, adjacent
+`admission-targeted/` logs/resource JSON and `closed-before-request-targeted/` endpoint logs.
+The cumulative runner keeps independent admission and pre-request-close verdicts and requires
+both. Canonical Linux CI retains their logs and admission resource samples and displays actual
+waves, connection retirements and zero-stream close observations separately from codec/compiler
+counts. Five mesh/resilience harness checks and seventeen CI safeguards pass, including isolated
+binary routing, failed-startup child cleanup, strict probe deadlines/exit codes and independent
+summary verdicts. No production implementation LOC or compiler repair cycle was added.
+
+The complete cumulative rerun passes **63 native suites, forty-one independent corpora, 1,368
+runtime misuse rejections and 670 compilation rejections** (566 privacy, 94 nominal, five schema,
+four static contracts and one ownership-lowering rejection). All **984 recorded source/test/
+configuration hashes** match. Its fresh admission run took **70.898 seconds**, again retired 312
+connections and completed all twelve healthy recovery queries, with zero allocation/descriptor
+range, one server thread and an idle RSS range of **393,216 bytes**. Fresh zero-stream close
+detection took **1.782 seconds**. Evidence is in `verification/results.json` alongside the
+`admission/` and `closed-before-request/` logs; `admission-full.log` retains the full transcript
+under `build/nimony-trial/`. Formatting passes for all **855 Nim files**. The unchanged 45-module
+source inventory retains its previously passing compilation audit; no production module changed.
+
+These are finite controlled workloads, not proof of arbitrary leak freedom or interoperability
+with another JAM implementation. M1/M2 implemented-scope parity and their normative gates are
+unchanged; enabled proof offload, Linux runtime confirmation and local setup cutover remain open.
+
 ## Remaining work and next bounded increment
 
-Next: remaining connection/stream admission recovery and authenticated connection loss before
-the first request, preserving the original finite resource budgets. Enabled proof offload follows
-as a separate bounded increment.
+Next: enabled proof-offload compilation and runtime coverage, preserving the original bounded
+worker/job queues, cancellation/generation checks and joined shutdown. Local setup cutover
+follows once the remaining compiler/runtime gates are established.
 
 Further port work remains:
 
@@ -2470,8 +2525,9 @@ Further port work remains:
   locally. Shared identity/DER, structural framing and enabled integration ownership/results pass
   too. The actual peer and one-shot authentication/framing matrix now pass locally. Retained
   service and integrated digest lifecycles pass too, alongside retained IPv6 mesh/reconnect and
-  twelve peer-death recovery rounds and same-process endpoint teardown soak. Remaining admission/
-  resilience and enabled offload compilation/runtime coverage remain migration gates.
+  twelve peer-death recovery rounds, same-process endpoint teardown soak, connection/stream
+  admission recovery and authenticated pre-request connection loss. Enabled proof-offload
+  compilation/runtime coverage remains a migration gate.
 - Toolchain: the canonical Linux workflow now uses pinned Nimony and the formatter on all
   branches. Linux execution, normal local build commands and remaining setup documentation remain
   gates until the port demonstrates equivalent safety.

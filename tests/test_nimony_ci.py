@@ -224,6 +224,24 @@ class NimonyCISafeguards(unittest.TestCase):
                 self.assertIn('Independent corpora: 0', text)
                 self.assertIn('Runtime misuse rejections: 0', text)
 
+    # Passing capacity recovery cannot hide a failed authenticated-close check or inflate compiler metrics.
+    def test_admission_summary_scope(self):
+        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                      quic_admission=dict(passed=True, result=dict(waves=12, retired_connections=312,
+                                                                 healthy_queries_after_release=12)),
+                      quic_closed_before_request=dict(passed=False))
+        text = summarize(report, 'slice')
+        self.assertIn('Connection/stream admission recovery: Pass', text)
+        self.assertIn('Waves: 12; retired connections: 312; healthy queries after release: 12', text)
+        self.assertIn('Authenticated connection loss before request: Fail', text)
+        self.assertIn('Runtime misuse rejections: 0', text)
+        # Exercise the inverse outcomes as well; successful close detection must retain its zero-stream observation.
+        report['quic_admission'] = dict(passed=False)
+        report['quic_closed_before_request'] = dict(passed=True, result=dict(application_streams=0, closed_seconds=2.0))
+        text = summarize(report, 'slice')
+        self.assertIn('Connection/stream admission recovery: Fail', text)
+        self.assertIn('Application streams: 0; close detection seconds: 2.0', text)
+
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
         report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],

@@ -60,6 +60,22 @@ def summarize(report, kind):
             if row['passed']:
                 # Count sessions once per pair, not twice for its two endpoints or as codec/compiler tests.
                 lines += ['Sessions: '+str(row['result']['rounds'])+'; five healthy and three adversarial streams/session.']
+        for key, label in (('quic_admission', 'Connection/stream admission recovery'),
+                           ('quic_closed_before_request', 'Authenticated connection loss before request')):
+            if key in report:
+                # Keep each resilience verdict visible without adding network waves to codec/compiler totals.
+                row = report[key]
+                lines += ['', label+': '+('Pass' if row['passed'] else 'Fail')+'.']
+                if row['passed']:
+                    # Display measured outcomes; absent fields must fail rather than fabricate successful coverage.
+                    result = row['result']
+                    if key == 'quic_admission':
+                        lines += ['Waves: '+str(result['waves'])+'; retired connections: '+str(result['retired_connections'])+
+                                  '; healthy queries after release: '+str(result['healthy_queries_after_release'])+'.']
+                    else:
+                        # Zero application streams is intentional: the connection itself must settle failure.
+                        lines += ['Application streams: '+str(result['application_streams'])+
+                                  '; close detection seconds: '+str(result['closed_seconds'])+'.']
         for key, label in (('quic_mesh', 'Retained IPv6 mesh'),
                            ('quic_mesh_disruption', 'IPv6 peer-death recovery')):
             if key in report:

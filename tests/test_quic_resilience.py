@@ -160,28 +160,31 @@ def states(text):
 
 
 # Reproduce connection loss after authentication but before any stream callback can report failure.
-def closed_before_request(languages, folder):
-    directory = BUILD / 'resilience' / f'closed-before-request-{"-".join(languages)}'
+def closed_before_request(languages, folder, *, binaries=None, directory=None):
+    # Compiler-specific paths do not change the authenticated-close schedule or resource ceilings.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    directory = BUILD / 'resilience' / f'closed-before-request-{"-".join(languages)}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     port = ports()[0]
     logs = {role: directory / f'{role}.log' for role in ('server', 'client')}
     processes, handles = {}, []
     peaks = {role: {} for role in logs}
+    limits = dict(zip(logs, (THREAD_BASELINES[language] for language in languages)))
     try:
         # The listener uses the existing two-second crash profile; no new protocol/settings are introduced.
         output = logs['server'].open('w'); handles.append(output)
-        processes['server'] = subprocess.Popen([str(BUILD / f'{languages[0]}-peer'), 'server', str(port),
+        processes['server'] = subprocess.Popen([str(binaries[languages[0]]), 'server', str(port),
             str(folder / 'a.cert.pem'), str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '60000', 'overload'],
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(directory / f'stop-{time.time_ns()}')},
             stdout=output, stderr=subprocess.STDOUT)
         watch({'server': processes['server']}, {'server': logs['server']},
-              {'server': lambda text: 'READY' in text.splitlines()}, {'server': peaks['server']})
+              {'server': lambda text: 'READY' in text.splitlines()}, {'server': peaks['server']}, thread_limits=limits)
         output = logs['client'].open('w'); handles.append(output)
-        processes['client'] = subprocess.Popen([str(BUILD / f'{languages[1]}-peer'), 'client', str(port),
+        processes['client'] = subprocess.Popen([str(binaries[languages[1]]), 'client', str(port),
             str(folder / 'b.cert.pem'), str(folder / 'b.key.pem'), str(folder / 'a.pub'),
             'jamnp-s/1/00000000', '60000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
         # Idle mode deliberately opens no streams, so only connection retirement can settle this failure.
-        watch(processes, logs, {'client': lambda text: 'AUTH_OK' in text.splitlines()}, peaks)
+        watch(processes, logs, {'client': lambda text: 'AUTH_OK' in text.splitlines()}, peaks, thread_limits=limits)
         processes['server'].kill(); assert processes['server'].wait(timeout=5) == -9
         started = time.monotonic()
         assert processes['client'].wait(timeout=5) == 2, logs['client'].read_text()
@@ -205,8 +208,10 @@ def settle_probe(process, path, expected):
 
 
 # A retained IPv6 listener must refuse excess admission, release interrupted slots and resume healthy CE work.
-def overload(language, folder, rounds, warmup):
-    directory = BUILD / 'resilience' / f'overload-{language}'
+def overload(language, folder, rounds, warmup, *, binaries=None, directory=None):
+    # Keep the original admission workload while routing every load source to the checked compiler build.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    directory = BUILD / 'resilience' / f'overload-{language}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     stop = directory / f'stop-{time.time_ns()}'
     server_log = directory / 'server.log'
@@ -214,7 +219,7 @@ def overload(language, folder, rounds, warmup):
     handles, children, idle = [], [], []
     peaks = {'server': {}}
     output = server_log.open('w'); handles.append(output)
-    server = subprocess.Popen([str(BUILD / f'{language}-peer'), 'server', str(port), str(folder / 'a.cert.pem'),
+    server = subprocess.Popen([str(binaries[language]), 'server', str(port), str(folder / 'a.cert.pem'),
         str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '120000', 'overload'],
         env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)}, stdout=output, stderr=subprocess.STDOUT)
     children.append(server)
@@ -224,7 +229,7 @@ def overload(language, folder, rounds, warmup):
     def client(index, label, implementation, mode):
         path = directory / f'{index}-{label}.log'
         output = path.open('w'); handles.append(output)
-        process = subprocess.Popen([str(BUILD / f'{implementation}-peer'), 'client', str(port), str(folder / 'b.cert.pem'),
+        process = subprocess.Popen([str(binaries[implementation]), 'client', str(port), str(folder / 'b.cert.pem'),
             str(folder / 'b.key.pem'), str(folder / 'a.pub'), 'jamnp-s/1/00000000', '60000', mode],
             stdout=output, stderr=subprocess.STDOUT)
         children.append(process)
@@ -232,7 +237,8 @@ def overload(language, folder, rounds, warmup):
 
     # Only the retained server is the resource subject here; intentionally killed load sources are reaped separately.
     def server_state(predicate):
-        return watch({'server': server}, {'server': server_log}, {'server': predicate}, peaks)['server']
+        return watch({'server': server}, {'server': server_log}, {'server': predicate}, peaks,
+                     thread_limits={'server': THREAD_BASELINES[language]})['server']
 
     accepted, connection_rejects, stream_rejects = 0, 0, 0
     try:

@@ -2280,6 +2280,29 @@ def main():
             # Finalizers retain resource evidence and kill live peers; later corpus success cannot hide failure.
             report['quic_endpoint_soak'] = dict(passed=False, failure=str(error))
     announce('same-process endpoint teardown soak', report['quic_endpoint_soak']['passed'])
+    # Admission and pre-request connection loss are independent gates; healthy mesh traffic cannot substitute for them.
+    report['quic_admission'] = dict(passed=False)
+    report['quic_closed_before_request'] = dict(passed=False)
+    if report['quic_peer_build']['exit_code'] == 0:
+        from test_quic_resilience import overload as admission, closed_before_request
+        try:
+            # Keep the original twelve waves/four warmup samples and exact connection/stream ceilings.
+            result = admission('nim', quic_fixtures, 12, 4, binaries={'nim': BUILD/'quic-peer'},
+                               directory=BUILD/'admission')
+            report['quic_admission'] = dict(passed=True, result=result)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # Capacity rejection must recover within the original deadlines and release all retained owners.
+            report['quic_admission'] = dict(passed=False, failure=str(error))
+        try:
+            # Idle clients open no application streams; connection close must settle the authenticated failure.
+            result = closed_before_request(('nim', 'nim'), quic_fixtures,
+                                           binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'closed-before-request')
+            report['quic_closed_before_request'] = dict(passed=True, result=result)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # A stale AUTH_OK marker cannot turn connection loss into successful application exchange.
+            report['quic_closed_before_request'] = dict(passed=False, failure=str(error))
+    announce('connection/stream admission recovery', report['quic_admission']['passed'])
+    announce('authenticated connection loss before request', report['quic_closed_before_request']['passed'])
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -2941,6 +2964,7 @@ def main():
                    and report['quic_mesh_harness']['exit_code'] == 0
                    and report['quic_mesh']['passed'] and report['quic_mesh_disruption']['passed']
                    and report['quic_endpoint_soak']['passed']
+                   and report['quic_admission']['passed'] and report['quic_closed_before_request']['passed']
                    and report['quic_lifecycle_harness']['exit_code'] == 0
                    and report['quic_service']['passed'] and report['quic_integration_service']['passed']
                    and report['quic_peer_harness']['exit_code'] == 0 and report['ci_harness']['exit_code'] == 0
