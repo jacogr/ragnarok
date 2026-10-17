@@ -167,7 +167,9 @@ rejection, graceful close, two distinct identities across expiry/slot reuse, and
 when the server shuts down with a live peer. Mesh captures check one registration per node,
 listener-address advertisement, fallback without a spurious outgoing attempt, distinct correlation
 IDs across repeated duplicate races, exact closure counts, zero/one unique-peer status and wrong-pin
-rejection, using IPv4 and IPv6 collectors. Python is only the
+rejection, using IPv4 and IPv6 collectors. Additional mesh timeout captures verify an unanswered
+dial settles once as failure and destruction of a retained authenticated connection adds no false
+close after duplicate arbitration. Python is only the
 independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.

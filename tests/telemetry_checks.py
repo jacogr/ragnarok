@@ -1,5 +1,7 @@
 """Bounded real TCP collector tests, including actual proof-peer CLI registration."""
 import hashlib
+import os
+import time
 import json
 import socket
 import select
@@ -420,3 +422,69 @@ def mesh_lifetimes(binary, certificates, chain, folder, bad_pin=False):
             except socket.timeout:
                 pass # No reconnect was induced; one registration per node is required.
         return dict(passed=True, bad_pin=bad_pin, observations=observations)
+
+
+# Exercise timeout teardown with either an unanswered dial or one authenticated connection still retained.
+def mesh_shutdown(binary, certificates, chain, folder, silent=False):
+    from test_quic_mesh import ports, observe
+    folder.mkdir(parents=True, exist_ok=True)
+    gate = folder/f'gate-{time.time_ns()}'
+    gate.mkdir()
+    (gate/'start-0').touch()
+    local_ports = ports()
+    processes, handles, logs = {}, {}, {}
+    with listener() as collector, socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as sink:
+        # Keep the silent UDP destination bound so no ICMP refusal can replace a pending handshake.
+        sink.bind(('::1', 0))
+        roles = ('a',) if silent else ('a', 'b')
+        try:
+            # Both retained transports share each process's single exporter; only a is captured here.
+            for index, role in enumerate(roles):
+                other = 'b' if role == 'a' else 'a'
+                remote_port = sink.getsockname()[1] if silent else local_ports[1-index]
+                logs[role] = folder/f'{role}.log'
+                handles[role] = logs[role].open('w')
+                command = [str(binary), 'mesh', str(local_ports[index]), str(remote_port),
+                           str(certificates/f'{role}.cert.pem'), str(certificates/f'{role}.key.pem'),
+                           str(certificates/f'{role}.pub'), str(certificates/f'{other}.pub'),
+                           'jamnp-s/1/245becfe', str(gate)]
+                if role == 'a':
+                    command += ['--chain', str(chain), '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}']
+                processes[role] = subprocess.Popen(command, stdout=handles[role], stderr=subprocess.STDOUT,
+                    env={**os.environ, 'RAGNAROK_MESH_ROUNDS': '1', 'RAGNAROK_MESH_FALLBACK': '0',
+                         'RAGNAROK_MESH_DISRUPT': '0'})
+            if not silent:
+                # Leave the close gate absent after healthy exchange; both owners time out with a live peer.
+                observe(processes, logs, 'MESH_EXCHANGED 0 8', {role: {} for role in roles})
+            for role, process in processes.items():
+                assert process.wait(timeout=20) == 2, logs[role].read_text()
+            hello, events = completed_capture(collector)
+            assert hello[155:187] == (certificates/'a.pub').read_bytes()
+            starts, outcomes, closures = {}, {}, 0
+            # Status frames consume IDs too; correlate using positions in this complete capture.
+            for event_id, event in enumerate(events):
+                tag = event[8]
+                assert tag in (10, 21, 22, 23, 24, 25, 26, 27), tag
+                if tag in (21, 24):
+                    starts[event_id] = tag
+                elif tag in (22, 23, 25, 26):
+                    attempt = int.from_bytes(event[9:17], 'little')
+                    assert attempt in starts and attempt not in outcomes and attempt < event_id
+                    assert starts[attempt] == (21 if tag in (22, 23) else 24)
+                    outcomes[attempt] = tag
+                elif tag == 27:
+                    assert event[9:41] == (certificates/'b.pub').read_bytes()
+                    closures += 1
+            assert starts.keys() == outcomes.keys(), (starts, outcomes)
+            if silent:
+                assert list(starts.values()) == [24] and list(outcomes.values()) == [25] and closures == 0
+            else:
+                # The discarded duplicate really closes; destroying the retained connection adds no second close.
+                assert len(starts) == 2 and set(outcomes.values()) == {23, 26} and closures == 1
+            return dict(passed=True, silent=silent, attempts=len(starts), closures=closures)
+        finally:
+            # Failed collector assertions must not leave either QUIC process or diagnostic file behind.
+            for process in processes.values():
+                stop(process)
+            for handle in handles.values():
+                handle.close()
