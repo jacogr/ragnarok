@@ -2,7 +2,7 @@
 
 Original migration branch: `nim-tests`, based on Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **73 ordinary native suites**, including three state-store, two authorization-transition and
+Current total: **75 ordinary native suites**, including three state-store, two authorization-transition and
 two history-transition, two entropy/time, two validator-rotation and two telemetry profiles; all original 59 suites remain migrated.
 The migration preserved wire behavior, bounds/ownership contracts and independent references.
 Subsequent native suites cover the new storage foundation as recorded below.
@@ -13,9 +13,9 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 73 native suites and 41 corpora | Native units/codecs |
-| `check-failures` | 1,402 runtime behavior/contract probes plus store positive controls | Runtime failures/contracts |
-| `check-guards` | 695 compiler rejection probes | Compiler rejection guards |
+| `check-unit` | 75 native suites and 41 corpora | Native units/codecs |
+| `check-failures` | 1,406 runtime behavior/contract probes plus store positive controls | Runtime failures/contracts |
+| `check-guards` | 699 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
 `make check` runs all six locally; CI schedules them independently and concurrently on separate
@@ -26,7 +26,7 @@ VMs. Each target provisions its own dependencies and writes its own report. Ther
 Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
 `build/tests/failures/` (runtime contracts), `build/tests/guards/` (compiler rejections) and
 `build/tests/e2e/`. Combined native coverage remains
-73 + 6 = 79 profiles. The new [state store](../spec/state-store.md) has three native profiles and
+75 + 6 = 81 profiles. The new [state store](../spec/state-store.md) has three native profiles and
 five privacy probes and nine isolated runtime misuse checks. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
 build uses the same shared checked native compiler profile as the unit verifier.
@@ -57,6 +57,11 @@ roster/root projections and four compiler/four runtime result guards. Atomic C(4
 publication preserves schedules/accumulators and is verified against ring/store refusal, exact
 chapter parsing, aggregate budgets and historical snapshot lifetimes.
 
+The [ticket admission](../spec/ticket-admission.md) adds two native suites, 28 published
+proof/accumulator projections, four compiler privacy checks and four runtime result guards. The
+store profile tests actual entropy/time handoff, atomic C(4) publication, exact budget boundaries,
+first/late hash and primitive refusal, both schedule alternatives and 1,000 no-op ARC cycles.
+
 ## Runtime failure job split (2026-10-17)
 
 `make check-failures` selects `tools/test_runtime.py --group failures`; the default remains
@@ -71,6 +76,11 @@ logging/timing. The QUIC corpus regenerates certificates during existing setup, 
 request count and hashes vary between runs (25,655 versus 25,654 here). An AST comparison also
 confirms that all 503 original workload statements occur exactly once across the extracted groups,
 excluding the clarified runtime log labels.
+
+Master advanced to `20e2b85` during publication. Its ticket-admission increment is included;
+the split preserves all 509 workload statements from that revision, including the four new runtime
+probes. Current totals are 75 suites, 41 corpora, 1,406 runtime records and 699 compiler guards.
+All affected groups pass after that merge, including 286 Python tests with two existing skips.
 
 Reproduce with `make check-unit check-failures check-guards check-python`. Local baseline, split
 logs and inventory comparison are under `build/tests/failure-split-baseline/`; group reports remain
@@ -334,7 +344,7 @@ published derived inputs and strict negative compiler/runtime probes retain thei
 
 ## Tenth converted group: history state
 
-The consensus/dispute increment is committed as `316977e`. Public history state and its private
+The consensus/dispute increment is committed as `316997e`. Public history state and its private
 ownership companion move with `git mv` into `tests/unit/state/`. The public body changes only its
 relative import path. The private body additionally sends the same 1,000-cycle allocation
 observations through the existing evidence helper and emits a portable completion marker.
