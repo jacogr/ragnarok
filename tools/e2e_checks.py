@@ -31,7 +31,7 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
     report['telemetry'] = dict(passed=False)
     telemetry_build, telemetry_binary = build(compiler, ROOT/'tests/native/telemetry_driver.nim', 'telemetry-driver')
     if compiled['exit_code'] == 0 and telemetry_build['exit_code'] == 0:
-        from telemetry_checks import reconnect, peer_registration, dial_failure, peer_loss, incoming_failure, incoming_lifetimes
+        from telemetry_checks import reconnect, peer_registration, dial_failure, peer_loss, incoming_failure, incoming_lifetimes, mesh_lifetimes
         try:
             observed = reconnect(telemetry_binary)
             observed6 = reconnect(telemetry_binary, ipv6=True)
@@ -42,7 +42,9 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
             incoming = incoming_failure(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
             expiry = incoming_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', True)
             teardown = incoming_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', False)
-            report['telemetry'] = dict(passed=True, reconnect=observed, reconnect_ipv6=observed6, peer=peer, peer_ipv6=peer6, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
+            mesh = mesh_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh')
+            mesh_failed = mesh_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh-failed', bad_pin=True)
+            report['telemetry'] = dict(passed=True, mesh=mesh, mesh_failed=mesh_failed, reconnect=observed, reconnect_ipv6=observed6, peer=peer, peer_ipv6=peer6, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # Collector failures remain visible while process finalizers retire every live child.
             report['telemetry'] = dict(passed=False, failure=str(error))

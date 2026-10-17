@@ -337,3 +337,86 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
             for child in children:
                 stop(child)
     return dict(passed=True, closes=len(closes), identities=len(successes), remote_loss=remote_loss)
+
+
+# Collect a small complete exporter lifetime after its bounded peer exits; no collector worker is needed.
+def completed_capture(server):
+    connection, _ = server.accept()
+    with connection:
+        connection.settimeout(5)
+        hello = frame(connection)
+        events = []
+        # The bounded mesh schedules emit far fewer than 128 frames; enforce the harness storage limit.
+        while connection.recv(1, socket.MSG_PEEK):
+            assert len(events) < 128, 'unbounded mesh telemetry'
+            events.append(frame(connection))
+        return hello, events
+
+
+# Real retained engines share one registration/ID sequence through fallback, duplicate closes and reconnects.
+def mesh_lifetimes(binary, certificates, chain, folder, bad_pin=False):
+    from test_quic_mesh import pairing, preferred
+    with listener() as a, listener(ipv6=True) as b:
+        controls = dict(chain=chain, a=f'127.0.0.1:{a.getsockname()[1]}',
+                        b=f'[::1]:{b.getsockname()[1]}')
+        result = pairing(('nim', 'nim'), certificates, 1 if bad_pin else 8, 0,
+                         bad_pin=bad_pin, binaries={'nim': binary}, directory=folder, telemetry=controls)
+        identities = {role: (certificates/f'{role}.pub').read_bytes() for role in ('a', 'b')}
+        observations = {}
+        # Each exporter owns exactly one TCP stream despite retaining two QUIC transports.
+        for role, collector in (('a', a), ('b', b)):
+            hello, events = completed_capture(collector)
+            other = 'b' if role == 'a' else 'a'
+            assert hello[0] == 1 and hello[155:187] == identities[role]
+            assert hello[187:203] == socket.inet_pton(socket.AF_INET6, '::1')
+            if not bad_pin:
+                # Registration advertises the listener, never the ephemeral outgoing socket.
+                assert int.from_bytes(hello[203:205], 'little') == result['listener_ports'][role]
+            starts, outcomes, statuses, closed = {}, {}, [], 0
+            # Every frame consumes one ID here: small loopback captures must not contain loss markers.
+            for event_id, event in enumerate(events):
+                tag = event[8]
+                assert tag in (10, 21, 22, 23, 24, 25, 26, 27), tag
+                if tag == 10:
+                    statuses.append(int.from_bytes(event[9:13], 'little'))
+                elif tag in (21, 24):
+                    starts[event_id] = tag
+                    if tag == 24:
+                        # A wrong-pin test deliberately dials c's identity while contacting b's listener.
+                        expected = (certificates/'c.pub').read_bytes() if bad_pin and role == 'a' else identities[other]
+                        assert event[9:41] == expected
+                        assert event[41:57] == socket.inet_pton(socket.AF_INET6, '::1')
+                    else:
+                        assert event[9:25] == socket.inet_pton(socket.AF_INET6, '::1')
+                elif tag in (22, 23, 25, 26):
+                    attempt = int.from_bytes(event[9:17], 'little')
+                    assert attempt in starts and attempt not in outcomes and attempt < event_id
+                    assert starts[attempt] == (21 if tag in (22, 23) else 24)
+                    outcomes[attempt] = tag
+                    if tag == 23:
+                        assert event[17:] == identities[other]
+                else:
+                    # Each actual duplicate or retained connection close carries the authenticated remote key.
+                    assert event[9:41] == identities[other] and event[41:] == b'\0\0'
+                    closed += 1
+            assert starts.keys() == outcomes.keys(), (starts, outcomes)
+            assert set(statuses) <= {0, 1}, statuses
+            if bad_pin:
+                # The rejecting peer must never report authentication or disconnection for the wrong identity.
+                if role == 'a':
+                    assert set(outcomes.values()) <= {22, 25} and 25 in outcomes.values() and closed == 0
+            else:
+                # One fallback and seven duplicate races give fifteen authenticated connections per node.
+                assert len(starts) == 15 and closed == 15 and set(outcomes.values()) == {23, 26}
+                expected_out = 7 if preferred(identities[role], identities[other]) else 8
+                assert list(starts.values()).count(24) == expected_out
+                assert set(statuses) == {0, 1}, statuses
+            observations[role] = dict(attempts=len(starts), closures=closed, statuses=statuses)
+            collector.settimeout(0.1)
+            try:
+                extra, _ = collector.accept()
+                extra.close()
+                raise AssertionError('mesh opened more than one exporter stream')
+            except socket.timeout:
+                pass # No reconnect was induced; one registration per node is required.
+        return dict(passed=True, bad_pin=bad_pin, observations=observations)
