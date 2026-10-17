@@ -73,12 +73,10 @@ Opaque captures and successful roots do not turn these assertions into validated
 
 ## Evidence
 
-Run after building the native crypto library:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_composition_harness.py
-python3 tests/test_state_composition.py
-python3 tools/format.py --check
+make check
 ```
 
 Seven literal harness checks anchor exact chapter extents, failure precedence, service metadata,
@@ -105,10 +103,11 @@ lookup identities or original storage keys are guessed from hashes. Selected raw
 remain empty; nonempty C13 dictionaries now match E4 keys. Nonempty C12 framing is independently
 covered by original STF binary spans and derived typed source cases.
 
-Nim 2.2.12 ARC/Clang LTO retains assertions, bounds, range, field and overflow checks. Ignored
-`build/state-composition/` records build commands, corpus hash, source observations, successful
+The historical Nim 2.2.12 ARC/Clang LTO retained assertions, bounds, range, field and overflow
+checks. Ignored
+`build/tests/runtime/` records build commands, corpus hash, source observations, successful
 published compositions and compiler/privacy diagnostics. Linux CI runs the same tests after
-native crypto construction and retains these results. Local macOS arm64 results require Linux
+native crypto construction and retained these results. Local macOS arm64 results require Linux
 confirmation after push. No timing, transition or valid-state correctness claim is made.
 
 C13 gas follows the accepted vector-compatible compact policy, with no fallback. Two additional
@@ -118,7 +117,10 @@ Further implementation scope is selected separately; proofs/persistence, PVM and
 remain separate work.
 
 
-## Nimony branch verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The experimental branch ports this module to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
 exact chapter consumption, profile association, parent budgets, source ordering and duplicate-key
@@ -134,8 +136,9 @@ unsupported template field resolution and generic enum-member probing, with no u
 private runtime hook. The existing duplicate-key selftest caught incorrect generic error translation
 after compilation; the explicit adapters retain the expected typed failure.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
-trial compiler. It includes 14,471 unchanged composition requests, seven literal checks, 224 exact
+Run `make runtime` with the pinned
+compiler; Make installs it as needed. It includes 14,471 unchanged composition requests, seven
+literal checks, 224 exact
 published chapter captures and fourteen complete mappings reproducing ten distinct roots. A separate
 154-request raw whole-map corpus preserves the existing root sensitivity and budget checks. No
 original storage keys or request identities are guessed from opaque captures.

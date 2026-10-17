@@ -98,7 +98,7 @@ present-only payloads.
 
 ## Verification
 
-Run `python3 tests/test_header_harness.py` and `python3 tests/test_header.py`. Independent Python
+Run `make check`. Independent Python
 construction exactly reconstructs all four pinned published headers and their seal-free signing
 prefixes. The native encoder receives independently constructed named typed fields; decoder
 observations compare every fixed field, indexed validator, ticket and offender identity rather
@@ -114,11 +114,14 @@ count maxima with duplicate/descending identities; overlong/huge counts; exact/s
 consumed-byte budget boundaries; deterministic structured/arbitrary malformed input; late-source
 atomicity; fixed/descriptor/key/ticket/offender aliases; guarded failed/absent access; five nominal
 compiler rejection probes and four private-owner probes. Eight harness known-answer tests protect
-the independent oracle. The established Linux CI profile belongs to the Nim 2 baseline; this
-experimental Nimony port has not switched or passed that pipeline. Passing framing tests is not
+the independent oracle. Current Linux CI runs this coverage through `make runtime`; see
+[testing](../docs/testing.md) for revision-specific results. Passing framing tests is not
 state/signature validation.
 
-## Nimony port verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The pinned nightly uses private `HeaderResult[T]` status/value storage with read-only outcomes and
 success-precondition access. The failure helper forbids None. Four private nullable owner types
@@ -133,7 +136,8 @@ present/absent epoch and winner sources, leaving chain cardinality validation to
 snapshot APIs expose copied fixed records/metadata and indexed lookups. Production encoders use
 actual private source storage for overlap checks, preserving the complete-source alias contract.
 
-`tools/test_nimony.py` runs all 20,144 original requests plus 8,246 direct sealed-header inspections:
+`tools/test_runtime.py` runs all 20,144 original requests plus 8,246 direct sealed-header
+inspections:
 **28,390 comparisons**. Inspection expectations select independently decoded logical fields,
 including exact full/signing extents, roots, slot, author, proof, offender count and seal. Concrete
 adapter branches preserve every prior operation after template binding proved unsupported in this
@@ -148,6 +152,6 @@ Forty privacy checks and five nominal/type checks reject raw fields, retagging, 
 variants and treating an unsigned view as a full header.
 
 Commands, compiler metadata, source/corpus hashes and exact diagnostics are retained in ignored
-`build/nimony-trial/verification/results.json` and adjacent logs. Local macOS ARM64 checked ARC/
+`build/tests/runtime/results.json` and adjacent logs. Local macOS ARM64 checked ARC/
 Clang LTO verification does not establish Linux, state eligibility or signature validity; see
-[the trial](../docs/nimony-trial.md).
+[the compiler record](../docs/nimony-trial.md).

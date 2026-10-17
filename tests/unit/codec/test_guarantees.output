@@ -1,0 +1,2 @@
+GUARANTEE_ARC_RELEASE cycles=1000 unchanged
+Guarantees: retained parents/children, late failures, aliases, defaults and ARC release passed

@@ -1,0 +1,2 @@
+CONSENSUS_ARC_RELEASE cycles=1000 unchanged
+Nimony chapter 4: escaped/replaced parents, retained children, source/field copies and scoped ARC release passed

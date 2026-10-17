@@ -68,12 +68,10 @@ correct chain configuration; prefix parsing cannot identify an incorrectly selec
 
 ## Evidence and reproduction
 
-The historical Nim 2 baseline ran the following after `python3 tests/test_crypto.py`
-(use the trial runner below on the experimental Nimony branch):
+Current reproduction uses the pinned toolchain and prepares native dependencies automatically:
 
 ```sh
-python3 tests/test_state_authorization_harness.py
-python3 tests/test_state_authorization.py
+make check
 ```
 
 Six literal harness checks protect the independent byte/reference equations. **7,059** native
@@ -100,7 +98,7 @@ sequence descriptor, without inspecting private runtime APIs.
 
 Historical baseline builds used Nim 2.2.12, ARC, Clang LTO and
 assertions/bounds/range/field/overflow guards. Ignored
-`build/state-authorization/` records commands, request SHA-256, logs and results. Linux CI runs the
+`build/tests/runtime/` records commands, request SHA-256, logs and results. Linux CI runs the
 suite after primitive construction and retains diagnostics. Local verification is macOS arm64;
 Linux verification requires CI after push. Existing crypto gates remain unchanged.
 
@@ -118,7 +116,7 @@ underlying kind before configuration or row processing; values other than Pools/
 InvalidTag. All 256 underlying byte representations are tested. Valid-kind wire rules and error
 precedence are unchanged; invalid kinds cannot silently choose queues or bypass cardinality rules.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`. It preserves all
+Run `make runtime`. It preserves all
 7,059 independent observations, six literal harness checks, four hash-checked derived state sources
 and two partial trie integrations, while checking failed/default fields, private/read-only owner/
 result bypasses and both original nominal-domain probes. White-box project tests exercise uint64

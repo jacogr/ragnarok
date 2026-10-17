@@ -77,13 +77,10 @@ not establish a valid availability state or cryptographic consensus eligibility.
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_availability_harness.py
-python3 tests/test_state_availability.py
-python3 tests/test_guarantees.py
-python3 tests/test_block.py
+make check
 ```
 
 Six literal harness checks protect independent optional framing, full-guarantee composition,
@@ -125,8 +122,9 @@ published verdict counts distinguish these expected rejections from success evid
 Every consumed Git blob is SHA-256 checked before parsing, without source/gitlink changes, sparse
 checkout expansion or generator execution; partial clones may fetch promised pinned data. Tests do
 not execute assurance/dispute STFs, verify supplied signatures or establish full-state roots.
-Nim 2.2.12 ARC/Clang LTO builds retain assertions/bounds/range/field/overflow guards. Ignored
-`build/state-availability/` records commands, request SHA-256, published verdict counts, logs and
+The historical Nim 2.2.12 ARC/Clang LTO builds retained assertions/bounds/range/field/overflow
+guards. Ignored
+`build/tests/runtime/` records commands, request SHA-256, published verdict counts, logs and
 results. Linux CI runs the suite and uploads diagnostics; local results are macOS arm64 and Linux
 confirmation requires CI after push. Existing crypto parity gates remain unchanged.
 
@@ -152,6 +150,6 @@ The warmed 1,000-cycle ownership workload returns live occupancy 592 → 592 byt
 stable report fixture in its baseline, on local macOS ARM64 with checked ARC/Clang LTO.
 
 The eight successful and four expected-rejected published decode observations remain distinguished;
-no fixture content or child policy is changed. Use the trial runner
-`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on this branch.
-The historical Nim 2 commands above describe the main-branch baseline. Actual Linux results and full M1/M2/M3 runtime parity remain separate gates.
+no fixture content or child policy is changed. Use `make runtime`.
+The numerical observations above describe the original compiler-port increment. Actual Linux results
+and full M1/M2/M3 runtime parity remain separate gates.

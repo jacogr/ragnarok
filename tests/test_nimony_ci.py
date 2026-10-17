@@ -8,15 +8,15 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+import threading
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from toolchain_archives import download, extract
 from setup_nimony import verify_identity, verify_version, host_pins, install, installed, cache_directory
-from summarize_nimony_ci import summarize
-import audit_nimony_modules as modules
-from test import plan
+from summarize_tests import summarize
+import test_modules as modules
 import test_bandersnatch as bandersnatch
 
 
@@ -41,11 +41,19 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (folder/'linux.yml').read_text()
         self.assertNotIn('github.head_ref', text)
         self.assertNotIn('github.ref_name', text)
-        self.assertNotIn('branches:', text)
-        self.assertIn('tools/setup_nimony.py', text)
-        self.assertIn('tools/test.py --suite runtime --compiler', text)
-        self.assertIn('tools/test.py --suite modules --compiler', text)
-        self.assertNotIn('python3 tools/setup_ci_linux.py --destination', text)
+        # Pushes check master once; PR updates retain their independent, unfiltered gate.
+        triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
+        self.assertEqual(triggers.strip(),
+                         'push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:')
+        for target in ('check-python', 'check-modules', 'check-unit', 'check-guards', 'check-e2e'):
+            # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
+            self.assertEqual(text.count('run: make '+target+'\n'), 1)
+        self.assertNotIn('needs:', text)
+        self.assertNotIn('run: make check\n', text)
+        self.assertNotIn('mkdir', text)
+        self.assertNotIn('nimony-trial', text)
+        self.assertNotIn('tools/setup_nimony.py', text)
+        self.assertNotIn('cargo fetch', text)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
@@ -66,6 +74,9 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertEqual(library.parent, folder/'target/release')
             self.assertEqual([call.args[0][1] for call in run.call_args_list],
                              ['fmt', 'test', 'build']*2)
+            for call in (run.call_args_list[1], run.call_args_list[4]):
+                # Adapter tests must share the shipped release profile instead of building debug dependencies.
+                self.assertIn('--release', call.args[0])
 
     # The same immutable nightly revision must select the correct platform archive and reject unknown hosts.
     def test_local_and_ci_host_selection(self):
@@ -82,23 +93,77 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Local and CI entry points must retain native runtime, every-source audit and all independent Python harnesses.
     def test_supported_command_plan(self):
-        compiler = Path('/fixture/nimony')
-        runtime = plan('runtime', compiler)
-        modules_only = plan('modules', compiler)
-        self.assertEqual(plan('all', compiler), modules_only+runtime)
-        self.assertTrue(any('tools/test_nimony.py' in row for row in runtime))
-        self.assertTrue(any('tools/audit_nimony_modules.py' in row for row in modules_only))
-        self.assertTrue(any('test_*harness.py' in row for row in runtime))
-        self.assertFalse(any('nim' in row for row in runtime+modules_only))
-        with self.assertRaises(ValueError):
-            plan('unknown', compiler)
+        command = ['make', '--no-print-directory', '-n']
+        runtime = subprocess.check_output(command+['check-unit'], cwd=ROOT, text=True)
+        module_plan = subprocess.check_output(command+['check-modules'], cwd=ROOT, text=True)
+        self.assertIn('tools/test_runtime.py', runtime)
+        self.assertIn('tools/setup_submodules.py', runtime)
+        self.assertIn('cargo fetch --locked', runtime)
+        self.assertNotIn('unittest discover', runtime)
+        self.assertIn('tools/test_modules.py', module_plan)
+        self.assertNotIn('cargo fetch', module_plan)
+        self.assertNotIn('tools/test.py', runtime+module_plan)
+        python_plan = subprocess.check_output(command+['check-python'], cwd=ROOT, text=True)
+        self.assertIn('tools/test_python.py', python_plan)
+        self.assertNotIn('setup_nimony.py', python_plan)
+        self.assertNotIn('cargo', python_plan)
+        self.assertNotIn('tools/test_e2e.py', runtime)
+        complete = subprocess.check_output(command+['check'], cwd=ROOT, text=True)
+        for runner in ('test_python', 'test_modules', 'test_runtime', 'test_guards', 'test_e2e'):
+            # Complete local verification owns exactly one invocation of every independently selectable group.
+            self.assertEqual(complete.count('tools/'+runner+'.py'), 1)
+
+    # A fresh failed Python group must publish failure rather than reuse stale successful discovery.
+    def test_python_gate_failure(self):
+        import test_python
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder/'results.json').write_text(json.dumps(dict(status='checks-passed')))
+            failed = dict(command=['fixture'], exit_code=7, log='fixture.log', output='failed test')
+            with patch.object(test_python, 'BUILD', folder), patch.object(
+                    test_python, 'NativeChecks') as runner, patch('sys.stdout', new_callable=io.StringIO) as output:
+                runner.return_value.command.return_value = failed
+                with self.assertRaises(SystemExit) as stopped:
+                    test_python.main()
+            self.assertEqual(stopped.exception.code, 1)
+            self.assertIn('failed test', output.getvalue())
+            self.assertIn('FAIL Python verification', output.getvalue())
+            self.assertEqual(runner.return_value.command.call_count, 1)
+            self.assertIn('test_*.py', runner.return_value.command.call_args.args[0])
+            report = json.loads((folder/'results.json').read_text())
+            self.assertEqual(report['status'], 'failed')
+            self.assertEqual(report['check']['exit_code'], 7)
+            self.assertEqual(report['tests'], 0)
+
+    # Independent compiler probes may overlap but preserve ordered records and private caches/logs.
+    def test_parallel_rejection_isolation(self):
+        import test_guards
+        barrier = threading.Barrier(2)
+        calls = []
+        # A barrier requires actual overlap without depending on host speed or arbitrary sleep thresholds.
+        def fake_command(arguments, name):
+            calls.append((name, arguments))
+            barrier.wait(timeout=5)
+            return dict(exit_code=1, output=name)
+        with patch.dict(test_guards.os.environ, {'COMPILE_CHECK_JOBS': '2'}), patch.object(
+                test_guards, 'command', side_effect=fake_command):
+            rows = list(test_guards.compile_rejections(Path('/fixture/nimony'), {'first': 'a', 'second': 'b'}))
+        self.assertEqual([(name, expected) for name, expected, _ in rows], [('first', 'a'), ('second', 'b')])
+        self.assertEqual({name for name, _ in calls}, {'first', 'second'})
+        caches = {arg for _, arguments in calls for arg in arguments if str(arg).startswith('--nimcache:')}
+        self.assertEqual(len(caches), 2)
+        self.assertTrue(all(row[2]['exit_code'] == 1 for row in rows))
+        with patch.dict(test_guards.os.environ, {'COMPILE_CHECK_JOBS': '0'}):
+            # A zero worker count cannot silently omit the rejection registry.
+            with self.assertRaisesRegex(ValueError, 'COMPILE_CHECK_JOBS'):
+                list(test_guards.compile_rejections(Path('/fixture/nimony'), {}))
 
     # Extracting a formatter archive must expose only nimpretty, with safe repeated symlink handling.
     def test_formatter_only_installation(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             compiler, formatter = folder/'compiler', folder/'formatter'
-            for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'lib/std/system.nim'):
+            for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'bin/hastur', 'lib/std/system.nim'):
                 # Inert fixture files exercise layout validation; no fabricated compiler is executed.
                 path = compiler/relative
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,10 +171,12 @@ class NimonyCISafeguards(unittest.TestCase):
             (compiler/'NIGHTLY.txt').write_text('nimony-commit: pinned\ndate: today\nplatform: fixture\n')
             (formatter/'bin').mkdir(parents=True)
             (formatter/'bin/nimpretty').write_text('formatter fixture')
-            pins = dict(commit='pinned', date='today', platform='fixture', download={}, formatter_download={})
-            with patch('setup_nimony.download', return_value=b'fixture'), patch(
+            pins = dict(commit='pinned', date='today', platform='fixture', download={'sha256': 'c'*64}, formatter_download={'sha256': 'f'*64})
+            with patch('setup_nimony.download', return_value=b'fixture') as downloaded, patch(
                     'setup_nimony.extract', side_effect=[compiler, formatter]*3):
                 root, paths, metadata = install(folder/'tools', pins)
+                self.assertEqual(downloaded.call_args_list[0].args[1].name, 'nimony-'+('c'*64)+'.archive')
+                self.assertEqual(downloaded.call_args_list[1].args[1].name, 'formatter-'+('f'*64)+'.archive')
                 self.assertEqual(paths, [compiler/'bin', folder/'tools/formatter-bin'])
                 self.assertNotIn(formatter/'bin', paths)
                 self.assertEqual((paths[1]/'nimpretty').resolve(), (formatter/'bin/nimpretty').resolve())
@@ -221,11 +288,17 @@ class NimonyCISafeguards(unittest.TestCase):
             # The third file represents new code that must not rely on a manually updated allowlist.
             for name in ('a.nim', 'b.nim', 'new.nim'):
                 (root/'src'/name).write_text('discard\n')
+            ready = threading.Barrier(2)
+            # Require overlapping checks while retaining one genuine failure and a later new source.
             def check(compiler, source, folder):
+                if source.name != 'new.nim':
+                    # The first two modules must overlap without depending on host scheduling speed.
+                    ready.wait(timeout=5)
                 return dict(source=str(source.relative_to(root)), passed=source.name != 'b.nim')
-            with patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check), patch.object(modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout', new=io.StringIO()):
+            with patch.dict('os.environ', {'COMPILE_CHECK_JOBS': '2'}), patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check), patch.object(modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout', new=io.StringIO()):
                 report = modules.audit(root/'nimony', root/'evidence')
-            self.assertEqual(report['status'], 'migration-incomplete')
+            self.assertEqual(report['status'], 'compile-checks-failed')
+            self.assertEqual(report['jobs'], 2)
             self.assertEqual(len(report['modules']), 3)
             self.assertEqual([row['source'] for row in report['modules']], ['src/a.nim', 'src/b.nim', 'src/new.nim'])
             self.assertTrue((root/'evidence/results.json').is_file())
@@ -247,7 +320,7 @@ class NimonyCISafeguards(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output = root/'summary.md'
-            result = subprocess.run([sys.executable, str(ROOT/'tools/summarize_nimony_ci.py'), '--kind', 'slice',
+            result = subprocess.run([sys.executable, str(ROOT/'tools/summarize_tests.py'), '--kind', 'runtime',
                                      '--report', str(root/'missing.json'), '--output', str(output)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)
             self.assertIn('No usable verification report', output.read_text())
@@ -265,11 +338,11 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_peer_summary_scope(self):
         report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                       quic_peer=dict(passed=False, matrix_cases=16, repeated_valid=12))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'e2e')
         self.assertIn('Authenticated CE 143 peer matrix: Fail', text)
         self.assertIn('Matrix cases: 16; repeated valid startups: 12', text)
-        self.assertIn('Runtime misuse rejections: 0', text)
-        self.assertIn('Independent corpora: 0', text)
+        self.assertNotIn('Runtime misuse rejections:', text)
+        self.assertNotIn('Independent corpora:', text)
 
     # Independent lifecycle verdicts must stay visible without counting network waves as compiler or corpus checks.
     def test_retained_summary_scope(self):
@@ -277,23 +350,23 @@ class NimonyCISafeguards(unittest.TestCase):
                       quic_service=dict(passed=True, result=dict(rounds=16, idle=[{}]*16,
                                                                accepted_and_retired_connections=66)),
                       quic_integration_service=dict(passed=False, failure='cancelled owner remained live'))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'e2e')
         self.assertIn('Retained CE 143 service: Pass', text)
         self.assertIn('Waves: 16; retired connections: 66', text)
         self.assertIn('Integrated digest service: Fail', text)
-        self.assertIn('Independent corpora: 0', text)
-        self.assertIn('Runtime misuse rejections: 0', text)
+        self.assertNotIn('Independent corpora:', text)
+        self.assertNotIn('Runtime misuse rejections:', text)
 
     # A failed recovery workload cannot disappear behind healthy reconnect rounds or inflate codec metrics.
     def test_mesh_summary_scope(self):
         report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                       quic_mesh=dict(passed=True, result=dict(rounds=16, bidirectional_queries=128)),
                       quic_mesh_disruption=dict(passed=False, failure='pending owners not settled'))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'e2e')
         self.assertIn('Retained IPv6 mesh: Pass', text)
         self.assertIn('Reconnect rounds: 16; bidirectional queries: 128', text)
         self.assertIn('IPv6 peer-death recovery: Fail', text)
-        self.assertIn('Runtime misuse rejections: 0', text)
+        self.assertNotIn('Runtime misuse rejections:', text)
 
     # A teardown failure remains distinct from passing retained-engine work and never inflates codec metrics.
     def test_endpoint_soak_summary_scope(self):
@@ -302,11 +375,11 @@ class NimonyCISafeguards(unittest.TestCase):
             with self.subTest(passed=passed):
                 report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                               quic_endpoint_soak=dict(passed=passed, result=dict(rounds=40)))
-                text = summarize(report, 'slice')
+                text = summarize(report, 'e2e')
                 self.assertIn('Same-process endpoint teardown soak: '+('Pass' if passed else 'Fail'), text)
                 self.assertEqual('Sessions: 40;' in text, passed)
-                self.assertIn('Independent corpora: 0', text)
-                self.assertIn('Runtime misuse rejections: 0', text)
+                self.assertNotIn('Independent corpora:', text)
+                self.assertNotIn('Runtime misuse rejections:', text)
 
     # Passing capacity recovery cannot hide a failed authenticated-close check or inflate compiler metrics.
     def test_admission_summary_scope(self):
@@ -314,15 +387,15 @@ class NimonyCISafeguards(unittest.TestCase):
                       quic_admission=dict(passed=True, result=dict(waves=12, retired_connections=312,
                                                                  healthy_queries_after_release=12)),
                       quic_closed_before_request=dict(passed=False))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'e2e')
         self.assertIn('Connection/stream admission recovery: Pass', text)
         self.assertIn('Waves: 12; retired connections: 312; healthy queries after release: 12', text)
         self.assertIn('Authenticated connection loss before request: Fail', text)
-        self.assertIn('Runtime misuse rejections: 0', text)
+        self.assertNotIn('Runtime misuse rejections:', text)
         # Exercise the inverse outcomes as well; successful close detection must retain its zero-stream observation.
         report['quic_admission'] = dict(passed=False)
         report['quic_closed_before_request'] = dict(passed=True, result=dict(application_streams=0, closed_seconds=2.0))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'e2e')
         self.assertIn('Connection/stream admission recovery: Fail', text)
         self.assertIn('Application streams: 0; close detection seconds: 2.0', text)
 
@@ -334,24 +407,24 @@ class NimonyCISafeguards(unittest.TestCase):
                 report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
                               quic_offload=dict(passed=passed, result=dict(rounds=10, workers=2, job_cap=4,
                                                                           verified_jobs=30, healthy_light_queries=70)))
-                text = summarize(report, 'slice')
+                text = summarize(report, 'e2e')
                 self.assertIn('Bounded proof offload: '+('Pass' if passed else 'Fail'), text)
                 self.assertEqual('workers: 2; job cap: 4' in text, passed)
-                self.assertIn('Independent corpora: 0', text)
-                self.assertIn('Runtime misuse rejections: 0', text)
+                self.assertNotIn('Independent corpora:', text)
+                self.assertNotIn('Runtime misuse rejections:', text)
 
     # Dynamic guard counts exclude the separate language probes and never turn a partial slice into full parity.
     def test_slice_summary_scope(self):
-        report = dict(status='partial-checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],
+        report = dict(status='checks-passed', suites=[dict(passed=True)], runtime=[dict(passed=True)],
                       fields=[dict(passed=True), dict(passed=True)], privacy=[dict(passed=True)], nominal=[], schemas=[], contracts=[dict(passed=True)],
                       ownership_compile=[dict(passed=True)], example_corpus=dict(passed=False, requests=3))
-        text = summarize(report, 'slice')
+        text = summarize(report, 'runtime')
         self.assertIn('Runtime misuse rejections: 2', text)
         self.assertIn('Compilation rejections: 3', text)
         self.assertIn('partial evidence', text)
         self.assertIn('| `example_corpus` | Fail | 3 |', text)
         with self.assertRaises(KeyError):
-            summarize({}, 'slice')
+            summarize({}, 'runtime')
 
 
 # Imports expose inert test helpers without downloading tools or starting compilation.

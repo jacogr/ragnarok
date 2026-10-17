@@ -53,9 +53,12 @@ boundaries, source/output budgets, every truncation of representative frames, la
 credential failures, nested malformed framing, source mutation and copied-getter mutation,
 whole-destination encoder sentinels, outer-record overlap, checked variant access, deterministic
 malformed input, three nominal compiler rejections and private-owner field rejection. Run
-`python3 tests/test_guarantees.py` and `python3 tests/test_guarantees_harness.py`.
+`make check`.
 
-## Nimony port verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The pinned nightly port uses private `GuaranteeResult[T]` status/value storage, read-only `error`
 and a success-precondition `value` accessor. `guaranteeFailure[T]` requires a non-success reason
@@ -64,7 +67,7 @@ for sibling adapters; there is no public raw success constructor. Defaults remai
 The scan-before-allocation and full-source preflight policies, wire fields and error precedence
 are preserved. Signature validity and state eligibility are not established by this codec.
 
-`tools/test_nimony.py` runs all 7,617 original independent extrinsic requests, 7,555 corresponding
+`tools/test_runtime.py` runs all 7,617 original independent extrinsic requests, 7,555 corresponding
 allocation-free inspections and 8,836 standalone capture/inspection/measurement/encoding cases.
 `tests/guarantees_checks.py` parses standalone bytes directly, preserving budget error precedence
 without introducing an artificial outer count. Tests include published fixtures, full population,
@@ -78,6 +81,6 @@ runtime rejections guard public result paths and failure construction. Eight com
 reject result/owner bypasses; three nominal checks reject slot, index and signature swaps.
 
 Commands, compiler metadata, source/corpus hashes and exact diagnostics are retained in ignored
-`build/nimony-trial/verification/results.json` and adjacent logs. Local checked ARC/Clang LTO
+`build/tests/runtime/results.json` and adjacent logs. Local checked ARC/Clang LTO
 verification does not establish Linux, block-composition or crypto parity; see
-[the trial](../docs/nimony-trial.md).
+[the compiler record](../docs/nimony-trial.md).

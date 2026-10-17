@@ -27,12 +27,25 @@ provides the maintained Bandersnatch primitive bridge; Python **3.12+** runs too
 OpenSSL and Clang are required; Linux additionally uses lld. See [development](docs/development.md).
 
 ```sh
-python3 tools/setup_nimony.py
-python3 tools/setup_submodules.py
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
-rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
-python3 tools/test.py
+make clean   # Remove build/ completely (optional).
+make check   # Provision dependencies, build and run complete verification.
+make         # Provision dependencies and build the proof peer as build/ragnarok.
 ```
+
+Select just the affected group while developing:
+
+```sh
+make check-unit     # Native suites, independent corpora and runtime misuse probes.
+make check-guards   # Compiler rejection guards.
+make check-e2e      # Real peers, services, resilience, soak and proof offload.
+make check-python   # Python references, tooling and provenance.
+make check-modules  # Every-source semantic compilation.
+```
+
+Make owns setup and test sequencing; `make help` lists the bounded test and formatting targets.
+`make setup` reuses an intact compiler/formatter and refreshes them when pins change. Make/Python and rustup are bootstrap prerequisites; Make installs missing Ubuntu native packages.
+macOS requires its native development tools. The default artifact is the current authenticated QUIC
+proof peer with integration and bounded offload enabled; it is not a full validator executable.
 
 The normal verification command resolves the installed compiler and formatter automatically;
 there is no global Nim compiler requirement. `build/toolchain/env.sh` optionally activates the
@@ -40,10 +53,15 @@ same tools in a shell. Only `nimpretty` is exposed from its pinned formatter arc
 verification never invokes the historical Nim 2 compiler.
 
 Verification includes the all-source audit, protocol provenance, formatting, independent Python
-harnesses and checked codec/crypto/networking/offload suites. Linux CI uses the same command plan
-in separate runtime and module jobs. Generated builds, fixture keys and logs stay under ignored
+harnesses and checked codec/crypto/networking/offload suites. Linux CI uses the same Make targets
+in five independent parallel jobs: source compilation, Python references/tooling, native unit/codec
+checks, compiler rejection guards and end-to-end networking. Generated builds, fixture keys and logs stay under ignored
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
+
+For all 59 native application suites, use `make unit`. This prepares
+the pinned crypto/QUIC libraries and generated fixtures. See
+[native test migration](docs/testing.md) for coverage and retained Python responsibilities.
 
 ## Code and verification
 
@@ -54,11 +72,13 @@ normative policy gates remain explicit in the [compiler record](docs/nimony-tria
 | `src/bandersnatch/` | Typed release-reference IETF VRF/RingVRF adapter and domain policy |
 | `src/quic/` | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload |
 | `tests/` | Independent references and verification runners |
-| `tests/native/` | Nim drivers, selftests and intentional compile-failure fixtures |
+| `tests/unit/` | Nim application tests executed by the pinned native Hastur runner |
+| `tests/fixtures/` | Native test inputs with hashes and independent-reference checks |
+| `tests/native/` | Native drivers, remaining selftests and intentional compile-failure fixtures |
 | `native/` | Narrow maintained C/Rust primitive and transport bridges |
 | `spec/`, `vectors/`, `vendor/` | Pinned interpretations, project fixtures and upstream submodules |
 
-After `source build/toolchain/env.sh`, use `python3 tools/format.py` to apply the pinned
-formatter and `--check` to verify it. `tools/test.py` selects that formatter automatically.
+Use `make format` to apply the pinned formatter and `make format-check` to verify it.
+The underlying Python entry points remain available; no global Nim compiler is required.
 See [codec](docs/codec.md), [crypto](docs/crypto.md) and [networking](docs/networking.md) for APIs,
 ownership, reproduction commands and outstanding protocol/security gates.

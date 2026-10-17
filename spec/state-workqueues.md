@@ -87,13 +87,10 @@ queue transition or consensus-eligible report.
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_workqueues_harness.py
-python3 tests/test_state_workqueues.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Six literal oracle tests anchor empty/no-outer-count rings, fixed hash framing, unprefixed report
@@ -135,10 +132,11 @@ counts, population and SHA-256 identities appear in the results JSON. All roots 
 component, not a complete JAM state, persistent database or trie proof.
 
 Every consumed blob is SHA-256 checked before parsing; partial clones may fetch exact promised
-objects without source/checkout/gitlink changes. No upstream generators run. Checked Nim 2.2.12
-ARC/Clang LTO retains assertion/bounds/range/field/overflow guards. Ignored
-`build/state-workqueues/` records build commands, corpus identity, logs and fixture verdicts.
-Linux CI runs the suite and retains diagnostics; local results are macOS arm64, with Linux
+objects without source/checkout/gitlink changes. No upstream generators run. The historical Nim
+2.2.12
+ARC/Clang LTO retained assertion/bounds/range/field/overflow guards. Ignored
+`build/tests/runtime/` records build commands, corpus identity, logs and fixture verdicts.
+Linux CI runs the suite and retained diagnostics; local results are macOS arm64, with Linux
 confirmation pending CI after push. Standard formatting is applied without toolchain patches.
 
 M1 framing-baseline coverage remains distinct from full state serialization. Chapters **1–16**
@@ -148,7 +146,10 @@ entries and whole-state composition/root evidence remain. Next planned bounded i
 **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
 
 
-## Nimony branch verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, retaining
 its wire format, resource limits and error precedence. `WorkQueueResult[T]` now keeps status and
@@ -156,8 +157,8 @@ payload private, exposes a read-only reason and guards successful payload access
 Both acyclic owner references are explicitly nullable and checked through stable retained locals.
 No mutable row/set storage is exported; extracted report handles survive parent retirement.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` after installing
-the pinned trial compiler. The runner includes the original 2,904-request corpus, six literal
+Run `make runtime`; Make installs the pinned compiler as needed. The runner includes the original
+2,904-request corpus, six literal
 checks, 24 JSON-derived components, twelve exact raw trace components and 48 partial component
 roots. It also runs both native suites, 86 isolated actual/default result rejections, sixteen
 private/read-only compiler probes and three nominal owner/index substitutions. The isolated

@@ -69,12 +69,10 @@ Passing a component codec does not establish a valid chain state.
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_privileges_harness.py
-python3 tests/test_state_privileges.py
-python3 tools/format.py --check
+make check
 ```
 
 Seven literal oracle checks anchor exact fixed/no-count framing, E4/E8 padding, full gas
@@ -105,9 +103,10 @@ tiny/full core counts are asserted. All sixteen derived components pass. These a
 published T(state) binaries, executed STFs, valid-transition certifications or whole-state roots.
 
 Every consumed Git blob is SHA-256 checked before parsing; partial clones may fetch exact promised
-objects without checkout/gitlink changes. No upstream scripts run. Nim 2.2.12 ARC/Clang LTO builds
-retain assertions/bounds/range/field/overflow checks. Ignored `build/state-privileges/` records
-commands, corpus SHA-256, verdicts and diagnostics; Linux CI runs the suite and retains its logs.
+objects without checkout/gitlink changes. No upstream scripts run. The historical Nim 2.2.12
+ARC/Clang LTO builds
+retain assertions/bounds/range/field/overflow checks. Ignored `build/tests/runtime/` records
+commands, corpus SHA-256, verdicts and diagnostics; Linux CI runs the suite and retained its logs.
 Local results are macOS arm64; Linux confirmation requires CI after push. Existing crypto gates
 remain unchanged.
 
@@ -135,7 +134,8 @@ the exact success contract; twelve privacy/read-only and two nominal probes reje
 The warmed 1,000-cycle ownership workload returns live occupancy 192 → 192 bytes locally on
 macOS ARM64, checked ARC/Clang LTO. This does not establish general leak freedom or Linux parity.
 
-Use `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on this branch.
-The historical Nim 2 commands above describe the main-branch baseline. Actual Linux results and
+Use `make runtime`.
+The numerical observations above describe the original compiler-port increment. Actual Linux results
+and
 full M1/M2/M3 migration remain separate gates. The compact C13 gas policy and parked request
 namespace question are unchanged by this compiler port.

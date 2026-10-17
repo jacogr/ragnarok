@@ -1,0 +1,3 @@
+PASS state components: immutable snapshots, fixed copies, nil/index and result guards
+STATE_SAFROLE_ARC_RELEASE cycles=1000 unchanged
+Nimony state components: escaped/replaced owners, copied fields, arithmetic and scoped ARC release passed

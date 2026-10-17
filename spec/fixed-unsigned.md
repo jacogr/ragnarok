@@ -38,5 +38,6 @@ through safe code. Encoded bytes are returned by value, with no borrowed backing
 
 Defaults still fail with `InvalidWidth`. Zero-width encode/decode of zero remains a complete
 success with no bytes. Existing value-range, invalid-width, truncation and canonical byte behavior
-is unchanged. The Nimony trial runner adds negative runtime and private-state compilation checks
+is unchanged. The cumulative runtime verifier adds negative runtime and private-state compilation
+checks
 without substituting different protocol encodings or weakening the original boundary/fuzz suite.

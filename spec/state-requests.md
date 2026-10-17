@@ -88,13 +88,10 @@ uses the accepted compact gas and numeric service-key policy without an alternat
 
 ## Independent and published evidence
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_requests_harness.py
-python3 tests/test_state_requests.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Six passing literal oracle tests anchor exact shape/count/E4 framing, policy, full domains,
@@ -132,9 +129,10 @@ before reference dictionary construction can conceal them. Per-entry provenance/
 value SHA-256 is recorded in results JSON. Roots commit one request entry only, not full state.
 
 Consumed Git blobs are SHA-256 checked before use; promised objects may be fetched without source,
-checkout or gitlink changes. No upstream generators run. Nim 2.2.12 ARC/Clang LTO keeps assertions,
-bounds/range/field/overflow checks. Ignored `build/state-requests/` records commands, corpus SHA-256,
-fixture evidence and native/type diagnostics. Linux CI runs the suite and retains logs; local
+checkout or gitlink changes. No upstream generators run. The historical Nim 2.2.12 ARC/Clang LTO
+kept assertions,
+bounds/range/field/overflow checks. Ignored `build/tests/runtime/` records commands, corpus SHA-256,
+fixture evidence and native/type diagnostics. Linux CI runs the suite and retained logs; local
 validation is macOS arm64, with Linux confirmation after push.
 
 All state component families and selected complete compositions now have tests, but **M1 parity
@@ -144,7 +142,10 @@ policy. The review preserves the full length domain and duplicate rejection. The
 review; it is not active work.
 
 
-## Nimony branch verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
 keys, counts, fixed timeslots, policies and error precedence. `RequestResult[T]` keeps its status
@@ -155,8 +156,9 @@ its mode and six timestamp fields private. Use `requestedHistory()`, `availableH
 and read only that shape's active timestamp accessors. To alter a value, construct a replacement
 shape; retagging, raw construction and timestamp assignment are unavailable to callers.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
-trial compiler. It includes the unchanged 2,273-request corpus, six passing literal checks, the
+Run `make runtime` with the pinned
+compiler; Make installs it as needed. It includes the unchanged 2,273-request corpus, six passing
+literal checks, the
 parked policy test's explicit skip, 28 JSON histories, twenty exact identified raw histories and
 98 partial request roots. Two positive suites verify all four fixed modes, caller/source/copy
 independence, bounded arithmetic, backend refusal/recovery and preflight before native hashing.

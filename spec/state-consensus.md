@@ -75,13 +75,10 @@ codec; structural tests leave existing crypto gates unchanged.
 
 ## Evidence and reproduction
 
-The historical Nim 2 baseline ran the following after `python3 tests/test_crypto.py`
-(use the trial runner below on the experimental Nimony branch):
+Current reproduction uses the pinned toolchain and prepares native dependencies automatically:
 
 ```sh
-python3 tests/test_state_consensus_harness.py
-python3 tests/test_state_consensus.py
-python3 tests/test_state_safrole.py
+make check
 ```
 
 Six literal oracle checks protect independent offsets, widths, ticket field order, prefix parsing,
@@ -105,7 +102,7 @@ binaries or claims of passing those Safrole STFs. No generator is executed or ve
 
 Historical checked Nim 2.2.12 ARC/Clang LTO builds retained all runtime guards. The native tests verify the
 64-bit int/33-byte ticket assumptions used for reference extent checks. Ignored
-`build/state-consensus/` retains commands, request SHA-256, logs and results; Linux CI runs the suite
+`build/tests/runtime/` retains commands, request SHA-256, logs and results; Linux CI runs the suite
 and uploads diagnostics. Local validation is macOS arm64; Linux results require CI after push.
 
 M1 framing-baseline coverage remains distinct from full state serialization. Chapter 5 now has its
@@ -138,7 +135,7 @@ a fixed independent copy; editing it cannot retag the owner. Fixed child extract
 owner-bound with typed InvalidOwner/InvalidIndex/WrongVariant failures. An escaped pending-roster
 child remains valid after its callee-local parent retires.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`. It preserves
+Run `make runtime`. It preserves
 all 7,298 independent requests, six literal harness checks, eight hash-checked derived fixtures
 and ten partial single-entry roots. Separate processes check failed/default public/private result
 reads and both inactive source arrays. External compilation probes reject private result/owner/

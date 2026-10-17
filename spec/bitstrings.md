@@ -72,7 +72,7 @@ check ownership before accessing count. Decoding never exposes partial bits or p
 
 ## Verification
 
-Run `python3 tests/test_bits_harness.py` and `python3 tests/test_bits.py` with Nim 2.2.12, ARC and
+Run `make check` with the pinned compiler, ARC and
 checked Clang LTO. Six literal known-answer tests protect the independent Python mathematical
 reference. The native corpus contains **11,274** deterministic requests: all 256 standalone
 Boolean octets, all 256 final-byte patterns for logical lengths 1..8 under both framings, natural
@@ -91,13 +91,16 @@ and inaccessible failed-result alternatives. Two nominal and one privacy compile
 protect the public boundary. Private-wire alias tests include only this project's own module;
 no production backing pointer or compiler/private-runtime API is introduced. Linux CI runs the
 same checks and retains build diagnostics, compiler rejection logs and a request digest/result
-manifest under ignored `build/bits/`. This is codec coverage, not state/cryptographic validation.
+manifest under ignored `build/tests/runtime/`. This is codec coverage, not state/cryptographic
+validation.
 
-## Nimony branch verification
+## Compiler-port evidence
 
-On this experimental branch, reproduce the checked ARC/Clang LTO port with
-`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`; the historical
-Nim 2 commands above are not a second supported source target. The cumulative runner retains all
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
+
+Reproduce the checked ARC/Clang LTO coverage with
+`make runtime`. The cumulative runner retains all
 11,274 independent requests, six oracle known answers and both native suites. It adds 30 isolated
 failed/default result-access checks and 12 private/nominal compilation rejections. Immutable owner
 references are explicitly nullable, with stable local proofs before access; no backing data is
@@ -105,6 +108,6 @@ exported. Source replacement/escape and copied metadata/output checks extend lif
 After 100 warmups, 1,000 scoped retain/replace/reframe/drop cycles leave public live allocator
 occupancy unchanged. This measures that workload rather than RSS or general leak freedom.
 Commands, exact source/request/output hashes, release counts and every verdict are retained in
-`build/nimony-trial/verification/results.json`. See [the trial](../docs/nimony-trial.md) for exact
+`build/tests/runtime/results.json`. See [the compiler record](../docs/nimony-trial.md) for exact
 compiler/environment and cumulative totals. Verification is local macOS ARM64; full M1, Linux and
 M2/M3 migration remain separate work.

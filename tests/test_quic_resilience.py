@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Bounded IPv6 peer-loss recovery and connection/stream saturation; no throughput assertions."""
-from test_support import networking_peers
-import argparse
 import json
 import os
 from pathlib import Path
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures, THREAD_BASELINES
+from test_quic import BUILD, THREAD_BASELINES
 from test_quic_mesh import ports
 from test_quic_soak import resources, check_growth
 
@@ -297,46 +295,3 @@ def overload(language, folder, rounds, warmup, *, binaries=None, directory=None)
         return result
     finally:
         retire(children, handles)
-
-
-# Run the two experiments sequentially because their deliberately shared fixture directory must stay immutable in flight.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--fetch', action='store_true')
-    parser.add_argument('--rounds', type=int, default=12)
-    parser.add_argument('--warmup', type=int, default=4)
-    args = parser.parse_args()
-    assert 12 <= args.rounds <= 16 and 0 <= args.warmup <= args.rounds - 8
-    output = BUILD / 'resilience/results.json'
-    output.parent.mkdir(parents=True, exist_ok=True)
-    report = {'complete': False, 'closed_before_request': [], 'disruption': [], 'overload': []}
-    output.write_text(json.dumps(report) + '\n')
-    if not args.skip_build:
-        build_peers(dependencies(args.fetch))
-    peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES)
-    folder = fixtures(BUILD / 'resilience/fixtures') # Keep retained TLS identities private to this harness.
-    try:
-        for languages in [(a, b) for a in peers for b in peers]:
-            report['closed_before_request'].append(closed_before_request(languages, folder))
-            output.write_text(json.dumps(report, indent=2) + '\n')
-            print('PASS close before request', '-'.join(languages), flush=True)
-        for languages in [(a, b) for a in peers for b in peers]:
-            report['disruption'].append(disruption(languages, folder, args.rounds, args.warmup))
-            output.write_text(json.dumps(report, indent=2) + '\n')
-            print('PASS disruption', '-'.join(languages), args.rounds, 'peer deaths with pending work', flush=True)
-        for language in peers:
-            report['overload'].append(overload(language, folder, args.rounds, args.warmup))
-            output.write_text(json.dumps(report, indent=2) + '\n')
-            print('PASS overload', language, args.rounds, 'admission/recovery waves', flush=True)
-    except Exception as error:
-        report['failure'] = str(error)
-        output.write_text(json.dumps(report, indent=2) + '\n')
-        raise
-    report['complete'] = True
-    output.write_text(json.dumps(report, indent=2) + '\n')
-
-
-# Importing resource/lifecycle helpers starts no peer and alters no networking state.
-if __name__ == '__main__':
-    main()

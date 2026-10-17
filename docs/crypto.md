@@ -31,7 +31,7 @@ or establish a backend audit. See [the primitive contract](../spec/crypto.md) an
 ## Compiler and verification
 
 The supported Nimony adapters use private guarded results and explicit acyclic ARC/native owner
-lifetimes. `python3 tools/test.py` runs the preserved raw-primitive, assurance, guarantee/report,
+lifetimes. `make check` runs the preserved raw-primitive, assurance, guarantee/report,
 release-reference Bandersnatch, native-boundary and concurrency corpora. It also runs bounded
 proof offload with worker-local Rust setups and copied inputs. The [compiler record](nimony-trial.md)
 retains exact coverage and compiler limitations. Implemented-scope local regression parity does

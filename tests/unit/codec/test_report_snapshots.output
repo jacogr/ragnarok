@@ -1,0 +1,2 @@
+REPORT_ARC_RELEASE cycles=1000 unchanged
+Report snapshots: retained replacements, escaped inputs, copied metadata and atomic errors passed

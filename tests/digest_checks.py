@@ -1,9 +1,7 @@
 """Independent full work-digest oracle, pinned official vectors and shared native checks."""
-from test_support import codec_commands
 import json
 from pathlib import Path
 import random
-import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -76,31 +74,6 @@ def parse_digest(data, limit, decode):
     value = (int.from_bytes(data[:4], 'little'), data[4:36], data[36:68],
              int.from_bytes(data[68:76], 'little'), tag, blob, metrics)
     return text_for(value, cursor)
-
-
-# Build/test both native codecs then compare exact full frames and decoded fields with the independent oracle.
-def verify_digest(build, nim_flags, run, encode, decode):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/work_digest.nim'])
-    run(['nim', 'c', *nim_flags, f'--out:{build / "nim-digest-tests"}', '-r', ROOT / 'tests/native/test_work_digest.nim'])
-    # Negative fixtures reject wrong nominal fields, rather than relying on runtime assertions.
-    for name in ('swapped_digest_hash', 'raw_digest_gas', 'wrong_digest_metric'):
-        for command in (['nim', 'check', '--mm:arc', ROOT / f'tests/native/compile_fail/{name}.nim'],):
-            result = subprocess.run(list(map(str, command)), capture_output=True, text=True)
-            assert result.returncode != 0, command
-            assert 'type mismatch' in result.stderr or 'Cannot assign value' in result.stderr, result.stderr
-    drivers = [build / 'nim-digest-driver']
-    run(['nim', 'c', *nim_flags, f'--out:{drivers[0]}', ROOT / 'tests/native/digest_driver.nim'])
-    requests, expected, official = batch_requests(encode, decode)
-    request_file = build / 'digest-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    # Require both implementations to match independent expected results for every request.
-    for driver in codec_commands(build, drivers, 'digest'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS work digest: {len(requests)} independent Nim requests; '
-          f'{official} complete official work-digest checks; 3 negative compilation checks', flush=True)
 
 
 # Construct the unchanged independent corpus without building or executing a native adapter.

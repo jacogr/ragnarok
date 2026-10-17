@@ -84,13 +84,10 @@ E8 gas fails complete reconstruction in all sixteen selected values, including z
 
 ## Reproduction and honest failure accounting
 
-After native crypto construction:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_widths_harness.py
-python3 tests/test_state_widths.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Six literal harness checks anchor candidate byte identities, nonzero wide keys/gas, empty-map
@@ -108,7 +105,7 @@ All 36 published-value probes now capture completely. Their migrated whole-entry
 Before migration, seventeen of these whole-entry probes rejected. After migration, all match
 the supplied bytes. This closes the dictionary-width implementation work, but does not resolve
 the parked request-namespace question or claim an upstream textual correction. Logs/results under
-ignored `build/state-widths/` retain identities, SHA-256 hashes, candidates, offsets, decoded
+ignored `build/tests/runtime/` retain identities, SHA-256 hashes, candidates, offsets, decoded
 candidate fields/metadata associations, native actual/expected verdicts, build flags and compiler/
 Python/OS versions. The new exact blob hashes extend the existing vector pin; gitlinks/toolchains
 remain unchanged. Linux CI runs and retains the same checks; local macOS arm64 results do not

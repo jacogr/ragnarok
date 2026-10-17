@@ -1,7 +1,7 @@
 ## Trusted batch adapter: BE/BD for bytes, SE/SD for fixed-width sequences.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
-import ./ownership_checks
+import ../support/ownership_checks
 import ../../src/codec/[bounded, fixed_unsigned]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.

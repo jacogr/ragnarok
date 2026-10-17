@@ -93,7 +93,7 @@ Tests author counterparts by choosing tiny core 0 and sorting verdicts; original
 Header hashes/signatures are opaque and are not recomputed in these counterparts. They establish
 codec structure, **not chain-valid blocks**.
 
-Run `python3 tests/test_block_harness.py` and `python3 tests/test_block.py`. Seven harness known
+Run `make check`. Seven harness known
 answers protect the independent Python references. The native checked ARC/Clang LTO run compares
 17,194 deterministic requests: independent encoder sources/decoder observations, child wire and
 counts, truncation/malformed mutations, exact/short/spare capacity, whole/payload budgets and
@@ -104,16 +104,19 @@ rejections protect the API. A white-box test includes only this project's own mo
 otherwise inaccessible private-wire alias paths; production exports no backing pointer.
 Linux CI runs the same runner and retains its build, type-check and result diagnostics.
 
-## Nimony branch verification
+## Compiler-port evidence
 
-On this experimental branch, reproduce the checked ARC/Clang LTO port with
-`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`; the historical
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
+
+Reproduce the checked ARC/Clang LTO coverage with
+`make runtime`; the historical
 Nim 2 runner above is not a second supported source target. The cumulative runner includes all
 17,194 unchanged independent requests, the seven oracle known answers, both native composition
 suites, 85 isolated result/cause misuse rejections and 28 private/nominal compilation rejections.
 The release workload retains every original child across parent replacement and source erasure,
 then materializes all six family APIs. After 100 warmups, 1,000 isolated scopes return live allocator
 occupancy to baseline. Commands, source/request/output hashes and individual verdicts are retained
-in `build/nimony-trial/verification/results.json`. See [the trial](../docs/nimony-trial.md) for exact
+in `build/tests/runtime/results.json`. See [the compiler record](../docs/nimony-trial.md) for exact
 compiler/environment and cumulative totals. Verification is local macOS ARM64; this increment does
 not establish Nimony Linux, complete M1, M2/M3 or cryptographic/state parity.

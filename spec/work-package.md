@@ -108,7 +108,7 @@ values and import identity alternatives.
 
 ## Verification
 
-Run `python3 tests/test_package_harness.py` and `python3 tests/test_work_package.py`. Published
+Run `make check`. Published
 context/item/package JSON reconstructs both tiny/full binary profiles exactly. Native encoder
 sources are constructed directly from named fields; decoder observations check each field and
 manifest element independently, alongside owner re-emission. Test-owned input is overwritten after
@@ -121,10 +121,14 @@ strict gas boundaries and uint64 aggregate-overflow attempts; inclusive footprin
 interaction; malformed/overlong/huge count prefixes; deterministic structured/random input;
 late-source atomicity; descriptor/blob/import/commitment aliases; runtime variant guards;
 four nominal compiler rejection probes and two private-owner probes. Eight independent harness
-known-answer tests protect the Python oracle. The established Linux CI profile belongs to the
-Nim 2 baseline; the experimental Nimony port has not switched or passed that pipeline.
+known-answer tests protect the Python oracle. Current Linux CI runs this coverage through `make
+runtime`; see
+[testing](../docs/testing.md) for revision-specific results.
 
-## Nimony port verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The pinned nightly uses private `PackageResult[T]` status/value storage and read-only outcomes.
 `value` requires success for fixed records, metadata, owner handles and byte progress. Package/
@@ -138,7 +142,7 @@ indices above 32767 still fail encoding preflight. The default remains a zero-in
 callers cannot retag or forge raw alternatives. The nominal wrong-identity probe uses the typed
 factory, preserving a real domain-mismatch check independently of read-only-property rejection.
 
-`tools/test_nimony.py` runs all 8,123 existing requests across context/import/commitment/item/
+`tools/test_runtime.py` runs all 8,123 existing requests across context/import/commitment/item/
 package APIs. Published tiny/full bytes, full independently observed fields, source mutation,
 footprint/gas/dependency/count limits, malformed inputs and atomic destinations retain coverage.
 The adapter uses concrete fixed-record branches after this nightly rejected its template binding;
@@ -153,5 +157,6 @@ alternatives. Nineteen compilation checks reject result/owner/variant bypasses; 
 checks protect import indices, host services, reference identities and commitment lengths.
 
 Commands, compiler metadata, source/corpus hashes and exact diagnostics are recorded in ignored
-`build/nimony-trial/verification/results.json` and adjacent logs. Local checked ARC/Clang LTO parity
-does not establish Linux or full-client migration; see [the trial](../docs/nimony-trial.md).
+`build/tests/runtime/results.json` and adjacent logs. Local checked ARC/Clang LTO parity
+does not establish Linux or full-client migration; see [the compiler
+record](../docs/nimony-trial.md).

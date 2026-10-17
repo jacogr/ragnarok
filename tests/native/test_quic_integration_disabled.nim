@@ -1,9 +1,0 @@
-## Ordinary binaries compile without the crypto provider and cannot claim enabled integration success.
-import std/[assertions, syncio]
-import ../../src/quic/integration
-assert not IntegrationEnabled
-let key = preimageKey([1'u8, 2, 3])
-assert key.error == IntegrationError.Crypto
-let empty = default(IntegrationResult[VerifiedDigest])
-assert empty.error == IntegrationError.Uninitialized
-echo "Nimony integration: disabled provider returns typed refusal without native crypto linkage"

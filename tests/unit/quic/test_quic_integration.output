@@ -1,0 +1,3 @@
+Nim integration selftest: 10000 arbitrary digest captures passed
+INTEGRATION_ARC_RELEASE cycles=1000 unchanged
+Nimony integration: capture/copy/alias, immutable banks and refusal recovery passed

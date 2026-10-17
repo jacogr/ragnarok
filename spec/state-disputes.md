@@ -61,11 +61,10 @@ payloads belong to the caller and must remain stable during a later [trie call](
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_disputes_harness.py
-python3 tests/test_state_disputes.py
+make check
 ```
 
 Six literal harness checks protect the independent byte/reference equations. **2,766** native
@@ -96,9 +95,10 @@ failure guards. Two negative compilation probes reject report-as-offender and by
 substitutions; one privacy probe rejects retained storage access. Native selftests verify the 64-bit
 int and 32-byte record assumptions used by reference extent checks.
 
-Nim 2.2.12 ARC/Clang LTO builds retain assertions/bounds/range/field/overflow checks. Ignored
-`build/state-disputes/` retains commands, request SHA-256, logs and results. Linux CI runs the suite
-after primitive construction and retains diagnostics. Local results are macOS arm64; Linux
+The historical Nim 2.2.12 ARC/Clang LTO builds retained assertions/bounds/range/field/overflow
+checks. Ignored
+`build/tests/runtime/` retained commands, request SHA-256, logs and results. Linux CI runs the suite
+after primitive construction and retained diagnostics. Local results are macOS arm64; Linux
 confirmation requires CI after push.
 
 M1's documented C.1/C.2 framing baseline remains covered; complete state serialization remains
@@ -122,5 +122,5 @@ Thirty-two isolated runtime rejection cases cover actual failures and defaults. 
 read-only compilation probes and two nominal probes protect result/owner and key/index domains.
 The 1,000-cycle warmed ownership workload returns live occupancy 192 → 192 bytes on local macOS
 ARM64, checked ARC/Clang LTO. Full-client parity and Linux results remain separate gates. Use
-`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on the trial branch;
-the historical Nim 2 reproduction commands above describe the main-branch baseline.
+`make runtime` for the current supported checks. The numerical observations above describe
+the original compiler-port increment.

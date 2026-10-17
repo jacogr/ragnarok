@@ -1,7 +1,9 @@
 name: Linux
 
+# Check master after pushes/merges; feature branches run through their PR only.
 "on":
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -13,122 +15,166 @@ concurrency:
   group: linux-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# All verification groups use the same shell and Python output policy.
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+# Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:
-  linux:
-    name: Codec, crypto and QUIC (Ubuntu 24.04 x86-64)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
+  modules:
+    name: Source compilation
+    timeout-minutes: 30
+    runs-on: &linux-runner ubuntu-24.04
     steps:
-      - name: Checkout
+      - &checkout
+        name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Python 3.12
+      - &python
+        name: Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Native Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y build-essential clang lld cmake zlib1g-dev openssl
-          mkdir -p build/nimony-ci
-          uname -a | tee build/nimony-ci/platform.log
-          clang --version | tee -a build/nimony-ci/platform.log
-      - name: Pinned Nimony and formatter
-        run: python3 tools/setup_nimony.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
-      - name: Pinned pristine source submodules
-        run: python3 tools/setup_submodules.py
-      - name: Pinned Rust and locked Bandersnatch registry dependencies
-        run: |
-          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
-          echo "RUSTUP_TOOLCHAIN=1.99.0" >> "$GITHUB_ENV"
-          rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
-      - name: Checked codec, crypto, networking and independent harness coverage
-        run: python3 tools/test.py --suite runtime --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/runtime.log
-      - name: Show measured partial coverage
+      - name: Source compilation
+        run: make check-modules
+      - &summary
+        name: Show verification coverage
         if: always()
-        run: python3 tools/summarize_nimony_ci.py --kind slice --report build/nimony-trial/verification/results.json --output "$GITHUB_STEP_SUMMARY"
-      # Upload diagnostics only: never binaries, caches, dependency trees, certificates or private keys.
-      - name: Retain migrated slice evidence
+        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: &upload-artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: nimony-linux-runtime-${{ github.run_attempt }}
+          name: linux-modules-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
-            build/nimony-ci/*.log
-            build/nimony-trial/verification/*.log
-            build/nimony-trial/verification/results.json
-            build/nimony-trial/verification/offload/*.log
-            build/nimony-trial/verification/offload/resources.json
-            build/nimony-trial/verification/admission/*.log
-            build/nimony-trial/verification/admission/resources.json
-            build/nimony-trial/verification/closed-before-request/*.log
-            build/nimony-trial/verification/endpoint-soak/*.log
-            build/nimony-trial/verification/endpoint-soak/resources.json
-            build/nimony-trial/verification/mesh/*.log
-            build/nimony-trial/verification/mesh/resources.json
-            build/nimony-trial/verification/mesh-bad-pin/*.log
-            build/nimony-trial/verification/mesh-disruption/*.log
-            build/nimony-trial/verification/mesh-disruption/resources.json
-            build/nimony-trial/verification/retained-service/*.log
-            build/nimony-trial/verification/retained-service/resources.json
-            build/nimony-trial/verification/retained-integration/*.log
-            build/nimony-trial/verification/retained-integration/resources.json
-            build/nimony-trial/verification/peer-cases/**/*.log
-            build/nimony-trial/verification/integration-requests.txt
-            build/nimony-trial/verification/quic-protocol-requests.txt
-            build/quic/build.log
-            build/crypto/build.log
+            build/ci/*.log
+            build/tests/modules/*.log
+            build/tests/modules/results.json
+
+  python:
+    name: Python reference and tooling tests
+    timeout-minutes: 15
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: Python reference and tooling tests
+        run: make check-python
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-python-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/python/*.log
+            build/tests/python/results.json
+
+  guards:
+    name: Compiler rejection guards
+    timeout-minutes: 30
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: Compiler rejection guards
+        run: make check-guards
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-guards-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/guards/*.log
+            build/tests/guards/results.json
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
 
-  modules:
-    name: All-source compilation gate (Linux)
-    runs-on: ubuntu-24.04
+  unit:
+    name: Native unit and codec tests
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
+    runs-on: *linux-runner
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Python 3.12
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Compiler dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y build-essential clang lld
-          mkdir -p build/nimony-ci
-      - name: Pinned Nimony and formatter
-        run: python3 tools/setup_nimony.py --destination "$RUNNER_TEMP/nimony-tools" 2>&1 | tee build/nimony-ci/setup.log
-      - name: Audit every source module
-        run: python3 tools/test.py --suite modules --compiler "$NIMONY" 2>&1 | tee build/nimony-ci/modules.log
-      - name: Show remaining build work
+      - *checkout
+      - *python
+      - name: Native unit and codec tests
+        run: make check-unit
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
         if: always()
-        run: python3 tools/summarize_nimony_ci.py --kind modules --report build/nimony-ci/modules/results.json --output "$GITHUB_STEP_SUMMARY"
-      - name: Retain source compilation evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: *upload-artifact
         with:
-          name: nimony-linux-modules-${{ github.run_attempt }}
+          name: linux-unit-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
-            build/nimony-ci/*.log
-            build/nimony-ci/modules/*.log
-            build/nimony-ci/modules/results.json
+            build/ci/*.log
+            build/tests/runtime/*.log
+            build/tests/runtime/results.json
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log
+
+  e2e:
+    name: End-to-end networking tests
+    timeout-minutes: 60
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: End-to-end networking tests
+        run: make check-e2e
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-e2e-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/e2e/*.log
+            build/tests/e2e/results.json
+            build/tests/e2e/offload/*.log
+            build/tests/e2e/offload/resources.json
+            build/tests/e2e/admission/*.log
+            build/tests/e2e/admission/resources.json
+            build/tests/e2e/closed-before-request/*.log
+            build/tests/e2e/endpoint-soak/*.log
+            build/tests/e2e/endpoint-soak/resources.json
+            build/tests/e2e/mesh/*.log
+            build/tests/e2e/mesh/resources.json
+            build/tests/e2e/mesh-bad-pin/*.log
+            build/tests/e2e/mesh-disruption/*.log
+            build/tests/e2e/mesh-disruption/resources.json
+            build/tests/e2e/retained-service/*.log
+            build/tests/e2e/retained-service/resources.json
+            build/tests/e2e/retained-integration/*.log
+            build/tests/e2e/retained-integration/resources.json
+            build/tests/e2e/peer-cases/**/*.log
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log

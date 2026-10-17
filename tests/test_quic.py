@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 """Build pinned isolated QUIC dependencies and verify authenticated JAMNP-S CE 143 peers."""
-from test_support import networking_peers
-import argparse
-import concurrent.futures
-import hashlib
 import json
 from pathlib import Path
 import platform
@@ -71,19 +67,6 @@ def build_native(paths):
              BUILD / 'transport_bridge.o', ROOT / 'build/native/lsquic/src/liblsquic/liblsquic.a',
              ROOT / 'build/native/boringssl/libssl.a', ROOT / 'build/native/boringssl/libcrypto.a', '-lz', '-o', library], log)
     return library
-
-
-# Historical peer entry point remains separate from the branch's Nimony-only native-library build.
-def build_peers(paths):
-    nim_version = subprocess.check_output(['nim', '--version'], text=True)
-    assert PINS['nim'] in nim_version
-    library = build_native(paths)
-    # Preserve native build diagnostics while recording the historical peer command separately.
-    with (BUILD/'build.log').open('a') as log:
-        run(['nim', 'c', '--mm:arc', '--cc:clang', '--clang.linkerexe:clang++', '--skipParentCfg', '--skipUserCfg',
-             f'--passL:{library}', f'--nimcache:{BUILD / "nim-adapter-cache"}',
-             f'--out:{BUILD / "nim-peer"}', ROOT / 'src/quic/peer.nim'], log)
-        linker = []
 
 
 # Compute the literal pinned SAN formula independently using arbitrary precision, not native bit loops or standard base32.
@@ -229,31 +212,3 @@ def attempt(case, folder, binaries=None, logs=None):
                 if active is not None and active.poll() is None:
                     active.kill()
                     active.wait()
-
-
-# Keep network/build work opt-in and independent of the existing codec verification command.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fetch', action='store_true', help='fetch missing exact source commits into ignored build storage')
-    parser.add_argument('--skip-build', action='store_true', help='reuse previously built native peers')
-    args = parser.parse_args()
-    BUILD.mkdir(parents=True, exist_ok=True)
-    if not args.skip_build:
-        build_peers(dependencies(args.fetch))
-    peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES)
-    # Every peer exercises its own DER/framing and POSIX readiness implementation.
-    for language in peers:
-        run([BUILD / f'{language}-peer', '--selftest'])
-        run([BUILD / f'{language}-peer', '--io-selftest'])
-    folder = fixtures()
-    cases = [(server, client, scenario) for server, client in [(a, b) for a in peers for b in peers] for scenario in SCENARIOS]
-    # Independent cases may overlap, but each native peer still owns a single event loop for all its streams.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        results = list(executor.map(lambda case: attempt(case, folder), cases))
-    (BUILD / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
-    print(f'PASS QUIC: {len(cases)} cases across {len(peers)**2} directed peer pairings', flush=True)
-
-
-# Importing this module never fetches dependencies, creates keys or opens a UDP listener.
-if __name__ == '__main__':
-    main()

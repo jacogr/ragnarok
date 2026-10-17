@@ -1,10 +1,8 @@
 """Independent optional/work/preimage references and official composite-vector checks."""
-from test_support import codec_commands
 import hashlib
 import json
 from pathlib import Path
 import random
-import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,31 +32,6 @@ def blob_at(data, offset, limit, decode):
     if count > len(data) - start:
         return 'truncated' # Missing bytes cannot be implicitly padded.
     return data[start:start + count], start + count
-
-
-# Run new native checks then compare exact variants and full nested records against independent results.
-def verify_composite(build, nim_flags, run, encode, decode):
-    run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/composite.nim'])
-    run(['nim', 'c', *nim_flags, f'--out:{build / "nim-composite-tests"}', '-r', ROOT / 'tests/native/test_composite.nim'])
-    for name in ('raw_service_index', 'raw_work_variant', 'wrong_preimage_limit'):
-        # These files deliberately violate nominal fields/union arguments, not syntax or protocol data.
-        for command in (['nim', 'check', '--mm:arc', ROOT / f'tests/native/compile_fail/{name}.nim'],):
-            result = subprocess.run(list(map(str, command)), capture_output=True, text=True)
-            assert result.returncode != 0, command
-            assert 'type mismatch' in result.stderr or 'Cannot assign value' in result.stderr, result.stderr
-    drivers = [build / 'nim-composite-driver']
-    run(['nim', 'c', *nim_flags, f'--out:{drivers[0]}', ROOT / 'tests/native/composite_driver.nim'])
-    requests, expected, full_vector_checks, field_checks = batch_requests(encode, decode)
-    request_file = build / 'composite-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    for driver in codec_commands(build, drivers, 'composite'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS composite: {len(requests)} independent Nim requests; '
-          f'{full_vector_checks} complete official preimage checks; {field_checks} official work-output checks; '
-          '3 negative compilation checks', flush=True)
 
 
 # Construct the unchanged independent corpus without building or executing a native adapter.

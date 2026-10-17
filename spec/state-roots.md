@@ -77,18 +77,16 @@ classified into guessed service namespaces by their digest bytes.
 ## Reproduction and remaining work
 
 ```sh
-python3 tests/test_crypto.py
-python3 tests/test_state_roots_harness.py
-python3 tests/test_state_roots.py
-python3 tools/format.py --check
+make check
 ```
 
 Six active literal harness checks cover input widths, duplicate preservation, present-empty
 values, the request matrix, migrated C12 widths and accepted compact C13 gas with no fallback.
-Nim 2.2.12 ARC/Clang LTO retains assertions, bounds, range, field and overflow guards. The runner
+The historical Nim 2.2.12 ARC/Clang LTO retained assertions, bounds, range, field and overflow
+guards. The runner
 records compiler/Python/OS identities, build command, source hashes, each published root, byte/
 entry/node counts, corpus hash and per-request expected/actual verdicts in ignored
-`build/state-roots/results.json`. Linux CI runs the same checks after building native crypto and
+`build/tests/runtime/results.json`. Linux CI runs the same checks after building native crypto and
 retains logs/results. Local macOS arm64 passing results do not certify Linux CI.
 
 [Typed composition](state-composition.md) now integrates exact chapter captures, typed metadata

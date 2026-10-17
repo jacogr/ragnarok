@@ -66,12 +66,10 @@ partial progress. Default handles and out-of-range ordinals return typed errors.
 
 ## Evidence and reproduction
 
-The historical Nim 2 baseline ran the following after native primitive construction
-(`python3 tests/test_crypto.py`); use the trial runner below on the experimental Nimony branch:
+Current reproduction uses the pinned toolchain and prepares native dependencies automatically:
 
 ```sh
-python3 tests/test_state_safrole_harness.py
-python3 tests/test_state_safrole.py
+make check
 ```
 
 Six literal harness tests protect the independent byte/count reference. **3,068** native requests
@@ -96,7 +94,7 @@ compilation probes reject entropy-as-time and Ed25519-as-Bandersnatch substituti
 privacy probe rejects access to retained roster storage.
 
 Linux CI runs this suite after crypto/trie construction and retains logs, compiler commands,
-request SHA-256 and results under ignored `build/state-safrole/`. Local verification is macOS arm64;
+request SHA-256 and results under ignored `build/tests/runtime/`. Local verification is macOS arm64;
 Linux results require CI after push. Existing crypto parity gates remain unchanged.
 
 The allocation-free `stateValidatorSize` and `stateValidatorPrefixSize` APIs share this roster
@@ -115,7 +113,7 @@ Private roster storage uses nullable acyclic ARC references and stable checked l
 stable during synchronous scans/decoding; retained snapshots copy every field and export no mutable
 storage. Returned `StateEntry` bytes remain caller-owned mutable payloads.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`. It retains all
+Run `make runtime`. It retains all
 3,068 independent requests, six literal harness checks, four hash-checked derived state sources
 and three partial five-entry trie integrations. It separately rejects default/failed value/owner/
 record/progress reads and private/read-only storage bypasses, preserving both original nominal

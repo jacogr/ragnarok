@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Reproducible native crypto build, independent vectors, ownership and type-boundary checks."""
-import argparse
-import concurrent.futures
+"""Maintained crypto build, independent vector equations and native ABI checks."""
 import ctypes
 import hashlib
 import json
@@ -62,20 +60,6 @@ def build_native(paths):
     return library
 
 
-# Historical compiler entry point; the Nimony trial reuses only build_native and the unchanged vector equations.
-def build(paths):
-    assert PINS['nim'] in subprocess.check_output(['nim', '--version'], text=True)
-    library = build_native(paths)
-    with (BUILD / 'build.log').open('a') as log:
-        linker = []
-        # Test checked debug and optimized release builds; do not disable result/union assertions.
-        for mode in ('debug', 'release'):
-            run(['nim', 'c', '--mm:arc', '--cc:clang', '--clang.linkerexe:clang++', '--skipParentCfg',
-                 '--skipUserCfg', *(['-d:release'] if mode == 'release' else []), f'--passL:{library}',
-                 f'--passC:-I{ROOT / "native/crypto"}', f'--nimcache:{BUILD / ("nim-cache-" + mode)}', f'--out:{BUILD / ("nim-" + mode)}',
-                 ROOT / 'tests/native/crypto_driver.nim'], log)
-
-
 # Query one native process; all inputs are public deterministic fixtures and argument size is bounded.
 def query(binary, command, *values):
     args = [value.hex() or '-' if isinstance(value, bytes) else value for value in values]
@@ -115,25 +99,6 @@ def keccak256(message):
             state = [permuted[i] ^ ((~permuted[(i//5)*5+(i+1)%5]) & permuted[(i//5)*5+(i+2)%5]) for i in range(25)]
             state[0] ^= constant
     return b''.join(v.to_bytes(8, 'little') for v in state)[:32].hex()
-
-
-# Reject implicit mixing of hashes/key roles and access to private retained seed storage at compilation.
-def type_checks():
-    probes = {'hash': 'var a: Blake2bHash; let b: KeccakHash = a; discard b',
-              'key': 'var a: EdSignature; let b: EdPublicKey = a; discard b',
-              'seed': 'var a: EdSeed; discard a.storage'}
-    positive = BUILD/'positive.nim'
-    positive.write_text('import "../../src/crypto/primitives"\nvar a: Blake2bHash\ndiscard a\n')
-    subprocess.run(['nim','check','--mm:arc','--skipParentCfg','--skipUserCfg',str(positive)],check=True,capture_output=True)
-    # Require real imports before accepting an intended nominal-domain or private-storage rejection.
-    with (BUILD/'type-checks.log').open('wb') as log:
-        for name, program in probes.items():
-            source = BUILD/f'negative_{name}.nim'
-            source.write_text('import "../../src/crypto/primitives"\n'+program+'\n')
-            result = subprocess.run(['nim','check','--mm:arc','--skipParentCfg','--skipUserCfg',str(source)],capture_output=True)
-            log.write(result.stdout+result.stderr)
-            assert result.returncode != 0 and b'invalid module name' not in result.stderr
-
 
 
 def test(binary):
@@ -238,31 +203,3 @@ def bridge_checks():
     lib.rc_wipe(output, 64)
     assert bytes(output) == bytes(64)
     lib.rc_wipe(None, 0)
-
-
-# Entry point leaves a machine-readable success record only after every test has passed.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fetch', action='store_true')
-    args = parser.parse_args()
-    BUILD.mkdir(parents=True, exist_ok=True)
-    (BUILD / 'results.json').unlink(missing_ok=True)
-    build(dependencies(args.fetch))
-    assert keccak256(b'') == 'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'
-    assert keccak256(b'abc') == '4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45'
-    type_checks()
-    bridge_checks()
-    names = ['nim-debug','nim-release']
-    # Independent process suites can run concurrently without sharing seed owners or allocators.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        records = dict(zip(names, pool.map(test, [BUILD / name for name in names])))
-    summary = {'status':'passed', 'platform':platform.platform(), 'suites':records,
-               'generated_signed_messages':generated_signatures(), 'negative_type_probes':3, 'patches':[],
-               'ed25519_policy':'BoringSSL accepts identity A/R with S=0; JAM exceptional-point policy remains open'}
-    (BUILD / 'results.json').write_text(json.dumps(summary, indent=2)+'\n')
-    print(json.dumps(summary, indent=2))
-
-
-# Importing the runner exposes helpers but never starts a build or performs network access.
-if __name__ == '__main__':
-    main()

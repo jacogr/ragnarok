@@ -96,8 +96,8 @@ accessors require their matching success/work/union alternative.
 
 ## Verification
 
-Run `python3 tests/test_c2_harness.py` and `python3 tests/test_c2.py`. Eight literal known answers
-protect independent Python construction/parsing. Checked Nim 2.2.12 ARC/Clang LTO compares
+Run `make check`. Eight literal known answers
+protect independent Python construction/parsing. The historical Nim 2.2.12 ARC/Clang LTO compared
 **26,090** deterministic requests: independent named encoder sources, copied fixed/owned fields,
 exact bytes/prefixes, union/standalone agreement, every work-result alternative, empty values,
 natural gas/count transitions, fixed E8 gas, maximum unsigned fields, every shard count through
@@ -116,15 +116,18 @@ independence, stricter retained limits, defaults, whole-descriptor/cross-blob/pr
 atomicity and work/union/result variant guards. Three nominal and one privacy compiler probe
 require intended rejection. White-box alias tests include only this project's own module, using
 no private compiler/runtime APIs. Linux CI runs the same checks and retains build commands, logs,
-compiler diagnostics and request digest/results under ignored `build/c2/`. Local verification is
+compiler diagnostics and request digest/results under ignored `build/tests/runtime/`. Local
+verification is
 macOS arm64; Linux x86-64 verification occurs after push. This closes the concrete C.2 framing gaps
 in the M1 audit, not state serialization/Merkle layout, PVM execution or accumulation semantics.
 
-## Nimony branch verification
+## Compiler-port evidence
 
-Reproduce the experimental checked ARC/Clang LTO port with
-`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`; the historical
-Nim 2 commands above are not a second supported source target. All 26,090 independent requests,
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
+
+Reproduce the checked ARC/Clang LTO coverage with
+`make runtime`. All 26,090 independent requests,
 eight oracle known answers and both native suites are retained. The cumulative runner adds 56
 isolated result/variant/constructor misuse checks and 41 privacy/nominal compilation rejections.
 
@@ -139,6 +142,7 @@ Retained source escape/replacement, copied source/payload/metadata independence 
 release extend native lifetime checks. After 100 warmups, 1,000 isolated cycles, including all six
 work-error alternatives, return live allocator occupancy to baseline. This measures that workload,
 not RSS or general leak freedom. Commands, source/request/output hashes, exact release counts and
-individual verdicts are retained in `build/nimony-trial/verification/results.json`. See
-[the trial](../docs/nimony-trial.md) for compiler/environment, cumulative totals and the next bounded
+individual verdicts are retained in `build/tests/runtime/results.json`. See
+[the compiler record](../docs/nimony-trial.md) for compiler/environment, cumulative totals and the
+next bounded
 work. Verification is local macOS ARM64; complete M1, Linux and M2/M3 migration remain unverified.

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 """Bounded same-process QUIC lifecycle soak; share fixtures/builds, never native protocol code."""
-from test_support import networking_peers
-import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,7 +8,7 @@ import re
 import socket
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures, thread_count, THREAD_BASELINES
+from test_quic import BUILD, thread_count, THREAD_BASELINES
 
 
 # Observe resident memory, OS threads and open descriptors without reading their contents.
@@ -150,45 +147,3 @@ def pairing(server_language, client_language, folder, rounds, warmup, *, binarie
             process.wait()
         for handle in handles.values():
             handle.close()
-
-
-# Keep sustained correctness distinct from the existing one-shot rejection matrix.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fetch', action='store_true')
-    parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--rounds', type=int, default=40)
-    parser.add_argument('--warmup', type=int, default=8)
-    args = parser.parse_args()
-    assert 16 <= args.rounds <= 1000 and 0 <= args.warmup <= args.rounds - 8, 'Invalid bounded soak extent'
-    BUILD.mkdir(parents=True, exist_ok=True)
-    # Reuse only explicitly requested binaries; default execution recompiles the current native sources.
-    if not args.skip_build:
-        build_peers(dependencies(args.fetch))
-    peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES)
-    # Independently verify the large fixture/map key rather than trusting duplicated native constants.
-    fixture = bytes(i % 251 for i in range(1024 * 1024))
-    assert hashlib.blake2b(fixture, digest_size=32).hexdigest() == '8a5a7a9dc3cf203ed374b0a1eea930601ad2acbfe2b4bc62cf83de4ee536528b'
-    folder = fixtures()
-    report = {'platform': platform.platform(), 'rounds': args.rounds, 'warmup': args.warmup,
-              'complete': False, 'limits': {'active_rss_bytes': 256 * 1024 * 1024, 'idle_rss_range_bytes': 16 * 1024 * 1024,
-                         'idle_descriptor_range': 2, 'idle_allocation_range_bytes': {name: 64 * 1024 for name in peers}, 'threads': dict(THREAD_BASELINES)}, 'pairings': []}
-    output = BUILD / 'soak/results.json'
-    output.parent.mkdir(exist_ok=True)
-    try:
-        # Sequential pairings avoid unrelated host load confounding resource observations.
-        for server, client in [(a, b) for a in peers for b in peers]:
-            report['pairings'].append(pairing(server, client, folder, args.rounds, args.warmup))
-            output.write_text(json.dumps(report, indent=2) + '\n')
-    except Exception as error:
-        report['failure'] = str(error)
-        output.write_text(json.dumps(report, indent=2) + '\n')
-        raise
-    report['complete'] = True
-    output.write_text(json.dumps(report, indent=2) + '\n')
-    print(f'PASS QUIC soak: {len(peers)**2 * args.rounds} same-process sessions; five healthy and three adversarial streams/session', flush=True)
-
-
-# Importing helpers performs no build, certificate generation or network operation.
-if __name__ == '__main__':
-    main()

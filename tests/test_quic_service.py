@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """Persistent-engine multi-peer regression, with bounded cleanup and ownership checks."""
-from test_support import networking_peers
-import argparse
 from functools import partial
 import json
 import os
-import platform
 import re
 import socket
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures, THREAD_BASELINES
-from test_quic_soak import resources, check_growth, IDLE_ALLOCATION_LIMITS
+from test_quic import BUILD, THREAD_BASELINES
+from test_quic_soak import resources, check_growth
 
 
 # Check after engine destruction: cached transport allocations must no longer inflate the live baseline.
@@ -149,43 +146,3 @@ def service(language, folder, rounds, warmup, *, binaries=None, directory=None):
             process.wait()
         for output in [handle, *handles]:
             output.close()
-
-
-# Keep build provenance and finite resource limits explicit; this test produces no language speed ranking.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fetch', action='store_true')
-    parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--rounds', type=int, default=16)
-    parser.add_argument('--warmup', type=int, default=4)
-    args = parser.parse_args()
-    assert 12 <= args.rounds <= 32 and 0 <= args.warmup <= args.rounds - 8, 'Invalid bounded service extent'
-    BUILD.mkdir(parents=True, exist_ok=True)
-    if not args.skip_build:
-        build_peers(dependencies(args.fetch))
-    peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES)
-    folder = fixtures()
-    output = BUILD / 'service/results.json'
-    output.parent.mkdir(exist_ok=True)
-    report = {'platform': platform.platform(), 'rounds': args.rounds, 'warmup': args.warmup,
-              'complete': False, 'persistent_client_engines': False,
-              'limits': {'active_rss_bytes': 256 * 1024 * 1024, 'threads': dict(THREAD_BASELINES),
-                         'idle_rss_range_bytes': 16 * 1024 * 1024, 'idle_descriptor_range': 2,
-                         'idle_allocation_range_bytes': {name: IDLE_ALLOCATION_LIMITS[name] for name in peers}}, 'servers': []}
-    try:
-        # Every retained listener receives the same balanced mix of enabled native clients.
-        for language in peers:
-            report['servers'].append(service(language, folder, args.rounds, args.warmup))
-            output.write_text(json.dumps(report, indent=2) + '\n')
-    except Exception as error:
-        report['failure'] = str(error)
-        output.write_text(json.dumps(report, indent=2) + '\n')
-        raise
-    report['complete'] = True
-    output.write_text(json.dumps(report, indent=2) + '\n')
-    print(f'PASS persistent QUIC: {len(peers) * args.rounds} multi-peer waves; {len(peers)} engine lifetimes', flush=True)
-
-
-# Importing this harness neither builds nor launches network peers.
-if __name__ == '__main__':
-    main()

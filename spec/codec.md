@@ -58,5 +58,5 @@ results cannot expose a default error reason. Default failure remains `truncated
 The source module alone constructs successful results. Invalid public payload access is a
 programmer contract error, rejected statically when proven or by a runtime guard otherwise.
 Malformed wire data still returns its typed reason. No wire, canonicality, byte-limit or ownership
-rule changes. The Nimony trial runner verifies failure/default accesses, success-side error
+rule changes. The cumulative runtime verifier verifies failure/default accesses, success-side error
 accesses and attempts to bypass private storage, alongside the existing boundary and fuzz checks.

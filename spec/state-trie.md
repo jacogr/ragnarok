@@ -62,12 +62,10 @@ and survive mutation/destruction of the source values after return.
 
 ## Evidence and reproduction
 
-The historical Nim 2 baseline ran the following after `python3 tests/test_crypto.py`
-(use the trial runner below on the experimental Nimony branch):
+Current reproduction uses the pinned toolchain and prepares native dependencies automatically:
 
 ```sh
-python3 tests/test_state_trie_harness.py
-python3 tests/test_state_trie.py
+make check
 ```
 
 The independent Python reference partitions unsorted lists directly and hashes with standard
@@ -92,7 +90,8 @@ supply the specification evidence; the older state-layout suite retains its five
 
 Historical baseline builds used Nim 2.2.12, ARC, checked Clang LTO and all
 assertion/bounds/range/field/overflow guards.
-Ignored `build/state-trie/` retains build commands, logs, request SHA-256 and results. Linux CI runs
+Ignored `build/tests/runtime/` retains build commands, logs, request SHA-256 and results. Linux CI
+runs
 the suite after native crypto construction and uploads diagnostics. Local results are macOS arm64;
 Linux verification remains CI's responsibility after push. No timing or production scale is claimed.
 
@@ -103,7 +102,7 @@ this same root contract with checked ARC/Clang LTO on macOS ARM64. `StateTrieRes
 status/payload; read-only error access does not authorize a value, and every value getter requires
 success. This covers both completed public commitments and private recursive child identities.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`. The runner
+Run `make runtime`. The runner
 preserves all 2,308 independent observations, six literal oracle checks and eleven explicitly
 projected historical maps. It checks root/count reads on default/resource/duplicate/backend
 failures, private recursive failed/default hashes and both original nominal-domain probes.

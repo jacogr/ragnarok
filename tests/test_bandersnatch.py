@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """Build the pinned GP 0.8.0 release-reference Bandersnatch Rust ABI and check Nim."""
-import argparse
-import concurrent.futures
 import ctypes
 import hashlib
 import json
@@ -92,22 +90,10 @@ def build_native(fetch):
         assert 'secret-split' in features
         (BUILD / 'cargo-features.log').write_text(features)
         run(['cargo','fmt','--manifest-path',manifest,'--','--check'],log)
-        run(['cargo','test','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
+        # Run our three adapter regressions in the production profile; dependencies share release artifacts.
+        run(['cargo','test','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
         run(['cargo','build','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
     return library
-
-
-# Historical driver entry point reuses the maintained native build; the Nimony runner supplies its own checked adapter builds.
-def build(fetch):
-    assert PINS['nim'] in subprocess.check_output(['nim','--version'],text=True)
-    library = build_native(fetch)
-    with (BUILD/'build.log').open('a') as log:
-        # Do not disable union/variant checks in either optimized build.
-        for mode in ('debug','release'):
-            run(['nim','c','--mm:arc','--cc:clang','--skipParentCfg','--skipUserCfg',
-                 *(['-d:release'] if mode=='release' else []),f'--passL:{library}',f'--passL:-Wl,-rpath,{library.parent}',
-                 f'--nimcache:{BUILD / ("nim-cache-"+mode)}',f'--out:{BUILD / ("nim-"+mode)}',
-                 ROOT / 'tests/native/bandersnatch_driver.nim'],log)
 
 
 # Query one trusted fixture process with bounded public arguments; no secret material is logged by the runner.
@@ -249,41 +235,3 @@ def bridge_checks():
         # Release the native SRS owner even if an ABI assertion discovers a regression.
         lib.bs_setup_free(owner)
     return {'ordinary_wrong_widths':99,'ring_wrong_widths':785,'mutated_ring_proofs':64}
-
-
-# Require positive imports before testing important nominal-role and private-owner compilation failures.
-def types():
-    probes = ['var a: BsPublicKey; let b: BsOutput = a',
-              'var a: BsKey; let b: BsSetup = a', 'var a: BsKey; discard a.state']
-    positive = BUILD/'positive.nim'
-    positive.write_text('import "../../src/bandersnatch/bandersnatch"\nvar a:BsPublicKey\ndiscard a\n')
-    subprocess.run(['nim','check','--mm:arc','--skipParentCfg','--skipUserCfg',str(positive)],check=True,capture_output=True)
-    # Reject domain swaps and opaque-state access only after a positive import establishes the path.
-    with (BUILD/'type-checks.log').open('wb') as log:
-        for index, program in enumerate(probes):
-            source = BUILD/f'negative_{index}.nim'
-            source.write_text('import "../../src/bandersnatch/bandersnatch"\n'+program+'\n')
-            result = subprocess.run(['nim','check','--mm:arc','--skipParentCfg','--skipUserCfg',str(source)],capture_output=True)
-            log.write(result.stdout+result.stderr)
-            assert result.returncode != 0 and b'invalid module name' not in result.stderr
-
-
-# Produce a success summary only after source pins, Rust tests, ABI guards and all native suites pass.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fetch', action='store_true')
-    args = parser.parse_args()
-    BUILD.mkdir(parents=True,exist_ok=True);(BUILD/'results.json').unlink(missing_ok=True)
-    sources(args.fetch);official_sources(args.fetch);build(args.fetch);types()
-    names=['nim-debug','nim-release']
-    # Suites have independent processes/owners, so parallel fixture checks do not race destruction.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        records=dict(zip(names,pool.map(suite,[BUILD/name for name in names])))
-    summary={'reference_version':'0.2.2','draft_text_parity':PINS['parity_gate']['status'],'status':'passed','platform':platform.platform(),'suite':PINS['suite'],'suites':records,
-             'generated_proofs':generated_proofs(BUILD/'nim-release'),'abi_checks':bridge_checks(),'negative_type_probes':3,'source_patches':[]}
-    (BUILD/'results.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary,indent=2))
-
-
-# Importing helpers never performs source downloads or native builds.
-if __name__=='__main__':
-    main()

@@ -289,14 +289,14 @@ published codec basenames at the pin, not a claim that the corpus exhausts Appen
 
 | Published basename(s) | Verification and outcome |
 | --- | --- |
-| `work_result_0`, `work_result_1`, `preimages_extrinsic` | `tests/test_codec.py`; original bytes plus independent field/boundary tests. |
-| `work_report` | `tests/test_work_report.py`; exact JSON/wire observation and documented tiny core policy. |
-| `assurances_extrinsic` | `tests/test_assurances.py`; original profile bitfield framing/order. |
-| `tickets_extrinsic`, `guarantees_extrinsic` | `tests/test_tickets.py`, `tests/test_guarantees.py`; original bytes and explicit tiny guarantee core-bound rejection, plus derived valid source. |
-| `disputes_extrinsic` | `tests/test_disputes.py`; both raw samples reject descending verdict order; sorted authored counterparts pass. |
-| `refine_context`, `work_item`, `work_package` | `tests/test_work_package.py`; exact named-field reconstruction and existing package policies. |
-| `header_0`, `header_1` | `tests/test_header.py`; all four exact headers and signing prefixes pass. |
-| `extrinsic`, `block` | `tests/test_block.py`; all originals reconstruct exactly, tiny rejects guarantee core 3, full rejects descending disputes; authored counterparts pass structural tests. |
+| `work_result_0`, `work_result_1`, `preimages_extrinsic` | `tests/composite_checks.py`; original bytes plus independent field/boundary tests. |
+| `work_report` | `tests/report_oracle.py`; exact JSON/wire observation and documented tiny core policy. |
+| `assurances_extrinsic` | `tests/assurances_oracle.py`; original profile bitfield framing/order. |
+| `tickets_extrinsic`, `guarantees_extrinsic` | `tests/tickets_oracle.py`, `tests/guarantees_oracle.py`; original bytes and explicit tiny guarantee core-bound rejection, plus derived valid source. |
+| `disputes_extrinsic` | `tests/disputes_oracle.py`; both raw samples reject descending verdict order; sorted authored counterparts pass. |
+| `refine_context`, `work_item`, `work_package` | `tests/package_oracle.py`; exact named-field reconstruction and existing package policies. |
+| `header_0`, `header_1` | `tests/header_oracle.py`; all four exact headers and signing prefixes pass. |
+| `extrinsic`, `block` | `tests/block_oracle.py`; all originals reconstruct exactly, tiny rejects guarantee core 3, full rejects descending disputes; authored counterparts pass structural tests. |
 
 Composite counterparts retain opaque header hashes/proofs/signatures unchanged, so are not
 chain-valid examples. See [composition](../spec/block.md), [guarantees](../spec/guarantees.md) and

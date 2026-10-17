@@ -1,0 +1,2 @@
+AUTHORIZATION_ARC_RELEASE cycles=1000 unchanged
+Nimony authorization: escaped/replaced pool/queue owners, copied hashes, arithmetic and scoped ARC release passed

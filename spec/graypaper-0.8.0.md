@@ -138,30 +138,13 @@ accumulation execution or state-serialization parity.
 
 ## Reproduction and observed validation
 
-Use the pinned Nim 2.2.12/ARC, Clang and Rust 1.99.0 toolchains. Local verification runs on macOS
-arm64; Linux x86-64 runs the same source/fixture checks in `.github/workflows/linux.yml` after push.
+Use the [pinned project toolchain](../docs/development.md), ARC, checked Clang LTO and Rust 1.99.0.
+Local verification runs on macOS ARM64; Linux x86-64 runs the same source/fixture checks in
+`.github/workflows/linux.yml` after push.
 Checked optimized report builds retain ARC/Clang LTO and all existing runtime guards.
 
 ```sh
-python3 tests/test_spec.py
-python3 tools/format.py --check
-python3 tests/test_codec.py
-python3 tests/test_crypto.py
-python3 tests/test_work_report.py
-python3 tests/test_report_types.py
-python3 tests/test_assurances.py
-python3 tests/test_assurances_types.py
-python3 tests/test_assurance_crypto.py
-python3 tests/test_assurance_crypto_types.py
-python3 tests/test_bandersnatch.py
-python3 -m unittest discover -s tests -p '*harness.py'
-python3 tests/test_quic.py
-python3 tests/test_quic_soak.py --skip-build
-python3 tests/test_quic_service.py --skip-build
-python3 tests/test_quic_mesh.py --skip-build
-python3 tests/test_quic_resilience.py --skip-build
-python3 tests/test_integration.py --reuse-native
-python3 tests/test_quic_offload.py --reuse-native
+make check
 ```
 
 Observed migrated workloads: 18,430 report requests with 63 independent crypto composition checks;
