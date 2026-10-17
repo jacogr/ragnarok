@@ -18,7 +18,7 @@ def main():
     commands=[]
     # Selftests add guarded/default/privacy contracts; the adapter supplies independent byte observations.
     for source,name in (('test_state_history','selftest'),('state_history_driver','driver')):
-        command=nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache',[library]);commands.append(command)
+        command=nim_command(ROOT/('tests/unit/state' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache',[library]);commands.append(command)
         with (folder/f'{name}-build.log').open('w') as log:
             subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True)

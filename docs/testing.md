@@ -1,10 +1,10 @@
 # Native test migration
 
 Branch: `nim-tests`, based on merged Nimony migration commit `8db659c`.
-Nine bounded groups are migrated: primitives/containers, composites/digests/snapshots,
+Ten bounded groups are migrated: primitives/containers, composites/digests/snapshots,
 extrinsics, work-package/header/block codecs, bitstrings/collections, and C.2 records with
 private-wire checks, state key/layout and trie tests, Safrole/authorization state suites, and
-consensus/dispute state suites with private companions.
+consensus/dispute state suites with private companions, plus history state.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
 ## What the investigation found
@@ -48,17 +48,17 @@ explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and
 python3 tools/test.py --suite unit
 ```
 
-That command runs the pure codec directory and ten separately linked state tests. It now
+That command runs the pure codec directory and twelve separately linked state tests. It now
 prepares the existing pristine pinned native crypto bridge and test-only observer (initialized
 crypto submodules, CMake and Clang are required), without network or Bandersnatch builds. Python
 supplies paths, native preparation and checked flags; Hastur owns application test verdicts.
 After sourcing `build/toolchain/env.sh`, Hastur can also be invoked directly using its documented
 CLI. Retain the flags and explicit library profile printed by the supported command.
 
-The cumulative `python3 tools/test.py` path delegates all thirty-one migrated suite identities to Hastur,
+The cumulative `python3 tools/test.py` path delegates all thirty-three migrated suite identities to Hastur,
 records its command/log/verdict and hashes each source and `.output` file. There is no second
 Python compile/run path for those suites in the supported cumulative runner. The remaining
-28 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
+26 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
 profiles and negative checks. CI already calls that cumulative path, so the native runner migration
 needs no duplicate workflow/job or second execution of migrated suites.
 
@@ -219,6 +219,22 @@ their production crypto profile and existing checked linking/cache isolation. No
 feature, fixture, native dependency or production behavior is introduced. Independent oracles,
 published derived inputs and strict negative compiler/runtime probes retain their roles.
 
+## Tenth converted group: history state
+
+The consensus/dispute increment is committed as `316977e`. Public history state and its private
+ownership companion move with `git mv` into `tests/unit/state/`. The public body changes only its
+relative import path. The private body additionally sends the same 1,000-cycle allocation
+observations through the existing evidence helper and emits a portable completion marker.
+Every original assertion is preserved, including malformed final peak rejection before owner
+allocation, dictionary associations, absent versus present-zero peaks, copied metadata, retained
+and replaced parents, index errors and extent/count arithmetic.
+
+Both cases retain their production crypto profile and existing checked linking/cache isolation.
+The cumulative `history_arc_release` field remains, bringing native ARC observations to sixteen
+across thirty-three suites. Independent byte/hash oracles, published derived state inputs and
+strict privacy/nominal/runtime-negative probes retain their roles. No new launcher feature,
+fixture, dependency or production behavior is introduced.
+
 ## Python responsibilities and migration order
 
 | Test responsibility | Direction |
@@ -236,10 +252,11 @@ without comparing that file. See the pinned runner above and
 `.exitcode` alone: that would weaken the current nonzero-exit checks. Compiler-diagnostic goldens
 also need a portability review before replacing the existing specific rejection checks.
 
-Next bounded group: history state and its private ownership companion. Availability follows
-with its explicit report fixture requirement, then the remaining state families and crypto/network
-ownership suites. Named `suite`/`test` conversion can be revisited when the selected compiler
-supplies a supported implementation; no compiler upgrade or patch is part of this branch.
+Next bounded group: availability state and its private ownership companion, preserving their
+explicit independently authored report fixture requirement. Remaining state families follow,
+then crypto/network ownership suites. Named `suite`/`test` conversion can be revisited when the
+selected compiler supplies a supported implementation; no compiler upgrade or patch is part of
+this branch.
 
 ## Verification of the first increment
 
@@ -441,5 +458,26 @@ Same pinned macOS ARM64 checked-LTO profile:
   individual suite records are under `build/nim-tests/ninth/`.
 
 Current migration totals: **31/59 ordinary file suites migrated, 28 remaining**. Earlier counts
+remain historical. These are focused local checks, not a fresh full crypto/QUIC lifecycle run or
+Linux CI result. Implemented M1 scope and protocol behavior remain unchanged.
+
+
+## Verification of the tenth increment
+
+Same pinned macOS ARM64 checked-LTO profile:
+
+- The supported unit command passes **21 pure codec suites and twelve native-linked state suites**,
+  retaining sixteen fresh ARC observations. All **33 individual cumulative invocations** pass;
+  all 59 source paths resolve. Comparing both moved bodies with their prior versions confirms
+  that only import/include paths and the private ARC reporting block changed.
+- Injecting +1 into private history's after-release observation fails its original native assertion
+  and leaves no fresh success evidence: `build/nim-tests/tenth/native-faults.json`.
+- A freshly rebuilt production-linked history adapter matches **1,985 independent requests**.
+  Commands, request hash and verdict: `build/nim-tests/tenth/corpora.json`.
+- All **238 Python harness tests** and **23 setup/CI safeguards** pass. The parked-policy and
+  draft-text provenance skips are unchanged. All **864 Nim files** pass formatting. Logs and
+  individual suite records are under `build/nim-tests/tenth/`.
+
+Current migration totals: **33/59 ordinary file suites migrated, 26 remaining**. Earlier counts
 remain historical. These are focused local checks, not a fresh full crypto/QUIC lifecycle run or
 Linux CI result. Implemented M1 scope and protocol behavior remain unchanged.

@@ -945,13 +945,6 @@ def main():
             if release is not None:
                 # Public live occupancy covers this warmed fixture workload, not RSS or general leak freedom.
                 report['availability_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_history_private' and row['passed']:
-            # Retained histories, associated dictionary arrays and selected optional values retire at final ARC release.
-            release = re.search(r'HISTORY_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public allocator occupancy measures this warmed workload, not RSS or general leak freedom.
-                report['history_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_composition_private' and row['passed']:
             # Replaced snapshots, copied entries and late native refusals release all final scoped references.
             release = re.search(r'COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

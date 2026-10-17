@@ -1,6 +1,7 @@
 ## Project-only lifetime, optional-value and arithmetic checks using public allocator observations.
 import std/[assertions, syncio]
-include ../../src/codec/state_history
+import ../../support/arc_evidence
+include ../../../src/codec/state_history
 
 ## Explicit tiny-profile resource ceilings retain all history, dictionary and optional framing.
 proc policy(): HistoryConfig =
@@ -108,5 +109,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "HISTORY_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_history_private", 1000, beforeRelease, afterRelease)
+echo "HISTORY_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony chapter 3: retained/replaced history, associated dictionaries, optional copies and scoped ARC release passed"
