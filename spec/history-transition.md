@@ -110,4 +110,5 @@ are generated under `build/tests/`. Networking behavior and the M1 checkpoints i
 [state-clarifications.md](state-clarifications.md) remain unchanged.
 
 The signing-domain follow-up is complete in this PR; see [the audit](signing-domains.md).
-Next suggested bounded state-execution slice: entropy/timeslot progression with pinned evidence.
+The [entropy/time slice](entropy-transition.md) now implements that subsequent bounded progression;
+its contract identifies the next planned Safrole work.
