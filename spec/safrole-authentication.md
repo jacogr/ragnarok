@@ -58,7 +58,9 @@ unchanged. Two result privacy checks and two runtime extraction probes protect a
 A failure-only result factory lets the context adapter preserve reasons without duplicating successful
 payloads. Its success-forgery precondition is checked both by a compiler rejection and an isolated
 runtime probe (the pinned diagnostic is `not reason == None`). Full-profile authored credentials
-also cover E600 phase 599 and active index 1022 in a 1,023-record population.
+also cover E600 phase 599 and active index 1022 in a 1,023-record population. Non-author keys
+and non-selected schedule entries differ from the valid selected ones, so wrong indexing cannot
+pass through repeated-key fixtures.
 
 Run `make check-modules check-unit check-failures check-guards check-python`; reports and fixture
 hashes remain under ignored `build/tests/`. Cryptographic success is not a backend security audit.

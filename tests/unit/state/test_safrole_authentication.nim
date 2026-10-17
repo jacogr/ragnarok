@@ -71,6 +71,11 @@ proc authored(ticketed: bool, previous, target: StateTime, parentEntropy: StateE
   scalar[0] = 1
   let key = importScalar(scalar).value
   let public = publicKey(key).value
+  var alternateScalar = default(array[32, byte])
+  alternateScalar[0] = 3
+  let alternateKey = importScalar(alternateScalar).value
+  let alternatePublic = publicKey(alternateKey).value
+  close(alternateKey) # Every non-author/other-slot key is a different valid curve point.
   let epoch = int(uint64(config.state.epochSlots))
   let crossed = uint64(uint32(target)) div uint64(epoch) > uint64(uint32(previous)) div uint64(epoch)
   let seed = array[32, byte](parentEntropy[if crossed: 2 else: 3])
@@ -105,20 +110,26 @@ proc authored(ticketed: bool, previous, target: StateTime, parentEntropy: StateE
   wire.setLen(size)
   var records = rotationRecords(population, 1)
   for i in 0..<records.len:
-    records[i].bandersnatch = StateBsKey(array[32, byte](
-        public)) # Actual posterior roster contains the signing key at the indexed author.
+    records[i].bandersnatch = StateBsKey(array[32, byte](if i ==
+        author: public else: alternatePublic)) # Only the indexed actual author has the signing key.
   let active = validatorEntry(ValidatorChapter.Active, records, config.state.validators).value.value
   var state = SafroleState(pending: records, root: default(StateRingRoot), accumulator: @[],
       schedule: keySchedule(newSeq[StateBsKey](epoch)))
+  let phase = int(uint64(uint32(target)) mod uint64(epoch))
   if ticketed:
     var selected = newSeq[WinningTicket](epoch)
-    for i in 0..<epoch: selected[i] = WinningTicket(id: WinningTicketId(array[32, byte](output)),
-        attempt: TicketAttempt(200)) # Full E1 values remain legal schedule records.
+    for i in 0..<epoch:
+      selected[i] = WinningTicket(id: WinningTicketId(default(array[32, byte])),
+          attempt: TicketAttempt(
+          0)) # Non-selected slots cannot accidentally satisfy the proof's attempt/output binding.
+    selected[phase] = WinningTicket(id: WinningTicketId(array[32, byte](output)),
+        attempt: TicketAttempt(200))
     state.schedule = ticketSchedule(selected)
   else:
     var selected = newSeq[StateBsKey](epoch)
-    for i in 0..<epoch: selected[i] = StateBsKey(array[32, byte](
-        public)) # Fallback selection requires exact key equality.
+    for i in 0..<epoch:
+      selected[i] = StateBsKey(array[32, byte](if i ==
+          phase: public else: alternatePublic)) # Wrong cyclic selection must fail key equality.
     state.schedule = keySchedule(selected)
   if wrongEntropyKey: close(entropyKey) # Release the independent authored secret after all signatures are copied.
   close(key)
