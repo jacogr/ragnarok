@@ -71,6 +71,9 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertEqual(library.parent, folder/'target/release')
             self.assertEqual([call.args[0][1] for call in run.call_args_list],
                              ['fmt', 'test', 'build']*2)
+            for call in (run.call_args_list[1], run.call_args_list[4]):
+                # Adapter tests must share the shipped release profile instead of building debug dependencies.
+                self.assertIn('--release', call.args[0])
 
     # The same immutable nightly revision must select the correct platform archive and reject unknown hosts.
     def test_local_and_ci_host_selection(self):
