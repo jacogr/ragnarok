@@ -36,7 +36,7 @@ proc published(text: string) =
     owners[i] = decoded.value.value
   for i in 0..<16:
     let fields = lines[count+1+i].splitWhitespace()
-    assert fields.len == 13
+    assert fields.len == 15
     let epoch = EpochSlots(number(fields[1]))
     assert number(fields[2]) <= uint64(high(uint32)) and number(fields[3]) <= uint64(high(uint32))
     let prior = StateTime(uint32(number(fields[2])))

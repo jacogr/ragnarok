@@ -1,4 +1,4 @@
-# Validator roster rotation: first commit
+# Validator roster and ring-root rotation
 
 Protocol target: Gray Paper **0.8.0**, revision
 `07f041dabd073f9018b418e9ee72e79dd2185401`, `text/safrole.tex` Key Rotation
@@ -46,22 +46,55 @@ success payload and discriminator are private and extraction requires the suppor
 Resource ceilings apply per roster plus offender count; no aggregate whole-state budget is claimed.
 Allocation failure remains fail-stop.
 
-## Deliberate first-commit boundary
+## Atomic working-state publication
 
-This is a **roster plan**, not a completed Safrole transition. No state store is modified, no C(7)
-write is proposed, and no new epoch ring root is yet computed. The existing standalone roster
-codec's staging tag is used only to capture a structural pending-roster snapshot. It is not a
-replacement C(4) serialization or an instruction to overwrite staging.
+`src/state/validator_state.nim` adds `rotateValidatorState` over the complete-map working store.
+It reads exact C(4), C(7), C(8), C(9) and C(11) values. Caller-selected per-chapter byte ceilings
+are checked before copying, followed by exact codec consumption and population validation.
+Its separate guarded result publishes only a completed immutable snapshot; default/failed
+alternatives expose no root, snapshot or partial progress.
 
-Next commits in this PR must derive the pending Bandersnatch ring root under the maintained
-primitive API, integrate the complete C(4) fields without silently changing schedules/accumulators,
-and publish coordinated C(4)/C(8)/C(9) changes atomically. Ring padding/invalid-point policy,
-backend refusal, budgets and historical snapshot lifetimes require focused evidence there.
-Until that work is complete, callers must not publish this plan as a complete rotation.
+On crossing, it computes the filtered pending ring through the maintained Bandersnatch adapter,
+then encodes and atomically publishes **C(4), C(8) and C(9)** in one store batch. C(4)'s existing
+sealer schedule and ticket accumulator are preserved exactly, for both schedule alternatives.
+Staging C(7), parent time C(11) and unrelated entries are untouched. Inside an epoch the fully
+validated call returns the prior snapshot without setup, ring commitment, hashing or writes.
 
-Tickets, fallback schedules, epoch/winner markers, seal/VRF authentication, complete disputes and
-full Safrole/block execution remain outside this planner. Those stages must supply their own
-validated inputs and shared epoch-ordering contract. Wall-clock admission is not implemented here.
+The ring setup uses the chain profile's **3*cores capacity**, not the current roster length.
+This distinction is observable: full `enact-epoch-change-with-set-resize-1.json` moves from 1023
+pending validators to six, but its published commitment uses the full domain. A six-capacity
+setup produces a different root; the full-profile setup reproduces the exact supplied root.
+There is one policy, with no alternate-root fallback. The current trusted SRS limits the adapter
+to 2..341 cores (maximum 1023 members). This is a bounded implementation policy, not an assertion
+that Gray Paper mathematical populations have a universal 1023 ceiling.
+
+Each crossing creates a scoped immutable native setup from the pinned public ceremony SRS.
+It is released on every success/refusal return; no setup cache or background owner is introduced.
+This prioritizes a simple correct lifecycle over optimizing a once-per-epoch operation.
+The existing `commitRing` normalizes only invalid encodings/subgroup failures to the specified
+padding point, preserving member order. It does not rewrite stored roster keys or re-filter
+old pending/active rosters. Valid identity-member refusal and the backend's remaining audit
+limitations are inherited from [the primitive contract](bandersnatch.md), not silently repaired.
+Any setup/commit refusal becomes `BackendFailure`, with no proposed state publication.
+
+A failed posterior C(4) encoding, aggregate store budget or candidate-root hash leaves all
+three chapters and the complete prior root unchanged. Retained input/output snapshots outlive
+callee-local owners and later store-handle replacement. Allocation failure remains fail-stop.
+Limits bound the individual chapters, offender traversal and aggregate store writes/map; no
+claim of arbitrary-memory allocation recovery or whole-block atomic execution is made.
+
+**Stage ordering:** run this substep exactly once after obtaining posterior disputes offenders
+and before `advanceEntropyTimeState`, while C(11) still contains the parent slot. This API does
+not advance time or mark a block applied; repeating it before time advancement would rotate
+again. Future block orchestration must stage these operations on a private working store and
+publish a canonical block only after all stages succeed. Do not call this against partial light
+state or treat its substep snapshot as an executed full-block result.
+
+Tickets, fallback schedule generation, epoch/winner markers, seal/VRF authentication, complete
+disputes and full Safrole/block execution remain outside this roster/root increment. Those stages
+must supply validated inputs and use the shared epoch-ordering contract. Wall-clock admission is
+not implemented here. The next bounded increment can implement Safrole ticket admission before
+schedule/marker generation, with independently published proof and rejection cases.
 
 ## Evidence and reproduction
 
@@ -88,6 +121,17 @@ workload-specific ARC evidence, not general leak freedom or an allocation-failur
 
 Two compiler rejections protect result payload/discriminator privacy. Two isolated runtime probes
 require the intended result precondition plus `AssertionDefect` for default/actual failed plans.
+The additional `validator_state` suite compares all sixteen supplied roster/root projections,
+including both resizing sources and tiny/full offender padding, and compares C(4) bytes while
+retaining prior schedule/accumulator fields. That projected C(4) is deliberately not the complete
+published STF post-state. An authored ticket schedule/nonempty accumulator verifies the alternate
+branch. Setup/commit refusals, first/late candidate-root hash refusals, every missing/truncated/
+suffixed required chapter, exact/one-byte-below aggregate write budgets, recovery and retained
+snapshot lifetimes reject partial updates. Live native setup counts return to zero after calls.
+The existing 1,000-cycle ARC evidence remains for the roster planner, not repeated SRS creation.
+Two additional compiler privacy probes and two isolated runtime extraction probes protect the
+publication result. No Python production transition algorithm or duplicate reference is added.
+
 Run `make check-modules check-python check-unit check-guards`; generated provenance, source hashes,
 logs and fresh ARC evidence live under ignored `build/tests/`. Networking behavior, all existing
 corpora and [M1 specification checkpoints](state-clarifications.md) are unchanged.

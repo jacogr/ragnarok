@@ -3,6 +3,7 @@ import hashlib
 import json
 import subprocess
 from test_codec import reference_encode
+from state_consensus_oracle import wire as safrole_wire
 from test_support import ROOT
 
 
@@ -15,6 +16,18 @@ def roster(values):
         assert len(raw) == 336
         records.append(raw)
     return (reference_encode(len(values))+b''.join(records)).hex()
+
+
+# Transport supplied C(4) fields with the existing independent codec equation, without executing Safrole.
+def safrole(state):
+    pending = bytes.fromhex(roster(state['gamma_k']))[len(reference_encode(len(state['gamma_k']))):]
+    schedule = state['gamma_s']
+    kind = 0 if 'tickets' in schedule else 1
+    # Fixed ticket tuples preserve source ordering and the exact one-byte attempt.
+    def tickets(values):
+        return b''.join(bytes.fromhex(v['id'][2:])+bytes([v['attempt']]) for v in values)
+    data = tickets(schedule['tickets']) if kind == 0 else b''.join(bytes.fromhex(k[2:]) for k in schedule['keys'])
+    return safrole_wire((pending,bytes.fromhex(state['gamma_z'][2:]),kind,data,tickets(state['gamma_a']))).hex()
 
 
 # Exact blob pins precede fixture transport; pooled byte strings reduce repeated fixture storage only.
@@ -45,7 +58,8 @@ def prepare(folder):
                 references.append(str(indices[wire]))
             offenders = b''.join(bytes.fromhex(key[2:]) for key in before['post_offenders'])
             cases.append(' '.join([str(2 if profile == 'tiny' else 341),str(epoch),str(before['tau']),
-                str(case['input']['slot']),str(int(accepted)),offenders.hex() or '-']+references))
+                str(case['input']['slot']),str(int(accepted)),offenders.hex() or '-']+references+
+                [safrole(before),safrole({**before,'gamma_k':after['gamma_k'],'gamma_z':after['gamma_z']})]))
             sources.append(dict(path=path,sha256=digest,accepted=accepted))
     folder.mkdir(parents=True, exist_ok=True)
     path = folder/'validator-rotation.txt'
