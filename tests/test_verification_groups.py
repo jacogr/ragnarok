@@ -32,7 +32,7 @@ class VerificationGroups(unittest.TestCase):
                 missing[name] = dict(passed=False)
                 self.assertFalse(test_e2e.passed(missing))
         self.assertFalse(test_e2e.passed({**report, 'suites': []}))
-        self.assertEqual(len(UNIT_SUITES)+len(test_e2e.SELFTESTS), 73)
+        self.assertEqual(len(UNIT_SUITES)+len(test_e2e.SELFTESTS), 75)
         self.assertFalse(set(UNIT_SUITES) & set(test_e2e.SELFTESTS))
 
     # Unit and E2E compilation must retain identical checked platform profiles in independent workspaces.
@@ -68,7 +68,7 @@ class VerificationGroups(unittest.TestCase):
 
     # The compiler group must account for every historical check, including schemas and owner lowering.
     def test_guards_complete_inventory(self):
-        self.assertEqual(sum(test_guards.COUNTS.values()), 687)
+        self.assertEqual(sum(test_guards.COUNTS.values()), 688)
         report = {key: [dict(name=str(i), passed=True) for i in range(count)]
                   for key, count in test_guards.COUNTS.items()}
         self.assertTrue(test_guards.passed(report))

@@ -37,6 +37,11 @@ an OS thread. Optional RingVRF verification uses two workers and four total owne
 `peer.nim` is the bounded CLI. The standalone `session.nim` module privately owns peer/stream
 state, callbacks and retained mesh coordination; only lifecycle entry points are exported.
 
+An optional `src/telemetry/` exporter sends JIP-3 registration and status frames from the peer
+loop. It owns one nonblocking TCP socket and a fixed send buffer, with no additional threads.
+An explicit JIP-4 file supplies network metadata; it does not initialize chain execution.
+See [telemetry scope and limits](../spec/telemetry.md).
+
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.
 

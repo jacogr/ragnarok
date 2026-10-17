@@ -19,7 +19,7 @@ BUILD = ROOT/'build/tests/guards'
 checks = NativeChecks(BUILD)
 command, build = checks.command, checks.build
 COUNTS = dict(privacy=len(PRIVATE), nominal=len(NOMINAL), contracts=len(CONTRACTS),
-              schemas=5, ownership_compile=2)
+              schemas=5, ownership_compile=3)
 
 
 # Missing, duplicated or failed checks cannot be replaced by a successful sibling group.
@@ -69,6 +69,11 @@ def run(compiler, bs_library, report):
     passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <UdpEndpoint>" in compiled['output']
     report['ownership_compile'].append(dict(name='quic_io_endpoint_copy', passed=passed, check=compiled))
     announce('unique UDP endpoint copy rejection', passed)
+    # Telemetry's composite socket/queue owner must independently reject copies during lowering.
+    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/telemetry_client_copy.nim', 'telemetry-client-copy')
+    rejected = compiled['exit_code'] != 0 and "'=dup' is not available for type <Client>" in compiled['output']
+    report['ownership_compile'].append(dict(name='telemetry_client_copy', passed=rejected, check=compiled))
+    announce('unique telemetry client copy rejection', rejected)
     # RawThread membership alone did not reject pool copies; the exported pool-level contract must reject during lowering.
     compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/offload_pool_copy.nim', 'offload-pool-copy',
                         native_libraries=(bs_library,), defines=('offload',))

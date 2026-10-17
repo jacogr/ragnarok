@@ -289,3 +289,6 @@ proc pollPair*(incoming, outgoing: var Transport): bool =
 # Replay readiness retirement without TLS/native callbacks; the isolated suite adds IPv6/shared cases.
 proc ioSelfTest*() =
   io.retirementSelfTest(false)
+
+# Copy the actual bound UDP port for local telemetry; no socket ownership escapes.
+proc localPort*(owner: Transport): uint16 = owner.socket.port
