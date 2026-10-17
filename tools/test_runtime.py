@@ -722,6 +722,13 @@ def command(arguments, name, environment=None):
                 log=str(log.relative_to(ROOT)), output=output)
 
 
+# Run all reference/tooling/provenance unittest classes once and retain a compact shared gate record.
+def python_tests():
+    result = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'],
+                     'python-tests')
+    return {key: value for key, value in result.items() if key != 'output'}
+
+
 # Use Nimony ARC/Clang release/LTO with bounds/contracts enabled; never use danger or noAssertions.
 def build(compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=()):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
@@ -761,8 +768,17 @@ def main():
     args = parser.parse_args()
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
+    # A failed or timed-out new invocation must never leave an earlier successful report current.
+    (BUILD/'results.json').unlink(missing_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
                   python=platform.python_version()), suites=[], runtime=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
+    tooling = python_tests()
+    report['python_tests'] = tooling
+    if tooling['exit_code'] != 0:
+        # Publish an explicit failure before preparing native libraries or launching application workloads.
+        report.update(status='failed', failure_phase='python-tests')
+        (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
+        raise SystemExit(1)
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -907,7 +923,6 @@ def main():
     from composite_checks import batch_requests as composite_requests
     from digest_checks import batch_requests as digest_requests
     # File suffixes preserve the existing driver identities; all use this runner's checked LTO build profile.
-    report['early_oracle_harness'] = command([sys.executable, ROOT/'tests/test_early_codec_harness.py'], 'early-oracle-harness')
     early = (('natural', 'driver', natural_requests()), ('fixed', 'fixed_driver', fixed_requests()),
              ('bounded', 'bounded_driver', bounded_requests(reference_encode, reference_decode)),
              ('composite', 'composite_driver', composite_requests(reference_encode, reference_decode)),
@@ -937,12 +952,11 @@ def main():
     # The full report driver retains the unchanged codec batch and exposes credential composition separately.
     sys.path.insert(0, str(ROOT/'tests'))
     from report_oracle import requests
-    report_harness = command([sys.executable, ROOT/'tests/test_report_harness.py'], 'report-harness')
     lines, expected = requests()
     source = BUILD/'report-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/report_driver.nim', 'report-codec', crypto_library)
-    corpus = dict(build=compiled, harness=report_harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare all encoded bytes and decoded semantic fields, including malformed and published fixtures.
@@ -950,7 +964,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = report_harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -960,7 +974,6 @@ def main():
     announce('independent report corpus', corpus['passed'])
     # Independently signed full-report fixtures retain all original key/signature/domain/new-field mutations.
     from report_fixtures import fixtures as signed_report_fixtures, composition_cases
-    harness = command([sys.executable, ROOT/'tests/test_report_signature_harness.py'], 'report-signature-harness')
     provider, values = signed_report_fixtures()
     cases = composition_cases(values)
     folder = BUILD/'report-signatures'
@@ -983,14 +996,13 @@ def main():
                                wire_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                                expected_sha256=hashlib.sha256(expected.encode()).hexdigest(),
                                actual_sha256=hashlib.sha256(output.encode()).hexdigest()))
-    corpus = dict(build=compiled, harness=harness, provider=provider, requests=len(cases), fixtures=len(values), checks=checks,
-                  passed=harness['exit_code'] == 0 and len(cases) == len(checks) == 63 and all(row['passed'] for row in checks),
+    corpus = dict(build=compiled, harness=tooling, provider=provider, requests=len(cases), fixtures=len(values), checks=checks,
+                  passed=tooling['exit_code'] == 0 and len(cases) == len(checks) == 63 and all(row['passed'] for row in checks),
                   scope='full canonical report bytes and ordinary Ed25519 credential bindings; no assignment or point-policy decision')
     report['report_signature_corpus'] = corpus
     announce('independent full-report guarantee signature composition corpus', corpus['passed'])
     # Preserve the full independent assurance corpus and derive capacity-free inspection expectations separately.
     from assurances_oracle import requests as assurance_requests, decode as assurance_decode
-    assurance_harness = command([sys.executable, ROOT/'tests/test_assurances_harness.py'], 'assurance-harness')
     lines, expected = assurance_requests()
     codec_count = len(lines)
     for line in list(lines):
@@ -1006,7 +1018,7 @@ def main():
     source = BUILD/'assurance-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/assurances_driver.nim', 'assurances-codec')
-    corpus = dict(build=compiled, harness=assurance_harness, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
+    corpus = dict(build=compiled, harness=tooling, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
                   requests=len(lines), passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare complete named fields/bytes and errors; native assertions additionally protect atomic output/lifetimes.
@@ -1014,7 +1026,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = assurance_harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1024,12 +1036,11 @@ def main():
     announce('independent assurance codec/inspection corpus', corpus['passed'])
     # Preserve the complete independently signed assurance-context corpus and frozen source/expected identities.
     from assurance_crypto_oracle import requests as assurance_context_requests
-    harness = command([sys.executable, ROOT/'tests/test_assurance_crypto_harness.py'], 'assurance-context-harness')
     provider, lines, expected = assurance_context_requests()
     source = BUILD/'assurance-context-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/assurance_crypto_driver.nim', 'assurance-context-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, provider=provider, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, provider=provider, requests=len(lines), passed=False,
                   scope='fixed transcript and stateless validator-key/parent checks; no state eligibility or point-policy change',
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
@@ -1039,7 +1050,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected and len(lines) == 2087
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected and len(lines) == 2087
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         if not corpus['passed']:
             # Include missing/extra observations and retain the full output for exact replay.
@@ -1255,14 +1266,13 @@ def main():
     announce('independent ticket/epoch/winner/unsigned/full-header corpus', corpus['passed'])
     # Preserve every independent whole-block/extrinsic expectation, including actual published policy failures.
     from block_oracle import requests as block_requests
-    harness = command([sys.executable, ROOT/'tests/test_block_harness.py'], 'block-harness')
     lines, expected = block_requests()
     source = BUILD/'block-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     groups = {operation+'-'+kind: sum(line.startswith(operation+' '+kind+' ') for line in lines)
               for operation in ('D', 'E') for kind in ('E', 'B')}
     compiled, binary = build(compiler, ROOT/'tests/native/block_driver.nim', 'block-codec')
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare all six exact child wires/counts after source erasure and on-demand materialization.
@@ -1270,7 +1280,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1280,14 +1290,13 @@ def main():
     announce('independent complete extrinsic/block corpus', corpus['passed'])
     # Preserve all exhaustive Boolean/padding cases and pinned profile-field checks from the independent oracle.
     from bits_oracle import requests as bits_requests
-    harness = command([sys.executable, ROOT/'tests/test_bits_harness.py'], 'bits-harness')
     lines, expected = bits_requests()
     source = BUILD/'bits-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     groups = {operation: sum(line.startswith(operation+' ') for line in lines)
               for operation in ('BD', 'BE', 'D', 'E')}
     compiled, binary = build(compiler, ROOT/'tests/native/bits_driver.nim', 'bits-codec')
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Observe every logical bit/count/extent after input erasure and compare both owner framing forms.
@@ -1295,7 +1304,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1305,14 +1314,13 @@ def main():
     announce('independent Boolean/fixed/variable bitstring corpus', corpus['passed'])
     # Preserve the unchanged collection oracle: numeric/byte ordering, pairing and zero-width singleton domains.
     from collections_oracle import requests as collection_requests
-    harness = command([sys.executable, ROOT/'tests/test_collections_harness.py'], 'collection-harness')
     lines, expected = collection_requests()
     source = BUILD/'collection-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     groups = {kind: sum(line.split()[1] == kind for line in lines) for kind in ('F', 'S', 'M')}
     assert sum(groups.values()) == len(lines), groups
     compiled, binary = build(compiler, ROOT/'tests/native/collections_driver.nim', 'collection-codec')
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare copied logical fields, canonical wire, consumed progress and typed reasons after input erasure.
@@ -1320,7 +1328,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1330,7 +1338,6 @@ def main():
     announce('independent canonical fixed/variable set/dictionary corpus', corpus['passed'])
     # Independent C.2 references retain exact availability/transfer/operand framing and tagged-union agreement.
     from c2_oracle import requests as c2_requests
-    harness = command([sys.executable, ROOT/'tests/test_c2_harness.py'], 'c2-harness')
     lines, expected = c2_requests()
     source = BUILD/'c2-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
@@ -1342,7 +1349,7 @@ def main():
         groups[key] = groups.get(key, 0)+1
     assert sum(groups.values()) == len(lines), groups
     compiled, binary = build(compiler, ROOT/'tests/native/c2_driver.nim', 'c2-codec')
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Observe every fixed field, payload/trace copy and exact owned wire after destructive caller mutation.
@@ -1350,7 +1357,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1360,12 +1367,11 @@ def main():
     announce('independent availability/transfer/operand/accumulation corpus', corpus['passed'])
     # Preserve the independent C/B/L equations, every hostile header/padding request and labelled historical projections.
     from state_layout_oracle import requests as layout_requests, legacy_singletons
-    harness = command([sys.executable, ROOT/'tests/test_state_layout_harness.py'], 'layout-harness')
     lines, expected = layout_requests()
     source = BUILD/'layout-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_layout_driver.nim', 'layout-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   historical_projected_singletons=len(legacy_singletons()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1374,7 +1380,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1384,12 +1390,11 @@ def main():
     announce('independent state-key/node layout and hash corpus', corpus['passed'])
     # Compare independent unsorted-list partitions, every key divergence bit and labelled historical projections.
     from state_trie_oracle import requests as trie_requests, legacy_maps
-    harness = command([sys.executable, ROOT/'tests/test_state_trie_harness.py'], 'trie-harness')
     lines, expected = trie_requests()
     source = BUILD/'trie-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_trie_driver.nim', 'trie-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   historical_projected_maps=len(legacy_maps()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1398,7 +1403,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1408,12 +1413,11 @@ def main():
     announce('independent bounded state trie root corpus', corpus['passed'])
     # Preserve independent entropy/time/roster bytes, malformed inputs, published derived fixtures and partial roots.
     from state_safrole_oracle import requests as safrole_requests, published as safrole_published
-    harness = command([sys.executable, ROOT/'tests/test_state_safrole_harness.py'], 'safrole-harness')
     lines, expected = safrole_requests()
     source = BUILD/'safrole-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_safrole_driver.nim', 'safrole-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_derived_state_sources=len(safrole_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1422,7 +1426,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1432,12 +1436,11 @@ def main():
     announce('independent entropy/validator-roster/timeslot state corpus', corpus['passed'])
     # Preserve independent ordered core/row equations, malformed inputs, derived fixtures and partial commitments.
     from state_authorization_oracle import requests as authorization_requests, published as authorization_published
-    harness = command([sys.executable, ROOT/'tests/test_state_authorization_harness.py'], 'authorization-harness')
     lines, expected = authorization_requests()
     source = BUILD/'authorization-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_authorization_driver.nim', 'authorization-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_derived_state_sources=len(authorization_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1446,7 +1449,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1456,12 +1459,11 @@ def main():
     announce('independent authorization pool/queue state corpus', corpus['passed'])
     # Preserve independent chapter-4 byte/field equations, derived fixtures and partial single-entry roots.
     from state_consensus_oracle import requests as consensus_requests, published as consensus_published
-    harness = command([sys.executable, ROOT/'tests/test_state_consensus_harness.py'], 'consensus-harness')
     lines, expected = consensus_requests()
     source = BUILD/'consensus-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_consensus_driver.nim', 'consensus-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_derived_state_sources=len(consensus_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1470,7 +1472,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1480,12 +1482,11 @@ def main():
     announce('independent chapter-4 Safrole basic state corpus', corpus['passed'])
     # Preserve independent chapter-5 byte/field equations, derived fixtures and partial single-entry roots.
     from state_disputes_oracle import requests as state_disputes_requests, published as state_disputes_published
-    harness = command([sys.executable, ROOT/'tests/test_state_disputes_harness.py'], 'state_disputes-harness')
     lines, expected = state_disputes_requests()
     source = BUILD/'state_disputes-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_disputes_driver.nim', 'state_disputes-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_disputes_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1494,7 +1495,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1504,12 +1505,11 @@ def main():
     announce('independent chapter-5 dispute judgment/offender state corpus', corpus['passed'])
     # Preserve independent chapter-3 byte/field equations, derived fixtures and partial single-entry roots.
     from state_history_oracle import requests as state_history_requests, published as state_history_published
-    harness = command([sys.executable, ROOT/'tests/test_state_history_harness.py'], 'state_history-harness')
     lines, expected = state_history_requests()
     source = BUILD/'state_history-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_history_driver.nim', 'state_history-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_history_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1518,7 +1518,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1528,12 +1528,11 @@ def main():
     announce('independent chapter-3 recent history state corpus', corpus['passed'])
     # Preserve independent chapter-10 byte/field equations, derived fixtures and partial single-entry roots.
     from state_availability_oracle import requests as state_availability_requests, published as state_availability_published, published_verdicts as availability_verdicts
-    harness = command([sys.executable, ROOT/'tests/test_state_availability_harness.py'], 'state_availability-harness')
     lines, expected = state_availability_requests()
     source = BUILD/'state_availability-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_availability_driver.nim', 'state_availability-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_availability_published()), published_decode_verdicts=availability_verdicts(),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1542,7 +1541,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1552,12 +1551,11 @@ def main():
     announce('independent chapter-10 availability assignment state corpus', corpus['passed'])
     # Preserve independent chapter-12 byte/field equations, derived fixtures and partial single-entry roots.
     from state_privileges_oracle import requests as state_privileges_requests, published as state_privileges_published
-    harness = command([sys.executable, ROOT/'tests/test_state_privileges_harness.py'], 'state_privileges-harness')
     lines, expected = state_privileges_requests()
     source = BUILD/'state_privileges-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_privileges_driver.nim', 'state_privileges-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_privileges_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1566,7 +1564,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1576,12 +1574,11 @@ def main():
     announce('independent chapter-12 privileged service state corpus', corpus['passed'])
     # Preserve independent chapter-13 byte/field equations, derived fixtures and partial single-entry roots.
     from state_statistics_oracle import requests as state_statistics_requests, published_validators as state_statistics_published, trace_evidence as statistics_traces
-    harness = command([sys.executable, ROOT/'tests/test_state_statistics_harness.py'], 'state_statistics-harness')
     lines, expected = state_statistics_requests()
     source = BUILD/'state_statistics-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_statistics_driver.nim', 'state_statistics-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_partial_validator_sources=len(state_statistics_published()), published_trace_components=statistics_traces(),
                   gas_encoding_policy="accepted canonical compact naturals; no fallback",
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
@@ -1591,7 +1588,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1602,7 +1599,6 @@ def main():
     announce('independent chapter-13 activity statistics state corpus', corpus['passed'])
     # Chapters 14/15 retain independent literal, derived JSON and exact raw trace evidence.
     from state_workqueues_oracle import requests as workqueue_requests, published as workqueue_published, published_traces as workqueue_traces, parse as workqueue_parse, wire as workqueue_wire
-    harness = command([sys.executable, ROOT/'tests/test_state_workqueues_harness.py'], 'workqueues-harness')
     lines, expected = workqueue_requests()
     source = BUILD/'workqueues-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
@@ -1614,7 +1610,7 @@ def main():
                            dependencies=dependencies, sha256=hashlib.sha256(data).hexdigest(),
                            complete_component_match=consumed == len(data) and workqueue_wire(kind, rows) == data))
     compiled, binary = build(compiler, ROOT/'tests/native/state_workqueues_driver.nim', 'state_workqueues-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_json_components=len(workqueue_published()), published_trace_components=traces,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1623,7 +1619,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1634,7 +1630,6 @@ def main():
     announce('independent chapters 14/15 ready/accumulated queue corpus', corpus['passed'])
     # Chapter 16 preserves the independent ordered fixed-pair corpus and exact empty published traces.
     from state_outputs_oracle import requests as outputs_requests, published as outputs_published, parse as outputs_parse, wire as outputs_wire, DEFAULT as outputs_default
-    harness = command([sys.executable, ROOT/'tests/test_state_outputs_harness.py'], 'outputs-harness')
     lines, expected = outputs_requests()
     source = BUILD/'outputs-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
@@ -1646,7 +1641,7 @@ def main():
                            items=len(values), consumed=consumed, sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=consumed == len(entry['wire']) and outputs_wire(values) == entry['wire']))
     compiled, binary = build(compiler, ROOT/'tests/native/state_outputs_driver.nim', 'state_outputs-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_trace_components=traces,
                   scope='ordered fixed pairs; published traces empty, nonempty coverage authored; no accumulation execution',
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
@@ -1656,7 +1651,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1667,7 +1662,6 @@ def main():
     announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
     # Fixed account metadata retains independent field equations, JSON records and exact nonempty raw traces.
     from state_accounts_oracle import requests as accounts_requests, published_json as accounts_json, published_traces as accounts_traces, parse as accounts_parse, wire as accounts_wire, key as accounts_key, MAX as accounts_max, SIZE as accounts_size
-    harness = command([sys.executable, ROOT/'tests/test_state_accounts_harness.py'], 'accounts-harness')
     lines, expected = accounts_requests()
     source = BUILD/'accounts-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
@@ -1680,7 +1674,7 @@ def main():
                            sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=len(entry['wire']) == accounts_size and accounts_wire(fields) == entry['wire']))
     compiled, binary = build(compiler, ROOT/'tests/native/state_accounts_driver.nim', 'state_accounts-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_json_metadata=len(accounts_json()), published_trace_metadata=traces,
                   scope='C(255,service) fixed version-zero metadata; no nested maps, account validation or transitions',
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
@@ -1690,7 +1684,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1701,7 +1695,6 @@ def main():
     announce('independent C(255,service) account metadata corpus', corpus['passed'])
     # Storage/preimage constructors use independent hash equations; raw trace capture remains explicitly unclassified.
     from state_service_values_oracle import requests as service_values_requests, published as service_values_published, published_traces as service_values_traces
-    harness = command([sys.executable, ROOT/'tests/test_state_service_values_harness.py'], 'service-values-harness')
     lines, expected = service_values_requests()
     source = BUILD/'service-values-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
@@ -1710,7 +1703,7 @@ def main():
                    bytes=len(entry['value']), sha256=hashlib.sha256(entry['value']).hexdigest(),
                    namespace='opaque; not recoverable from key') for entry in service_values_traces()]
     compiled, binary = build(compiler, ROOT/'tests/native/state_service_values_driver.nim', 'state_service_values-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_json_storage=sum(row[0] == 'S' for row in sources),
                   published_json_preimages=sum(row[0] == 'P' for row in sources),
                   published_opaque_trace_values=traces,
@@ -1722,7 +1715,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1733,7 +1726,6 @@ def main():
     announce('independent service storage/preimage keys and opaque raw-value corpus', corpus['passed'])
     # Request histories preserve the full E4 domain and the maintainer-parked namespace question.
     from state_requests_oracle import requests as requests_requests, published as requests_published, published_traces as requests_traces, parse as requests_parse, wire as requests_wire
-    harness = command([sys.executable, ROOT/'tests/test_state_requests_harness.py'], 'requests-harness')
     lines, expected = requests_requests()
     source = BUILD/'requests-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
@@ -1747,7 +1739,7 @@ def main():
                            sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=consumed == len(entry['wire']) and requests_wire(slots) == entry['wire']))
     compiled, binary = build(compiler, ROOT/'tests/native/state_requests_driver.nim', 'state_requests-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_json_histories=len(published),
                   published_json_shapes={str(n): sum(len(row[3]) == n for row in published) for n in range(4)},
                   published_trace_histories=traces,
@@ -1761,7 +1753,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1772,12 +1764,11 @@ def main():
     announce('independent service request-history key/shape corpus', corpus['passed'])
     # Exact chapter/service composition compares every mapping byte as well as root and topology counts.
     from state_composition_oracle import requests as composition_requests
-    harness = command([sys.executable, ROOT/'tests/test_state_composition_harness.py'], 'composition-harness')
     lines, expected, components, whole = composition_requests()
     source = BUILD/'composition-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_composition_driver.nim', 'state_composition-codec', crypto_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
                   published_component_observations=components, published_composed_states=whole,
                   published_exact_captures=sum(row['verdict'] == 'ok' for row in components),
                   scope='exact typed chapter capture and complete mappings; opaque service values explicit; no transitions',
@@ -1788,7 +1779,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1799,7 +1790,6 @@ def main():
     announce('independent exact chapter/service and whole-state composition corpus', corpus['passed'])
     # Raw full-map roots remain separate from typed composition and preserve their existing sensitivity variants.
     from state_roots_oracle import published as roots_published, requests as roots_requests
-    roots_harness = command([sys.executable, ROOT/'tests/test_state_roots_harness.py'], 'state-roots-harness')
     observations = roots_published()
     lines, expected, records = roots_requests(observations)
     source = BUILD/'state-roots-requests.txt'
@@ -1807,8 +1797,8 @@ def main():
     result = command([BUILD/'trie-codec', source], 'state-roots-corpus') if report['trie_corpus']['build']['exit_code'] == 0 else dict(exit_code=1, output='Trie driver build failed')
     output = result.pop('output')
     actual = output.splitlines()
-    corpus = dict(requests=len(lines), run=result, harness=roots_harness,
-                  passed=roots_harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected,
+    corpus = dict(requests=len(lines), run=result, harness=tooling,
+                  passed=tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected,
                   driver_build=report['trie_corpus']['build'], published_maps=[row for _, row in observations], variants=records,
                   distinct_published_roots=len({row['state_root'] for _, row in observations}),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
@@ -1817,7 +1807,6 @@ def main():
     report['state_roots_corpus'] = corpus
     announce('independent raw published whole-state root corpus', corpus['passed'])
     # Specification identity checks verify pristine pinned inputs, without advancing protocol decisions.
-    report['specification'] = command([sys.executable, ROOT/'tests/test_spec.py'], 'specification')
     # Reuse the successfully compiled composition driver; never execute a stale binary after a failed build.
     from state_widths_oracle import requests as width_requests
     from request_namespace_oracle import requests as namespace_requests
@@ -1832,7 +1821,6 @@ def main():
                           for name, digest in normative_hashes.items())
     # Freeze independent requests and expectations before executing either regression family.
     for family in ('state_widths', 'request_namespace'):
-        harness = command([sys.executable, ROOT/f'tests/test_{family}_harness.py'], family+'-harness')
         if family == 'state_widths':
             # Preserve every published exact extent, profile and original candidate/metadata observation.
             lines, expected, records, binaries, traces = width_requests()
@@ -1851,14 +1839,14 @@ def main():
                   if composition_build['exit_code'] == 0 else dict(exit_code=1, output='Composition driver build failed'))
         output = result.pop('output')
         actual = output.splitlines()
-        passed = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        passed = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         if family == 'state_widths':
             # All 36 original published values must capture exactly, without a compatibility fallback.
             passed = passed and len(lines) == 37 and actual[1:] == ['ok']*36
         else:
             # Four successful controls/predecessors and two duplicate-key post-states retain the existing policy.
             passed = passed and normative_match and len(lines) == 7 and len(witnesses) == 2
-        corpus = dict(requests=len(lines), run=result, harness=harness, driver_build=composition_build,
+        corpus = dict(requests=len(lines), run=result, harness=tooling, driver_build=composition_build,
                       passed=passed, evidence=evidence,
                       requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                       actual_sha256=hashlib.sha256(output.encode()).hexdigest(),
@@ -1934,12 +1922,11 @@ def main():
     announce('contextual Bandersnatch vectors/native ABI', corpus['passed'])
     # Compare identity/framing outcomes with an independent arbitrary-precision oracle and public DER fixtures.
     from quic_protocol_oracle import requests as protocol_requests
-    harness = command([sys.executable, ROOT/'tests/test_quic_protocol_harness.py'], 'quic-protocol-harness')
     lines, expected, groups = protocol_requests(quic_fixtures)
     source = BUILD/'quic-protocol-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/quic_protocol_driver.nim', 'quic-protocol-driver', quic_library=quic_library)
-    corpus = dict(build=compiled, harness=harness, requests=len(lines), groups=groups, passed=False,
+    corpus = dict(build=compiled, harness=tooling, requests=len(lines), groups=groups, passed=False,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest(),
                   scope='pinned SAN/DER identity and structural CE framing; no TLS handshake or fixture eligibility claim')
@@ -1950,7 +1937,7 @@ def main():
         actual = output.splitlines()
         corpus['run'] = result
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
-        corpus['passed'] = harness['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
         if not corpus['passed']:
             # Missing, extra or differing rows remain reproducible against the retained public request file.
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
@@ -1968,9 +1955,6 @@ def main():
                 report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
                 announce('QUIC '+origin+' '+member+' guard', passed)
     # Shared process-startup and summary safeguards must stay effective with isolated compiler-specific binary paths.
-    report['quic_peer_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_harness.py'], 'quic-peer-harness')
-    report['quic_lifecycle_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_soak_harness.py'], 'quic-lifecycle-harness')
-    report['ci_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_nimony_ci.py'], 'ci-harness')
     # Build the actual peer entry point without invoking the historical compiler/build path.
     compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer', quic_library=quic_library)
     report['quic_peer_build'] = compiled
@@ -2027,7 +2011,6 @@ def main():
             report['quic_integration_service'] = dict(passed=False, failure=str(error))
     announce('retained integrated digest lifecycle', report['quic_integration_service']['passed'])
     # Retained IPv6 peers keep both role engines through fallback, duplicate arbitration and reconnects.
-    report['quic_mesh_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_mesh_harness.py'], 'quic-mesh-harness')
     report['quic_mesh'] = dict(passed=False)
     report['quic_mesh_disruption'] = dict(passed=False)
     if report['quic_peer_build']['exit_code'] == 0:
@@ -2090,7 +2073,6 @@ def main():
     announce('connection/stream admission recovery', report['quic_admission']['passed'])
     announce('authenticated connection loss before request', report['quic_closed_before_request']['passed'])
     # Preserve independent fixture identity, missing-marker rejection and failed-server cleanup in CI.
-    report['quic_offload_harness'] = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_quic_offload_harness.py'], 'quic-offload-harness')
     # Enabled workers use the same maintained Rust/QUIC ABIs and original queue/cancellation workload.
     from test_quic_offload import corpus as offload_fixture, selftests as offload_selftests, exercise as offload_exercise
     offload_wire, offload_metadata = offload_fixture(BUILD/'offload')
@@ -2779,27 +2761,22 @@ def main():
         passed = result['exit_code'] != 0 and rejected
         report['nominal'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
-    step_passed = (all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
+    step_passed = (tooling['exit_code'] == 0 and all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
                    and all(row['passed'] for row in report['runtime']) and len(report['bounded']) == 12
                    and all(row['passed'] for row in report['bounded'])
                    and len(report['primitive']) == 13 and all(row['passed'] for row in report['primitive'])
                    and len(report['composite']) == 29 and all(row['passed'] for row in report['composite'])
                    and len(report['owned']) == 27 and all(row['passed'] for row in report['owned'])
-                   and report['early_oracle_harness']['exit_code'] == 0
                    and all(report[family+'_corpus']['passed'] for family in ('natural', 'fixed', 'bounded', 'composite', 'digest'))
                    and len(report['bandersnatch']) == 2*len(BS_MEMBERS)
                    and all(row['passed'] for row in report['bandersnatch'])
                    and report['bandersnatch_corpus']['passed']
                    and report['quic_protocol_corpus']['passed']
-                   and report['quic_mesh_harness']['exit_code'] == 0
                    and report['quic_mesh']['passed'] and report['quic_mesh_disruption']['passed']
                    and report['quic_endpoint_soak']['passed']
                    and report['quic_admission']['passed'] and report['quic_closed_before_request']['passed']
-                   and report['quic_offload']['passed'] and report['quic_offload_harness']['exit_code'] == 0
-                   and len(report['offload']) == 4 and all(row['passed'] for row in report['offload'])
-                   and report['quic_lifecycle_harness']['exit_code'] == 0
+                   and report['quic_offload']['passed'] and len(report['offload']) == 4 and all(row['passed'] for row in report['offload'])
                    and report['quic_service']['passed'] and report['quic_integration_service']['passed']
-                   and report['quic_peer_harness']['exit_code'] == 0 and report['ci_harness']['exit_code'] == 0
                    and report['quic_peer']['passed'] and report.get('quic_peer_controls', {}).get('passed', False)
                    and report['integration_corpus']['passed']
                    and len(report['integration']) == 2*len(INTEGRATION_MEMBERS) and all(row['passed'] for row in report['integration'])
@@ -2820,7 +2797,6 @@ def main():
                    and report['safrole_corpus']['passed'] and report['authorization_corpus']['passed'] and report['consensus_corpus']['passed']
                    and report['composition_corpus']['passed'] and report['state_roots_corpus']['passed']
                    and report['state_widths_corpus']['passed'] and report['request_namespace_corpus']['passed']
-                   and report['specification']['exit_code'] == 0
                    and len(report['composition']) == 2*len(COMPOSITION_MEMBERS)
                    and all(row['passed'] for row in report['composition'])
                    and report['requests_corpus']['passed']

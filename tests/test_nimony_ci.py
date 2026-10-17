@@ -89,10 +89,31 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('tools/test_runtime.py', runtime)
         self.assertIn('tools/setup_submodules.py', runtime)
         self.assertIn('cargo fetch --locked', runtime)
-        self.assertIn('test_*harness.py', runtime)
+        self.assertNotIn('unittest discover', runtime)
         self.assertIn('tools/test_modules.py', module_plan)
         self.assertNotIn('cargo fetch', module_plan)
         self.assertNotIn('tools/test.py', runtime+module_plan)
+
+    # A fresh failed Python gate must stop native verification and publish failure, not stale success.
+    def test_python_gate_failure(self):
+        import test_runtime
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder/'results.json').write_text(json.dumps(dict(status='checks-passed')))
+            failed = dict(command=['fixture'], exit_code=7, log='fixture.log', output='failed test')
+            with patch.object(test_runtime, 'BUILD', folder), patch.object(sys, 'argv',
+                    ['test_runtime.py', '--compiler', '/fixture/nimony']), patch.object(
+                    test_runtime, 'command', return_value=failed) as run:
+                with self.assertRaises(SystemExit) as stopped:
+                    test_runtime.main()
+            self.assertEqual(stopped.exception.code, 1)
+            self.assertEqual(run.call_count, 1)
+            self.assertIn('test_*.py', run.call_args.args[0])
+            report = json.loads((folder/'results.json').read_text())
+            self.assertEqual(report['status'], 'failed')
+            self.assertEqual(report['failure_phase'], 'python-tests')
+            self.assertEqual(report['python_tests']['exit_code'], 7)
+            self.assertEqual(report['suites'], [])
 
     # Extracting a formatter archive must expose only nimpretty, with safe repeated symlink handling.
     def test_formatter_only_installation(self):

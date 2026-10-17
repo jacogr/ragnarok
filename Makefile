@@ -53,10 +53,7 @@ test: check
 modules: toolchain
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: setup format-check
-	$(PYTHON) tests/test_nimony_ci.py
-	$(PYTHON) tests/test_spec.py
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
-	$(PYTHON) -m unittest discover -s tests -p 'test_*harness.py'
 
 # Fixture preparation, exact linking profiles and ARC observations belong to the native runner.
 unit: setup
