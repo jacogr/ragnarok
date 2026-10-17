@@ -9,8 +9,9 @@ import re
 from pathlib import Path
 import subprocess
 import sys
+import time
 from setup_nimony import cache_directory
-from native_tests import UNIT_SUITES, unit_batches, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
+from native_tests import UNIT_SUITES, unit_batches, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
@@ -712,13 +713,15 @@ MEMBERS = ('offset', 'length', 'blob-consumed', 'written', 'count', 'sequence-co
 
 
 # Keep exact arguments, status and output for every build/run, including intentional rejections.
-def command(arguments, name, environment=None):
-    result = subprocess.run([str(arg) for arg in arguments], cwd=ROOT,
+def command(arguments, name, environment=None, cwd=ROOT):
+    started = time.monotonic()
+    result = subprocess.run([str(arg) for arg in arguments], cwd=cwd,
                             capture_output=True, text=True, timeout=180, env=environment)
     output = result.stdout+result.stderr
     log = BUILD/(name+'.log')
     log.write_text(output)
     return dict(command=[str(arg) for arg in arguments], exit_code=result.returncode,
+                elapsed_seconds=round(time.monotonic()-started, 6),
                 log=str(log.relative_to(ROOT)), output=output)
 
 
@@ -909,7 +912,8 @@ def main():
     for batch, members, target in unit_batches():
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
         checked = command(unit_command(compiler, target, libraries), batch+'-hastur',
-                          unit_environment(compiler, target, fixtures=fixtures))
+                          unit_environment(compiler, target, fixtures=fixtures),
+                          cwd=unit_work_directory(compiler))
         if checked['exit_code'] != 0:
             # A group failure is conservative for every member and retains Hastur's individual diagnostics.
             print(checked['output'], flush=True)

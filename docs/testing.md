@@ -59,6 +59,9 @@ Codec directory runs use Hastur `--jobs:2` by default, with private compiler cac
 and `--joined:off` preserving separate test processes. Override with `make check HASTUR_JOBS=1`
 for a serial control; accepted limits are 1–4. The same setting applies to `make unit`.
 Linked state/crypto suites, QUIC suites and later process/resource scenarios remain serial.
+Hastur runs from a compiler-specific working directory under `build/tests/native/`, containing
+its relative `nimcache_static/hastur.times` scheduling history as well as explicit compiler caches.
+Cumulative command records include elapsed seconds to identify expensive phases.
 
 Both entry points group the 21 dependency-free codec suites into one directory invocation.
 The remaining 38 suites retain their separate library/runtime profiles. Cumulative evidence keeps

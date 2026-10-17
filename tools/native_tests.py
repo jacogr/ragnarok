@@ -125,6 +125,13 @@ def unit_command(compiler, name=None, libraries=None):
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
 
 
+# Hastur's scheduling history uses a relative path even with --cachedir; contain it under build.
+def unit_work_directory(compiler):
+    directory = cache_directory(compiler, ROOT/'build/tests/native', 'unit').parent/'work'
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 # Locate evidence beside compiler-isolated caches, without placing generated observations in source.
 def unit_evidence_directory(compiler):
     return cache_directory(compiler, ROOT/'build/tests/native', 'unit').parent/'evidence'
@@ -240,7 +247,7 @@ def main():
     for arguments in unit_plan(compiler, libraries):
         # Every failed compile, assertion or output mismatch must stop the invocation.
         print('+ '+' '.join(arguments), flush=True)
-        subprocess.run(arguments, cwd=ROOT, env=selected, check=True)
+        subprocess.run(arguments, cwd=unit_work_directory(compiler), env=selected, check=True)
     for name in ARC_SUITES:
         # Preserve measured live occupancy rather than baking host heap sizes into goldens.
         print('ARC '+name+': '+json.dumps(unit_evidence(compiler, name), sort_keys=True), flush=True)

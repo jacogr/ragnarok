@@ -57,6 +57,18 @@ class NativeUnitHarness(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'HASTUR_JOBS'):
                         native_tests.unit_command(folder/'nimony')
 
+    # Relative scheduling history must stay under build, isolated across relocated compiler installations.
+    def test_runner_work_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            with patch.object(native_tests, 'ROOT', folder):
+                first = native_tests.unit_work_directory(folder/'one/nimony')
+                second = native_tests.unit_work_directory(folder/'two/nimony')
+            self.assertNotEqual(first, second)
+            self.assertTrue(first.is_dir())
+            self.assertTrue(second.is_dir())
+            self.assertTrue(first.is_relative_to(folder/'build/tests/native'))
+
     # An absent archive runner cannot fall back to an unrelated executable on PATH.
     def test_missing_pinned_runner(self):
         with tempfile.TemporaryDirectory() as temporary:
