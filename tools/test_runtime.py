@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify checked native suites, independent corpora, ownership contracts and networking lifecycles."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import os
 import hashlib
 import json
@@ -11,7 +12,7 @@ import subprocess
 import sys
 import time
 from setup_nimony import cache_directory
-from native_tests import UNIT_SUITES, unit_batches, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
+from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
@@ -723,6 +724,21 @@ def command(arguments, name, environment=None, cwd=ROOT):
     return dict(command=[str(arg) for arg in arguments], exit_code=result.returncode,
                 elapsed_seconds=round(time.monotonic()-started, 6),
                 log=str(log.relative_to(ROOT)), output=output)
+
+
+# Compile independent rejection probes in private caches; consume results in original registry order.
+def compile_rejections(compiler, expectations):
+    # A worker owns one compiler process, output log and cache; diagnostic interpretation stays on the caller.
+    def check(item):
+        name, expected = item
+        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
+                          f'--nimcache:{cache_directory(compiler, BUILD, name)}',
+                          ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+        return name, expected, result
+
+    with ThreadPoolExecutor(max_workers=unit_jobs()) as executor:
+        # Ordered consumption preserves the historical evidence layout even when processes finish out of order.
+        yield from executor.map(check, expectations.items())
 
 
 # Run all reference/tooling/provenance unittest classes once and retain a compact shared gate record.
@@ -2640,17 +2656,14 @@ def main():
     report['ownership_compile'].append(dict(name='offload_pool_copy', passed=passed, check=compiled))
     announce('unique offload pool copy rejection', passed)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
-    for name, sentinel in CONTRACTS.items():
-        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+    rejection_started = time.monotonic()
+    report['compiler_rejection_jobs'] = unit_jobs()
+    for name, sentinel, result in compile_rejections(compiler, CONTRACTS):
         passed = result['exit_code'] != 0 and 'Error: contract violated: '+sentinel in result['output']
         report['contracts'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
     # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
-    for name, member in PRIVATE.items():
-        source = ROOT/f'tests/native/compile_fail/{name}.nim'
-        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', source], name)
+    for name, member, result in compile_rejections(compiler, PRIVATE):
         if name == 'private_collection_commit':
             # Generic concept support must never export the unchecked writer.
             rejected = "undeclared identifier: 'put'" in result['output']
@@ -2668,9 +2681,7 @@ def main():
         report['privacy'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
     # Report and assurance identity, index and configuration domains must remain statically distinct under Nimony.
-    for name, member in NOMINAL.items():
-        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+    for name, member, result in compile_rejections(compiler, NOMINAL):
         if name == 'bs_key_as_setup':
             # Scalar owners cannot select the allocator/domain of a native ring setup.
             rejected = 'Error: Type mismatch at [position]' in result['output'] and 'commitRing(' in result['output'] and member in result['output']
@@ -2775,6 +2786,7 @@ def main():
         passed = result['exit_code'] != 0 and rejected
         report['nominal'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
+    report['compiler_rejections_elapsed_seconds'] = round(time.monotonic()-rejection_started, 6)
     step_passed = (tooling['exit_code'] == 0 and all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
                    and all(row['passed'] for row in report['runtime']) and len(report['bounded']) == 12
                    and all(row['passed'] for row in report['bounded'])

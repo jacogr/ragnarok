@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+import threading
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +121,29 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertEqual(report['failure_phase'], 'python-tests')
             self.assertEqual(report['python_tests']['exit_code'], 7)
             self.assertEqual(report['suites'], [])
+
+    # Independent compiler probes may overlap but preserve ordered records and private caches/logs.
+    def test_parallel_rejection_isolation(self):
+        import test_runtime
+        barrier = threading.Barrier(2)
+        calls = []
+        # A barrier requires actual overlap without depending on host speed or arbitrary sleep thresholds.
+        def fake_command(arguments, name):
+            calls.append((name, arguments))
+            barrier.wait(timeout=5)
+            return dict(exit_code=1, output=name)
+        with patch.dict(test_runtime.os.environ, {'COMPILE_CHECK_JOBS': '2'}), patch.object(
+                test_runtime, 'command', side_effect=fake_command):
+            rows = list(test_runtime.compile_rejections(Path('/fixture/nimony'), {'first': 'a', 'second': 'b'}))
+        self.assertEqual([(name, expected) for name, expected, _ in rows], [('first', 'a'), ('second', 'b')])
+        self.assertEqual({name for name, _ in calls}, {'first', 'second'})
+        caches = {arg for _, arguments in calls for arg in arguments if str(arg).startswith('--nimcache:')}
+        self.assertEqual(len(caches), 2)
+        self.assertTrue(all(row[2]['exit_code'] == 1 for row in rows))
+        with patch.dict(test_runtime.os.environ, {'COMPILE_CHECK_JOBS': '0'}):
+            # A zero worker count cannot silently omit the rejection registry.
+            with self.assertRaisesRegex(ValueError, 'COMPILE_CHECK_JOBS'):
+                list(test_runtime.compile_rejections(Path('/fixture/nimony'), {}))
 
     # Extracting a formatter archive must expose only nimpretty, with safe repeated symlink handling.
     def test_formatter_only_installation(self):

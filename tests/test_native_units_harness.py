@@ -46,15 +46,21 @@ class NativeUnitHarness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             (folder/'hastur').touch()
+            for ci, expected in (('true', '4'), ('', '4')):
+                # Both CI and local discovery use the maintainer-selected four-worker default.
+                with patch.dict(native_tests.os.environ, {'CI': ci}):
+                    with patch.dict(native_tests.os.environ) as environment:
+                        environment.pop('COMPILE_CHECK_JOBS', None)
+                        self.assertIn('--jobs:'+expected, native_tests.unit_command(folder/'nimony'))
             for jobs in ('1', '2', '3', '4'):
                 # A serial override and bounded larger values must reach the pinned runner unchanged.
-                with self.subTest(jobs=jobs), patch.dict(native_tests.os.environ, {'HASTUR_JOBS': jobs}):
+                with self.subTest(jobs=jobs), patch.dict(native_tests.os.environ, {'COMPILE_CHECK_JOBS': jobs}):
                     self.assertIn('--jobs:'+jobs, native_tests.unit_command(folder/'nimony'))
                     self.assertIn('--jobs:1', native_tests.unit_command(folder/'nimony', 'quic_io'))
             for invalid in ('0', '-1', 'auto', '5', 'two'):
                 # Invalid limits cannot silently become an unbounded or empty test pool.
-                with self.subTest(jobs=invalid), patch.dict(native_tests.os.environ, {'HASTUR_JOBS': invalid}):
-                    with self.assertRaisesRegex(ValueError, 'HASTUR_JOBS'):
+                with self.subTest(jobs=invalid), patch.dict(native_tests.os.environ, {'COMPILE_CHECK_JOBS': invalid}):
+                    with self.assertRaisesRegex(ValueError, 'COMPILE_CHECK_JOBS'):
                         native_tests.unit_command(folder/'nimony')
 
     # Relative scheduling history must stay under build, isolated across relocated compiler installations.

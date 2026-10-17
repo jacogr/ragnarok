@@ -94,6 +94,12 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   not require failure in the current Hastur. See [the migration plan](docs/testing.md).
 - Add important negative compilation checks and malformed/truncated/overflow/fuzz cases for decoders.
   Retain official vectors and independent test-only references; no Python production protocol runtime.
+- Use one `COMPILE_CHECK_JOBS` setting (default 4) for compatible codec directory runs and
+  independent contract/privacy/nominal compiler checks. Accept 1–4 workers;
+  retain serial overrides, private caches/logs, ordered diagnostics and fresh per-suite ARC evidence.
+  Keep linked profiles and network/resource scenarios sequential. Hastur scheduling artifacts belong
+  under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
+  be faster on warm local repeats. Record timings without weakening test workloads or verdicts.
 - Keep Python reference/tooling/provenance unittest execution in the runtime verifier's single
   fresh discovery gate; corpus reports share its verdict. Do not schedule duplicate harness runs.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.

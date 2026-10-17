@@ -9,8 +9,8 @@ export PYTHONDONTWRITEBYTECODE := 1
 export PYTHONUNBUFFERED := 1
 # Read the shared pin lazily; clean/help need no compiler or dependency setup.
 export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(open("spec/bandersnatch-pins.json"))["rust"])')
-# Parallelize only compatible codec discovery; resource/network profiles stay serial.
-export HASTUR_JOBS ?= 2
+# Bound compatible codec runs and independent compiler checks to the Linux runner's four CPUs.
+export COMPILE_CHECK_JOBS ?= 4
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
 .PHONY: build setup host-tools toolchain clean check test unit modules runtime format format-check summary-runtime summary-modules help
@@ -81,7 +81,7 @@ help:
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
 	  'make clean         Remove build/ completely' \
 	  'make check / test  Provision dependencies and run complete verification' \
-	  'make unit          Run the 59 Hastur application suites (HASTUR_JOBS=1..4; default 2)' \
+	  'make unit          Run the 59 Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
 	  'make modules       Check every production module' \
 	  'make runtime       Run codec/crypto/networking and independent checks' \
 	  'make format        Apply the pinned formatter' \

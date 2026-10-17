@@ -24,6 +24,19 @@ and [CLI](https://github.com/nim-lang/nimony/blob/5b51edfedb4d0dbd9028d9e57ac61d
 This increment uses that supported file-based runner; it does not provide the unavailable
 `std/unittest` API. Both checksum-pinned macOS ARM64 and Linux x86-64 archives contain Hastur.
 
+## Parallel execution validation
+
+On 2026-10-17, the pinned Nimony 0.6.3 toolchain on macOS arm64 passed `make check` with four
+workers in **587.96 seconds**, using an existing local build tree. The 669 pooled compiler
+rejections took **88.23 seconds**. Coverage retained all 65 native profiles, 41 corpora and 676
+compiler rejections. These local timings do not establish a Linux CI speedup.
+
+Ignored `build/tests/parallel-review/` retains command logs, serial/parallel codec observations and
+the coverage comparison. Deliberate assertion/output-mismatch probes retained a failing exit code
+and individual diagnostics beside a passing sibling. `build/tests/runtime/results.json` records
+per-command elapsed seconds and the pooled rejection phase time; shared group commands should be
+counted once by their log identity when analyzing costs.
+
 ## First converted group
 
 The three files were moved with `git mv` to `tests/unit/codec/`. Their bodies are preserved
@@ -55,13 +68,19 @@ keys and generated data remain under ignored `build/`. Python supplies setup, pa
 flags; Hastur owns application test verdicts. Direct Hastur use must retain those exact flags and
 fixture environment paths.
 
-Codec directory runs use Hastur `--jobs:2` by default, with private compiler caches per worker
-and `--joined:off` preserving separate test processes. Override with `make check HASTUR_JOBS=1`
-for a serial control; accepted limits are 1–4. The same setting applies to `make unit`.
-Linked state/crypto suites, QUIC suites and later process/resource scenarios remain serial.
-Hastur runs from a compiler-specific working directory under `build/tests/native/`, containing
-its relative `nimcache_static/hastur.times` scheduling history as well as explicit compiler caches.
-Cumulative command records include elapsed seconds to identify expensive phases.
+Compatible codec directory runs and independent contract/privacy/nominal compiler checks share
+one setting: `COMPILE_CHECK_JOBS=1..4`, default **4** locally and in CI. Use
+`make check COMPILE_CHECK_JOBS=1` for a serial control; the same setting applies to `make unit`.
+Linked state/crypto suites, QUIC suites and later network/resource scenarios remain sequential.
+
+Hastur uses private worker caches and `--joined:off` retains separate test processes. This pinned
+runner deletes successful worker caches, so serial codec runs can be faster for warm local repeats.
+Compiler-rejection probes keep persistent private caches/logs, unchanged diagnostic checks and
+registry-ordered results. Cumulative command records include elapsed seconds to identify costs.
+
+Hastur runs from a compiler-specific directory under `build/tests/native/`, containing its relative
+`nimcache_static/hastur.times` history. The `working-unit` compiler cache namespace separates this
+layout from older caches with paths relative to the repository root.
 
 Both entry points group the 21 dependency-free codec suites into one directory invocation.
 The remaining 38 suites retain their separate library/runtime profiles. Cumulative evidence keeps

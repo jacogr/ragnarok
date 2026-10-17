@@ -60,12 +60,12 @@ def unit_source(name):
     return (STATE_ROOT if name in UNIT_LINKS else UNIT_ROOT)/('test_'+name+'.nim')
 
 
-# Bound codec workers explicitly; callers can request a serial control without changing test semantics.
+# Bound independent test workers explicitly; callers can request serial controls without changing semantics.
 def unit_jobs():
-    raw = os.environ.get('HASTUR_JOBS', '2')
+    raw = os.environ.get('COMPILE_CHECK_JOBS', '4')
     if raw not in ('1', '2', '3', '4'):
         # Reject auto/unbounded values rather than unexpectedly oversubscribing a CI runner.
-        raise ValueError('HASTUR_JOBS must be an integer from 1 to 4')
+        raise ValueError('COMPILE_CHECK_JOBS must be an integer from 1 to 4')
     return int(raw)
 
 
@@ -118,9 +118,10 @@ def unit_command(compiler, name=None, libraries=None):
     if platform.system() == 'Linux':
         # Keep the established Linux LTO linker rather than relying on the runner's defaults.
         flags.append('--passL:-fuse-ld=lld')
+    # Working-directory-specific caches cannot reuse older prebuilds with paths relative to the repository root.
     # Isolated processes preserve each test's initialization/lifetime scope and keep generated drivers out of source.
     return [str(runner), '--bindir:'+str(compiler.parent),
-            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', 'unit-'+name if name in UNIT_LINKS else 'unit')),
+            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', 'working-unit-'+name if name in UNIT_LINKS else 'working-unit')),
             '--jobs:'+str(unit_jobs() if name is None else 1),
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
 
