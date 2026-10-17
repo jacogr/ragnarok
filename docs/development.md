@@ -55,7 +55,7 @@ reference, negative-probe and orchestration responsibilities.
 | `make check-python` | Python reference/tooling/provenance tests |
 | `make check-unit` / `make runtime` | Native unit suites and independent corpora |
 | `make check-failures` | Runtime assertion/contract probes and positive controls |
-| `make check-guards` | Compiler rejection guards (710 probes) |
+| `make check-guards` | Compiler rejection guards (719 probes) |
 | `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
 | `make format` / `make format-check` | Apply or check both pinned Nim and Rust formatters |
 | `make help` | List commands without provisioning/building |

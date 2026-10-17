@@ -5,7 +5,7 @@ import ../../../src/state/[safrole_transition, store, validator_state, ticket_ad
 import ../../../src/codec/[state_safrole, state_consensus, state_disputes, state_layout,
   state_trie, header, tickets, bounded]
 from ../../../src/codec/disputes import OffenderKey
-import ../../support/validator_rotation_fixture
+import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Reset ordinary/ring/setup observation between fully retired calls.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
@@ -77,6 +77,161 @@ proc unchanged(snapshot: StateStoreSnapshot, source: seq[StateEntry], root: Stat
   for entry in source:
     assert snapshot.lookup(entry.key).value.bytes == entry.value # Include C(7) and unrelated sentinel bytes.
 
+## Copy trusted fixture octets before deliberate damage, preserving the input's ownership evidence.
+proc altered(raw: seq[byte], position: int): seq[byte] =
+  result = newSeq[byte](raw.len)
+  for i in 0..<raw.len: result[i] = raw[i] # Never mutate the retained fixture backing sequence.
+  result[position] = result[position] xor 1
+
+## One rejected attempt must preserve its own complete starting map/root and release all setup owners.
+proc rejected(source: seq[StateEntry], header: OwnedHeader, submitted: seq[Ticket],
+    punished: seq[OffenderKey], config: SafroleTransitionConfig,
+    budgets: StateStoreLimits): SafroleTransitionResult =
+  reset(0)
+  failHash(0)
+  var state = newStateStore(source, budgets).value
+  let parent = state.snapshot.value
+  let root = parent.commitment.root
+  failHash(0) # Fixture construction is outside the operation's hash preflight evidence.
+  result = advanceSafroleState(state, header, submitted, punished, config)
+  assert result.error != SafroleTransitionError.None
+  unchanged(state.snapshot.value, source, root)
+  unchanged(parent, source, root)
+  assert liveSetups() == 0
+
+## Missing, truncated and suffixed required parent chapters reject before any authentication.
+proc damaged(source: seq[StateEntry], header: OwnedHeader, submitted: seq[Ticket],
+    punished: seq[OffenderKey], config: SafroleTransitionConfig) =
+  for index in 0..<6:
+    for mode in 0..<3:
+      var broken: seq[StateEntry] = @[]
+      for i, entry in source:
+        if i != index:
+          broken.add(entry) # Unrelated retained entries preserve every original byte.
+        elif mode != 0:
+          var bytes = newSeq[byte](entry.value.len+(if mode == 1: -1 else: 1))
+          for j in 0..<min(bytes.len, entry.value.len): bytes[j] = entry.value[j] # Exact one-byte shape damage.
+          broken.add(StateEntry(key: entry.key, value: bytes))
+        else:
+          discard # Remove exactly the selected required chapter; no implicit replacement.
+      let outcome = rejected(broken, header, submitted, punished, config, limits())
+      if index in [0, 1, 5]:
+        if mode == 0:
+          assert outcome.error == SafroleTransitionError.MissingState # Coordinator retains C(4)/C(6)/C(11) before rotation.
+        elif index in [1, 5]:
+          assert outcome.error == SafroleTransitionError.InvalidState # Fixed history/time shape is checked before copying.
+        else:
+          assert outcome.error == SafroleTransitionError.RotationFailure # Exact C(4) decoding belongs to the rotation substep.
+      else:
+        assert outcome.error == SafroleTransitionError.RotationFailure # C(7)/C(8)/C(9) validation remains in the retained rotation implementation.
+      assert verifications() == 0
+
+## Exact/one-short canonical write budgets cannot publish a successful earlier substep.
+proc budgets(source: seq[StateEntry], expected: seq[StateEntry], header: OwnedHeader,
+    submitted: seq[Ticket], punished: seq[OffenderKey], config: SafroleTransitionConfig) =
+  var count = 0
+  var bytes = 0'u64
+  for entry in expected:
+    for original in source:
+      if array[31, byte](original.key) == array[31, byte](entry.key) and original.value != entry.value:
+        inc count # Count only final changed identities; C(7)/unrelated keys are not written.
+        bytes += uint64(entry.value.len)
+  assert count >= 2 and bytes >= 132
+  # This fixture is same-epoch, so only the final batch consumes write budgets.
+  for kind in 0..<2:
+    var exact = limits()
+    exact.writes = ElementLimit(uint64(count))
+    exact.writeValueBytes = ByteLimit(bytes)
+    var small = exact
+    if kind == 0:
+      small.writes = ElementLimit(uint64(count-1)) # No partial prefix can satisfy the missing final write slot.
+    else:
+      small.writeValueBytes = ByteLimit(bytes-1) # One byte below the whole changed batch must refuse atomically.
+    let outcome = rejected(source, header, submitted, punished, config, small)
+    assert outcome.error == SafroleTransitionError.PublicationFailure
+    assert outcome.publicationError == StateStoreError.LimitExceeded
+    assert verifications() == 2
+    reset(0)
+    failHash(0)
+    var accepted = newStateStore(source, exact).value
+    assert advanceSafroleState(accepted, header, submitted, punished, config).error ==
+        SafroleTransitionError.None
+
+## Preflight ceilings, transcript damage, canonical offenders and real proof failures preserve the whole map.
+proc boundaries(source: seq[StateEntry], expected: seq[StateEntry], raw: seq[byte],
+    submitted: seq[Ticket], punished: seq[OffenderKey], crossing: bool) =
+  let header = capture(raw)
+  let config = policy()
+  for mode in 0..<5:
+    var bad = config
+    case mode
+    of 0: bad.state.epochSlots = EpochSlots(0) # Zero epochs cannot reach division or rotation.
+    of 1: bad.tailStart = bad.state.epochSlots # The closing period must start strictly within an epoch.
+    of 2: bad.maxHeaderBytes = ByteLimit(uint64(raw.len-1)) # Complete signed header ceiling is checked before native work.
+    of 3: bad.state.maxBytes = ByteLimit(uint64(source[0].value.len-1)) # Parent C(4) pre-copy refusal.
+    else: bad.state.validators.maxBytes = ByteLimit(1) # Roster bytes must fit before native setup.
+    let outcome = rejected(source, header, submitted, punished, bad, limits())
+    assert outcome.error in [SafroleTransitionError.InvalidConfig,
+      SafroleTransitionError.LimitExceeded,
+      SafroleTransitionError.RotationFailure]
+    assert verifications() == 0 and hashes() == 0 # Every policy refusal precedes rotation/root/authentication work.
+  let invalidHeader = rejected(source, default(OwnedHeader), submitted, punished, config, limits())
+  assert invalidHeader.error == SafroleTransitionError.InvalidHeader and verifications() == 0
+  var absent = default(StateStore)
+  assert advanceSafroleState(absent, header, submitted, punished, config).error ==
+      SafroleTransitionError.Uninitialized
+  var oversized = newSeq[Ticket](4)
+  assert rejected(source, header, oversized, punished, config, limits()).error ==
+      SafroleTransitionError.LimitExceeded
+  var duplicate = newSeq[OffenderKey](2)
+  let noncanonical = rejected(source, header, submitted, duplicate, config, limits())
+  assert noncanonical.error == SafroleTransitionError.RotationFailure
+  assert noncanonical.rotationError == ValidatorStateError.NonCanonical and verifications() == 0
+  var noOffenders = config
+  noOffenders.offenders = ElementLimit(1)
+  assert rejected(source, header, submitted, duplicate, noOffenders, limits()).error ==
+      SafroleTransitionError.LimitExceeded
+  # A changed unsigned commitment remains structurally valid but no longer matches the seal's additional data.
+  let tampered = rejected(source, capture(altered(raw, 0)), submitted, punished, config, limits())
+  assert tampered.error == SafroleTransitionError.AuthenticationFailure
+  assert tampered.authenticationError == SafroleAuthError.InvalidSeal
+  damaged(source, header, submitted, punished, config)
+  if crossing:
+    # The epoch marker begins after the fixed 100-byte prefix and presence tag; changing its entropy is a marker rejection.
+    assert raw[100] == 1
+    let marker = rejected(source, capture(altered(raw, 101)), submitted, punished, config, limits())
+    assert marker.error == SafroleTransitionError.MarkerFailure
+    assert marker.markerError == SafroleMarkerError.InvalidEpochMarker and verifications() == 0
+    for flags in [2, 4]:
+      reset(cint(flags))
+      failHash(0)
+      var state = newStateStore(source, limits()).value
+      let parentRoot = state.snapshot.value.commitment.root
+      let refused = advanceSafroleState(state, header, submitted, punished, config)
+      assert refused.error == SafroleTransitionError.RotationFailure
+      assert refused.rotationError == ValidatorStateError.BackendFailure and liveSetups() == 0
+      unchanged(state.snapshot.value, source, parentRoot)
+  else:
+    budgets(source, expected, header, submitted, punished,
+        config) # Exact final write ceilings need no temporary rotation batch.
+  if submitted.len != 0:
+    var corrupt = newSeq[Ticket](submitted.len)
+    for i in 0..<submitted.len: corrupt[i] = submitted[i] # Fixed proof records own every byte.
+    corrupt[0].proof = default(TicketProof)
+    let proof = rejected(source, header, corrupt, punished, config, limits())
+    assert proof.error == SafroleTransitionError.AdmissionFailure
+    assert proof.admissionError == TicketAdmissionError.InvalidProof and verifications() == 0
+    reset(8)
+    failHash(0)
+    var refusedState = newStateStore(source, limits()).value
+    let oldRoot = refusedState.snapshot.value.commitment.root
+    let refused = advanceSafroleState(refusedState, header, submitted, punished, config)
+    assert refused.error == SafroleTransitionError.AdmissionFailure
+    assert refused.admissionError == TicketAdmissionError.BackendFailure and liveSetups() == 0
+    unchanged(refusedState.snapshot.value, source, oldRoot)
+  reset(0)
+  failHash(0)
+
 ## Pin all successful chapter outputs and exercise backend failures after actual completed private work.
 proc published(text: string) =
   let lines = text.splitLines()
@@ -109,6 +264,12 @@ proc published(text: string) =
       assert outcome.value.snapshot.lookup(chapterKey(StateChapter(chapter))).value.bytes ==
         unhex(f[10+i]) # Exact complete posterior bytes from the real signed trace.
     unchanged(parent, source, root)
+    if index in [0, 2]:
+      var expected: seq[StateEntry] = @[]
+      for i, chapter in [4, 6, 8, 9, 11]:
+        expected.add(StateEntry(key: chapterKey(StateChapter(chapter)), value: unhex(f[
+            10+i]))) # Complete published posterior fields.
+      boundaries(source, expected, rawHeader, submitted, punished, index == 2)
     assert state.snapshot.value.lookup(source[2].key).value.bytes == source[2].value
     assert state.snapshot.value.lookup(source[^1].key).value.bytes == source[^1].value
     # Replay cannot rotate twice or update entropy again once canonical time has advanced.
@@ -136,8 +297,33 @@ proc published(text: string) =
       assert rejected.error in [SafroleTransitionError.RotationFailure,
         SafroleTransitionError.ScheduleFailure, SafroleTransitionError.EntropyFailure,
         SafroleTransitionError.PublicationFailure]
+      if prefix == int(count)-1:
+        assert rejected.error == SafroleTransitionError.PublicationFailure
+        assert rejected.publicationError == StateStoreError.BackendFailure # The last root digest cannot publish a completed stage.
+      elif uint32(decodeStateTime(source[5].value).value.value) div 12 ==
+          uint32(headerInfo(header).value.unsigned.slot) div 12:
+        assert rejected.error == SafroleTransitionError.EntropyFailure
+        assert rejected.entropyError == EntropyTransitionError.BackendFailure # Same-epoch first hash follows both valid credentials.
+      else:
+        assert rejected.error == SafroleTransitionError.RotationFailure
+        assert rejected.rotationError == ValidatorStateError.BackendFailure # Crossing first hash is still private rotation publication.
       assert liveSetups() == 0
       unchanged(state.snapshot.value, source, root)
+    if index == 0:
+      reset(0)
+      failHash(0)
+      var temporary = newStateStore(source, limits()).value
+      refuseVerification(0)
+      discard advanceSafroleState(temporary, header, submitted, punished,
+          config) # Warm caches before measuring owner retirement.
+      let before = getOccupiedMem()
+      for cycle in 0..<1000:
+        let refused = advanceSafroleState(temporary, header, submitted, punished, config)
+        assert refused.error == SafroleTransitionError.AuthenticationFailure # Each temporary private candidate retires within the cycle.
+      let after = getOccupiedMem()
+      assert before == after
+      recordArcRelease("safrole_transition", 1000, before, after)
+      unchanged(temporary.snapshot.value, source, root)
     reset(0)
     failHash(0)
     state = default(StateStore)

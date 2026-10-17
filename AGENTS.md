@@ -134,7 +134,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   logs and summary. E2E owns peer-entry selftests and live peer/service/resilience/soak/offload work;
   unit checks own component suites and independent corpora;
   `check-failures` owns runtime assertion/contract probes and their positive controls;
-  compiler guards own all 710 contract/privacy/nominal/schema/ownership rejection checks.
+  compiler guards own all 719 contract/privacy/nominal/schema/ownership rejection checks.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,

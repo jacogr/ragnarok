@@ -6,6 +6,8 @@ Current total: **82 ordinary native suites**, including three state-store, two a
 two history-transition, two entropy/time, two validator-rotation and two telemetry profiles; all original 59 suites remain migrated.
 The migration preserved wire behavior, bounds/ownership contracts and independent references.
 Subsequent native suites cover the new storage foundation as recorded below.
+The [Safrole coordinator](../spec/safrole-transition.md) adds one native profile, nine compiler
+privacy rejections and nine isolated runtime result/typed-reason access probes.
 
 ## Current verification groups
 
@@ -14,8 +16,8 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
 | `check-unit` | 82 native suites and 41 corpora | Native units/codecs |
-| `check-failures` | 1,415 runtime behavior/contract probes plus store positive controls | Runtime failures/contracts |
-| `check-guards` | 710 compiler rejection probes | Compiler rejection guards |
+| `check-failures` | 1,424 runtime behavior/contract probes plus store positive controls | Runtime failures/contracts |
+| `check-guards` | 719 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
 `make check` runs all six locally; CI schedules them independently and concurrently on separate

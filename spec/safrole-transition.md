@@ -52,8 +52,14 @@ The native test supplies no posterior roster, ring, schedule or entropy projecti
 
 Every complete changed chapter matches the published posterior bytes. Input maps retain C(7) and
 an unrelated sentinel; the tests verify parent immutability, replay rejection, retained snapshots
-and first/second ordinary-verification plus first/last digest refusal. Native setup owners retire
-on all exercised paths. These projected complete maps do not claim to reproduce a whole-block
+and first/second ordinary-verification plus first/last digest refusal. Additional cases reject every
+missing/truncated/suffixed required chapter, bad epoch markers, tampered signed commitments,
+noncanonical/over-budget offenders, malformed/refused RingVRF proofs and setup/commit refusal.
+Exact/one-short final write count and aggregate byte budgets distinguish complete success from
+atomic resource refusal. Native setup owners retire on all exercised paths. Nine compiler privacy rejections and nine isolated runtime probes protect success and every
+selected stage-reason accessor. A scoped 1,000-call first-verification-refusal workload requires
+identical before/after live Nim allocation occupancy; this is workload-specific ARC evidence.
+These projected complete maps do not claim to reproduce a whole-block
 post-state root: other JAM transitions are intentionally outside this bounded stage.
 
 Run `make check-modules check-unit check-failures check-guards check-python`; native profiles,
