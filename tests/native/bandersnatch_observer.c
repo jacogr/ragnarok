@@ -3,11 +3,14 @@
 
 static int key_new_calls, key_free_calls, setup_new_calls, setup_free_calls;
 static int live_keys, live_setups, fail_flags, verify_calls;
+static int ietf_calls, ietf_remaining = -1;
 /* Reset only between scopes after every real allocation has been released; live counters cannot be reset away. */
 void bo_reset(int flags) {
     key_new_calls = key_free_calls = setup_new_calls = setup_free_calls = 0;
     fail_flags = flags;
     verify_calls = 0;
+    ietf_calls = 0;
+    ietf_remaining = -1;
 }
 /* Read counters by value without exposing native addresses or inspecting secret/freed storage. */
 int bo_key_news(void) { return key_new_calls; }
@@ -62,4 +65,15 @@ uint32_t bo_ring_verify(const void *handle, const uint8_t *root, const uint8_t *
     ++verify_calls;
     if (fail_flags & 8) return 5;
     return bs_ring_verify(handle, root, proof, proof_len, input, input_len, ad, ad_len, out);
+}
+
+/* Ordinary VRF refusal is separate from RingVRF counters and never alters successful production output. */
+void bo_ietf_after(int successful) { ietf_calls = 0; ietf_remaining = successful; }
+int bo_ietf_calls(void) { return ietf_calls; }
+uint32_t bo_verify(const uint8_t *key, const uint8_t *signature, size_t signature_len,
+                   const uint8_t *input, size_t input_len, const uint8_t *ad, size_t ad_len, uint8_t *out) {
+    ++ietf_calls;
+    if (ietf_remaining == 0) return 5;
+    if (ietf_remaining > 0) --ietf_remaining;
+    return bs_verify(key, signature, signature_len, input, input_len, ad, ad_len, out);
 }

@@ -71,7 +71,7 @@ remain reusable by future light-node tracking with its own verified context cont
 ## Completed scope and next work
 
 Marker derivation and contextual validation complete this PR's bounded scope. This branch was
-stacked on #16; the dependency is now merged into master. The next planned slice is Safrole header
-entropy-VRF and author/sealing authentication. Whole-Safrole coordination must still authenticate
+stacked on #16; the dependency is now merged into master. [Safrole header entropy-VRF and author/sealing authentication](safrole-authentication.md) now
+implements the next increment. Whole-Safrole coordination must still authenticate
 stage lineage and publish canonical state only after all checks succeed. This validator alone
 neither authenticates header signatures/VRF outputs nor executes a complete block transition.
