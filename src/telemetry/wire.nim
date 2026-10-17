@@ -10,6 +10,9 @@ const MaxCores* = 1024
 const ProtocolVersion = 1'u8 # JIP-3 "Node information": telemetry protocol version.
 const DroppedEvent = 0'u8 # JIP-3 event 0: a contiguous run of omitted observations.
 const StatusEvent = 10'u8 # JIP-3 event 10: current peer counts and pool sizes.
+const ConnectingInEvent = 21'u8 # JIP-3 event 21: an incoming handshake starts.
+const ConnectInFailedEvent = 22'u8 # JIP-3 event 22: that incoming handshake fails.
+const ConnectedInEvent = 23'u8 # JIP-3 event 23: that incoming handshake succeeds.
 const ConnectingOutEvent = 24'u8 # JIP-3 event 24: an outgoing connection attempt starts.
 const ConnectOutFailedEvent = 25'u8 # JIP-3 event 25: that outgoing attempt fails.
 const ConnectedOutEvent = 26'u8 # JIP-3 event 26: that outgoing attempt succeeds.
@@ -156,4 +159,31 @@ proc disconnected*(timestamp: Timestamp, identity: array[32, byte]): seq[byte] =
   for item in identity: result.add(item)
   result.add(UnknownConnectionSide)
   result.text("") # The transport does not expose a reliable diagnostic for this close.
+  result.frame()
+
+# Capture the incoming remote address before TLS authentication completes.
+proc connectingIn*(timestamp: Timestamp, address: array[16, byte], port: uint16): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(ConnectingInEvent)
+  for item in address: result.add(item) # Fixed IPv6-format address has no length prefix.
+  result.fixed(port, 2)
+  result.frame()
+
+# Link an authenticated incoming identity to its pre-handshake observation.
+proc connectedIn*(timestamp: Timestamp, attempt: EventId, identity: array[32, byte]): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(ConnectedInEvent)
+  result.fixed(uint64(attempt), 8)
+  for item in identity: result.add(item) # Public identity is copied only after native authentication.
+  result.frame()
+
+# Settle an unfinished incoming handshake without inventing a diagnostic string.
+proc connectInFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(ConnectInFailedEvent)
+  result.fixed(uint64(attempt), 8)
+  result.text("")
   result.frame()
