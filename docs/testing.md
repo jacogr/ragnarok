@@ -70,7 +70,7 @@ cases through actual entropy/time, authenticated ticket admission and atomic sch
 rotation projections remain supplied. It checks first/late fallback and store-hash refusal, exact
 map/batch ceilings, missing/truncated/suffixed chapters, staged-time checks, no-op writes and
 1,000-cycle ARC release. Two more compiler and two runtime probes protect published snapshots.
-Header marker checks follow as a separate increment.
+Header marker checks are covered by the subsequent profiles below.
 
 The [Safrole marker core](../spec/safrole-markers.md) adds one native suite comparing both
 complete optional outputs for all 33 accepted vector cases. Exact entropy/key/ticket comparisons,

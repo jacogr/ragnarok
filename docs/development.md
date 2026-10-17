@@ -123,7 +123,7 @@ snapshot into ignored storage and builds an identical workload against it and cu
 python3 tools/compare_nimony.py --baseline-compiler /absolute/path/to/nim-2.2.12
 ```
 
-This requires Git object `aea27ad0799ddb0abbea24c3923d0eb192a67e3a` and the already-built pinned
+This requires Git object `aea27ad0789ddb0abbea24c3923d0eb192a67e3a` and the already-built pinned
 crypto library. Both builds use ARC, Clang, LTO and checked profiles. Seven samples alternate
 execution order with equal iteration counts. Setup, startup, compilation and preflight are outside
 native timing. A separate non-LTO observer prevents result pruning; overhead is reported without

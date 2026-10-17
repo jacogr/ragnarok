@@ -40,7 +40,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Keep dependency sources pristine and pinned. No compiler/private-runtime hooks or upstream
   patches to bypass unsupported configurations. Explain any dependency/toolchain upgrade.
 - Use pinned ark-vrf 0.2.2, the draft-29 release-designated IETF Bandersnatch reference. Preserve
-  its nonce separation and 96/794-byte contracts. Record the draft-text 16-byte versus reference
+  its nonce separation and 96/784-byte contracts. Record the draft-text 16-byte versus reference
   32-byte challenge discrepancy; never substitute newer suite profiles or invent proof padding.
   Keep Rust behind the maintained primitive ABI, locked builds, source/SRS hash checks and native
   ring/domain policy. Never enable unsafe deterministic/non-ZK test-vector features in the adapter
