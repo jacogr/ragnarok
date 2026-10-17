@@ -27,12 +27,15 @@ provides the maintained Bandersnatch primitive bridge; Python **3.12+** runs too
 OpenSSL and Clang are required; Linux additionally uses lld. See [development](docs/development.md).
 
 ```sh
-python3 tools/setup_nimony.py
-python3 tools/setup_submodules.py
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
-rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
-python3 tools/test.py
+make setup   # Provision pinned tools, pristine submodules and locked Cargo dependencies.
+make         # Build the current proof peer as build/ragnarok.
+make check   # Run complete verification (make test is an alias).
 ```
+
+Make uses the existing Python commands; `make help` lists the bounded test and formatting targets.
+`make setup` reuses an intact compiler/formatter and refreshes them when pins change. System
+packages and rustup remain prerequisites. The default artifact is the current authenticated QUIC
+proof peer with integration and bounded offload enabled; it is not a full validator executable.
 
 The normal verification command resolves the installed compiler and formatter automatically;
 there is no global Nim compiler requirement. `build/toolchain/env.sh` optionally activates the
@@ -45,7 +48,7 @@ in separate runtime and module jobs. Generated builds, fixture keys and logs sta
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 
-For all 59 native application suites, use `python3 tools/test.py --suite unit`. This prepares
+For all 59 native application suites, use `make unit`. This prepares
 the pinned crypto/QUIC libraries and generated fixtures. See
 [native test migration](docs/testing.md) for coverage and retained Python responsibilities.
 
@@ -64,7 +67,7 @@ the pinned crypto/QUIC libraries and generated fixtures. See
 | `native/` | Narrow maintained C/Rust primitive and transport bridges |
 | `spec/`, `vectors/`, `vendor/` | Pinned interpretations, project fixtures and upstream submodules |
 
-After `source build/toolchain/env.sh`, use `python3 tools/format.py` to apply the pinned
-formatter and `--check` to verify it. `tools/test.py` selects that formatter automatically.
+Use `make format` to apply the pinned formatter and `make format-check` to verify it.
+The underlying Python entry points remain available; no global Nim compiler is required.
 See [codec](docs/codec.md), [crypto](docs/crypto.md) and [networking](docs/networking.md) for APIs,
 ownership, reproduction commands and outstanding protocol/security gates.

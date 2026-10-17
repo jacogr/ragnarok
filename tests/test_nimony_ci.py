@@ -106,10 +106,12 @@ class NimonyCISafeguards(unittest.TestCase):
             (compiler/'NIGHTLY.txt').write_text('nimony-commit: pinned\ndate: today\nplatform: fixture\n')
             (formatter/'bin').mkdir(parents=True)
             (formatter/'bin/nimpretty').write_text('formatter fixture')
-            pins = dict(commit='pinned', date='today', platform='fixture', download={}, formatter_download={})
-            with patch('setup_nimony.download', return_value=b'fixture'), patch(
+            pins = dict(commit='pinned', date='today', platform='fixture', download={'sha256': 'c'*64}, formatter_download={'sha256': 'f'*64})
+            with patch('setup_nimony.download', return_value=b'fixture') as downloaded, patch(
                     'setup_nimony.extract', side_effect=[compiler, formatter]*3):
                 root, paths, metadata = install(folder/'tools', pins)
+                self.assertEqual(downloaded.call_args_list[0].args[1].name, 'nimony-'+('c'*64)+'.archive')
+                self.assertEqual(downloaded.call_args_list[1].args[1].name, 'formatter-'+('f'*64)+'.archive')
                 self.assertEqual(paths, [compiler/'bin', folder/'tools/formatter-bin'])
                 self.assertNotIn(formatter/'bin', paths)
                 self.assertEqual((paths[1]/'nimpretty').resolve(), (formatter/'bin/nimpretty').resolve())

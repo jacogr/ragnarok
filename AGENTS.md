@@ -60,9 +60,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   and document the remaining gate; do not tune acceptance to make a corpus pass.
 
 ## Working style
-- Use the pinned Nimony compiler/formatter from `python3 tools/setup_nimony.py`; run supported
-  verification with `python3 tools/test.py`. CI uses the same installer/command plan. Nim 2 is a
-  historical measurement control, never a second production target. Keep compiler and dependency
+- Use `make setup` for pinned tools/dependencies, `make` for the current proof-peer build and
+  `make check` (alias `make test`) for complete verification. These delegate to the existing
+  `tools/setup_nimony.py`, `tools/build.py` and `tools/test.py` commands. CI uses the same installer
+  and command plan. Nim 2 is a historical measurement control, never a second production target. Keep compiler and dependency
   sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
   Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2

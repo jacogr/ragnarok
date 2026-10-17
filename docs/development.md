@@ -12,11 +12,9 @@ Install Python 3.12+, Clang/C++, CMake, zlib, OpenSSL and Rust 1.99.0. On macOS 
 command-line SDK; Linux also needs lld. Then run:
 
 ```sh
-python3 tools/setup_nimony.py
-python3 tools/setup_submodules.py
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
-rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
-python3 tools/test.py
+make setup
+make
+make check
 ```
 
 The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
@@ -38,10 +36,35 @@ lifecycle and enabled proof-offload workloads. It then discovers every `test_*ha
 Cargo runs locked/offline after explicit provisioning. Failures stop the command. The parked
 request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.
 
-For the migrated code-only suites, `python3 tools/test.py --suite unit` invokes the pinned
-Hastur native runner without building crypto/network dependencies. The normal cumulative path
-runs those same suites through Hastur. See [native test migration](testing.md) for the current
-coverage, why `std/unittest` is unavailable on this nightly, and the next groups.
+`make unit` runs all 59 ordinary application suites through the pinned Hastur runner, preparing
+the maintained native crypto, Rust and QUIC libraries and required fixtures. The cumulative path
+runs the same suites; see [native test migration](testing.md) for coverage and retained Python
+reference, negative-probe and orchestration responsibilities.
+
+| Command | Action |
+| --- | --- |
+| `make` / `make build` | Build `build/ragnarok`, the current authenticated proof peer |
+| `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
+| `make check` / `make test` | Complete canonical verification |
+| `make unit` | All 59 Hastur suites with their exact native/fixture profiles |
+| `make modules` | Every-source semantic compilation gate |
+| `make runtime` | Independent codec/crypto/networking/negative/runtime verification |
+| `make format` / `make format-check` | Apply or check the pinned formatter |
+| `make help` | List commands without provisioning/building |
+
+Make targets delegate to the existing Python tooling. `PYTHON=/path/to/python3` selects the host
+interpreter; Rust comes from `spec/bandersnatch-pins.json`, not the global default. Ordinary targets
+check the compiler manifest, binaries and pin hash via `setup_nimony.py --ensure`; healthy tools
+are reused. Missing/damaged tools or changed pins use normal checksum/identity-verified setup.
+Archives are cached by checksum, so a new pin selects a new archive without trusting or deleting
+an old one. A corrupt archive still fails verification. Explicit `make setup` provisions submodules
+and Rust/Cargo dependencies; host OS packages and rustup must already be installed.
+
+The default executable enables the existing `integration` and `offload` profiles together. It links
+only the real maintained crypto/Bandersnatch/QUIC ABIs, without test observers, and retains ARC,
+Clang, checked optimized builds, LTO and Linux lld. Its compiler-location-isolated cache and native
+libraries remain under `build/`; the executable is a development proof peer, not a full client.
+Top-level Make targets run serially because native preparation and verification share build caches.
 
 CI splits the same plan into `--suite modules` and `--suite runtime` for independent verdicts.
 An explicit `--compiler` is intended for CI, whose installer also exports NIMPRETTY. Historical
@@ -49,9 +72,8 @@ individual Python runners retain references, fixtures and native-build helpers u
 cumulative suite; their old Nim 2 build entry points are not the supported way to run this tree.
 
 ```sh
-source build/toolchain/env.sh
-python3 tools/format.py
-python3 tools/format.py --check
+make format
+make format-check
 ```
 
 Reports/logs remain under `build/nimony-trial/verification/` and `build/nimony-ci/modules/`.
@@ -73,3 +95,16 @@ native timing. A separate non-LTO observer prevents result pruning; overhead is 
 subtraction. Raw samples/source/tool hashes are retained in `build/nimony-comparison/results.json`.
 See [the measured comparison](nimony-performance.md) for scope and results; this is not a throughput
 or full-client performance promise, and adds no dual-compiler production path.
+
+
+## Make front-end verification
+
+Local macOS ARM64 verification built `build/ragnarok` with both features enabled, ran setup
+against current pins, checked all 45 modules through `make modules`, and passed all 59 suites
+through `make unit`. Parser, UDP, mesh-policy and integration smoke modes pass; the existing
+offload fixture harness verifies completion capacity and held shutdown for the same executable.
+`make format-check`, all 23 setup/CI safeguards and 246 Python harness tests pass (the existing
+parked-policy skip remains). Command plans for `make check`/`make test` delegate to the complete
+Python runner; that full runtime was already verified for the migration revision. Logs and the
+offload smoke record live under ignored `build/make/`. The Make front end does not change
+implementation behavior or dependency pins.

@@ -593,3 +593,12 @@ Migration is complete: **59/59 ordinary suites; zero remaining**. Python remains
 references, native preparation, specialized profiles, strict negative tests and multi-process
 orchestration. Production sources, wire behavior and dependency/compiler pins are unchanged.
 Linux execution still requires the PR CI run; local safeguards are not a Linux runtime result.
+
+## Linux CI confirmation
+
+The pushed migration revision `a3ed5131f473f83953361d1c6c22eaddbc16944d` passes both Linux
+runtime and all-source compilation jobs on 2026-10-17:
+[PR run](https://github.com/jacogr/ragnarok/actions/runs/39017975011) and
+[push run](https://github.com/jacogr/ragnarok/actions/runs/39017971723).
+This verifies the completed native-suite migration on Linux. Subsequent Makefile additions
+are separately verified locally and are not part of those run revisions.

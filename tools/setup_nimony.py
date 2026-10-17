@@ -30,10 +30,10 @@ def verify_identity(root, pins):
 # Export only Nimony tools and the formatter binary; historical Nim 2 is not a second compiler on PATH.
 def install(destination, pins):
     destination.mkdir(parents=True, exist_ok=True)
-    data = download(pins['download'], destination/'nimony.archive')
+    data = download(pins['download'], destination/('nimony-'+pins['download']['sha256']+'.archive'))
     root = extract(data, destination/('nightly-'+pins['commit']))
     metadata = verify_identity(root, pins)
-    formatter_data = download(pins['formatter_download'], destination/'formatter.archive')
+    formatter_data = download(pins['formatter_download'], destination/('formatter-'+pins['formatter_download']['sha256']+'.archive'))
     formatter_root = extract(formatter_data, destination/'formatter-source')
     formatter = formatter_root/'bin/nimpretty'
     if not formatter.is_file():
@@ -97,7 +97,19 @@ def installed(destination=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--destination', type=Path, default=ROOT/'build/toolchain')
+    parser.add_argument('--ensure', action='store_true', help='Reuse an intact installation with current pins')
     args = parser.parse_args()
+    if args.ensure:
+        # Ordinary Make targets validate retained tools without extracting archives again on every run.
+        try:
+            compiler, _ = installed(args.destination.resolve())
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            # Missing tools, changed pins or damaged managed binaries need the normal verified installation path.
+            pass
+        else:
+            # CI keeps using normal setup, which also exports its step environment as before.
+            print('Pinned Nimony and formatter ready: '+str(compiler))
+            return
     pins = host_pins(json.loads((ROOT/'spec/toolchain.json').read_text()))
     destination = args.destination.resolve()
     root, paths, metadata = install(destination, pins)
