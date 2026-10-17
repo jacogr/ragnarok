@@ -236,7 +236,8 @@
       "stf/safrole/full/publish-tickets-with-mark-2.json": "d0493de75b51cc0bd1c0dd5dd0d27f60fce2c847801923f592df1917ea735871",
       "stf/safrole/full/publish-tickets-with-mark-3.json": "5bab45da9d309f5ca052de952d7cd3aff7ea1f25817070037325de3ff1b3cc71",
       "stf/safrole/full/publish-tickets-with-mark-4.json": "b48ed4700881bfea09a7f579bfca6cd37d8fcdf8862935fb84d6a3b54270c102",
-      "stf/safrole/full/publish-tickets-with-mark-5.json": "1ec6493416e4a32fc77ca4c98020495490f1085c4dc8476209b4565acae71e5b"
+      "stf/safrole/full/publish-tickets-with-mark-5.json": "1ec6493416e4a32fc77ca4c98020495490f1085c4dc8476209b4565acae71e5b",
+      "stf/safrole/full/enact-epoch-change-with-set-resize-4.json": "4f9e41e9ff6c8b32bbbb0db31ab3c2db36ff98b5567f75e8073c238ae3f1ef86"
     }
   },
   "toolchains": {
