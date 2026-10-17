@@ -1,7 +1,8 @@
+import ../../support/arc_evidence
 ## Exercise the production UDP/readiness adapter without a TLS engine or compiler/runtime hooks.
 import std/[assertions, syncio, monotimes, times, oserrors]
 import std/posix/posix
-import ../../src/quic/io
+import ../../../src/quic/io
 
 let
   # Read the actual OS flag independently through public C headers, not wrapper bookkeeping.
@@ -122,7 +123,9 @@ proc metadataLifetimes() =
   for i in 0..<1000: metadataScope(i mod 2 == 0)
   let after = getOccupiedMem()
   assert before == after
-  echo "QUIC_IO_ARC_RELEASE cycles=1000 occupied_before=", before, " occupied_after=", after
+  # Preserve fresh numeric observations independently of portable expected output.
+  recordArcRelease("quic_io", 1000, before, after)
+  echo "QUIC_IO_ARC_RELEASE cycles=1000 unchanged"
 
 # Both loopback families must work without depending on the still-unported authenticated peer.
 retirementSelfTest(false)

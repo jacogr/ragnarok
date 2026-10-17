@@ -1,6 +1,6 @@
 ## Ordinary binaries compile without the crypto provider and cannot claim enabled integration success.
 import std/[assertions, syncio]
-import ../../src/quic/integration
+import ../../../src/quic/integration
 assert not IntegrationEnabled
 let key = preimageKey([1'u8, 2, 3])
 assert key.error == IntegrationError.Crypto

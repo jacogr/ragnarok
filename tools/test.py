@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import ROOT, installed, host_pins, verify_identity, verify_version
-from native_tests import unit_command, unit_environment, unit_evidence, ARC_SUITES, UNIT_LINKS
+from native_tests import unit_command, unit_environment, unit_evidence, ARC_SUITES, UNIT_LINKS, unit_runtime_fixtures
 
 
 # Keep CI's independent runtime/module jobs and the complete local run on one explicit command plan.
@@ -60,7 +60,7 @@ def main():
     compiler, selected = environment(args.compiler)
     libraries = None
     if args.suite == 'unit':
-        # Reuse pristine pinned crypto preparation; network builds remain outside this suite.
+        # Reuse the same pristine pinned crypto, Rust and QUIC preparations as CI.
         sys.path.insert(0, str(ROOT/'tests'))
         from nimony_crypto import prepare
         folder = ROOT/'build/nim-tests/native'
@@ -72,8 +72,23 @@ def main():
         bs, bs_observer, bs_evidence = prepare_bandersnatch(folder)
         libraries.update(bandersnatch=bs, bandersnatch_observer=bs_observer)
         (folder/'bandersnatch-preparation.json').write_text(json.dumps(bs_evidence, indent=2)+'\n')
-        # Prepare fresh numeric observations for native snapshot tests before the directory run.
-        selected = unit_environment(compiler, base=selected)
+        from nimony_quic import prepare as prepare_quic
+        quic, certificates, quic_evidence = prepare_quic()
+        libraries['quic'] = quic
+        (folder/'quic-preparation.json').write_text(json.dumps(quic_evidence, indent=2)+'\n')
+        import test_integration as integration_fixture
+        integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
+        wires, _ = integration_fixture.corpus()
+        reload = folder/'integration-reload'
+        reload.mkdir(exist_ok=True)
+        for index in range(8):
+            # Different candidate bytes expose a refused bank reload that accidentally publishes partial data.
+            wire = bytearray((wires/(str(index)+'.bin')).read_bytes())
+            wire[0] ^= 128
+            (reload/(str(index)+'.bin')).write_bytes(wire)
+        fixtures = unit_runtime_fixtures(certificates, wires, reload)
+        # All fixture hashes are verified and old observations retired before any native suite runs.
+        selected = unit_environment(compiler, base=selected, fixtures=fixtures)
     for arguments in plan(args.suite, compiler, libraries):
         # Structured arguments avoid shell interpretation; output remains visible in the normal local/CI transcript.
         print('+ '+' '.join(arguments), flush=True)

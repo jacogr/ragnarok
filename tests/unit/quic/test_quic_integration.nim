@@ -1,7 +1,8 @@
+import ../../support/arc_evidence
 ## Enabled CE fixture composition, private snapshot/bank aliases, native refusal and scoped ARC release.
-import std/[assertions, cmdline, syncio]
-import ../../src/quic/integration
-import ../../src/codec/owned
+import std/[assertions, envvars, syncio]
+import ../../../src/quic/integration
+import ../../../src/codec/owned
 
 # Faults affect only this test-linked observer; production hashes still use the maintained primitive ABI.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -94,8 +95,8 @@ proc banks(directory, alternate: string) =
 
 # Original random-capture selftest and warmed owner scopes use the real linked crypto implementation.
 proc main() {.raises.} =
-  let args = commandLineParams()
-  assert args.len == 2
+  let args = @[getEnv("RAGNAROK_TEST_WIRES"), getEnv("RAGNAROK_TEST_RELOAD")]
+  assert args[0].len > 0 and args[1].len > 0, "missing prepared native fixtures"
   let original = readBytes(args[0] & "/0.bin")
   integrationSelfTest()
   banks(args[0], args[1])
@@ -104,7 +105,9 @@ proc main() {.raises.} =
   for i in 0..<1000: owners(original) # All source, child, parent, failure and output allocations retire.
   let after = getOccupiedMem()
   assert before == after
-  echo "INTEGRATION_ARC_RELEASE cycles=1000 occupied_before=", before, " occupied_after=", after
+  # Preserve fresh numeric observations independently of portable expected output.
+  recordArcRelease("quic_integration", 1000, before, after)
+  echo "INTEGRATION_ARC_RELEASE cycles=1000 unchanged"
   echo "Nimony integration: capture/copy/alias, immutable banks and refusal recovery passed"
 
 # Trusted fixture I/O failures are not successful protocol verdicts.

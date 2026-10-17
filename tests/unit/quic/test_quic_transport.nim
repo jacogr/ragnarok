@@ -1,6 +1,6 @@
 ## Link the real maintained transport bridge; no protocol peer migration is claimed by these tests.
-import std/[assertions, cmdline, syncio]
-import ../../src/quic/transport
+import std/[assertions, envvars, syncio]
+import ../../../src/quic/transport
 
 # The real transport invokes identity validation only while the stack owner remains alive.
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl.} = 0
@@ -9,8 +9,8 @@ proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl.} = discar
 
 # Exercise native construction failure and success with the exact production I/O owner and LSQUIC engine.
 proc main() {.raises.} =
-  let args = commandLineParams()
-  assert args.len == 2
+  let args = @[getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")]
+  assert args[0].len > 0 and args[1].len > 0, "missing prepared native fixtures"
   var owner = default(Transport)
   var token: byte = 0
   assert owner.transportStatus == -1

@@ -1,0 +1,8 @@
+UDP_RETIREMENTS ipv6=false rounds=256
+UDP_RETIREMENTS ipv6=true rounds=256
+UDP_SHARED ipv6=false passed
+UDP_SHARED ipv6=true passed
+UDP_SCOPED ipv6=false rounds=256
+UDP_SCOPED ipv6=true rounds=256
+QUIC_IO_ARC_RELEASE cycles=1000 unchanged
+Nimony UDP readiness/retirement checks passed

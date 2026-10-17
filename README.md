@@ -45,8 +45,9 @@ in separate runtime and module jobs. Generated builds, fixture keys and logs sta
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 
-For migrated codec/state suites, use `python3 tools/test.py --suite unit` (builds native crypto). See
-[native test migration](docs/testing.md) for coverage and the remaining groups.
+For all 59 native application suites, use `python3 tools/test.py --suite unit`. This prepares
+the pinned crypto/QUIC libraries and generated fixtures. See
+[native test migration](docs/testing.md) for coverage and retained Python responsibilities.
 
 ## Code and verification
 

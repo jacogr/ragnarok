@@ -15,6 +15,18 @@ from test import plan
 
 # Prevent empty suites, missing evidence and an accidental global/unchecked compiler from producing green tests.
 class NativeUnitHarness(unittest.TestCase):
+    # All ordinary suite identities and checked-in native files must be scheduled exactly once.
+    def test_complete_native_inventory(self):
+        from test_nimony import SUITES
+        self.assertEqual(set(SUITES), set(native_tests.UNIT_SUITES))
+        self.assertEqual(len(SUITES), len(native_tests.UNIT_SUITES))
+        actual = set((ROOT/'tests/unit').rglob('*.nim'))
+        expected = {native_tests.unit_source(name) for name in native_tests.UNIT_SUITES}
+        self.assertEqual(actual, expected)
+        for path in expected:
+            # Every discovered positive suite owns an explicit output contract.
+            self.assertTrue(path.with_suffix('.output').is_file(), str(path))
+
     # An absent archive runner cannot fall back to an unrelated executable on PATH.
     def test_missing_pinned_runner(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -67,7 +79,7 @@ class NativeUnitHarness(unittest.TestCase):
             folder = Path(temporary)
             (folder/'hastur').touch()
             libraries = {'crypto': folder/'production', 'observer': folder/'observer',
-                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer'}
+                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer', 'quic': folder/'quic'}
             for path in libraries.values():
                 # Separate files make accidental observer/production substitution visible in the command plan.
                 path.touch()
@@ -100,7 +112,7 @@ class NativeUnitHarness(unittest.TestCase):
             folder = Path(temporary)
             (folder/'hastur').touch()
             libraries = {'crypto': folder/'production', 'observer': folder/'observer',
-                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer'}
+                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer', 'quic': folder/'quic'}
             for path in libraries.values():
                 # The launcher needs real files; dummy bytes are enough for command-only safeguards.
                 path.touch()
@@ -111,11 +123,21 @@ class NativeUnitHarness(unittest.TestCase):
                     for name, profile in native_tests.UNIT_LINKS.items():
                         # Each case must get exactly its selected ABI, preserving observer isolation from production roots.
                         args = native_tests.unit_command(folder/'nimony', name, libraries)
-                        self.assertIn('--forward:--passL:'+str(libraries[profile].resolve()), args)
-                        include = 'bandersnatch' if name == 'bandersnatch_owners' else 'crypto'
-                        self.assertIn('--forward:--passC:-I'+str(ROOT/'native'/include), args)
-                        other = libraries['crypto' if profile == 'observer' else 'observer']
-                        self.assertNotIn('--forward:--passL:'+str(other.resolve()), args)
+                        if profile is not None:
+                            # Native-free socket/disabled-provider cases must not acquire an accidental crypto dependency.
+                            self.assertIn('--forward:--passL:'+str(libraries[profile].resolve()), args)
+                            include = 'bandersnatch' if name == 'bandersnatch_owners' else 'quic' if profile == 'quic' else 'crypto'
+                            self.assertIn('--forward:--passC:-I'+str(ROOT/'native'/include), args)
+                            other = libraries['crypto' if profile == 'observer' else 'observer']
+                            self.assertNotIn('--forward:--passL:'+str(other.resolve()), args)
+                        else:
+                            self.assertFalse(any('--passC:-I' in arg for arg in args))
+                        self.assertEqual('--forward:-d:integration' in args, name == 'quic_integration')
+                        if name == 'bandersnatch_owners':
+                            # Both real and observed Rust ABIs plus exact call-site defines are required.
+                            self.assertIn('--forward:--passL:'+str(libraries['bandersnatch_observer'].resolve()), args)
+                            for function in ('key_new', 'key_free', 'setup_new', 'setup_free'):
+                                self.assertIn('--forward:--passC:-Dbs_'+function+'=bo_'+function, args)
                         self.assertIn('--forward:--passC:-flto', args)
                         self.assertIn('--forward:--passL:-flto', args)
                         self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
@@ -132,6 +154,36 @@ class NativeUnitHarness(unittest.TestCase):
                 with self.assertRaisesRegex(FileNotFoundError, 'expected output'):
                     native_tests.unit_command(folder/'nimony', 'state_trie', {'crypto': folder/'library'})
 
+    # Generated certificates/CE inputs must be explicitly prepared; inherited variables alone cannot satisfy them.
+    def test_runtime_fixture_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(native_tests, 'unit_evidence_directory', return_value=Path(temporary)):
+                for name in ('quic_transport', 'quic_integration'):
+                    # An old environment path is insufficient without a newly supplied required-file manifest.
+                    with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'prepared native unit fixtures'):
+                        native_tests.unit_environment(Path('/fixture/nimony'), name, {'RAGNAROK_TEST_CERT': '/old'})
+
+    # A changed later CE child must fail even when every earlier input and all paths remain valid.
+    def test_runtime_fixture_integrity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            for name in ('a.cert.pem', 'a.key.pem'):
+                # Certificate contents are irrelevant for manifest-only tooling checks.
+                (folder/name).write_bytes(b'fixture')
+            original, reload = folder/'original', folder/'reload'
+            for target in (original, reload):
+                target.mkdir()
+                for index in range(8):
+                    # Every listed sibling is required, not just the first usable child.
+                    (target/(str(index)+'.bin')).write_bytes(bytes([index]))
+            fixtures = native_tests.unit_runtime_fixtures(folder, original, reload)
+            with patch.object(native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
+                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'quic_integration', fixtures=fixtures)
+                self.assertEqual(environment['RAGNAROK_TEST_WIRES'], str(original))
+                (reload/'7.bin').write_bytes(b'changed')
+                with self.assertRaisesRegex(ValueError, 'checksum'):
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'quic_integration', fixtures=fixtures)
+
     # Fresh runs must remove their own old observation while preserving unrelated completed suite data.
     def test_fresh_arc_observations(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -146,7 +198,7 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertTrue(report.exists())
                 self.assertEqual(environment['RAGNAROK_TEST_EVIDENCE'], str(folder))
                 self.assertEqual(environment['KEPT'], 'yes')
-                native_tests.unit_environment(Path('/fixture/nimony'))
+                native_tests.unit_environment(Path('/fixture/nimony'), 'report_snapshots')
                 self.assertFalse(report.exists())
 
     # A successful native verdict cannot substitute missing, partial or malformed numeric evidence.

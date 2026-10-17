@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import cache_directory
-from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources
+from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
@@ -881,51 +881,26 @@ def main():
     from state_composition_oracle import chapters as composition_chapters
     composition_fixture = BUILD/'composition-chapters.txt'
     composition_fixture.write_text('\n'.join(raw.hex() for raw in composition_chapters())+'\n')
-    # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
+    # Every ordinary suite now has one native runner path; omitted/extra identities are a migration failure.
+    assert set(SUITES) == set(UNIT_SUITES) and len(SUITES) == len(UNIT_SUITES)
+    libraries = dict(crypto=crypto_library, observer=crypto_observer, bandersnatch=bs_library,
+                     bandersnatch_observer=bs_observer, quic=quic_library)
+    fixtures = unit_runtime_fixtures(quic_fixtures, integration_wires, integration_reload)
     for name in SUITES:
-        if name in UNIT_SUITES:
-            # Hastur owns compilation, execution and exact expected-output verdicts for migrated code tests.
-            checked = command(unit_command(compiler, name, dict(crypto=crypto_library, observer=crypto_observer, bandersnatch=bs_library, bandersnatch_observer=bs_observer)), name+'-hastur', unit_environment(compiler, name))
-            row = dict(name=name, runner='hastur', check=checked, passed=checked['exit_code'] == 0)
-            if row['passed'] and name in ARC_SUITES:
-                # Retain exact fresh measurements while Hastur checks platform-independent completion output.
-                try:
-                    report[ARC_SUITES[name]] = unit_evidence(compiler, name)
-                except (OSError, ValueError) as error:
-                    # A missing/malformed observation cannot reuse an old successful ARC report.
-                    row['passed'] = False
-                    row['evidence_error'] = str(error)
-            report['suites'].append(row)
-            announce(name+' (Hastur)', row['passed'])
-            continue
-        compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
-                                 crypto_observer if name in ('quic_integration', 'guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
-                                 else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None,
-                                 native_libraries=bs_libraries if name == 'bandersnatch_owners' else (),
-                                 cflags=OWNER_DEFINES if name == 'bandersnatch_owners' else (),
-                                 quic_library=quic_library if name in ('quic_transport', 'quic_protocol') else None,
-                                 defines=('integration',) if name == 'quic_integration' else ())
-        row = dict(name=name, build=compiled, passed=False)
-        if compiled['exit_code'] == 0:
-            # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [integration_wires, integration_reload] if name == 'quic_integration' else [])], name+'-run')
-            row['passed'] = row['run']['exit_code'] == 0
-            if name == 'quic_integration' and row['passed']:
-                # Every small retained parent/child/failure scope must release its final ARC references.
-                release = re.search(r'INTEGRATION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy covers this warmed workload, not RSS/native allocation freedom.
-                    report['integration_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'quic_io' and row['passed']:
-                # Custom resource destruction must release retained dispatcher metadata, not only OS sockets.
-                release = re.search(r'QUIC_IO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
-                    report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
+        # Hastur owns compilation, execution and exact expected-output verdicts for every ordinary code suite.
+        checked = command(unit_command(compiler, name, libraries), name+'-hastur',
+                          unit_environment(compiler, name, fixtures=fixtures))
+        row = dict(name=name, runner='hastur', check=checked, passed=checked['exit_code'] == 0)
+        if row['passed'] and name in ARC_SUITES:
+            # A missing or inconsistent current observation cannot reuse an earlier successful report.
+            try:
+                report[ARC_SUITES[name]] = unit_evidence(compiler, name)
+            except (OSError, ValueError) as error:
+                # Evidence failures remain visible independently of the native verdict.
+                row['passed'] = False
+                row['evidence_error'] = str(error)
         report['suites'].append(row)
-        announce(name, row['passed'])
+        announce(name+' (Hastur)', row['passed'])
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
     from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode
     from bounded_checks import batch_requests as bounded_requests

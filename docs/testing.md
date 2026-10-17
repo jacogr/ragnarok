@@ -2,7 +2,7 @@
 
 Branch: `nim-tests`, based on merged Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **54/59 ordinary suites migrated; 5 remaining**.
+Current total: **59/59 ordinary suites migrated; none remaining**.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
 ## What the investigation found
@@ -46,19 +46,25 @@ explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and
 python3 tools/test.py --suite unit
 ```
 
-That command runs the pure codec directory and 29 separately linked state tests. It now
-prepares the existing pristine pinned native crypto bridge and test-only observer (initialized
-crypto submodules, CMake and Clang are required), without network or Bandersnatch builds. Python
-supplies paths, native preparation and checked flags; Hastur owns application test verdicts.
-After sourcing `build/toolchain/env.sh`, Hastur can also be invoked directly using its documented
-CLI. Retain the flags and explicit library profile printed by the supported command.
+That command runs **21 codec, 29 state, four crypto and five QUIC suites** through Hastur.
+The codec directory is dependency-free; other cases have explicit per-file profiles, including
+native-free UDP and disabled integration. The launcher prepares the same pristine pinned C/Rust
+crypto bridges, observers, LSQUIC/TLS and generated certificates/CE inputs as the cumulative run.
+Initialized pinned submodules, CMake, Clang and the pinned Rust toolchain are required. Private
+keys and generated data remain under ignored `build/`. Python supplies setup, paths and checked
+flags; Hastur owns application test verdicts. Direct Hastur use must retain those exact flags and
+fixture environment paths.
 
-The cumulative `python3 tools/test.py` path delegates all 54 migrated suite identities to Hastur,
-records its command/log/verdict and hashes each source and `.output` file. There is no second
-Python compile/run path for those suites in the supported cumulative runner. The remaining
-5 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
-profiles and negative checks. CI already calls that cumulative path, so the native runner migration
-needs no duplicate workflow/job or second execution of migrated suites.
+The cumulative `python3 tools/test.py` path delegates **all 59 ordinary suites** to Hastur and
+hashes every source and `.output` file. The old Python positive-suite build/run branch is removed;
+there is no fallback to old file locations. A registry/discovery safeguard rejects missing or extra
+suite identities. All **31 ARC report fields** retain fresh numeric observations and native
+equality assertions. CI already uses this cumulative path; no duplicate job was added.
+
+Independent oracle drivers, specialized result/ownership profiles, negative compilation and
+runtime-crash checks, published-vector validation and multi-process network scenarios retain
+Python orchestration where it provides independent evidence or the native runner lacks an equally
+strict failure contract. These are intentional responsibilities, not unmigrated ordinary suites.
 
 ## Second converted group: composites, digests and immutable snapshots
 
@@ -250,11 +256,20 @@ without comparing that file. See the pinned runner above and
 `.exitcode` alone: that would weaken the current nonzero-exit checks. Compiler-diagnostic goldens
 also need a portability review before replacing the existing specific rejection checks.
 
-Next bounded group: availability state and its private ownership companion, preserving their
-explicit independently authored report fixture requirement. Remaining state families follow,
-then crypto/network ownership suites. Named `suite`/`test` conversion can be revisited when the
-selected compiler supplies a supported implementation; no compiler upgrade or patch is part of
-this branch.
+The ordinary-suite migration is complete. Future application tests belong in the appropriate
+`tests/unit/` family, with an explicit output contract and checked profile. Retained Python work
+is independent references, native preparation, specialized profiles, strict negative probes,
+toolchain safeguards and process/resource orchestration. Revisit those negative probes only when
+Hastur provides a demonstrably equivalent contract; never use permissive `.exitcode` expectations.
+Named `suite`/`test` syntax can be revisited if the pinned compiler supplies a supported API.
+
+The old `tests/native/test_result_safety.nim` is a historical Nim 2 `FieldDefect` probe used
+only by the historical Nim 2 entry point in `tests/test_codec.py`; it is not one of the 59
+selected-toolchain suites. Its Nimony successors are the strict primitive/bounded/composite
+default/error payload-access processes in `tools/test_nimony.py`, plus positive zero-width,
+empty-count and work-error cases in the native codec suites. No Nim 2 exception-catching shim
+or weaker Hastur exit-code expectation is introduced to run that historical probe.
+
 
 ## Verification of the first increment
 
@@ -522,3 +537,59 @@ pinned Rust ABI and owner observer as the cumulative runner, forwarding the orig
 renames and runtime search paths. **54 suites**, **29 ARC observations** and **240 harness tests**
 (existing skip) pass locally. Evidence: `build/nim-tests/remaining/crypto-unit.log` and
 `crypto-harness.log`. Migration total: **54/59; 5 remaining**. Next: QUIC native suites.
+
+
+## QUIC batch and completed native discovery
+
+The five QUIC suites now use Hastur: UDP readiness/retirement, transport setup/teardown,
+protocol framing/DER, enabled integration and disabled-provider refusal. Original assertions,
+IPv4/IPv6 rounds, native libraries and `-d:integration` separation are preserved. Transport and
+integration read explicit environment paths backed by freshly prepared required-file manifests;
+missing fixtures or a changed later sibling fail before execution. Certificates/private keys
+remain generated under ignored build directories. New harness checks cover dynamic fixture
+requirements, sibling integrity and exact native discovery.
+
+UDP expected output retains its original fixed family/round markers; timing diagnostics still
+fail the native test when the original readiness assertion fails. Integration's explicit expected
+output includes the existing 10,000-case capture selftest marker. That marker was initially omitted
+from the new golden; Hastur caught the mismatch without any implementation change.
+
+Local native launch passes **59/59 suites**, **31 ARC observations**, **243 harness tests** with
+the existing parked-policy skip, and the existing **23 setup/CI safeguards**. The draft-text
+provenance skip is unchanged. Evidence: `build/nim-tests/remaining/quic-unit.log`,
+`quic-harness.log`, `final-ci-safeguards.log`, `final-provenance.log` and `final-format.log`.
+Full cumulative verification is recorded below when complete. Linux CI remains separate.
+
+
+## Final cumulative verification
+
+`python3 tools/test.py` completed successfully on macOS ARM64 with the pinned Nimony 0.6.3,
+ARC/Clang/checked-LTO profile and Python 3.14.2. This is a fresh complete local run after migration:
+
+| Gate | Result |
+| --- | --- |
+| Every production module | 45/45 semantic checks pass |
+| Ordinary application suites through Hastur | 59/59 pass |
+| Total native/runtime profiles, including six specialized offload/peer profiles | 65/65 pass |
+| Independent corpora | 41/41 pass |
+| Fresh native ARC observations | 31/31 retain their 1,000-cycle baseline |
+| Compiler/privacy/nominal/schema/ownership rejection checks | 676/676 pass |
+| Python harness tests | 243 pass, one existing parked-policy skip |
+| Setup/CI safeguards | 23 pass |
+| Formatting | 864 Nim files pass |
+
+The full run also passes authenticated startup/matrix, retained and integrated services, IPv6
+mesh/reconnect and peer loss, 40-session teardown soak, admission recovery, pre-request connection
+loss and ten real-crypto bounded offload waves. Strict failed-result and ownership process checks
+remain intact. Every source hash in the cumulative report matches the final tested source tree.
+The report retains its historical `partial-checks-passed` status label: implemented verification
+passes, while protocol-policy gates and full JAM functionality remain separate.
+
+Reproducible transcript: `build/nim-tests/remaining/full-verification.log`.
+Detailed source hashes, commands and verdicts: `build/nimony-trial/verification/results.json`.
+Module inventory: `build/nimony-ci/modules/results.json`.
+
+Migration is complete: **59/59 ordinary suites; zero remaining**. Python remains for independent
+references, native preparation, specialized profiles, strict negative tests and multi-process
+orchestration. Production sources, wire behavior and dependency/compiler pins are unchanged.
+Linux execution still requires the PR CI run; local safeguards are not a Linux runtime result.

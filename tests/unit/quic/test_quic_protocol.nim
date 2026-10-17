@@ -1,6 +1,6 @@
 ## Parser selftests use the real DER extractor and shared production frame boundary checks, without sockets.
 import std/[assertions, syncio]
-import ../../src/quic/protocol
+import ../../../src/quic/protocol
 
 # The original request and response prefixes must remain pending until exact FIN.
 proc prefixes() =
