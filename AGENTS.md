@@ -139,6 +139,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - All commits must use semantic commit messages in Conventional Commits form:
   `type(scope): summary`, with an optional scope and a concise imperative summary. Use the type
   that describes the change, such as `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci` or `chore`.
+- Before the final push to a PR, fetch `origin` and merge the latest `origin/master` into the PR
+  branch. Resolve any conflicts and run the affected checks before pushing, so the final PR
+  revision includes the latest master. This does not authorize merging the PR itself.
 - Every AI run must include a suggested semantic commit message in its final report, accurately
   describing the changes made. If no files changed, explicitly report that no commit is needed.
 - For milestone increments, state current parity/remaining gaps and the next planned bounded chunk
