@@ -21,21 +21,26 @@ def summarize(report, kind):
         for row in rows:
             lines.append('| `'+row['source']+'` | '+('Pass' if row['passed'] else 'Fail')+' |')
     elif kind == 'runtime':
-        # Count the actual independent evidence groups without hardcoding totals that grow during the port.
-        groups = {key: value for key, value in report.items() if isinstance(value, list) and value
-                  and all(isinstance(row, dict) and 'passed' in row for row in value)}
-        guards = sum(len(rows) for key, rows in groups.items() if key not in ('suites', 'runtime', 'privacy', 'nominal', 'schemas', 'contracts', 'ownership_compile'))
-        compilations = sum(len(report.get(key, [])) for key in ('privacy', 'nominal', 'schemas'))+len(report.get('contracts', []))+len(report.get('ownership_compile', []))
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
         lines = ['## Native unit and codec verification', '', '**Status: '+report['status']+'**', '',
                  f'- Native suites: {len(report["suites"])}', f'- Independent corpora: {len(corpora)}',
-                 f'- Runtime misuse rejections: {guards}', f'- Compilation rejections: {compilations}', '',
+                 '',
                  'Passing implemented-scope tests is partial evidence, not full JAM client conformance.',
                  'Independent corpus verdicts are listed below.', '',
                  '| Corpus | Result | Requests |', '| --- | --- | --- |']
         # Preserve each corpus verdict rather than presenting aggregate counts as a substitute for failures.
         for key, row in corpora.items():
             lines.append('| `'+key+'` | '+('Pass' if row['passed'] else 'Fail')+' | '+str(row.get('requests', 'vectors/threads'))+' |')
+    elif kind == 'failures':
+        # Runtime contracts own a separate inventory; compiler rejections belong to the guards job.
+        from test_runtime import FAILURE_COUNTS
+        lines = ['## Runtime failure and contract verification', '', '**Status: '+report['status']+'**', '',
+                 '| Group | Passed | Total |', '| --- | --- | --- |']
+        for key in FAILURE_COUNTS:
+            # Include failed rows and positive runtime controls rather than claiming every row is a rejection.
+            rows = report[key]
+            lines.append('| '+key+' | '+str(sum(row['passed'] for row in rows))+' | '+str(len(rows))+' |')
+        lines += ['', 'Store positive controls: '+('Pass' if report['store_controls']['passed'] else 'Fail')+'.']
     elif kind == 'guards':
         # Compiler rejections have their own verdict and inventory, never inferred from a unit result.
         lines = ['## Compiler rejection guards', '', '**Status: '+report['status']+'**', '',
@@ -124,7 +129,7 @@ def summarize(report, kind):
 # Missing reports produce an explicit summary and a failing helper, preserving the preceding job failure.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'guards', 'e2e'), required=True)
+    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'guards', 'failures', 'e2e'), required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()

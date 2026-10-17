@@ -30,10 +30,10 @@ banner is 0.2; archive and installed binary hashes retain its provenance.
 
 ## Verification and formatting
 
-`make check` runs five independently selectable groups: source compilation, Python discovery,
-native unit/corpus/runtime misuse checks, compiler rejection guards and E2E networking.
+`make check` runs six independently selectable groups: source compilation, Python discovery,
+native unit/corpus checks, runtime failure probes, compiler rejection guards and E2E networking.
 Use the affected group during development;
-CI schedules all five concurrently on separate runners. Python references/tooling/provenance
+CI schedules all six concurrently on separate runners. Python references/tooling/provenance
 unittests execute once in their own group; native and E2E groups do not rerun that discovery.
 Make first ensures the pinned compiler, pristine source submodules and locked Cargo dependencies;
 native builds then run Cargo locked/offline. Failures stop the command. The parked
@@ -50,10 +50,11 @@ reference, negative-probe and orchestration responsibilities.
 | `make clean` | Remove all of `build/`, including installed tools and cached archives |
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
-| `make unit` | All 72 Hastur suites with their exact native/fixture profiles |
+| `make unit` | All 75 Hastur suites with their exact native/fixture profiles |
 | `make check-modules` / `make modules` | Every-source semantic compilation gate |
 | `make check-python` | Python reference/tooling/provenance tests |
-| `make check-unit` / `make runtime` | Native unit suites, independent corpora and runtime misuse probes |
+| `make check-unit` / `make runtime` | Native unit suites and independent corpora |
+| `make check-failures` | Runtime assertion/contract probes and positive controls |
 | `make check-guards` | Compiler rejection guards (699 probes) |
 | `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
 | `make format` / `make format-check` | Apply or check the pinned formatter |
@@ -77,9 +78,9 @@ Clang, checked optimized builds, LTO and Linux lld. Its compiler-location-isolat
 libraries remain under `build/`; the executable is a development proof peer, not a full client.
 Top-level Make targets run serially because native preparation and verification share build caches.
 
-CI invokes the five `make check-*` targets independently after checkout/Python setup.
+CI invokes the six `make check-*` targets independently after checkout/Python setup.
 The workflow has no separate directory, compiler, source, Rust or OS-package bootstrap recipes.
-`make summary-modules`, `summary-python`, `summary-unit`, `summary-guards` and `summary-e2e` render existing reports
+`make summary-modules`, `summary-python`, `summary-unit`, `summary-failures`, `summary-guards` and `summary-e2e` render existing reports
 even after a failed job;
 `SUMMARY_OUTPUT` selects the local Markdown file or GitHub step summary.
 Superseded standalone codec/state Python runners are removed. Older commands recorded in
@@ -90,7 +91,7 @@ make format
 make format-check
 ```
 
-Reports/logs remain under `build/tests/{runtime,modules,python,e2e}/` and `build/ci/`.
+Reports/logs remain under `build/tests/{runtime,failures,guards,modules,python,e2e}/` and `build/ci/`.
 Temporary TLS keys never belong in commits or diagnostic artifacts. CI uploads logs/reports only.
 
 ## Tooling audit
@@ -106,7 +107,7 @@ logic that would become longer, less portable or harder to validate as shell com
 | `build.py` | Checked platform-specific linker profile and maintained native library preparation |
 | `format.py` | Canonical formatter comparison without modifying files in check mode |
 | `native_tests.py` | Hastur discovery, linking profiles, fixture integrity and ARC observations |
-| `test_modules.py`, `test_runtime.py`, `test_guards.py` | Source inventory, units/references and compiler guards |
+| `test_modules.py`, `test_runtime.py`, `test_guards.py` | Source inventory, units/references, selectable runtime contracts and compiler guards |
 | `test_python.py` | Single independent Python unittest discovery and report |
 | `test_e2e.py`, `e2e_checks.py` | Peer-entry selftests and unchanged live networking/resource workloads |
 | `native_checks.py` | Shared checked compiler/linker profile and command diagnostics |

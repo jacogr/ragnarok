@@ -135,6 +135,33 @@ jobs:
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
+  failures:
+    name: Runtime failure and contract tests
+    timeout-minutes: 30
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: Runtime failure and contract tests
+        run: make check-failures
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-failures-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/failures/*.log
+            build/tests/failures/results.json
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log
+
   e2e:
     name: End-to-end networking tests
     timeout-minutes: 60

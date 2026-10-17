@@ -13,7 +13,7 @@ export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(ope
 export COMPILE_CHECK_JOBS ?= 4
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
-.PHONY: build setup sources host-tools toolchain clean check test check-python check-modules check-unit check-guards check-e2e unit modules runtime format format-check summary-unit summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: build setup sources host-tools toolchain clean check test check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -51,8 +51,8 @@ toolchain: host-tools
 clean:
 	rm -rf -- build
 
-# Local complete verification runs the same five independent groups scheduled concurrently by CI.
-check: check-python check-modules check-unit check-guards check-e2e
+# Local complete verification runs the same six independent groups scheduled concurrently by CI.
+check: check-python check-modules check-unit check-failures check-guards check-e2e
 test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
@@ -62,6 +62,10 @@ check-modules: toolchain
 runtime: check-unit
 check-unit: setup format-check
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
+
+# Runtime contract/crash probes retain strict diagnostics without delaying ordinary unit/corpus checks.
+check-failures: setup
+	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
 
 # Compiler rejection checks retain their own logs/caches and do not execute the unit/corpus workload.
 check-guards: setup
@@ -92,6 +96,10 @@ summary-modules:
 	mkdir -p build/ci
 	$(PYTHON) tools/summarize_tests.py --kind modules --report build/tests/modules/results.json --output "$(SUMMARY_OUTPUT)"
 
+summary-failures:
+	mkdir -p build/ci
+	$(PYTHON) tools/summarize_tests.py --kind failures --report build/tests/failures/results.json --output "$(SUMMARY_OUTPUT)"
+
 summary-guards:
 	mkdir -p build/ci
 	$(PYTHON) tools/summarize_tests.py --kind guards --report build/tests/guards/results.json --output "$(SUMMARY_OUTPUT)"
@@ -109,10 +117,11 @@ help:
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
 	  'make clean         Remove build/ completely' \
 	  'make check / test  Provision dependencies and run complete verification' \
-	  'make unit          Run the 72 Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
+	  'make unit          Run Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
 	  'make check-modules Check every production module' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
-	  'make check-unit    Run native suites, corpora and runtime misuse probes' \
+	  'make check-unit    Run native suites and independent corpora' \
+	  'make check-failures Run runtime contract/crash probes and positive controls' \
 	  'make check-guards  Run compiler rejection guards' \
 	  'make check-e2e     Run peer/service/resilience/soak/offload scenarios' \
 	  'make runtime       Alias for make check-unit' \
