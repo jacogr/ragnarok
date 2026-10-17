@@ -7,6 +7,7 @@ import ../telemetry/options
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
   try:
+    if not validTelemetryOption(): return 2 # Malformed optional syntax must not become a fixture attack mode.
     # Telemetry is currently supported only by the single-endpoint proof-peer commands.
     if requested() and (peerParamCount() notin [7, 8] or paramStr(1) notin ["server",
         "client"]): return 2

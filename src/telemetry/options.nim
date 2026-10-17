@@ -6,6 +6,16 @@ export wire, client
 
 # Only an exact trailing pair extends the existing CLI; malformed forms fail the original shape checks.
 proc requested*(): bool = paramCount() >= 2 and paramStr(paramCount() - 1) == "--telemetry"
+# Reject a missing endpoint, duplicate option or non-trailing placement before opening any endpoint.
+proc validTelemetryOption*(): bool =
+  var seen = false
+  # Existing positional fixture modes remain untouched; only the explicit telemetry option is reserved.
+  for i in 1..paramCount():
+    if paramStr(i) == "--telemetry":
+      if seen or i != paramCount() - 1: return false # Exactly one trailing option/value pair is supported.
+      seen = true
+  true
+
 # Keep positional proof-peer parsing unchanged when the optional pair is present.
 proc peerParamCount*(): int = paramCount() - (if requested(): 2 else: 0)
 
