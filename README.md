@@ -85,7 +85,7 @@ ownership, reproduction commands and outstanding protocol/security gates.
 
 ## Telemetry
 
-The proof peer supports an opt-in JIP-3 telemetry subset: append `--telemetry HOST:PORT` and set
-`RAGNAROK_TELEMETRY_CHAIN` to an explicit JIP-4 chain file. It reports local node information and
+The proof peer supports an opt-in JIP-3 telemetry subset: append `--telemetry HOST:PORT` and
+`--chain PATH` with an explicit JIP-4 chain file. It reports local node information and
 periodic peer/status observations, with bounded nonblocking TCP delivery and reconnects.
 See [telemetry usage, scope and verification](spec/telemetry.md).

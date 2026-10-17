@@ -497,7 +497,7 @@ proc runPeer*(): bool {.raises.} =
               if peer.overload or peer.offloading: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
   # Derive the telemetry peer identity/address from this endpoint, with an explicit chain file.
   if not telemetry.setup(paramStr(3), localPort(peer.transport), load):
-    stderr.writeLine("Invalid telemetry endpoint, certificate or RAGNAROK_TELEMETRY_CHAIN")
+    stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
   if server: progress "READY" # Announce only after listener binding and native setup.
   elif not connectTransport(peer.transport, uint16(port)): return false # Dial setup failed before authentication.

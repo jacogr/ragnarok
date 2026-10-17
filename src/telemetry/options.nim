@@ -1,23 +1,40 @@
 ## Optional trailing CLI controls for the existing bounded proof-peer command shape.
-import std/[os, envvars, syncio, times, monotimes, strutils, base64]
+import std/[os, syncio, times, monotimes, strutils, base64]
 import ./[wire, client, chain]
 import ../quic/transport
 export wire, client
 
-# Only an exact trailing pair extends the existing CLI; malformed forms fail the original shape checks.
-proc requested*(): bool = paramCount() >= 2 and paramStr(paramCount() - 1) == "--telemetry"
-# Reject a missing endpoint, duplicate option or non-trailing placement before opening any endpoint.
-proc validTelemetryOption*(): bool =
-  var seen = false
-  # Existing positional fixture modes remain untouched; only the explicit telemetry option is reserved.
+# Locate the first reserved option; all configuration pairs must follow positional peer arguments.
+proc optionStart(): int =
   for i in 1..paramCount():
-    if paramStr(i) == "--telemetry":
-      if seen or i != paramCount() - 1: return false # Exactly one trailing option/value pair is supported.
-      seen = true
+    if paramStr(i) in ["--telemetry", "--chain"]: return i # Reserve both names even in malformed input.
+  paramCount() + 1
+
+# Both options are required together; either pair order is accepted without changing positional modes.
+proc validTelemetryOption*(): bool =
+  let first = optionStart()
+  if first > paramCount(): return true # Existing invocations need no chain configuration.
+  if paramCount() - first != 3: return false # Reject missing values, duplicates and extra arguments.
+  let left = paramStr(first)
+  let right = paramStr(first + 2)
+  if not ((left == "--chain" and right == "--telemetry") or
+      (left == "--telemetry" and right == "--chain")): return false
+  for i in [first + 1, first + 3]:
+    if paramStr(i).len == 0 or paramStr(i).startsWith("--"): return false # Values cannot be options.
   true
 
-# Keep positional proof-peer parsing unchanged when the optional pair is present.
-proc peerParamCount*(): int = paramCount() - (if requested(): 2 else: 0)
+# Read a validated trailing option value; callers validate syntax before starting the peer.
+proc optionValue(name: string): string =
+  let first = optionStart()
+  if first > paramCount(): return "" # Disabled telemetry has no configuration values.
+  if paramStr(first) == name: return paramStr(first + 1)
+  paramStr(first + 3)
+
+# Recognize configured telemetry only after validating both required option/value pairs.
+proc requested*(): bool = optionStart() <= paramCount()
+
+# Keep the existing positional command parsing independent of trailing option order.
+proc peerParamCount*(): int = optionStart() - 1
 
 # Read at most limit+1 bytes; empty output means missing, empty or oversized configuration.
 proc boundedFile(path: string, limit: int): string {.raises.} =
@@ -36,7 +53,7 @@ proc boundedFile(path: string, limit: int): string {.raises.} =
 # Build registration from explicit JIP-4 configuration and the actual local certificate/socket.
 proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool): bool {.raises.} =
   if not requested(): return true # Absence is the default and requires no configuration.
-  let text = boundedFile(getEnv("RAGNAROK_TELEMETRY_CHAIN"), MaxChainBytes)
+  let text = boundedFile(optionValue("--chain"), MaxChainBytes)
   if text.len == 0: return false # Never invent a chain or use an implicit development network.
   let pem = boundedFile(certificate, 16384).strip()
   const beginMarker = "-----BEGIN CERTIFICATE-----"
@@ -70,7 +87,7 @@ proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool): 
   for i in 0..<32: identity[i] = fields.key[i]
   let parsed = chainMetadata(text, identity, address, port)
   if not parsed.ok: return false # Failed chain metadata cannot produce a registration.
-  configure(client, paramStr(paramCount()), parsed.value)
+  configure(client, optionValue("--telemetry"), parsed.value)
 
 # Translate wall time for wire timestamps and monotonic time for retry/status deadlines.
 proc observe*(client: var Client, peers: uint32) =

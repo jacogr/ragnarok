@@ -1,8 +1,6 @@
 """Bounded real TCP collector tests, including actual proof-peer CLI registration."""
-from pathlib import Path
 import hashlib
 import json
-import os
 import socket
 import struct
 import subprocess
@@ -83,14 +81,13 @@ def peer_registration(binary, certificates, chain, folder):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
-    environment = dict(os.environ, RAGNAROK_TELEMETRY_CHAIN=str(chain))
     alpn = 'jamnp-s/1/' + genesis.hex()[:8]
     with listener() as server:
         endpoint = f'127.0.0.1:{server.getsockname()[1]}'
         args = [str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
                 str(certificates/'a.key.pem'), str(certificates/'b.pub'), alpn, '7000',
-                '--telemetry', endpoint]
-        process = subprocess.Popen(args, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                '--chain', str(chain), '--telemetry', endpoint]
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             connection, _ = server.accept()
             with connection:
@@ -106,7 +103,8 @@ def peer_registration(binary, certificates, chain, folder):
                 assert status[8] == 10 and int.from_bytes(status[9:13], 'little') == 0
                 client = subprocess.run([str(binary), 'client', str(port),
                     str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
-                    str(certificates/'a.pub'), alpn, '3000'], capture_output=True, timeout=6)
+                    str(certificates/'a.pub'), alpn, '3000', '--telemetry', endpoint,
+                    '--chain', str(chain)], capture_output=True, timeout=6)
                 assert client.returncode == 0, (client.stdout, client.stderr)
             stdout, stderr = process.communicate(timeout=5)
             (folder/'peer.log').write_bytes(stdout + stderr)

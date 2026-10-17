@@ -11,16 +11,16 @@ accepts numeric IPv4 collector addresses and `localhost`; DNS names and IPv6 col
 remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
 matching the existing peer mode and actual bound UDP port.
 
-Set `RAGNAROK_TELEMETRY_CHAIN` to an explicit JIP-4 JSON chain file. For example, after producing
+Pass `--chain PATH` with an explicit JIP-4 JSON chain file. Both options are required together
+and may appear in either order after the positional arguments. For example, after producing
 the usual proof-peer certificate/key/public-key fixtures:
 
 ```sh
-RAGNAROK_TELEMETRY_CHAIN=/absolute/path/dev.json \
-  ./build/ragnarok server 40000 a.cert.pem a.key.pem b.pub \
-  jamnp-s/1/245becfe 10000 --telemetry 127.0.0.1:9000
+./build/ragnarok server 40000 a.cert.pem a.key.pem b.pub \
+  jamnp-s/1/245becfe 10000 --chain /absolute/path/dev.json --telemetry 127.0.0.1:9000
 ```
 
-Keep the existing positional mode argument, if any, before `--telemetry`. The retained `mesh`
+Keep the existing positional mode argument, if any, before the option pairs. The retained `mesh`
 command is not yet instrumented and rejects this option. No collector address or chain is
 assumed when telemetry is absent. An invalid explicit endpoint, certificate or chain file fails
 startup with a diagnostic. An unavailable collector never fails an otherwise valid peer session.
@@ -77,9 +77,6 @@ Normative references:
 - The existing Gray Paper pin `07f041dabd073f9018b418e9ee72e79dd2185401`, GP 0.8.0:
   Appendix B fetch parameter encoding (`vendor/graypaper/text/pvm_invocations.tex`), header
   hashing (`text/header.tex`) and cryptography. No dependency or protocol pin was advanced.
-
-Compatibility reference: jamtart `76debc1b1b90889749d0129ca18ffdb5d96d17a4`, `src/decoder.rs`,
-`src/events.rs` and `src/types.rs`. It is a cross-check, not a replacement for JIP-3 or the GP.
 
 The public interoperability fixture `tests/fixtures/telemetry-dev.json` was exported using:
 
