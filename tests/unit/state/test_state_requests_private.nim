@@ -1,6 +1,7 @@
+import ../../support/arc_evidence
 ## Project-only request shape, fixed-copy, backend and scoped entry-release checks.
 import std/[assertions, syncio]
-include ../../src/codec/state_requests
+include ../../../src/codec/state_requests
 # This binary alone links the maintained test-only backend observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 # Copied call counts prove history/key preflight precedes native hashing.
@@ -95,5 +96,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "REQUESTS_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_requests_private", 1000, beforeRelease, afterRelease)
+echo "REQUESTS_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony requests: all fixed shapes, preflight, backend recovery and scoped entry release passed"

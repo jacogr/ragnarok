@@ -924,27 +924,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_composition_private' and row['passed']:
-            # Replaced snapshots, copied entries and late native refusals release all final scoped references.
-            release = re.search(r'COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Baseline includes retained independent chapters; compare live occupancy, never RSS or general leak freedom.
-                report['composition_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_requests_private' and row['passed']:
-            # Fixed histories own no references; keyed entry buffers retire after every success/refusal/recovery scope.
-            release = re.search(r'REQUESTS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
-                report['requests_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'service_values_private' and row['passed']:
-            # Final retained owners and hashing scratch must retire after success, refusal, recovery and preflight failure.
-            release = re.search(r'SERVICE_VALUES_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live occupancy describes this warmed workload, not RSS or general leak freedom.
-                report['service_values_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'crypto_seeds' and row['passed']:
             # Exact-storage wipe checks run while memory is live; occupancy must return after final-owner release.
             release = re.search(r'CRYPTO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

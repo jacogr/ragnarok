@@ -1,6 +1,6 @@
 ## Supplementary retained key/value lifetime, independent copies, atomic destination and result contracts.
 import std/[assertions, syncio]
-import ../../src/codec/[state_service_values, bounded]
+import ../../../src/codec/[state_service_values, bounded]
 
 ## An opaque retained value survives source key/value scope and every caller mutation.
 proc captured(): ServiceValueSnapshot =

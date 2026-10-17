@@ -17,7 +17,7 @@ def main():
     lines,expected=requests();path=folder/'requests.txt';path.write_text('\n'.join(lines)+'\n');commands=[]
     # Supplementary tests protect retained ownership/atomicity; field transport supplies independent expected observations.
     for source,name in (('test_state_service_values','selftest'),('test_service_values_private','private'),('state_service_values_driver','driver')):
-        command=nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache',[library]);commands.append(command)
+        command=nim_command(ROOT/('tests/unit/state' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache',[library]);commands.append(command)
         with (folder/f'{name}-build.log').open('w') as log:
             subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True)

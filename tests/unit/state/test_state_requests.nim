@@ -1,6 +1,6 @@
 ## Tagged shape/result guards, fixed scope copies and explicit request-namespace overlap evidence.
 import std/[assertions, syncio]
-import ../../src/codec/[state_requests, state_service_values, state_trie, bounded]
+import ../../../src/codec/[state_requests, state_service_values, state_trie, bounded]
 
 ## A decoded fixed tagged history survives source mutation, caller-input destruction and local scope exit.
 proc captured(config: RequestEntryConfig): RequestHistoryRead =

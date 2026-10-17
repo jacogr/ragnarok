@@ -219,7 +219,7 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
         self.assertEqual(variable, 'RAGNAROK_BLOCK_FIXTURES')
         sources = {path for path, _ in required} | {native_tests.UNIT_FIXTURES['guarantees'][1]}
-        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT})
+        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT, native_tests.COMPOSITION_FIXTURE})
 
     # State report consumers must retain the same independently authored byte fixture and checksum.
     def test_state_report_reference(self):
@@ -231,6 +231,12 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(variable, 'RAGNAROK_STATE_REPORT')
             self.assertEqual(target, native_tests.STATE_REPORT)
             self.assertEqual(required, ((target, hashlib.sha256(target.read_bytes()).hexdigest()),))
+
+    # The whole-state ownership fixture must remain independent of the production chapter codecs.
+    def test_composition_fixture_reference(self):
+        from state_composition_oracle import chapters
+        expected = '\n'.join(raw.hex() for raw in chapters())+'\n'
+        self.assertEqual(native_tests.COMPOSITION_FIXTURE.read_text(), expected)
 
     # One valid sibling cannot mask a missing or changed later fixture in the same directory.
     def test_block_fixture_group_rejection(self):

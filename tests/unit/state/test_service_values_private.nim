@@ -1,6 +1,7 @@
+import ../../support/arc_evidence
 ## Privileged native misuse test: safe public APIs cannot expose a backing alias, but atomic copy still guards it.
 import std/[assertions, syncio]
-include ../../src/codec/state_service_values
+include ../../../src/codec/state_service_values
 
 ## Exact and shifted retained-storage destinations must reject before modifying any captured byte.
 proc main() =
@@ -106,5 +107,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "SERVICE_VALUES_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("service_values_private", 1000, beforeRelease, afterRelease)
+echo "SERVICE_VALUES_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony service values: retained owners, atomic aliases, backend refusal/recovery and scoped release passed"

@@ -1,6 +1,8 @@
+import std/envvars
+import ../../support/arc_evidence
 ## Project-only whole-mapping ownership, preflight, arithmetic and backend cleanup checks.
-include ../../src/codec/state_composition
-include ./composition_fixture
+include ../../../src/codec/state_composition
+include ../../native/composition_fixture
 let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
     previous: ValidatorCount(6), epochSlots: EpochSlots(2))
 let policy = StateChapterPolicy(items: ElementLimit(1000000), maxBytes: ByteLimit(8000000))
@@ -82,7 +84,8 @@ proc cycle(parts: StateChapters) =
   assert composeState(parts, [source], limits, ByteLimit(1)).error == StateCompositionError.None
 
 var baseline = default(StateChapters)
-let raw = compositionFixture(paramStr(1))
+assert getEnv("RAGNAROK_COMPOSITION_FIXTURE").len > 0, "missing independent chapter fixture"
+let raw = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))
 # Every mandatory chapter is independently authored and captured under one explicit profile.
 for number in 1..16:
   let chapter = StateChapterId(number)
@@ -106,5 +109,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle(baseline)
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_composition_private", 1000, beforeRelease, afterRelease)
+echo "COMPOSITION_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony composition: retained/replaced mappings, fixed copies, preflight and backend cleanup passed"
