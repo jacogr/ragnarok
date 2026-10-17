@@ -98,6 +98,31 @@ at the paths above. The Python safeguards check missing/duplicate/failed records
 ownership, independent summaries, clean Make bootstrap and failure propagation through `tee`.
 Linux scheduling and elapsed-time effects require the PR CI run; no speedup is claimed locally.
 
+## Shared verification infrastructure
+
+`tools/verification_inventory.json` owns the ordinary native suite identities, link profiles,
+ARC evidence names, independent corpus names and compiler/runtime rejection inventories.
+Each case or mapping occupies one line so concurrent additions produce small, reviewable diffs.
+Keep the existing execution order when editing; counts are explicit coverage requirements and
+must match the runtime probes. `tools/verification_inventory.py` loads this data, rejects duplicate
+object keys and cases, and preserves the consumers' tuple/list interfaces. Missing sections fail
+at import; native discovery still checks checked-in suites and their expected-output files, and
+verification still checks complete corpus/failure coverage. Both the loader and JSON data are
+included in report provenance. Compiler guards do not import the runtime executor.
+
+`tools/corpus_checks.py` compares complete native output against independently prepared expected
+rows. The runtime runner retains corpus-specific generation, linking, provenance and additional
+coverage predicates. The shared comparison preserves nonzero-exit rejection, missing/extra-row
+rejection, exact output hashes, first-mismatch indices and build-failure refusal. It uses the
+existing command runner's timeout and full logs. Specialized signature, proof and reused-driver
+checks retain their explicit paths.
+
+Production and test adapters share `tools/build_crypto.py`, `tools/build_bandersnatch.py` and
+`tools/build_quic.py`. `tools/native_dependencies.py` owns pristine submodule checks and logged
+build commands. Production builds do not import test harnesses; independent equations, published
+fixture checks, observation libraries and network scenarios remain in `tests/`. Dependency pins,
+compiler flags, locked/offline Cargo builds and release adapter tests are unchanged.
+
 ## What the investigation found
 
 Most application assertions already live in Nim under `tests/native/`; Python currently compiles,

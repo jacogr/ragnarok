@@ -7,12 +7,11 @@ from pathlib import Path
 import platform
 import random
 import subprocess
-from test_quic import run
-from dependencies import require_submodule
+import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-BUILD = ROOT / 'build/bandersnatch'
-PINS = json.loads((ROOT / 'spec/bandersnatch-pins.json').read_text())
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
+from native_dependencies import require_submodule
+from build_bandersnatch import ROOT, BUILD, PINS
 FIXTURES = ROOT / 'vectors/official/bandersnatch'
 
 
@@ -22,26 +21,6 @@ def fixture_path(name):
         scheme=Path(name).stem
         return ROOT/PINS['sources']['spec-jam']['path']/f'assets/vectors/bandersnatch_sha-512_ell2_{scheme}.json'
     return FIXTURES/name
-
-
-# Check fixed source identities, public SRS and the whole registry dependency lock before executing any build.
-def sources(fetch):
-    assert PINS['source_patches'] == []
-    # Git submodules pin pristine upstream checkouts; hashes retain the existing content-integrity contract.
-    for name,entry in PINS['sources'].items():
-        destination=require_submodule(entry,fetch)
-        digest=hashlib.sha256()
-        # Git's local metadata replaces the old archive marker and is not upstream source content.
-        for path in sorted(destination.rglob('*')):
-            if path.is_file() and '.git' not in path.relative_to(destination).parts:
-                digest.update(path.relative_to(destination).as_posix().encode()+b'\0'+hashlib.sha256(path.read_bytes()).digest())
-        assert digest.hexdigest()==entry['tree_sha256'], name
-    source=ROOT/PINS['sources']['spec-jam']['path']
-    assert hashlib.sha256((source/PINS['srs']['path']).read_bytes()).hexdigest()==PINS['srs']['sha256']
-    assert hashlib.sha256((ROOT / 'native/bandersnatch/Cargo.lock').read_bytes()).hexdigest()==PINS['cargo_lock_sha256']
-    # Check upstream published vectors and project-owned reduced official JAM cases.
-    for filename, expected in PINS['fixture_files'].items():
-        assert hashlib.sha256((ROOT/filename).read_bytes()).hexdigest()==expected
 
 
 # Check reduced official fixtures against the complete immutable upstream JSON, without copying full STF states into Git.
@@ -69,31 +48,6 @@ def official_sources(fetch):
                       'root':v['pre_state']['gamma_z'],'members':[k['bandersnatch'] for k in v['pre_state']['gamma_k']],
                       'tickets':tickets}
         assert expected==reduced, local
-
-
-# Build/test the reviewed locked Cargo closure independently of a language-driver compiler.
-def build_native(fetch):
-    # Every caller, including the Nimony runner on a clean checkout, needs the native log/target directory.
-    BUILD.mkdir(parents=True, exist_ok=True)
-    assert subprocess.check_output(['rustc','--version'],text=True).startswith('rustc '+PINS['rust']+' ')
-    assert subprocess.check_output(['cargo','--version'],text=True).startswith('cargo '+PINS['rust']+' ')
-    manifest = ROOT / 'native/bandersnatch/Cargo.toml'
-    system = platform.system()
-    assert system in ('Darwin','Linux')
-    library = BUILD / 'target/release' / ('libragnarok_bandersnatch.dylib' if system=='Darwin' else 'libragnarok_bandersnatch.so')
-    # Only --fetch allows registry downloads; build/tests subsequently run locked and offline.
-    with (BUILD / 'build.log').open('w') as log:
-        if fetch:
-            run(['cargo','fetch','--locked','--manifest-path',manifest],log)
-        features = subprocess.check_output(['cargo','tree','--locked','--offline','--manifest-path',str(manifest),'-e','features'],text=True)
-        assert 'test-vectors' not in features, 'Unsafe deterministic/non-ZK ring features must never build'
-        assert 'secret-split' in features
-        (BUILD / 'cargo-features.log').write_text(features)
-        run(['cargo','fmt','--manifest-path',manifest,'--','--check'],log)
-        # Run our three adapter regressions in the production profile; dependencies share release artifacts.
-        run(['cargo','test','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
-        run(['cargo','build','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
-    return library
 
 
 # Query one trusted fixture process with bounded public arguments; no secret material is logged by the runner.
