@@ -88,9 +88,9 @@ source width overflow is `ValueOutOfRange`. Unsupported scalar schemas fail comp
 
 ## Verification
 
-Run `python3 tests/test_collections_harness.py` and `python3 tests/test_collections.py`. Seven
-literal known-answer checks protect independent Python equations. The checked Nim 2.2.12
-ARC/Clang LTO corpus compares **13,161** deterministic requests: logical fields, exact ordered
+Run `make check`. Seven
+literal known-answer checks protect independent Python equations. The historical Nim 2.2.12
+ARC/Clang LTO corpus compared **13,161** deterministic requests: logical fields, exact ordered
 wire, prefix consumption, both set framing forms and typed failure reasons. It includes all E0..E8
 instantiations, natural and fixed-octet schemas, mixed dictionary types, 127/128/129 pair/element
 count transitions, numeric versus wire-order inversions, duplicate/descending keys, arbitrary
@@ -109,15 +109,17 @@ cross-field aliases, failure atomicity and selected-result guards. Three nominal
 unsupported-schema probe, two invalid-width probes and two privacy probes require compiler
 rejection. White-box alias tests include only this project's own source module, using no compiler
 or private-runtime hooks. Linux CI runs the same checks and retains diagnostic logs, build commands,
-request digest and result manifest under ignored `build/collections/`. Local verification is macOS
+request digest and result manifest under ignored `build/tests/runtime/`. Local verification is macOS
 arm64; Linux x86-64 validation occurs in CI after push. These are structural codec tests, not
 consensus/state-transition or cryptographic validation.
 
-## Nimony branch verification
+## Compiler-port evidence
 
-On this experimental branch, reproduce with
-`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`; the historical
-Nim 2 commands above are not a second supported source target. The runner retains all 13,161
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
+
+Reproduce current coverage with
+`make runtime`. The runner retains all 13,161
 independent requests, seven oracle known answers and both native ownership/alias suites. It adds
 50 isolated failed/default result reads and 22 privacy/nominal/schema compilation rejections.
 
@@ -139,6 +141,6 @@ Retained source escape/replacement, copied pairs and warmed ARC release coverage
 suite. After 100 warmups, 1,000 scoped retain/replace/reframe/drop cycles return live occupancy to
 baseline, including zero-width snapshots. This measures that workload rather than RSS or general
 leak freedom. Commands, exact source/request/output hashes, release counts and each verdict are in
-`build/nimony-trial/verification/results.json`. See [the trial](../docs/nimony-trial.md) for the exact
+`build/tests/runtime/results.json`. See [the compiler record](../docs/nimony-trial.md) for the exact
 compiler, cumulative totals and observed generic/compiler rough edges. Verification is local macOS
 ARM64; complete M1, Linux and M2/M3 migration remain separate work.

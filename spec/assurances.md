@@ -48,26 +48,31 @@ representative records; late failure/unused-output sentinels; source lifetime in
 encoder/decoder aliases manufactured explicitly in trusted tests; deterministic malformed fuzz;
 and compiler rejection of nominal anchor/signature/index swaps. Official formatters are required.
 
-## Nimony port verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The pinned nightly uses private result discriminators/payloads with read-only `error`, guarded
 `written`, and guarded `count`/`consumed` accessors. Default results remain Uninitialized. Explicit
 record initialization retains zero bitset storage outside the configured wire width. All original
 allocation-free validation, failure precedence and atomic destination guarantees are preserved.
 
-`tools/test_nimony.py` checks all 20,706 independent encoding/decoding/overlap requests and 18,831
+`tools/test_runtime.py` checks all 20,706 independent encoding/decoding/overlap requests and 18,831
 additional direct inspection requests. Inspection expectations use the independent decoder with
 capacity 1,024 (above the largest valid 1,023-record profile), then select count/consumed or error;
 there is no production record allocation. Thus late semantic errors are checked even when the
 corresponding ordinary decode request intentionally supplies insufficient typed capacity.
 
-`tests/native/test_assurances.nim` checks successful/default metadata, empty prefixes, configuration
+`tests/unit/codec/test_assurances.nim` checks successful/default metadata, empty prefixes,
+configuration
 extremes, escaped-source ownership, independent record copies and zero extension. Ten runtime
 misuse checks reject failed/default progress reads across encoding, decoding and inspection.
 Twelve compilation checks reject private-state access/forgery and public-property mutation;
 three existing nominal checks reject identity, index and configuration swaps. Full commands,
 source/corpus hashes and diagnostics are recorded in ignored
-`build/nimony-trial/verification/results.json` and adjacent logs.
+`build/tests/runtime/results.json` and adjacent logs.
 
 This verifies local macOS ARM64 checked ARC/Clang LTO codec behavior. Linux and contextual
-signature verification remain separate migration work; see [the trial](../docs/nimony-trial.md).
+signature verification remain separate migration work; see [the compiler
+record](../docs/nimony-trial.md).

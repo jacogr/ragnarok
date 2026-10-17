@@ -32,7 +32,10 @@ banner is 0.2; archive and installed binary hashes retain its provenance.
 
 `make check` audits every production module, checks formatting and protocol provenance,
 rebuilds native primitives and checked drivers, and runs all migrated codec, crypto, networking,
-lifecycle and enabled proof-offload workloads. It then discovers every `test_*harness.py` suite.
+lifecycle and enabled proof-offload workloads. The runtime verifier first runs all Python unittest
+classes once, including independent oracle safeguards, CI/setup checks and specification provenance.
+A fresh failed Python gate publishes failure and stops native preparation. Corpus results refer to
+that shared executed gate; they do not launch duplicate harness processes.
 Make first ensures the pinned compiler, pristine source submodules and locked Cargo dependencies;
 native builds then run Cargo locked/offline. Failures stop the command. The parked
 request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.

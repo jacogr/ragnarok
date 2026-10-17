@@ -76,13 +76,10 @@ are exported. Re-emitted payloads belong to callers and stay stable during [trie
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_service_values_harness.py
-python3 tests/test_state_service_values.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Six literal oracle checks anchor namespace hashing, raw/unframed values, logical key/value policy,
@@ -120,9 +117,11 @@ results JSON. All roots here commit one entry only, not a whole service/JAM stat
 
 Consumed blobs are SHA-256 checked at exact pinned Git identities before parsing; promised blobs
 may be fetched without modifying upstream sources/checkouts/gitlinks. No upstream generators run.
-Nim 2.2.12 ARC/Clang LTO retains assertion/bounds/range/field/overflow guards. Ignored
-`build/state-service-values/` stores corpus SHA-256, commands and native/type diagnostics. Linux CI
-runs the suite and retains logs; local validation is macOS arm64, with Linux confirmation after push.
+The historical Nim 2.2.12 ARC/Clang LTO retained assertion/bounds/range/field/overflow guards.
+Ignored
+`build/tests/runtime/` stores corpus SHA-256, commands and native/type diagnostics. Linux CI
+runs the suite and retained logs; local validation is macOS arm64, with Linux confirmation after
+push.
 
 State chapters 1–16, account metadata and storage/preimage mappings now have codecs, but **M1 state
 parity remains incomplete**. Request-history framing is implemented; whole-state composition/root
@@ -131,7 +130,10 @@ compact gas and numeric service-key policy without an alternate-width fallback. 
 **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
 
 
-## Nimony branch verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
 namespace/key/value bytes, policy precedence and copy atomicity. `ServiceValueResult[T]` keeps its
@@ -139,8 +141,9 @@ status/payload private behind a read-only reason and success-only accessor. Reta
 is explicitly nullable and checked through stable retained locals; copied metadata cannot expose
 mutable bytes. The private scratch-extent helper retains the existing native prefix-addition check.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
-trial compiler. The runner includes the original 2,047-request corpus, six literal checks, 12
+Run `make runtime` with the pinned
+compiler; Make installs it as needed. The runner includes the original 2,047-request corpus, six
+literal checks, 12
 storage/16 preimage JSON mappings, sixteen unclassified raw trace captures and 83 partial roots.
 Two positive suites include retained/replaced owners, source/input/output independence, exact
 aliases, shifted overlaps, short-copy precedence and untouched suffixes. The separate test-only

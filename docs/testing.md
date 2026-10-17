@@ -322,6 +322,34 @@ targets were exercised against real reports. Full logs are `/tmp/ragnarok-cold-c
 `build/ci/cold-verification.json`. This is local verification; the revised Linux workflow still
 requires CI after push.
 
+## Final helper and reproduction cleanup
+
+The remaining historical Nim 2 builders and standalone crypto/network entry points are retired:
+17 functions and 460 net Python lines were removed. Maintained native builders, independent
+reference equations and process/resource helpers remain importable; every retained function body
+matches its pre-cleanup parsed form. The default proof-peer build still passes.
+
+The runtime verifier now runs one fresh `unittest discover -s tests -p 'test_*.py'` gate before
+native preparation. It includes all oracle/tooling harnesses, setup/CI safeguards and specification
+provenance. The report's `python_tests` entry records the executed command, status and log;
+per-corpus `harness` records reference that same complete gate. Thirty-four duplicate command
+sites in the verifier and the redundant Make-level invocations are removed. An earlier successful
+report is retired before execution, and a failed Python gate writes a failed report and stops
+before native work. A deliberate-failure regression checks this behavior.
+
+Complete local `make check` passes after cleanup: 59 Hastur suites / 65 native profiles,
+41 corpora, 1,372 runtime misuse checks, 676 compiler rejections, formatting and a single Python
+discovery of 274 tests with two existing policy/provenance skips. All 40 deterministic corpus
+records match the preceding full run; generated certificates are independently checked anew.
+Native/negative inventories are unchanged, and recorded source hashes match the checked tree.
+Evidence: `build/test-cleanup/full-check.log`, `comparison.json`, and the runtime report/logs.
+
+The reproduction audit covers all 41 specification Markdown records. Current commands use Make;
+all referenced test/tool files exist, and current evidence paths use `build/tests/runtime/`.
+Historical compiler profiles and numerical observations are identified as records of the original
+increments. Detailed compiler-trial history remains in its historical document. Linux verification
+must refer to the exact pushed revision; local success never substitutes for its result.
+
 ## Verification of the first increment
 
 Local macOS ARM64, pinned Nimony 0.6.3 (`5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`), ARC,

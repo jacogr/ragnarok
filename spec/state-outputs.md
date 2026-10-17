@@ -61,13 +61,10 @@ are serialized without cryptographic verification. Existing crypto parity gates 
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_outputs_harness.py
-python3 tests/test_state_outputs.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Six literal tests anchor empty framing, exact E4 service width/little-endian order, fixed commitment
@@ -98,10 +95,11 @@ are rewritten and no accumulation STF or upstream generator executes. Roots comm
 not a complete JAM state, accumulation log root or proof.
 
 Every consumed Git blob is SHA-256 checked before parsing; partial clones may fetch exact
-promised objects without source/checkout/gitlink changes. Ignored `build/state-outputs/` records
+promised objects without source/checkout/gitlink changes. Ignored `build/tests/runtime/` records
 build commands, corpus SHA-256, native/type diagnostics and per-trace path/phase/hash/count verdicts.
-Nim 2.2.12 ARC/Clang LTO retains assertions/bounds/range/field/overflow checks. Linux CI runs the
-suite and retains diagnostic artifacts. Local validation is macOS arm64; Linux confirmation
+The historical Nim 2.2.12 ARC/Clang LTO retained assertions/bounds/range/field/overflow checks.
+Linux CI runs the
+suite and retained diagnostic artifacts. Local validation is macOS arm64; Linux confirmation
 requires CI after push.
 
 State chapters **1–16** now have typed serializers to pinned-paper framing. Chapter 13 follows
@@ -110,7 +108,10 @@ preimage/request entries and whole-state composition/root evidence remain. Next 
 increment: **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
 
 
-## Nimony branch verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
 its wire format, resource policies, sequence semantics and failure precedence. `OutputLogResult[T]`
@@ -118,8 +119,9 @@ hides status/payload behind a read-only reason and a success-only accessor, incl
 extent proofs. Nullable owner storage is checked through stable retained locals; extracted fixed
 pairs remain independent copies. No upstream patches or private runtime hooks are used.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
-trial compiler. The runner includes the original 1,901-request corpus, six literal checks, eight
+Run `make runtime` with the pinned
+compiler; Make installs it as needed. The runner includes the original 1,901-request corpus, six
+literal checks, eight
 exact published empty-log components and 21 partial C(16) roots. Two native suites also exercise
 retained/replaced owners, escaped fixed pairs, copied fields and explicit native arithmetic
 boundaries. Thirty-two isolated actual/default payload reads reject through the exact success

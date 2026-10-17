@@ -75,11 +75,10 @@ the caller and must remain stable during a subsequent [trie call](state-trie.md)
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_history_harness.py
-python3 tests/test_state_history.py
+make check
 ```
 
 Six literal harness checks protect T field order, E4 endianness, key/value association, optional
@@ -110,8 +109,9 @@ invalid indices. Two nominal compiler probes reject segment-as-package and block
 substitutions; one privacy probe rejects retained storage access. Native checks verify the 64-bit
 int, 64-byte pair and 33-byte optional-peak assumptions used by reference extent checks.
 
-Nim 2.2.12 ARC/Clang LTO builds retain assertions/bounds/range/field/overflow guards. Ignored
-`build/state-history/` retains commands, request SHA-256, logs and results; Linux CI runs the suite
+The historical Nim 2.2.12 ARC/Clang LTO builds retained assertions/bounds/range/field/overflow
+guards. Ignored
+`build/tests/runtime/` retained commands, request SHA-256, logs and results; Linux CI runs the suite
 and uploads diagnostics. Local results are macOS arm64; Linux confirmation requires CI after push.
 
 M1's C.1/C.2 framing baseline remains covered; complete state serialization remains open. Next
@@ -136,6 +136,6 @@ probes fail compilation. A separate statically known absent hash read also fails
 ownership workload returns live occupancy 192 → 192 bytes locally on macOS ARM64, checked
 ARC/Clang LTO; this does not establish general leak freedom or Linux parity.
 
-Use `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on the trial
-branch. The historical Nim 2 commands above describe the main-branch baseline. Linux and full
+Use `make runtime`. The numerical observations above describe the original compiler-port increment.
+Linux and full
 M1/M2/M3 runtime parity remain separate migration gates.

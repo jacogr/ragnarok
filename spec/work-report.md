@@ -67,7 +67,10 @@ Tests independently construct the full wire from named JSON fields and observe e
 header field. Authored new-field boundary and legacy-layout negative cases supplement these
 published vectors. See [the migration audit](graypaper-0.8.0.md).
 
-## Nimony port verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The pinned nightly trial now covers this codec and `report_owned.nim` with checked ARC/Clang LTO.
 `ReportResult` and `ReportHeaderResult` hide status/payload storage behind read-only outcome and
@@ -75,12 +78,12 @@ success-precondition accessors. Child work descriptors are copied, so offset reb
 rebuilds the successful work value. Report owners retain a stable nil-checked private reference;
 metadata copies and owner-bound payload extraction expose no mutable backing bytes.
 
-`tools/test_nimony.py` runs all 18,430 independent report requests through
+`tools/test_runtime.py` runs all 18,430 independent report requests through
 `tests/native/report_codec_driver.nim`, including published tiny/full fixtures and the existing
 mutation/lifetime checks. `test_report_snapshots.nim` adds replacement/escaped-input/default-owner
 and ARC release coverage. Runtime misuse and compilation checks protect results and nominal
 hash/root/slot/shard domains. Commands, source hashes, corpus hashes and exact diagnostics are
-retained in ignored `build/nimony-trial/verification/results.json` and adjacent logs.
+retained in ignored `build/tests/runtime/results.json` and adjacent logs.
 
 The full `report_driver.nim` now compiles on Nimony, dispatches its explicit crypto `check`
 subcommand and includes the same codec adapter for all 18,430 ordinary requests. All 63 original
@@ -100,4 +103,4 @@ Retained CE 143 service and integrated digest lifecycles now also pass locally.
 Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
 Next: same-process endpoint soak and remaining admission/resilience coverage; Linux confirmation and documented
 normative policy gates
-remain separate. See [the trial](../docs/nimony-trial.md) for cumulative evidence.
+remain separate. See [the compiler record](../docs/nimony-trial.md) for cumulative evidence.

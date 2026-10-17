@@ -43,7 +43,7 @@ caller explicitly wraps a default handle in a generic success result.
 
 ## Verification
 
-The Nimony-only checked ARC/Clang LTO runner is `tools/test_nimony.py`. It includes the existing
+The checked ARC/Clang LTO runtime verifier is `tools/test_runtime.py`. It includes the existing
 10,000-case five-schema fuzz suite and shared successful-prefix/payload comparisons. Focused tests
 cover caller-input mutation, escaped stack inputs, retained copies, handle replacement, detached
 output mutation, two same-sized distinct owners, default-owner errors, schema/index failures,

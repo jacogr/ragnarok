@@ -97,11 +97,7 @@ suite uses the listed predecessor directly rather than claiming an executed writ
 ## Reproducible checks and limits
 
 ```sh
-python3 tests/test_request_namespace_harness.py
-python3 tests/test_request_namespace.py
-python3 tests/test_state_requests.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Six literal tests anchor exact footprint/threshold numbers, full-domain acceptance, correct
@@ -117,7 +113,7 @@ Each overlapping posterior returns failure-only `DuplicateKey`. Metadata contain
 footprint and exact balance, and the preimage witness uses the real small blob/hash and its proper
 available history. These improve on the earlier arbitrary-hash structural overlap checks.
 
-Ignored `build/request-namespace/results.json` records source identities/hashes, keys, local checks,
+Ignored `build/tests/runtime/results.json` records source identities/hashes, keys, local checks,
 footprints, balances, successful roots, rejection verdicts, compiler flags and environment. Nim
 2.2.12 ARC/Clang LTO retains all runtime guards. Linux CI runs the same checks and retains results;
 local macOS arm64 validation does not claim Linux confirmation. No length-sized allocation occurs.

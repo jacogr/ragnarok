@@ -52,7 +52,10 @@ in RFC 8032 section 7.1 under the RFC's IETF Trust terms. Source identities and
 fixture SHA-256 digests are pinned. The original Wycheproof license remains with its source submodule. Tests establish functionality; they do not establish an
 audit of every selected module or a production suitability certification.
 
-## Nimony branch verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The [nightly trial](../docs/nimony-trial.md#sixteenth-increment-raw-cryptographic-primitives) ports
 the raw adapter without changing primitive parameters, native sources or dependency pins. Results
@@ -60,7 +63,7 @@ hide status/payload; error is read-only and value requires success, including fo
 handles. Stable checked nullable references bind seed access to its retained ARC allocation.
 The supported destructor erases on final-owner release; explicit clear erases and invalidates aliases.
 
-`tools/test_nimony.py` rebuilds the production bridge and runs the preserved independent equations
+`tools/test_runtime.py` rebuilds the production bridge and runs the preserved independent equations
 with checked ARC/Clang LTO. A separate observer-linked test matches exact seed storage and checks
 nonzero-before/zero-after inside the wipe callback while memory is live, never after free. It also
 injects backend refusals; those test symbols are absent from the production library. Native worker

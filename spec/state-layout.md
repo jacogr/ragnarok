@@ -83,10 +83,8 @@ The exceptional-point Ed25519/Bandersnatch gates are unaffected by this layout i
 
 ## Evidence and reproduction
 
-The historical Nim 2 baseline used the primitive build (`python3 tests/test_crypto.py`), then
-`python3 tests/test_state_layout_harness.py` and `python3 tests/test_state_layout.py`, with
-Nim 2.2.12, ARC, checked Clang LTO and assertion/bounds/range/field/overflow guards. On the
-experimental Nimony branch, use the trial runner documented below instead.
+Run `make check` for current reproduction. The original baseline used Nim 2.2.12, ARC and
+checked Clang LTO; its numerical observations remain a record of that increment.
 Python's independent `hashlib.blake2b(digest_size=32)` and direct byte equations supply expectations.
 
 Six literal harness checks protect **12,233** deterministic native requests: all chapter octets,
@@ -108,7 +106,7 @@ trie verification. Modern byte/field behavior is governed by the pinned paper an
 reference. No full trie root or proof is claimed by these passing tests.
 
 CI runs this suite after the native primitive library is built, retaining build commands, logs,
-compiler diagnostics and request digest/results under ignored `build/state-layout/`. Provenance
+compiler diagnostics and request digest/results under ignored `build/tests/runtime/`. Provenance
 checks read the frozen historical blob directly at its recorded Git revision; partial clones may
 materialize that promised data object through Git. Source files and gitlinks remain unchanged.
 Local verification is macOS arm64; Linux x86-64 validation occurs in CI after push. Root
@@ -128,7 +126,7 @@ These copy exact fields and select the tag together. Canonicality remains checke
 return NonCanonical rather than being normalized. Default metadata remains an all-zero branch;
 default results remain Uninitialized. Caller input and returned/copied fields remain independent.
 
-`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` builds pristine
+`make runtime` builds pristine
 native primitives, runs all 12,233 preserved independent requests and six literal harness checks,
 and checks default/failed result reads, every wrong metadata alternative, private/read-only fields
 and the three existing nominal-domain probes. The three hash compositions also reject injected

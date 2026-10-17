@@ -68,7 +68,7 @@ all original fields with canonical verdict order. No upstream fixture is edited,
 is never described as an unmodified published acceptance vector. Tiny has five votes per verdict;
 full has 683, with a variable natural prefix in the 0.8.0 wire format.
 
-Run `python3 tests/test_disputes_harness.py` and `python3 tests/test_disputes.py`. Tests
+Run `make check`. Tests
 independently
 construct typed sources and observe every decoded field. They cover the full 16-verdict/1023-vote
 ceiling plus 16 culprits/faults; natural-count width transitions; representative exhaustive
@@ -76,11 +76,14 @@ truncation and byte-budget boundaries; sampled full-vector vote boundaries; exce
 counts; all 254 illegal Boolean values in judgments and faults; late duplicate/descending hashes,
 indices and keys; E2/E4 boundaries; deterministic structured/arbitrary malformed bytes; unchanged
 destinations on failure; immutable-owner/source lifetimes and getter copies; outer/nested aliases;
-four nominal-domain compiler rejections and one private-owner rejection. The established Linux CI
-profile belongs to the Nim 2 baseline; this experimental Nimony port has not switched or passed
-that pipeline.
+four nominal-domain compiler rejections and one private-owner rejection. Current Linux CI runs this
+coverage through `make runtime`; see
+[testing](../docs/testing.md) for revision-specific results.
 
-## Nimony port verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The pinned nightly port hides `DisputeResult[T]` status/value behind read-only `error` and a
 success-precondition `value` accessor. Defaults remain Uninitialized. Sibling adapters report
@@ -88,7 +91,7 @@ failures through `disputeFailure[T]`, which rejects the success tag. The block a
 mechanically; its runtime port remains separate. Owned snapshots use a private nullable ARC
 reference retained locally before nil checks, including the nested judgment-selection path.
 
-`tools/test_nimony.py` checks 10,908 original independent requests, six unsigned policy boundary
+`tools/test_runtime.py` checks 10,908 original independent requests, six unsigned policy boundary
 cases and 10,831 direct inspections: **21,745 comparisons**. Inspection expectations select counts
 and consumed progress from independent logical fields rather than native layout/offsets. Original
 published samples retain their ordering rejection, and canonical test copies retain full fields.
@@ -103,6 +106,6 @@ reject failed/default result reads and invalid failure construction. Eight compi
 reject owner/result bypasses; four nominal checks protect epoch, judge, key and signature domains.
 
 Commands, compiler metadata, source/corpus hashes and exact diagnostics are recorded in ignored
-`build/nimony-trial/verification/results.json` and adjacent logs. Verification uses local macOS ARM64
+`build/tests/runtime/results.json` and adjacent logs. Verification uses local macOS ARM64
 checked ARC/Clang LTO. Linux, signature validity, validator-set selection and quorum/eligibility
-remain separate migration work; see [the trial](../docs/nimony-trial.md).
+remain separate migration work; see [the compiler record](../docs/nimony-trial.md).

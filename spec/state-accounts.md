@@ -65,13 +65,10 @@ record is not a validated service account or executed accumulation result.
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_accounts_harness.py
-python3 tests/test_state_accounts.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Six literal oracle checks anchor the service key, exact offsets/widths, empty numeric values,
@@ -108,9 +105,10 @@ path/phase/service/key/value hash and complete-match verdicts are recorded in th
 Roots here commit one metadata entry only, not a whole service or JAM state.
 
 All consumed data is SHA-256 checked at exact Git blob identities before parsing; no upstream
-scripts run or source/gitlink revisions change. Checked Nim 2.2.12 ARC/Clang LTO retains assertion,
-bounds, range, field and overflow checks. Ignored `build/state-accounts/` stores build commands,
-corpus SHA-256 and diagnostics. Linux CI runs the suite and retains logs; local validation is
+scripts run or source/gitlink revisions change. The historical Nim 2.2.12 ARC/Clang LTO retained
+assertion,
+bounds, range, field and overflow checks. Ignored `build/tests/runtime/` stores build commands,
+corpus SHA-256 and diagnostics. Linux CI runs the suite and retained logs; local validation is
 macOS arm64, with Linux confirmation pending CI after push.
 
 State chapters 1–16 and service metadata now have codecs; **M1 state parity remains incomplete**.
@@ -120,7 +118,10 @@ service-key policy without an alternate-width fallback. Next planned bounded gro
 **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
 
 
-## Nimony branch verification
+## Compiler-port evidence
+
+The numerical/compiler observations below record the original migration increment; see
+[testing](../docs/testing.md) for current cumulative coverage and revision-specific CI results.
 
 The experimental branch ports fixed account metadata to pristine Nimony 0.6.3 nightly `5b51edfed`,
 preserving all keys, bytes, unsigned domains and failure precedence. `ServiceMetadataResult[T]`
@@ -128,8 +129,9 @@ keeps its discriminator/payload private behind a read-only reason and a success-
 The fixed decoded record contains no references and needs no heap-backed owner. Scalar/array
 initialization is explicit and fixed byte-budget comparisons use matching unsigned types.
 
-Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
-trial compiler. The runner includes the original 1,794-request corpus, six literal checks, 20
+Run `make runtime` with the pinned
+compiler; Make installs it as needed. The runner includes the original 1,794-request corpus, six
+literal checks, 20
 JSON-derived records, 20 exact raw trace metadata entries and 51 partial entry roots. Two native
 suites retain fixed source/input/scope/copy independence and exact little-endian field reads.
 Sixteen isolated actual/default result reads reject through the exact success contract. Six

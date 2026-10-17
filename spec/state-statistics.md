@@ -78,13 +78,10 @@ reports, assurances or accumulation results. Those are contextual transition/imp
 
 ## Independent and published evidence
 
-After `python3 tests/test_crypto.py`, run:
+Run the complete checks; Make prepares native dependencies:
 
 ```sh
-python3 tests/test_state_statistics_harness.py
-python3 tests/test_state_statistics.py
-python3 tests/test_spec.py
-python3 tools/format.py --check
+make check
 ```
 
 Seven literal oracle checks anchor no-count/fixed/natural framing, separate populations, key
@@ -141,11 +138,12 @@ A native known-answer regression checks gas 100000 -> `c1 a0 86`, 128 -> `80 80`
 reject a selected E8-gas alternative. The decoder never retries another representation when
 compact decoding fails. Diagnostic width comparisons in the test oracle are not decoder fallbacks.
 
-`build/state-statistics/results.json` retains corpus identity, build commands and per-entry raw
+`build/tests/runtime/results.json` retained corpus identity, build commands and per-entry raw
 SHA-256, complete-match flag and consumed/trailing counts alongside the accepted encoding policy. Fixtures are
 SHA-256 checked before parsing at exact pinned Git blob identities; partial clones may fetch
 promised objects without checkout/gitlink changes. No upstream generators run. Thirteen partial
-roots commit C(13) alone, not complete JAM state or proofs. Nim 2.2.12 ARC/Clang LTO keeps
+roots commit C(13) alone, not complete JAM state or proofs. The historical Nim 2.2.12 ARC/Clang LTO
+keeps
 assertion/bounds/range/field/overflow guards. Linux CI runs the suite and uploads diagnostics;
 local results are macOS arm64, with Linux confirmation pending CI after push. Existing crypto
 gates remain unchanged.
@@ -174,6 +172,6 @@ isolated runtime cases require the exact success contract; sixteen privacy/read-
 nominal probes reject compilation. The warmed 1,000-cycle ownership workload returns live
 occupancy 192 → 192 bytes locally on macOS ARM64, checked ARC/Clang LTO; this is workload-specific.
 
-Use `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on the trial
-branch. The historical Nim 2 commands above describe the main-branch baseline. Actual Linux
+Use `make runtime`. The numerical observations above describe the original compiler-port increment.
+Actual Linux
 results and full M1/M2/M3 runtime parity remain separate migration gates.

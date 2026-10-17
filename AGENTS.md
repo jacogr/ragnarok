@@ -94,6 +94,8 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   not require failure in the current Hastur. See [the migration plan](docs/testing.md).
 - Add important negative compilation checks and malformed/truncated/overflow/fuzz cases for decoders.
   Retain official vectors and independent test-only references; no Python production protocol runtime.
+- Keep Python reference/tooling/provenance unittest execution in the runtime verifier's single
+  fresh discovery gate; corpus reports share its verdict. Do not schedule duplicate harness runs.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,
