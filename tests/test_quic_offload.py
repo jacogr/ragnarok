@@ -1,42 +1,17 @@
 #!/usr/bin/env python3
 """Fixed worker RingVRF verification alongside persistent native QUIC, with bounded owned jobs."""
-from test_support import networking_peers
-import argparse
 import hashlib
 import json
 import os
-import platform
 import re
 import socket
 import subprocess
 import time
-from test_quic import ROOT, BUILD as QUIC, build_peers, dependencies, fixtures, run, PINS, THREAD_BASELINES
+from test_quic import ROOT, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
 import test_bandersnatch as bs
 
 BUILD = ROOT / 'build/offload'
-
-
-# Verify source/vector provenance and compile separately labelled checked peers over the existing maintained ABIs.
-def build(fetch, reuse_native):
-    assert PINS['nim'] in subprocess.check_output(['nim', '--version'], text=True)
-    bs.sources(fetch)
-    bs.official_sources(fetch)
-    # Reuse avoids duplicate native builds in CI; it does not relax source/compiler/vector checks.
-    if not reuse_native:
-        build_peers(dependencies(fetch))
-        bs.build(fetch)
-    suffix = 'dylib' if platform.system() == 'Darwin' else 'so'
-    transport = QUIC / f'libquic_proof.{suffix}'
-    crypto = bs.BUILD / f'target/release/libragnarok_bandersnatch.{suffix}'
-    assert transport.exists() and crypto.exists(), 'Build the pinned QUIC and Bandersnatch libraries first'
-    linker = f'-Wl,-rpath,{crypto.parent}'
-    # Darwin needs the selected command-line SDK; Linux uses its normal compiler sysroot.
-    with (BUILD / 'build.log').open('w') as log:
-        run(['nim', 'c', '--mm:arc', '--threads:on', '--cc:clang', '--clang.linkerexe:clang++',
-             '--skipParentCfg', '--skipUserCfg', '-d:offload', f'--passL:{transport}', f'--passL:{crypto}',
-             f'--passL:-Wl,-rpath,{crypto.parent}', f'--nimcache:{BUILD / "nim-cache"}',
-             f'--out:{BUILD / "nim-peer"}', ROOT / 'src/quic/peer.nim'], log)
 
 
 # Pack the independently sourced tiny ticket into fixed copied fields; the worker constructs no implicit domain.
@@ -239,36 +214,3 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats, *, binari
             process.wait()
         for handle in handles:
             handle.close()
-
-
-# Opt-in build/network execution keeps imports free of listeners, threads and fixture writes.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fetch', action='store_true')
-    parser.add_argument('--reuse-native', action='store_true')
-    parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--rounds', type=int, default=10)
-    parser.add_argument('--warmup', type=int, default=2)
-    parser.add_argument('--repeats', type=int, default=128)
-    args = parser.parse_args()
-    assert args.rounds >= args.warmup+8 and args.warmup >= 0 and 1 <= args.repeats <= 256
-    BUILD.mkdir(parents=True, exist_ok=True)
-    (BUILD / 'results.json').unlink(missing_ok=True) # A failed new run must not retain a previous success summary.
-    # Build unless the caller explicitly requests the existing labelled peers.
-    if not args.skip_build:
-        build(args.fetch, args.reuse_native)
-    peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES, 'offload')
-    fixture, metadata = corpus()
-    certificates = fixtures(BUILD / 'fixtures')
-    # The same explicit selftests are used by the isolated compiler migration runner.
-    for language in peers:
-        selftests(BUILD/f'{language}-peer', fixture, BUILD/language)
-    results = [exercise(language, certificates, fixture, args.rounds, args.warmup, args.repeats)
-               for language in peers]
-    (BUILD / 'results.json').write_text(json.dumps({'fixture': metadata, 'services': results}, indent=2)+'\n')
-    print('PASS Bandersnatch offload: bounded workers/jobs, owned cancellation, real-crypto networking and joined shutdown', flush=True)
-
-
-# Importing the controller performs no builds or network work.
-if __name__ == '__main__':
-    main()

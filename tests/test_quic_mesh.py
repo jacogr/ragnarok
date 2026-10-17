@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """Retained two-peer IPv6 engines, duplicate arbitration, fallback dial and bidirectional CE 143 regression."""
-from test_support import networking_peers
-import argparse
 import json
 import os
-from pathlib import Path
 import socket
 import subprocess
 import time
-from test_quic import BUILD, build_peers, dependencies, fixtures, THREAD_BASELINES
+from test_quic import BUILD, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
 
 
@@ -131,38 +128,3 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
                 process.kill(); process.wait()
         for handle in handles.values():
             handle.close()
-
-
-# Compile/reuse the same pinned transport ABI, then run all enabled native pairings sequentially without speed thresholds.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--fetch', action='store_true')
-    parser.add_argument('--rounds', type=int, default=16)
-    parser.add_argument('--warmup', type=int, default=4)
-    args = parser.parse_args()
-    assert 12 <= args.rounds <= 64 and 0 <= args.warmup <= args.rounds - 8
-    BUILD.mkdir(parents=True, exist_ok=True)
-    result_path = BUILD / 'mesh/results.json'
-    result_path.parent.mkdir(exist_ok=True)
-    result_path.write_text(json.dumps({'complete': False, 'stage': 'build'}) + '\n')
-    if not args.skip_build:
-        build_peers(dependencies(args.fetch))
-    peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES)
-    for language in peers:
-        assert subprocess.check_output([str(BUILD / f'{language}-peer'), '--mesh-selftest'], text=True).strip() == 'MESH_POLICY_OK'
-    folder = fixtures()
-    results = []
-    for a, b in [(a, b) for a in peers for b in peers]:
-        result = pairing((a, b), folder, args.rounds, args.warmup)
-        results.append(result)
-        print('PASS', result['pairing'], result['bidirectional_queries'], 'IPv6 bidirectional queries', flush=True)
-    for languages in [(a, b) for a in peers for b in peers]:
-        results.append(pairing(languages, folder, 1, 0, bad_pin=True))
-        print('PASS', '-'.join(languages), 'IPv6 wrong identity rejected', flush=True)
-    result_path.write_text(json.dumps({'complete': True, 'results': results}, indent=2) + '\n')
-
-
-# Importing lifecycle helpers starts no process and opens no UDP sockets.
-if __name__ == '__main__':
-    main()

@@ -1,43 +1,19 @@
 #!/usr/bin/env python3
-"""Compose owned C.2 codec, Blake2b-256 and persistent CE 143 transport in each enabled language."""
-from test_support import networking_peers
-import argparse
+"""Shared fixtures and process checks for owned C.2 codecs, Blake2b-256 and persistent CE 143."""
 from functools import partial
 import hashlib
 import json
 import os
-import platform
 import re
 import socket
 import subprocess
-from test_quic import ROOT, BUILD as QUIC, build_peers, dependencies as quic_dependencies, fixtures, run, PINS, THREAD_BASELINES
-import test_crypto
+from test_quic import ROOT, THREAD_BASELINES
 from test_codec import reference_encode
 from digest_checks import wire_for
 from test_quic_service import wait_service
 from test_quic_soak import resources, check_growth
 
 BUILD = ROOT / 'build/integration'
-
-
-# Reuse maintained pinned dependency builders, then compile separately labelled integrated peers.
-def build(fetch, reuse_native):
-    # Reusing native libraries does not permit a different unchecked compiler for the integrated binaries.
-    assert PINS['nim'] in subprocess.check_output(['nim', '--version'], text=True)
-    if not reuse_native:
-        build_peers(quic_dependencies(fetch))
-        test_crypto.BUILD.mkdir(exist_ok=True)
-        test_crypto.build(test_crypto.dependencies(fetch))
-    suffix = 'dylib' if platform.system() == 'Darwin' else 'so'
-    transport = QUIC / f'libquic_proof.{suffix}'
-    crypto = test_crypto.BUILD / f'libragnarok_crypto.{suffix}'
-    assert transport.exists() and crypto.exists(), 'Build current native libraries first'
-    linker = []
-    # Preserve checked result/union assertions and the same compiler pins; this is a correctness build.
-    with (BUILD / 'build.log').open('w') as log:
-        run(['nim', 'c', '--mm:arc', '--cc:clang', '--clang.linkerexe:clang++', '--skipParentCfg',
-             '--skipUserCfg', '-d:integration', f'--passL:{transport}', f'--passL:{crypto}',
-             f'--nimcache:{BUILD / "nim-cache"}', f'--out:{BUILD / "nim-peer"}', ROOT / 'src/quic/peer.nim'], log)
 
 
 # Treat official binaries as immutable; compare their JSON against the independent mathematical codec oracle.
@@ -153,45 +129,6 @@ def service(language, certificates, wires, rounds, warmup, *, binaries=None, dir
             handle.close()
 
 
-# Separate integrated binaries and diagnostics from the earlier isolated codec/crypto/transport experiments.
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fetch', action='store_true')
-    parser.add_argument('--reuse-native', action='store_true')
-    parser.add_argument('--skip-build', action='store_true')
-    parser.add_argument('--rounds', type=int, default=12)
-    parser.add_argument('--warmup', type=int, default=4)
-    args = parser.parse_args()
-    assert 12 <= args.rounds <= 24 and 0 <= args.warmup <= args.rounds - 8, 'Invalid bounded integrated extent'
-    BUILD.mkdir(parents=True, exist_ok=True)
-    if not args.skip_build:
-        build(args.fetch, args.reuse_native)
-    peers = networking_peers(BUILD, args.skip_build, THREAD_BASELINES, 'integration')
-    # Run composition fuzzing through the same compiled APIs before opening sockets.
-    for implementation in peers:
-        run([BUILD / f'{implementation}-peer', '--integration-selftest'])
-    wires, hashes = corpus()
-    certificates = fixtures()
-    report = {'complete': False, 'platform': platform.platform(), 'rounds': args.rounds,
-              'fixture_hashes': hashes, 'servers': []}
-    try:
-        for language in peers:
-            report['servers'].append(service(language, certificates, wires, args.rounds, args.warmup))
-            (BUILD / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
-    except Exception as error:
-        report['failure'] = str(error)
-        (BUILD / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
-        raise
-    report['complete'] = True
-    (BUILD / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(f'PASS integrated codec/crypto/QUIC: {args.rounds * len(peers) * 3 * 8} streams', flush=True)
-
-
 # Shared arithmetic keeps the reported workload equal to one listener, three clients and eight streams per wave.
 def rounds_total(rounds):
     return rounds * 2 * 3 * 8
-
-
-# Importing the harness does not compile, generate certificates or start network endpoints.
-if __name__ == '__main__':
-    main()
