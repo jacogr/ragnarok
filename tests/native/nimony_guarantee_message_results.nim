@@ -11,4 +11,4 @@ let source = case paramStr(1)
 fail(1)
 let parsed = if useDefault: default(GuaranteeMessageResult) else: guaranteeMessage(source)
 assert parsed.error == (if useDefault: CryptoError.Uninitialized else: CryptoError.BackendFailure)
-echo array[46, byte](parsed.value)[0]
+echo array[45, byte](parsed.value)[0]

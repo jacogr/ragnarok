@@ -60,8 +60,8 @@ explains that the dollar sign is binary-string notation rather than a token byte
 this interpretation to `node` and `leaf` too. This module therefore uses exactly ASCII `peak`
 and `node`, without `$`, count framing or a null terminator. This resolves the history mismatch;
 there is no alternate-domain fallback. The independent integer Keccak oracle reproduces the
-published super-peak under that interpretation. Existing transcript domains outside this module
-require a separate focused audit; no unrelated protocol behavior is changed here.
+published super-peak under that interpretation. The subsequent [signing-domain audit](signing-domains.md) corrects both implemented Ed25519
+transcript domains using external published credentials.
 
 The published family supplies precomputed accumulation roots, so it provides no direct output-tree
 verdict. Authored tree checks exercise the 0.8.0 equations with the clarified `node` token.
@@ -109,6 +109,5 @@ Run `make check-modules check-python check-unit check-guards`; reports and sourc
 are generated under `build/tests/`. Networking behavior and the M1 checkpoints in
 [state-clarifications.md](state-clarifications.md) remain unchanged.
 
-Next suggested bounded follow-up: audit existing signing/transcript token bytes against the same
-issue-509 clarification and independent external evidence. Entropy/timeslot progression follows
-as a separate state-execution slice.
+The signing-domain follow-up is complete in this PR; see [the audit](signing-domains.md).
+Next suggested bounded state-execution slice: entropy/timeslot progression with pinned evidence.

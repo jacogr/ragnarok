@@ -23,8 +23,8 @@ Complete block wire composition is now covered by the later M1 increment describ
 | Report ownership and atomic encoding | New fields retained in the owned header; preflight validates shard domain before writing. | Existing source-mutation, owner-bound extraction, overlap and late-failure checks. |
 | Validator population | `valcount` permits 6..3*Ccorecount validators in multiples of three. | Codec and verifier share the configuration predicate; reduced full-chain populations and invalid domains tested. |
 | Blake2b-256, legacy Keccak-256, Ed25519 primitive | Applicable definitions unchanged. | Existing RFC, published/adversarial vectors and ABI/lifetime checks. |
-| Guarantee signing transcript | `$jam_guarantee` plus Blake2b-256 of complete canonical report bytes remains unchanged. | Independent OpenSSL credentials; mutations of each new header field invalidate signatures. |
-| Assurance signing transcript | `$jam_available` plus Blake2b-256 of parent and fixed-width bitfield remains unchanged. | Independent hashlib/OpenSSL transcript, key, signature and context checks. |
+| Guarantee signing transcript | `jam_guarantee` plus Blake2b-256 of complete canonical report bytes; ASCII token excludes the notation dollar sign. | Independent OpenSSL credentials; mutations of each new header field invalidate signatures. |
+| Assurance signing transcript | `jam_available` plus Blake2b-256 of parent and fixed-width bitfield; ASCII token excludes the notation dollar sign. | Independent hashlib/OpenSSL transcript, key, signature and context checks. |
 | Bandersnatch VRF/RingVRF | Migrated to draft-29 release-designated ark-vrf 0.2.2, including nonce updates. Literal draft challenge length remains inconsistent. | Published draft-29/JAM 0.8.0 vectors, proof widths and nonce-separation regression; one pending text-consistency check. |
 | QUIC/CE 143 transport | JAMNP-S remains independently pinned; ticket framing is unchanged by the reviewed GP delta. | Fresh native peer, lifecycle/selftests and retained work-digest integration. RingVRF offload is rerun with the release-reference backend. |
 

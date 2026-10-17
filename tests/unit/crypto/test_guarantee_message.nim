@@ -10,28 +10,28 @@ proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Decode the independent hashlib-known answer into fixed expected storage without a production codec.
-proc known(hex: string): array[46, byte] =
-  assert hex.len == 92
-  result = default(array[46, byte])
-  # Every expected byte includes the leading dollar sign and the full parameterized 32-byte digest.
-  for i in 0..<46: result[i] = octet(hex[2*i..2*i+1])
+proc known(hex: string): array[45, byte] =
+  assert hex.len == 90
+  result = default(array[45, byte])
+  # Every expected byte includes the ASCII token and the full parameterized 32-byte digest.
+  for i in 0..<45: result[i] = octet(hex[2*i..2*i+1])
 
 # One scope owns only copied transcript values; no borrow may survive into the completed result.
 proc exercise() =
   fail(0)
   let empty = guaranteeMessage([])
   assert empty.error == CryptoError.None
-  assert array[46, byte](empty.value) == known("246a616d5f67756172616e7465650e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8")
+  assert array[45, byte](empty.value) == known("6a616d5f67756172616e7465650e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8")
   assert hashCalls() == 1
   var source = [1'u8, 2, 3]
   let message = guaranteeMessage(source)
   assert message.error == CryptoError.None and source == [1'u8, 2, 3]
-  let saved = array[46, byte](message.value)
+  let saved = array[45, byte](message.value)
   source[0] = 99
-  var copied = array[46, byte](message.value)
+  var copied = array[45, byte](message.value)
   copied[0] = 0
-  assert array[46, byte](message.value) == saved # Neither source nor extracted-copy mutation changes the completed message.
-  assert saved == known("246a616d5f67756172616e74656511c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da")
+  assert array[45, byte](message.value) == saved # Neither source nor extracted-copy mutation changes the completed message.
+  assert saved == known("6a616d5f67756172616e74656511c0e79b71c3976ccd0c02d1310e2516c08edc9d8b6f57ccd680d63a4d8e72da")
   fail(1)
   assert guaranteeMessage(source).error == CryptoError.BackendFailure
   assert hashCalls() == 1 and source == [99'u8, 2,
@@ -40,7 +40,7 @@ proc exercise() =
   assert hashCalls() == 2
   fail(0)
   source[0] = 1
-  assert array[46, byte](guaranteeMessage(source).value) == saved
+  assert array[45, byte](guaranteeMessage(source).value) == saved
   assert hashCalls() == 1
 
 exercise()

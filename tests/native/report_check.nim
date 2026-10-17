@@ -32,7 +32,7 @@ proc reportFixtureCheck*() {.raises.} =
   assert encoded.error == CompositeError.None and encoded.written == wire.len and output == wire
   let message = guaranteeMessage(wire)
   assert message.error == CryptoError.None
-  let bytes = array[46, byte](message.value)
+  let bytes = array[45, byte](message.value)
   var valid = true
   # Both ordinary fixture credentials must verify; invalid cases report false without timing anything.
   for i in 0..<2:

@@ -97,6 +97,7 @@ The exact pinned history witness and output-tree interpretation are recorded in
 Open [#549](https://github.com/gavofyork/graypaper/pull/549) proposes additional Merklization changes
 and remains a future compatible-upgrade review item.
 
-Existing signing/transcript code still contains literal dollar-prefixed domains. Audit those
-against normative token interpretation and independent external transcripts in a separate bounded
-follow-up; the new history module does not establish their interoperability or change their bytes.
+The [signing-domain audit](signing-domains.md) now resolves the two implemented Ed25519
+transcripts with 1,035 external credentials: ASCII `jam_available` and `jam_guarantee` are the
+only supported domains. This fixes implementation bytes, not the dependency revision or codec
+format. The history module itself remains separate from signing-message construction.

@@ -7,7 +7,7 @@ from report_fixtures import openssl_sign, validate_provider
 
 # Hash the exact fixed-field transcript with the 32-byte Blake2b parameterization.
 def message(parent, bits, cores):
-    return b'$jam_available'+hashlib.blake2b(parent+bits[:(cores+7)//8],digest_size=32).digest()
+    return b'jam_available'+hashlib.blake2b(parent+bits[:(cores+7)//8],digest_size=32).digest()
 
 
 # Model only message-builder constraints; validator/parent relationships belong to verification.
@@ -108,9 +108,9 @@ def requests():
         changed=list(values);last=list(changed[-1]);last[3]=bytes(64);changed[-1]=tuple(last)
         add_verify(cores,validators,parent,keys,changed,'invalidsignature')
         # Wrong domains and wrong hashed field framing remain cryptographically invalid despite valid structure.
-        for alternative in (b'$jam_guarantee'+signed[14:],b'jam_available'+signed[14:],
-                            b'$jam_available'+hashlib.blake2b(parent+b'\x01'+bits[:(cores+7)//8],digest_size=32).digest(),
-                            b'$jam_available'+hashlib.blake2b(parent+bits[:(cores+7)//8]).digest()[:32]):
+        for alternative in (b'jam_guarantee'+signed[13:],b'$jam_available'+signed[13:],
+                            b'jam_available'+hashlib.blake2b(parent+b'\x01'+bits[:(cores+7)//8],digest_size=32).digest(),
+                            b'jam_available'+hashlib.blake2b(parent+bits[:(cores+7)//8]).digest()[:32]):
             changed=list(values);value=list(changed[0]);value[3]=credential(0,alternative)[1];changed[0]=tuple(value)
             add_verify(cores,validators,parent,keys,changed,'invalidsignature')
         # Parent mismatch must precede an already invalid earlier signature.

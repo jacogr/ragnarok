@@ -188,7 +188,9 @@
       "stf/history/tiny/progress_blocks_history-2.json": "e25578fe0b67f2d7541b8e1dc94b87cd74e802d40197dd7d3ccc2e586cdff738",
       "stf/history/tiny/progress_blocks_history-3.json": "302948917b2528e22a39cba8778c77ab0d12d04b46b1e63cde66dafde205cebd",
       "stf/history/full/progress_blocks_history-2.json": "e25578fe0b67f2d7541b8e1dc94b87cd74e802d40197dd7d3ccc2e586cdff738",
-      "stf/history/full/progress_blocks_history-3.json": "302948917b2528e22a39cba8778c77ab0d12d04b46b1e63cde66dafde205cebd"
+      "stf/history/full/progress_blocks_history-3.json": "302948917b2528e22a39cba8778c77ab0d12d04b46b1e63cde66dafde205cebd",
+      "stf/reports/tiny/report_curr_rotation-1.json": "894293d1755a087e96554c9a21bb4c99de66b699ab8f71acb13b6562df99af3d",
+      "stf/reports/full/report_curr_rotation-1.json": "6fcdc3a7ced5c38b45b181ba475302635cc0c9dc50b332c93bb352f0a26b6751"
     }
   },
   "toolchains": {

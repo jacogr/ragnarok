@@ -17,6 +17,12 @@ Use exactly one representation, with no alternate-format fallback. This accepts 
 as canonical JAM compact naturals (1–9 bytes); it is not a pending implementation/parity gate.
 Fixed encodings used by the vectors remain fixed.
 
+GP token notation's dollar sign is not a token byte: signing domains use ASCII `jam_available` and
+`jam_guarantee`; general-tree domains use ASCII `node` and `peak`. Preserve exact token bytes with
+no fallback, count prefix or terminator. See [the credential-backed audit](spec/signing-domains.md).
+Other specifications, including JAMNP-S identity names, require their own independently checked
+interpretation; do not globally strip dollar characters from unrelated strings.
+
 Never guess protocol semantics. Document ambiguity and add a focused failing/pending test. Cite
 pinned revisions and sections in protocol changes. `spec/` records interpretations and hashes;
 `vendor/` gitlinks pin upstream source identities.
@@ -101,7 +107,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Keep upstream code/vectors in pinned submodules. Initialize with `python3 tools/setup_submodules.py`.
   Do not overwrite upstream edits, advance gitlinks or change locked versions without an authorized upgrade.
 - Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
-  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 66
+  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 67
   ordinary suites run through the native runner; preserve explicit output, linking and fixture contracts. Preserve
   independent Python references and process/tooling orchestration. Remove superseded standalone
   runners once the supported path preserves their coverage; do not keep duplicate build entry points.

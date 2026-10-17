@@ -9,7 +9,7 @@ import platform
 from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
-UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'authorization_transition', 'authorization_transition_failure', 'history_transition', 'history_transition_failure', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'crypto_seeds', 'assurance_context', 'guarantee_message', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
+UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'state_layout', 'state_trie', 'state_trie_private', 'state_store', 'state_store_failure', 'state_store_replay', 'authorization_transition', 'authorization_transition_failure', 'history_transition', 'history_transition_failure', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'service_values_private', 'state_requests', 'state_requests_private', 'state_composition_private', 'crypto_seeds', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners', 'quic_io', 'quic_transport', 'quic_protocol', 'quic_integration', 'quic_integration_disabled')
 # These cases keep numeric allocation evidence as well as native equality assertions.
 ARC_SUITES = {'history_transition_failure': 'history_transition_arc_release', 'authorization_transition_failure': 'authorization_transition_arc_release', 'state_store_failure': 'store_arc_release', 'ownership': 'arc_release', 'report_snapshots': 'report_arc_release', 'guarantees': 'guarantee_arc_release', 'disputes': 'dispute_arc_release', 'work_package': 'package_arc_release', 'header': 'header_arc_release', 'block': 'block_arc_release', 'bits': 'bits_arc_release', 'collections': 'collection_arc_release', 'c2': 'c2_arc_release', 'state_trie_private': 'trie_arc_release', 'state_safrole': 'safrole_arc_release', 'state_authorization_private': 'authorization_arc_release', 'state_consensus_private': 'consensus_arc_release', 'state_disputes_private': 'state_disputes_arc_release', 'state_history_private': 'history_arc_release', 'state_availability_private': 'availability_arc_release', 'state_workqueues_private': 'workqueues_arc_release', 'state_privileges_private': 'privileges_arc_release', 'state_statistics_private': 'statistics_arc_release', 'state_outputs_private': 'outputs_arc_release', 'state_accounts_private': 'accounts_arc_release', 'service_values_private': 'service_values_arc_release', 'state_requests_private': 'requests_arc_release', 'state_composition_private': 'composition_arc_release', 'crypto_seeds': 'crypto_arc_release', 'assurance_context': 'assurance_context_arc_release', 'guarantee_message': 'guarantee_message_arc_release', 'bandersnatch_owners': 'bandersnatch_arc_release', 'quic_io': 'quic_io_arc_release', 'quic_integration': 'integration_arc_release'}
 UNIT_ROOT = ROOT/'tests/unit/codec'
@@ -17,7 +17,7 @@ STATE_ROOT = ROOT/'tests/unit/state'
 CRYPTO_ROOT = ROOT/'tests/unit/crypto'
 QUIC_ROOT = ROOT/'tests/unit/quic'
 # Preserve the production-only trie profile and observer-only refusal profiles in separate processes.
-UNIT_LINKS = {'history_transition': 'crypto', 'history_transition_failure': 'observer', 'authorization_transition_failure': 'observer', 'authorization_transition': 'crypto', 'state_store_replay': 'crypto', 'state_store': 'crypto', 'state_store_failure': 'observer', 'state_layout': 'observer', 'state_trie': 'crypto', 'state_trie_private': 'observer', 'state_safrole': 'crypto', 'state_authorization': 'crypto', 'state_authorization_private': 'crypto', 'state_consensus': 'crypto', 'state_consensus_private': 'crypto', 'state_disputes': 'crypto', 'state_disputes_private': 'crypto', 'state_history': 'crypto', 'state_history_private': 'crypto', 'state_availability': 'crypto', 'state_availability_private': 'crypto', 'state_workqueues': 'crypto', 'state_workqueues_private': 'crypto', 'state_privileges': 'crypto', 'state_privileges_private': 'crypto', 'state_statistics': 'crypto', 'state_statistics_private': 'crypto', 'state_outputs': 'crypto', 'state_outputs_private': 'crypto', 'state_accounts': 'crypto', 'state_accounts_private': 'crypto', 'state_service_values': 'crypto', 'service_values_private': 'observer', 'state_requests': 'crypto', 'state_requests_private': 'observer', 'state_composition_private': 'observer', 'crypto_seeds': 'observer', 'assurance_context': 'observer', 'guarantee_message': 'observer', 'bandersnatch_owners': 'bandersnatch', 'quic_io': None, 'quic_transport': 'quic', 'quic_protocol': 'quic', 'quic_integration': 'observer', 'quic_integration_disabled': None}
+UNIT_LINKS = {'signing_domains': 'crypto', 'history_transition': 'crypto', 'history_transition_failure': 'observer', 'authorization_transition_failure': 'observer', 'authorization_transition': 'crypto', 'state_store_replay': 'crypto', 'state_store': 'crypto', 'state_store_failure': 'observer', 'state_layout': 'observer', 'state_trie': 'crypto', 'state_trie_private': 'observer', 'state_safrole': 'crypto', 'state_authorization': 'crypto', 'state_authorization_private': 'crypto', 'state_consensus': 'crypto', 'state_consensus_private': 'crypto', 'state_disputes': 'crypto', 'state_disputes_private': 'crypto', 'state_history': 'crypto', 'state_history_private': 'crypto', 'state_availability': 'crypto', 'state_availability_private': 'crypto', 'state_workqueues': 'crypto', 'state_workqueues_private': 'crypto', 'state_privileges': 'crypto', 'state_privileges_private': 'crypto', 'state_statistics': 'crypto', 'state_statistics_private': 'crypto', 'state_outputs': 'crypto', 'state_outputs_private': 'crypto', 'state_accounts': 'crypto', 'state_accounts_private': 'crypto', 'state_service_values': 'crypto', 'service_values_private': 'observer', 'state_requests': 'crypto', 'state_requests_private': 'observer', 'state_composition_private': 'observer', 'crypto_seeds': 'observer', 'assurance_context': 'observer', 'guarantee_message': 'observer', 'bandersnatch_owners': 'bandersnatch', 'quic_io': None, 'quic_transport': 'quic', 'quic_protocol': 'quic', 'quic_integration': 'observer', 'quic_integration_disabled': None}
 # Fixture targets may be files or directories; each entry lists every byte source that must match its pin.
 GUARANTEE_FIXTURE = ROOT/'tests/fixtures/guarantee-report.bin'
 BLOCK_FIXTURES = ROOT/'tests/fixtures/block-tiny'
@@ -55,7 +55,7 @@ def unit_source(name):
         # Transport lifecycle and disabled integration retain their own native suite directory.
         return QUIC_ROOT/('test_'+name+'.nim')
     # Crypto ownership cases share the runner without being mistaken for state serialization tests.
-    if name in ('crypto_seeds', 'assurance_context', 'guarantee_message', 'bandersnatch_owners'):
+    if name in ('crypto_seeds', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners'):
         return CRYPTO_ROOT/('test_'+name+'.nim')
     return (STATE_ROOT if name in UNIT_LINKS else UNIT_ROOT)/('test_'+name+'.nim')
 
@@ -148,7 +148,7 @@ def unit_environment(compiler, name=None, base=None, fixtures=None):
         # Other suite observations may belong to another completed per-suite invocation.
         if case in ARC_SUITES:
             (directory/(case+'.json')).unlink(missing_ok=True)
-        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition') and case not in manifest:
+        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains') and case not in manifest:
             # Inherited paths cannot replace newly prepared native transport/integration fixtures.
             raise ValueError('Missing prepared native unit fixtures: '+case)
         if case in manifest:
@@ -191,6 +191,15 @@ def unit_store_fixture(folder):
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_STORE_REPLAY', path, ((path, evidence['fixture_sha256']),))
     return {'state_store_replay': fixture}, evidence
+
+
+# Prepare public upstream credentials with independent OpenSSL positive/old-domain verdicts.
+def unit_signing_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from signing_domain_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_SIGNING_DOMAINS', path, ((path, evidence['fixture_sha256']),))
+    return {'signing_domains': fixture}, evidence
 
 
 # Prepare published history cases and independent output-tree commitments for native assertions.
@@ -279,6 +288,9 @@ def main():
     history_fixtures, history_evidence = unit_history_fixture(folder)
     fixtures.update(history_fixtures)
     (folder/'history-preparation.json').write_text(json.dumps(history_evidence, indent=2)+'\n')
+    signing_fixtures, signing_evidence = unit_signing_fixture(folder)
+    fixtures.update(signing_fixtures)
+    (folder/'signing-preparation.json').write_text(json.dumps(signing_evidence, indent=2)+'\n')
     # All fixture hashes are verified and old observations retired before any native suite runs.
     selected = unit_environment(compiler, base=selected, fixtures=fixtures)
     for arguments in unit_plan(compiler, libraries):

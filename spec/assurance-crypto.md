@@ -4,8 +4,8 @@ Pinned GP v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `reporting_assurance.tex` equation `assurancesig`, anchors/order preceding it, and Appendix C.1/C.2.
 The existing source SHA pins in `spec/pins.json` cover these definitions.
 
-The signing message is exactly the 46-byte owned value
-`ASCII("$jam_available") || Blake2b-256(parent_hash32 || fixed_profile_bitfield)`.
+The signing message is exactly the 45-byte owned value
+`ASCII("jam_available") || Blake2b-256(parent_hash32 || fixed_profile_bitfield)`.
 The bitfield has `ceil(cores/8)` bytes, LSB-first, with no length or record-count prefix. The
 validator index and signature are not included in the hash. Blake2b-256 is the 32-byte output
 parameterization, not a truncation of Blake2b-512. A parent hash is a nominal domain distinct
@@ -73,3 +73,10 @@ Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
 Next: same-process endpoint soak and remaining admission/resilience coverage; Linux confirmation and documented
 normative policy gates remain separate. See the [cumulative trial](../docs/nimony-trial.md); the
 exceptional-point policy remains unresolved.
+
+## Signing-token audit correction
+
+The [credential-backed audit](signing-domains.md) corrects the historical dollar-prefixed
+transcript to the 45-byte ASCII-domain message. It adds 1,035 unchanged upstream credentials
+and preserves old-domain rejection; earlier local hashlib/OpenSSL fixtures shared the same
+interpretation error and did not establish this interoperability property.

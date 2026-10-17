@@ -12,11 +12,11 @@ class ContextOracleTests(unittest.TestCase):
     # Tiny's two-core bitfield is a single fixed octet, with no natural-count prefix in the hash.
     def test_fixed_transcript(self):
         parent=bytes(range(32));bits=b'\x02'+bytes(42)
-        expected=b'$jam_available'+hashlib.blake2b(bytes(range(32))+b'\x02',digest_size=32).digest()
+        expected=b'jam_available'+hashlib.blake2b(bytes(range(32))+b'\x02',digest_size=32).digest()
         self.assertEqual(message(parent,bits,2),expected)
-        self.assertEqual(len(expected),46)
-        self.assertNotEqual(expected,b'$jam_available'+hashlib.blake2b(parent+b'\x01\x02',digest_size=32).digest())
-        self.assertNotEqual(expected,b'$jam_available'+hashlib.blake2b(parent+b'\x02').digest()[:32])
+        self.assertEqual(len(expected),45)
+        self.assertNotEqual(expected,b'jam_available'+hashlib.blake2b(parent+b'\x01\x02',digest_size=32).digest())
+        self.assertNotEqual(expected,b'jam_available'+hashlib.blake2b(parent+b'\x02').digest()[:32])
 
     # Invalid configuration and all unused storage remain distinct from ordinary signing messages.
     def test_builder_bounds(self):
@@ -24,7 +24,7 @@ class ContextOracleTests(unittest.TestCase):
         self.assertEqual(message_result(bytes(32),bytes(43),2**64-1),'invalidconfig')
         self.assertEqual(message_result(bytes(32),b'\x04'+bytes(42),2),'noncanonical')
         self.assertEqual(message_result(bytes(32),bytes(42)+b'\x01',2),'noncanonical')
-        self.assertEqual(len(bytes.fromhex(message_result(bytes(32),bytes(42)+b'\x10',341))),46)
+        self.assertEqual(len(bytes.fromhex(message_result(bytes(32),bytes(42)+b'\x10',341))),45)
 
     # Complete structural context validation must precede any cryptographic signature work.
     def test_context_precedence(self):
