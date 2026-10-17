@@ -69,15 +69,16 @@ are not implemented. Root construction accepts already serialized state-key/valu
 chapters 1–16 now have typed serializers; chapter 13 follows the
 [accepted compact gas policy](../spec/state-statistics.md). Service-account metadata is implemented.
 Storage/preimage and request-history keyed entries are implemented. Request-length namespace
-policy also needs clarification. The [full-map root audit](../spec/state-roots.md) verifies fourteen
+policy has a merged upstream correction awaiting a compatible pinned upgrade. The [full-map root audit](../spec/state-roots.md) verifies fourteen
 published maps and records the dictionary migration and accepted compact statistics gas.
 [Typed composition](../spec/state-composition.md) now enforces exact component extents, common
 profiles, parent budgets and duplicate rejection. The [width investigation](../spec/state-widths.md)
 supports the implemented C(12) E4 service/E8 gas and C(13) E4-key migration. The maintainer accepts
 compact C13 gas as used by the vectors, with no fallback. The
-[request-namespace question](../spec/state-clarifications.md) remains parked for 0.8.1/0.8.2 review;
-its [local witnesses](../spec/request-namespace.md) and pending test remain. Further implementation
-scope is selected separately; the parked question still qualifies full M1 state parity.
+[request-namespace fix](../spec/state-clarifications.md) is merged upstream (#542), awaiting a
+compatible release/vector upgrade; its [local witnesses](../spec/request-namespace.md) and pending
+test remain against 0.8.0. Further implementation
+scope is selected separately; the pending upgrade still qualifies full M1 state parity.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](codec-coverage.md) distinguishes framing from those remaining state and
 validation responsibilities. Current network tests use bounded controlled topologies; general

@@ -69,8 +69,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   production target. Keep compiler and dependency sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
   Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
-  review. Preserve its evidence, pending test and current codec behavior. Revisit during that
-  specification upgrade or on an explicit maintainer request; do not invent interim restrictions.
+  review. Upstream #542 now resolves the domain overlap, but adoption awaits compatible pins.
+  Preserve its evidence, pending test and current 0.8.0 codec behavior. Follow
+  [the upstream disposition](spec/state-clarifications.md) during the specification/vector upgrade;
+  do not invent interim restrictions or adopt open #564 format changes without matching evidence.
 - Complete the authorized bounded increment and report it, then wait for the maintainer's next
   explicit go-ahead before starting another increment.
 - Read `docs/design.md` before architectural changes. State scope, applicable spec references and

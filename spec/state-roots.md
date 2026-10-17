@@ -57,7 +57,7 @@ accepts compact statistics gas as used by the vectors; the text discrepancy is d
 Nonempty raw T12 entries remain unavailable in the selected sample; corroborating nonempty bytes
 are explicitly STF fields.
 
-## Key-domain audit: still open
+## Key-domain audit: fixed upstream, pending pinned upgrade
 
 The T request key hashes `E4(length) || hash`; storage/preimage markers use `E4(2^32-1)` and
 `E4(2^32-2)`. `bloblength` has the full unsigned 32-bit domain. Therefore request lengths
@@ -71,7 +71,8 @@ hash memory and account balance. It does not state a reservation for those two l
 does not establish reachability or unreachability through every possible transition. Large sizes,
 gas constraints or selected small trace examples are insufficient evidence for inventing a
 serialization restriction. Keep the existing pending namespace-admissibility test and full E4
-codec domain until the valid-state cross-map constraint is clarified. Opaque trace keys are not
+codec domain until the merged upstream #542 domain correction is adopted with aligned pins.
+See [the upstream review](state-clarifications.md); the discussion here describes 0.8.0. Opaque trace keys are not
 classified into guessed service namespaces by their digest bytes.
 
 ## Reproduction and remaining work

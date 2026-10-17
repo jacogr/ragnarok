@@ -2,23 +2,55 @@
 
 Pinned Gray Paper: v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`.
 Pinned reference vectors: v0.8.0 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
-This is a local record, not an upstream ruling or a submitted issue.
+Local implementation decisions and independently reviewed upstream evidence are distinguished below.
+No issue or PR was posted as part of this review.
 
 ## Status
 
-The **request-namespace question remains parked** for Gray Paper 0.8.1/0.8.2 review. Preserve its
-witnesses, pending test, full request-length domain and duplicate-key rejection. It is not active
-implementation work.
+Reviewed **2026-10-17**, after testing/setup PR #2 merged. Production remains pinned to the
+revisions above. Gray Paper main was reviewed at
+[`e537514`](https://github.com/gavofyork/graypaper/commit/e5375148597a45a99d31c9aa6bce6c7bf3a48998);
+vector tip at
+[`39d0e35`](https://github.com/davxy/jam-test-vectors/commit/39d0e35933305530fa1fe646bdedf221769398f1).
+These are review snapshots, not new dependency pins.
 
-The maintainer has **accepted vector-compatible compact encoding for C13 statistics gas**.
-It is no longer a pending implementation/parity decision. The general policy is: when published
-vectors encode a field compactly, use that compact representation and document any specification
-text discrepancy. Use one representation, with **no alternate-format fallback**.
+| Item | Upstream evidence and status | Ragnarök disposition |
+| --- | --- | --- |
+| Request lengths overlapping storage/preimage markers | [Gray Paper #542](https://github.com/gavofyork/graypaper/pull/542), **merged**, commit [07aee1e](https://github.com/gavofyork/graypaper/commit/07aee1ef23b63f93d0e2f29e53560cbc7c8c767c), restricts request lengths to `l < 2^32 - 2` and updates the relevant host calls. | Our overlap finding is corroborated and the normative fix exists upstream. **Await a compatible pinned upgrade**, rather than further investigation of the same ambiguity. |
+| C12 service/gas widths, C13 service keys and compact core/service statistics | [Gray Paper #564](https://github.com/gavofyork/graypaper/pull/564), **open**, explicitly writes C12 E4/E8 pairs and C13 E4 service keys and removes the blanket fixed-width note. [Vector issue #56](https://github.com/davxy/jam-test-vectors/issues/56), **open**, discusses dictionary keys; its [maintainer reply](https://github.com/davxy/jam-test-vectors/issues/56#issuecomment-2900104069) confirms compact service-statistics fields. | Supports our published-byte reconstruction and accepted compact gas policy. The proposal is not a merged normative correction. Keep one vector-compatible representation, **no fallback**. |
+| Non-minimal natural encodings | [Gray Paper #551](https://github.com/gavofyork/graypaper/pull/551), **closed without merge**. The [maintainer clarification](https://github.com/gavofyork/graypaper/pull/551#issuecomment-5337499611) explains that inputs outside the encoder's range are outside the inverse decoder's domain. | Supports our existing strict rejection; no permissive decoder path or new specification gate. |
+| Work-report field order | [Gray Paper #537](https://github.com/gavofyork/graypaper/pull/537), **merged**, commit [8ab3542](https://github.com/gavofyork/graypaper/commit/8ab35421ccd8d1723a6c4686e24cfb3db91bff07), aligns definitions/prose with the existing Appendix C wire order. | Corroborates following serialized bytes/Appendix C instead of the inconsistent tuple prose; no wire migration for this correction. |
 
-During the next authorized specification upgrade, check whether the request domain/solicit rules
-or T key prefixes resolve the parked question, and record the result before changing behavior.
-The statistics wording discrepancy can also be checked then without reopening the accepted
-compact profile or blocking current work on an upstream textual correction.
+**Important new-format boundary:** #564 also proposes changing current/previous validator
+statistics from E4 fields to general naturals. That is distinct from confirming our existing
+core/service compact fields. Preserve the pinned E4 validator records until a reviewed migration
+has corresponding vectors; do not claim full #564 compatibility today.
+
+## Next release checkpoint
+
+The remaining request-namespace item is **resolved on upstream main, pending adoption here**.
+Preserve full E4 request lengths, duplicate-key rejection, local witnesses and the skipped policy
+test while targeting 0.8.0. At the next compatible release (previously anticipated as 0.8.1/0.8.2):
+
+1. Review the release and vector revisions together, including #542 and #564's final disposition.
+2. Apply the adopted request-domain bound and replace the pending policy test with active
+   boundary checks: accept `2^32 - 3`, reject `2^32 - 2` and `2^32 - 1`. Reconcile the historical
+   full-domain witnesses with that new target rather than deleting their evidence.
+3. Check any adopted validator-statistics format change separately, with exact binary captures.
+
+Do **not** advance both repositories merely because each has a current tip. The reviewed vector
+[changelog](https://github.com/davxy/jam-test-vectors/blob/39d0e35933305530fa1fe646bdedf221769398f1/CHANGELOG.md)
+still distinguishes the 0.8.0 service rules from merged Gray Paper
+[#539](https://github.com/gavofyork/graypaper/pull/539), while listing selected deviations for
+unmerged proposals, including
+[#563](https://github.com/gavofyork/graypaper/pull/563). This is not evidence of complete tip-to-tip
+agreement. No codec, vector, compiler or dependency pin changes in this documentation update.
+
+Other M1 proposals to review at that checkpoint are
+[#560](https://github.com/gavofyork/graypaper/pull/560) (extrinsic-hash credential encoding), and
+[issue #561](https://github.com/gavofyork/graypaper/issues/561) /
+[PR #562](https://github.com/gavofyork/graypaper/pull/562) (removing the redundant assurance parent
+hash). These remain **open**; proposals are not reasons to change the pinned codec prematurely.
 
 ## Request namespace versus fresh solicit
 
@@ -29,13 +61,13 @@ OK predicates. Their mappings have conflicting values under identical T keys. Ch
 composition rejects both; no huge supplied blob or hash collision is needed. Full PVM execution
 and genesis reachability have not been demonstrated.
 
-**Question:** Which normative rule excludes these combinations or disambiguates their serialization?
+**Historical question against 0.8.0:** Which normative rule excludes these combinations or disambiguates their serialization?
 Should the request domain/solicit rule reserve lengths, should an additional valid-state cross-map
 constraint apply, or should T's namespaces change? A statement that the blob would be too large
 alone does not exclude these witnesses: only a hash is read, the requested blob is absent, and the
 charged footprint/deposit fits the defined uint64 domains.
 
-Current behavior: retain the full E4 domain, preserve the exact formulas, reject duplicate mapping
+Pinned 0.8.0 behavior, pending adoption of #542: retain the full E4 domain, preserve the exact formulas, reject duplicate mapping
 keys and keep the focused policy test pending. Do not choose one colliding value to overwrite.
 
 ## Accepted statistics gas policy; text discrepancy retained
@@ -51,6 +83,6 @@ statistics gas. The existing decoder already implements that encoding; there is 
 Known compact byte checks and exact-entry rejection of a fixed-gas alternative now actively test
 that policy. E4 service keys and E8 C12 gas remain fixed as shown by their respective vectors.
 
-M1's remaining state-parity question is the parked request namespace. Further implementation
+M1's remaining state-parity gate is adoption of the upstream request-domain fix with aligned pins. Further implementation
 scope is chosen separately with the maintainer; this does not claim PVM, transitions or validator
-completeness, or that upstream has changed its text.
+completeness, or that the pinned 0.8.0 text has changed.

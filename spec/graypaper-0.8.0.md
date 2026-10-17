@@ -166,8 +166,10 @@ unchanged bytes that previously produced shorter-prefix/noncanonical verdicts.
 C13 statistics gas uses the published canonical JAM compact natural framing. The maintainer
 accepts that vector-compatible representation, with no fallback. The difference from T's general
 fixed-width note is documented rather than treated as a pending policy gate. Active known-answer
-and exact-capture checks enforce that decision; no upstream textual correction is claimed.
+and exact-capture checks enforce that decision. Open upstream #564 supports this interpretation;
+its additional validator-statistics format proposal is not adopted here.
 
 The [request-history contract](state-requests.md) records the remaining cross-map question:
 E4 lengths fffffffe/ffffffff reproduce preimage/storage key prefixes. Full stated domains remain
-supported and duplicate keys reject. This question remains [parked for 0.8.1/0.8.2 review](state-clarifications.md).
+supported and duplicate keys reject. The fix is merged upstream as #542 but remains
+[pending adoption with compatible release/vector pins](state-clarifications.md).

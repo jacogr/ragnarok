@@ -5,8 +5,9 @@ The **C.1/C.2 framing baseline is implemented within the scope listed below**. C
 fixture-family coverage does not mean every general
 encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
 now covers key construction/node encoding, roots over serialized entries and state chapters
-1–16 (chapter 13 has an open trace key-width gate); remaining state serialization, trie proofs
-and persistence remain open. PVM execution and state transitions are separate client work.
+1–16, with C12/C13 dictionary widths migrated and compact statistics gas accepted. The
+[upstream request-domain fix awaits a compatible pinned upgrade](../spec/state-clarifications.md);
+trie proofs and persistence remain open. PVM execution and state transitions are separate client work.
 
 ## General encodings (C.1)
 
@@ -171,7 +172,7 @@ below. See [the contract](../spec/state-availability.md).
 ## Privileged-service configuration state extension
 
 `state_privileges.nim` implements T chapter 12: fixed E4 manager/core assigners/delegator/registrar
-and a count-prefixed dictionary of natural service IDs and gas allowances. Strict numeric key
+and a count-prefixed dictionary of E4 service IDs and E8 gas allowances. Strict numeric key
 order, uint32 service bounds, full uint64 gas, resource policy and whole-parent preflight precede
 allocation. Private ARC snapshots expose copied roles, nominal core extraction and fixed copied
 service/gas pairs. No caller-owned arrays or detached spans escape.
@@ -194,10 +195,12 @@ nominally indexed records. No statistics updates, accounting or epoch transition
 Validation: 2,547 independent requests, seven literal oracle checks, two nominal and one privacy
 compiler rejections, retained-scope/copy/index/result guards and eight partial roots. Eight published
 validator-pair observations have explicit authored completion for their missing core/service fields.
-Six exact raw trace entries are checked separately: one full match and five nonempty service
-entries leaving 3/5 trailing bytes under T/C.1 natural-key framing. Diagnostic E4-key parsing fits
-the latter exactly; upstream intent remains unresolved. This is an open wire-parity gate, not a
-successful full-component claim. Chapters 14–15 are now covered below.
+The initial six-entry raw trace probe exposed the natural-key mismatch. The subsequent dictionary
+migration now uses E4 service keys and retains compact core/service fields, including gas, with
+no fallback. All 224 selected chapter captures reproduce their bytes through typed composition;
+the original key-width implementation gate is closed. Upstream open #564 supports these choices
+but proposes a separate validator-record format change, not adopted here. See
+[the current upstream disposition](../spec/state-clarifications.md). Chapters 14–15 are covered below.
 See [the contract and exact trace evidence](../spec/state-statistics.md).
 
 ## Ready and accumulated work state extension
@@ -264,7 +267,7 @@ Validation: 2,047 independent requests, six literal oracle checks, two nominal a
 compiler rejections, retained-scope/key/value/result/atomic/alias checks and 83 partial roots.
 Twelve storage and sixteen preimage JSON-derived mappings preserve all source bytes. Sixteen exact
 trace captures test opaque existing-key/raw-value retention only; their namespaces cannot be
-recovered and are not claimed as classified storage/preimage conformance. Request-history framing is now covered below; whole-state composition remains. The chapter-13 gate remains open.
+recovered and are not claimed as classified storage/preimage conformance. Request-history framing is now covered below; whole-state composition remains. The dictionary-width work is complete; see the current upstream disposition below.
 See [the contract](../spec/state-service-values.md).
 
 ## Service request-history extension
@@ -279,8 +282,9 @@ check, two nominal compiler rejections, fixed-copy/tagged-field/result guards an
 Twenty-eight JSON histories cover counts 0/1/2; twenty exact trace histories with proven matching
 preimage identities cover count 1. Count 3 is authored evidence. Full E4 lengths fffffffe/ffffffff
 reproduce preimage/storage namespace overlaps; trie composition rejects duplicate keys, and no
-admissibility restriction is invented. Whole-state composition/root evidence and numeric-width/
-key-domain clarification remain before M1 parity. See [the contract](../spec/state-requests.md).
+admissibility restriction is invented against the current pin. Whole-state composition/root
+evidence and dictionary-width migration are implemented; adoption of merged upstream #542
+remains for the next compatible release/vector upgrade. See [current status](../spec/state-clarifications.md). See [the contract](../spec/state-requests.md).
 
 ## Published codec fixture inventory
 

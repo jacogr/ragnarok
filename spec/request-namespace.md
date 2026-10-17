@@ -7,6 +7,15 @@ in [pins.json](pins.json). This review reads `text/accounts.tex` service/request
 `provide` (27); `text/accumulation.tex` provision integration; and T in `text/merklization.tex`.
 No dependency/toolchain pin or production behavior changes.
 
+## Upstream disposition (2026-10-17)
+
+Gray Paper [#542](https://github.com/gavofyork/graypaper/pull/542) is merged as
+[07aee1e](https://github.com/gavofyork/graypaper/commit/07aee1ef23b63f93d0e2f29e53560cbc7c8c767c).
+It excludes both marker lengths from the request domain. This supports the overlap finding below;
+the fix has not been adopted into our pinned 0.8.0 target. Preserve the witnesses and current
+behavior until the [release/vector checkpoint](state-clarifications.md). The analysis below is
+about the pinned rules, not a claim that current upstream main still has this omission.
+
 ## Finding
 
 The cited local rules do **not** exclude the two overlapping lengths. Two small, funded account
@@ -118,7 +127,8 @@ footprints, balances, successful roots, rejection verdicts, compiler flags and e
 2.2.12 ARC/Clang LTO retains all runtime guards. Linux CI runs the same checks and retains results;
 local macOS arm64 validation does not claim Linux confirmation. No length-sized allocation occurs.
 
-M1 parity remains incomplete pending request namespace clarification. The maintainer
+M1 parity remains qualified pending adoption of the upstream request-domain correction. The maintainer
 has [parked the request-namespace question](state-clarifications.md) for Gray Paper 0.8.1/0.8.2 review. Preserve
 current behavior and pending tests; no further clarification increment is scheduled against the
-current pin. The question remains local; nothing has been posted externally.
+current pin. These witnesses remain local; the upstream correction is linked above. Nothing was posted externally
+as part of this review.
