@@ -1,0 +1,2 @@
+TRIE_ARC_RELEASE cycles=1000 unchanged
+Nimony state trie: preflight before hashing, early/late refusal recovery, arithmetic and ARC release passed

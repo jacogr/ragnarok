@@ -772,7 +772,7 @@ def main():
                + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
                + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
                + unit_fixture_sources()
-               + [ROOT/'tools/native_tests.py', ROOT/'tests/test_native_units_harness.py']
+               + [ROOT/'tools/native_tests.py', ROOT/'tools/test.py', ROOT/'tests/test_native_units_harness.py']
                + [ROOT/'tests/support/ownership_checks.nim', ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
                + list((ROOT/'tests').glob('guarantees_*.py'))
@@ -885,7 +885,7 @@ def main():
     for name in SUITES:
         if name in UNIT_SUITES:
             # Hastur owns compilation, execution and exact expected-output verdicts for migrated code tests.
-            checked = command(unit_command(compiler, name), name+'-hastur', unit_environment(compiler, name))
+            checked = command(unit_command(compiler, name, dict(crypto=crypto_library, observer=crypto_observer)), name+'-hastur', unit_environment(compiler, name))
             row = dict(name=name, runner='hastur', check=checked, passed=checked['exit_code'] == 0)
             if row['passed'] and name in ARC_SUITES:
                 # Retain exact fresh measurements while Hastur checks platform-independent completion output.
@@ -1022,13 +1022,6 @@ def main():
             if release is not None:
                 # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
                 report['workqueues_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_trie_private' and row['passed']:
-            # Temporary sorted-key scratch must retire after success, preflight rejection and early/late backend failure.
-            release = re.search(r'TRIE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public allocator occupancy is workload-specific and excludes RSS/retained page interpretations.
-                report['trie_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'crypto_seeds' and row['passed']:
             # Exact-storage wipe checks run while memory is live; occupancy must return after final-owner release.
             release = re.search(r'CRYPTO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

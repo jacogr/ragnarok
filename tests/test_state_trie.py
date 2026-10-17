@@ -16,7 +16,7 @@ def main():
     library=ROOT/('build/crypto/libragnarok_crypto.dylib' if platform.system()=='Darwin' else 'build/crypto/libragnarok_crypto.so')
     assert library.is_file(),'Run python3 tests/test_crypto.py first'
     lines,expected=requests();path=folder/'requests.txt';path.write_text('\n'.join(lines)+'\n')
-    selftest=nim_command(ROOT/'tests/native/test_state_trie.nim',folder/'selftest',folder/'selftest-cache',[library])
+    selftest=nim_command(ROOT/'tests/unit/state/test_state_trie.nim',folder/'selftest',folder/'selftest-cache',[library])
     with (folder/'selftest-build.log').open('w') as log:
         subprocess.run(selftest,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True)

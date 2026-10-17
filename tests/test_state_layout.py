@@ -18,7 +18,7 @@ def main():
     commands=[]
     # Native fixed-value lifetime tests and batch adapters retain ARC/Clang LTO and every existing runtime guard.
     for source,name in (('test_state_layout','selftest'),('state_layout_driver','driver')):
-        command=nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache',[library]);commands.append(command)
+        command=nim_command(ROOT/('tests/unit/state' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache',[library]);commands.append(command)
         with (folder/f'{name}-build.log').open('w') as log:
             subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True)

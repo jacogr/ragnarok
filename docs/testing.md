@@ -1,9 +1,9 @@
 # Native test migration
 
 Branch: `nim-tests`, based on merged Nimony migration commit `8db659c`.
-Six bounded groups are migrated: primitives/containers, composites/digests/snapshots,
+Seven bounded groups are migrated: primitives/containers, composites/digests/snapshots,
 extrinsics, work-package/header/block codecs, bitstrings/collections, and C.2 records with
-private-wire checks.
+private-wire checks, plus state key/layout and trie tests.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
 ## What the investigation found
@@ -47,15 +47,17 @@ explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and
 python3 tools/test.py --suite unit
 ```
 
-That command requires only the normal pinned toolchain installation and Clang; it does not build
-crypto or network dependencies. Python is a thin path/flag launcher here. After sourcing
-`build/toolchain/env.sh`, Hastur can also be invoked directly using its documented CLI; retain the
-flags printed by the supported command so checks and optimization settings do not change.
+That command runs the pure codec directory and three separately linked state tests. It now
+prepares the existing pristine pinned native crypto bridge and test-only observer (initialized
+crypto submodules, CMake and Clang are required), without network or Bandersnatch builds. Python
+supplies paths, native preparation and checked flags; Hastur owns application test verdicts.
+After sourcing `build/toolchain/env.sh`, Hastur can also be invoked directly using its documented
+CLI. Retain the flags and explicit library profile printed by the supported command.
 
-The cumulative `python3 tools/test.py` path delegates all twenty-one migrated suite identities to Hastur,
+The cumulative `python3 tools/test.py` path delegates all twenty-four migrated suite identities to Hastur,
 records its command/log/verdict and hashes each source and `.output` file. There is no second
 Python compile/run path for those suites in the supported cumulative runner. The remaining
-38 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
+35 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
 profiles and negative checks. CI already calls that cumulative path, so the native runner migration
 needs no duplicate workflow/job or second execution of migrated suites.
 
@@ -156,6 +158,31 @@ ARC observations across twenty-one suites. Only the stdout observation becomes a
 success marker. Independent C.2 oracle/driver and strict privacy/nominal/runtime-negative checks
 retain their existing roles; no fixture, native dependency or production behavior changes.
 
+## Seventh converted group: state key/layout and trie
+
+The C.2 increment is committed as `ba3cbb4`. State layout, public trie and private trie tests
+move with `git mv` into `tests/unit/state/`. Public bodies change only their relative import
+paths. The private suite retains all preflight hash-call counts, early/late primitive refusal,
+recovery, topology arithmetic, input preservation and 1,000-cycle ARC assertions; only the
+numeric stdout line moves to the existing evidence helper with a portable success marker.
+The `trie_arc_release` field is preserved, bringing ARC observations to eleven.
+
+These are the first migrated native-linked suites. The public trie test links only the real
+crypto bridge. Layout and private trie link only the existing test observer, preserving refusal
+injection and call-count checks in isolated processes. Every linked case forwards the maintained
+crypto header path and uses its own compiler-location-isolated cache. A missing profile/library
+or output expectation fails before compilation. The supported unit launcher rebuilds the pinned
+libraries; the cumulative launcher reuses its existing preparation, without duplicate builds or
+a second application verdict path. Native preparation evidence lives in
+`build/nim-tests/native/preparation.json`; unit launcher source now participates in cumulative
+provenance. Independent layout/trie adapters still link only the production bridge.
+
+The first local native build failed because the new launcher omitted the maintained C header
+include path; forwarding the same path as the existing build helper fixed it. This was one
+infrastructure compile/fix cycle, not a language rejection or implementation defect. Its log is
+`build/nim-tests/seventh/first-link-attempt.log`. No compiler, dependency or production source
+was changed.
+
 ## Python responsibilities and migration order
 
 | Test responsibility | Direction |
@@ -173,11 +200,11 @@ without comparing that file. See the pinned runner above and
 `.exitcode` alone: that would weaken the current nonzero-exit checks. Compiler-diagnostic goldens
 also need a portability review before replacing the existing specific rejection checks.
 
-Next bounded group: state key/layout and trie suites, with explicit native crypto/observer
-linking requirements. Remaining state families follow, then crypto and networking ownership
-suites with their required linker profiles and fixtures. Named `suite`/`test` conversion can be
-revisited when the selected compiler supplies a supported implementation; no compiler upgrade or
-patch is part of this branch.
+Next bounded group: Safrole and authorization state suites, including authorization's private
+ownership checks. Remaining state families follow, then crypto and networking ownership suites
+with their required linker profiles and fixtures. Named `suite`/`test` conversion can be revisited
+when the selected compiler supplies a supported implementation; no compiler upgrade or patch
+is part of this branch.
 
 ## Verification of the first increment
 
@@ -312,3 +339,26 @@ Same pinned macOS ARM64 checked-LTO profile:
 Current migration totals: **21/59 ordinary file suites migrated, 38 remaining**. Earlier counts
 remain historical records above. These are focused local checks, not a fresh full QUIC/crypto
 lifecycle run or Linux CI result. Implemented M1 scope and protocol behavior remain unchanged.
+
+
+## Verification of the seventh increment
+
+Same pinned macOS ARM64 checked-LTO profile:
+
+- The supported unit command passes **21 pure codec suites and three native-linked state suites**,
+  retaining eleven fresh ARC observations. All **24 individual cumulative invocations** also pass;
+  all 59 source paths resolve and both moved public assertion bodies are unchanged.
+- Injecting +1 into private trie's after-release observation fails its original Nim assertion,
+  with no fresh success evidence: `build/nim-tests/seventh/native-faults.json`.
+- Fresh production-linked independent adapters match **14,541 requests**: **12,233 layout** and
+  **2,308 trie** cases. Commands, hashes and verdicts: `build/nim-tests/seventh/corpora.json`.
+- All **238 Python harness tests** pass with the existing parked-policy skip. Three additional
+  safeguards cover missing profiles/libraries, production/observer host flags and cache isolation,
+  and missing linked output expectations. The quick-plan safeguard now checks all four invocations.
+- All **23 setup/CI safeguards** pass; protocol provenance retains its existing draft-text skip.
+  All **864 Nim files** pass formatting. Logs and individual suite records are under
+  `build/nim-tests/seventh/`.
+
+Current migration totals: **24/59 ordinary file suites migrated, 35 remaining**. Earlier counts
+remain historical. Verification is focused and local; it does not claim a new full crypto/QUIC
+lifecycle run or Linux CI pass. Implemented M1 scope and protocol behavior remain unchanged.

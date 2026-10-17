@@ -45,7 +45,7 @@ in separate runtime and module jobs. Generated builds, fixture keys and logs sta
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 
-For the first migrated code-only suites, use `python3 tools/test.py --suite unit`. See
+For migrated codec/state suites, use `python3 tools/test.py --suite unit` (builds native crypto). See
 [native test migration](docs/testing.md) for coverage and the remaining groups.
 
 ## Code and verification
@@ -57,7 +57,7 @@ For the first migrated code-only suites, use `python3 tools/test.py --suite unit
 | `src/bandersnatch/` | Typed release-reference IETF VRF/RingVRF adapter and domain policy |
 | `src/quic/` | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload |
 | `tests/` | Independent references and verification runners |
-| `tests/unit/` | Code-only Nim tests executed by the pinned native Hastur runner |
+| `tests/unit/` | Nim application tests executed by the pinned native Hastur runner |
 | `tests/fixtures/` | Native test inputs with hashes and independent-reference checks |
 | `tests/native/` | Native drivers, remaining selftests and intentional compile-failure fixtures |
 | `native/` | Narrow maintained C/Rust primitive and transport bridges |

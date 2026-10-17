@@ -7,13 +7,16 @@ import platform
 from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
-UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private')
+UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes', 'work_package', 'header', 'block', 'block_private', 'bits', 'bits_private', 'collections', 'collections_private', 'c2', 'c2_private', 'state_layout', 'state_trie', 'state_trie_private')
 # These cases keep numeric allocation evidence as well as native equality assertions.
 ARC_SUITES = {'ownership': 'arc_release', 'report_snapshots': 'report_arc_release',
               'guarantees': 'guarantee_arc_release', 'disputes': 'dispute_arc_release',
               'work_package': 'package_arc_release', 'header': 'header_arc_release', 'block': 'block_arc_release',
-              'bits': 'bits_arc_release', 'collections': 'collection_arc_release', 'c2': 'c2_arc_release'}
+              'bits': 'bits_arc_release', 'collections': 'collection_arc_release', 'c2': 'c2_arc_release', 'state_trie_private': 'trie_arc_release'}
 UNIT_ROOT = ROOT/'tests/unit/codec'
+STATE_ROOT = ROOT/'tests/unit/state'
+# Preserve the production-only trie profile and observer-only refusal profiles in separate processes.
+UNIT_LINKS = {'state_layout': 'observer', 'state_trie': 'crypto', 'state_trie_private': 'observer'}
 # Fixture targets may be files or directories; each entry lists every byte source that must match its pin.
 GUARANTEE_FIXTURE = ROOT/'tests/fixtures/guarantee-report.bin'
 BLOCK_FIXTURES = ROOT/'tests/fixtures/block-tiny'
@@ -36,11 +39,11 @@ def unit_source(name):
     if name not in UNIT_SUITES:
         # Unknown names belong to later migration chunks, never a silently omitted native case.
         raise ValueError('Unknown migrated unit suite: '+name)
-    return UNIT_ROOT/('test_'+name+'.nim')
+    return (STATE_ROOT if name in UNIT_LINKS else UNIT_ROOT)/('test_'+name+'.nim')
 
 
 # Assemble a native runner invocation; Python supplies paths/flags, never test assertions or verdict parsing.
-def unit_command(compiler, name=None):
+def unit_command(compiler, name=None, libraries=None):
     compiler = Path(compiler).resolve()
     runner = compiler.parent/'hastur'
     if not runner.is_file():
@@ -57,12 +60,23 @@ def unit_command(compiler, name=None):
             raise FileNotFoundError('Missing native test or expected output: '+str(source))
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
              '--passC:-flto', '--passL:-flto']
+    if name in UNIT_LINKS:
+        # Never guess a library path or let a stale production library stand in for refusal instrumentation.
+        profile = UNIT_LINKS[name]
+        if libraries is None or profile not in libraries:
+            # Linked application tests require an explicit result from pinned native preparation.
+            raise ValueError('Missing native unit library profile: '+profile)
+        library = Path(libraries[profile]).resolve()
+        if not library.is_file():
+            # Fail before Hastur can reuse any prior linked executable.
+            raise FileNotFoundError('Missing native unit library: '+str(library))
+        flags += ['--passC:-I'+str(ROOT/'native/crypto'), '--passL:'+str(library)]
     if platform.system() == 'Linux':
         # Keep the established Linux LTO linker rather than relying on the runner's defaults.
         flags.append('--passL:-fuse-ld=lld')
     # Isolated processes preserve each test's initialization/lifetime scope and keep generated drivers out of source.
     return [str(runner), '--bindir:'+str(compiler.parent),
-            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/nim-tests', 'unit')),
+            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/nim-tests', 'unit-'+name if name in UNIT_LINKS else 'unit')),
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
 
 

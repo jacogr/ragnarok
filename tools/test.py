@@ -7,19 +7,19 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import ROOT, installed, host_pins, verify_identity, verify_version
-from native_tests import unit_command, unit_environment, unit_evidence, ARC_SUITES
+from native_tests import unit_command, unit_environment, unit_evidence, ARC_SUITES, UNIT_LINKS
 
 
 # Keep CI's independent runtime/module jobs and the complete local run on one explicit command plan.
-def plan(suite, compiler):
+def plan(suite, compiler, libraries=None):
     common = [sys.executable]
     runtime = [common+['tools/format.py', '--check'], common+['tests/test_nimony_ci.py'],
                common+['tests/test_spec.py'], common+['tools/test_nimony.py', '--compiler', str(compiler)],
                common+['-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*harness.py']]
     modules = [common+['tools/audit_nimony_modules.py', '--compiler', str(compiler)]]
     if suite == 'unit':
-        # Pure code suites use the compiler's own runner without building crypto/network dependencies.
-        return [unit_command(compiler)]
+        # Keep dependency-free codec discovery separate from each explicit native linking profile.
+        return [unit_command(compiler)]+[unit_command(compiler, name, libraries) for name in UNIT_LINKS]
     if suite == 'runtime':
         # Runtime includes the independent Python orchestration/reference safeguards after native fixture preparation.
         return runtime
@@ -58,10 +58,19 @@ def main():
     parser.add_argument('--compiler', type=Path)
     args = parser.parse_args()
     compiler, selected = environment(args.compiler)
+    libraries = None
     if args.suite == 'unit':
+        # Reuse pristine pinned crypto preparation; network and Bandersnatch builds remain outside this quick suite.
+        sys.path.insert(0, str(ROOT/'tests'))
+        from nimony_crypto import prepare
+        folder = ROOT/'build/nim-tests/native'
+        folder.mkdir(parents=True, exist_ok=True)
+        crypto, observer, evidence = prepare(folder)
+        (folder/'preparation.json').write_text(json.dumps(evidence, indent=2)+'\n')
+        libraries = dict(crypto=crypto, observer=observer)
         # Prepare fresh numeric observations for native snapshot tests before the directory run.
         selected = unit_environment(compiler, base=selected)
-    for arguments in plan(args.suite, compiler):
+    for arguments in plan(args.suite, compiler, libraries):
         # Structured arguments avoid shell interpretation; output remains visible in the normal local/CI transcript.
         print('+ '+' '.join(arguments), flush=True)
         subprocess.run(arguments, cwd=ROOT, env=selected, check=True)

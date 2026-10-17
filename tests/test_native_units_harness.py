@@ -61,15 +61,73 @@ class NativeUnitHarness(unittest.TestCase):
                     self.assertIn('--joined:off', args)
                     self.assertEqual(args[-1], str(native_tests.unit_source('natural')))
 
-    # The quick path must reach the native runner without provisioning crypto/network infrastructure.
+    # The quick plan discovers pure codecs once and links each state case with its explicit native profile.
     def test_unit_entrypoint(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             (folder/'hastur').touch()
-            commands = plan('unit', folder/'nimony')
-            self.assertEqual(len(commands), 1)
+            libraries = {'crypto': folder/'production', 'observer': folder/'observer'}
+            for path in libraries.values():
+                # Separate files make accidental observer/production substitution visible in the command plan.
+                path.touch()
+            commands = plan('unit', folder/'nimony', libraries)
+            self.assertEqual(len(commands), 1+len(native_tests.UNIT_LINKS))
             self.assertEqual(Path(commands[0][0]), (folder/'hastur').resolve())
             self.assertEqual(commands[0][-1], str(native_tests.UNIT_ROOT))
+            self.assertFalse(any('--passL:' in arg and 'flto' not in arg and 'fuse-ld' not in arg
+                                 for arg in commands[0]))
+            for name, arguments in zip(native_tests.UNIT_LINKS, commands[1:]):
+                # Every linked identity is scheduled once with its required library, never included in pure discovery.
+                self.assertEqual(arguments, native_tests.unit_command(folder/'nimony', name, libraries))
+                self.assertEqual(arguments[-1], str(native_tests.unit_source(name)))
+
+    # Missing linked profiles must fail before a stale native executable can satisfy a positive test.
+    def test_linked_library_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder/'hastur').touch()
+            for libraries in (None, {}, {'crypto': folder/'missing'}):
+                # A production-only map cannot satisfy a suite requiring refusal observation.
+                with self.subTest(libraries=libraries), self.assertRaisesRegex(ValueError, 'profile: observer'):
+                    native_tests.unit_command(folder/'nimony', 'state_layout', libraries)
+            with self.assertRaisesRegex(FileNotFoundError, 'native unit library'):
+                native_tests.unit_command(folder/'nimony', 'state_trie', {'crypto': folder/'missing'})
+
+    # Host-specific linker flags and isolated caches must survive both production and instrumented profiles.
+    def test_linked_host_profiles(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder/'hastur').touch()
+            libraries = {'crypto': folder/'production', 'observer': folder/'observer'}
+            for path in libraries.values():
+                # The launcher needs real files; dummy bytes are enough for command-only safeguards.
+                path.touch()
+            for system in ('Linux', 'Darwin'):
+                # No native build occurs here; compare the planned Linux and local linking profiles explicitly.
+                with patch.object(native_tests.platform, 'system', return_value=system):
+                    caches = set()
+                    for name, profile in native_tests.UNIT_LINKS.items():
+                        # Each case must get exactly its selected ABI, preserving observer isolation from production roots.
+                        args = native_tests.unit_command(folder/'nimony', name, libraries)
+                        self.assertIn('--forward:--passL:'+str(libraries[profile].resolve()), args)
+                        self.assertIn('--forward:--passC:-I'+str(ROOT/'native/crypto'), args)
+                        other = libraries['crypto' if profile == 'observer' else 'observer']
+                        self.assertNotIn('--forward:--passL:'+str(other.resolve()), args)
+                        self.assertIn('--forward:--passC:-flto', args)
+                        self.assertIn('--forward:--passL:-flto', args)
+                        self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
+                        caches.add(next(arg for arg in args if arg.startswith('--cachedir:')))
+                    self.assertEqual(len(caches), len(native_tests.UNIT_LINKS))
+
+    # A moved linked source needs its own golden; the pure directory's expectations cannot cover it.
+    def test_linked_expected_output_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder/'hastur').touch()
+            (folder/'test_state_trie.nim').write_text('assert true\n')
+            with patch.object(native_tests, 'STATE_ROOT', folder):
+                with self.assertRaisesRegex(FileNotFoundError, 'expected output'):
+                    native_tests.unit_command(folder/'nimony', 'state_trie', {'crypto': folder/'library'})
 
     # Fresh runs must remove their own old observation while preserving unrelated completed suite data.
     def test_fresh_arc_observations(self):

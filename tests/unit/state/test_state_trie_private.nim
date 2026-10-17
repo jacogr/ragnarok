@@ -1,6 +1,7 @@
 ## White-box topology arithmetic and scratch-release tests use only project code and public allocator occupancy.
 import std/[assertions, syncio]
-include ../../src/codec/state_trie
+import ../../support/arc_evidence
+include ../../../src/codec/state_trie
 
 # Sequential observer counters distinguish preflight rejection from a primitive refusal.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -94,5 +95,7 @@ assert beforeRelease == afterRelease
 for i in 0..<source.len:
   assert array[31, byte](source[i].key)[0] == byte(15-i)
   assert source[i].value[0] == byte(i) and source[i].value.len == 33
-echo "TRIE_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_trie_private", 1000, beforeRelease, afterRelease)
+echo "TRIE_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony state trie: preflight before hashing, early/late refusal recovery, arithmetic and ARC release passed"

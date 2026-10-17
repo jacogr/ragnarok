@@ -1,6 +1,6 @@
 ## Supplementary runtime contracts for copied roots and guarded failure-only variants.
 import std/[assertions, syncio]
-import ../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/codec/[state_trie, state_layout, bounded]
 
 ## Exercise public ownership/result contracts independently of the batch oracle's root comparisons.
 proc main() =

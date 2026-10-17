@@ -1,6 +1,6 @@
 ## Focused state-layout fixed-copy, partial-commitment and selected-alternative guard regressions.
 import std/[assertions, syncio]
-import ../../src/codec/[state_layout, bounded, composite]
+import ../../../src/codec/[state_layout, bounded, composite]
 
 # Only complete success authorizes access to node metadata, hashes or keys.
 proc checked[T](parsed: StateLayoutResult[T]): T =
