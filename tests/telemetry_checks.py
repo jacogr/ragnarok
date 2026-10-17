@@ -186,8 +186,8 @@ def peer_loss(binary, certificates, chain, folder):
         reservation.bind(('::1', 0))
         port = reservation.getsockname()[1]
     server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-        str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '800', 'idle'],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '30000', 'idle'],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
     try:
         assert select.select([server.stdout], [], [], 5)[0], 'peer listener did not become ready'
         assert server.stdout.readline().strip() == b'READY'
@@ -206,6 +206,10 @@ def peer_loss(binary, certificates, chain, folder):
                     assert attempt[8] == 24 and attempt[41:57] == bytes(15) + b'\1'
                     connected = frame(connection)
                     assert connected[8] == 26 and connected[9:17] == bytes(8)
+                    assert select.select([server.stdout], [], [], 5)[0], 'server authentication did not complete'
+                    assert server.stdout.readline().strip() == b'AUTH_OK'
+                    server.kill() # Trigger expiry only after both sides really authenticated.
+                    assert server.wait(timeout=5) == -9
                     closed = None
                     for _ in range(4):
                         # Status can precede expiry; no failed-attempt event may replace authenticated closure.
@@ -225,7 +229,7 @@ def peer_loss(binary, certificates, chain, folder):
                 stop(client)
         stdout, stderr = server.communicate(timeout=5)
         (folder/'lost-peer-server.log').write_bytes(stdout + stderr)
-        assert server.returncode != 0 and b'AUTH_OK' in stdout
+        assert server.returncode == -9 # Authentication was consumed before the deliberate process loss.
     finally:
         # The silent application peer must never survive a failed telemetry assertion.
         stop(server)
@@ -278,28 +282,33 @@ def incoming_failure(binary, certificates, chain, folder):
 
 
 # A retained IPv6 listener reports each expired peer's own identity, and never fabricates a teardown close.
-def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
+def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup_delay=0):
     folder.mkdir(parents=True, exist_ok=True)
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('::1', 0))
         port = reservation.getsockname()[1]
     children = []
+    stop_gate = folder/f'incoming-stop-{time.time_ns()}'
     # Each child owns a distinct authenticated identity; the second reuses the first peer's retired slot.
     def launch(identity):
         child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/f'{identity}.cert.pem'),
             str(certificates/f'{identity}.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-            '700' if remote_loss else '6000', 'idle'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            '30000', 'idle'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         children.append(child)
     with listener() as collector:
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
         server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '8500' if remote_loss else '1200',
-            'idle', '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000',
+            'overload', '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop_gate)})
         try:
             connection, _ = collector.accept()
             with connection:
                 connection.settimeout(12)
                 assert frame(connection)[0] == 1
+                if startup_delay:
+                    # Regression: delay beyond the former 1.2-second server lifetime before starting the peer.
+                    time.sleep(startup_delay)
                 launch('b')
                 starts, successes, closes = [], [], []
                 for event_id in range(16):
@@ -316,12 +325,20 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
                         expected = 'b' if not successes else 'c'
                         assert event[17:] == (certificates/f'{expected}.pub').read_bytes()
                         successes.append(event[17:])
+                        if remote_loss:
+                            # Kill only after authenticated identity is observed; startup speed cannot consume the lifetime.
+                            children[-1].kill()
+                            assert children[-1].wait(timeout=5) == -9
+                        else:
+                            stop_gate.touch() # Destroy the listener with a confirmed live authenticated peer.
                     elif event[8] == 27:
                         assert remote_loss and len(closes) < len(successes)
                         assert event[9:41] == successes[len(closes)] and event[41:] == b'\0\0'
                         closes.append(event[9:41])
                         if len(closes) == 1:
                             launch('c') # Reuse the listener after actual expiry, without rebuilding its engine.
+                        else:
+                            stop_gate.touch() # Both expiry observations arrived before shutting down the listener.
                     else:
                         assert event[8] == 10 # No failure/drop event can substitute for an authenticated close.
                 else:
@@ -332,7 +349,7 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
                     assert children[0].poll() is None # The remote is still alive when the server retires.
             stdout, stderr = server.communicate(timeout=3)
             (folder/('incoming-expiry.log' if remote_loss else 'incoming-teardown.log')).write_bytes(stdout + stderr)
-            assert server.returncode != 0 and b'AUTH_OK' in stdout # Idle tests deliberately exchange no application data.
+            assert server.returncode == 2 and b'AUTH_OK' in stdout, (stdout, stderr) # Idle peers never complete application work.
         finally:
             # Cleanup remains bounded even if a telemetry identity or lifecycle assertion fails.
             stop(server)
@@ -488,3 +505,4 @@ def mesh_shutdown(binary, certificates, chain, folder, silent=False):
                 stop(process)
             for handle in handles.values():
                 handle.close()
+

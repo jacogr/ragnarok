@@ -184,6 +184,7 @@ jobs:
             build/ci/*.log
             build/tests/e2e/*.log
             build/tests/e2e/results.json
+            build/tests/e2e/telemetry*/*.log
             build/tests/e2e/offload/*.log
             build/tests/e2e/offload/resources.json
             build/tests/e2e/admission/*.log

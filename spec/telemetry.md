@@ -173,3 +173,8 @@ close after duplicate arbitration. Python is only the
 independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.
+
+Expiry/teardown collectors use observed authentication and explicit stop gates: a child cannot
+expire merely because startup or the CI scheduler took longer than a subsecond fixture lifetime.
+Telemetry failures retain their traceback in the E2E console and JSON report, and CI archives
+per-scenario telemetry logs alongside the report.
