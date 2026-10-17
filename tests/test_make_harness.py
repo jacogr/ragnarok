@@ -1,6 +1,7 @@
 """Check that the Make front end preserves pinned tooling and the checked public native build profile."""
 from pathlib import Path
 import tempfile
+import json
 import os
 import shutil
 import subprocess
@@ -11,6 +12,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import build
+import format as format_tool
 import setup_nimony
 
 
@@ -135,6 +137,67 @@ if name == 'test_runtime.py' and os.environ.get('FAIL_RUNTIME'):
                 self.assertFalse(any('observed' in argument or 'observer' in argument for argument in arguments))
                 self.assertEqual(arguments[-1], str(ROOT/'src/quic/peer.nim'))
                 self.assertIn('--out:'+str(output), arguments)
+
+
+# Combined formatting must retain read-only checks and fail if either language needs attention.
+class FormatterHarness(unittest.TestCase):
+    # Nim mismatches must not prevent Rust from being checked or mutate either language in check mode.
+    def test_check_reports_both_languages_without_writing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root/'src').mkdir()
+            source = root/'src/example.nim'
+            source.write_bytes(b'original')
+            with patch.object(format_tool, 'ROOT', root), patch.object(
+                    format_tool, 'format_source', return_value=b'formatted'), patch.object(
+                    format_tool, 'format_rust', return_value=True) as rust, patch.object(
+                    sys, 'argv', ['format.py', '--check']), patch('sys.stdout'):
+                with self.assertRaises(SystemExit) as stopped:
+                    format_tool.main()
+            self.assertEqual(stopped.exception.code, 1)
+            rust.assert_called_once_with(True)
+            self.assertEqual(source.read_bytes(), b'original')
+
+    # Apply mode must invoke both formatters and write Nim's selected bytes rather than only checking Rust.
+    def test_apply_formats_both_languages(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root/'src').mkdir()
+            source = root/'src/example.nim'
+            source.write_bytes(b'original')
+            with patch.object(format_tool, 'ROOT', root), patch.object(
+                    format_tool, 'format_source', return_value=b'formatted'), patch.object(
+                    format_tool, 'format_rust', return_value=True) as rust, patch.object(
+                    sys, 'argv', ['format.py']), patch('sys.stdout'):
+                format_tool.main()
+            rust.assert_called_once_with(False)
+            self.assertEqual(source.read_bytes(), b'formatted')
+
+    # A successful Nim result cannot hide failed Rust formatting in either public mode.
+    def test_rust_failure_propagates(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for arguments in (['format.py'], ['format.py', '--check']):
+                # Both paths use the same combined verdict, including when no Nim files need changes.
+                with self.subTest(arguments=arguments), patch.object(
+                        format_tool, 'ROOT', Path(temporary)), patch.object(
+                        format_tool, 'format_rust', return_value=False), patch.object(
+                        sys, 'argv', arguments), patch('sys.stdout'):
+                    with self.assertRaises(SystemExit) as stopped:
+                        format_tool.main()
+                    self.assertEqual(stopped.exception.code, 1)
+
+    # Direct invocations must select the repository pin and pass Rust's non-writing flag only in check mode.
+    def test_rust_toolchain_and_check_mode(self):
+        for check in (True, False):
+            # No actual compiler runs in Python tooling tests; native verification exercises installed tools.
+            with self.subTest(check=check), patch.object(format_tool.subprocess, 'run') as run:
+                run.return_value.returncode = 0
+                self.assertTrue(format_tool.format_rust(check))
+                arguments = run.call_args.args[0]
+                self.assertEqual(arguments[:4], ['rustup', 'run', json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust'], 'cargo'])
+                self.assertEqual('--check' in arguments, check)
+                run.return_value.returncode = 1
+                self.assertFalse(format_tool.format_rust(check))
 
 
 # Importing the command-plan tests never provisions a toolchain or performs native compilation.

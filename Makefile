@@ -13,16 +13,19 @@ export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(ope
 export COMPILE_CHECK_JOBS ?= 4
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
-.PHONY: build setup sources host-tools toolchain clean check test check-python check-modules check-unit check-guards check-e2e unit modules runtime format format-check summary-unit summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: build setup sources host-tools toolchain rust-tools clean check test check-python check-modules check-unit check-guards check-e2e unit modules runtime format format-check summary-unit summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
 	$(PYTHON) tools/build.py
 
 # Every native build/test target owns its source and pinned Rust/Cargo preparation.
-setup: toolchain sources
-	rustup toolchain install "$(RUSTUP_TOOLCHAIN)" --profile minimal --component rustfmt --no-self-update
+setup: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
+
+# Formatting needs pinned Rust/rustfmt, but no dependency downloads or native library builds.
+rust-tools:
+	rustup toolchain install "$(RUSTUP_TOOLCHAIN)" --profile minimal --component rustfmt --no-self-update
 
 # Python provenance/reference tests need pinned sources, but no native toolchain or bridge builds.
 sources:
@@ -77,10 +80,10 @@ check-e2e: setup
 unit: setup
 	$(PYTHON) tools/native_tests.py
 
-# Use only the managed formatter; no shell activation or globally installed Nim is required.
-format: toolchain
+# Apply both pinned language formatters; check mode must leave source files untouched.
+format: toolchain rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py
-format-check: toolchain
+format-check: toolchain rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py --check
 
 # Summaries can run after a failed job; do not trigger setup or disguise a missing report.
@@ -116,5 +119,5 @@ help:
 	  'make check-guards  Run compiler rejection guards' \
 	  'make check-e2e     Run peer/service/resilience/soak/offload scenarios' \
 	  'make runtime       Alias for make check-unit' \
-	  'make format        Apply the pinned formatter' \
-	  'make format-check  Verify formatting'
+	  'make format        Apply pinned Nim and Rust formatters' \
+	  'make format-check  Verify Nim and Rust formatting'

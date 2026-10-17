@@ -56,7 +56,7 @@ reference, negative-probe and orchestration responsibilities.
 | `make check-unit` / `make runtime` | Native unit suites, independent corpora and runtime misuse probes |
 | `make check-guards` | Compiler rejection guards (699 probes) |
 | `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
-| `make format` / `make format-check` | Apply or check the pinned formatter |
+| `make format` / `make format-check` | Apply or check both pinned Nim and Rust formatters |
 | `make help` | List commands without provisioning/building |
 
 Make owns setup dependencies, logging and verification sequencing. `make clean` followed by
