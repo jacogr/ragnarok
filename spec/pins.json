@@ -190,7 +190,21 @@
       "stf/history/full/progress_blocks_history-2.json": "e25578fe0b67f2d7541b8e1dc94b87cd74e802d40197dd7d3ccc2e586cdff738",
       "stf/history/full/progress_blocks_history-3.json": "302948917b2528e22a39cba8778c77ab0d12d04b46b1e63cde66dafde205cebd",
       "stf/reports/tiny/report_curr_rotation-1.json": "894293d1755a087e96554c9a21bb4c99de66b699ab8f71acb13b6562df99af3d",
-      "stf/reports/full/report_curr_rotation-1.json": "6fcdc3a7ced5c38b45b181ba475302635cc0c9dc50b332c93bb352f0a26b6751"
+      "stf/reports/full/report_curr_rotation-1.json": "6fcdc3a7ced5c38b45b181ba475302635cc0c9dc50b332c93bb352f0a26b6751",
+      "stf/safrole/safrole.asn": "0140349dbe4b5a9db6e21daa5c0f05fc2b8febd84a91a486e8b9c1ba2c1b3b18",
+      "stf/safrole/README.md": "c04eeea49294a6fdc2529a57c54f86a57376ab57c044d0f2a19fd68b354be2d8",
+      "stf/safrole/tiny/enact-epoch-change-with-no-tickets-1.json": "efe306c52e03f75efbaf812e4194283eff930bc1cf2759dead35aa32a4989c3c",
+      "stf/safrole/tiny/enact-epoch-change-with-no-tickets-2.json": "9df0703ab980a1746311652b20a3b6c600528f4393975dea2d2205e4bb188d8c",
+      "stf/safrole/tiny/enact-epoch-change-with-no-tickets-3.json": "92d295ab57b7e4c87761e64ff99c5261ae3b46c79774d30236377b5de6010f11",
+      "stf/safrole/tiny/enact-epoch-change-with-no-tickets-4.json": "1ed8cff0468a7ff22fd49b4e3e2276bc655774909b20de30ff21b8bad25e2486",
+      "stf/safrole/tiny/skip-epochs-1.json": "6fb106be06f38c0baa27d2460c434d70ab0d316c852319fd9fe0b634be29e3b7",
+      "stf/safrole/tiny/skip-epoch-tail-1.json": "067eee6af8b80da9795fc6cc6dac82c04954ff9f832ad35f7b8bcd3f132a6680",
+      "stf/safrole/full/enact-epoch-change-with-no-tickets-1.json": "d565746ee0bc10b4d5226b0d92464643c58cfe198c477ad38121313464df1a10",
+      "stf/safrole/full/enact-epoch-change-with-no-tickets-2.json": "6916207bd05c709f5eb3305f815b4dac1ccb704db3a38459460185519f57b9a1",
+      "stf/safrole/full/enact-epoch-change-with-no-tickets-3.json": "e755ebeeb4cec504193f55a70cfc1412329dd659d31139af7f445f0c41c7cb9d",
+      "stf/safrole/full/enact-epoch-change-with-no-tickets-4.json": "f4b663eb58fcf3aef7b2f228c5b3a6072e237ff277f50385bd72baf78126ea43",
+      "stf/safrole/full/skip-epochs-1.json": "dbdfb9b79d59900115016104c0088923872274f81f6edba9ad1ca186746a5fd3",
+      "stf/safrole/full/skip-epoch-tail-1.json": "2d73087d9631457f55bce6739a94e34d12e9376c404f9df2c370c6d906b97e7e"
     }
   },
   "toolchains": {
