@@ -1,6 +1,7 @@
+import ../../support/arc_evidence
 ## White-box tests observe explicit wipes while bytes are live; no freed memory or private runtime state is read.
 import std/[assertions, syncio]
-include ../../src/crypto/primitives
+include ../../../src/crypto/primitives
 
 # Test-only bridge counters contain no secret bytes or retained ARC owners.
 proc watch(address: pointer, length: csize_t) {.importc: "ro_watch", cdecl.}
@@ -74,5 +75,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: lastOwner(); explicitClear()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "CRYPTO_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("crypto_seeds", 1000, beforeRelease, afterRelease)
+echo "CRYPTO_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony crypto: exact-storage final-owner wipe, alias clear, backend refusal and scoped ARC release passed"

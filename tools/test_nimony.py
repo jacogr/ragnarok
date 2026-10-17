@@ -885,7 +885,7 @@ def main():
     for name in SUITES:
         if name in UNIT_SUITES:
             # Hastur owns compilation, execution and exact expected-output verdicts for migrated code tests.
-            checked = command(unit_command(compiler, name, dict(crypto=crypto_library, observer=crypto_observer)), name+'-hastur', unit_environment(compiler, name))
+            checked = command(unit_command(compiler, name, dict(crypto=crypto_library, observer=crypto_observer, bandersnatch=bs_library, bandersnatch_observer=bs_observer)), name+'-hastur', unit_environment(compiler, name))
             row = dict(name=name, runner='hastur', check=checked, passed=checked['exit_code'] == 0)
             if row['passed'] and name in ARC_SUITES:
                 # Retain exact fresh measurements while Hastur checks platform-independent completion output.
@@ -924,34 +924,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'crypto_seeds' and row['passed']:
-            # Exact-storage wipe checks run while memory is live; occupancy must return after final-owner release.
-            release = re.search(r'CRYPTO_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # These public allocator counts apply only to the warmed isolated workload.
-                report['crypto_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'assurance_context' and row['passed']:
-            # Fixed transcript/count copies and transient seed fixtures must leave no additional live allocations.
-            release = re.search(r'ASSURANCE_CONTEXT_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # This warmed public occupancy observation is workload-specific, never an RSS or general leak claim.
-                report['assurance_context_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'guarantee_message' and row['passed']:
-            # Fixed signing results and synchronous borrows must leave no new live Nim storage after warmed scopes.
-            release = re.search(r'GUARANTEE_MESSAGE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public occupancy covers this workload only, not provider RSS or general leak freedom.
-                report['guarantee_message_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'bandersnatch_owners' and row['passed']:
-            # Real native allocation/free counters supplement this warmed Nim occupancy check.
-            release = re.search(r'BANDERSNATCH_OWNERS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # This key/import workload does not measure provider RSS or establish full proof/runtime parity.
-                report['bandersnatch_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         report['suites'].append(row)
         announce(name, row['passed'])
     # Replay all five early independent corpora, preserving original requests before any adapter execution.

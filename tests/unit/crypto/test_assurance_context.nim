@@ -1,7 +1,8 @@
+import ../../support/arc_evidence
 ## Fixed transcript copies, complete structural preflight and observer-only backend refusal/recovery.
 import std/[assertions, syncio]
-import ../../src/crypto/[primitives, assurance_context]
-import ../../src/codec/assurances
+import ../../../src/crypto/[primitives, assurance_context]
+import ../../../src/codec/assurances
 
 # Faults apply only to this test's observer-linked project bridge, with no upstream patches.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -119,6 +120,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: exercise()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "ASSURANCE_CONTEXT_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease,
-    " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("assurance_context", 1000, beforeRelease, afterRelease)
+echo "ASSURANCE_CONTEXT_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony assurance context: fixed copies, preflight, backend refusal/recovery and scoped release passed"

@@ -1,7 +1,8 @@
+import ../../support/arc_evidence
 ## Guarantee transcript fixed copies, exact known answers and observer-only backend refusal/recovery.
 import std/[assertions, syncio]
-import ./batch_support
-import ../../src/crypto/[primitives, guarantee]
+import ../../native/batch_support
+import ../../../src/crypto/[primitives, guarantee]
 
 # Refusal is isolated to this test observer, while successful hashes use the production bridge.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -50,6 +51,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: exercise()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "GUARANTEE_MESSAGE_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease,
-    " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("guarantee_message", 1000, beforeRelease, afterRelease)
+echo "GUARANTEE_MESSAGE_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony guarantee message: known answers, fixed copies, refusal/recovery and scoped release passed"

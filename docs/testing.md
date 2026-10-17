@@ -2,7 +2,7 @@
 
 Branch: `nim-tests`, based on merged Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **50/59 ordinary suites migrated; 9 remaining**.
+Current total: **54/59 ordinary suites migrated; 5 remaining**.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
 ## What the investigation found
@@ -53,10 +53,10 @@ supplies paths, native preparation and checked flags; Hastur owns application te
 After sourcing `build/toolchain/env.sh`, Hastur can also be invoked directly using its documented
 CLI. Retain the flags and explicit library profile printed by the supported command.
 
-The cumulative `python3 tools/test.py` path delegates all 50 migrated suite identities to Hastur,
+The cumulative `python3 tools/test.py` path delegates all 54 migrated suite identities to Hastur,
 records its command/log/verdict and hashes each source and `.output` file. There is no second
 Python compile/run path for those suites in the supported cumulative runner. The remaining
-9 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
+5 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
 profiles and negative checks. CI already calls that cumulative path, so the native runner migration
 needs no duplicate workflow/job or second execution of migrated suites.
 
@@ -512,3 +512,13 @@ checked fixture path. **50 suites**, **25 ARC observations**, **240 harness test
 and **18,791 independent requests** pass: 2,047 service values, 2,273 requests, 14,471 composition.
 Evidence: `build/nim-tests/remaining/state-services-*`, `state-services/corpora.json`, and
 `state-composition/corpora.json`. Migration total: **50/59; 9 remaining**. Next: crypto ownership.
+
+
+## Crypto ownership batch
+
+Seed wiping, assurance context, guarantee messages and Bandersnatch owners pass Hastur with
+unchanged observer/native ABIs and original assertions. The launcher now prepares the same
+pinned Rust ABI and owner observer as the cumulative runner, forwarding the original C call-site
+renames and runtime search paths. **54 suites**, **29 ARC observations** and **240 harness tests**
+(existing skip) pass locally. Evidence: `build/nim-tests/remaining/crypto-unit.log` and
+`crypto-harness.log`. Migration total: **54/59; 5 remaining**. Next: QUIC native suites.

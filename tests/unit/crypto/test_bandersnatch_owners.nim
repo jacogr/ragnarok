@@ -1,7 +1,8 @@
+import ../../support/arc_evidence
 ## Native key/setup ownership, fixed-copy imports and failure recovery over the unchanged Rust ABI.
 import std/[assertions, syncio]
-import ./batch_support
-import ../../src/bandersnatch/bandersnatch
+import ../../native/batch_support
+import ../../../src/bandersnatch/bandersnatch
 
 # Reset attempt/free counters and failure flags without erasing the number of still-live native allocations.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
@@ -146,6 +147,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: keys(); fixedCopies()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease and liveKeys() == 0 and liveSetups() == 0
-echo "BANDERSNATCH_OWNERS_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease,
-    " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("bandersnatch_owners", 1000, beforeRelease, afterRelease)
+echo "BANDERSNATCH_OWNERS_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony Bandersnatch: key/setup close, alias/final release, fixed imports and refusal recovery passed"

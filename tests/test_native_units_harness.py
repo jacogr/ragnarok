@@ -66,7 +66,8 @@ class NativeUnitHarness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             (folder/'hastur').touch()
-            libraries = {'crypto': folder/'production', 'observer': folder/'observer'}
+            libraries = {'crypto': folder/'production', 'observer': folder/'observer',
+                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer'}
             for path in libraries.values():
                 # Separate files make accidental observer/production substitution visible in the command plan.
                 path.touch()
@@ -98,7 +99,8 @@ class NativeUnitHarness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             (folder/'hastur').touch()
-            libraries = {'crypto': folder/'production', 'observer': folder/'observer'}
+            libraries = {'crypto': folder/'production', 'observer': folder/'observer',
+                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer'}
             for path in libraries.values():
                 # The launcher needs real files; dummy bytes are enough for command-only safeguards.
                 path.touch()
@@ -110,7 +112,8 @@ class NativeUnitHarness(unittest.TestCase):
                         # Each case must get exactly its selected ABI, preserving observer isolation from production roots.
                         args = native_tests.unit_command(folder/'nimony', name, libraries)
                         self.assertIn('--forward:--passL:'+str(libraries[profile].resolve()), args)
-                        self.assertIn('--forward:--passC:-I'+str(ROOT/'native/crypto'), args)
+                        include = 'bandersnatch' if name == 'bandersnatch_owners' else 'crypto'
+                        self.assertIn('--forward:--passC:-I'+str(ROOT/'native'/include), args)
                         other = libraries['crypto' if profile == 'observer' else 'observer']
                         self.assertNotIn('--forward:--passL:'+str(other.resolve()), args)
                         self.assertIn('--forward:--passC:-flto', args)

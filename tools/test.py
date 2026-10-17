@@ -60,7 +60,7 @@ def main():
     compiler, selected = environment(args.compiler)
     libraries = None
     if args.suite == 'unit':
-        # Reuse pristine pinned crypto preparation; network and Bandersnatch builds remain outside this quick suite.
+        # Reuse pristine pinned crypto preparation; network builds remain outside this suite.
         sys.path.insert(0, str(ROOT/'tests'))
         from nimony_crypto import prepare
         folder = ROOT/'build/nim-tests/native'
@@ -68,6 +68,10 @@ def main():
         crypto, observer, evidence = prepare(folder)
         (folder/'preparation.json').write_text(json.dumps(evidence, indent=2)+'\n')
         libraries = dict(crypto=crypto, observer=observer)
+        from bandersnatch_native import prepare as prepare_bandersnatch
+        bs, bs_observer, bs_evidence = prepare_bandersnatch(folder)
+        libraries.update(bandersnatch=bs, bandersnatch_observer=bs_observer)
+        (folder/'bandersnatch-preparation.json').write_text(json.dumps(bs_evidence, indent=2)+'\n')
         # Prepare fresh numeric observations for native snapshot tests before the directory run.
         selected = unit_environment(compiler, base=selected)
     for arguments in plan(args.suite, compiler, libraries):
