@@ -230,6 +230,14 @@ proc disconnectTransport*(owner: var Transport) {.raises: [].} =
 proc peerMetric*(owner: Transport, metric: int): uint64 {.raises: [].} =
   nativeMetric(owner.engine, cint(metric))
 
+# Lifetime close callbacks, including unsuccessful attempts; pair with authentication evidence for telemetry.
+proc closedConnections*(owner: Transport): uint64 {.raises: [].} =
+  peerMetric(owner, 2) # rq_peer_metric selector 2: retired connection handles.
+
+# Lifetime successful native handshakes; retained even if a connection closes in the same poll.
+proc authenticatedConnections*(owner: Transport): uint64 {.raises: [].} =
+  peerMetric(owner, 4) # rq_peer_metric selector 4: completed authentication.
+
 # Drain at most 64 datagrams per ready socket so other endpoints and timers cannot starve.
 proc drain(owner: var Transport): bool =
   # Bounded synchronous reads reuse storage until each native packet call returns.

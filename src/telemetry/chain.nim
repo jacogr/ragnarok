@@ -1,19 +1,11 @@
 ## Bounded JIP-4 telemetry metadata extraction, not chain-state validation or initialization.
-import std/[parsejson, streams]
+import std/[parsejson, streams, strutils, parseutils]
 import ../crypto/primitives
 import ./wire
 
 const MaxChainBytes* = 8 * 1024 * 1024
 # Full-profile epoch markers exceed 64 KiB; keep a bounded allowance for larger validator sets.
 const MaxHeaderBytes* = 256 * 1024
-
-# Convert one ASCII hexadecimal digit; -1 keeps invalid input separate from zero.
-func nibble(character: char): int =
-  # JIP-4 hex strings may use either case, but no whitespace or implicit truncation.
-  if character >= '0' and character <= '9': return ord(character) - ord('0')
-  if character >= 'a' and character <= 'f': return ord(character) - ord('a') + 10
-  if character >= 'A' and character <= 'F': return ord(character) - ord('A') + 10
-  -1
 
 # Decode an exact bounded hex field atomically; empty output means invalid, never a valid field here.
 proc hexBytes(text: string, maximum: int): seq[byte] =
@@ -23,10 +15,12 @@ proc hexBytes(text: string, maximum: int): seq[byte] =
   var bytes = newSeq[byte](text.len div 2)
   # Validate every pair before publishing the newly owned sequence.
   for i in 0..<bytes.len:
-    let high = nibble(text[2 * i])
-    let low = nibble(text[2 * i + 1])
-    if high < 0 or low < 0: return # Do not expose a decoded prefix after bad input.
-    bytes[i] = byte(high * 16 + low)
+    let start = 2 * i
+    if text[start] notin HexDigits or text[start + 1] notin HexDigits:
+      return # parseHex also accepts prefixes and underscores; JIP-4 fields permit only digit pairs.
+    var value = 0'u8
+    if parseHex(text, value, start, 2) != 2: return # Require the complete pair before publishing any bytes.
+    bytes[i] = value # Two validated digits fit exactly in a byte; no overflow or truncation is possible.
   result = move(bytes)
 
 # Parse complete bounded JSON and hash its serialized genesis header using the maintained primitive.

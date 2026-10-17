@@ -121,3 +121,10 @@ proc startDial*(client: var Client, identity: openArray[byte], port: uint16, ipv
 proc finishDial*(client: var Client, attempt: EventId, authenticated: bool) =
   if not requested(): return # Disabled telemetry does not query clocks or encode frames.
   client.dialOutcome(getMonoTime().ticks div 1_000_000, eventTimestamp(), attempt, authenticated)
+
+# Copy the authenticated outgoing identity only after the caller observes a native connection close.
+proc finishConnection*(client: var Client, identity: openArray[byte]) =
+  if not requested() or identity.len != 32: return # Invalid or disabled peers cannot emit a closure.
+  var key = default(array[32, byte])
+  for i in 0..<32: key[i] = identity[i] # No caller storage is retained by the bounded exporter.
+  client.peerDisconnected(getMonoTime().ticks div 1_000_000, eventTimestamp(), key)

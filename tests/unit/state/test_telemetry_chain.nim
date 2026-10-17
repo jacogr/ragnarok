@@ -24,6 +24,21 @@ for text in ["", "[]", "{}", prefix, prefix & "} trailing", prefix & ",\"genesis
     "{\"protocol_parameters\":\"" & parameters & "\",\"genesis_header\":\"xz\"}",
     prefix & ",\"extension\":" & repeat('[', 32) & "0" & repeat(']', 32) & "}"]:
   assert not chainMetadata(text, identity, address, 9000).ok
+# Exercise every byte in both hex cases through the public chain decoder and inspect copied metadata.
+for value in 0..255:
+  let upper = toHex(uint8(value))
+  for encoded in [upper, upper.toLowerAscii()]:
+    var input = parameters
+    input[0] = encoded[0]
+    input[1] = encoded[1]
+    let decoded = chainMetadata("{\"protocol_parameters\":\"" & input &
+        "\",\"genesis_header\":\"00\"}", identity, address, 9000)
+    assert decoded.ok and registration(decoded.value)[5] == byte(value)
+# The standard hex parser's permissive forms must not expand the chain-file grammar.
+for encoded in ["", "0", "0x00", "#0", "0_", "_0", "00_0", " 0", "0 ", "gg"]:
+  assert not chainMetadata("{\"protocol_parameters\":\"" & parameters &
+      "\",\"genesis_header\":\"" & encoded & "\"}", identity, address, 9000).ok
+
 # Full-profile genesis headers exceed 64 KiB; accept the configured cap and reject one byte beyond it.
 let largePrefix = "{\"protocol_parameters\":\"" & parameters & "\",\"genesis_header\":\""
 assert chainMetadata(largePrefix & repeat('0', 2 * MaxHeaderBytes) & "\"}", identity, address, 9000).ok

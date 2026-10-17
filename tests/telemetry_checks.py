@@ -2,6 +2,7 @@
 import hashlib
 import json
 import socket
+import select
 import struct
 import subprocess
 
@@ -109,7 +110,7 @@ def peer_registration(binary, certificates, chain, folder):
                 assert status[8] == 10 and int.from_bytes(status[9:13], 'little') == 0
                 client = subprocess.run([str(binary), 'client', str(port),
                     str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
-                    str(certificates/'a.pub'), alpn, '3000', '--telemetry', endpoint,
+                    str(certificates/'a.pub'), alpn, '3000', 'clean', '--telemetry', endpoint,
                     '--chain', str(chain)], capture_output=True, timeout=6)
                 assert client.returncode == 0, (client.stdout, client.stderr)
                 outgoing, _ = server.accept()
@@ -122,6 +123,10 @@ def peer_registration(binary, certificates, chain, folder):
                     assert int.from_bytes(dialing[57:59], 'little') == port
                     connected = frame(outgoing)
                     assert connected[8] == 26 and int.from_bytes(connected[9:17], 'little') == 0
+                    closed = frame(outgoing)
+                    assert closed[8] == 27 and closed[9:41] == (certificates/'a.pub').read_bytes()
+                    assert closed[41:] == b'\0\0' # Unknown terminator and reason remain explicitly absent.
+                    assert outgoing.recv(1) == b'' # Exactly one closure, followed by exporter shutdown.
             stdout, stderr = process.communicate(timeout=5)
             (folder/'peer.log').write_bytes(stdout + stderr)
             assert process.returncode == 0 and b'EXCHANGE_OK 8' in stdout, (stdout, stderr)
@@ -150,6 +155,7 @@ def dial_failure(binary, certificates, chain, folder):
                     assert frame(connection)[8] == 24
                     failed = frame(connection)
                     assert failed[8] == 25 and failed[9:17] == bytes(8) and failed[17:] == b'\0'
+                    assert connection.recv(1) == b'' # Failed authentication must not invent a disconnected peer.
                 stdout, stderr = process.communicate(timeout=5)
                 (folder/'failed-dial.log').write_bytes(stdout + stderr)
                 assert process.returncode != 0 and b'AUTH_OK' not in stdout
@@ -157,3 +163,56 @@ def dial_failure(binary, certificates, chain, folder):
                 # Always release the bounded dialer, even on failed framing assertions.
                 stop(process)
     return dict(passed=True, attempt=0, outcome='failed', reason='unknown')
+
+
+# A remote process loss closes an authenticated idle connection through the native two-second expiry.
+def peer_loss(binary, certificates, chain, folder):
+    folder.mkdir(parents=True, exist_ok=True)
+    with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as reservation:
+        reservation.bind(('::1', 0))
+        port = reservation.getsockname()[1]
+    server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
+        str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '800', 'idle'],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        assert select.select([server.stdout], [], [], 5)[0], 'peer listener did not become ready'
+        assert server.stdout.readline().strip() == b'READY'
+        with listener() as collector:
+            endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
+            client = subprocess.Popen([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
+                str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
+                '6000', 'idle', '--chain', str(chain), '--telemetry', endpoint],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                connection, _ = collector.accept()
+                with connection:
+                    connection.settimeout(8)
+                    assert frame(connection)[0] == 1
+                    attempt = frame(connection)
+                    assert attempt[8] == 24 and attempt[41:57] == bytes(15) + b'\1'
+                    connected = frame(connection)
+                    assert connected[8] == 26 and connected[9:17] == bytes(8)
+                    closed = None
+                    for _ in range(4):
+                        # Status can precede expiry; no failed-attempt event may replace authenticated closure.
+                        event = frame(connection)
+                        assert event[8] in (10, 27)
+                        if event[8] == 27:
+                            closed = event
+                            break
+                    assert closed is not None and closed[9:41] == (certificates/'a.pub').read_bytes()
+                    assert closed[41:] == b'\0\0'
+                    assert connection.recv(1) == b'' # Closure is emitted once, not for each polling turn.
+                stdout, stderr = client.communicate(timeout=5)
+                (folder/'lost-peer-client.log').write_bytes(stdout + stderr)
+                assert client.returncode != 0 and b'AUTH_OK' in stdout and b'CONNECTION_CLOSED' in stdout
+            finally:
+                # Client cleanup remains bounded if the collector detects a malformed event.
+                stop(client)
+        stdout, stderr = server.communicate(timeout=5)
+        (folder/'lost-peer-server.log').write_bytes(stdout + stderr)
+        assert server.returncode != 0 and b'AUTH_OK' in stdout
+    finally:
+        # The silent application peer must never survive a failed telemetry assertion.
+        stop(server)
+    return dict(passed=True, address='::1', disconnects=1, application_exchange='incomplete')
