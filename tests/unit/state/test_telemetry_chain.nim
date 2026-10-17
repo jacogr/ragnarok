@@ -24,4 +24,9 @@ for text in ["", "[]", "{}", prefix, prefix & "} trailing", prefix & ",\"genesis
     "{\"protocol_parameters\":\"" & parameters & "\",\"genesis_header\":\"xz\"}",
     prefix & ",\"extension\":" & repeat('[', 32) & "0" & repeat(']', 32) & "}"]:
   assert not chainMetadata(text, identity, address, 9000).ok
+# Full-profile genesis headers exceed 64 KiB; accept the configured cap and reject one byte beyond it.
+let largePrefix = "{\"protocol_parameters\":\"" & parameters & "\",\"genesis_header\":\""
+assert chainMetadata(largePrefix & repeat('0', 2 * MaxHeaderBytes) & "\"}", identity, address, 9000).ok
+assert not chainMetadata(largePrefix & repeat('0', 2 * (MaxHeaderBytes + 1)) & "\"}", identity,
+    address, 9000).ok
 echo "telemetry chain ok"

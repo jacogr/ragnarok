@@ -4,6 +4,8 @@ import ../crypto/primitives
 import ./wire
 
 const MaxChainBytes* = 8 * 1024 * 1024
+# Full-profile epoch markers exceed 64 KiB; keep a bounded allowance for larger validator sets.
+const MaxHeaderBytes* = 256 * 1024
 
 # Convert one ASCII hexadecimal digit; -1 keeps invalid input separate from zero.
 func nibble(character: char): int =
@@ -72,7 +74,7 @@ proc chainMetadata*(text: string, identity: array[32, byte], address: array[16, 
   parser.next()
   if parser.kind != jsonEof or not hasParameters or not hasHeader: return invalidMetadata(invalidChain)
   let params = hexBytes(parameters, 122)
-  let genesis = hexBytes(header, 65536)
+  let genesis = hexBytes(header, MaxHeaderBytes)
   if params.len != 122 or genesis.len == 0: return invalidMetadata(invalidChain)
   let digest = blake2b256(genesis)
   if digest.error != CryptoError.None: return invalidMetadata(hashFailed)

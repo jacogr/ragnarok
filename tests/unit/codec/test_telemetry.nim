@@ -23,7 +23,9 @@ assert not metadata(oversized).ok
 raw[24] = 0
 assert not metadata(raw).ok
 raw[25] = 4
-assert metadata(raw).ok # The supported maximum is exactly 1024 cores.
+let maximum = metadata(raw)
+assert maximum.ok # The supported maximum is exactly 1024 cores.
+assert status(maximum.value, Timestamp(0), 0).len == 1069
 raw[24] = 1
 assert not metadata(raw).ok
 

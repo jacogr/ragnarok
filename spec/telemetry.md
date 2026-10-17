@@ -62,7 +62,7 @@ seconds and resend registration with a fresh event-ID namespace. Pending data is
 disconnect or shutdown. There are no background threads, persistent queues or blocking shutdown
 flushes. SIGPIPE is suppressed per socket/send. The existing dispatcher bounds its waits to 10 ms.
 
-Chain input is capped at 8 MiB, nesting at 32 levels, serialized header at 64 KiB, certificate PEM
+Chain input is capped at 8 MiB, nesting at 32 levels, serialized header at 256 KiB, certificate PEM
 at 16 KiB, DER at 8192 bytes, and core count at 1–1024. These are implementation limits, not new
 protocol constraints. All relevant input is copied into owned bounded metadata before polling.
 
