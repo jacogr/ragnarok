@@ -17,7 +17,7 @@ type
     buffer: array[2048, byte]
     length, offset: int
     retryAt, deadline, statusAt: int64
-    lost: uint64
+    nextEvent, lost: uint64
     firstLost, lastLost: Timestamp
 
 # OS interfaces borrow stack addresses and buffers synchronously, including failed calls.
@@ -108,6 +108,7 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata): bool 
   client.retryAt = 0
   client.statusAt = 0
   client.lost = 0
+  client.nextEvent = 0
   client.connecting = false
   client.enabled = true
   true
@@ -131,8 +132,52 @@ proc queue(client: var Client, bytes: openArray[byte], now: int64) =
   # Encoders are internally bounded below this fixed buffer's capacity.
   for i in 0..<bytes.len: client.buffer[i] = bytes[i]
 
+# Assign one implicit ID even when a bounded buffer or disconnected collector loses the event.
+# Lifecycle frames may append behind a partial frame; sampled statuses retain their coalescing policy.
+proc event(client: var Client, bytes: openArray[byte], now: int64, timestamp: Timestamp,
+    append: bool): EventId =
+  result = EventId(client.nextEvent)
+  if not client.enabled: return # Disabled instrumentation neither allocates IDs nor owns resources.
+  if client.nextEvent == high(uint64):
+    client.close() # Never wrap correlation IDs into an older attempt's namespace.
+    return
+  inc client.nextEvent
+  if not client.opened: return # The next registration's dropped prefix accounts for this position.
+  let markerSize = if client.lost > 0: 29 else: 0
+  if (client.length > 0 and not append) or bytes.len + markerSize > client.buffer.len - client.length:
+    if client.lost == 0: client.firstLost = timestamp # Bound storage for a contiguous missing run.
+    client.lastLost = timestamp
+    inc client.lost
+    return
+  if client.length == 0:
+    client.offset = 0 # A new batch owns a new write deadline; appending cannot extend a stalled one.
+    client.deadline = now + 5000
+  if client.lost > 0:
+    for item in dropped(client.firstLost, client.lastLost, client.lost):
+      client.buffer[client.length] = item # The marker precedes the next actual event on the same stream.
+      inc client.length
+    client.lost = 0
+  for item in bytes:
+    client.buffer[client.length] = item # Append only after proving room for the complete frame and marker.
+    inc client.length
+
+# Capture an outgoing attempt and return its stream position for the later authentication outcome.
+proc dialing*(client: var Client, now: int64, timestamp: Timestamp, identity: array[32, byte],
+    address: array[16, byte], port: uint16): EventId =
+  if not client.enabled: return EventId(0) # Avoid encoding or allocation when telemetry is disabled.
+  client.event(connectingOut(timestamp, identity, address, port), now, timestamp, true)
+
+# Publish exactly one terminal authentication outcome for a previously captured outgoing attempt.
+proc dialOutcome*(client: var Client, now: int64, timestamp: Timestamp, attempt: EventId,
+    authenticated: bool) =
+  if not client.enabled: return # Disabled clients never encode events.
+  if authenticated:
+    discard client.event(connectedOut(timestamp, attempt), now, timestamp, true)
+  else:
+    discard client.event(connectOutFailed(timestamp, attempt), now, timestamp, true)
+
 # Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
-proc begin(client: var Client, now: int64) =
+proc begin(client: var Client, now: int64, timestamp: Timestamp) =
   client.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   # Resource exhaustion must not fail the peer or cause a busy retry loop.
   if client.fd < 0:
@@ -159,7 +204,12 @@ proc begin(client: var Client, now: int64) =
     return
   client.connecting = connected != 0
   client.statusAt = now + 2000
-  client.queue(registration(client.metadata), now)
+  var frames = registration(client.metadata)
+  if client.nextEvent > 0:
+    # A fresh collector connection starts at zero; skip all positions from previous connections.
+    for item in dropped(timestamp, timestamp, client.nextEvent): frames.add(item)
+  client.lost = 0
+  client.queue(frames, now)
 
 # Perform at most one poll and send per dispatcher turn. Times are caller-provided for deterministic tests.
 proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) =
@@ -168,7 +218,7 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
   if not client.opened:
     # Retry spacing applies to refusals, stalled connects and write failures equally.
     if now < client.retryAt: return
-    client.begin(now)
+    client.begin(now, timestamp)
     if not client.opened: return # Failed setup is isolated from normal peer work.
   # A collector cannot retain a pending connect or frame forever.
   if (client.connecting or client.length > 0) and now >= client.deadline:
@@ -177,21 +227,8 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
   # Status is sampled every two seconds without catch-up loops after a delayed dispatcher turn.
   if now >= client.statusAt:
     client.statusAt = now + 2000
-    if client.length == 0:
-      # Preserve event order: a dropped marker precedes the next actual status.
-      if client.lost > 0:
-        var frames = dropped(client.firstLost, client.lastLost, client.lost)
-        # Append the current sample after the marker without losing its event position.
-        for item in status(client.metadata, timestamp, peers): frames.add(item)
-        client.queue(frames, now)
-        client.lost = 0
-      else:
-        client.queue(status(client.metadata, timestamp, peers), now)
-    else:
-      # Coalesce contiguous lost observations without growing the queue.
-      if client.lost == 0: client.firstLost = timestamp
-      client.lastLost = timestamp
-      inc client.lost
+    discard client.event(status(client.metadata, timestamp, peers), now, timestamp, false)
+  if not client.enabled: return # ID exhaustion may have retired the descriptor while sampling status.
   var entry = PollEntry(fd: client.fd, events: Writable, revents: 0)
   let ready = poll(addr entry, 1, 0)
   # EINTR simply defers work; all other poll errors and terminal flags retire the socket.

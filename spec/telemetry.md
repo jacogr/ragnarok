@@ -1,7 +1,8 @@
 # Initial JIP-3 telemetry
 
 Ragnarök's bounded proof peer can register with a JAM Tart collector and report its current
-authenticated peer count approximately every two seconds. Telemetry is disabled by default.
+authenticated peer count approximately every two seconds, plus outgoing connection attempts
+and their authentication outcomes. Telemetry is disabled by default.
 This is a JIP-3 version-1 subset, not a claim of full telemetry or validator functionality.
 
 ## Run
@@ -44,12 +45,20 @@ it does not validate genesis consensus rules or recompute `genesis_state`.
 - Event 10: status, with current authenticated peers. Validator-role count, block-announcement
   streams, guarantee pools, availability shards and block-production preimage pools are zero:
   these facilities are not implemented by this peer. CE fixture responses are not a preimage pool.
+- Event 24: outgoing connection attempt, with the pinned remote Ed25519 identity and actual
+  loopback destination address/port, emitted immediately before initiating the QUIC dial.
+- Events 25/26: failed/successful outgoing authentication, referencing the attempt's event ID.
+  Native successful-handshake evidence determines success independently of application exchanges.
+  A pending attempt settles on timeout, synchronous failure or early exit; failure reasons are
+  empty when the native transport does not expose a reliable diagnosis.
 - Event 0: dropped observations, with first/last timestamps and the exact number of omitted
-  status observations when the pending send buffer prevents enqueueing another status.
+  events when the fixed send buffer cannot accept them.
 
-No best/finalized block, sync, connection-correlation, authoring, execution, service, ticket or
-work-package events are fabricated. The next useful increment is connection lifecycle events
-once the native callback surface exposes the required peer addresses and correlated attempts.
+Incoming connection events (20–23), disconnections (27), best/finalized blocks, sync, authoring,
+execution, service, ticket and work-package events remain unimplemented. The current acceptor
+callback follows authentication; it cannot truthfully supply JIP-3's pre-handshake event 21.
+A future incoming/disconnection increment needs native lifecycle observations with peer identity,
+address and attempt correlation. Mesh remains outside this integration.
 
 Frames use E4 little-endian payload length, then canonical JAM encoding. Strings use the existing
 natural codec. Status's core array has no length prefix. Event timestamps are microseconds from
@@ -58,9 +67,16 @@ natural codec. Status's core array has no length prefix. Event timestamps are mi
 The exporter owns one non-copyable TCP descriptor and a fixed 2048-byte send buffer. Each peer
 iteration performs at most one zero-timeout poll and one nonblocking send. Partial sends resume
 at the exact suffix. Connect/write stalls time out after five seconds; failures retry after five
-seconds and resend registration with a fresh event-ID namespace. Pending data is discarded on
-disconnect or shutdown. There are no background threads, persistent queues or blocking shutdown
-flushes. SIGPIPE is suppressed per socket/send. The existing dispatcher bounds its waits to 10 ms.
+seconds and resend registration. Implicit event IDs count every observation, including dropped
+ones, and remain monotonic for the exporter lifetime. After reconnecting, registration is followed
+by a dropped prefix covering all prior positions so later outcomes retain their original attempt
+IDs. An outcome may reference an attempt covered by a dropped marker. ID exhaustion disables
+the exporter rather than wrapping.
+
+Lifecycle frames may append behind pending frames when the fixed buffer has room; sampled status
+frames still coalesce while a send is pending. Appending never extends the original write
+deadline. Pending data is discarded on disconnect or shutdown. There are no background threads,
+persistent queues or blocking shutdown flushes. SIGPIPE is suppressed per socket/send. The existing dispatcher bounds its waits to 10 ms.
 
 Chain input is capped at 8 MiB, nesting at 32 levels, serialized header at 256 KiB, certificate PEM
 at 16 KiB, DER at 8192 bytes, and core count at 1–1024. These are implementation limits, not new
@@ -100,8 +116,10 @@ The binary is not a project dependency, and no downloaded executable is needed f
 
 `make check-unit` includes native wire/metadata tests, malformed chain JSON/hex cases, independent
 hash expectations, a saturated socket pair, partial-send continuation and ordered dropped/status
-frames. `make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
+frames, outgoing event layouts, correlation across dropped samples, and event-ID exhaustion.
+`make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
 `make check-e2e` includes a reset/reconnect collector and a real certificate-backed proof-peer
-exchange with telemetry enabled. Python is only the independent collector/test orchestrator;
+exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome
+spanning a collector reset. Python is only the independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.
