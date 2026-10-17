@@ -12,6 +12,11 @@ Codecs and consensus-facing types live in `src/codec/`. Protocol logic remains n
 acyclic ARC owners retain immutable wire snapshots; borrowed paths use explicit lifetime contracts
 and caller-owned storage. Default/failed tagged results carry no values or progress metadata.
 
+`src/state/` owns the in-memory serialized-state store: atomic write batches publish complete
+immutable snapshots and recompute roots through the existing Merklization implementation.
+See [the storage contract](../spec/state-store.md). Native replay verifies seven published pre/post mapping pairs; this is not state-transition
+execution.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
@@ -24,6 +29,18 @@ state, callbacks and retained mesh coordination; only lifecycle entry points are
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.
+
+## Full and light node modes
+
+The client will support full and light operation selected by a command-line mode flag. Startup
+will choose the corresponding mode-specific database; full and light data/schema requirements
+must remain separate. In-memory backends may also differ, sharing only operations with matching
+semantics. No database backend or mode flag is implemented by the current storage increment.
+
+`src/state/store.nim` is a complete-map in-memory execution store. Light-node verified roots,
+partial state and proofs require a separate appropriate contract; hashing partial data through
+this complete-map calculator cannot establish the full state root. Codecs and Merklization
+primitives remain shared, with mode selection at the application boundary.
 
 ## Implemented foundation
 

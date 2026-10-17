@@ -109,7 +109,7 @@ help:
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
 	  'make clean         Remove build/ completely' \
 	  'make check / test  Provision dependencies and run complete verification' \
-	  'make unit          Run the 59 Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
+	  'make unit          Run the 62 Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
 	  'make check-modules Check every production module' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
 	  'make check-unit    Run native suites, corpora and runtime misuse probes' \
