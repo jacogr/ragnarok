@@ -133,7 +133,10 @@ def peer_registration(binary, certificates, chain, folder):
                 accepted = frame(connection)
                 assert accepted[8] == 23 and int.from_bytes(accepted[9:17], 'little') == 1
                 assert accepted[17:] == (certificates/'b.pub').read_bytes()
-                assert connection.recv(1) == b'' # Successful SSL destruction cannot emit a second terminal outcome.
+                closed = frame(connection)
+                assert closed[8] == 27 and closed[9:41] == (certificates/'b.pub').read_bytes()
+                assert closed[41:] == b'\0\0'
+                assert connection.recv(1) == b'' # One real incoming close, with no duplicate during destruction.
             stdout, stderr = process.communicate(timeout=5)
             (folder/'peer.log').write_bytes(stdout + stderr)
             assert process.returncode == 0 and b'EXCHANGE_OK 8' in stdout, (stdout, stderr)
@@ -268,3 +271,67 @@ def incoming_failure(binary, certificates, chain, folder):
             # TLS and collector failures still retire every test process.
             stop(server)
     return dict(passed=True, outcome='failed', reason='unknown')
+
+
+# A retained IPv6 listener reports each expired peer's own identity, and never fabricates a teardown close.
+def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
+    folder.mkdir(parents=True, exist_ok=True)
+    with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as reservation:
+        reservation.bind(('::1', 0))
+        port = reservation.getsockname()[1]
+    children = []
+    # Each child owns a distinct authenticated identity; the second reuses the first peer's retired slot.
+    def launch(identity):
+        child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/f'{identity}.cert.pem'),
+            str(certificates/f'{identity}.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
+            '700' if remote_loss else '6000', 'idle'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        children.append(child)
+    with listener() as collector:
+        endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
+        server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
+            str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '8500' if remote_loss else '1200',
+            'idle', '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            connection, _ = collector.accept()
+            with connection:
+                connection.settimeout(12)
+                assert frame(connection)[0] == 1
+                launch('b')
+                starts, successes, closes = [], [], []
+                for event_id in range(16):
+                    # EOF is valid only between complete frames; every observed frame remains bounded.
+                    if not connection.recv(1, socket.MSG_PEEK):
+                        break
+                    event = frame(connection)
+                    if event[8] == 21:
+                        assert event[9:25] == bytes(15) + b'\1'
+                        starts.append(event_id)
+                    elif event[8] == 23:
+                        assert len(starts) == len(successes) + 1
+                        assert int.from_bytes(event[9:17], 'little') == starts[-1]
+                        expected = 'b' if not successes else 'c'
+                        assert event[17:] == (certificates/f'{expected}.pub').read_bytes()
+                        successes.append(event[17:])
+                    elif event[8] == 27:
+                        assert remote_loss and len(closes) < len(successes)
+                        assert event[9:41] == successes[len(closes)] and event[41:] == b'\0\0'
+                        closes.append(event[9:41])
+                        if len(closes) == 1:
+                            launch('c') # Reuse the listener after actual expiry, without rebuilding its engine.
+                    else:
+                        assert event[8] == 10 # No failure/drop event can substitute for an authenticated close.
+                else:
+                    raise AssertionError('unbounded incoming telemetry stream')
+                assert len(successes) == (2 if remote_loss else 1)
+                assert len(closes) == (2 if remote_loss else 0)
+                if not remote_loss:
+                    assert children[0].poll() is None # The remote is still alive when the server retires.
+            stdout, stderr = server.communicate(timeout=3)
+            (folder/('incoming-expiry.log' if remote_loss else 'incoming-teardown.log')).write_bytes(stdout + stderr)
+            assert server.returncode != 0 and b'AUTH_OK' in stdout # Idle tests deliberately exchange no application data.
+        finally:
+            # Cleanup remains bounded even if a telemetry identity or lifecycle assertion fails.
+            stop(server)
+            for child in children:
+                stop(child)
+    return dict(passed=True, closes=len(closes), identities=len(successes), remote_loss=remote_loss)
