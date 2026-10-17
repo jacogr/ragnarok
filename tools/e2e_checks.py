@@ -34,13 +34,15 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
         from telemetry_checks import reconnect, peer_registration, dial_failure, peer_loss, incoming_failure, incoming_lifetimes
         try:
             observed = reconnect(telemetry_binary)
+            observed6 = reconnect(telemetry_binary, ipv6=True)
             peer = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
+            peer6 = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-ipv6', ipv6=True)
             failed = dial_failure(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
             lost = peer_loss(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
             incoming = incoming_failure(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
             expiry = incoming_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', True)
             teardown = incoming_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', False)
-            report['telemetry'] = dict(passed=True, reconnect=observed, peer=peer, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
+            report['telemetry'] = dict(passed=True, reconnect=observed, reconnect_ipv6=observed6, peer=peer, peer_ipv6=peer6, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # Collector failures remain visible while process finalizers retire every live child.
             report['telemetry'] = dict(passed=False, failure=str(error))

@@ -145,6 +145,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - All commits must use semantic commit messages in Conventional Commits form:
   `type(scope): summary`, with an optional scope and a concise imperative summary. Use the type
   that describes the change, such as `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci` or `chore`.
+- Force pushes are prohibited, including `--force`, `--force-with-lease` and equivalent
+  refspecs or API operations. Never rewrite published branch history, even to correct a commit
+  message. Preserve published commits and make corrections in new commits; merge updates normally.
 - Before the final push to a PR, fetch `origin` and merge the latest `origin/master` into the PR
   branch. Resolve any conflicts and run the affected checks before pushing, so the final PR
   revision includes the latest master. This does not authorize merging the PR itself.
