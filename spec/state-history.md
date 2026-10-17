@@ -139,3 +139,9 @@ ARC/Clang LTO; this does not establish general leak freedom or Linux parity.
 Use `make runtime`. The numerical observations above describe the original compiler-port increment.
 Linux and full
 M1/M2/M3 runtime parity remain separate migration gates.
+
+## Execution increment
+
+The codec remains a serialization-only component. Native recent-history progression and output-tree
+hashing now live separately in [history-transition.md](history-transition.md), which records the
+parent-correction stage, store publication contract and pinned super-peak domain discrepancy.

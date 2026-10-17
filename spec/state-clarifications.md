@@ -86,3 +86,17 @@ that policy. E4 service keys and E8 C12 gas remain fixed as shown by their respe
 M1's remaining state-parity gate is adoption of the upstream request-domain fix with aligned pins. Further implementation
 scope is chosen separately with the maintainer; this does not claim PVM, transitions or validator
 completeness, or that the pinned 0.8.0 text has changed.
+
+## History hash-token clarification and follow-up
+
+During recent-history execution work, closed [#509](https://github.com/gavofyork/graypaper/issues/509)
+and its [reply](https://github.com/gavofyork/graypaper/issues/509#issuecomment-3706909013) resolved
+`$peak` as token notation: the bytes are ASCII `peak`, not a literal dollar-prefixed string.
+The exact pinned history witness and output-tree interpretation are recorded in
+[history-transition.md](history-transition.md). This is not a new dependency pin or a fallback.
+Open [#549](https://github.com/gavofyork/graypaper/pull/549) proposes additional Merklization changes
+and remains a future compatible-upgrade review item.
+
+Existing signing/transcript code still contains literal dollar-prefixed domains. Audit those
+against normative token interpretation and independent external transcripts in a separate bounded
+follow-up; the new history module does not establish their interoperability or change their bytes.

@@ -182,7 +182,13 @@
       "stf/authorizations/full/progress_authorizations-2.json": "52d3e4ce1431a6900a303579a751c4e94b68321d32766d27bfd8368d465997ea",
       "stf/authorizations/full/progress_authorizations-3.json": "f65fcff82308570d975574515399c1f82658f381399a585d9c58b1db4303f4b2",
       "stf/authorizations/authorizations.asn": "53c809d7e354ad2945efd86e433d4dc3c4102766e66b1797bbcccc2d3e345fb3",
-      "stf/authorizations/README.md": "23e89030d3be5e43c933470f4a294a24b46d25bf18cdf4c430863c57efb45638"
+      "stf/authorizations/README.md": "23e89030d3be5e43c933470f4a294a24b46d25bf18cdf4c430863c57efb45638",
+      "stf/history/history.asn": "ad43f072c17b573ed5684e90b16e9cf2a5bd4ba77be4bdee8bab0881e14368b6",
+      "stf/history/README.md": "6892e45f7662e574cef5ba586749a4b63e7a70fc21c226efdc62d5f0387b0407",
+      "stf/history/tiny/progress_blocks_history-2.json": "e25578fe0b67f2d7541b8e1dc94b87cd74e802d40197dd7d3ccc2e586cdff738",
+      "stf/history/tiny/progress_blocks_history-3.json": "302948917b2528e22a39cba8778c77ab0d12d04b46b1e63cde66dafde205cebd",
+      "stf/history/full/progress_blocks_history-2.json": "e25578fe0b67f2d7541b8e1dc94b87cd74e802d40197dd7d3ccc2e586cdff738",
+      "stf/history/full/progress_blocks_history-3.json": "302948917b2528e22a39cba8778c77ab0d12d04b46b1e63cde66dafde205cebd"
     }
   },
   "toolchains": {
