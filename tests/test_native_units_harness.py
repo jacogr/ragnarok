@@ -27,6 +27,20 @@ class NativeUnitHarness(unittest.TestCase):
             # Every discovered positive suite owns an explicit output contract.
             self.assertTrue(path.with_suffix('.output').is_file(), str(path))
 
+    # Grouping preserves every suite once and never mixes linked/network profiles into codec discovery.
+    def test_batch_inventory(self):
+        batches = native_tests.unit_batches()
+        names = [name for _, members, _ in batches for name in members]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
+        self.assertEqual(len(batches[0][1]), 21)
+        self.assertIsNone(batches[0][2])
+        for name, members, target in batches[1:]:
+            # Every profile with special linking or runtime resources remains a single-file invocation.
+            self.assertEqual(members, (name,))
+            self.assertEqual(target, name)
+            self.assertIn(name, native_tests.UNIT_LINKS)
+
     # An absent archive runner cannot fall back to an unrelated executable on PATH.
     def test_missing_pinned_runner(self):
         with tempfile.TemporaryDirectory() as temporary:

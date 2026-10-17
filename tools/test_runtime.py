@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import cache_directory
-from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
+from native_tests import UNIT_SUITES, unit_batches, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
@@ -906,21 +906,27 @@ def main():
     libraries = dict(crypto=crypto_library, observer=crypto_observer, bandersnatch=bs_library,
                      bandersnatch_observer=bs_observer, quic=quic_library)
     fixtures = unit_runtime_fixtures(quic_fixtures, integration_wires, integration_reload)
-    for name in SUITES:
-        # Hastur owns compilation, execution and exact expected-output verdicts for every ordinary code suite.
-        checked = command(unit_command(compiler, name, libraries), name+'-hastur',
-                          unit_environment(compiler, name, fixtures=fixtures))
-        row = dict(name=name, runner='hastur', check=checked, passed=checked['exit_code'] == 0)
-        if row['passed'] and name in ARC_SUITES:
-            # A missing or inconsistent current observation cannot reuse an earlier successful report.
-            try:
-                report[ARC_SUITES[name]] = unit_evidence(compiler, name)
-            except (OSError, ValueError) as error:
-                # Evidence failures remain visible independently of the native verdict.
-                row['passed'] = False
-                row['evidence_error'] = str(error)
-        report['suites'].append(row)
-        announce(name+' (Hastur)', row['passed'])
+    for batch, members, target in unit_batches():
+        # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
+        checked = command(unit_command(compiler, target, libraries), batch+'-hastur',
+                          unit_environment(compiler, target, fixtures=fixtures))
+        if checked['exit_code'] != 0:
+            # A group failure is conservative for every member and retains Hastur's individual diagnostics.
+            print(checked['output'], flush=True)
+        for name in members:
+            # Preserve every historical suite row and fresh per-suite ARC observation in cumulative evidence.
+            row = dict(name=name, runner='hastur', batch=batch, check=checked,
+                       passed=checked['exit_code'] == 0)
+            if row['passed'] and name in ARC_SUITES:
+                # A missing or inconsistent current observation cannot reuse an earlier successful report.
+                try:
+                    report[ARC_SUITES[name]] = unit_evidence(compiler, name)
+                except (OSError, ValueError) as error:
+                    # Evidence failures remain visible independently of the native verdict.
+                    row['passed'] = False
+                    row['evidence_error'] = str(error)
+            report['suites'].append(row)
+            announce(name+' (Hastur)', row['passed'])
     # Replay all five early independent corpora, preserving original requests before any adapter execution.
     from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode
     from bounded_checks import batch_requests as bounded_requests

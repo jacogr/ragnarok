@@ -55,6 +55,11 @@ keys and generated data remain under ignored `build/`. Python supplies setup, pa
 flags; Hastur owns application test verdicts. Direct Hastur use must retain those exact flags and
 fixture environment paths.
 
+Both entry points group the 21 dependency-free codec suites into one directory invocation.
+The remaining 38 suites retain their separate library/runtime profiles. Cumulative evidence keeps
+all 59 suite identities and per-suite ARC observations; a failed group marks every member failed
+and retains Hastur's individual diagnostics.
+
 The cumulative `make check` path delegates **all 59 ordinary suites** to Hastur and
 hashes every source and `.output` file. The old Python positive-suite build/run branch is removed;
 there is no fallback to old file locations. A registry/discovery safeguard rejects missing or extra

@@ -178,9 +178,19 @@ def unit_runtime_fixtures(certificates, original, reload):
     return {'quic_transport': (None, transport, cert_files), 'quic_integration': (None, integration, wires)}
 
 
+# Group only dependency-free codecs; linked, networking and resource profiles remain separate.
+def unit_batches():
+    pure = tuple(name for name in UNIT_SUITES if name not in UNIT_LINKS)
+    actual = set(UNIT_ROOT.glob('*.nim'))
+    if actual != {unit_source(name) for name in pure}:
+        # Extra/missing directory members cannot silently change the group covered by one verdict.
+        raise ValueError('Native codec discovery differs from the suite registry')
+    return [('codec', pure, None)]+[(name, (name,), name) for name in UNIT_LINKS]
+
+
 # Discover pure codecs once and link each remaining suite with its required native profile.
 def unit_plan(compiler, libraries):
-    return [unit_command(compiler)]+[unit_command(compiler, name, libraries) for name in UNIT_LINKS]
+    return [unit_command(compiler, target, libraries) for _, _, target in unit_batches()]
 
 
 # Prepare pinned native fixtures and run every ordinary suite with strict output/ARC evidence.
