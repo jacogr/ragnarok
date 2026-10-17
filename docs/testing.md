@@ -30,6 +30,9 @@ On 2026-10-17, the pinned Nimony 0.6.3 toolchain on macOS arm64 passed `make che
 workers in **587.96 seconds**, using an existing local build tree. The 669 pooled compiler
 rejections took **88.23 seconds**. Coverage retained all 65 native profiles, 41 corpora and 676
 compiler rejections. These local timings do not establish a Linux CI speedup.
+The separate `make unit` path passed all 59 suites and 31 ARC observations; `make modules`
+passed all 45 sources with four workers. Final Python discovery passed 278 tests with two
+existing skips. Four-worker failure probes preserved both assertion and output-mismatch diagnostics.
 
 Ignored `build/tests/parallel-review/` retains command logs, serial/parallel codec observations and
 the coverage comparison. Deliberate assertion/output-mismatch probes retained a failing exit code
@@ -68,7 +71,8 @@ keys and generated data remain under ignored `build/`. Python supplies setup, pa
 flags; Hastur owns application test verdicts. Direct Hastur use must retain those exact flags and
 fixture environment paths.
 
-Compatible codec directory runs and independent contract/privacy/nominal compiler checks share
+Compatible codec directory runs, all-source semantic compilation and independent
+contract/privacy/nominal compiler checks share
 one setting: `COMPILE_CHECK_JOBS=1..4`, default **4** locally and in CI. Use
 `make check COMPILE_CHECK_JOBS=1` for a serial control; the same setting applies to `make unit`.
 Linked state/crypto suites, QUIC suites and later network/resource scenarios remain sequential.

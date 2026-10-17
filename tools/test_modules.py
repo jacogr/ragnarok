@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """Check every source module with the selected Nimony compiler; never accept an expected-failure allowlist."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import hashlib
 import json
 from pathlib import Path
 import platform
 import subprocess
+import time
 from setup_nimony import cache_directory
+from native_tests import unit_jobs
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 # Capture one independent semantic check, including timeout failures, without hiding later modules.
 def check_module(compiler, source, folder):
+    started = time.monotonic()
     relative = source.relative_to(ROOT)
     name = '-'.join(relative.with_suffix('').parts)
     args = [str(compiler), 'check', '--mm:arc', '--cc:clang', '-d:release', '--boundchecks:on',
@@ -27,25 +32,31 @@ def check_module(compiler, source, folder):
     log = folder/(name+'.log')
     log.write_text(output)
     return dict(source=str(relative), source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                passed=code == 0, exit_code=code, command=args, log=str(log.relative_to(ROOT)))
+                passed=code == 0, exit_code=code, elapsed_seconds=round(time.monotonic()-started, 6),
+                command=args, log=str(log.relative_to(ROOT)))
 
 
 # Derive coverage from the source tree so newly added or still-unported modules cannot disappear from the gate.
 def audit(compiler, folder):
+    started = time.monotonic()
+    workers = unit_jobs()
     folder.mkdir(parents=True, exist_ok=True)
     # The pinned compiler prints its version to stderr; retain it in provenance rather than only the console.
     version = subprocess.check_output([str(compiler), '--version'], text=True, stderr=subprocess.STDOUT)
     rows = []
-    # Continue after genuine failures to show all remaining work, while retaining a failing final exit status.
-    for source in sorted((ROOT/'src').rglob('*.nim')):
-        row = check_module(compiler, source, folder)
-        rows.append(row)
-        print(('PASS ' if row['passed'] else 'FAIL ')+row['source'], flush=True)
+    # Every source has its own cache/log; ordered consumption keeps inventory and failure reporting stable.
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for row in executor.map(partial(check_module, compiler, folder=folder),
+                                sorted((ROOT/'src').rglob('*.nim'))):
+            # Continue after genuine failures so one bad module cannot hide a later newly added source.
+            rows.append(row)
+            print(('PASS ' if row['passed'] else 'FAIL ')+row['source'], flush=True)
     if not rows:
         raise ValueError('Source tree has no Nim modules')
     report = dict(status='compile-checks-passed' if all(row['passed'] for row in rows) else 'compile-checks-failed',
                   scope='semantic module compilation only; linking and runtime parity remain separate',
                   environment=dict(system=platform.system(), machine=platform.machine()), compiler=version.strip(),
+                  jobs=workers, elapsed_seconds=round(time.monotonic()-started, 6),
                   project_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), modules=rows)
     (folder/'results.json').write_text(json.dumps(report, indent=2)+'\n')
     return report

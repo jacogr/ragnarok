@@ -275,11 +275,17 @@ class NimonyCISafeguards(unittest.TestCase):
             # The third file represents new code that must not rely on a manually updated allowlist.
             for name in ('a.nim', 'b.nim', 'new.nim'):
                 (root/'src'/name).write_text('discard\n')
+            ready = threading.Barrier(2)
+            # Require overlapping checks while retaining one genuine failure and a later new source.
             def check(compiler, source, folder):
+                if source.name != 'new.nim':
+                    # The first two modules must overlap without depending on host scheduling speed.
+                    ready.wait(timeout=5)
                 return dict(source=str(source.relative_to(root)), passed=source.name != 'b.nim')
-            with patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check), patch.object(modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout', new=io.StringIO()):
+            with patch.dict('os.environ', {'COMPILE_CHECK_JOBS': '2'}), patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check), patch.object(modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout', new=io.StringIO()):
                 report = modules.audit(root/'nimony', root/'evidence')
             self.assertEqual(report['status'], 'compile-checks-failed')
+            self.assertEqual(report['jobs'], 2)
             self.assertEqual(len(report['modules']), 3)
             self.assertEqual([row['source'] for row in report['modules']], ['src/a.nim', 'src/b.nim', 'src/new.nim'])
             self.assertTrue((root/'evidence/results.json').is_file())

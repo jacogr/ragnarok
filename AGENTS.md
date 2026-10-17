@@ -95,7 +95,8 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Add important negative compilation checks and malformed/truncated/overflow/fuzz cases for decoders.
   Retain official vectors and independent test-only references; no Python production protocol runtime.
 - Use one `COMPILE_CHECK_JOBS` setting (default 4) for compatible codec directory runs and
-  independent contract/privacy/nominal compiler checks. Accept 1–4 workers;
+  all-source semantic compilation and independent contract/privacy/nominal compiler checks.
+  Accept 1–4 workers;
   retain serial overrides, private caches/logs, ordered diagnostics and fresh per-suite ARC evidence.
   Keep linked profiles and network/resource scenarios sequential. Hastur scheduling artifacts belong
   under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
