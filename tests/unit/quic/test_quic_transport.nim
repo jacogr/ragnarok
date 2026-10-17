@@ -13,6 +13,8 @@ proc acceptFixture(user: pointer, der: ptr ConstByte, length: csize_t): cint {.c
 # Test-owned observations retain counters only; all native pointers are borrowed for one callback.
 type HandshakeCounts = object
   starts, successes, failures, dropped: int
+  peerStarts, peerCloses: int
+  peers: array[IncomingPeerSlots, bool]
   ipv6: bool
   active: array[IncomingHandshakeSlots, bool]
 
@@ -46,6 +48,24 @@ proc handshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
     counts.active[index] = false
     inc counts.failures
 
+# Admission supplies an extractable certificate; only a later live close retires its slot.
+proc peerEvent(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
+    length: csize_t) {.cdecl, raises: [].} =
+  let counts = cast[ptr HandshakeCounts](user)
+  assert slot < cuint(IncomingPeerSlots)
+  let index = int(slot)
+  if event == PeerAccepted:
+    assert not counts.peers[index] and der != nil and length > 0 and length <= 8192
+    var fields {.noinit.}: CertFields
+    assert parseCert(cast[ptr byte](der), length, addr fields) == 1
+    assert fields.edKey == 1 and fields.keyLength == 32
+    counts.peers[index] = true
+    inc counts.peerStarts
+  else:
+    assert event == PeerClosed and counts.peers[index]
+    counts.peers[index] = false
+    inc counts.peerCloses
+
 # Hold client handshakes before their server response; the extra attempt exceeds observation storage only.
 proc saturation(cert, key: string, ipv6: bool) =
   var counts = default(HandshakeCounts)
@@ -57,6 +77,8 @@ proc saturation(cert, key: string, ipv6: bool) =
     for i in 0..<clients.len: clients[i].closeTransport() # Every native engine owns one cleanup.
   assert server.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
       addr counts, acceptFixture, stream, ipv6 = ipv6)
+  assert server.observePeers(peerEvent)
+  assert not server.observePeers(peerEvent) # Replacement cannot steal an existing observer.
   assert server.observeHandshakes(handshake)
   assert not server.observeHandshakes(handshake) # An observer cannot replace an installed callback.
   for i in 0..<clients.len:
@@ -84,6 +106,7 @@ proc saturation(cert, key: string, ipv6: bool) =
     assert clients[0].pollTransport(1) # Send a graceful close before retiring the completed client's engine.
     assert server.pollTransport(1)
     if server.closedConnections == 1: break # The successful SSL must be destroyed before slot reuse.
+  assert counts.peerStarts == 1 and counts.peerCloses == 1
   assert server.closedConnections == 1, "close count=" & $server.closedConnections
   clients[0].closeTransport()
   assert clients[0].openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000",
@@ -96,8 +119,14 @@ proc saturation(cert, key: string, ipv6: bool) =
     if counts.starts == IncomingHandshakeSlots + 1: break
   assert counts.starts == IncomingHandshakeSlots + 1 and counts.dropped == 1, "reuse starts=" &
       $counts.starts & " dropped=" & $counts.dropped
+  for turn in 0..<300:
+    assert clients[0].pollTransport(1) # Authenticate the recycled slot before deliberate engine destruction.
+    assert server.pollTransport(1)
+    if counts.peerStarts == 2: break
+  assert counts.peerStarts == 2 and counts.peerCloses == 1
   server.closeTransport()
-  assert counts.failures == IncomingHandshakeSlots and counts.dropped == 2
+  assert counts.peerCloses == 1 # Engine teardown must not fabricate a second observed close.
+  assert counts.failures == IncomingHandshakeSlots - 1 and counts.dropped == 2
   for active in counts.active: assert not active # Every tracked lifetime settled before storage retirement.
 
 # Exercise native construction failure and success with the exact production I/O owner and LSQUIC engine.

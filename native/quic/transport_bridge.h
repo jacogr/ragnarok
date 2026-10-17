@@ -14,6 +14,11 @@ typedef void (*rq_handshake_cb)(void *, unsigned, int, const uint8_t *, uint16_t
                                const uint8_t *, size_t);
 /* Enable once on an idle server; slot-count agreement protects the native-language fixed table. */
 int rq_observe_handshakes(rq_transport *, unsigned slots, rq_handshake_cb);
+/* Admitted server peers use the existing connection table; DER is borrowed only on admission. */
+enum { RQ_PEER_SLOTS = 16, RQ_PEER_ACCEPTED = 0, RQ_PEER_CLOSED = 1 };
+typedef void (*rq_peer_cb)(void *, unsigned, int, const uint8_t *, size_t);
+/* Install before packets arrive; teardown alone does not generate a peer-close observation. */
+int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
 /* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3..5 reserved for IPv6 proof profiles. Strings need only live during this call. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);

@@ -7,6 +7,8 @@ export io.newDispatcher, io.close
 const BridgeHeader = "transport_bridge.h"
 # Must match RQ_HANDSHAKE_SLOTS; native registration checks this bound.
 const IncomingHandshakeSlots* = 64
+# Native registration checks agreement with the existing admitted-connection bound.
+const IncomingPeerSlots* = 16
 const CertHeader = "cert_fields.h"
 
 type
@@ -33,6 +35,9 @@ type
   # Borrow address/DER only during a synchronous handshake observation, including engine teardown.
   HandshakeCallback* = proc(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
       port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].}
+  # Admitted-peer events borrow DER only on admission; closure names the same fixed slot.
+  PeerCallback* = proc(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
+      length: csize_t) {.cdecl, raises: [].}
   # The UDP sender consumes a borrowed C packet before returning; zero means retry later.
   SendCallback = proc(user: pointer, bytes: ptr ConstByte, length: csize_t,
       port: uint16): cint {.cdecl, raises: [].}
@@ -46,6 +51,7 @@ type
     verify: nil VerifyCallback
     stream: nil StreamCallback
     handshake: nil HandshakeCallback
+    peer: nil PeerCallback
     buffer: array[2048, byte]
     stopping, failed: bool
 
@@ -333,5 +339,32 @@ proc observeHandshakes*(owner: var Transport, callback: HandshakeCallback): bool
   owner.handshake = callback
   if nativeObserve(owner.engine, cuint(IncomingHandshakeSlots), handshakeForward) != 1:
     owner.handshake = nil # Failed setup retains no observer.
+    return false
+  true
+
+# Shared primitive event tags are distinct from JIP-3 wire discriminators.
+let
+  PeerAccepted* {.importc: "RQ_PEER_ACCEPTED", header: BridgeHeader.}: cint
+  PeerClosed* {.importc: "RQ_PEER_CLOSED", header: BridgeHeader.}: cint
+
+# Install only before packet processing, preserving native slot-count agreement.
+proc nativeObservePeers(engine: nil pointer, slots: cuint, callback: PeerCallback): cint {.
+    importc: "rq_observe_peers", header: BridgeHeader, cdecl, raises: [].}
+
+# Forward borrowed primitive observations while both transport and peer owners remain alive.
+proc peerForward(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
+    length: csize_t) {.cdecl, raises: [].} =
+  let owner = cast[ptr Transport](user)
+  let callback = owner.peer
+  let user = owner.user
+  if callback != nil and user != nil: # Only initialized observers receive native events.
+    callback(user, slot, event, der, length)
+
+# Observe admitted server peer lifetimes; failed setup retains no callback.
+proc observePeers*(owner: var Transport, callback: PeerCallback): bool =
+  if owner.peer != nil: return false # Preserve an existing observer after attempted replacement.
+  owner.peer = callback
+  if nativeObservePeers(owner.engine, cuint(IncomingPeerSlots), peerForward) != 1:
+    owner.peer = nil # A client, retired engine or late registration cannot own an incoming observer.
     return false
   true
