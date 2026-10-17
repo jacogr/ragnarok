@@ -4,6 +4,7 @@ import ./transport
 import ./protocol
 import ./integration
 import ./offload
+import ../telemetry/options
 
 # Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.
 # Harness readiness and cancellation gates must observe progress while this process still owns live sockets.
@@ -442,14 +443,15 @@ proc offloadTick(peer: ptr Peer) =
 # Own one bounded authentication/exchange attempt and release readiness before native callback destruction.
 proc runPeer*(): bool {.raises.} =
   # Trusted CLI inputs still have explicit shape and narrowing checks.
-  if paramCount() notin [7, 8]: return false # Reject malformed trusted invocation before endpoint setup.
+  if peerParamCount() notin [7, 8]: return false # Reject malformed trusted invocation before endpoint setup.
   let port = parseInt(paramStr(2))
   let timeout = parseInt(paramStr(7))
-  if port < 1 or port > 65535 or timeout < 1 or timeout > (if paramCount() == 8 and paramStr(8) ==
-      "offload": 300000 else: 120000): return false # Guard host-to-native conversions.
+  let timeoutLimit = if peerParamCount() == 8 and paramStr(8) == "offload": 300000 else: 120000
+  # Guard host-to-native conversions before any endpoint is created.
+  if port < 1 or port > 65535 or timeout < 1 or timeout > timeoutLimit: return false
   let server = paramStr(1) == "server"
   if not server and paramStr(1) != "client": return false # Never infer an unknown role.
-  let mode = if paramCount() == 8: paramStr(8) else: "valid"
+  let mode = if peerParamCount() == 8: paramStr(8) else: "valid"
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
   if mode in ["service", "integration", "overload", "offload"] and not server: return false
   let integrated = mode in ["integration", "integrated"]
@@ -483,6 +485,8 @@ proc runPeer*(): bool {.raises.} =
     peer.expected = newSeq[byte](32)
     for i in 0..<32: peer.expected[i] = byte(text[i]) # Copy public identity bytes, not PEM strings.
   if not server and peer.expected.len != 32: return false # Every dialer pins the server identity.
+  var telemetry = default(Client)
+  defer: telemetry.close() # Best-effort telemetry never delays peer shutdown.
   # Cleanup must also run after poll/setup failures; both stack owners remain alive until final native callbacks finish.
   defer:
     peer.stopping = true
@@ -491,6 +495,10 @@ proc runPeer*(): bool {.raises.} =
       paramStr(4), paramStr(6), addr peer, verifyPeer,
           onStream, peer.service, ipv6 = load, profile = (
               if peer.overload or peer.offloading: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
+  # Derive the telemetry peer identity/address from this endpoint, with an explicit chain file.
+  if not telemetry.setup(paramStr(3), localPort(peer.transport), load):
+    stderr.writeLine("Invalid telemetry endpoint, certificate or RAGNAROK_TELEMETRY_CHAIN")
+    return false
   if server: progress "READY" # Announce only after listener binding and native setup.
   elif not connectTransport(peer.transport, uint16(port)): return false # Dial setup failed before authentication.
   let started = getMonoTime()
@@ -508,6 +516,10 @@ proc runPeer*(): bool {.raises.} =
  # One dispatcher loop services all streams, UDP reads and LSQUIC/application deadlines.
   while not peer.failed and (peer.service or peer.completed < target) and (getMonoTime() -
       started).inMilliseconds < timeout:
+    # Server metrics count authenticated retained peers; client status excludes pending handshakes.
+    let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
+        peer.transport) == 1: 1'u32 else: 0'u32)
+    telemetry.observe(telemetryPeers)
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
     if peer.service:

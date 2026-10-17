@@ -2,7 +2,7 @@
 
 Original migration branch: `nim-tests`, based on Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **62 ordinary native suites**, including three state-store profiles; all original
+Current total: **64 ordinary native suites**, including three state-store profiles; all original
 59 suites remain migrated.
 The migration preserved wire behavior, bounds/ownership contracts and independent references.
 Subsequent native suites cover the new storage foundation as recorded below.
@@ -13,8 +13,8 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 62 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
-| `check-guards` | 681 compiler rejection probes | Compiler rejection guards |
+| `check-unit` | 64 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
+| `check-guards` | 682 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
 `make check` runs all five locally; CI schedules them independently and concurrently on separate
@@ -24,7 +24,7 @@ VMs. Each target provisions its own dependencies and writes its own report. Ther
 
 Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
 `build/tests/guards/` (compiler rejections) and `build/tests/e2e/`. Combined native coverage remains
-62 + 6 = 68 profiles. The new [state store](../spec/state-store.md) has three native profiles and
+64 + 6 = 70 profiles. The new [state store](../spec/state-store.md) has three native profiles and
 five privacy probes and nine isolated runtime misuse checks. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
 build uses the same shared checked native compiler profile as the unit verifier.
@@ -89,7 +89,7 @@ explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and
 make unit
 ```
 
-That command runs **21 codec, 32 state, four crypto and five QUIC suites** through Hastur.
+That command runs **22 codec, 33 state, four crypto and five QUIC suites** through Hastur.
 The codec directory is dependency-free; other cases have explicit per-file profiles, including
 native-free UDP and disabled integration. The launcher prepares the same pristine pinned C/Rust
 crypto bridges, observers, LSQUIC/TLS and generated certificates/CE inputs as the cumulative run.

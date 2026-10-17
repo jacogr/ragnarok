@@ -82,3 +82,10 @@ Use `make format` to apply the pinned formatter and `make format-check` to verif
 The underlying Python entry points remain available; no global Nim compiler is required.
 See [codec](docs/codec.md), [crypto](docs/crypto.md) and [networking](docs/networking.md) for APIs,
 ownership, reproduction commands and outstanding protocol/security gates.
+
+## Telemetry
+
+The proof peer supports an opt-in JIP-3 telemetry subset: append `--telemetry HOST:PORT` and set
+`RAGNAROK_TELEMETRY_CHAIN` to an explicit JIP-4 chain file. It reports local node information and
+periodic peer/status observations, with bounded nonblocking TCP delivery and reconnects.
+See [telemetry usage, scope and verification](spec/telemetry.md).

@@ -2,42 +2,47 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./[session, transport, integration, offload]
+import ../telemetry/options
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
   try:
+    # Telemetry is currently supported only by the single-endpoint proof-peer commands.
+    if requested() and (peerParamCount() notin [7, 8] or paramStr(1) notin ["server",
+        "client"]): return 2
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
-    if paramCount() >= 1 and paramStr(1) == "mesh":
+    if peerParamCount() >= 1 and paramStr(1) == "mesh":
+      if requested(): return 2 # Retained dual-engine telemetry is a separate integration increment.
       let baseline = getOccupiedMem()
       if not runMesh(): return 2 # Both engines and their borrowed dispatcher registrations have already retired.
       let retained = getOccupiedMem()
       progress "MESH_CLEAN ", baseline, " ", retained
       return (if retained <= baseline + 65536: 0 else: 2) # Fixed ARC bookkeeping is bounded after complete cleanup.
-    if paramCount() == 1 and paramStr(1) == "--mesh-selftest": meshSelfTest(); return 0
+    if peerParamCount() == 1 and paramStr(1) == "--mesh-selftest": meshSelfTest(); return 0
     # The composition selftest needs only codec/crypto, with no TLS session or filesystem fixture.
-    if paramCount() == 1 and paramStr(1) == "--integration-selftest":
+    if peerParamCount() == 1 and paramStr(1) == "--integration-selftest":
       if not IntegrationEnabled: return 2
       integrationSelfTest()
       return 0
     # Completion-capacity checks create workers but no native transport.
-    if paramCount() == 1 and paramStr(1) == "--offload-selftest":
+    if peerParamCount() == 1 and paramStr(1) == "--offload-selftest":
       if not OffloadEnabled: return 2
       offloadSelfTest()
       return 0
     # Held shutdown owns threads but has not entered a Rust call or started networking.
-    if paramCount() == 1 and paramStr(1) == "--offload-held-shutdown":
+    if peerParamCount() == 1 and paramStr(1) == "--offload-held-shutdown":
       if not OffloadEnabled: return 2
       offloadHeldShutdownTest()
       return 0
     # Parser tests create no native transport or socket.
-    if paramCount() == 1 and paramStr(1) == "--selftest":
+    if peerParamCount() == 1 and paramStr(1) == "--selftest":
       peerSelfTest()
       return 0
     # Probe the real selector backend independently of TLS setup.
-    if paramCount() == 1 and paramStr(1) == "--io-selftest":
+    if peerParamCount() == 1 and paramStr(1) == "--io-selftest":
       ioSelfTest()
       return 0
-    if paramCount() == 8 and paramStr(8) == "soak":
+    if peerParamCount() == 8 and paramStr(8) == "soak":
       # Keep the same process and ARC allocator across all independently owned endpoint sessions.
       let rounds = parseInt(getEnv("RAGNAROK_SOAK_ROUNDS"))
       let gate = getEnv("RAGNAROK_SOAK_GATE")
@@ -57,7 +62,7 @@ proc main(): int =
         if not runPeer(): return 2 # Deferred dispatcher/native cleanup finishes before failure returns.
         progress "ALLOC_BYTES ", getOccupiedMem(), " RESERVED_BYTES ", getTotalMem()
         progress "SESSION_DONE ", iteration
-    elif paramCount() == 8 and paramStr(8) in ["service", "integration", "overload", "offload"]:
+    elif peerParamCount() == 8 and paramStr(8) in ["service", "integration", "overload", "offload"]:
       # Final native callbacks and ARC release complete before observing the process-level application baseline.
       let baseline = getOccupiedMem()
       if not runPeer(): return 2
