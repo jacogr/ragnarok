@@ -13,7 +13,7 @@ def main():
     folder=ROOT/'build/tickets';folder.mkdir(parents=True,exist_ok=True)
     # Build sources with the same checked ARC/Clang LTO configuration as the other codec suites.
     for source,name in (('test_tickets','selftest'),('tickets_driver','driver')):
-        command=nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache')
+        command=nim_command(ROOT/('tests/unit/codec' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache')
         with (folder/f'{name}-build.log').open('w') as log:
             subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True)

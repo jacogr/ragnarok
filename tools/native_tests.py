@@ -1,15 +1,20 @@
 """Launch code-only tests through the Hastur shipped with the pinned Nimony archive."""
 from pathlib import Path
 import json
+import hashlib
 import os
 import platform
 from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
-UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots')
+UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes')
 # These cases keep numeric allocation evidence as well as native equality assertions.
-ARC_SUITES = {'ownership': 'arc_release', 'report_snapshots': 'report_arc_release'}
+ARC_SUITES = {'ownership': 'arc_release', 'report_snapshots': 'report_arc_release',
+              'guarantees': 'guarantee_arc_release', 'disputes': 'dispute_arc_release'}
 UNIT_ROOT = ROOT/'tests/unit/codec'
+# Exact independently authored report bytes replace the old per-run fixture argument.
+UNIT_FIXTURES = {'guarantees': ('RAGNAROK_GUARANTEE_FIXTURE', ROOT/'tests/fixtures/guarantee-report.bin',
+    '8f13efdbca5aa7c5158c7cc62c71e5a9ed6ab2e22032d46946f4a304c55688fc')}
 
 
 # Resolve a migrated suite without introducing a second copy or a fallback to its old native path.
@@ -56,11 +61,18 @@ def unit_evidence_directory(compiler):
 def unit_environment(compiler, name=None, base=None):
     directory = unit_evidence_directory(compiler)
     directory.mkdir(parents=True, exist_ok=True)
+    environment = dict(os.environ if base is None else base)
     for case in UNIT_SUITES if name is None else (name,):
         # Other suite observations may belong to another completed per-suite invocation.
         if case in ARC_SUITES:
             (directory/(case+'.json')).unlink(missing_ok=True)
-    return {**(os.environ if base is None else base), 'RAGNAROK_TEST_EVIDENCE': str(directory)}
+        if case in UNIT_FIXTURES:
+            # Refuse missing or changed fixture bytes before any native test can produce a success marker.
+            variable, path, expected = UNIT_FIXTURES[case]
+            if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                raise ValueError('Native unit fixture checksum mismatch: '+case)
+            environment[variable] = str(path)
+    return {**environment, 'RAGNAROK_TEST_EVIDENCE': str(directory)}
 
 
 # Preserve the historical numeric report fields, rejecting absent or malformed observations.

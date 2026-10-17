@@ -1,7 +1,8 @@
 # Native test migration
 
 Branch: `nim-tests`, based on merged Nimony migration commit `8db659c`.
-Two bounded groups are migrated: primitives/containers, then composites/digests and snapshots.
+Three bounded groups are migrated: primitives/containers, composites/digests/snapshots, and
+extrinsic codecs with their snapshot ownership checks.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
 ## What the investigation found
@@ -50,10 +51,10 @@ crypto or network dependencies. Python is a thin path/flag launcher here. After 
 `build/toolchain/env.sh`, Hastur can also be invoked directly using its documented CLI; retain the
 flags printed by the supported command so checks and optimization settings do not change.
 
-The cumulative `python3 tools/test.py` path delegates all seven migrated suite identities to Hastur,
+The cumulative `python3 tools/test.py` path delegates all eleven migrated suite identities to Hastur,
 records its command/log/verdict and hashes each source and `.output` file. There is no second
 Python compile/run path for those suites in the supported cumulative runner. The remaining
-52 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
+48 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
 profiles and negative checks. CI already calls that cumulative path, so the native runner migration
 needs no duplicate workflow/job or second execution of migrated suites.
 
@@ -83,6 +84,28 @@ One compile/fix cycle was needed for the new test-only file writer: Nimony rejec
 fallible `writeFile` call. Explicit exception handling now fails the test if evidence cannot be
 written. No production/compiler code or dependency pin changed.
 
+## Third converted group: extrinsics and fixture provisioning
+
+The preceding snapshot increment is committed as `e1d35fb`. Tickets, assurances, guarantees and
+disputes now move with `git mv` into the same native directory. Tickets/assurances retain their
+complete bodies apart from imports. Guarantees/disputes retain all native owner, late-failure,
+default-result, alias and 1,000-cycle ARC assertions; their raw ARC numbers use the same evidence
+helper as the snapshot group, preserving `guarantee_arc_release` and `dispute_arc_release` fields.
+
+Hastur executes files without the old guarantee test's positional fixture argument. The test now
+reads `RAGNAROK_GUARANTEE_FIXTURE`, supplied by the launcher as an absolute, checksum-verified
+path. The [393-byte fixture and provenance](../tests/fixtures/README.md) preserve the exact
+`guarantees_oracle.record(0)['report']` bytes formerly generated per cumulative run. The quick
+unit command needs no oracle generation or dependency checkout to obtain them. A harness compares
+the saved bytes with that same independent oracle; missing/changed input fails before native
+execution. The native test also fails on missing/unreadable fixture input, with no fallback.
+The committed binary and its launcher hash participate in cumulative source provenance.
+
+For a direct Hastur run that includes guarantees, supply `RAGNAROK_GUARANTEE_FIXTURE` explicitly;
+the supported unit/cumulative commands prepare and validate it automatically. Standalone tests
+still execute their ARC equality checks whether or not numeric evidence capture is requested.
+No production encoding, validation, crypto or networking source changes in this increment.
+
 ## Python responsibilities and migration order
 
 | Test responsibility | Direction |
@@ -100,9 +123,9 @@ without comparing that file. See the pinned runner above and
 `.exitcode` alone: that would weaken the current nonzero-exit checks. Compiler-diagnostic goldens
 also need a portability review before replacing the existing specific rejection checks.
 
-Next bounded group: extrinsic codec/snapshot tests, retaining fixture provisioning and independent
-Python corpora. Then proceed through packages/header/block and state families; native-linked crypto and networking ownership suites follow with explicit linker/fixture
-requirements. Named `suite`/`test` conversion can be revisited when the selected compiler supplies
+Next bounded group: work-package, header and block codec/snapshot tests, retaining their fixture
+profiles and independent Python corpora. State families follow, then native-linked crypto and
+networking ownership suites with explicit linker/fixture requirements. Named `suite`/`test` conversion can be revisited when the selected compiler supplies
 a supported implementation; no compiler upgrade or patch is part of this branch.
 
 ## Verification of the first increment
@@ -145,3 +168,27 @@ Same pinned macOS ARM64 checked-LTO profile:
 This remains focused native migration verification, not a full QUIC/crypto lifecycle run or a
 Linux CI result for the new changes. Seven of 59 ordinary cumulative file suites now use Hastur;
 52 remain, alongside specialized profiles and the deliberately retained strict negative probes.
+
+
+## Verification of the third increment
+
+Same pinned macOS ARM64 checked-LTO profile:
+
+- All **eleven native suites** pass. Guarantee and dispute workloads preserve 1,000 isolated ARC
+  cycles, with equal before/after observations of 22,736 and 140,880 bytes respectively on this
+  host. These are observations, not cross-platform constants.
+- Injecting +1 into either new ARC observation fails its original Nim assertion; an evidence-write
+  failure also fails natively. Evidence: `build/nim-tests/third/arc-faults.json`.
+- Four freshly rebuilt independent base extrinsic corpora (assurances, tickets, guarantees and
+  disputes) match **62,170 requests**. Evidence: `build/nim-tests/third/corpora.json`.
+- All **233 Python harness tests** pass, including ten native-launcher/evidence/fixture safeguards,
+  with the existing parked-policy skip. The fixture checks cover exact independent-reference
+  equality, missing input, changed bytes and overriding an inherited stale fixture path.
+- All **23 setup/CI safeguards** pass. Protocol provenance retains its existing draft-text skip.
+  All **864 Nim files** pass formatting. Logs are under `build/nim-tests/third/`. Individual
+  cumulative invocations also pass for all eleven suites, retaining all four ARC report fields.
+
+The first two increments remain documented with their original counts above. Current native
+migration totals are **11/59 ordinary file suites migrated, 48 remaining**. Strict negative probes,
+independent references and multi-process orchestration retain their existing roles. This is
+focused local verification; it does not claim a fresh full QUIC/crypto run or Linux CI result.

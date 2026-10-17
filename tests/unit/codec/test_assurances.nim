@@ -1,6 +1,6 @@
 ## Native success/default tests complement independent field/byte, fuzz and overlap comparisons.
 import std/[assertions, syncio]
-import ../../src/codec/assurances
+import ../../../src/codec/assurances
 
 let config = AssuranceConfig(cores: CoreCount(2), validators: ValidatorCount(6))
 let missingWrite = default(AssuranceWriteResult)

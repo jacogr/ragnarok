@@ -1,6 +1,7 @@
 """Guard native test discovery and the pinned checked profile; application assertions live in Nim."""
 from pathlib import Path
 import json
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -114,6 +115,32 @@ class NativeUnitHarness(unittest.TestCase):
             with patch.object(native_tests, 'unit_evidence_directory', return_value=Path(temporary)):
                 with self.assertRaises(FileNotFoundError):
                     native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership')
+
+    # The committed report snapshot must equal the pre-existing independent oracle, not production output.
+    def test_guarantee_fixture_reference(self):
+        from guarantees_oracle import record
+        variable, path, expected = native_tests.UNIT_FIXTURES['guarantees']
+        self.assertEqual(path.read_bytes(), record(0)['report'])
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), expected)
+        self.assertEqual(variable, 'RAGNAROK_GUARANTEE_FIXTURE')
+
+    # Missing/changed fixtures cannot be replaced by an inherited environment path or stale build artifact.
+    def test_guarantee_fixture_rejection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            path = folder/'fixture.bin'
+            fixture = ('RAGNAROK_GUARANTEE_FIXTURE', path, hashlib.sha256(b'fixture').hexdigest())
+            with patch.dict(native_tests.UNIT_FIXTURES, {'guarantees': fixture}, clear=True), patch.object(
+                    native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
+                with self.assertRaises(FileNotFoundError):
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees')
+                path.write_bytes(b'changed')
+                with self.assertRaisesRegex(ValueError, 'checksum'):
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees')
+                path.write_bytes(b'fixture')
+                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees',
+                    {'RAGNAROK_GUARANTEE_FIXTURE': '/stale/fixture'})
+                self.assertEqual(environment['RAGNAROK_GUARANTEE_FIXTURE'], str(path))
 
 
 # This Python suite tests launcher safety only; native application tests run through Hastur.

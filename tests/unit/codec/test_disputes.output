@@ -1,0 +1,2 @@
+DISPUTE_ARC_RELEASE cycles=1000 unchanged
+Disputes: retained replacement, all record copies, atomicity, aliases and ARC release passed

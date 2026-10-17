@@ -1,6 +1,7 @@
 ## Native guarantee owner, late-failure, alias and default-result safety checks.
-import std/[assertions, cmdline, syncio]
-import ../../src/codec/[guarantees, report_owned, owned, bounded, assurances]
+import ../../support/arc_evidence
+import std/[assertions, envvars, syncio]
+import ../../../src/codec/[guarantees, report_owned, owned, bounded, assurances]
 
 # Copy a fixture file into explicit owned octets without type-punning a mutable string.
 proc bytes(path: string): seq[byte] {.raises.} =
@@ -14,7 +15,7 @@ let limits = GuaranteeConfig(cores: CoreCount(341), validators: ValidatorCount(1
 var wire: seq[byte] = @[]
 # Fixture I/O is trusted test setup and must fail explicitly if unavailable.
 try:
-  wire = bytes(paramStr(1))
+  wire = bytes(getEnv("RAGNAROK_GUARANTEE_FIXTURE"))
 except:
   # A missing fixture cannot count as successful codec coverage.
   quit 2
@@ -119,5 +120,7 @@ let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
 let missingResult = default(GuaranteeResult[GuaranteesRead])
 assert missingResult.error == GuaranteeError.Uninitialized
-echo "GUARANTEE_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve raw measurements outside the platform-independent completion output.
+recordArcRelease("guarantees", 1000, beforeRelease, afterRelease)
+echo "GUARANTEE_ARC_RELEASE cycles=1000 unchanged"
 echo "Guarantees: retained parents/children, late failures, aliases, defaults and ARC release passed"

@@ -1,6 +1,7 @@
 ## Native disputes default/variant, owner lifetime, atomicity and nested-alias regressions.
+import ../../support/arc_evidence
 import std/[assertions, syncio]
-import ../../src/codec/[disputes, bounded, assurances]
+import ../../../src/codec/[disputes, bounded, assurances]
 
 # Test-only success selection makes every expected-good getter check its failure branch explicitly.
 proc checked[T](parsed: DisputeResult[T]): T =
@@ -181,5 +182,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: releaseCycle(byte(i mod 256))
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "DISPUTE_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve raw measurements outside the platform-independent completion output.
+recordArcRelease("disputes", 1000, beforeRelease, afterRelease)
+echo "DISPUTE_ARC_RELEASE cycles=1000 unchanged"
 echo "Disputes: retained replacement, all record copies, atomicity, aliases and ARC release passed"

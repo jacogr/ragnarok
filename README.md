@@ -58,6 +58,7 @@ For the first migrated code-only suites, use `python3 tools/test.py --suite unit
 | `src/quic/` | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload |
 | `tests/` | Independent references and verification runners |
 | `tests/unit/` | Code-only Nim tests executed by the pinned native Hastur runner |
+| `tests/fixtures/` | Native test inputs with hashes and independent-reference checks |
 | `tests/native/` | Native drivers, remaining selftests and intentional compile-failure fixtures |
 | `native/` | Narrow maintained C/Rust primitive and transport bridges |
 | `spec/`, `vectors/`, `vendor/` | Pinned interpretations, project fixtures and upstream submodules |

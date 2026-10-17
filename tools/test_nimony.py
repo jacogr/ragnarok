@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import cache_directory
-from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES
+from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, UNIT_FIXTURES
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
@@ -771,6 +771,7 @@ def main():
     sources = (list((ROOT/'src/codec').glob('*.nim'))
                + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
                + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
+               + [entry[1] for entry in UNIT_FIXTURES.values()]
                + [ROOT/'tools/native_tests.py', ROOT/'tests/test_native_units_harness.py']
                + [ROOT/'tests/support/ownership_checks.nim', ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
@@ -873,9 +874,6 @@ def main():
     report['integration_fixtures'] = dict(keys=integration_keys,
         original={str(index): hashlib.sha256((integration_wires/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)},
         reload={str(index): hashlib.sha256((integration_reload/f'{index}.bin').read_bytes()).hexdigest() for index in range(8)})
-    from guarantees_oracle import record as guarantee_record
-    guarantee_fixture = BUILD/'minimal-report.bin'
-    guarantee_fixture.write_bytes(guarantee_record(0)['report'])
     from state_availability_oracle import record as availability_record
     availability_fixture = BUILD/'availability-report.bin'
     availability_fixture.write_bytes(availability_record(0)['report'])
@@ -919,7 +917,7 @@ def main():
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [guarantee_fixture] if name == 'guarantees' else [block_fixture] if name == 'block' else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [integration_wires, integration_reload] if name == 'quic_integration' else [])], name+'-run')
+            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [block_fixture] if name == 'block' else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [integration_wires, integration_reload] if name == 'quic_integration' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
             if name == 'quic_integration' and row['passed']:
                 # Every small retained parent/child/failure scope must release its final ARC references.
@@ -935,20 +933,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'guarantees' and row['passed']:
-                # Report children survive parent retirement; all isolated scopes must release their final ARC references.
-                release = re.search(r'GUARANTEE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Observe only public live occupancy after warmup, never RSS or private reference counts.
-                    report['guarantee_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'disputes' and row['passed']:
-                # All isolated snapshot aliases, nested source sequences and record copies must release through ARC.
-                release = re.search(r'DISPUTE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy covers this workload, not private reference counts or RSS.
-                    report['dispute_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
             if name == 'work_package' and row['passed']:
                 # Independent retained children must release their parent snapshots at the last child reference.
                 release = re.search(r'PACKAGE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

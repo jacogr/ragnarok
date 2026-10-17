@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify published guarantees, independent wrapper fields and immutable nested report ownership."""
 import hashlib
+import os
 import json
 import subprocess
 from guarantees_oracle import requests,record
@@ -15,10 +16,11 @@ def main():
     fixture=folder/'minimal-report.bin';fixture.write_bytes(record(0)['report'])
     # Native ownership tests and the independent field adapter use identical production compilation flags.
     for source,name in (('test_guarantees','selftest'),('guarantees_driver','driver')):
-        command=nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache')
+        command=nim_command(ROOT/('tests/unit/codec' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache')
         with (folder/f'{name}-build.log').open('w') as log:
             subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
-    subprocess.run([str(folder/'selftest'),str(fixture)],cwd=ROOT,check=True)
+    subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True,
+                   env={**os.environ, 'RAGNAROK_GUARANTEE_FIXTURE': str(fixture)})
     lines,expected=requests();path=folder/'requests.txt';path.write_text('\n'.join(lines)+'\n')
     result=subprocess.run([str(folder/'driver'),str(path)],capture_output=True,text=True,timeout=180,check=True)
     (folder/'stderr.log').write_text(result.stderr)

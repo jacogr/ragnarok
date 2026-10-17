@@ -1,6 +1,6 @@
 ## Native ticket codec ownership, atomicity and overlap regressions.
 import std/[assertions, syncio]
-import ../../src/codec/tickets
+import ../../../src/codec/tickets
 
 # Produce one fully owned opaque proof with a distinctive final octet.
 proc record(attempt: uint8): Ticket =
