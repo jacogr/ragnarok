@@ -13,7 +13,7 @@ import time
 from native_checks import NativeChecks, ROOT, announce
 from native_tests import unit_jobs
 from setup_nimony import cache_directory
-from test_runtime import PRIVATE, NOMINAL, CONTRACTS, EARLY_NOMINAL
+from verification_inventory import PRIVATE, NOMINAL, CONTRACTS, EARLY_NOMINAL
 
 BUILD = ROOT/'build/tests/guards'
 checks = NativeChecks(BUILD)
@@ -231,7 +231,7 @@ def main():
         metadata = compiler.parent.parent/'NIGHTLY.txt'
         report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
         report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
-        sources = [Path(__file__), ROOT/'tools/test_runtime.py', ROOT/'tools/native_checks.py',
+        sources = [Path(__file__), ROOT/'tools/verification_inventory.py', ROOT/'tools/native_checks.py',
                    ROOT/'spec/toolchain.json', ROOT/'spec/bandersnatch-pins.json',
                    *sorted((ROOT/'tests/native/compile_fail').glob('*.nim'))]
         report['sources'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
