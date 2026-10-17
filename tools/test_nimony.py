@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import cache_directory
-from native_tests import UNIT_SUITES, unit_source, unit_command
+from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
@@ -772,7 +772,7 @@ def main():
                + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
                + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
                + [ROOT/'tools/native_tests.py', ROOT/'tests/test_native_units_harness.py']
-               + [ROOT/'tests/native/ownership_checks.nim', ROOT/'tests/native/report_codec_driver.nim']
+               + [ROOT/'tests/support/ownership_checks.nim', ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
                + list((ROOT/'tests').glob('guarantees_*.py'))
                + [ROOT/'tests/native/guarantees_driver.nim', ROOT/'tests/native/tickets_driver.nim',
@@ -896,10 +896,18 @@ def main():
     for name in SUITES:
         if name in UNIT_SUITES:
             # Hastur owns compilation, execution and exact expected-output verdicts for migrated code tests.
-            checked = command(unit_command(compiler, name), name+'-hastur')
-            report['suites'].append(dict(name=name, runner='hastur', check=checked,
-                                        passed=checked['exit_code'] == 0))
-            announce(name+' (Hastur)', checked['exit_code'] == 0)
+            checked = command(unit_command(compiler, name), name+'-hastur', unit_environment(compiler, name))
+            row = dict(name=name, runner='hastur', check=checked, passed=checked['exit_code'] == 0)
+            if row['passed'] and name in ARC_SUITES:
+                # Retain exact fresh measurements while Hastur checks platform-independent completion output.
+                try:
+                    report[ARC_SUITES[name]] = unit_evidence(compiler, name)
+                except (OSError, ValueError) as error:
+                    # A missing/malformed observation cannot reuse an old successful ARC report.
+                    row['passed'] = False
+                    row['evidence_error'] = str(error)
+            report['suites'].append(row)
+            announce(name+' (Hastur)', row['passed'])
             continue
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('quic_integration', 'guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
@@ -927,20 +935,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'ownership' and row['passed']:
-                # Retain public live-memory measurements for the isolated five-schema ARC release workload.
-                release = re.search(r'ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Counts refer to live allocator occupancy after warmup, never retained RSS/pages.
-                    report['arc_release'] = dict(cycles=1000, schemas=5, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'report_snapshots' and row['passed']:
-                # Isolated report retain/replace/drop cycles must return public live occupancy to baseline.
-                release = re.search(r'REPORT_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # This is allocator live occupancy, not a general leak-freedom or RSS claim.
-                    report['report_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
             if name == 'guarantees' and row['passed']:
                 # Report children survive parent retirement; all isolated scopes must release their final ARC references.
                 release = re.search(r'GUARANTEE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

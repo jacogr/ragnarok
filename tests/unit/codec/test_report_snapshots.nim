@@ -1,6 +1,7 @@
 ## Report ownership regressions supplement the full independent wire/semantic corpus.
 import std/[assertions, syncio]
-import ../../src/codec/[bounded, composite, work_digest, work_report, report_owned, owned]
+import ../../support/arc_evidence
+import ../../../src/codec/[bounded, composite, work_digest, work_report, report_owned, owned]
 
 # Construct a bounded report with ordered dependencies, authorization and successful/error digests.
 proc capture(marker: byte): OwnedReport =
@@ -104,5 +105,7 @@ let missingHeader = default(ReportHeaderResult)
 assert missingHeader.error == CompositeError.Uninitialized
 let missingResult = default(OwnedResult[OwnedReport])
 assert missingResult.error == OwnershipError.Uninitialized
-echo "REPORT_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Numeric evidence stays outside the platform-independent success marker.
+recordArcRelease("report_snapshots", 1000, beforeRelease, afterRelease)
+echo "REPORT_ARC_RELEASE cycles=1000 unchanged"
 echo "Report snapshots: retained replacements, escaped inputs, copied metadata and atomic errors passed"

@@ -1,5 +1,6 @@
 """Guard native test discovery and the pinned checked profile; application assertions live in Nim."""
 from pathlib import Path
+import json
 import sys
 import tempfile
 import unittest
@@ -68,6 +69,51 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(len(commands), 1)
             self.assertEqual(Path(commands[0][0]), (folder/'hastur').resolve())
             self.assertEqual(commands[0][-1], str(native_tests.UNIT_ROOT))
+
+    # Fresh runs must remove their own old observation while preserving unrelated completed suite data.
+    def test_fresh_arc_observations(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            owner = folder/'ownership.json'
+            report = folder/'report_snapshots.json'
+            owner.write_text('{}')
+            report.write_text('{}')
+            with patch.object(native_tests, 'unit_evidence_directory', return_value=folder):
+                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'ownership', {'KEPT': 'yes'})
+                self.assertFalse(owner.exists())
+                self.assertTrue(report.exists())
+                self.assertEqual(environment['RAGNAROK_TEST_EVIDENCE'], str(folder))
+                self.assertEqual(environment['KEPT'], 'yes')
+                native_tests.unit_environment(Path('/fixture/nimony'))
+                self.assertFalse(report.exists())
+
+    # A successful native verdict cannot substitute missing, partial or malformed numeric evidence.
+    def test_arc_observation_validation(self):
+        valid = dict(cycles=1000, occupied_before=192, occupied_after=192, schemas=5)
+        invalid = [[], {}, {**valid, 'cycles': 999}, {**valid, 'occupied_after': 193},
+                   {**valid, 'occupied_before': '192'}, {**valid, 'schemas': 4},
+                   {**valid, 'occupied_before': True}, {**valid, 'extra': 0}]
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            with patch.object(native_tests, 'unit_evidence_directory', return_value=folder):
+                for observed in invalid:
+                    # Reject every malformed alternative, including booleans that Python otherwise treats as integers.
+                    with self.subTest(observed=observed):
+                        (folder/'ownership.json').write_text(json.dumps(observed))
+                        with self.assertRaises(ValueError):
+                            native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership')
+                (folder/'ownership.json').write_text(json.dumps(valid))
+                self.assertEqual(native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership'), valid)
+                report = {key: value for key, value in valid.items() if key != 'schemas'}
+                (folder/'report_snapshots.json').write_text(json.dumps(report))
+                self.assertEqual(native_tests.unit_evidence(Path('/fixture/nimony'), 'report_snapshots'), report)
+
+    # A file removed before execution must be produced again; a previous green run is not evidence.
+    def test_missing_arc_observation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(native_tests, 'unit_evidence_directory', return_value=Path(temporary)):
+                with self.assertRaises(FileNotFoundError):
+                    native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership')
 
 
 # This Python suite tests launcher safety only; native application tests run through Hastur.

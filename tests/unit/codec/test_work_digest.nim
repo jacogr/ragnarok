@@ -1,5 +1,5 @@
 import std/[assertions, syncio]
-import ../../src/codec/[work_digest, composite, bounded]
+import ../../../src/codec/[work_digest, composite, bounded]
 
 # Default digest results remain failures; zero-filled successful digest values are not substituted.
 let defaultDigestResult = default(DigestResult)

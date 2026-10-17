@@ -293,7 +293,7 @@ def main():
             run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-result-tests"}', '-r', ROOT / 'tests/native/test_result_safety.nim'])
         # Ownership regressions run in both caller build modes; ARC must retain isolated snapshots.
         for mode in ([], ['-d:release']):
-            run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-ownership-tests"}', '-r', ROOT / 'tests/native/test_ownership.nim'])
+            run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-ownership-tests"}', '-r', ROOT / 'tests/unit/codec/test_ownership.nim'])
         # Neither API exposes mutable snapshot storage or accepts an unrelated source pool.
         for language, fixture, needle in (('nim', 'mutable_owner.nim', 'data'), ('nim', 'wrong_owner_pool.nim', 'copyOwnedBlob')):
             command = [language, 'check', *['--mm:arc'], str(ROOT / 'tests/native/compile_fail' / fixture), *[]]

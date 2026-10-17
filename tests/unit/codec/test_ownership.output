@@ -1,0 +1,2 @@
+Nimony ownership: immutable snapshots, retained lifetime, atomic copies and 10000 five-schema fuzz cases passed
+ARC_RELEASE cycles=1000 unchanged

@@ -1,7 +1,7 @@
 ## Trusted local adapter for complete work-digest encoding and decoding.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
-import ./ownership_checks
+import ../support/ownership_checks
 import ../../src/codec/[composite, bounded, work_digest]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.

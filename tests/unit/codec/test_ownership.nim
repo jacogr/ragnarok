@@ -1,7 +1,8 @@
 ## Owned snapshot regressions: mutation, original lifetime, detached copies, typed failures and nested records.
 import std/[assertions, syncio]
-import ../../src/codec/[bounded, composite, work_digest, owned]
-import ./ownership_checks
+import ../../support/arc_evidence
+import ../../../src/codec/[bounded, composite, work_digest, owned]
+import ../../support/ownership_checks
 
 # Return a snapshot made from local stack storage; ARC must retain the copied bytes across this scope.
 proc escaped(): OwnedFrame =
@@ -155,4 +156,6 @@ for trial in 0..<10000:
   if preimages.error == CompositeError.None: checkOwnedPreimages(input, limits, preimages,
       output) # Nested records.
 echo "Nimony ownership: immutable snapshots, retained lifetime, atomic copies and 10000 five-schema fuzz cases passed"
-echo "ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Numeric evidence stays outside the platform-independent success marker.
+recordArcRelease("ownership", 1000, beforeRelease, afterRelease, schemas = 5)
+echo "ARC_RELEASE cycles=1000 unchanged"

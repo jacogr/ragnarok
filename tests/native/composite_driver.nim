@@ -1,7 +1,7 @@
 ## Trusted local adapters for optional/work variants and complete nested preimages.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
-import ./ownership_checks
+import ../support/ownership_checks
 import ../../src/codec/[composite, bounded]
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.

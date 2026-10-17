@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import ROOT, installed, host_pins, verify_identity, verify_version
-from native_tests import unit_command
+from native_tests import unit_command, unit_environment, unit_evidence, ARC_SUITES
 
 
 # Keep CI's independent runtime/module jobs and the complete local run on one explicit command plan.
@@ -58,10 +58,17 @@ def main():
     parser.add_argument('--compiler', type=Path)
     args = parser.parse_args()
     compiler, selected = environment(args.compiler)
+    if args.suite == 'unit':
+        # Prepare fresh numeric observations for native snapshot tests before the directory run.
+        selected = unit_environment(compiler, base=selected)
     for arguments in plan(args.suite, compiler):
         # Structured arguments avoid shell interpretation; output remains visible in the normal local/CI transcript.
         print('+ '+' '.join(arguments), flush=True)
         subprocess.run(arguments, cwd=ROOT, env=selected, check=True)
+    if args.suite == 'unit':
+        # Record/report live occupancy without baking platform-specific heap sizes into goldens.
+        for name in ARC_SUITES:
+            print('ARC '+name+': '+json.dumps(unit_evidence(compiler, name), sort_keys=True), flush=True)
     print('PASS supported Nimony verification: '+args.suite, flush=True)
 
 

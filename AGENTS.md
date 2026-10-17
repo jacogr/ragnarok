@@ -109,8 +109,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 
 ## Layout
 - `src/`: Nim modules grouped under `codec/`, `crypto/`, `bandersnatch/` and `quic/`.
-- `tests/unit/`: native Nim application tests; `tests/native/`: drivers, remaining selftests and
-  negative fixtures. `tests/` also retains independent Python references and orchestration.
+- `tests/unit/`: native Nim application tests; `tests/support/`: shared test assertions/evidence.
+  `tests/native/`: drivers, remaining selftests and negative fixtures. `tests/` also retains
+  independent Python references and orchestration.
 - `native/`: maintained C/Rust primitive and transport bridges.
 - `spec/`, `vectors/`, `vendor/`: protocol interpretation, project fixtures and pinned upstreams.
 - `tools/`: reproducible setup and formatting. `docs/`: current architecture and development guides.

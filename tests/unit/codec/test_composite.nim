@@ -1,5 +1,5 @@
 import std/[assertions, syncio]
-import ../../src/codec/[composite, bounded]
+import ../../../src/codec/[composite, bounded]
 
 # Explicit source constructors retain optional/work wire defaults and return copied descriptors.
 proc checkSources() =
