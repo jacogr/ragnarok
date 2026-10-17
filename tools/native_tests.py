@@ -60,6 +60,15 @@ def unit_source(name):
     return (STATE_ROOT if name in UNIT_LINKS else UNIT_ROOT)/('test_'+name+'.nim')
 
 
+# Bound codec workers explicitly; callers can request a serial control without changing test semantics.
+def unit_jobs():
+    raw = os.environ.get('HASTUR_JOBS', '2')
+    if raw not in ('1', '2', '3', '4'):
+        # Reject auto/unbounded values rather than unexpectedly oversubscribing a CI runner.
+        raise ValueError('HASTUR_JOBS must be an integer from 1 to 4')
+    return int(raw)
+
+
 # Assemble a native runner invocation; Python supplies paths/flags, never test assertions or verdict parsing.
 def unit_command(compiler, name=None, libraries=None):
     compiler = Path(compiler).resolve()
@@ -112,6 +121,7 @@ def unit_command(compiler, name=None, libraries=None):
     # Isolated processes preserve each test's initialization/lifetime scope and keep generated drivers out of source.
     return [str(runner), '--bindir:'+str(compiler.parent),
             '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', 'unit-'+name if name in UNIT_LINKS else 'unit')),
+            '--jobs:'+str(unit_jobs() if name is None else 1),
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
 
 

@@ -41,6 +41,22 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(target, name)
             self.assertIn(name, native_tests.UNIT_LINKS)
 
+    # Worker limits affect only directory discovery; linked and networking cases stay serial.
+    def test_bounded_codec_workers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder/'hastur').touch()
+            for jobs in ('1', '2', '3', '4'):
+                # A serial override and bounded larger values must reach the pinned runner unchanged.
+                with self.subTest(jobs=jobs), patch.dict(native_tests.os.environ, {'HASTUR_JOBS': jobs}):
+                    self.assertIn('--jobs:'+jobs, native_tests.unit_command(folder/'nimony'))
+                    self.assertIn('--jobs:1', native_tests.unit_command(folder/'nimony', 'quic_io'))
+            for invalid in ('0', '-1', 'auto', '5', 'two'):
+                # Invalid limits cannot silently become an unbounded or empty test pool.
+                with self.subTest(jobs=invalid), patch.dict(native_tests.os.environ, {'HASTUR_JOBS': invalid}):
+                    with self.assertRaisesRegex(ValueError, 'HASTUR_JOBS'):
+                        native_tests.unit_command(folder/'nimony')
+
     # An absent archive runner cannot fall back to an unrelated executable on PATH.
     def test_missing_pinned_runner(self):
         with tempfile.TemporaryDirectory() as temporary:

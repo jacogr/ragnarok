@@ -55,6 +55,11 @@ keys and generated data remain under ignored `build/`. Python supplies setup, pa
 flags; Hastur owns application test verdicts. Direct Hastur use must retain those exact flags and
 fixture environment paths.
 
+Codec directory runs use Hastur `--jobs:2` by default, with private compiler caches per worker
+and `--joined:off` preserving separate test processes. Override with `make check HASTUR_JOBS=1`
+for a serial control; accepted limits are 1–4. The same setting applies to `make unit`.
+Linked state/crypto suites, QUIC suites and later process/resource scenarios remain serial.
+
 Both entry points group the 21 dependency-free codec suites into one directory invocation.
 The remaining 38 suites retain their separate library/runtime profiles. Cumulative evidence keeps
 all 59 suite identities and per-suite ARC observations; a failed group marks every member failed
