@@ -118,3 +118,24 @@ M1's C.1/C.2 framing baseline remains covered; complete state serialization rema
 planned bounded chunk: **whole-state composition/root evidence and parity review**; chapter 10 now has its
 [availability-state codec](state-availability.md). The [M1 parity checklist](../docs/m1.md)
 tracks remaining chapters, service entries and whole-state composition/root evidence.
+
+## Experimental Nimony branch
+
+The [Nimony trial](../docs/nimony-trial.md) verifies the unchanged 1,985 independent requests and
+six literal reference checks with private `HistoryResult[T]` status/payload and checked success-only
+accessors. Snapshot storage is explicitly nullable and checked through stable retained locals.
+`HistoryPeak` uses closed `absentHistoryPeak()` / `presentHistoryPeak(hash)` factories, read-only
+presence and a hash getter requiring presence. Default absence, present-zero and trailing holes
+retain their original wire forms. Source/extracted peak editing replaces the complete alternative.
+
+Two native suites cover retained/replaced histories, dictionary association, fixed metadata/pair/
+peak copies, empty states, late rejection and host-arithmetic boundaries. Sixty-three isolated
+runtime cases require the exact result or peak contract; nineteen privacy/read-only and two nominal
+probes fail compilation. A separate statically known absent hash read also fails compilation with
+`contract violated: peak.isPresent`, independently of runtime guards. The warmed 1,000-cycle
+ownership workload returns live occupancy 192 → 192 bytes locally on macOS ARM64, checked
+ARC/Clang LTO; this does not establish general leak freedom or Linux parity.
+
+Use `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on the trial
+branch. The historical Nim 2 commands above describe the main-branch baseline. Linux and full
+M1/M2/M3 runtime parity remain separate migration gates.

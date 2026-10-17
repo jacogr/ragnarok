@@ -24,6 +24,8 @@ not run upstream install scripts. JAM vectors use a sparse checkout of `codec` a
 unrelated large trace sets are not materialized. Nested native dependencies retain their parents'
 recorded revisions.
 
+The active compiler/formatter archives are pinned in `spec/toolchain.json`; older compiler fields
+in protocol/fixture pins record historical test provenance, not a second supported target.
 JSON pins under `spec/` retain source identities, interpretation and vector/SRS hashes. Cargo.lock
 pins transitive registry versions/checksums; builds use locked offline dependencies after explicit
 provisioning. `--fetch` initializes required submodules and permits missing locked Cargo packages

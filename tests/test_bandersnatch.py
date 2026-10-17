@@ -73,11 +73,12 @@ def official_sources(fetch):
         assert expected==reduced, local
 
 
-# Build the reviewed locked Cargo closure and both checked debug/release wrappers against exactly one Rust library.
-def build(fetch):
+# Build/test the reviewed locked Cargo closure independently of a language-driver compiler.
+def build_native(fetch):
+    # Every caller, including the Nimony runner on a clean checkout, needs the native log/target directory.
+    BUILD.mkdir(parents=True, exist_ok=True)
     assert subprocess.check_output(['rustc','--version'],text=True).startswith('rustc '+PINS['rust']+' ')
     assert subprocess.check_output(['cargo','--version'],text=True).startswith('cargo '+PINS['rust']+' ')
-    assert PINS['nim'] in subprocess.check_output(['nim','--version'],text=True)
     manifest = ROOT / 'native/bandersnatch/Cargo.toml'
     system = platform.system()
     assert system in ('Darwin','Linux')
@@ -93,6 +94,14 @@ def build(fetch):
         run(['cargo','fmt','--manifest-path',manifest,'--','--check'],log)
         run(['cargo','test','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
         run(['cargo','build','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
+    return library
+
+
+# Historical driver entry point reuses the maintained native build; the Nimony runner supplies its own checked adapter builds.
+def build(fetch):
+    assert PINS['nim'] in subprocess.check_output(['nim','--version'],text=True)
+    library = build_native(fetch)
+    with (BUILD/'build.log').open('a') as log:
         # Do not disable union/variant checks in either optimized build.
         for mode in ('debug','release'):
             run(['nim','c','--mm:arc','--cc:clang','--skipParentCfg','--skipUserCfg',
@@ -122,13 +131,16 @@ def rejected(value):
 
 
 # Verify public vectors, owned lifetimes, context separation and independent official tiny/full JAM tickets.
-def suite(binary):
+def suite(binary, query=query, failure_probe=None):
     assert query(binary,'O')=='ok'
     assert query(binary,'T')=='ok'
-    failed = subprocess.run([str(binary),'F'],capture_output=True,text=True)
-    diagnostic = failed.stdout+failed.stderr
-    assert failed.returncode!=0
-    assert 'FieldDefect' in diagnostic
+    # The caller can retain the exact contract failure alongside the ordinary query transcript.
+    if failure_probe is None:
+        failed = subprocess.run([str(binary),'F'],capture_output=True,text=True,timeout=30)
+        code, diagnostic = failed.returncode, failed.stdout+failed.stderr
+    else:
+        code, diagnostic = failure_probe(binary)
+    assert code == 1 and '[AssertionDefect]' in diagnostic and 'value.status == None' in diagnostic
     ietf = json.loads(fixture_path('ietf.json').read_text())
     rings = json.loads(fixture_path('ring.json').read_text())
     # Ordinary contextual signatures must reproduce every published field exactly, not just verify themselves.
@@ -172,7 +184,7 @@ def suite(binary):
     rejected(query(binary,'G',8,octets(v['sk']),0,members,b'',b''))
     rejected(query(binary,'R',1,members))
     rejected(query(binary,'R',8,members[:-1]))
-    # Invalid encoded members are replaced by the specified padding point independently by both wrappers.
+    # Invalid encoded members are replaced by the specified padding point by the maintained wrapper.
     padding = bytes.fromhex('92ca79e61dd90c1573a8693f199bf6e1e86835cc715cdcf93f5ef222560023aa')
     altered = bytes([255])*32+members[32:]
     padded = padding+members[32:]
@@ -185,9 +197,8 @@ def suite(binary):
             'ownership':'passed','native_threads':4,'rounds_per_thread':32,'checked_failure':'passed'}
 
 
-# Cross-check proof creation and output/context binding with the two language owners over the same backend.
-def generated_proofs():
-    binary = BUILD/'nim-release'
+# Cross-check proof creation and contextual output extraction through the supplied native owner.
+def generated_proofs(binary, query=query):
     value = json.loads(fixture_path('ring.json').read_text())[0]
     members, secret, root = octets(value['ring_pks']), octets(value['sk']), octets(value['ring_pks_com'])
     proof = octets(query(binary,'G',8,secret,3,members,b'',b''))
@@ -224,15 +235,19 @@ def bridge_checks():
             assert lib.bs_ring_verify(None,None,None,width,None,0,None,0,output)==1
     assert bytes(output)==bytes([0xa5])*32
     owner=p();assert lib.bs_setup_new(8,ctypes.byref(owner))==0
-    v = json.loads(fixture_path('ring.json').read_text())[0];proof = ring_proof(v);root = octets(v['ring_pks_com'])
-    rng = random.Random(784)
-    for _ in range(64):
-        mutated = bytearray(proof);index = rng.randrange(len(mutated));mutated[index]^=1<<rng.randrange(8)
-        status = lib.bs_ring_verify(owner,root,bytes(mutated),784,None,0,None,0,output)
-        assert status not in (0,6),status
-        assert bytes(output)==bytes([0xa5])*32
-    assert lib.bs_ring_verify(owner,root,proof,784,None,65537,None,0,output)==1
-    lib.bs_setup_free(owner)
+    try:
+        # A malformed proof must leave the caller output untouched on every rejection.
+        v = json.loads(fixture_path('ring.json').read_text())[0];proof = ring_proof(v);root = octets(v['ring_pks_com'])
+        rng = random.Random(784)
+        for _ in range(64):
+            mutated = bytearray(proof);index = rng.randrange(len(mutated));mutated[index]^=1<<rng.randrange(8)
+            status = lib.bs_ring_verify(owner,root,bytes(mutated),784,None,0,None,0,output)
+            assert status not in (0,6),status
+            assert bytes(output)==bytes([0xa5])*32
+        assert lib.bs_ring_verify(owner,root,proof,784,None,65537,None,0,output)==1
+    finally:
+        # Release the native SRS owner even if an ABI assertion discovers a regression.
+        lib.bs_setup_free(owner)
     return {'ordinary_wrong_widths':99,'ring_wrong_widths':785,'mutated_ring_proofs':64}
 
 
@@ -265,7 +280,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         records=dict(zip(names,pool.map(suite,[BUILD/name for name in names])))
     summary={'reference_version':'0.2.2','draft_text_parity':PINS['parity_gate']['status'],'status':'passed','platform':platform.platform(),'suite':PINS['suite'],'suites':records,
-             'generated_proofs':generated_proofs(),'abi_checks':bridge_checks(),'negative_type_probes':3,'source_patches':[]}
+             'generated_proofs':generated_proofs(BUILD/'nim-release'),'abi_checks':bridge_checks(),'negative_type_probes':3,'source_patches':[]}
     (BUILD/'results.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary,indent=2))
 
 

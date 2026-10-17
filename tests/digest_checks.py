@@ -90,6 +90,21 @@ def verify_digest(build, nim_flags, run, encode, decode):
             assert 'type mismatch' in result.stderr or 'Cannot assign value' in result.stderr, result.stderr
     drivers = [build / 'nim-digest-driver']
     run(['nim', 'c', *nim_flags, f'--out:{drivers[0]}', ROOT / 'tests/native/digest_driver.nim'])
+    requests, expected, official = batch_requests(encode, decode)
+    request_file = build / 'digest-requests.txt'
+    request_file.write_text('\n'.join(requests) + '\n')
+    # Require both implementations to match independent expected results for every request.
+    for driver in codec_commands(build, drivers, 'digest'):
+        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
+        assert len(output) == len(expected), (driver, len(output), len(expected))
+        for index, (actual, wanted) in enumerate(zip(output, expected)):
+            assert actual == wanted, (driver, index, requests[index], actual, wanted)
+    print(f'PASS work digest: {len(requests)} independent Nim requests; '
+          f'{official} complete official work-digest checks; 3 negative compilation checks', flush=True)
+
+
+# Construct the unchanged independent corpus without building or executing a native adapter.
+def batch_requests(encode, decode):
     requests, expected = [], []
 
     # Encode all fields using explicit limits and destination capacities in the native test protocol.
@@ -176,13 +191,4 @@ def verify_digest(build, nim_flags, run, encode, decode):
     # Reproducible arbitrary buffers reach both short-prefix guards and deeper suffix parsing.
     for _ in range(5000):
         add_decode(rng.randbytes(rng.randrange(161)), rng.choice((0, 3, 64, 2**64 - 1)))
-    request_file = build / 'digest-requests.txt'
-    request_file.write_text('\n'.join(requests) + '\n')
-    # Require both implementations to match independent expected results for every request.
-    for driver in codec_commands(build, drivers, 'digest'):
-        output = run([*driver, request_file], capture_output=True).stdout.splitlines()
-        assert len(output) == len(expected), (driver, len(output), len(expected))
-        for index, (actual, wanted) in enumerate(zip(output, expected)):
-            assert actual == wanted, (driver, index, requests[index], actual, wanted)
-    print(f'PASS work digest: {len(requests)} independent Nim requests; '
-          f'{official} complete official work-digest checks; 3 negative compilation checks', flush=True)
+    return requests, expected, official

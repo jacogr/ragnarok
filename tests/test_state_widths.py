@@ -5,33 +5,14 @@ import json
 import platform
 import subprocess
 from dependencies import codec_sources
-from state_composition_oracle import chapters, capture, PROFILE, POLICY
-from state_widths_oracle import privilege_binaries, trace_values
-from state_layout_oracle import token
+from state_widths_oracle import requests
 from test_support import ROOT, nim_command
 
 
 # Pinned originals supply expectations before compilation; complete matches still retain the explicit gas-policy gate.
 def main():
     codec_sources()
-    binaries, traces = privilege_binaries(), trace_values()
-    lines = ['B '+' '.join(map(str, PROFILE))+' '+' '.join(token(v) for v in chapters())]
-    expected = ['selftest']
-    records = []
-    # Each exact-capture request records its identity and current decoder's complete-entry verdict.
-    def add(chapter, raw, profile, identity):
-        wanted = capture(chapter, raw, profile)
-        lines.append('C '+' '.join(map(str, (*profile, *POLICY, chapter)))+' '+token(raw))
-        expected.append(wanted)
-        records.append(dict(**identity, chapter=chapter, current_expected=wanted))
-    # Nonempty binaries are explicitly STF fields, not original Merkle-trie T12 values.
-    for raw, evidence in binaries:
-        profile = (2, 6, 6, 12) if '/tiny/' in evidence['path'] else (341, 1023, 1023, 600)
-        add(12, raw, profile, dict(path=evidence['path']+'.bin', phase='pre_state'))
-    # Both chapters are observed at exact original value extents, without replacing any wire field.
-    for privilege, activity, evidence in traces:
-        for chapter, raw in ((12, privilege), (13, activity)):
-            add(chapter, raw, (2, 6, 6, 12), dict(path=evidence['path'], phase=evidence['phase']))
+    lines, expected, records, binaries, traces = requests()
     folder = ROOT/'build/state-widths'
     folder.mkdir(parents=True, exist_ok=True)
     path = folder/'requests.txt'

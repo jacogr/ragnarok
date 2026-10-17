@@ -2,7 +2,7 @@
 
 `src/quic/transport.nim` maintains a narrow adapter over pristine pinned LSQUIC/BoringSSL through
 `native/quic/`. Nim owns identity, DER/certificate observations, ALPN/framing and CE 143 policy.
-One selector dispatcher handles nonblocking UDP, bounded transport batches and application deadlines.
+One bounded POSIX readiness dispatcher handles nonblocking UDP, bounded transport batches and application deadlines.
 Callbacks borrow stable owners synchronously; no thread is created per connection or stream.
 
 The retained peer executable in `src/quic/peer.nim` supports controlled authenticated exchanges,
@@ -23,3 +23,16 @@ Port release/native bind is not descriptor inheritance, so unrelated processes r
 See [development commands](development.md). General validator-set management, multi-target dialing,
 independent JAM-stack interoperability, production sizing and full protocol/state coverage remain open.
 Pinned networking source is recorded in `spec/quic-proof-pins.json` and `vendor/jam-np`.
+
+## Compiler and verification
+
+The supported Nimony implementation uses `src/quic/io.nim` for nonblocking UDP and a synchronous
+poll dispatcher capped at two sockets and ten milliseconds. Non-copyable endpoint owners
+unregister before close; private session owners remain stable through native teardown. The enabled
+proof pool uses public raw threads, exactly two workers and four owned slots, guarded completion
+access, monotonic generations and joined shutdown. No compiler or upstream dependency is patched.
+
+`python3 tools/test.py` runs the original identity/framing matrix, retained service/integration,
+IPv6 mesh/reconnect, peer-loss and admission recovery, forty-session endpoint soak and ten-wave
+actual-Rust offload workload. Finite resource budgets and fixed thread counts remain enforced.
+See [the cumulative compiler record](nimony-trial.md) for exact local evidence and Linux status.

@@ -32,3 +32,29 @@ complete truncations, overlong/huge counts, exact/short capacities, alias reject
 unused-output sentinels and deterministic structured/random inputs. Two nominal compiler probes
 reject raw attempts and proof/attempt swaps. Run `python3 tests/test_tickets.py` and
 `python3 tests/test_tickets_harness.py`. Optimized native tests keep ARC/Clang LTO and all guards.
+
+## Nimony port verification
+
+The pinned nightly port keeps result status/payload private, exposes read-only `error` and guards
+`written`/`count`/`consumed` with success preconditions. Default results remain Uninitialized.
+Local proof arrays are explicitly initialized; every attempt remains exactly E1 and every proof
+remains 784 opaque bytes. The production paths retain their allocation-free, atomic behavior.
+
+`tools/test_nimony.py` checks all 22,939 original independent requests, six additional unsigned
+limit boundary cases and 22,654 direct inspections: **45,599 comparisons**. Inspection expectations
+use the independent decoder with capacity above the maximum count representable by the actual
+input length; inspection itself allocates no records. Every original/new decode input is included.
+Published tiny/full pairs retain their pinned hashes, and every possible attempt byte is observed.
+
+The adapter mutates successful caller inputs before printing decoded fields and checks nonzero
+sentinels throughout failed/unused typed output. Native tests preserve short-output atomicity,
+source independence and encoder/decoder overlap rejection, adding a typed destination entirely
+inside trailing input. Trusted alias fixtures use writable fixed array views within real storage.
+Ten runtime misuse checks reject default/failed progress access across all three APIs; twelve
+compilation checks reject private-state access, retagging, raw success construction and property
+assignment. Two existing nominal checks reject raw attempts and proof/attempt swaps.
+
+Commands, toolchain metadata, source/corpus hashes and exact diagnostics are recorded in ignored
+`build/nimony-trial/verification/results.json` and adjacent logs. Local macOS ARM64 checked ARC/
+Clang LTO conformance does not establish Linux, RingVRF verification or Safrole eligibility parity;
+see [the trial](../docs/nimony-trial.md).

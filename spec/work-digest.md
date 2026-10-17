@@ -39,3 +39,17 @@ Public functions are `encodeDigestBorrowed` and `decodeDigestBorrowed` /
 
 See [the Nim codec guide](../docs/codec.md) and source modules under `src/codec/`.
 Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.
+
+### Nimony digest-result safety
+
+On `nimony`, `DigestResult` hides its status and success fields. The read-only reason is always
+available; `value` and `consumed` require successful decoding. Failed/default results cannot
+publish default hashes, service identity, nested work output or partial progress. Default remains
+`CompositeError.Uninitialized`. The complete digest is returned by value.
+
+Nested work-output spans are also private and returned by value. After decoding the work subframe,
+the digest decoder rebuilds Success with the proved original-input offset rather than modifying
+a copied accessor result. Source constructors and sibling write-result builders are documented in
+[the composite contract](composite.md). Successful wire bytes, original-input span coordinates,
+borrowed lifetimes and whole-tuple failure atomicity remain unchanged. Native tests verify copied
+value independence, default reasons, invalid result access and the existing boundary/fuzz corpus.

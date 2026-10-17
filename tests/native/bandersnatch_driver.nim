@@ -1,6 +1,7 @@
 ## Trusted fixture adapter: no production secrets
 # exact widths enter the typed primitive APIs.
-import std/[os, strutils]
+import std/[assertions, cmdline, strutils, syncio, rawthreads]
+import ./batch_support
 import ../../src/bandersnatch/bandersnatch
 
 # Decode public fixture hex
@@ -8,90 +9,102 @@ import ../../src/bandersnatch/bandersnatch
 proc bytes(text: string): seq[byte] =
   # Empty fixtures have no first byte to address.
   if text == "-": return @[]
-  doAssert text.len mod 2 == 0
+  assert text.len mod 2 == 0
+  result = @[]
   # Copy complete byte pairs, with no integer narrowing of a full encoded field.
-  for i in countup(0, text.len-1, 2): result.add byte(parseHexInt(text[i..i+1]))
+  for i in countup(0, text.len-1, 2): result.add octet(text[i..i+1])
+# Display exact completed bytes, with no output shortened to a round-trip-only commitment.
+proc emit(raw: openArray[byte]) =
+  var text = ""
+  # Every public byte is rendered in canonical lowercase hexadecimal.
+  for b in raw: text.add(toHex(int(b), 2).toLowerAscii())
+  echo text
 # Encode only a successfully selected owned fixed result.
 proc output[T](value: BsResult[T]) =
   # Failed imports/equations carry no default proof/hash to print.
   if value.error != BsError.None:
     echo "error:", ord(value.error)
     return
+  # Each nominal proof role exposes only its complete fixed representation.
   when T is BsSignature:
-    let raw = array[96, byte](value.value) # Ordinary historical proof bundle.
+    emit(array[96, byte](value.value)) # Ordinary complete proof bundle.
   elif T is BsRingProof:
-    let raw = array[784, byte](value.value) # Complete anonymous proof bundle.
+    emit(array[784, byte](value.value)) # Complete anonymous proof bundle.
   elif T is BsRingRoot:
-    let raw = array[144, byte](value.value) # Root retains every compressed commitment byte.
+    emit(array[144, byte](value.value)) # Every compressed root byte remains visible.
   else:
-    let raw = array[32, byte](value.value) # Public keys and verified outputs each own 32 bytes.
-  var text = ""
-  # Hex printing operates only on completed public bytes.
-  for b in raw: text.add toHex(b, 2).toLowerAscii
-  echo text
+    emit(array[32, byte](value.value)) # Public encodings and verified hashes retain all fixed bytes.
 # Prove retained-key scope, input-copy stability, checked defaults and alias invalidation under ARC.
 proc ownership() =
-  var empty: BsKey
-  doAssert publicKey(empty).error == BsError.InvalidOwner
-  var key: BsKey
+  var empty = default(BsKey)
+  assert publicKey(empty).error == BsError.InvalidOwner
+  var key = default(BsKey)
   block:
-    var scalar: array[32, byte]
+    var scalar = default(array[32, byte])
     scalar[0] = 1
     let imported = importScalar(scalar)
-    doAssert imported.error == BsError.None
+    assert imported.error == BsError.None
     key = imported.value
     let before = publicKey(key)
     scalar[0] = 2
-    doAssert array[32, byte](before.value) == array[32, byte](publicKey(key).value)
+    assert array[32, byte](before.value) == array[32, byte](publicKey(key).value)
   let alias = key
   let sig = sign(alias, [], [])
-  doAssert sig.error == BsError.None
+  assert sig.error == BsError.None
   let pub = publicKey(alias)
-  doAssert verify(pub.value, sig.value, [], []).error == BsError.None
+  assert verify(pub.value, sig.value, [], []).error == BsError.None
   close(key)
-  doAssert publicKey(alias).error == BsError.InvalidOwner
-  doAssert sign(alias, [], []).error == BsError.InvalidOwner
+  assert publicKey(alias).error == BsError.InvalidOwner
+  assert sign(alias, [], []).error == BsError.InvalidOwner
   close(alias)
-  var setup: BsSetup
+  var setup = default(BsSetup)
   block:
     let imported = newSetup(8)
-    doAssert imported.error == BsError.None
+    assert imported.error == BsError.None
     setup = imported.value
   let other = setup
   close(setup)
-  var member: array[32, byte]
-  doAssert commitRing(other, member).error == BsError.InvalidOwner
+  var member = default(array[32, byte])
+  assert commitRing(other, member).error == BsError.InvalidOwner
   close(other)
   # Exact range guards precede native domain arithmetic.
-  for size in [-1, 0, 1024]: doAssert newSetup(size).error == BsError.InvalidLength
-  var initial: BsResult[BsOutput]
-  doAssert initial.error == BsError.Uninitialized
+  for size in [-1, 0, 1024]: assert newSetup(size).error == BsError.InvalidLength
+  var initial = default(BsResult[BsOutput])
+  assert initial.error == BsError.Uninitialized
   echo "ok"
 # Exercise Rust-backed signing concurrently without sharing retained scalar owners between workers.
-proc worker(id: int) {.thread.} =
-  var scalar: array[32, byte]
+proc worker(argument: pointer) {.nimcall.} =
+  let id = cast[ptr int](argument)[] # Borrowed identity storage remains alive until this worker is joined.
+  var scalar = default(array[32, byte])
   scalar[0] = byte(id+1)
   let key = importScalar(scalar)
-  doAssert key.error == BsError.None
+  assert key.error == BsError.None
   defer: close(key.value)
   let pub = publicKey(key.value)
   # Fresh proof state is local to every call and worker.
   for round in 0..<32:
     let sig = sign(key.value, scalar, [])
-    doAssert sig.error == BsError.None
-    doAssert verify(pub.value, sig.value, scalar, []).error == BsError.None
+    assert sig.error == BsError.None
+    assert verify(pub.value, sig.value, scalar, []).error == BsError.None
 # Join all OS workers before releasing their native/ARC lifetime state.
-proc concurrent() =
-  var threads: array[4, Thread[int]]
-  # Each worker receives only a fixture identity, not another thread's secret handle.
-  for i in 0..<4: createThread(threads[i], worker, i)
-  joinThreads(threads)
+proc concurrent() {.raises.} =
+  var threads {.noinit.}: array[4, RawThread]
+  var identities = [0, 1, 2, 3]
+  var started = 0
+  try:
+    # Fixed thread records and argument slots remain stationary until every worker has stopped.
+    for i in 0..<4:
+      create(threads[i], worker, addr identities[i])
+      inc started
+  finally:
+    # Even partial thread creation must join the workers that already borrowed caller storage.
+    for i in 0..<started: join(threads[i])
   echo "ok"
 # Dispatch one trusted command
 # every owner has a scoped release and every failed import has no value.
-proc main() =
+proc main() {.raises.} =
   let a = commandLineParams()
-  doAssert a.len >= 1
+  assert a.len >= 1
   # Dedicated lifetime/concurrency probes need no payload arguments.
   if a[0] == "O":
     ownership()
@@ -100,9 +113,10 @@ proc main() =
   if a[0] == "T":
     concurrent()
     return
+  # A failed result must reject value selection before any default output is visible.
   if a[0] == "F":
-    var failed: BsResult[BsOutput]
-    echo array[32, byte](failed.value) # Checked failed-result selection must trap.
+    var failed = default(BsResult[BsOutput])
+    echo array[32, byte](failed.value)[0] # Checked failed-result selection must trap.
     return
   case a[0]
   # Derivation/signing start only after canonical private scalar import.
@@ -134,7 +148,7 @@ proc main() =
     output(verify(pub.value, sig.value, bytes(a[3]), bytes(a[4])))
   # Root commitment, proving and verification all select one explicit SRS/domain capacity.
   of "R", "G", "W":
-    let setup = newSetup(parseInt(a[1]))
+    let setup = newSetup(integer(a[1]))
     # Wrong capacities create no owner.
     if setup.error != BsError.None:
       echo "error:", ord(setup.error)
@@ -162,8 +176,12 @@ proc main() =
         echo "error:", ord(key.error)
         return
       defer: close(key.value)
-      output(signRing(setup.value, key.value, parseInt(a[3]), bytes(a[4]), bytes(a[5]), bytes(a[6])))
+      output(signRing(setup.value, key.value, integer(a[3]), bytes(a[4]), bytes(a[5]), bytes(a[6])))
   # Unknown commands identify a trusted harness mistake.
   else:
     quit(1)
-main()
+try:
+  main()
+except:
+  # Trusted fixture I/O/thread setup failure must fail separately from a typed proof rejection.
+  quit(2)

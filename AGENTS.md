@@ -42,14 +42,29 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Validate all untrusted sizes, offsets, counts, conversions and arithmetic before access or allocation.
   Malformed input returns typed failure rather than crashing or silently truncating.
 - Use tagged results. Failed/default alternatives carry only their reason, never values or progress.
-  Check/select success before reading fields. Preserve Nim variant field guards.
+  Check/select success before reading fields. On the Nimony port, hide result discriminators and
+  payloads behind read-only accessors with success preconditions; raw variant fields are not guarded.
+  Roll this out in tested groups; unported public results remain explicit migration gates.
+- Give composite native/thread owners their own explicit non-copyable contracts and lowering
+  probes; membership in a non-copyable field alone is not sufficient evidence. Keep worker-pool
+  addresses stable until join.
 - Release native resources on every exit/cancellation path. Never export mutable snapshot storage.
-- Preserve assertions, bounds, range, field and overflow checks in optimized builds. Use ARC/Clang
-  LTO for checked optimized builds; profile before changing algorithms for performance.
+- Preserve assertions, bounds checks and explicit protocol range/overflow validation in optimized
+  builds. Nimony arithmetic intentionally wraps; do not emulate Nim 2 overflow exceptions or treat
+  wrapping as a compiler failure. Prove/check sizes before additions, multiplication and narrowing.
+  Guard result access with supported contracts. Use ARC/Clang LTO and profile before optimization.
+  Initialize every local scalar/pointer explicitly on Nimony; do not assume Nim 2 zero initialization.
+  The pinned nightly accepted uninitialized boolean flags and a callback lookup pointer in the peer;
+  successful compilation does not prove initialization safety for every scalar kind. See the trial.
 - The exceptional-point Ed25519 acceptance policy is unresolved. Preserve actual backend verdicts
   and document the remaining gate; do not tune acceptance to make a corpus pass.
 
 ## Working style
+- Use the pinned Nimony compiler/formatter from `python3 tools/setup_nimony.py`; run supported
+  verification with `python3 tools/test.py`. CI uses the same installer/command plan. Nim 2 is a
+  historical measurement control, never a second production target. Keep compiler and dependency
+  sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
+  Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
   review. Preserve its evidence, pending test and current codec behavior. Revisit during that
   specification upgrade or on an explicit maintainer request; do not invent interim restrictions.

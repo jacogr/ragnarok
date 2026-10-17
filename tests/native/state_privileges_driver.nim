@@ -1,40 +1,54 @@
 ## Trusted field transport for independently authored chapter-12 source and wire requests.
-import std/[os, strutils]
+import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_privileges, state_trie, bounded]
 
 ## Preserve empty malformed input without adding a byte to the protocol stream.
 proc unhex(text: string): seq[byte] =
   if text == "-": return @[] # Trusted empty token is distinct from encoded zero.
-  doAssert text.len mod 2 == 0
+  assert text.len mod 2 == 0
   result = newSeq[byte](text.len div 2)
   # Parse each independently supplied byte, including leading zeroes.
-  for i in 0..<result.len: result[i] = byte(parseHexInt(text[2*i..2*i+1]))
+  for i in 0..<result.len:
+    let pair = text[2*i..2*i+1]
+    # The trusted transport supplies exactly two lowercase hex digits per byte.
+    for c in pair: assert c in {'0'..'9', 'a'..'f'}
+    var octet: byte = 0
+    assert parseHex(pair, octet) == 2
+    result[i] = octet
 
 ## Observe all entry bytes directly rather than deriving expected values with a production decoder.
 proc hex(bytes: openArray[byte]): string =
   if bytes.len == 0: return "-" # Whitespace transport retains empty observations.
+  result = ""
   # Hex output preserves exact little-endian and natural field framing.
-  for b in bytes: result.add(toHex(b, 2).toLowerAscii())
+  for b in bytes: result.add(toHex(int(b), 2).toLowerAscii())
+
+## Parse complete trusted decimal tokens without throwing or depending on convenience overloads.
+proc unsigned(text: string): uint64 =
+  var number: uint64 = 0
+  assert text.len > 0 and parseBiggestUInt(text, number) == text.len
+  number
 
 ## Construct typed values directly from decimal field transport; no production wire decoding builds sources.
 proc source(parts: seq[string]): PrivilegeState =
-  result.manager = ServiceIndex(parseBiggestUInt(parts[4]))
-  result.delegator = ServiceIndex(parseBiggestUInt(parts[5]))
-  result.registrar = ServiceIndex(parseBiggestUInt(parts[6]))
+  result = default(PrivilegeState)
+  result.manager = ServiceIndex(unsigned(parts[4]))
+  result.delegator = ServiceIndex(unsigned(parts[5]))
+  result.registrar = ServiceIndex(unsigned(parts[6]))
   if parts[7] != "-":
     # Preserve core-position order and duplicate service IDs across cores.
-    for text in parts[7].split(','): result.assigners.add(ServiceIndex(parseBiggestUInt(text)))
+    for text in parts[7].split(','): result.assigners.add(ServiceIndex(unsigned(text)))
   if parts[8] != "-":
     # Preserve hostile dictionary order/duplicates for source rejection checks.
     for text in parts[8].split(','):
       let pair = text.split(':')
-      result.always.add(AlwaysAccumulate(service: ServiceIndex(parseBiggestUInt(pair[0])),
-        gas: PrivilegeGas(parseBiggestUInt(pair[1]))))
+      result.always.add(AlwaysAccumulate(service: ServiceIndex(unsigned(pair[0])),
+        gas: PrivilegeGas(unsigned(pair[1]))))
 
 ## Compare complete entries, partial roots, or copied field observations after destroying mutable inputs.
 proc request(parts: seq[string]) =
-  let config = PrivilegeConfig(cores: CoreCount(parseBiggestUInt(parts[1])),
-    maxAlways: ElementLimit(parseBiggestUInt(parts[2])), maxBytes: ByteLimit(parseBiggestUInt(parts[3])))
+  let config = PrivilegeConfig(cores: CoreCount(unsigned(parts[1])),
+    maxAlways: ElementLimit(unsigned(parts[2])), maxBytes: ByteLimit(unsigned(parts[3])))
   case parts[0]
   of "V", "R":
     # Field sources are independent of the implementation's wire parser.
@@ -53,7 +67,7 @@ proc request(parts: seq[string]) =
         let root = stateTrieRoot([encoded.value], StateTrieLimits(items: ElementLimit(1),
           perValue: ByteLimit(high(uint64)), totalValueBytes: ByteLimit(high(uint64)),
               nodes: TrieNodeLimit(1)))
-        doAssert root.error == StateTrieError.None
+        assert root.error == StateTrieError.None
         echo hex(array[32, byte](root.value.root))
   of "D":
     # Complete preflight precedes immutable capture of even the earlier role fields.
@@ -76,7 +90,7 @@ proc request(parts: seq[string]) =
         let pair = alwaysAccumulateAt(owner, PrivilegeEntryIndex(i)).value
         output.add(" " & $uint32(pair.service) & ":" & $uint64(pair.gas))
       echo output
-  else: doAssert false # Trusted operation cannot silently select another component.
+  else: assert false # Trusted operation cannot silently select another component.
 
 # Each request owns and releases its temporary source, output and retained state independently.
 for line in lines(paramStr(1)):

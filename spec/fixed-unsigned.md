@@ -27,3 +27,16 @@ zero. This holds even when the input contains bytes for subsequent fields.
 
 See [the Nim codec guide](../docs/codec.md) and source modules under `src/codec/`.
 Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.
+
+### Nimony fixed-result safety
+
+On the `nimony` branch, `FixedEncodeResult` and `FixedDecodeResult` keep their private Boolean
+success/failure alternatives. Only the defining module constructs successes. Read-only `ok`
+selects the outcome; `encoded`, `value` and `consumed` have success preconditions, and each
+`error` accessor has a failure precondition. Callers cannot retag defaults or read raw payloads
+through safe code. Encoded bytes are returned by value, with no borrowed backing storage.
+
+Defaults still fail with `InvalidWidth`. Zero-width encode/decode of zero remains a complete
+success with no bytes. Existing value-range, invalid-width, truncation and canonical byte behavior
+is unchanged. The Nimony trial runner adds negative runtime and private-state compilation checks
+without substituting different protocol encodings or weakening the original boundary/fuzz suite.

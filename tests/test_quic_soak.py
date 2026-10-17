@@ -79,9 +79,11 @@ def check_growth(samples, warmup, language, *, retained_engine=True):
 
 
 # Run both persistent native processes through the same mixed workload, gating each lifecycle for clean idle samples.
-def pairing(server_language, client_language, folder, rounds, warmup):
+def pairing(server_language, client_language, folder, rounds, warmup, *, binaries=None, directory=None):
     name = f'{server_language}-{client_language}'
-    directory = BUILD / 'soak' / name
+    # Isolated compiler builds reuse this exact lifecycle schedule and all original resource limits.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    directory = BUILD / 'soak' / name if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     gate = directory / f'gate-{time.time_ns()}'
     gate.mkdir()
@@ -99,7 +101,7 @@ def pairing(server_language, client_language, folder, rounds, warmup):
         # These processes remain alive across every round; restarting them would conceal retained allocations.
         for role, language, identity in (('server', server_language, 'a'), ('client', client_language, 'b')):
             handles[role] = logs[role].open('w')
-            command = [str(BUILD / f'{language}-peer'), role, str(port),
+            command = [str(binaries[language]), role, str(port),
                        str(folder / f'{identity}.cert.pem'), str(folder / f'{identity}.key.pem'),
                        '-' if role == 'server' else str(folder / 'a.pub'), 'jamnp-s/1/00000000', '5000', 'soak']
             environment = {**os.environ, 'RAGNAROK_SOAK_ROUNDS': str(rounds), 'RAGNAROK_SOAK_GATE': str(gate)}

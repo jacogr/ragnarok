@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply Nim's bundled formatter to implementation and test sources, or check without writing."""
 import argparse
+import os
 from pathlib import Path
 import subprocess
 
@@ -9,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Format through stdin so check mode never edits the file being inspected.
 def format_source(path):
-    return subprocess.run(['nimpretty', '--stdin', '--indent:2', '--maxLineLen:100'],
+    return subprocess.run([os.environ.get('NIMPRETTY', 'nimpretty'), '--stdin', '--indent:2', '--maxLineLen:100'],
                           input=path.read_bytes(), capture_output=True, check=True).stdout
 
 

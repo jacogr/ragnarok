@@ -1,39 +1,51 @@
 ## Trusted adapter independently constructs logical scalars and observes immutable collection fields and exact wire.
-import std/[os, strutils]
+import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[collections, natural, fixed_unsigned, bounded]
 
 # Select success before reading any completed value, metadata or extent.
 proc checked[T](parsed: CollectionResult[T]): T =
-  doAssert parsed.error == CollectionError.None
+  assert parsed.error == CollectionError.None
   parsed.value
 
 # Decode trusted hex transport into separately mutable test bytes.
-proc unhex(text: string): seq[byte] =
-  # Empty frames still need a token in whitespace transport.
-  if text == "-": return @[]
-  doAssert text.len mod 2 == 0 and text.len <= 2*1024*1024
+proc unhex(text: string): seq[byte] {.raises.} =
+  if text == "-": return @[] # Keep zero bytes as one trusted whitespace token.
+  assert text.len mod 2 == 0 and text.len <= 2*1024*1024
   result = newSeq[byte](text.len div 2)
-  # Every octet can be destroyed after capture to verify independent ownership.
-  for i in 0..<result.len: result[i] = byte(parseHexInt(text[2*i..2*i+1]))
+  # Every exact byte pair belongs to this independent request's input storage.
+  for i in 0..<result.len:
+    let pair = text[2*i..2*i+1]
+    # Check trusted fixture spelling before unsigned conversion.
+    for c in pair: assert c in {'0'..'9', 'a'..'f'}
+    var octet: byte = 0
+    assert parseHex(pair, octet) == 2
+    result[i] = octet
 
-# Exact canonical wire observations preserve leading zero octets and empty fixed schemas.
-proc hex(value: openArray[byte]): string =
-  # Empty encodings are distinct from omitted output fields.
-  if value.len == 0: return "-"
-  # The test observer never reverses little-endian numeric wire bytes.
-  for octet in value: result.add(toHex(octet, 2).toLowerAscii())
+# Render exact bitstring bytes independently of the native logical observations.
+proc hex(bytes: openArray[byte]): string =
+  if bytes.len == 0: return "-" # Preserve empty field tokens when needed.
+  result = ""
+  # Every identity/proof byte contributes exactly two lowercase characters.
+  for value in bytes: result.add(toHex(int(value), 2).toLowerAscii())
+
+# Parse the full uint64 fixture domain without narrowing through signed host integers.
+proc unsigned(text: string): uint64 =
+  var number: uint64 = 0
+  assert text.len > 0 and parseBiggestUInt(text, number) == text.len
+  number
 
 # Natural logical sources are supplied as explicit uint64 numbers, never native decoded wire.
-proc scalar(T: typedesc[JamNatural], text: string): JamNatural = JamNatural(uint64(parseBiggestUInt(text)))
+proc scalar(T: typedesc[JamNatural], text: string): JamNatural = JamNatural(unsigned(text))
 
 # Fixed-width source schemas may deliberately contain an out-of-range value for encoder rejection tests.
-proc scalar[W: static int](T: typedesc[CollectionUInt[W]], text: string): CollectionUInt[W] =
-  T(value: FixedUnsigned(uint64(parseBiggestUInt(text))))
+proc scalar[W: static[int]](T: typedesc[CollectionUInt[W]], text: string): CollectionUInt[W] {.raises.} =
+  CollectionUInt[W](value: FixedUnsigned(unsigned(text)))
 
 # Fixed bytes are explicitly named octets; zero-width scalars use z rather than the empty-collection token.
-proc scalar[N: static int](T: typedesc[CollectionBytes[N]], text: string): CollectionBytes[N] =
+proc scalar[N: static[int]](T: typedesc[CollectionBytes[N]], text: string): CollectionBytes[N] {.raises.} =
+  result = default(CollectionBytes[N])
   let bytes = unhex(if text == "z": "-" else: text)
-  doAssert bytes.len == N
+  assert bytes.len == N
   # Copy fields by value, so typed source construction retains no borrowed pointer.
   for i in 0..<N: result.bytes[i] = bytes[i]
 
@@ -41,19 +53,25 @@ proc scalar[N: static int](T: typedesc[CollectionBytes[N]], text: string): Colle
 proc text(value: JamNatural): string = $uint64(value)
 
 # Fixed numeric logical order can differ from the order of its little-endian wire octets.
-proc text[W: static int](value: CollectionUInt[W]): string = $uint64(value.value)
+proc text[W: static[int]](value: CollectionUInt[W]): string = $uint64(value.value)
 
 # Observe fixed byte fields exactly, including an explicit zero-width scalar token.
-proc text[N: static int](value: CollectionBytes[N]): string =
+proc text[N: static[int]](value: CollectionBytes[N]): string =
   # A zero-width scalar still occupies one logical entry in the source/observation protocol.
   if N == 0: "z"
   else:
     # Nonempty byte keys preserve exact lexicographic field identities.
     hex(value.bytes)
 
+type
+  # Trusted fixture sources add only parsing/observation to the production scalar operation contract.
+  FixtureScalar = concept
+    proc scalar(T: typedesc[Self], text: string): Self {.raises.}
+    proc text(value: Self): string
+
 # Every destination is initialized independently so failed writes and untouched suffixes are observable.
 proc output(capacity: int): seq[byte] =
-  doAssert capacity in 0..2097152
+  assert capacity in 0..2097152
   result = newSeq[byte](capacity)
   # Canary initialization covers the whole destination, including spare capacity.
   for i in 0..<capacity: result[i] = 0xA5
@@ -63,18 +81,19 @@ proc emitted(parsed: CollectionResult[int], bytes: openArray[byte]) =
   # A failed source/policy/capacity/alias check cannot expose a partial write count.
   if parsed.error != CollectionError.None:
     # Every supplied byte, not just the intended prefix, stays unchanged.
-    for octet in bytes: doAssert octet == 0xA5
+    for octet in bytes: assert octet == 0xA5
     echo ($parsed.error).toLowerAscii()
   else:
     # A successful operation must not touch unrelated destination suffix capacity.
-    for i in parsed.value..<bytes.len: doAssert bytes[i] == 0xA5
+    for i in parsed.value..<bytes.len: assert bytes[i] == 0xA5
     echo hex(bytes.toOpenArray(0, parsed.value-1))
 
 # Observe complete typed sets through matching owners after destroying their original input bytes.
-proc runSet[T](parts: seq[string]) =
-  let count = CollectionCount(uint64(parseBiggestUInt(parts[3])))
-  let limits = CollectionLimits(items: ElementLimit(uint64(parseBiggestUInt(parts[4]))),
-    maxBytes: ByteLimit(uint64(parseBiggestUInt(parts[5]))))
+proc runSet[T: FixtureScalar and CollectionScalar and CollectionFamily](parts: seq[
+    string]) {.raises.} =
+  let count = CollectionCount(unsigned(parts[3]))
+  let limits = CollectionLimits(items: ElementLimit(unsigned(parts[4])),
+    maxBytes: ByteLimit(unsigned(parts[5])))
   # Decoder requests provide untrusted bytes; encoders below receive independent logical fields.
   if parts[0] == "D":
     var input = unhex(parts[6])
@@ -88,25 +107,25 @@ proc runSet[T](parts: seq[string]) =
     let n = int(uint64(checked(setCount(owner))))
     # Retained typed snapshots must survive mutation of all caller bytes, including unrelated suffixes.
     for i in 0..<input.len: input[i] = 0
-    var fields: seq[string]
+    var fields: seq[string] = @[]
     # Indexed copies observe exact logical values independently of owner re-emission.
     for i in 0..<n: fields.add(text(checked(setAt(owner, i))))
-    doAssert setAt(owner, -1).error == CollectionError.InvalidIndex
-    doAssert setAt(owner, n).error == CollectionError.InvalidIndex
+    assert setAt(owner, -1).error == CollectionError.InvalidIndex
+    assert setAt(owner, n).error == CollectionError.InvalidIndex
     let broad = CollectionLimits(items: ElementLimit(high(uint64)), maxBytes: ByteLimit(high(uint64)))
     var fixed = output(parsed.value.consumed+12)
     let fixedSize = checked(encodeOwnedSet(owner, CollectionCount(uint64(n)), broad, fixed))
     var variable = output(parsed.value.consumed+12)
     let variableSize = checked(encodeOwnedVariableSet(owner, broad, variable))
     # Owner copies preserve suffixes under both explicitly selected framing forms.
-    for i in fixedSize..<fixed.len: doAssert fixed[i] == 0xA5
-    for i in variableSize..<variable.len: doAssert variable[i] == 0xA5
+    for i in fixedSize..<fixed.len: assert fixed[i] == 0xA5
+    for i in variableSize..<variable.len: assert variable[i] == 0xA5
     echo $parsed.value.consumed & " " & $n & " " & (if n == 0: "-" else: fields.join(",")) &
       " " & hex(fixed.toOpenArray(0, fixedSize-1)) & " " & hex(variable.toOpenArray(0,
           variableSize-1))
   else:
     # Sources are explicit logical scalar values, never constructed using the collection decoder.
-    var values: seq[T]
+    var values: seq[T] = @[]
     # An empty collection differs from one zero-width scalar, represented by z.
     if parts[7] != "-":
       # Source value order is preserved, including deliberately duplicate/descending test cases.
@@ -119,9 +138,10 @@ proc runSet[T](parts: seq[string]) =
       emitted(encodeVariableSet(values, limits, bytes), bytes)
 
 # Observe dictionary key/value association independently of encoded byte order and after caller input release.
-proc runDictionary[K, V](parts: seq[string]) =
-  let limits = CollectionLimits(items: ElementLimit(uint64(parseBiggestUInt(parts[4]))),
-    maxBytes: ByteLimit(uint64(parseBiggestUInt(parts[5]))))
+proc runDictionary[K, V: FixtureScalar and CollectionScalar and CollectionFamily](parts: seq[
+    string]) {.raises.} =
+  let limits = CollectionLimits(items: ElementLimit(unsigned(parts[4])),
+    maxBytes: ByteLimit(unsigned(parts[5])))
   # A dictionary always carries its pair count, unlike a fixed-cardinality set.
   if parts[0] == "D":
     var input = unhex(parts[6])
@@ -134,22 +154,22 @@ proc runDictionary[K, V](parts: seq[string]) =
     let n = int(uint64(checked(dictionaryCount(owner))))
     # Destructive caller mutation proves snapshots contain independent value copies.
     for i in 0..<input.len: input[i] = 0
-    var fields: seq[string]
+    var fields: seq[string] = @[]
     # Each returned pair retains its original key/value relationship, regardless of value ordering.
     for i in 0..<n:
       let pair = checked(dictionaryAt(owner, i))
       fields.add(text(pair.key) & "/" & text(pair.value))
-    doAssert dictionaryAt(owner, -1).error == CollectionError.InvalidIndex
-    doAssert dictionaryAt(owner, n).error == CollectionError.InvalidIndex
+    assert dictionaryAt(owner, -1).error == CollectionError.InvalidIndex
+    assert dictionaryAt(owner, n).error == CollectionError.InvalidIndex
     var bytes = output(parsed.value.consumed+3)
     let size = checked(encodeOwnedDictionary(owner, limits, bytes))
     # Successful owner re-emission cannot overwrite unrelated capacity after the parent prefix.
-    for i in size..<bytes.len: doAssert bytes[i] == 0xA5
+    for i in size..<bytes.len: assert bytes[i] == 0xA5
     echo $parsed.value.consumed & " " & $n & " " & (if n == 0: "-" else: fields.join(",")) &
       " " & hex(bytes.toOpenArray(0, size-1))
   else:
     # Independent typed pairs preserve deliberately invalid key order for encoder validation.
-    var values: seq[Entry[K, V]]
+    var values: seq[Entry[K, V]] = @[]
     # The empty-list token cannot be mistaken for a zero-width key or value.
     if parts[7] != "-":
       # Each logical pair is independently named rather than extracted from native decoded bytes.
@@ -160,7 +180,7 @@ proc runDictionary[K, V](parts: seq[string]) =
     emitted(encodeDictionary(values, limits, bytes), bytes)
 
 # Instantiate only supported explicit scalar schemas, keeping trusted fixture dispatch out of production.
-proc request(parts: seq[string]) =
+proc request(parts: seq[string]) {.raises.} =
   # Dictionary combinations deliberately include zero-width, variable-width and independently typed key/value roles.
   if parts[1] == "M":
     case parts[2]
@@ -176,7 +196,7 @@ proc request(parts: seq[string]) =
         parts) # Zero-width keys cannot encode duplicate entries.
     of "hh": runDictionary[CollectionBytes[32], CollectionBytes[32]](
         parts) # Existing report lookup hash/root widths.
-    else: doAssert false # Unknown trusted schemas must never silently select another production type.
+    else: assert false # Unknown trusted schemas must never silently select another production type.
   else:
     # Sets exercise every supported scalar family and important fixed-width boundaries.
     case parts[2]
@@ -194,9 +214,13 @@ proc request(parts: seq[string]) =
     of "b1": runSet[CollectionBytes[1]](parts) # Exhaustive one-octet ordering cases.
     of "b2": runSet[CollectionBytes[2]](parts) # Lexicographic comparison follows the first differing octet.
     of "b32": runSet[CollectionBytes[32]](parts) # Existing prerequisite hash widths.
-    else: doAssert false # Unsupported fixture schemas cannot fabricate another codec's result.
+    else: assert false # Unsupported fixture schemas cannot fabricate another codec's result.
 
 # Each request owns its buffers and snapshot handles until its complete observation is emitted.
-for line in lines(paramStr(1)):
-  # Ignore empty trusted batch lines without issuing accidental decode operations.
-  if line.len > 0: request(line.splitWhitespace())
+try:
+  for line in lines(paramStr(1)):
+    # Ignore empty trusted batch lines without issuing accidental decode operations.
+    if line.len > 0: request(line.splitWhitespace())
+except:
+  # Trusted fixture transport failures fail separately from typed codec rejection.
+  quit(2)

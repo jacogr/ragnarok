@@ -27,3 +27,12 @@ The exceptional-point Ed25519 acceptance policy is unresolved: pinned BoringSSL 
 identity-A/identity-R/zero-S probes. Vector success does not finalize consensus verification policy
 or establish a backend audit. See [the primitive contract](../spec/crypto.md) and
 [Bandersnatch contract](../spec/bandersnatch.md) for provenance and remaining security limits.
+
+## Compiler and verification
+
+The supported Nimony adapters use private guarded results and explicit acyclic ARC/native owner
+lifetimes. `python3 tools/test.py` runs the preserved raw-primitive, assurance, guarantee/report,
+release-reference Bandersnatch, native-boundary and concurrency corpora. It also runs bounded
+proof offload with worker-local Rust setups and copied inputs. The [compiler record](nimony-trial.md)
+retains exact coverage and compiler limitations. Implemented-scope local regression parity does
+not settle the draft-text discrepancy, exceptional-point policy or production security audit.

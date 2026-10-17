@@ -116,3 +116,50 @@ exact capture probes accept a known compact-gas component and reject its fixed-g
 M1 state parity remains qualified by the [parked request-namespace question](state-clarifications.md).
 Further implementation scope is selected separately; proofs/persistence, PVM and transitions
 remain separate work.
+
+
+## Nimony branch verification
+
+The experimental branch ports this module to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
+exact chapter consumption, profile association, parent budgets, source ordering and duplicate-key
+rejection. `StateCompositionResult[T]` hides status/payload behind read-only reasons and a
+success-only accessor. Explicitly nullable chapter/mapping references are checked through stable
+retained locals. Fixed metadata and newly extracted entry bytes remain independent copies.
+
+Use `StateChapters` for the sixteen source slots, indexed by `StateChapterId`; its private fixed
+array avoids the nightly's unsupported default initialization of a nonzero enum-indexed array.
+Nominal accessors retain the chapter domain. Capture rejects an invalid chapter enum; private
+storage cannot be forged or rebound by applications. Explicit typed decoder/error adapters replace
+unsupported template field resolution and generic enum-member probing, with no upstream patch or
+private runtime hook. The existing duplicate-key selftest caught incorrect generic error translation
+after compilation; the explicit adapters retain the expected typed failure.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
+trial compiler. It includes 14,471 unchanged composition requests, seven literal checks, 224 exact
+published chapter captures and fourteen complete mappings reproducing ten distinct roots. A separate
+154-request raw whole-map corpus preserves the existing root sensitivity and budget checks. No
+original storage keys or request identities are guessed from opaque captures.
+
+The private ownership suite verifies retained/replaced states, copied entries/commitments, complete
+parent preflight, native descriptor/aggregate bounds, immediate and delayed backend refusal and
+recovery. It returns public live occupancy from 35,920 to 35,920 bytes after 1,000 warmed cycles,
+including its retained chapter baseline. Thirty-six isolated actual/default reads reject through
+the exact success contract; fourteen private/read-only compiler probes protect result, owner and
+slot storage, and three nominal probes protect owner and entry/chapter index domains.
+
+Results are local macOS ARM64, checked ARC/Clang LTO. All production codec modules are ported.
+Unchanged width-evidence and parked namespace-witness regressions now replay through this driver in
+the Nimony runner. The five early primitive/composite independent corpora now pass too, completing
+local M1 validation migration parity for the documented implemented scope. Linux execution remains
+separate. M2 assurance and guarantee/report signing composition now pass. Bandersnatch owner safety
+and original contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally.
+M3 UDP/readiness and linked transport lifecycle checks now pass locally.
+Shared identity/DER/framing validation now also passes locally.
+CE 143 integration results and retained digest ownership now also pass locally.
+The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
+Retained CE 143 service and integrated digest lifecycles now also pass locally.
+Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
+Next: same-process endpoint soak and remaining admission/resilience coverage; Linux confirmation and
+documented normative policy gates remain separate. No transition execution or new namespace rule is
+introduced. See the [trial](../docs/nimony-trial.md) for cumulative evidence and remaining M2/M3
+work.

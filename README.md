@@ -20,54 +20,30 @@ JAM client or production validator. [M1 codec progress](docs/m1.md) and [design/
 
 ## Setup
 
-Pinned baseline: Nim **2.2.12**, ARC, Clang; Rust **1.99.0** for the Bandersnatch primitive bridge.
-Python **3.12+** runs verification/setup tools. Native builds also need CMake, zlib and OpenSSL.
-See [development](docs/development.md) and [upstream ownership](docs/dependencies.md).
+The supported compiler is **Nimony 0.6.3**, pinned to the 2026-10-15 nightly
+`5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, with ARC and checked Clang LTO.
+Setup supports Linux x86-64 and macOS ARM64 from checksum-pinned official archives. Rust **1.99.0**
+provides the maintained Bandersnatch primitive bridge; Python **3.12+** runs tooling. CMake, zlib,
+OpenSSL and Clang are required; Linux additionally uses lld. See [development](docs/development.md).
 
 ```sh
+python3 tools/setup_nimony.py
 python3 tools/setup_submodules.py
-python3 tools/format.py --check
-python3 tests/test_codec.py
-python3 tests/test_bits.py
-python3 tests/test_collections.py
-python3 tests/test_c2.py
-python3 tests/test_tickets.py
-python3 tests/test_guarantees.py
-python3 tests/test_disputes.py
-python3 tests/test_work_package.py
-python3 tests/test_header.py
-python3 tests/test_block.py
-python3 tests/test_crypto.py --fetch
-python3 tests/test_state_layout.py
-python3 tests/test_state_trie.py
-python3 tests/test_state_roots.py
-python3 tests/test_state_composition.py
-python3 tests/test_state_widths.py
-python3 tests/test_state_safrole.py
-python3 tests/test_state_consensus.py
-python3 tests/test_state_disputes.py
-python3 tests/test_state_history.py
-python3 tests/test_state_requests.py
-python3 tests/test_request_namespace.py
-python3 tests/test_state_service_values.py
-python3 tests/test_state_accounts.py
-python3 tests/test_state_outputs.py
-python3 tests/test_state_workqueues.py
-python3 tests/test_state_statistics.py
-python3 tests/test_state_privileges.py
-python3 tests/test_state_availability.py
-python3 tests/test_state_authorization.py
-python3 tests/test_bandersnatch.py --fetch
-python3 tests/test_work_report.py
-python3 tests/test_assurances.py
-python3 tests/test_assurance_crypto.py
-python3 tests/test_quic.py --fetch
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
+rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
+python3 tools/test.py
 ```
 
-The crypto step builds the native primitive library used by report and assurance-context tests.
-`--fetch` initializes exact pinned sources; Bandersnatch also provisions missing locked Cargo
-packages. Generated builds, temporary keys, observations and logs stay under ignored `build/`.
-[Linux CI](.github/workflows/linux.yml) runs the correctness and lifecycle checks on Ubuntu 24.04.
+The normal verification command resolves the installed compiler and formatter automatically;
+there is no global Nim compiler requirement. `build/toolchain/env.sh` optionally activates the
+same tools in a shell. Only `nimpretty` is exposed from its pinned formatter archive. Normal
+verification never invokes the historical Nim 2 compiler.
+
+Verification includes the all-source audit, protocol provenance, formatting, independent Python
+harnesses and checked codec/crypto/networking/offload suites. Linux CI uses the same command plan
+in separate runtime and module jobs. Generated builds, fixture keys and logs stay under ignored
+`build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
+normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 
 ## Code and verification
 
@@ -82,6 +58,7 @@ packages. Generated builds, temporary keys, observations and logs stay under ign
 | `native/` | Narrow maintained C/Rust primitive and transport bridges |
 | `spec/`, `vectors/`, `vendor/` | Pinned interpretations, project fixtures and upstream submodules |
 
-Use `python3 tools/format.py` to apply Nim's bundled formatter and `--check` to verify it.
+After `source build/toolchain/env.sh`, use `python3 tools/format.py` to apply the pinned
+formatter and `--check` to verify it. `tools/test.py` selects that formatter automatically.
 See [codec](docs/codec.md), [crypto](docs/crypto.md) and [networking](docs/networking.md) for APIs,
 ownership, reproduction commands and outstanding protocol/security gates.

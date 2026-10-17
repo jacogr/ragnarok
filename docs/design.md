@@ -1,6 +1,6 @@
 # Ragnarök design
 
-**Language:** Nim 2.2.12, ARC. **Target:** native Linux. **State:** protocol foundation;
+**Language:** Nimony 0.6.3 (pinned nightly), ARC. **Target:** native Linux. **State:** protocol foundation;
 full JAM execution, state transitions and validator operation remain future work.
 
 Protocol target: Gray Paper 0.8.0; the Bandersnatch draft-text/reference discrepancy remains an explicit
@@ -16,9 +16,11 @@ and caller-owned storage. Default/failed tagged results carry no values or progr
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
 
-`src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A standard-selector
+`src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A bounded POSIX
 nonblocking UDP dispatcher drives the maintained LSQUIC/TLS bridge. No stream or connection creates
 an OS thread. Optional RingVRF verification uses two workers and four total owned job slots.
+`peer.nim` is the bounded CLI. The standalone `session.nim` module privately owns peer/stream
+state, callbacks and retained mesh coordination; only lifecycle entry points are exported.
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

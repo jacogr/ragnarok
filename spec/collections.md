@@ -80,8 +80,10 @@ infallible after stable-source preflight. Failure leaves all output unchanged; s
 spare suffix capacity. No whole-frame staging allocation or hash-table iteration order is involved.
 
 `CollectionResult[T]` carries values/progress only in its `None` alternative. All failed/default
-alternatives carry only the reason. Selected-alternative, bounds, range, overflow and assertion
-guards remain enabled in optimized builds. Invalid schema widths fail at compile time; runtime
+alternatives carry only the reason. On the Nimony branch, private status/payload fields and
+success-precondition accessors enforce selected-alternative checks. Bounds/contracts and assertions
+remain enabled; host extent arithmetic is explicitly checked before addition/multiplication because
+Nimony intentionally wraps arithmetic. Invalid schema widths fail at compile time; runtime
 source width overflow is `ValueOutOfRange`. Unsupported scalar schemas fail compilation.
 
 ## Verification
@@ -110,3 +112,33 @@ or private-runtime hooks. Linux CI runs the same checks and retains diagnostic l
 request digest and result manifest under ignored `build/collections/`. Local verification is macOS
 arm64; Linux x86-64 validation occurs in CI after push. These are structural codec tests, not
 consensus/state-transition or cryptographic validation.
+
+## Nimony branch verification
+
+On this experimental branch, reproduce with
+`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`; the historical
+Nim 2 commands above are not a second supported source target. The runner retains all 13,161
+independent requests, seven oracle known answers and both native ownership/alias suites. It adds
+50 isolated failed/default result reads and 22 privacy/nominal/schema compilation rejections.
+
+Generic callers combine an explicit scalar-operation concept with the closed supported-family gate.
+Nimony's cross-module matching requires visible implementations. `scalarMinimum`, `readScalar`,
+`scalarSize`, `scalarLess` and atomic `encodeScalar` provide that interface. Scalar decoding returns
+a guarded `ScalarRead[T]` containing copied value/progress. Scalar encoding preflights source range
+and whole-field capacity, snapshots the value, then writes; source/output overlap is supported for
+that copied scalar API. Parent set/dictionary encoders still reject whole-source aliases. Unchecked
+cursor writers and snapshot storage remain private. E0–E8 collection schemas are checked at compile
+time; direct constant-invalid scalar-width calls also reject at their supported precondition.
+
+`CollectionBytes[0]` has a private one-byte physical unit so standard sequence capacity arithmetic
+never divides by a zero element size. Positive-width scalar sizes remain unchanged. The unit is
+excluded from the wire, logical order and copied public byte fields; it is not caller-editable.
+All original zero-wire-width singleton and huge-count expectations remain unchanged.
+
+Retained source escape/replacement, copied pairs and warmed ARC release coverage extend the native
+suite. After 100 warmups, 1,000 scoped retain/replace/reframe/drop cycles return live occupancy to
+baseline, including zero-width snapshots. This measures that workload rather than RSS or general
+leak freedom. Commands, exact source/request/output hashes, release counts and each verdict are in
+`build/nimony-trial/verification/results.json`. See [the trial](../docs/nimony-trial.md) for the exact
+compiler, cumulative totals and observed generic/compiler rough edges. Verification is local macOS
+ARM64; complete M1, Linux and M2/M3 migration remain separate work.

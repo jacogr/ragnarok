@@ -1,5 +1,6 @@
 ## GP 0.8.0 T chapters 14/15 and accumulation readyspec/accumulatedspec: fixed epoch rings.
 ## Serialization preserves report order and canonical hash sets; it does not execute accumulation.
+import std/assertions
 import ./[natural, bounded, assurances, composite, work_report, report_owned, owned, state_layout, state_trie]
 from ./header import EpochSlots
 export EpochSlots, CoreCount, PackageHash, OwnedReport
@@ -31,11 +32,11 @@ type
     LengthOverflow, InvalidTag, InvalidReport, InvalidOwner, InvalidIndex
   ## A successful selected alternative alone exposes a complete application payload.
   WorkQueueResult*[T] = object
-    case error*: WorkQueueError
-    of WorkQueueError.None:
-      value*: T # Select success before reading retained state or a completed extent.
+    case status: WorkQueueError
+    of None:
+      completed: T # Select success before reading retained state or a completed extent.
     else:
-      discard   # Failure cannot appear to be a validated empty ring.
+      discard      # Failure cannot appear to be a validated empty ring.
   ## Private acyclic storage retains immutable reports and privately copied dependency arrays.
   ReadyData = ref object
     rows: seq[ReadyRow]
@@ -46,10 +47,10 @@ type
     items: int
   ## Separate value handles prevent using accumulated state as a ready-report owner.
   ReadySnapshot* = object
-    data: ReadyData
+    data: nil ReadyData
   ## Copies share immutable private storage; replacing one handle cannot mutate another.
   AccumulatedSnapshot* = object
-    data: AccumulatedData
+    data: nil AccumulatedData
   ## Prefix success binds a complete retained ring to its exact consumed extent.
   WorkQueueRead*[T] = object
     snapshot*: T
@@ -64,6 +65,13 @@ type
   ## Local no-allocation scan proof publishes nothing until the whole fixed ring succeeds.
   Layout = object
     consumed, items, dependencies: int
+
+## Failure reasons are read-only and cannot authorize values, child handles or progress.
+func error*[T](value: WorkQueueResult[T]): WorkQueueError = value.status
+## Complete public payloads and private scalar/layout proofs require successful selection.
+func value*[T](value: WorkQueueResult[T]): T {.inline, requires: value.status ==
+    WorkQueueError.None.} =
+  value.completed
 
 ## Validate positive epoch/native descriptor bounds and supported report profile before traversal.
 proc validate(config: WorkQueueConfig): WorkQueueError =
@@ -108,13 +116,13 @@ proc readCount(input: openArray[byte], cursor: var int, config: WorkQueueConfig)
   let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
-      return WorkQueueResult[uint64](error: WorkQueueError.Truncated) # A missing count is not an empty set/sequence.
+      return WorkQueueResult[uint64](status: WorkQueueError.Truncated) # A missing count is not an empty set/sequence.
     else:
-      return WorkQueueResult[uint64](error: WorkQueueError.NonCanonical) # Reject overlong alternate count representations.
+      return WorkQueueResult[uint64](status: WorkQueueError.NonCanonical) # Reject overlong alternate count representations.
   let error = grow(cursor, uint64(parsed.consumed), 1, config)
   if error != WorkQueueError.None:
-    return WorkQueueResult[uint64](error: error) # Count bytes consume parent budget too.
-  WorkQueueResult[uint64](error: WorkQueueError.None, value: uint64(parsed.value))
+    return WorkQueueResult[uint64](status: error) # Count bytes consume parent budget too.
+  WorkQueueResult[uint64](status: WorkQueueError.None, completed: uint64(parsed.value))
 
 ## Strict octet order is independent of host endian order and rejects equal complete identities.
 proc less(a, b: PackageHash): bool =
@@ -125,6 +133,7 @@ proc less(a, b: PackageHash): bool =
 
 ## Copy one prevalidated hash without retaining its input coordinates.
 proc fixed(input: openArray[byte], offset: int): PackageHash =
+  result = default(PackageHash)
   for i in 0..<32: result.bytes[i] = input[offset+i] # Caller proves the complete hash set before this access.
 
 ## Validate a full bounded fixed-hash set before reading or capturing any of its members.
@@ -155,43 +164,44 @@ proc reportError(error: CompositeError): WorkQueueError =
 proc scan(input: openArray[byte], config: WorkQueueConfig, ready: bool): WorkQueueResult[Layout] =
   let valid = validate(config)
   if valid != WorkQueueError.None:
-    return WorkQueueResult[Layout](error: valid) # Invalid configuration precedes input traversal.
+    return WorkQueueResult[Layout](status: valid) # Invalid configuration precedes input traversal.
   var cursor = 0
-  var items, dependencies = 0'u64
+  var items = 0'u64
+  var dependencies = 0'u64
   for slot in 0..<int(uint64(config.epochSlots)):
     let count = readCount(input, cursor, config)
     if count.error != WorkQueueError.None:
-      return WorkQueueResult[Layout](error: count.error) # No implicit empty late rows.
+      return WorkQueueResult[Layout](status: count.error) # No implicit empty late rows.
     var error = chargeItems(count.value, (if ready: sizeof(ReadyItem) else: sizeof(PackageHash)),
         config, items) # Bound the selected typed row schema.
     if error != WorkQueueError.None:
-      return WorkQueueResult[Layout](error: error) # Row/aggregate limits precede child work.
+      return WorkQueueResult[Layout](status: error) # Row/aggregate limits precede child work.
     if ready:
       for i in 0..<int(count.value):
         let report = decodeReportBorrowed(input.toOpenArray(cursor, input.len-1), uint64(config.cores))
         if report.error != CompositeError.None:
-          return WorkQueueResult[Layout](error: reportError(
+          return WorkQueueResult[Layout](status: reportError(
               report.error)) # No earlier report owner after late failure.
         if uint64(report.consumed) > uint64(config.reportBytes):
-          return WorkQueueResult[Layout](error: WorkQueueError.LimitExceeded) # Child bytes are independently bounded.
+          return WorkQueueResult[Layout](status: WorkQueueError.LimitExceeded) # Child bytes are independently bounded.
         error = grow(cursor, uint64(report.consumed), 1, config)
         if error != WorkQueueError.None:
-          return WorkQueueResult[Layout](error: error) # Complete report contributes to parent bytes.
+          return WorkQueueResult[Layout](status: error) # Complete report contributes to parent bytes.
         let count = readCount(input, cursor, config)
         if count.error != WorkQueueError.None:
-          return WorkQueueResult[Layout](error: count.error) # Each report has its own dependency count.
+          return WorkQueueResult[Layout](status: count.error) # Each report has its own dependency count.
         error = chargeDependencies(count.value, config, dependencies)
         if error != WorkQueueError.None:
-          return WorkQueueResult[Layout](error: error) # Dependency work is separate from report work.
+          return WorkQueueResult[Layout](status: error) # Dependency work is separate from report work.
         error = scanHashes(input, cursor, count.value, config)
         if error != WorkQueueError.None:
-          return WorkQueueResult[Layout](error: error) # No partial dependency set or earlier parent escapes.
+          return WorkQueueResult[Layout](status: error) # No partial dependency set or earlier parent escapes.
     else:
       error = scanHashes(input, cursor, count.value, config)
       if error != WorkQueueError.None:
-        return WorkQueueResult[Layout](error: error) # Accumulated rows are canonical hash sets, not report sequences.
-  WorkQueueResult[Layout](error: WorkQueueError.None,
-    value: Layout(consumed: cursor, items: int(items), dependencies: int(dependencies)))
+        return WorkQueueResult[Layout](status: error) # Accumulated rows are canonical hash sets, not report sequences.
+  WorkQueueResult[Layout](status: WorkQueueError.None,
+    completed: Layout(consumed: cursor, items: int(items), dependencies: int(dependencies)))
 
 ## Decode chapter 14 only after every slot/report/dependency has passed the complete no-allocation scan.
 proc decodeReadyState*(input: openArray[byte], config: WorkQueueConfig): WorkQueueResult[
@@ -199,7 +209,7 @@ proc decodeReadyState*(input: openArray[byte], config: WorkQueueConfig): WorkQue
   let checked = scan(input, config, true)
   if checked.error != WorkQueueError.None:
     return WorkQueueResult[WorkQueueRead[ReadySnapshot]](
-        error: checked.error) # No captured child handles on failure.
+        status: checked.error) # No captured child handles on failure.
   let data = ReadyData(rows: newSeq[ReadyRow](int(uint64(config.epochSlots))),
     items: checked.value.items, dependencies: checked.value.dependencies)
   var cursor = 0
@@ -208,7 +218,7 @@ proc decodeReadyState*(input: openArray[byte], config: WorkQueueConfig): WorkQue
     data.rows[slot] = newSeq[ReadyItem](int(count))
     for i in 0..<int(count):
       let report = decodeOwnedReport(input.toOpenArray(cursor, input.len-1), uint64(config.cores))
-      doAssert report.error == OwnershipError.None # Complete parent preflight already proved this child.
+      assert report.error == OwnershipError.None # Complete parent preflight already proved this child.
       data.rows[slot][i].report = report.value
       cursor += ownedReportInfo(report.value).value.consumed
       let dependencies = readCount(input, cursor, config).value
@@ -216,8 +226,8 @@ proc decodeReadyState*(input: openArray[byte], config: WorkQueueConfig): WorkQue
       for j in 0..<int(dependencies):
         data.rows[slot][i].dependencies[j] = fixed(input, cursor) # Private independent fixed copies.
         cursor += 32
-  WorkQueueResult[WorkQueueRead[ReadySnapshot]](error: WorkQueueError.None,
-    value: WorkQueueRead[ReadySnapshot](snapshot: ReadySnapshot(data: data),
+  WorkQueueResult[WorkQueueRead[ReadySnapshot]](status: WorkQueueError.None,
+    completed: WorkQueueRead[ReadySnapshot](snapshot: ReadySnapshot(data: data),
         consumed: checked.value.consumed))
 
 ## Decode chapter 15 into independent canonical hash rows after the complete ring has validated.
@@ -226,7 +236,7 @@ proc decodeAccumulatedState*(input: openArray[byte], config: WorkQueueConfig): W
   let checked = scan(input, config, false)
   if checked.error != WorkQueueError.None:
     return WorkQueueResult[WorkQueueRead[AccumulatedSnapshot]](
-        error: checked.error) # No partial earlier ring on a late bad set.
+        status: checked.error) # No partial earlier ring on a late bad set.
   let data = AccumulatedData(rows: newSeq[AccumulatedRow](int(uint64(config.epochSlots))),
       items: checked.value.items)
   var cursor = 0
@@ -236,8 +246,8 @@ proc decodeAccumulatedState*(input: openArray[byte], config: WorkQueueConfig): W
     for i in 0..<int(count):
       data.rows[slot][i] = fixed(input, cursor) # Do not retain caller wire or standalone coordinates.
       cursor += 32
-  WorkQueueResult[WorkQueueRead[AccumulatedSnapshot]](error: WorkQueueError.None,
-    value: WorkQueueRead[AccumulatedSnapshot](snapshot: AccumulatedSnapshot(data: data),
+  WorkQueueResult[WorkQueueRead[AccumulatedSnapshot]](status: WorkQueueError.None,
+    completed: WorkQueueRead[AccumulatedSnapshot](snapshot: AccumulatedSnapshot(data: data),
         consumed: checked.value.consumed))
 
 ## Source hash sets must already be strictly ordered; never repair a caller's duplicates/disorder.
@@ -269,42 +279,43 @@ proc putHashes(output: var seq[byte], cursor: var int, values: openArray[Package
 proc readyStateEntry*(rows: openArray[ReadyRow], config: WorkQueueConfig): WorkQueueResult[StateEntry] =
   let valid = validate(config)
   if valid != WorkQueueError.None:
-    return WorkQueueResult[StateEntry](error: valid) # Configuration precedes source traversal.
+    return WorkQueueResult[StateEntry](status: valid) # Configuration precedes source traversal.
   if uint64(rows.len) != uint64(config.epochSlots):
-    return WorkQueueResult[StateEntry](error: WorkQueueError.InvalidCount) # No outer epoch count is emitted/inferred.
+    return WorkQueueResult[StateEntry](status: WorkQueueError.InvalidCount) # No outer epoch count is emitted/inferred.
   var size = 0
-  var items, dependencies = 0'u64
+  var items = 0'u64
+  var dependencies = 0'u64
   for row in rows:
     var error = countBytes(size, row.len, config)
     if error != WorkQueueError.None:
-      return WorkQueueResult[StateEntry](error: error) # Empty slots still consume a count byte.
+      return WorkQueueResult[StateEntry](status: error) # Empty slots still consume a count byte.
     error = chargeItems(uint64(row.len), sizeof(ReadyItem), config, items)
     if error != WorkQueueError.None:
-      return WorkQueueResult[StateEntry](error: error) # Bound report traversal before nested owner inspection.
+      return WorkQueueResult[StateEntry](status: error) # Bound report traversal before nested owner inspection.
     for item in row:
       let info = ownedReportInfo(item.report)
       if info.error != OwnershipError.None:
-        return WorkQueueResult[StateEntry](error: WorkQueueError.InvalidReport) # Default owners cannot encode fabricated reports.
+        return WorkQueueResult[StateEntry](status: WorkQueueError.InvalidReport) # Default owners cannot encode fabricated reports.
       let coreOutsideProfile = uint64(info.value.core) >= uint64(config.cores)
       let shardsOutsideProfile = uint64(info.value.header.erasureShards) div 3 > uint64(config.cores)
       if coreOutsideProfile or shardsOutsideProfile:
-        return WorkQueueResult[StateEntry](error: WorkQueueError.LimitExceeded) # Recheck children captured under a broader profile.
+        return WorkQueueResult[StateEntry](status: WorkQueueError.LimitExceeded) # Recheck children captured under a broader profile.
       if uint64(info.value.consumed) > uint64(config.reportBytes):
-        return WorkQueueResult[StateEntry](error: WorkQueueError.LimitExceeded) # Current child-byte policy may be stricter than capture policy.
+        return WorkQueueResult[StateEntry](status: WorkQueueError.LimitExceeded) # Current child-byte policy may be stricter than capture policy.
       error = grow(size, uint64(info.value.consumed), 1, config)
       if error != WorkQueueError.None:
-        return WorkQueueResult[StateEntry](error: error) # Child report bytes consume parent policy.
+        return WorkQueueResult[StateEntry](status: error) # Child report bytes consume parent policy.
       error = countBytes(size, item.dependencies.len, config)
       if error != WorkQueueError.None:
-        return WorkQueueResult[StateEntry](error: error) # Dependency count is never omitted.
+        return WorkQueueResult[StateEntry](status: error) # Dependency count is never omitted.
       error = chargeDependencies(uint64(item.dependencies.len), config, dependencies)
       if error != WorkQueueError.None:
-        return WorkQueueResult[StateEntry](error: error) # Separate per-item/aggregate dependency ceilings.
+        return WorkQueueResult[StateEntry](status: error) # Separate per-item/aggregate dependency ceilings.
       error = grow(size, uint64(item.dependencies.len), 32, config)
       if error != WorkQueueError.None:
-        return WorkQueueResult[StateEntry](error: error) # Bound all fixed payload bytes before ordering.
+        return WorkQueueResult[StateEntry](status: error) # Bound all fixed payload bytes before ordering.
       if not ordered(item.dependencies):
-        return WorkQueueResult[StateEntry](error: WorkQueueError.NonCanonical) # No sorting or duplicate merging.
+        return WorkQueueResult[StateEntry](status: WorkQueueError.NonCanonical) # No sorting or duplicate merging.
   var entry = StateEntry(key: chapterKey(StateChapter(14)), value: newSeq[byte](size))
   var cursor = 0
   for row in rows:
@@ -312,104 +323,117 @@ proc readyStateEntry*(rows: openArray[ReadyRow], config: WorkQueueConfig): WorkQ
     for item in row:
       let length = ownedReportInfo(item.report).value.consumed
       let copied = encodeOwnedReport(item.report, entry.value.toOpenArray(cursor, cursor+length-1))
-      doAssert copied.error == OwnershipError.None # Fresh output plus preflight proves capacity/disjointness.
+      assert copied.error == OwnershipError.None # Fresh output plus preflight proves capacity/disjointness.
       cursor += length
       putCount(entry.value, cursor, item.dependencies.len)
       putHashes(entry.value, cursor, item.dependencies)
-  WorkQueueResult[StateEntry](error: WorkQueueError.None, value: entry)
+  WorkQueueResult[StateEntry](status: WorkQueueError.None, completed: entry)
 
 ## Encode exact fixed-epoch accumulated sets atomically into one independent C(15) entry.
 proc accumulatedStateEntry*(rows: openArray[AccumulatedRow],
     config: WorkQueueConfig): WorkQueueResult[StateEntry] =
   let valid = validate(config)
   if valid != WorkQueueError.None:
-    return WorkQueueResult[StateEntry](error: valid) # No traversal under invalid configuration.
+    return WorkQueueResult[StateEntry](status: valid) # No traversal under invalid configuration.
   if uint64(rows.len) != uint64(config.epochSlots):
-    return WorkQueueResult[StateEntry](error: WorkQueueError.InvalidCount) # Fixed ring shape, without an outer count.
+    return WorkQueueResult[StateEntry](status: WorkQueueError.InvalidCount) # Fixed ring shape, without an outer count.
   var size = 0
   var total = 0'u64
   for row in rows:
     var error = countBytes(size, row.len, config)
     if error != WorkQueueError.None:
-      return WorkQueueResult[StateEntry](error: error) # Empty sets still have a canonical count prefix.
+      return WorkQueueResult[StateEntry](status: error) # Empty sets still have a canonical count prefix.
     error = chargeItems(uint64(row.len), sizeof(PackageHash), config, total)
     if error != WorkQueueError.None:
-      return WorkQueueResult[StateEntry](error: error) # Bound row/aggregate work before ordering.
+      return WorkQueueResult[StateEntry](status: error) # Bound row/aggregate work before ordering.
     error = grow(size, uint64(row.len), 32, config)
     if error != WorkQueueError.None:
-      return WorkQueueResult[StateEntry](error: error) # Check complete payload extent before allocation.
+      return WorkQueueResult[StateEntry](status: error) # Check complete payload extent before allocation.
     if not ordered(row):
-      return WorkQueueResult[StateEntry](error: WorkQueueError.NonCanonical) # Preserve canonical unique set membership.
+      return WorkQueueResult[StateEntry](status: WorkQueueError.NonCanonical) # Preserve canonical unique set membership.
   var entry = StateEntry(key: chapterKey(StateChapter(15)), value: newSeq[byte](size))
   var cursor = 0
   for row in rows:
     putCount(entry.value, cursor, row.len) # Slot positions never rotate during serialization.
     putHashes(entry.value, cursor, row)
-  WorkQueueResult[StateEntry](error: WorkQueueError.None, value: entry)
+  WorkQueueResult[StateEntry](status: WorkQueueError.None, completed: entry)
 
 ## Inspect copied ready-ring cardinalities without exporting nested mutable arrays.
 proc readyInfo*(owner: ReadySnapshot): WorkQueueResult[WorkQueueInfo] =
-  if owner.data.isNil:
-    return WorkQueueResult[WorkQueueInfo](error: WorkQueueError.InvalidOwner) # Default handles are not validated empty rings.
-  WorkQueueResult[WorkQueueInfo](error: WorkQueueError.None,
-    value: WorkQueueInfo(slots: owner.data.rows.len, items: owner.data.items,
-        dependencies: owner.data.dependencies))
+  let data = owner.data
+  if data == nil:
+    return WorkQueueResult[WorkQueueInfo](status: WorkQueueError.InvalidOwner) # Default handles are not validated empty rings.
+  WorkQueueResult[WorkQueueInfo](status: WorkQueueError.None,
+    completed: WorkQueueInfo(slots: data.rows.len, items: data.items,
+        dependencies: data.dependencies))
 
 ## Inspect copied accumulated-ring cardinalities; this component has no dependency sets.
 proc accumulatedInfo*(owner: AccumulatedSnapshot): WorkQueueResult[WorkQueueInfo] =
-  if owner.data.isNil:
-    return WorkQueueResult[WorkQueueInfo](error: WorkQueueError.InvalidOwner) # No successful counts from missing storage.
-  WorkQueueResult[WorkQueueInfo](error: WorkQueueError.None,
-    value: WorkQueueInfo(slots: owner.data.rows.len, items: owner.data.items, dependencies: 0))
+  let data = owner.data
+  if data == nil:
+    return WorkQueueResult[WorkQueueInfo](status: WorkQueueError.InvalidOwner) # No successful counts from missing storage.
+  WorkQueueResult[WorkQueueInfo](status: WorkQueueError.None,
+    completed: WorkQueueInfo(slots: data.rows.len, items: data.items, dependencies: 0))
 
 ## Return one ready-slot count through a nominal ring position.
 proc readySlotCount*(owner: ReadySnapshot, slot: WorkQueueSlot): WorkQueueResult[int] =
-  if owner.data.isNil:
-    return WorkQueueResult[int](error: WorkQueueError.InvalidOwner) # No implicit empty default row.
-  if uint64(slot) >= uint64(owner.data.rows.len):
-    return WorkQueueResult[int](error: WorkQueueError.InvalidIndex) # Check before narrowing.
-  WorkQueueResult[int](error: WorkQueueError.None, value: owner.data.rows[int(uint64(slot))].len)
+  let data = owner.data
+  if data == nil:
+    return WorkQueueResult[int](status: WorkQueueError.InvalidOwner) # No implicit empty default row.
+  if uint64(slot) >= uint64(data.rows.len):
+    return WorkQueueResult[int](status: WorkQueueError.InvalidIndex) # Check before narrowing.
+  WorkQueueResult[int](status: WorkQueueError.None, completed: data.rows[int(uint64(slot))].len)
 
 ## Return one accumulated set's copied cardinality without exposing its hash array.
 proc accumulatedSlotCount*(owner: AccumulatedSnapshot, slot: WorkQueueSlot): WorkQueueResult[int] =
-  if owner.data.isNil:
-    return WorkQueueResult[int](error: WorkQueueError.InvalidOwner) # Default differs from a captured empty set.
-  if uint64(slot) >= uint64(owner.data.rows.len):
-    return WorkQueueResult[int](error: WorkQueueError.InvalidIndex) # Prove native slot conversion.
-  WorkQueueResult[int](error: WorkQueueError.None, value: owner.data.rows[int(uint64(slot))].len)
+  let data = owner.data
+  if data == nil:
+    return WorkQueueResult[int](status: WorkQueueError.InvalidOwner) # Default differs from a captured empty set.
+  if uint64(slot) >= uint64(data.rows.len):
+    return WorkQueueResult[int](status: WorkQueueError.InvalidIndex) # Prove native slot conversion.
+  WorkQueueResult[int](status: WorkQueueError.None, completed: data.rows[int(uint64(slot))].len)
 
 ## Extract a copied report handle and dependency count; the report survives parent release.
 proc readyItemAt*(owner: ReadySnapshot, slot: WorkQueueSlot,
     index: ReadyItemIndex): WorkQueueResult[ReadyItemInfo] =
+  let data = owner.data
+  if data == nil:
+    return WorkQueueResult[ReadyItemInfo](status: WorkQueueError.InvalidOwner) # No storage on default handles.
   let count = readySlotCount(owner, slot)
   if count.error != WorkQueueError.None:
-    return WorkQueueResult[ReadyItemInfo](error: count.error) # Owner/slot validation precedes item access.
+    return WorkQueueResult[ReadyItemInfo](status: count.error) # Owner/slot validation precedes item access.
   if uint64(index) >= uint64(count.value):
-    return WorkQueueResult[ReadyItemInfo](error: WorkQueueError.InvalidIndex) # Never select unused row capacity.
+    return WorkQueueResult[ReadyItemInfo](status: WorkQueueError.InvalidIndex) # Never select unused row capacity.
   let row = int(uint64(slot))
   let position = int(uint64(index))
-  WorkQueueResult[ReadyItemInfo](error: WorkQueueError.None,
-    value: ReadyItemInfo(report: owner.data.rows[row][position].report,
-      dependencies: owner.data.rows[row][position].dependencies.len))
+  WorkQueueResult[ReadyItemInfo](status: WorkQueueError.None,
+    completed: ReadyItemInfo(report: data.rows[row][position].report,
+      dependencies: data.rows[row][position].dependencies.len))
 
 ## Extract one dependency's fixed value through the parent, slot and selected ready-item ordinal.
 proc readyDependencyAt*(owner: ReadySnapshot, slot: WorkQueueSlot, item: ReadyItemIndex,
     index: WorkQueueHashIndex): WorkQueueResult[PackageHash] =
+  let data = owner.data
+  if data == nil:
+    return WorkQueueResult[PackageHash](status: WorkQueueError.InvalidOwner) # No storage on default handles.
   let info = readyItemAt(owner, slot, item)
   if info.error != WorkQueueError.None:
-    return WorkQueueResult[PackageHash](error: info.error) # Keep the selected parent's set association.
+    return WorkQueueResult[PackageHash](status: info.error) # Keep the selected parent's set association.
   if uint64(index) >= uint64(info.value.dependencies):
-    return WorkQueueResult[PackageHash](error: WorkQueueError.InvalidIndex) # Bound before native conversion/access.
-  WorkQueueResult[PackageHash](error: WorkQueueError.None,
-    value: owner.data.rows[int(uint64(slot))][int(uint64(item))].dependencies[int(uint64(index))])
+    return WorkQueueResult[PackageHash](status: WorkQueueError.InvalidIndex) # Bound before native conversion/access.
+  WorkQueueResult[PackageHash](status: WorkQueueError.None,
+    completed: data.rows[int(uint64(slot))][int(uint64(item))].dependencies[int(uint64(index))])
 
 ## Extract one accumulated package hash as an independent fixed copy.
 proc accumulatedHashAt*(owner: AccumulatedSnapshot, slot: WorkQueueSlot,
     index: WorkQueueHashIndex): WorkQueueResult[PackageHash] =
+  let data = owner.data
+  if data == nil:
+    return WorkQueueResult[PackageHash](status: WorkQueueError.InvalidOwner) # No storage on default handles.
   let count = accumulatedSlotCount(owner, slot)
   if count.error != WorkQueueError.None:
-    return WorkQueueResult[PackageHash](error: count.error) # Owner/slot precedes set indexing.
+    return WorkQueueResult[PackageHash](status: count.error) # Owner/slot precedes set indexing.
   if uint64(index) >= uint64(count.value):
-    return WorkQueueResult[PackageHash](error: WorkQueueError.InvalidIndex) # No default hash for missing members.
-  WorkQueueResult[PackageHash](error: WorkQueueError.None, value: owner.data.rows[int(uint64(
+    return WorkQueueResult[PackageHash](status: WorkQueueError.InvalidIndex) # No default hash for missing members.
+  WorkQueueResult[PackageHash](status: WorkQueueError.None, completed: data.rows[int(uint64(
       slot))][int(uint64(index))])

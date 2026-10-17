@@ -90,7 +90,9 @@ reject destinations overlapping any byte of private wire, even outside the selec
 payload. Empty extraction needs no valid destination element
 address and writes nothing. Default/failed `RecordResult` alternatives carry only a reason, never
 values, owners or progress. Work errors are valid decoded values, not decoder failures. All
-selected output/union/result field guards remain enabled in checked optimized builds.
+selected output/union/result contracts remain enabled in checked optimized builds. On the Nimony
+port, status and variant tags/payloads are private; public properties are read-only and selected
+accessors require their matching success/work/union alternative.
 
 ## Verification
 
@@ -117,3 +119,26 @@ no private compiler/runtime APIs. Linux CI runs the same checks and retains buil
 compiler diagnostics and request digest/results under ignored `build/c2/`. Local verification is
 macOS arm64; Linux x86-64 verification occurs after push. This closes the concrete C.2 framing gaps
 in the M1 audit, not state serialization/Merkle layout, PVM execution or accumulation semantics.
+
+## Nimony branch verification
+
+Reproduce the experimental checked ARC/Clang LTO port with
+`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`; the historical
+Nim 2 commands above are not a second supported source target. All 26,090 independent requests,
+eight oracle known answers and both native suites are retained. The cumulative runner adds 56
+isolated result/variant/constructor misuse checks and 41 privacy/nominal compilation rejections.
+
+Source work alternatives use `successfulOperandOutput`/`failedOperandOutput`; payload edits require
+`editOperandPayload`, while `operandPayloadCopies` returns independent bytes. `operandSource` and
+`transferSource` keep source union tags and values together. Source getters copy; decoded operand
+getters retain immutable storage and transfer getters copy fixed fields. Encoder internals access
+the actual private source fields so descriptor/payload alias checks protect original storage.
+Metadata lengths and inactive source/decoded branches have explicit selected-alternative contracts.
+
+Retained source escape/replacement, copied source/payload/metadata independence and warmed ARC
+release extend native lifetime checks. After 100 warmups, 1,000 isolated cycles, including all six
+work-error alternatives, return live allocator occupancy to baseline. This measures that workload,
+not RSS or general leak freedom. Commands, source/request/output hashes, exact release counts and
+individual verdicts are retained in `build/nimony-trial/verification/results.json`. See
+[the trial](../docs/nimony-trial.md) for compiler/environment, cumulative totals and the next bounded
+work. Verification is local macOS ARM64; complete M1, Linux and M2/M3 migration remain unverified.

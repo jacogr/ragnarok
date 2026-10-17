@@ -69,40 +69,49 @@ def check(binary, value, folder, credentials=None, wire=None):
     return parts[3] == '1'
 
 
-# Valid credentials and independent wrong-key/signature/domain/report bindings exercise full M1/M2 composition.
-def verify_composition(binary, folder, values):
-    count = 0
+# Author each original successful/adversarial credential binding before invoking any native implementation.
+def composition_cases(values):
+    cases = []
+    # Every authored report retains its own independently generated message and two public credentials.
     for value in values:
-        assert check(binary,value,folder)
-        count += 1
+        # Exact identities make individual native observations reproducible without mutable shared fixture files.
+        def add(name, credentials=None, wire=None, wanted=False):
+            cases.append(dict(name=value['name']+'-'+name, value=value,
+                              credentials=value['credentials'] if credentials is None else credentials,
+                              wire=value['wire'] if wire is None else bytes(wire), wanted=wanted))
+        add('valid', wanted=True)
+        # Each credential's signature is corrupted independently; the other credential remains valid.
         for index in range(2):
             credentials = list(value['credentials'])
             key, signature = credentials[index]
             changed = bytearray(signature); changed[0] ^= 1
-            credentials[index] = (key,bytes(changed))
-            assert not check(binary,value,folder,credentials)
-            count += 1
-        # Changing a fixed hash retains valid report structure but must break the signed-report binding.
+            credentials[index] = (key, bytes(changed))
+            add('signature-'+str(index), credentials=credentials)
         changed = bytearray(value['wire']); changed[0] ^= 1
-        assert not check(binary,value,folder,wire=bytes(changed))
-        count += 1
-        # Every newly serialized 0.8.0 field is bound by the guarantee signature.
-        for field in ('shards','anchor-slot','lookup-state'):
+        add('report-hash', wire=changed)
+        # Every newly serialized 0.8.0 field remains part of the signed report binding.
+        for field in ('shards', 'anchor-slot', 'lookup-state'):
             changed = bytearray(value['wire'])
-            # A different valid shard count preserves structure, isolating signed-message binding.
             if field == 'shards':
-                shards = int.from_bytes(changed[68:70],'little')
-                changed[68:70] = (9 if shards == 6 else 6).to_bytes(2,'little')
+                # A different valid count preserves report structure while invalidating the credential binding.
+                shards = int.from_bytes(changed[68:70], 'little')
+                changed[68:70] = (9 if shards == 6 else 6).to_bytes(2, 'little')
             elif field == 'anchor-slot':
-                changed[136] ^= 1 # Mutate one byte of the new E4 anchor timeslot.
+                changed[136] ^= 1 # Preserve E4 framing while changing the newly signed timeslot.
             else:
-                changed[240] ^= 1 # Mutate one byte of the new lookup-anchor state root.
-            assert not check(binary,value,folder,wire=bytes(changed))
-            count += 1
-        # Swapping distinct credentials' public keys cannot authorize either unchanged signature.
-        assert not check(binary,value,folder,[value['wrong_domain'],value['credentials'][1]])
-        count += 1
-        a,b = value['credentials']
-        assert not check(binary,value,folder,[(b[0],a[1]),(a[0],b[1])])
-        count += 1
-    return count
+                changed[240] ^= 1 # Change the new lookup-anchor state root without disturbing structure.
+            add(field, wire=changed)
+        add('wrong-domain', credentials=[value['wrong_domain'], value['credentials'][1]])
+        a, b = value['credentials']
+        add('swapped-keys', credentials=[(b[0], a[1]), (a[0], b[1])])
+    return cases
+
+
+# Valid credentials and independent wrong-key/signature/domain/report bindings exercise full M1/M2 composition.
+def verify_composition(binary, folder, values):
+    cases = composition_cases(values)
+    # The historical wrapper and Nimony runner consume the same complete set of original bindings.
+    for case in cases:
+        actual = check(binary, case['value'], folder, case['credentials'], case['wire'])
+        assert actual == case['wanted'], case['name']
+    return len(cases)

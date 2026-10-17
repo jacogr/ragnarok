@@ -4,29 +4,29 @@ import ./fixed_unsigned
 import ./bounded
 
 type
-  # A validated location in the caller's pool or original wire input; no pointer is retained.
+  # Caller-supplied or decoded coordinates in a borrowed pool; encoders validate bounds against that pool.
   BlobSpan* = object
     offset*, length*: int
   # The four-byte service field is nominally different from counts and ordinary machine values.
   ServiceIndex* = distinct uint32
   # Presence carries a span; absence has no payload fields or bytes.
   OptionalBlob* = object
-    case present*: bool
+    case isPresent: bool
     of true:
       # Only the present branch refers to the associated byte pool.
-      blob*: BlobSpan
+      payloadSpan: BlobSpan
     of false:
       # Absence is represented solely by discriminator zero.
       discard
   # Exact C.2 work-output tags; Bad/Big retain the paper's names rather than inferred semantics.
   WorkKind* {.pure.} = enum
     Success, OutOfGas, Panic, BadExports, Oversize, Bad, Big
-  # Success carries a bounded blob; all error variants contain only their tag.
+  # Success carries a borrowed source/decoded span; all error variants contain only their tag.
   WorkOutput* = object
-    case kind*: WorkKind
-    of WorkKind.Success:
+    case outputKind: WorkKind
+    of Success:
       # Span coordinates refer to the same caller-owned pool/wire as the result.
-      blob*: BlobSpan
+      payloadSpan: BlobSpan
     else:
       # Error variants have no encoded blob length or payload.
       discard
@@ -42,48 +42,48 @@ type
   CompositeError* {.pure.} = enum
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
     AliasedBuffers, LengthOverflow, InvalidTag, InvalidSpan
-  # Encoded storage belongs to the caller; only success carries written.
+  # Completed output extent; callers cannot retag failures or read uncommitted progress.
   CompositeWrite* = object
-    case error*: CompositeError
-    of CompositeError.None:
-      # Only success carries decoded/committed data and its completed extent.
-      written*: int
+    case status: CompositeError
+    of None:
+      # Only the defining codec constructs complete success data.
+      byteWritten: int
     else:
-      # Failure has no value, span, count or consumed/written metadata.
+      # Default and failed alternatives carry no usable payload.
       discard
-  # A decoded optional value, referring to input by coordinates rather than an allocated copy.
+  # Validated optional value and prefix; payloads remain private until success.
   OptionalResult* = object
-    case error*: CompositeError
-    of CompositeError.None:
-      # Only success carries decoded/committed data and its completed extent.
-      value*: OptionalBlob
-      consumed*: int
+    case status: CompositeError
+    of None:
+      # Only the defining codec constructs complete success data.
+      decodedValue: OptionalBlob
+      byteConsumed: int
     else:
-      # Failure has no value, span, count or consumed/written metadata.
+      # Default and failed alternatives carry no usable payload.
       discard
-  # A decoded work-output variant and its completed prefix length.
+  # Validated work-output value and prefix; failures expose their reason alone.
   WorkResult* = object
-    case error*: CompositeError
-    of CompositeError.None:
-      # Only success carries decoded/committed data and its completed extent.
-      value*: WorkOutput
-      consumed*: int
+    case status: CompositeError
+    of None:
+      # Only the defining codec constructs complete success data.
+      decodedValue: WorkOutput
+      byteConsumed: int
     else:
-      # Failure has no value, span, count or consumed/written metadata.
+      # Default and failed alternatives carry no usable payload.
       discard
-  # Selects initialized caller-owned record storage only after every nested record validates.
+  # Completed caller-storage prefix; failures cannot authorize records or cursor progress.
   PreimageResult* = object
-    case error*: CompositeError
-    of CompositeError.None:
-      # Only success carries decoded/committed data and its completed extent.
-      count*, consumed*: int
+    case status: CompositeError
+    of None:
+      # Only the defining codec constructs complete success data.
+      elementCount, byteConsumed: int
     else:
-      # Failure has no value, span, count or consumed/written metadata.
+      # Default and failed alternatives carry no usable payload.
       discard
   # Internal discriminator proof before constructing public variants.
   TaggedResult = object
     case error: CompositeError
-    of CompositeError.None:
+    of None:
       # Only success carries decoded/committed data and its completed extent.
       tag: uint64
       blob: BlobSpan
@@ -91,6 +91,70 @@ type
     else:
       # Failure has no value, span, count or consumed/written metadata.
       discard
+
+# Construct a payload-free optional source descriptor without borrowing any buffer.
+func absentBlob*(): OptionalBlob = OptionalBlob(isPresent: false)
+# Construct a present source descriptor; the encoder still validates span bounds against its pool.
+func presentBlob*(span: BlobSpan): OptionalBlob = OptionalBlob(isPresent: true, payloadSpan: span)
+# Read optional presence without permitting callers to retag an absent value.
+func present*(value: OptionalBlob): bool = value.isPresent
+# Only present optionals contain a span; returned coordinates are copied, not writable aliases.
+func blob*(value: OptionalBlob): BlobSpan {.inline, requires: value.isPresent.} = value.payloadSpan
+
+# Construct a successful work source descriptor; pool-dependent validation remains with the encoder.
+func successfulWork*(span: BlobSpan): WorkOutput = WorkOutput(outputKind: WorkKind.Success,
+    payloadSpan: span)
+# Payload-free work descriptors cannot use the Success tag, which requires an explicit span.
+func failedWork*(kind: WorkKind): WorkOutput {.requires: kind != WorkKind.Success.} =
+  WorkOutput(outputKind: kind)
+# Inspect a work tag without allowing mutations that could manufacture a success payload.
+func kind*(value: WorkOutput): WorkKind = value.outputKind
+# Only Success carries a span; all six work-error tags reject payload access.
+func blob*(value: WorkOutput): BlobSpan {.inline, requires: value.outputKind == WorkKind.Success.} =
+  value.payloadSpan
+
+# Sibling encoders may report a typed failure, but cannot label a missing extent as success.
+func compositeFailure*(reason: CompositeError): CompositeWrite {.requires: reason !=
+    CompositeError.None.} =
+  CompositeWrite(status: reason)
+# Sibling encoders explicitly report their completed nonnegative extent after their own preflight/commit.
+func compositeWritten*(extent: int): CompositeWrite {.requires: extent >= 0.} =
+  CompositeWrite(status: CompositeError.None, byteWritten: extent)
+
+# Read the CompositeWrite reason without exposing a writable discriminator.
+func error*(value: CompositeWrite): CompositeError = value.status
+# Read the OptionalResult reason without exposing a writable discriminator.
+func error*(value: OptionalResult): CompositeError = value.status
+# Read the WorkResult reason without exposing a writable discriminator.
+func error*(value: WorkResult): CompositeError = value.status
+# Read the PreimageResult reason without exposing a writable discriminator.
+func error*(value: PreimageResult): CompositeError = value.status
+# Only completed writes publish a committed extent.
+func written*(value: CompositeWrite): int {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.byteWritten
+# Only complete optional decodes expose their selected variant.
+func value*(value: OptionalResult): OptionalBlob {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.decodedValue
+# Failed optional decodes cannot advance a byte cursor.
+func consumed*(value: OptionalResult): int {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.byteConsumed
+# Only complete work-output decodes expose their selected variant.
+func value*(value: WorkResult): WorkOutput {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.decodedValue
+# Failed work-output decodes cannot publish prefix progress.
+func consumed*(value: WorkResult): int {.inline, requires: value.status == CompositeError.None.} =
+  value.byteConsumed
+# Only a completed preimage decode authorizes its caller-owned record prefix.
+func count*(value: PreimageResult): int {.inline, requires: value.status == CompositeError.None.} =
+  value.elementCount
+# Failed preimage scans/decodes cannot expose partial progress.
+func consumed*(value: PreimageResult): int {.inline, requires: value.status ==
+    CompositeError.None.} =
+  value.byteConsumed
 
 # Compare address differences so overlap detection never overflows a pointer-end addition.
 proc alias(a: pointer, alen: int, b: pointer, blen: int): bool {.raises: [].} =
@@ -103,12 +167,12 @@ proc alias(a: pointer, alen: int, b: pointer, blen: int): bool {.raises: [].} =
 # Preserve nested blob failures; unrelated container statuses cannot occur in this blob-only path.
 proc blobError(error: ContainerError): CompositeError {.raises: [].} =
   case error
-  of ContainerError.None: CompositeError.None # Validation succeeded.
-  of ContainerError.Truncated: CompositeError.Truncated # Prefix/payload bytes are missing.
-  of ContainerError.NonCanonical: CompositeError.NonCanonical # Overlong natural count.
-  of ContainerError.LimitExceeded: CompositeError.LimitExceeded # Caller policy was exceeded.
-  of ContainerError.OutputTooSmall: CompositeError.OutputTooSmall # Complete destination required.
-  of ContainerError.AliasedBuffers: CompositeError.AliasedBuffers # Protect borrowed source storage.
+  of None: CompositeError.None # Validation succeeded.
+  of Truncated: CompositeError.Truncated # Prefix/payload bytes are missing.
+  of NonCanonical: CompositeError.NonCanonical # Overlong natural count.
+  of LimitExceeded: CompositeError.LimitExceeded # Caller policy was exceeded.
+  of OutputTooSmall: CompositeError.OutputTooSmall # Complete destination required.
+  of AliasedBuffers: CompositeError.AliasedBuffers # Protect borrowed source storage.
   else: CompositeError.InvalidSpan # Reject an unexpected status rather than interpreting it as success.
 
 # Validate both span endpoints by subtraction, including empty spans at the end of the pool.
@@ -119,18 +183,19 @@ proc validSpan(span: BlobSpan, size: int): bool {.raises: [].} =
 proc tagSize(tag: int, hasBlob: bool, span: BlobSpan, poolSize: int,
              limit: ByteLimit): CompositeWrite {.raises: [].} =
   # Reject discriminators before narrowing or interpreting payloads.
-  if tag < 0 or tag > 6: return CompositeWrite(error: CompositeError.InvalidTag)
+  if tag < 0 or tag > 6: return CompositeWrite(status: CompositeError.InvalidTag)
   # Payload-free values borrow no pool and contain exactly one tag byte.
-  if not hasBlob: return CompositeWrite(error: CompositeError.None, written: 1)
+  if not hasBlob: return CompositeWrite(status: CompositeError.None, byteWritten: 1)
   # Prove source endpoints before converting the signed length.
-  if not validSpan(span, poolSize): return CompositeWrite(error: CompositeError.InvalidSpan)
+  if not validSpan(span, poolSize): return CompositeWrite(status: CompositeError.InvalidSpan)
   # Apply caller policy before calculating encoded extent.
-  if uint64(span.length) > uint64(limit): return CompositeWrite(error: CompositeError.LimitExceeded)
+  if uint64(span.length) > uint64(limit): return CompositeWrite(
+      status: CompositeError.LimitExceeded)
   let length = natural.encode(JamNatural(uint64(span.length)))
   # Headers must fit in the host extent without overflowing the sum.
   if span.length > high(int) - 1 - length.len: return CompositeWrite(
-      error: CompositeError.LengthOverflow)
-  CompositeWrite(error: CompositeError.None, written: 1 + int(length.len) + span.length)
+      status: CompositeError.LengthOverflow)
+  CompositeWrite(status: CompositeError.None, byteWritten: 1 + int(length.len) + span.length)
 
 # Emit checked bytes only after size, capacity and whole borrowed-pool overlap checks.
 proc writeTag(tag: int, hasBlob: bool, span: BlobSpan, pool: openArray[byte], limit: ByteLimit,
@@ -139,10 +204,10 @@ proc writeTag(tag: int, hasBlob: bool, span: BlobSpan, pool: openArray[byte], li
   # Invalid source or policy cannot produce even a discriminator byte.
   if size.error != CompositeError.None: return size
   # The destination must hold the complete variant.
-  if output.len < size.written: return CompositeWrite(error: CompositeError.OutputTooSmall)
+  if output.len < size.written: return CompositeWrite(status: CompositeError.OutputTooSmall)
   # Only payload-bearing variants borrow the pool; protect unused source bytes too.
   if hasBlob and pool.len > 0 and alias(unsafeAddr pool[0], pool.len, addr output[0], size.written):
-    return CompositeWrite(error: CompositeError.AliasedBuffers)
+    return CompositeWrite(status: CompositeError.AliasedBuffers)
   output[0] = byte(tag)
   # Present/success values append the canonical length and identity payload.
   if hasBlob:
@@ -186,11 +251,12 @@ proc encodeOptionalBorrowed*(value: OptionalBlob, pool: openArray[byte], limit: 
 # Return a typed optional view only after validating discriminator and any present blob completely.
 proc decodeOptionalBorrowed*(input: openArray[byte], limit: ByteLimit): OptionalResult {.raises: [].} =
   let parsed = readTag(input, 1, 1, limit)
-  if parsed.error != CompositeError.None: return OptionalResult(error: parsed.error) # No usable value on failure.
-  if parsed.tag == 0: return OptionalResult(error: CompositeError.None, value: OptionalBlob(
-      present: false), consumed: parsed.consumed) # Absent.
-  OptionalResult(error: CompositeError.None, value: OptionalBlob(present: true, blob: parsed.blob),
-      consumed: parsed.consumed)
+  if parsed.error != CompositeError.None: return OptionalResult(
+      status: parsed.error) # No usable value on failure.
+  if parsed.tag == 0: return OptionalResult(status: CompositeError.None, decodedValue: OptionalBlob(
+      isPresent: false), byteConsumed: parsed.consumed) # Absent.
+  OptionalResult(status: CompositeError.None, decodedValue: OptionalBlob(isPresent: true,
+      payloadSpan: parsed.blob), byteConsumed: parsed.consumed)
 
 # C.2 work-output O: success zero plus a variable blob, or one of six payload-free errors.
 proc encodeWorkBorrowed*(value: WorkOutput, pool: openArray[byte], limit: ByteLimit,
@@ -201,12 +267,13 @@ proc encodeWorkBorrowed*(value: WorkOutput, pool: openArray[byte], limit: ByteLi
 # Decode exactly the work-output discriminator set; preserve trailing fields in either variant.
 proc decodeWorkBorrowed*(input: openArray[byte], limit: ByteLimit): WorkResult {.raises: [].} =
   let parsed = readTag(input, 6, 0, limit)
-  if parsed.error != CompositeError.None: return WorkResult(error: parsed.error) # No enum conversion on bad data.
+  if parsed.error != CompositeError.None: return WorkResult(
+      status: parsed.error) # No enum conversion on bad data.
   if parsed.tag == 0:
-    return WorkResult(error: CompositeError.None, value: WorkOutput(kind: WorkKind.Success,
-        blob: parsed.blob), consumed: parsed.consumed) # Blob branch.
-  WorkResult(error: CompositeError.None, value: WorkOutput(kind: WorkKind(parsed.tag)),
-      consumed: parsed.consumed)
+    return WorkResult(status: CompositeError.None, decodedValue: WorkOutput(
+        outputKind: WorkKind.Success, payloadSpan: parsed.blob), byteConsumed: parsed.consumed) # Blob branch.
+  WorkResult(status: CompositeError.None, decodedValue: WorkOutput(outputKind: WorkKind(
+      parsed.tag)), byteConsumed: parsed.consumed)
 
 # Traverse nested records either without writes or as a commit pass after stable input has been proved valid.
 proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
@@ -215,29 +282,29 @@ proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
   var cursor = offset
   var budget = uint64(limits.totalBlobBytes)
   # A compositional inspection also bounds framing bytes; existing callers retain the unlimited default.
-  if uint64(cursor) > uint64(wireLimit): return PreimageResult(error: CompositeError.LimitExceeded)
+  if uint64(cursor) > uint64(wireLimit): return PreimageResult(status: CompositeError.LimitExceeded)
   # Validate each tuple in wire order while subtracting its payload from the aggregate budget.
   for index in 0..<count:
-    if input.len - cursor < 4: return PreimageResult(error: CompositeError.Truncated) # Missing service field.
+    if input.len - cursor < 4: return PreimageResult(status: CompositeError.Truncated) # Missing service field.
     # Bound per-record traversal before a parent can scan arbitrarily far beyond its frame budget.
     if uint64(cursor+4) > uint64(wireLimit): return PreimageResult(
-        error: CompositeError.LimitExceeded)
+        status: CompositeError.LimitExceeded)
     let service = decodeFixed(input.toOpenArray(cursor, cursor + 3), ByteWidth(4))
     cursor += 4
     let blob = decodeBytesBorrowed(input.toOpenArray(cursor, input.len - 1), ByteLimit(min(uint64(
         limits.perBlob), budget)))
-    if blob.error != ContainerError.None: return PreimageResult(error: blobError(
+    if blob.error != ContainerError.None: return PreimageResult(status: blobError(
         blob.error)) # Both blob policies checked early.
     # Nested input extent is proved by decodeBytesBorrowed; only then can the exact wire endpoint be added.
     if uint64(cursor+blob.consumed) > uint64(wireLimit):
-      return PreimageResult(error: CompositeError.LimitExceeded)
+      return PreimageResult(status: CompositeError.LimitExceeded)
     if commit:
       # Only the second pass initializes record views; failed last records cannot expose an earlier partial prefix.
       output[index] = Preimage(service: ServiceIndex(uint32(uint64(service.value))),
                      blob: BlobSpan(offset: cursor + blob.offset, length: blob.length))
     budget -= uint64(blob.length)
     cursor += blob.consumed
-  PreimageResult(error: CompositeError.None, count: count, consumed: cursor)
+  PreimageResult(status: CompositeError.None, elementCount: count, byteConsumed: cursor)
 
 # Decode the full preimage extrinsic into caller-owned records, retaining blob locations as original-input spans.
 proc decodePreimagesBorrowed*(input: openArray[byte], limits: PreimageLimits,
@@ -245,20 +312,20 @@ proc decodePreimagesBorrowed*(input: openArray[byte], limits: PreimageLimits,
   let prefix = natural.decode(input)
   if not prefix.ok:
     # An invalid outer discriminator cannot advance a cursor or initialize any record.
-    return PreimageResult(error: if prefix.error ==
+    return PreimageResult(status: if prefix.error ==
         natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
   let claimed = uint64(prefix.value)
   if claimed > uint64(limits.items): return PreimageResult(
-      error: CompositeError.LimitExceeded) # Outer count policy.
+      status: CompositeError.LimitExceeded) # Outer count policy.
   if claimed > uint64((input.len - prefix.consumed) div 5): return PreimageResult(
-      error: CompositeError.Truncated) # Minimum record extent.
+      status: CompositeError.Truncated) # Minimum record extent.
   if claimed > uint64(output.len): return PreimageResult(
-      error: CompositeError.OutputTooSmall) # Host conversion/storage proof.
+      status: CompositeError.OutputTooSmall) # Host conversion/storage proof.
   if claimed > uint64(high(int) div sizeof(Preimage)): return PreimageResult(
-      error: CompositeError.LengthOverflow) # Typed memory size.
+      status: CompositeError.LengthOverflow) # Typed memory size.
   let count = int(claimed)
   if count > 0 and alias(unsafeAddr input[0], input.len, addr output[0], count * sizeof(Preimage)):
-    return PreimageResult(error: CompositeError.AliasedBuffers) # Includes trailing input fields.
+    return PreimageResult(status: CompositeError.AliasedBuffers) # Includes trailing input fields.
   let checked = walk(input, prefix.consumed, count, limits, output, false)
   if checked.error != CompositeError.None: return checked # Whole-frame validation precedes any record write.
   walk(input, prefix.consumed, count, limits, output, true)
@@ -267,28 +334,28 @@ proc decodePreimagesBorrowed*(input: openArray[byte], limits: PreimageLimits,
 proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte], limits: PreimageLimits,
                       output: var openArray[byte]): CompositeWrite {.raises: [].} =
   if uint64(values.len) > uint64(limits.items): return CompositeWrite(
-      error: CompositeError.LimitExceeded) # Count ceiling.
+      status: CompositeError.LimitExceeded) # Count ceiling.
   let prefix = natural.encode(JamNatural(uint64(values.len)))
-  if output.len < prefix.len: return CompositeWrite(error: CompositeError.OutputTooSmall) # Outer header extent.
+  if output.len < prefix.len: return CompositeWrite(status: CompositeError.OutputTooSmall) # Outer header extent.
   var required = int(prefix.len)
   var budget = uint64(limits.totalBlobBytes)
   # Prove every source span and destination extent before committing even the outer header.
   for value in values:
     if not validSpan(value.blob, pool.len): return CompositeWrite(
-        error: CompositeError.InvalidSpan) # Checked source endpoints.
+        status: CompositeError.InvalidSpan) # Checked source endpoints.
     if uint64(value.blob.length) > min(uint64(limits.perBlob), budget):
-      return CompositeWrite(error: CompositeError.LimitExceeded) # Nested and aggregate policy.
+      return CompositeWrite(status: CompositeError.LimitExceeded) # Nested and aggregate policy.
     let length = natural.encode(JamNatural(uint64(value.blob.length)))
     if output.len - required < 4 + length.len or value.blob.length > output.len - required - 4 - length.len:
-      return CompositeWrite(error: CompositeError.OutputTooSmall) # Safe total size by subtraction.
+      return CompositeWrite(status: CompositeError.OutputTooSmall) # Safe total size by subtraction.
     required += 4 + length.len + value.blob.length
     budget -= uint64(value.blob.length)
   if values.len > high(int) div sizeof(Preimage): return CompositeWrite(
-      error: CompositeError.LengthOverflow) # Alias span size.
+      status: CompositeError.LengthOverflow) # Alias span size.
   if pool.len > 0 and alias(unsafeAddr pool[0], pool.len, addr output[0], required):
-    return CompositeWrite(error: CompositeError.AliasedBuffers) # Pool must remain stable through commit.
+    return CompositeWrite(status: CompositeError.AliasedBuffers) # Pool must remain stable through commit.
   if values.len > 0 and alias(unsafeAddr values[0], values.len * sizeof(Preimage), addr output[0], required):
-    return CompositeWrite(error: CompositeError.AliasedBuffers) # Descriptor storage must survive output writes too.
+    return CompositeWrite(status: CompositeError.AliasedBuffers) # Descriptor storage must survive output writes too.
   for i in 0..<prefix.len: output[i] = prefix.bytes[i] # Commit validated outer count.
   var cursor = int(prefix.len)
   # Commit each fully validated tuple using the same stable descriptors and source pool.
@@ -303,7 +370,7 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
       # Every nested span/capacity and the whole pool were checked before committing the outer prefix.
       copyMem(addr output[cursor], unsafeAddr pool[value.blob.offset], value.blob.length)
     cursor += value.blob.length
-  CompositeWrite(error: CompositeError.None, written: required)
+  CompositeWrite(status: CompositeError.None, byteWritten: required)
 
 # Inspect preimage framing/payload policy without allocation or exposing source coordinates.
 proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
@@ -311,15 +378,15 @@ proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
   let prefix = natural.decode(input)
   # Preserve primitive framing errors before choosing a count.
   if not prefix.ok:
-    return PreimageResult(error: if prefix.error == natural.truncated: CompositeError.Truncated
+    return PreimageResult(status: if prefix.error == natural.truncated: CompositeError.Truncated
       else: CompositeError.NonCanonical) # Parent composition cannot normalize overlong counts.
   let count = uint64(prefix.value)
   # Policy and minimum-wire proof precede any conversion or record iteration.
-  if count > uint64(limits.items): return PreimageResult(error: CompositeError.LimitExceeded)
+  if count > uint64(limits.items): return PreimageResult(status: CompositeError.LimitExceeded)
   if count > uint64((input.len-int(prefix.consumed)) div 5):
-    return PreimageResult(error: CompositeError.Truncated) # Every record needs E4 service and at least one length octet.
+    return PreimageResult(status: CompositeError.Truncated) # Every record needs E4 service and at least one length octet.
   # Keep parent acceptance compatible with later materialization through the existing typed preimage-owner API.
   if count > uint64(high(int) div sizeof(Preimage)):
-    return PreimageResult(error: CompositeError.LengthOverflow)
-  var unused: array[0, Preimage]
+    return PreimageResult(status: CompositeError.LengthOverflow)
+  var unused: array[0, Preimage] = default(array[0, Preimage])
   walk(input, int(prefix.consumed), int(count), limits, unused, false, wireLimit)

@@ -142,6 +142,30 @@ Linux CI runs the suite and retains diagnostics; local results are macOS arm64, 
 confirmation pending CI after push. Standard formatting is applied without toolchain patches.
 
 M1 framing-baseline coverage remains distinct from full state serialization. Chapters **1–16**
-now have typed serializers, with chapter 13's trace key-width gate still open. Service
+now have typed serializers. Chapter 13 follows the accepted compact gas and numeric service-key
+policy recorded in its specification; there is no alternate-width fallback. Service
 entries and whole-state composition/root evidence remain. Next planned bounded increment:
 **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
+
+
+## Nimony branch verification
+
+The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, retaining
+its wire format, resource limits and error precedence. `WorkQueueResult[T]` now keeps status and
+payload private, exposes a read-only reason and guards successful payload access with a contract.
+Both acyclic owner references are explicitly nullable and checked through stable retained locals.
+No mutable row/set storage is exported; extracted report handles survive parent retirement.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` after installing
+the pinned trial compiler. The runner includes the original 2,904-request corpus, six literal
+checks, 24 JSON-derived components, twelve exact raw trace components and 48 partial component
+roots. It also runs both native suites, 86 isolated actual/default result rejections, sixteen
+private/read-only compiler probes and three nominal owner/index substitutions. The isolated
+1,000-cycle lifetime workload returns public live occupancy from 592 to 592 bytes locally.
+Descriptor/count/aggregate arithmetic boundaries and late malformed parents reject before retained
+allocation. No source normalization, alternate representation or upstream patch is introduced.
+
+The checked ARC/Clang LTO result is local macOS ARM64; Linux confirmation remains CI work. This
+port does not establish full M1 migration, accumulation STF execution or whole-state parity. The
+next bounded Nimony family is chapter-16 last accumulation outputs. See the
+[trial](../docs/nimony-trial.md) for cumulative evidence and remaining gates.

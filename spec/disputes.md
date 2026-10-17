@@ -76,5 +76,33 @@ truncation and byte-budget boundaries; sampled full-vector vote boundaries; exce
 counts; all 254 illegal Boolean values in judgments and faults; late duplicate/descending hashes,
 indices and keys; E2/E4 boundaries; deterministic structured/arbitrary malformed bytes; unchanged
 destinations on failure; immutable-owner/source lifetimes and getter copies; outer/nested aliases;
-four nominal-domain compiler rejections and one private-owner rejection. Linux CI runs the same
-checked ARC/Clang LTO builds with assertions, bounds, range, field and overflow checks enabled.
+four nominal-domain compiler rejections and one private-owner rejection. The established Linux CI
+profile belongs to the Nim 2 baseline; this experimental Nimony port has not switched or passed
+that pipeline.
+
+## Nimony port verification
+
+The pinned nightly port hides `DisputeResult[T]` status/value behind read-only `error` and a
+success-precondition `value` accessor. Defaults remain Uninitialized. Sibling adapters report
+failures through `disputeFailure[T]`, which rejects the success tag. The block adapter was adapted
+mechanically; its runtime port remains separate. Owned snapshots use a private nullable ARC
+reference retained locally before nil checks, including the nested judgment-selection path.
+
+`tools/test_nimony.py` checks 10,908 original independent requests, six unsigned policy boundary
+cases and 10,831 direct inspections: **21,745 comparisons**. Inspection expectations select counts
+and consumed progress from independent logical fields rather than native layout/offsets. Original
+published samples retain their ordering rejection, and canonical test copies retain full fields.
+No fixture or protocol policy is changed to obtain compiler parity.
+
+The native suite retains real-storage outer/nested alias tests using public writable fixed-array
+views. It adds escaped-source snapshots, same-sized replacement owners, independent copied
+metadata and all record families, plus a warmed 1,000-cycle ARC release workload. Public live
+occupancy stays at 140,880 bytes on the trial Mac, with outer fixtures live; this measures the
+isolated workload rather than RSS or general leak freedom. Twenty-five runtime misuse cases
+reject failed/default result reads and invalid failure construction. Eight compilation checks
+reject owner/result bypasses; four nominal checks protect epoch, judge, key and signature domains.
+
+Commands, compiler metadata, source/corpus hashes and exact diagnostics are recorded in ignored
+`build/nimony-trial/verification/results.json` and adjacent logs. Verification uses local macOS ARM64
+checked ARC/Clang LTO. Linux, signature validity, validator-set selection and quorum/eligibility
+remain separate migration work; see [the trial](../docs/nimony-trial.md).

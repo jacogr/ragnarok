@@ -88,7 +88,7 @@ versions; truncated and overlong discriminators; suffixes independent of consume
 250 deterministic fixed records with single-byte and arbitrary raw mutations; and **51 partial
 metadata-entry trie roots**. Supplementary native tests cover source/input/scope/value independence,
 all fields and result guards. Three negative compiler probes reject gas-as-balance,
-byte-footprint-as-item-count and timeslot-as-parent-service substitutions. No privacy probe is
+byte-footprint-as-item-count and timeslot-as-parent-service substitutions. No storage privacy probe is
 needed for a record containing only public fixed copies and no retained mutable storage.
 
 At vector revision `d3c089c9a1d5352ad353626d7a2db8589f137b2a`, four existing pinned blobs
@@ -115,5 +115,30 @@ macOS arm64, with Linux confirmation pending CI after push.
 
 State chapters 1–16 and service metadata now have codecs; **M1 state parity remains incomplete**.
 Request-history framing is implemented; whole-state composition/root evidence and the
-chapter-13/request-length parity gates remain. Next planned bounded group:
+parked request-length question remain; chapter 13 uses the accepted compact gas and numeric
+service-key policy without an alternate-width fallback. Next planned bounded group:
 **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
+
+
+## Nimony branch verification
+
+The experimental branch ports fixed account metadata to pristine Nimony 0.6.3 nightly `5b51edfed`,
+preserving all keys, bytes, unsigned domains and failure precedence. `ServiceMetadataResult[T]`
+keeps its discriminator/payload private behind a read-only reason and a success-only accessor.
+The fixed decoded record contains no references and needs no heap-backed owner. Scalar/array
+initialization is explicit and fixed byte-budget comparisons use matching unsigned types.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
+trial compiler. The runner includes the original 1,794-request corpus, six literal checks, 20
+JSON-derived records, 20 exact raw trace metadata entries and 51 partial entry roots. Two native
+suites retain fixed source/input/scope/copy independence and exact little-endian field reads.
+Sixteen isolated actual/default result reads reject through the exact success contract. Six
+private/read-only compiler probes reject result bypasses, and three nominal probes retain
+balance/gas, storage-byte/item and timeslot/service separation. After 1,000 warmed copy/entry cycles,
+public live allocation returns from 192 to 192 bytes locally; decoded records themselves have no
+retained storage.
+
+Results are local macOS ARM64, checked ARC/Clang LTO. Linux confirmation and complete M1 migration
+remain separate gates. No compiler patches, account-state validation or transition execution are
+introduced. The next bounded Nimony family is service storage/preimage keyed values; cumulative
+evidence and remaining gates are recorded in the [trial](../docs/nimony-trial.md).

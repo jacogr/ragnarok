@@ -154,3 +154,26 @@ The C13 service-key migration and compact gas policy are settled. All 224 select
 captures and fourteen published full-state mappings pass [typed composition](state-composition.md).
 M1's remaining state-parity question is the [parked request namespace](state-clarifications.md).
 Further implementation scope is selected separately with the maintainer.
+
+## Experimental Nimony branch
+
+The [Nimony trial](../docs/nimony-trial.md) verifies the unchanged 2,615 independent requests and
+seven literal reference checks, including eight explicitly partial validator-pair sources, six
+complete raw trace entries and sixteen later raw values. Compact gas known answers and the
+maintainer-selected single representation are preserved. No fixture or protocol pin is changed.
+
+`ActivityResult[T]` uses private status/payload and checked success-only accessors, including the
+natural/key, fixed-tuple and scan-layout results. Nullable owner storage uses checked stable locals.
+Forged epoch selectors return `InvalidTag` before retained roster indexing; no wire tag is added.
+Ordinal-range iteration retains declaration order, with explicit fixed-array initialization and
+supported `static[int]` syntax. Copied metadata and validator/core/service records remain independent.
+
+Two native suites cover retained/replaced parents, resized current/previous populations, copied
+fields, compact gas bytes, late malformed scalars and arithmetic/storage boundaries. Sixty-two
+isolated runtime cases require the exact success contract; sixteen privacy/read-only and two
+nominal probes reject compilation. The warmed 1,000-cycle ownership workload returns live
+occupancy 192 → 192 bytes locally on macOS ARM64, checked ARC/Clang LTO; this is workload-specific.
+
+Use `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on the trial
+branch. The historical Nim 2 commands above describe the main-branch baseline. Actual Linux
+results and full M1/M2/M3 runtime parity remain separate migration gates.

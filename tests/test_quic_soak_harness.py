@@ -4,13 +4,27 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-from test_quic_soak import wait_marker, check_growth, IDLE_ALLOCATION_LIMITS
+from test_quic_soak import wait_marker, check_growth, pairing, IDLE_ALLOCATION_LIMITS
 from test_quic_service import check_cleanup
 
 
 # Exercise orchestration independently of native sockets; preserve the real deadline and resource assertions.
 class MarkerTests(unittest.TestCase):
     # Direct CLI execution and imported harnesses must update the caller's same baseline mapping.
+
+    # Compiler-specific paths must reach the child command and retain failure evidence in the requested directory.
+    def test_isolated_binary_and_failure_logs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root/'evidence'
+            binary = root/'checked-peer'
+            with patch('test_quic_soak.subprocess.Popen', side_effect=OSError('fixture spawn failure')) as spawn:
+                with self.assertRaisesRegex(OSError, 'fixture spawn failure'):
+                    pairing('nim', 'nim', root/'fixtures', 40, 8,
+                            binaries={'nim': binary}, directory=directory)
+            self.assertEqual(spawn.call_args.args[0][0], str(binary))
+            self.assertTrue((directory/'server.log').is_file())
+            self.assertTrue((directory/'resources.json').is_file())
 
     # The Linux failure inserted a receive-buffer warning between cleanup and the next listener's readiness.
     def test_interleaved_warning_does_not_hide_ready(self):

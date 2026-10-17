@@ -1,5 +1,6 @@
 ## GP 0.8.0 C.2 guarantees: canonical reports, E4 slots and two/three E2-indexed credentials.
 ## Reports remain immutable owned snapshots; signatures are opaque and state eligibility is external.
+import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_report, report_owned, owned, assurances]
 
 type
@@ -31,9 +32,9 @@ type
     InvalidCredential, InvalidValidator, InvalidOwner, InvalidIndex
   # Tagged success is the only branch containing a value or progress.
   GuaranteeResult*[T] = object
-    case error*: GuaranteeError
-    of GuaranteeError.None:
-      value*: T
+    case status: GuaranteeError
+    of None:
+      completed: T
     else:
       # Defaults and malformed nested reports expose no application value.
       discard
@@ -48,7 +49,7 @@ type
     consumed: int
   # Copying this opaque handle retains all reports and fixed metadata without exposing mutable storage.
   OwnedGuarantees* = object
-    data: GuaranteesData
+    data: nil GuaranteesData
   # Successful prefix progress and its matching owner travel together.
   GuaranteesRead* = object
     owner*: OwnedGuarantees
@@ -64,6 +65,17 @@ type
   Scan = object
     values: array[341, ScannedGuarantee]
     count, consumed: int
+
+# Read a generic guarantee outcome without permitting callers to retag its private state.
+func error*[T](value: GuaranteeResult[T]): GuaranteeError = value.status
+# Only complete operations expose their value, owner or progress metadata.
+func value*[T](value: GuaranteeResult[T]): T {.inline, requires: value.status ==
+    GuaranteeError.None.} =
+  value.completed
+# Sibling adapters may report a failure, never manufacture success without a completed value.
+func guaranteeFailure*[T](reason: GuaranteeError): GuaranteeResult[T] {.requires: reason !=
+    GuaranteeError.None.} =
+  GuaranteeResult[T](status: reason)
 
 # Validate chain ceilings before byte access; the same validator domain applies to assurances.
 proc validConfig(config: GuaranteeConfig): bool {.raises: [].} =
@@ -84,76 +96,77 @@ proc scanRecord(input: openArray[byte], start: int, config: GuaranteeConfig,
                 previousCore: uint64 = 0, ordered: bool = false): GuaranteeResult[
                     ScannedGuarantee] {.raises: [].} =
   var cursor = start
-  var record: ScannedGuarantee
+  var record: ScannedGuarantee = default(ScannedGuarantee)
   # Canonical numbers advance private parser state only after complete prefix validation.
   template readNumber(target: untyped) =
     block:
       let number = natural.decode(input.toOpenArray(cursor, input.high))
       # Preserve the original failure instead of narrowing a partial count.
       if not number.ok:
-        return GuaranteeResult[ScannedGuarantee](error: if number.error ==
+        return GuaranteeResult[ScannedGuarantee](status: if number.error ==
             natural.truncated: GuaranteeError.Truncated
           else: GuaranteeError.NonCanonical) # Overlong counts cannot select a second wire representation.
       target = uint64(number.value)
       cursor += int(number.consumed)
       # Every consumed prefix byte counts toward the explicitly supplied frame budget.
       if uint64(cursor) > uint64(config.maxBytes):
-        return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.LimitExceeded)
+        return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.LimitExceeded)
   let parsed = decodeReportBorrowed(input.toOpenArray(cursor, input.high), uint64(config.cores))
   # A malformed final report cannot publish any earlier guarantee owner.
   if parsed.error != CompositeError.None: return GuaranteeResult[ScannedGuarantee](
-      error: reportError(parsed.error))
+      status: reportError(parsed.error))
   let core = uint64(parsed.value.core)
   # Extrinsic report cores form a strictly increasing unique sequence.
   if ordered and core <= previousCore:
-    return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.NonCanonical)
+    return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.NonCanonical)
   record.reportOffset = cursor
   record.reportLength = parsed.consumed
   record.core = core
   cursor += parsed.consumed
   # Frame limits are independent of whether more borrowed trailing bytes happen to be available.
   if uint64(cursor) > uint64(config.maxBytes):
-    return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.LimitExceeded)
+    return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.LimitExceeded)
   # The complete E4 slot must exist before reading any of its little-endian octets.
-  if input.len-cursor < 4: return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.Truncated)
+  if input.len-cursor < 4: return GuaranteeResult[ScannedGuarantee](
+      status: GuaranteeError.Truncated)
   record.slot = GuaranteeSlot(decodeFixed(input.toOpenArray(cursor, cursor+3),
       ByteWidth(4)).value)
   cursor += 4
-  var credentials: uint64
+  var credentials: uint64 = 0
   readNumber(credentials)
   # Credentials are exactly two or three, even when the source is otherwise syntactically decodable.
   if credentials < 2 or credentials > 3:
-    return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.InvalidCredential)
+    return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.InvalidCredential)
   # Divide before multiplying an untrusted extent; each record is E2 plus 64 signature bytes.
   if credentials > uint64((input.len-cursor) div 66):
-    return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.Truncated)
+    return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.Truncated)
   let endCursor = cursor+int(credentials)*66
   # Check the complete final credential extent before copying any record metadata.
   if uint64(endCursor) > uint64(config.maxBytes):
-    return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.LimitExceeded)
+    return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.LimitExceeded)
   record.credentialCount = int(credentials)
   # Each copied credential owns exact bytes; signatures are not verified during decoding.
   for j in 0..<int(credentials):
     let validator = uint64(decodeFixed(input.toOpenArray(cursor, cursor+1), ByteWidth(2)).value)
     # An E2 representation alone does not establish membership in the caller's validator ceiling.
     if validator >= uint64(config.validators):
-      return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.InvalidValidator)
+      return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.InvalidValidator)
     # Duplicate or descending credential identities are not canonical input.
     if j > 0 and validator <= uint64(record.credentials[j-1].validator):
-      return GuaranteeResult[ScannedGuarantee](error: GuaranteeError.NonCanonical)
+      return GuaranteeResult[ScannedGuarantee](status: GuaranteeError.NonCanonical)
     record.credentials[j].validator = GuarantorIndex(validator)
-    var signature: array[64, byte]
+    var signature: array[64, byte] = default(array[64, byte])
     # Preserve every signature identity byte without interpreting cryptographic validity.
     for k in 0..<64: signature[k] = input[cursor+2+k]
     record.credentials[j].signature = GuaranteeSignature(signature)
     cursor += 66
   record.endCursor = cursor
-  GuaranteeResult[ScannedGuarantee](error: GuaranteeError.None, value: record)
+  GuaranteeResult[ScannedGuarantee](status: GuaranteeError.None, completed: record)
 
 # Read all records without allocation or writes; private coordinates never leave the subsequent capture call.
 proc scan(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[Scan] {.raises: [].} =
   # Invalid chain configuration cannot authorize an empty result or inspect attacker data.
-  if not validConfig(config): return GuaranteeResult[Scan](error: GuaranteeError.InvalidConfig)
+  if not validConfig(config): return GuaranteeResult[Scan](status: GuaranteeError.InvalidConfig)
   var cursor = 0
   # Canonical numbers advance private parser state only after complete prefix validation.
   template readNumber(target: untyped) =
@@ -161,19 +174,20 @@ proc scan(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[Scan
       let number = natural.decode(input.toOpenArray(cursor, input.high))
       # Preserve the original failure instead of narrowing a partial count.
       if not number.ok:
-        return GuaranteeResult[Scan](error: if number.error ==
+        return GuaranteeResult[Scan](status: if number.error ==
             natural.truncated: GuaranteeError.Truncated
           else: GuaranteeError.NonCanonical) # Overlong counts cannot select a second wire representation.
       target = uint64(number.value)
       cursor += int(number.consumed)
       # Every consumed prefix byte counts toward the explicitly supplied frame budget.
       if uint64(cursor) > uint64(config.maxBytes):
-        return GuaranteeResult[Scan](error: GuaranteeError.LimitExceeded)
-  var count: uint64
+        return GuaranteeResult[Scan](status: GuaranteeError.LimitExceeded)
+  var count: uint64 = 0
   readNumber(count)
   # At most one report per configured core bounds metadata before host conversion/allocation.
-  if count > uint64(config.cores): return GuaranteeResult[Scan](error: GuaranteeError.LimitExceeded)
-  var scanned: Scan
+  if count > uint64(config.cores): return GuaranteeResult[Scan](
+      status: GuaranteeError.LimitExceeded)
+  var scanned: Scan = default(Scan)
   scanned.count = int(count)
   # Validate all nested reports and credentials before allocating their retained owners.
   for i in 0..<scanned.count:
@@ -181,11 +195,11 @@ proc scan(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[Scan
     let record = scanRecord(input, cursor, config,
       previousCore = (if i > 0: scanned.values[i-1].core else: 0), ordered = i > 0)
     if record.error != GuaranteeError.None:
-      return GuaranteeResult[Scan](error: record.error) # A late record failure cannot publish an earlier owner.
+      return GuaranteeResult[Scan](status: record.error) # A late record failure cannot publish an earlier owner.
     scanned.values[i] = record.value
     cursor = record.value.endCursor
   scanned.consumed = cursor
-  GuaranteeResult[Scan](error: GuaranteeError.None, value: scanned)
+  GuaranteeResult[Scan](status: GuaranteeError.None, completed: scanned)
 
 # Capture only completely validated records, retaining no caller buffer or detached borrowed spans.
 proc decodeGuarantees*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[
@@ -193,7 +207,7 @@ proc decodeGuarantees*(input: openArray[byte], config: GuaranteeConfig): Guarant
   let scanned = scan(input, config)
   # No allocation based on an untrusted count occurs until the complete scan succeeds.
   if scanned.error != GuaranteeError.None: return GuaranteeResult[GuaranteesRead](
-      error: scanned.error)
+      status: scanned.error)
   let data = GuaranteesData(values: newSeq[Guarantee](scanned.value.count), config: config,
     consumed: scanned.value.consumed)
   # Reparse stable validated report slices into their existing private immutable owner API.
@@ -203,11 +217,11 @@ proc decodeGuarantees*(input: openArray[byte], config: GuaranteeConfig): Guarant
       record.reportOffset+record.reportLength-1), uint64(config.cores))
     # Preserve a typed failure even if a future report-owner contract adds a new rejection.
     if captured.error != OwnershipError.None:
-      return GuaranteeResult[GuaranteesRead](error: GuaranteeError.InvalidReport)
+      return GuaranteeResult[GuaranteesRead](status: GuaranteeError.InvalidReport)
     data.values[i] = Guarantee(report: captured.value, slot: record.slot,
       credentials: record.credentials, credentialCount: record.credentialCount)
-  GuaranteeResult[GuaranteesRead](error: GuaranteeError.None,
-    value: GuaranteesRead(owner: OwnedGuarantees(data: data), count: data.values.len,
+  GuaranteeResult[GuaranteesRead](status: GuaranteeError.None,
+    completed: GuaranteesRead(owner: OwnedGuarantees(data: data), count: data.values.len,
         consumed: data.consumed))
 
 # Compare addresses by distance so even empty or near-address-limit ranges need no overflowing endpoint sum.
@@ -227,60 +241,60 @@ proc chargeRecord(value: Guarantee, config: GuaranteeConfig, required: var int,
   let report = ownedReportInfo(value.report)
   # Default report handles are not encodable as successfully validated empty reports.
   if report.error != OwnershipError.None: return GuaranteeResult[uint64](
-      error: GuaranteeError.InvalidReport)
+      status: GuaranteeError.InvalidReport)
   let core = uint64(report.value.core)
   # A report captured under a broader profile must still meet this encoder's supplied ceiling.
   if core >= uint64(config.cores) or uint64(report.value.header.erasureShards) div 3 > uint64(config.cores):
-    return GuaranteeResult[uint64](error: GuaranteeError.LimitExceeded)
+    return GuaranteeResult[uint64](status: GuaranteeError.LimitExceeded)
   # Core order and uniqueness are required independently from any caller's earlier validation.
   if ordered and core <= previousCore: return GuaranteeResult[uint64](
-      error: GuaranteeError.NonCanonical)
+      status: GuaranteeError.NonCanonical)
   # Only two or three valid, strictly ordered credential identities may be serialized.
   if value.credentialCount < 2 or value.credentialCount > 3:
-    return GuaranteeResult[uint64](error: GuaranteeError.InvalidCredential)
+    return GuaranteeResult[uint64](status: GuaranteeError.InvalidCredential)
   for j in 0..<value.credentialCount:
     # Fixed-width identity bytes still need membership in the caller's structural ceiling.
     if uint64(value.credentials[j].validator) >= uint64(config.validators):
-      return GuaranteeResult[uint64](error: GuaranteeError.InvalidValidator)
+      return GuaranteeResult[uint64](status: GuaranteeError.InvalidValidator)
     # Strict ordering rejects duplicate identities before serialization.
     if j > 0 and uint16(value.credentials[j].validator) <= uint16(value.credentials[
         j-1].validator):
-      return GuaranteeResult[uint64](error: GuaranteeError.NonCanonical)
+      return GuaranteeResult[uint64](status: GuaranteeError.NonCanonical)
   let suffix = 5+66*value.credentialCount
   # Both additions are checked before the accumulated extent can overflow host arithmetic.
   if required > high(int)-suffix or report.value.consumed > high(int)-required-suffix:
-    return GuaranteeResult[uint64](error: GuaranteeError.LengthOverflow)
+    return GuaranteeResult[uint64](status: GuaranteeError.LengthOverflow)
   required += report.value.consumed+suffix
   # Stop measuring once a frame already exceeds the caller's byte budget.
   if uint64(required) > uint64(config.maxBytes):
-    return GuaranteeResult[uint64](error: GuaranteeError.LimitExceeded)
-  GuaranteeResult[uint64](error: GuaranteeError.None, value: core)
+    return GuaranteeResult[uint64](status: GuaranteeError.LimitExceeded)
+  GuaranteeResult[uint64](status: GuaranteeError.None, completed: core)
 
 # Validate every report owner, credential and frame extent before authorizing a byte write.
 proc measure(values: openArray[Guarantee], config: GuaranteeConfig): GuaranteeResult[
     int] {.raises: [].} =
   # Configuration and count ceilings precede access to any possibly default report owner.
-  if not validConfig(config): return GuaranteeResult[int](error: GuaranteeError.InvalidConfig)
+  if not validConfig(config): return GuaranteeResult[int](status: GuaranteeError.InvalidConfig)
   if values.len > int(uint64(config.cores)): return GuaranteeResult[int](
-      error: GuaranteeError.LimitExceeded)
+      status: GuaranteeError.LimitExceeded)
   var required = int(natural.encode(JamNatural(values.len)).len)
   var previousCore = 0'u64
   # The final malformed source record must be discovered before committing an earlier record.
   for i, value in values:
     let charged = chargeRecord(value, config, required, previousCore, i > 0)
     if charged.error != GuaranteeError.None:
-      return GuaranteeResult[int](error: charged.error) # Whole-source failure precedes all output writes.
+      return GuaranteeResult[int](status: charged.error) # Whole-source failure precedes all output writes.
     previousCore = charged.value
   # The empty frame still consumes its one-byte count and must satisfy the same resource policy.
   if uint64(required) > uint64(config.maxBytes): return GuaranteeResult[int](
-      error: GuaranteeError.LimitExceeded)
-  GuaranteeResult[int](error: GuaranteeError.None, value: required)
+      status: GuaranteeError.LimitExceeded)
+  GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
 # Commit one fully preflighted stable record; output/report disjointness is proved by the enclosing encoder.
 proc writeRecord(value: Guarantee, output: var openArray[byte], cursor: var int,
                  required: int) {.raises: [].} =
   let report = encodeOwnedReport(value.report, output.toOpenArray(cursor, required-1))
-  doAssert report.error == OwnershipError.None
+  assert report.error == OwnershipError.None
   cursor += report.value
   let slot = encodeFixed(FixedUnsigned(uint32(value.slot)), ByteWidth(4))
   # Timeslots are E4 even when their compact natural representation would be shorter.
@@ -305,18 +319,18 @@ proc encodeGuarantees*(values: openArray[Guarantee], config: GuaranteeConfig,
   if measured.error != GuaranteeError.None: return measured
   let required = measured.value
   # All sources are valid; require the complete destination before checking or committing its bytes.
-  if output.len < required: return GuaranteeResult[int](error: GuaranteeError.OutputTooSmall)
+  if output.len < required: return GuaranteeResult[int](status: GuaranteeError.OutputTooSmall)
   # Guard host source extent arithmetic before checking the entire destination prefix for overlap.
   if values.len > high(int) div sizeof(Guarantee): return GuaranteeResult[int](
-      error: GuaranteeError.LengthOverflow)
+      status: GuaranteeError.LengthOverflow)
   if values.len > 0 and overlaps(unsafeAddr values[0], values.len*sizeof(Guarantee), addr output[0], required):
-    return GuaranteeResult[int](error: GuaranteeError.AliasedBuffers)
+    return GuaranteeResult[int](status: GuaranteeError.AliasedBuffers)
   # Every nested immutable report must be disjoint from the whole output, including other records' destinations.
   for value in values:
     let alias = ownedReportOverlapsOutput(value.report, output.toOpenArray(0, required-1))
     if alias.error != OwnershipError.None: return GuaranteeResult[int](
-        error: GuaranteeError.InvalidReport)
-    if alias.value: return GuaranteeResult[int](error: GuaranteeError.AliasedBuffers)
+        status: GuaranteeError.InvalidReport)
+    if alias.value: return GuaranteeResult[int](status: GuaranteeError.AliasedBuffers)
   let prefix = natural.encode(JamNatural(values.len))
   # Commit the canonical outer count after every source and alias check has succeeded.
   for i in 0..<prefix.len: output[i] = prefix.bytes[i]
@@ -324,22 +338,25 @@ proc encodeGuarantees*(values: openArray[Guarantee], config: GuaranteeConfig,
   # Preflight proves every nested owner/extent and each fixed-width conversion before commit begins.
   for value in values:
     writeRecord(value, output, cursor, required)
-  GuaranteeResult[int](error: GuaranteeError.None, value: required)
+  GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
 # Copy a fixed record and immutable report handle without exposing the owner's mutable sequence storage.
 proc guaranteeAt*(owner: OwnedGuarantees, index: int): GuaranteeResult[Guarantee] {.raises: [].} =
   # Default handles and signed invalid indices must not fabricate a usable record.
-  if owner.data.isNil: return GuaranteeResult[Guarantee](error: GuaranteeError.InvalidOwner)
-  if index < 0 or index >= owner.data.values.len: return GuaranteeResult[Guarantee](
-      error: GuaranteeError.InvalidIndex)
-  GuaranteeResult[Guarantee](error: GuaranteeError.None, value: owner.data.values[index])
+  let data = owner.data
+  if data == nil: return GuaranteeResult[Guarantee](status: GuaranteeError.InvalidOwner)
+  # A stable checked reference retains all child reports throughout indexed access.
+  if index < 0 or index >= data.values.len: return GuaranteeResult[Guarantee](
+      status: GuaranteeError.InvalidIndex)
+  GuaranteeResult[Guarantee](status: GuaranteeError.None, completed: data.values[index])
 
 # Re-emit the validated owned sequence atomically without exporting its private bytes or record sequence.
 proc encodeOwnedGuarantees*(owner: OwnedGuarantees, output: var openArray[byte]): GuaranteeResult[
     int] {.raises: [].} =
   # An uninitialized owner cannot stand in for a validated zero-record extrinsic.
-  if owner.data.isNil: return GuaranteeResult[int](error: GuaranteeError.InvalidOwner)
-  encodeGuarantees(owner.data.values, owner.data.config, output)
+  let data = owner.data
+  if data == nil: return GuaranteeResult[int](status: GuaranteeError.InvalidOwner)
+  encodeGuarantees(data.values, data.config, output)
 
 # Inspect all reports/credentials without capturing child owners; parent frames can preflight before allocation.
 proc inspectGuarantees*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[tuple[
@@ -347,56 +364,57 @@ proc inspectGuarantees*(input: openArray[byte], config: GuaranteeConfig): Guaran
   let scanned = scan(input, config)
   # The existing scan owns every normative framing/order/credential rule.
   if scanned.error != GuaranteeError.None:
-    return GuaranteeResult[tuple[count, consumed: int]](error: scanned.error)
-  GuaranteeResult[tuple[count, consumed: int]](error: GuaranteeError.None,
-    value: (count: scanned.value.count, consumed: scanned.value.consumed))
+    return GuaranteeResult[tuple[count, consumed: int]](status: scanned.error)
+  GuaranteeResult[tuple[count, consumed: int]](status: GuaranteeError.None,
+    completed: (count: scanned.value.count, consumed: scanned.value.consumed))
 
 # Inspect one standalone guarantee prefix without an extrinsic count or child-owner allocation.
 proc inspectGuarantee*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[tuple[
     core: CoreIndex, consumed: int]] {.raises: [].} =
   if not validConfig(config):
     return GuaranteeResult[tuple[core: CoreIndex, consumed: int]](
-        error: GuaranteeError.InvalidConfig) # Configuration precedes input access.
+        status: GuaranteeError.InvalidConfig) # Configuration precedes input access.
   let scanned = scanRecord(input, 0, config)
   if scanned.error != GuaranteeError.None:
     return GuaranteeResult[tuple[core: CoreIndex, consumed: int]](
-        error: scanned.error) # No partial record metadata.
-  GuaranteeResult[tuple[core: CoreIndex, consumed: int]](error: GuaranteeError.None,
-    value: (CoreIndex(scanned.value.core), scanned.value.endCursor))
+        status: scanned.error) # No partial record metadata.
+  GuaranteeResult[tuple[core: CoreIndex, consumed: int]](status: GuaranteeError.None,
+    completed: (CoreIndex(scanned.value.core), scanned.value.endCursor))
 
 # Capture one standalone guarantee only after its complete report, E4 slot and credentials validate.
 proc decodeGuarantee*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[
     GuaranteeRead] {.raises: [].} =
   if not validConfig(config): return GuaranteeResult[GuaranteeRead](
-      error: GuaranteeError.InvalidConfig) # Never inspect input under invalid policy.
+      status: GuaranteeError.InvalidConfig) # Never inspect input under invalid policy.
   let scanned = scanRecord(input, 0, config)
   if scanned.error != GuaranteeError.None: return GuaranteeResult[GuaranteeRead](
-      error: scanned.error) # No child owner after a late failure.
+      status: scanned.error) # No child owner after a late failure.
   let record = scanned.value
   let report = decodeOwnedReport(input.toOpenArray(record.reportOffset,
       record.reportOffset+record.reportLength-1), uint64(config.cores))
   if report.error != OwnershipError.None: return GuaranteeResult[GuaranteeRead](
-      error: GuaranteeError.InvalidReport) # Preserve future owner rejections.
-  GuaranteeResult[GuaranteeRead](error: GuaranteeError.None, value: GuaranteeRead(
+      status: GuaranteeError.InvalidReport) # Preserve future owner rejections.
+  GuaranteeResult[GuaranteeRead](status: GuaranteeError.None, completed: GuaranteeRead(
     value: Guarantee(report: report.value, slot: record.slot, credentials: record.credentials,
       credentialCount: record.credentialCount), consumed: record.endCursor))
 
 # Measure a standalone record with the same policy as the extrinsic, excluding the outer sequence count.
 proc measureGuarantee*(value: Guarantee, config: GuaranteeConfig): GuaranteeResult[int] {.raises: [].} =
   if not validConfig(config): return GuaranteeResult[int](
-      error: GuaranteeError.InvalidConfig) # Default owners are inspected only under valid policy.
+      status: GuaranteeError.InvalidConfig) # Default owners are inspected only under valid policy.
   var required = 0
   let checked = chargeRecord(value, config, required)
-  if checked.error != GuaranteeError.None: return GuaranteeResult[int](error: checked.error) # No size on failure.
-  GuaranteeResult[int](error: GuaranteeError.None, value: required)
+  if checked.error != GuaranteeError.None: return GuaranteeResult[int](
+      status: checked.error) # No size on failure.
+  GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
 # Return fresh standalone record bytes; no caller output can alias immutable reports or source credentials.
 proc encodeGuaranteeValue*(value: Guarantee, config: GuaranteeConfig): GuaranteeResult[seq[
     byte]] {.raises: [].} =
   let measured = measureGuarantee(value, config)
   if measured.error != GuaranteeError.None:
-    return GuaranteeResult[seq[byte]](error: measured.error) # Full source preflight precedes allocation.
+    return GuaranteeResult[seq[byte]](status: measured.error) # Full source preflight precedes allocation.
   var output = newSeq[byte](measured.value)
   var cursor = 0
   writeRecord(value, output, cursor, output.len)
-  GuaranteeResult[seq[byte]](error: GuaranteeError.None, value: output)
+  GuaranteeResult[seq[byte]](status: GuaranteeError.None, completed: output)

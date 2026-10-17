@@ -39,7 +39,8 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 Use nominal wrappers for protocol indices, hashes, widths and resource limits. General naturals
 select `ok` before value/consumed fields; container/composite/owned APIs select their successful
 error branch before accessing data or progress. Failure/default branches expose only a reason.
-Nim variant field checks remain enabled in optimized builds.
+On the Nimony port, completed families enforce this through private state and guarded accessors;
+unported result families remain migration work. See [the trial record](nimony-trial.md).
 
 Borrowed APIs require stable input/pools during the synchronous call. No detached span proves which
 buffer it belongs to. For longer lifetimes, `decodeOwned*` snapshots copy and retain only the
@@ -112,3 +113,75 @@ key/value association and owner-bound optional peak copies.
 guarantee records, whole-parent preflight and independently retained child reports.
 Other state serialization, proofs and persistence remain future work. Run these native suites after
 building the primitive bridge.
+
+The Nimony owned-snapshot port and its retained-lifetime, result, metadata and copy contracts are
+recorded in [owned snapshots](../spec/owned-snapshots.md). Complete work-report codecs and report-owned snapshots now pass their independent corpus and
+lifetime/guard checks; see [the trial](nimony-trial.md). Assurance encoding, decoding and inspection
+also pass their independent corpus with guarded progress results. Guarantee sequences and
+standalone records now pass wire/semantic, inspection, parent/child lifetime and result checks.
+Ticket encoding, decoding and inspection also pass their independent corpus, including lifetime,
+atomicity, alias and guarded-progress checks. Dispute verdict/evidence snapshots, inspection,
+result safety and release checks now pass as well. Work-package inputs and retained package/item
+snapshots also pass their complete independent corpus, guarded import alternatives and release
+checks. Full/signing headers, optional markers, retained views and selected-alternative guards now
+pass their complete corpus and release checks. Complete extrinsic/block composition now passes
+its independent corpus, nested cause/result guards, cross-child alias checks and retained-child
+release workload. Strict Booleans and fixed/variable packed bitstrings now pass their independent
+corpus, guarded results and snapshot release checks. Canonical scalar sets and dictionaries now
+pass their complete corpus, closed schema checks, guarded results, private-storage aliases and
+snapshot release workload. C.2 availability specifications, transfers and accumulation input
+records now pass their complete corpus, guarded source/decoded alternatives and release checks.
+The raw crypto primitive dependency now passes its vector, result, seed-erasure and thread checks.
+State keys and fixed node layout/hashing now pass their complete independent corpus, fixed-copy,
+result/variant, backend-failure and nominal-domain checks. Bounded trie roots now pass their
+complete independent corpus, preflight, result, scratch-release and nominal-domain checks.
+Entropy, validator rosters and timeslot state now pass their complete independent corpus,
+guarded results, retained-owner/copy checks, arithmetic and scoped release workload.
+Authorization pools and queues now pass their complete independent corpus, guarded results,
+retained nested-owner/copy checks, kind validation, arithmetic and scoped release workload.
+Chapter-4 Safrole basic state now passes its complete independent corpus, guarded chapter-local
+results, closed source alternatives, retained parent/child copies, arithmetic and scoped release
+workload. Chapter-5 dispute judgment/offender state now passes its complete independent corpus,
+guarded public/private results, canonical-set/domain checks, retained owner/copy checks, arithmetic
+and scoped release workload. Chapter-3 recent history now passes its complete independent corpus,
+guarded results and optional peaks, retained dictionaries/copies, arithmetic and scoped release
+workload. A statically proven absent-hash read also fails compilation. Chapter-10 availability
+state also passes its corpus, guarded result/assignment contracts, retained guarantee/report
+lifetimes, copied-field, arithmetic and scoped release checks.
+Chapter-12 privileges also passes its corpus, guarded public/private results, retained role/pair
+copies, numeric-order, arithmetic and scoped release checks. Chapter-13 activity statistics now
+passes its corpus, guarded results, resized epoch/copy contracts, compact gas checks, arithmetic
+and scoped release workload. Chapters 14/15 ready and accumulated work queues now pass their
+independent corpus, guarded public/private results, canonical sets, retained report/ring lifetimes,
+fixed-copy, arithmetic and scoped release checks. Chapter-16 last accumulation outputs also
+passes its independent corpus, guarded results, ordered/repeated fixed pairs, retained owners,
+arithmetic and scoped release checks. C(255, service) account metadata now also passes its
+independent corpus, guarded result/progress contracts, fixed field/source/input copies, unsigned
+boundaries and scoped encoded-entry release checks. Service storage/preimage keyed values also
+pass their independent corpus, guarded results, retained key/value copies, atomic alias/capacity
+checks, backend refusal/recovery, native scratch bounds and scoped release checks. Request-history
+framing now also passes its corpus, guarded results and inactive timestamp accessors, fixed-copy
+checks, backend refusal/recovery and scoped entry release. Safe constructors preserve the four
+closed shapes; the namespace question remains parked. Exact chapter/service composition now also
+passes its complete corpus and published whole mappings, guarded results, nominal chapter container,
+retained/copy checks, parent arithmetic and backend cleanup. Separate raw whole-map roots pass.
+All production codec modules are ported. Width evidence and parked namespace witnesses now replay
+through the Nimony runner, alongside literal oracle/provenance checks. All 185,373 original early
+natural/fixed/bounded/composite/digest requests and their nominal/privacy safeguards now pass too.
+Local M1 validation migration parity is reached for the documented implemented scope; the parked
+namespace policy and Linux confirmation remain separate. M2 assurance signing contexts and
+validator-key/parent verification now pass too, alongside guarantee messages and complete-report
+signature composition. Bandersnatch owner safety and original contextual proof/JAM ticket/
+native-boundary/concurrency coverage now also pass locally. M3 UDP/readiness and linked transport
+lifecycle checks now pass locally.
+Shared identity/DER/framing validation now also passes locally.
+CE 143 integration results and retained digest ownership now also pass locally.
+The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
+Retained CE 143 service and integrated digest lifecycles now also pass locally.
+Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
+Next: same-process endpoint soak and remaining admission/resilience coverage. Linux confirmation and normative
+policy gates remain separate.
+
+The canonical [Linux workflow](../.github/workflows/linux.yml) now runs the
+migrated runtime slice and a strict all-source semantic compilation gate independently. Linux
+execution is pending CI; passing the migrated slice does not establish full M1/M2/M3 parity.

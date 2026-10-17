@@ -1,34 +1,48 @@
 ## Trusted field adapter for independent GP state-key/node wire equations and fixed-value lifetime checks.
-import std/[os, strutils]
+import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_layout, bounded, composite]
 
 # Select complete success before reading key, node, hash or consumed progress.
 proc checked[T](parsed: StateLayoutResult[T]): T =
-  doAssert parsed.error == StateLayoutError.None
+  assert parsed.error == StateLayoutError.None
   parsed.value
 
 # Trusted hexadecimal transport becomes mutable caller input for copied-value lifetime tests.
 proc unhex(text: string): seq[byte] =
   # Empty preimages/values need a single transport token.
   if text == "-": return @[]
-  doAssert text.len mod 2 == 0 and text.len <= 2*1024*1024
+  assert text.len mod 2 == 0 and text.len <= 2*1024*1024
   result = newSeq[byte](text.len div 2)
   # Every byte can be overwritten after a decode/constructor returns.
-  for i in 0..<result.len: result[i] = byte(parseHexInt(text[2*i..2*i+1]))
+  for i in 0..<result.len:
+    let pair = text[2*i..2*i+1]
+    # Trusted fixture transport contains exactly two lowercase hexadecimal digits per byte.
+    for c in pair: assert c in {'0'..'9', 'a'..'f'}
+    var octet: byte = 0
+    assert parseHex(pair, octet) == 2
+    result[i] = octet
+
+# Parse all trusted unsigned fixture values without narrowing through a signed integer.
+proc unsigned(text: string): uint64 =
+  var number: uint64 = 0
+  assert text.len > 0 and parseBiggestUInt(text, number) == text.len
+  number
 
 # Exact fixed field sources are independently named, never obtained from the production decoder.
-proc fixed[N: static int](text: string): array[N, byte] =
+proc fixed[N: static[int]](text: string): array[N, byte] =
+  result = default(array[N, byte])
   let bytes = unhex(text)
-  doAssert bytes.len == N
+  assert bytes.len == N
   # Copy exactly the trusted schema's width; do not normalize/truncate key identities.
   for i in 0..<N: result[i] = bytes[i]
 
 # Exact octet observations preserve leading zeroes and empty embedded logical values.
 proc hex(bytes: openArray[byte]): string =
+  result = ""
   # Empty logical values remain distinct from absent fields in the whitespace transport.
   if bytes.len == 0: return "-"
   # Preserve supplied octet order rather than reinterpreting fixed fields as host integers.
-  for value in bytes: result.add(toHex(value, 2).toLowerAscii())
+  for value in bytes: result.add(toHex(int(value), 2).toLowerAscii())
 
 # Fixed independent encoded nodes and their hashes are observed separately against the oracle.
 proc emitted(parsed: StateLayoutResult[EncodedStateNode]) =
@@ -58,7 +72,7 @@ proc observed(node: StateNodeInfo): string =
   result.add(" " & hex(array[64, byte](encoded)))
 
 # Construct sources independently and observe decoded fields after destroying the original caller input.
-proc request(parts: seq[string]) =
+proc request(parts: seq[string]) {.raises.} =
   case parts[0]
   of "C":
     # C(i) accepts an explicitly nominal chapter octet, not a natural sequence length.
@@ -66,12 +80,12 @@ proc request(parts: seq[string]) =
   of "S":
     # C(i,s) uses exactly four little-endian service octets in their chapter/service positions.
     echo hex(array[31, byte](chapterServiceKey(StateChapter(parseInt(parts[1])), ServiceIndex(
-        parseBiggestUInt(parts[2])))))
+        unsigned(parts[2])))))
   of "K":
     # C(s,h) hashes the exact raw preimage under an explicit caller resource ceiling.
     var input = unhex(parts[3])
-    let parsed = hashedServiceKey(ServiceIndex(parseBiggestUInt(parts[1])), input, ByteLimit(
-        parseBiggestUInt(parts[2])))
+    let parsed = hashedServiceKey(ServiceIndex(unsigned(parts[1])), input, ByteLimit(
+        unsigned(parts[2])))
     if parsed.error != StateLayoutError.None: echo ($parsed.error).toLowerAscii() # No default key on policy/backend failure.
     else:
       # A constructed key remains independent of the now-destroyed original hash preimage.
@@ -80,12 +94,11 @@ proc request(parts: seq[string]) =
   of "B":
     # Complete child hashes construct a branch by replacing only the left hash's high bit.
     let node = encodeStateBranch(StateNodeHash(fixed[32](parts[1])), StateNodeHash(fixed[32](parts[2])))
-    emitted(StateLayoutResult[EncodedStateNode](error: StateLayoutError.None, value: node))
+    emitted(encodeStateNode(checked(decodeStateNode(array[64, byte](node))).node))
   of "L":
     # Source leaf keys have exactly 31 octets; raw values choose inline/hash form at the 32/33 boundary.
     var value = unhex(parts[3])
-    let parsed = encodeStateLeaf(StateKey(fixed[31](parts[1])), value, ByteLimit(parseBiggestUInt(
-        parts[2])))
+    let parsed = encodeStateLeaf(StateKey(fixed[31](parts[1])), value, ByteLimit(unsigned(parts[2])))
     # The returned node is a fixed independent value, even for the inline borrowed input path.
     for i in 0..<value.len: value[i] = 0
     emitted(parsed)
@@ -105,22 +118,26 @@ proc request(parts: seq[string]) =
     else: echo hex(array[32, byte](parsed.value)) # A complete canonical node identity is an independent fixed hash.
   of "MB":
     # Invalid partial commitments must be rejected rather than silently normalized into a different source.
-    emitted(encodeStateNode(StateNodeInfo(kind: StateNodeKind.Branch, left: LeftChildCommitment(
-        fixed[32](parts[1])),
-      right: StateNodeHash(fixed[32](parts[2])))))
+    emitted(encodeStateNode(branchNodeInfo(LeftChildCommitment(fixed[32](parts[1])),
+      StateNodeHash(fixed[32](parts[2])))))
   of "ME":
     # Independent metadata sources test oversized lengths and nonzero logical-padding errors.
-    emitted(encodeStateNode(StateNodeInfo(kind: StateNodeKind.EmbeddedLeaf, embeddedKey: StateKey(
-        fixed[31](parts[1])),
-      length: EmbeddedLength(parseInt(parts[2])), embedded: fixed[32](parts[3]))))
+    emitted(encodeStateNode(embeddedNodeInfo(StateKey(fixed[31](parts[1])),
+      EmbeddedLength(parseInt(parts[2])), fixed[32](parts[3]))))
   of "MH":
-    # A regular leaf can be re-emitted directly from key/value hash without claiming its long preimage is known.
-    emitted(encodeStateNode(StateNodeInfo(kind: StateNodeKind.HashedLeaf, hashedKey: StateKey(fixed[
-        31](parts[1])),
-      valueHash: StateValueHash(fixed[32](parts[2])))))
-  else: doAssert false # Unknown trusted operations cannot implicitly choose another protocol schema.
+    # Regular metadata needs only its committed hash, never the original long value.
+    emitted(encodeStateNode(hashedNodeInfo(StateKey(fixed[31](parts[1])),
+      StateValueHash(fixed[32](parts[2])))))
+  else: assert false # Unknown trusted operations cannot implicitly choose another protocol schema.
 
-# Request-local arrays and sequences release after each complete independent observation.
-for line in lines(paramStr(1)):
-  # Empty trusted batch lines contain no protocol operation.
-  if line.len > 0: request(line.splitWhitespace())
+# Keep trusted file/argument parsing outside the protocol API's typed failure contract.
+proc main() {.raises.} =
+  # Request-local arrays and sequences release after each complete independent observation.
+  for line in lines(paramStr(1)):
+    # Empty trusted batch lines contain no protocol operation.
+    if line.len > 0: request(line.splitWhitespace())
+try:
+  main()
+except:
+  # Trusted transport errors must fail the corpus independently of protocol rejection.
+  quit(2)

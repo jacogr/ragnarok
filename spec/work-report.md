@@ -66,3 +66,38 @@ Published v0.8.0 JSON/binary pairs come from `davxy/jam-test-vectors`, tag v0.8.
 Tests independently construct the full wire from named JSON fields and observe every native
 header field. Authored new-field boundary and legacy-layout negative cases supplement these
 published vectors. See [the migration audit](graypaper-0.8.0.md).
+
+## Nimony port verification
+
+The pinned nightly trial now covers this codec and `report_owned.nim` with checked ARC/Clang LTO.
+`ReportResult` and `ReportHeaderResult` hide status/payload storage behind read-only outcome and
+success-precondition accessors. Child work descriptors are copied, so offset rebasing explicitly
+rebuilds the successful work value. Report owners retain a stable nil-checked private reference;
+metadata copies and owner-bound payload extraction expose no mutable backing bytes.
+
+`tools/test_nimony.py` runs all 18,430 independent report requests through
+`tests/native/report_codec_driver.nim`, including published tiny/full fixtures and the existing
+mutation/lifetime checks. `test_report_snapshots.nim` adds replacement/escaped-input/default-owner
+and ARC release coverage. Runtime misuse and compilation checks protect results and nominal
+hash/root/slot/shard domains. Commands, source hashes, corpus hashes and exact diagnostics are
+retained in ignored `build/nimony-trial/verification/results.json` and adjacent logs.
+
+The full `report_driver.nim` now compiles on Nimony, dispatches its explicit crypto `check`
+subcommand and includes the same codec adapter for all 18,430 ordinary requests. All 63 original
+independent OpenSSL credential cases pass, comparing the complete re-encoded report, exact 46-byte
+guarantee message and expected signature verdict. New 0.8.0 field mutations, wrong domain, swapped
+keys and individual corrupted signatures retain their original expectations.
+`GuaranteeMessageResult` keeps composition status/storage private, with read-only reasons and
+success-guarded fixed message copies. The helper hashes caller-supplied bytes; it does not validate
+report eligibility or guarantor assignments. Linux/full-client parity and the exceptional-point
+policy remain separate. Bandersnatch owner safety and original contextual proof/JAM
+ticket/native-boundary/concurrency coverage now also pass locally. M3 UDP/readiness and linked
+transport lifecycle checks now pass locally.
+Shared identity/DER/framing validation now also passes locally.
+CE 143 integration results and retained digest ownership now also pass locally.
+The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
+Retained CE 143 service and integrated digest lifecycles now also pass locally.
+Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
+Next: same-process endpoint soak and remaining admission/resilience coverage; Linux confirmation and documented
+normative policy gates
+remain separate. See [the trial](../docs/nimony-trial.md) for cumulative evidence.

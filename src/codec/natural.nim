@@ -10,22 +10,34 @@ type
   # Reasons why the supplied bytes do not contain a complete, canonical natural.
   DecodeError* = enum
     truncated, nonCanonical
-  # A tagged result: callers must check ok before accessing the success or error fields.
+  # Private tagged state prevents callers from retagging failures or reading nonexistent values.
   DecodeResult* = object
-    case ok*: bool
+    case success: bool
     of true:
-      # Success exposes the value and the exact prefix size for the next field.
-      value*: JamNatural
-      consumed*: range[1..9]
+      # Only the decoder constructs the copied natural and exact prefix extent.
+      decodedValue: JamNatural
+      byteConsumed: range[1..9]
     of false:
-      # Failure exposes only the reason, preventing access to a nonexistent decoded value.
-      error*: DecodeError
+      # Failed/default results carry only their reason; default remains truncated.
+      failureReason: DecodeError
+
+# The outcome is always readable, but cannot be changed to manufacture a successful result.
+func ok*(value: DecodeResult): bool = value.success
+# Return copied decoded data only after the caller establishes success.
+func value*(value: DecodeResult): JamNatural {.inline, requires: value.success.} =
+  value.decodedValue
+# A failed natural never publishes a prefix extent that could advance a cursor.
+func consumed*(value: DecodeResult): range[1..9] {.inline, requires: value.success.} =
+  value.byteConsumed
+# Successful results have no error payload; select failure before asking for its reason.
+func error*(value: DecodeResult): DecodeError {.inline, requires: not value.success.} =
+  value.failureReason
 
 # Encode a natural into its shortest JAM representation, using at most nine bytes.
 proc encode*(value: JamNatural): EncodedNatural {.raises: [].} =
   result = EncodedNatural(len: 1)
   let x = uint64(value)
-  var tail = 0
+  var tail: range[0..8] = 0
   # Find the payload size: each extra byte contributes eight bits but uses one more header bit.
   # This raises the value limit by seven bits per step; stop at eight to keep shifts below 64.
   while tail < 8 and x >= (1'u64 shl (7 * (tail + 1))):
@@ -48,8 +60,8 @@ proc decode*(input: openArray[byte]): DecodeResult {.raises: [].} =
   ## Failure has no consumed count. No input-derived allocation or host-int cast.
   # A header is required even for zero; an empty buffer cannot contain a value.
   if input.len == 0:
-    return DecodeResult(ok: false, error: truncated)
-  var tail = 0
+    return DecodeResult(success: false, failureReason: truncated)
+  var tail: range[0..8] = 0
   var mask = 128
   # Each leading one announces another payload byte; a zero terminates the header prefix.
   # The all-ones ff header announces eight bytes.
@@ -58,7 +70,7 @@ proc decode*(input: openArray[byte]): DecodeResult {.raises: [].} =
     mask = mask shr 1
   # Check the entire announced representation before indexing any payload byte.
   if input.len < tail + 1:
-    return DecodeResult(ok: false, error: truncated)
+    return DecodeResult(success: false, failureReason: truncated)
   var x = 0'u64
   # For compact forms, place the remaining header bits above the little-endian payload.
   # The ff marker carries no value bits, so the eight-byte form skips this step.
@@ -68,5 +80,5 @@ proc decode*(input: openArray[byte]): DecodeResult {.raises: [].} =
   for i in 0..<tail:
     x = x or (uint64(input[i + 1]) shl (8 * i))
   if tail > 0 and x < (1'u64 shl (7 * tail)):
-    return DecodeResult(ok: false, error: nonCanonical)
-  DecodeResult(ok: true, value: JamNatural(x), consumed: tail + 1)
+    return DecodeResult(success: false, failureReason: nonCanonical)
+  DecodeResult(success: true, decodedValue: JamNatural(x), byteConsumed: tail + 1)

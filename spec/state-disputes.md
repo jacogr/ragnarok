@@ -107,3 +107,20 @@ chunk: **whole-state composition/root evidence and parity review**; chapter 10 n
 [availability-state codec](state-availability.md).
 The [M1 parity checklist](../docs/m1.md#m1-parity-checklist) records the remaining chapters,
 service-account entries and whole-state composition/root evidence.
+
+## Experimental Nimony branch
+
+The [Nimony trial](../docs/nimony-trial.md) verifies this chapter with the same 2,766 independent
+requests and six literal reference checks. `DisputeStateResult[T]` uses private status/payload,
+read-only reasons and checked success-only extraction; inactive variant fields are not assumed to
+have implicit runtime protection. Owner storage is explicitly nullable and checked through a stable
+local. Forged `JudgmentSet` values return `InvalidTag` before report-array indexing; no wire tag or
+alternate representation is introduced.
+
+Two native suites cover retained/copy/replacement lifetimes and direct host-arithmetic boundaries.
+Thirty-two isolated runtime rejection cases cover actual failures and defaults. Eleven privacy/
+read-only compilation probes and two nominal probes protect result/owner and key/index domains.
+The 1,000-cycle warmed ownership workload returns live occupancy 192 → 192 bytes on local macOS
+ARM64, checked ARC/Clang LTO. Full-client parity and Linux results remain separate gates. Use
+`python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on the trial branch;
+the historical Nim 2 reproduction commands above describe the main-branch baseline.

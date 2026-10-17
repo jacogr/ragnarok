@@ -1,5 +1,6 @@
 ## GP 0.8.0 T chapter 3, recent history and MMR encoding; state transitions/hashing remain external.
 ## See spec/state-history.md for exact field order, policies and synchronous ownership contracts.
+import std/assertions
 import ./[natural, bounded, assurances, state_layout, state_trie]
 from ./work_report import PackageHash, SegmentRoot
 export PackageHash, SegmentRoot
@@ -28,11 +29,11 @@ type
     packages*: seq[ReportedPackage]
   ## Optional peaks retain presence: a present all-zero hash differs from an absent peak.
   HistoryPeak* = object
-    case present*: bool
+    case isPresent: bool
     of true:
-      hash*: HistoryPeakHash # Only present peaks contain a fixed hash value.
+      peakHash: HistoryPeakHash # Only present peaks contain a fixed hash value.
     of false:
-      discard                # Absent peaks contain no fabricated zero identity.
+      discard                   # Absent peaks contain no fabricated zero identity.
   ## Stable synchronous borrowed sources; history and peak order are semantically significant.
   HistoryState* = object
     blocks*: seq[HistoryBlock]
@@ -54,11 +55,11 @@ type
     InvalidTag, LimitExceeded, LengthOverflow, InvalidOwner, InvalidIndex
   ## Only complete success permits application access to its selected payload.
   HistoryResult*[T] = object
-    case error*: HistoryError
-    of HistoryError.None:
-      value*: T # Full values/counts are available only after success selection.
+    case status: HistoryError
+    of None:
+      completed: T # Full values/counts are available only after success selection.
     else:
-      discard   # Failed/default alternatives carry only their reason.
+      discard      # Failed/default alternatives carry only their reason.
   ## Copied metadata exposes fixed fields and dictionary cardinality without mutable storage.
   HistoryBlockInfo* = object
     header*: HistoryHeaderHash
@@ -74,7 +75,7 @@ type
     state: HistoryState
   ## Value handles share private immutable storage; default handles contain no validated history.
   HistorySnapshot* = object
-    data: HistoryData
+    data: nil HistoryData
   ## Complete prefix decoding binds retained state to its exact consumed extent.
   HistoryRead* = object
     snapshot*: HistorySnapshot
@@ -83,6 +84,21 @@ type
   Layout = object
     blocks, peaks, peakStart, consumed: int
     starts, packages, counts: array[8, int]
+
+## Read-only result reasons never authorize a default/failed payload or partial progress.
+func error*[T](value: HistoryResult[T]): HistoryError = value.status
+## Selected values retain their success precondition under checked optimized builds.
+func value*[T](value: HistoryResult[T]): T {.inline, requires: value.status == HistoryError.None.} =
+  value.completed
+## Construct an absent peak with no readable hash alternative; default peaks have the same meaning.
+func absentHistoryPeak*(): HistoryPeak = HistoryPeak(isPresent: false)
+## Construct a present copied hash, including the distinct present-all-zero value.
+func presentHistoryPeak*(hash: HistoryPeakHash): HistoryPeak = HistoryPeak(isPresent: true,
+    peakHash: hash)
+## Inspect presence without exposing a mutable discriminator.
+func present*(peak: HistoryPeak): bool = peak.isPresent
+## An absent source or copied peak cannot expose a fabricated hash.
+func hash*(peak: HistoryPeak): HistoryPeakHash {.inline, requires: peak.isPresent.} = peak.peakHash
 
 ## Check fixed-stride wire growth before native narrowing, multiplication and addition.
 proc grow(cursor: var int, count: uint64, width: int, limit: ByteLimit): HistoryError =
@@ -99,15 +115,16 @@ proc count(input: openArray[byte], cursor: int): HistoryResult[tuple[value: uint
     # Distinguish missing bytes from a complete but overlong count.
     if parsed.error == DecodeError.truncated:
       return HistoryResult[tuple[value: uint64, size: int]](
-          error: HistoryError.Truncated) # No count available yet.
+          status: HistoryError.Truncated) # No count available yet.
     else:
       return HistoryResult[tuple[value: uint64, size: int]](
-          error: HistoryError.NonCanonical) # Reject alternate encodings.
-  HistoryResult[tuple[value: uint64, size: int]](error: HistoryError.None,
-    value: (uint64(parsed.value), int(parsed.consumed)))
+          status: HistoryError.NonCanonical) # Reject alternate encodings.
+  HistoryResult[tuple[value: uint64, size: int]](status: HistoryError.None,
+    completed: (uint64(parsed.value), int(parsed.consumed)))
 
 ## Copy fixed identities only after their whole selected record/set extent was validated.
 proc fixed(input: openArray[byte], offset: int): array[32, byte] =
+  result = default(array[32, byte])
   # Fixed value results retain no pointer into the caller's input.
   for i in 0..<32: result[i] = input[offset+i]
 
@@ -138,16 +155,16 @@ proc packageCount(n: uint64, config: HistoryConfig, total: var uint64): HistoryE
 ## Prove complete history/dictionaries/belt without allocating any retained parent or child arrays.
 proc scan(input: openArray[byte], config: HistoryConfig): HistoryResult[Layout] =
   if uint64(config.cores) < 2: return HistoryResult[Layout](
-      error: HistoryError.InvalidConfig) # Configuration precedes framing.
+      status: HistoryError.InvalidConfig) # Configuration precedes framing.
   let n = count(input, 0)
-  if n.error != HistoryError.None: return HistoryResult[Layout](error: n.error) # No partial history count.
+  if n.error != HistoryError.None: return HistoryResult[Layout](status: n.error) # No partial history count.
   var error = blockCount(n.value.value, config)
   if error != HistoryError.None: return HistoryResult[Layout](
-      error: error) # Bound the fixed stack layout before indexing it.
+      status: error) # Bound the fixed stack layout before indexing it.
   var cursor = 0
   error = grow(cursor, uint64(n.value.size), 1, config.maxBytes)
   if error != HistoryError.None: return HistoryResult[Layout](
-      error: error) # Initial count is part of the parent budget.
+      status: error) # Initial count is part of the parent budget.
   var layout = Layout(blocks: int(n.value.value))
   var total = 0'u64
   # T serializes header/super-peak/state-root/E4-slot before each variable package dictionary.
@@ -155,64 +172,64 @@ proc scan(input: openArray[byte], config: HistoryConfig): HistoryResult[Layout] 
     layout.starts[i] = cursor
     error = grow(cursor, 100, 1, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[Layout](
-        error: error) # Prove fixed fields before reading a child count.
+        status: error) # Prove fixed fields before reading a child count.
     if input.len < cursor: return HistoryResult[Layout](
-        error: HistoryError.Truncated) # Never pad missing fixed fields.
+        status: HistoryError.Truncated) # Never pad missing fixed fields.
     let pairs = count(input, cursor)
     if pairs.error != HistoryError.None: return HistoryResult[Layout](
-        error: pairs.error) # Canonical dictionary framing first.
+        status: pairs.error) # Canonical dictionary framing first.
     error = packageCount(pairs.value.value, config, total)
     if error != HistoryError.None: return HistoryResult[Layout](
-        error: error) # Counts cannot trigger allocation yet.
+        status: error) # Counts cannot trigger allocation yet.
     error = grow(cursor, uint64(pairs.value.size), 1, config.maxBytes)
-    if error != HistoryError.None: return HistoryResult[Layout](error: error) # Account for child count bytes.
+    if error != HistoryError.None: return HistoryResult[Layout](status: error) # Account for child count bytes.
     layout.packages[i] = cursor
     layout.counts[i] = int(pairs.value.value)
     error = grow(cursor, pairs.value.value, 64, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[Layout](
-        error: error) # Prove the complete fixed-pair extent.
+        status: error) # Prove the complete fixed-pair extent.
     if input.len < cursor: return HistoryResult[Layout](
-        error: HistoryError.Truncated) # No partial dictionary accepted.
+        status: HistoryError.Truncated) # No partial dictionary accepted.
     # Ordering is local to each dictionary; repeated segment values are permitted at distinct keys.
     for j in 1..<layout.counts[i]:
       let offset = layout.packages[i]+j*64
       if not less(fixed(input, offset-64), fixed(input, offset)):
-        return HistoryResult[Layout](error: HistoryError.NonCanonical) # Duplicate or descending package keys reject the parent.
+        return HistoryResult[Layout](status: HistoryError.NonCanonical) # Duplicate or descending package keys reject the parent.
   let peaks = count(input, cursor)
   if peaks.error != HistoryError.None: return HistoryResult[Layout](
-      error: peaks.error) # Belt has its own canonical count.
+      status: peaks.error) # Belt has its own canonical count.
   if peaks.value.value > uint64(config.peaks): return HistoryResult[Layout](
-      error: HistoryError.LimitExceeded) # Bound peak work before traversal.
+      status: HistoryError.LimitExceeded) # Bound peak work before traversal.
   if peaks.value.value > uint64(high(int) div sizeof(HistoryPeak)):
-    return HistoryResult[Layout](error: HistoryError.LengthOverflow) # Optional peak storage must fit before narrowing.
+    return HistoryResult[Layout](status: HistoryError.LengthOverflow) # Optional peak storage must fit before narrowing.
   error = grow(cursor, uint64(peaks.value.size), 1, config.maxBytes)
   if error != HistoryError.None: return HistoryResult[Layout](
-      error: error) # Belt framing is included in parent bytes.
+      status: error) # Belt framing is included in parent bytes.
   layout.peaks = int(peaks.value.value)
   layout.peakStart = cursor
   # Preserve absent entries and trailing holes; serialization does not normalize a supplied belt shape.
   for i in 0..<layout.peaks:
     error = grow(cursor, 1, 1, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[Layout](
-        error: error) # Optional discriminator needs one byte.
+        status: error) # Optional discriminator needs one byte.
     if input.len < cursor: return HistoryResult[Layout](
-        error: HistoryError.Truncated) # Check before reading the tag.
+        status: HistoryError.Truncated) # Check before reading the tag.
     let tag = input[cursor-1]
-    if tag > 1: return HistoryResult[Layout](error: HistoryError.InvalidTag) # Only absent/present forms exist.
+    if tag > 1: return HistoryResult[Layout](status: HistoryError.InvalidTag) # Only absent/present forms exist.
     if tag == 1:
       # A present zero hash is still a full 32-byte present value, unlike an absent peak.
       error = grow(cursor, 32, 1, config.maxBytes)
       if error != HistoryError.None: return HistoryResult[Layout](
-          error: error) # Propagate this preflight failure before allocation or output.
-      if input.len < cursor: return HistoryResult[Layout](error: HistoryError.Truncated) # No partial peak value.
+          status: error) # Propagate this preflight failure before allocation or output.
+      if input.len < cursor: return HistoryResult[Layout](status: HistoryError.Truncated) # No partial peak value.
   layout.consumed = cursor
-  HistoryResult[Layout](error: HistoryError.None, value: layout)
+  HistoryResult[Layout](status: HistoryError.None, completed: layout)
 
 ## Decode into private immutable copies only after the whole nested source prefix is valid.
 proc decodeHistoryState*(input: openArray[byte], config: HistoryConfig): HistoryResult[HistoryRead] =
   let checked = scan(input, config)
   if checked.error != HistoryError.None: return HistoryResult[HistoryRead](
-      error: checked.error) # No partial owners/progress on late failure.
+      status: checked.error) # No partial owners/progress on late failure.
   let layout = checked.value
   let data = HistoryData(state: HistoryState(blocks: newSeq[HistoryBlock](layout.blocks),
       peaks: newSeq[HistoryPeak](layout.peaks)))
@@ -237,13 +254,13 @@ proc decodeHistoryState*(input: openArray[byte], config: HistoryConfig): History
     let present = input[cursor] == 1
     inc cursor
     if present:
-      data.state.peaks[i] = HistoryPeak(present: true, hash: HistoryPeakHash(fixed(input,
+      data.state.peaks[i] = presentHistoryPeak(HistoryPeakHash(fixed(input,
           cursor))) # Independent fixed peak copy.
       cursor += 32
     else:
-      data.state.peaks[i] = HistoryPeak(present: false) # No fabricated hash for a hole.
-  HistoryResult[HistoryRead](error: HistoryError.None,
-    value: HistoryRead(snapshot: HistorySnapshot(data: data), consumed: layout.consumed))
+      data.state.peaks[i] = absentHistoryPeak() # No fabricated hash for a hole.
+  HistoryResult[HistoryRead](status: HistoryError.None,
+    completed: HistoryRead(snapshot: HistorySnapshot(data: data), consumed: layout.consumed))
 
 ## Copy fields only into a newly allocated payload whose whole extent has already been checked.
 proc put(bytes: openArray[byte], output: var seq[byte], cursor: var int) =
@@ -261,46 +278,46 @@ proc putCount(n: int, output: var seq[byte], cursor: var int) =
 proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryResult[StateEntry] =
   var error = blockCount(uint64(source.blocks.len), config)
   if error != HistoryError.None: return HistoryResult[StateEntry](
-      error: error) # No source traversal/allocation for invalid history count.
+      status: error) # No source traversal/allocation for invalid history count.
   var size = 0
   let prefix = natural.encode(JamNatural(source.blocks.len))
   error = grow(size, uint64(prefix.len), 1, config.maxBytes)
   if error != HistoryError.None: return HistoryResult[StateEntry](
-      error: error) # Initial count consumes budget even for empty history.
+      status: error) # Initial count consumes budget even for empty history.
   var total = 0'u64
   # Validate every dictionary before allocating output, including late duplicates/descending keys.
   for record in source.blocks:
     error = grow(size, 100, 1, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[StateEntry](
-        error: error) # Propagate this preflight failure before allocation or output.
+        status: error) # Propagate this preflight failure before allocation or output.
     error = packageCount(uint64(record.packages.len), config, total)
     if error != HistoryError.None: return HistoryResult[StateEntry](
-        error: error) # Propagate this preflight failure before allocation or output.
+        status: error) # Propagate this preflight failure before allocation or output.
     let child = natural.encode(JamNatural(record.packages.len))
     error = grow(size, uint64(child.len), 1, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[StateEntry](
-        error: error) # Propagate this preflight failure before allocation or output.
+        status: error) # Propagate this preflight failure before allocation or output.
     error = grow(size, uint64(record.packages.len), 64, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[StateEntry](
-        error: error) # Propagate this preflight failure before allocation or output.
+        status: error) # Propagate this preflight failure before allocation or output.
     # Every adjacent key must remain strictly increasing; associated values do not determine order.
     for i in 1..<record.packages.len:
       if not less(record.packages[i-1].package.bytes, record.packages[i].package.bytes):
-        return HistoryResult[StateEntry](error: HistoryError.NonCanonical) # No silent source sorting or duplicate replacement.
+        return HistoryResult[StateEntry](status: HistoryError.NonCanonical) # No silent source sorting or duplicate replacement.
   if uint64(source.peaks.len) > uint64(config.peaks): return HistoryResult[StateEntry](
-      error: HistoryError.LimitExceeded) # Independent peak-work ceiling.
+      status: HistoryError.LimitExceeded) # Independent peak-work ceiling.
   if source.peaks.len > high(int) div sizeof(HistoryPeak): return HistoryResult[StateEntry](
-      error: HistoryError.LengthOverflow) # Bound typed source extents.
+      status: HistoryError.LengthOverflow) # Bound typed source extents.
   let belt = natural.encode(JamNatural(source.peaks.len))
   error = grow(size, uint64(belt.len), 1, config.maxBytes)
   if error != HistoryError.None: return HistoryResult[StateEntry](
-      error: error) # Propagate this preflight failure before allocation or output.
+      status: error) # Propagate this preflight failure before allocation or output.
   # Optional peaks have exact one-byte or 33-byte encodings; absence retains no hash storage.
   for peak in source.peaks:
     let width = if peak.present: 33 else: 1 # Only the active alternative determines size.
     error = grow(size, 1, width, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[StateEntry](
-        error: error) # Propagate this preflight failure before allocation or output.
+        status: error) # Propagate this preflight failure before allocation or output.
   var entry = StateEntry(key: chapterKey(StateChapter(3)), value: newSeq[byte](size))
   var cursor = 0
   putCount(source.blocks.len, entry.value, cursor)
@@ -322,24 +339,26 @@ proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryRes
     entry.value[cursor] = byte(ord(peak.present))
     inc cursor
     if peak.present: put(array[32, byte](peak.hash), entry.value, cursor) # Absence emits only its zero tag.
-  HistoryResult[StateEntry](error: HistoryError.None, value: entry)
+  HistoryResult[StateEntry](status: HistoryError.None, completed: entry)
 
 ## Return copied parent cardinalities while retaining all nested storage privately.
 proc historyInfo*(owner: HistorySnapshot): HistoryResult[HistoryInfo] =
-  if owner.data.isNil: return HistoryResult[HistoryInfo](
-      error: HistoryError.InvalidOwner) # Default handles are not validated empty history.
-  HistoryResult[HistoryInfo](error: HistoryError.None, value: HistoryInfo(
-      blocks: owner.data.state.blocks.len, peaks: owner.data.state.peaks.len))
+  let data = owner.data
+  if data == nil: return HistoryResult[HistoryInfo](
+      status: HistoryError.InvalidOwner) # Default handles are not validated empty history.
+  HistoryResult[HistoryInfo](status: HistoryError.None, completed: HistoryInfo(
+      blocks: data.state.blocks.len, peaks: data.state.peaks.len))
 
 ## Return copied block metadata, bound to its original owner and nominal history position.
 proc historyBlockAt*(owner: HistorySnapshot, index: HistoryBlockIndex): HistoryResult[
     HistoryBlockInfo] =
-  if owner.data.isNil: return HistoryResult[HistoryBlockInfo](
-      error: HistoryError.InvalidOwner) # No dereference of default storage.
-  if uint64(index) >= uint64(owner.data.state.blocks.len): return HistoryResult[HistoryBlockInfo](
-      error: HistoryError.InvalidIndex) # Check before narrowing.
-  let record = owner.data.state.blocks[int(uint64(index))]
-  HistoryResult[HistoryBlockInfo](error: HistoryError.None, value: HistoryBlockInfo(
+  let data = owner.data
+  if data == nil: return HistoryResult[HistoryBlockInfo](
+      status: HistoryError.InvalidOwner) # No dereference of default storage.
+  if uint64(index) >= uint64(data.state.blocks.len): return HistoryResult[HistoryBlockInfo](
+      status: HistoryError.InvalidIndex) # Check before narrowing.
+  let record = data.state.blocks[int(uint64(index))]
+  HistoryResult[HistoryBlockInfo](status: HistoryError.None, completed: HistoryBlockInfo(
     header: record.header,
     superPeak: record.superPeak, state: record.state, slot: record.slot,
     packages: record.packages.len))
@@ -347,18 +366,22 @@ proc historyBlockAt*(owner: HistorySnapshot, index: HistoryBlockIndex): HistoryR
 ## Extract one copied package/segment pair through the retained block and its own nominal pair position.
 proc historyPackageAt*(owner: HistorySnapshot, blockIndex: HistoryBlockIndex,
     index: HistoryPackageIndex): HistoryResult[ReportedPackage] =
+  let data = owner.data
+  if data == nil:
+    return HistoryResult[ReportedPackage](status: HistoryError.InvalidOwner) # No dictionary storage on default handles.
   let info = historyBlockAt(owner, blockIndex)
   if info.error != HistoryError.None: return HistoryResult[ReportedPackage](
-      error: info.error) # Invalid parent cannot expose a child.
+      status: info.error) # Invalid parent cannot expose a child.
   if uint64(index) >= uint64(info.value.packages): return HistoryResult[ReportedPackage](
-      error: HistoryError.InvalidIndex) # Check the selected dictionary's count.
-  HistoryResult[ReportedPackage](error: HistoryError.None,
-    value: owner.data.state.blocks[int(uint64(blockIndex))].packages[int(uint64(index))])
+      status: HistoryError.InvalidIndex) # Check the selected dictionary's count.
+  HistoryResult[ReportedPackage](status: HistoryError.None,
+    completed: data.state.blocks[int(uint64(blockIndex))].packages[int(uint64(index))])
 
 ## Extract a fixed tagged peak copy; absent peaks expose no hash alternative.
 proc historyPeakAt*(owner: HistorySnapshot, index: HistoryPeakIndex): HistoryResult[HistoryPeak] =
-  if owner.data.isNil: return HistoryResult[HistoryPeak](
-      error: HistoryError.InvalidOwner) # No fabricated peak on a missing owner.
-  if uint64(index) >= uint64(owner.data.state.peaks.len): return HistoryResult[HistoryPeak](
-      error: HistoryError.InvalidIndex) # Check before indexing.
-  HistoryResult[HistoryPeak](error: HistoryError.None, value: owner.data.state.peaks[int(uint64(index))])
+  let data = owner.data
+  if data == nil: return HistoryResult[HistoryPeak](
+      status: HistoryError.InvalidOwner) # No fabricated peak on a missing owner.
+  if uint64(index) >= uint64(data.state.peaks.len): return HistoryResult[HistoryPeak](
+      status: HistoryError.InvalidIndex) # Check before indexing.
+  HistoryResult[HistoryPeak](status: HistoryError.None, completed: data.state.peaks[int(uint64(index))])

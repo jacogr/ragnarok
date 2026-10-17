@@ -27,5 +27,26 @@ consumes only the count prefix.
 
 ## API and validation
 
-See [the Nim codec guide](../docs/codec.md) and source modules under `src/`.
+See [the Nim codec guide](../docs/codec.md) and source modules under `src/codec/`.
 Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.
+
+### Nimony result safety
+
+On the `nimony` branch, `WriteResult`, `BlobResult` and `SequenceResult` keep their tagged
+representation, but both their discriminator and payload fields are private. Only this module
+constructs successes; callers read the reason through `error`. The existing property spellings
+`written`, `offset`, `length`, `consumed` and `count` call read-only accessors whose Nimony
+`.requires` precondition is success. A caller cannot retag a failure, forge a successful result or
+read raw storage through safe code. This is necessary because Nimony does not guard raw variant
+field reads. Default construction remains `Uninitialized` with no readable success data.
+
+Proven preconditions need no runtime guard; unknown calls retain the supported runtime contract
+check. Checked release/LTO tests reject all six success-only properties on both default and failed
+results, plus six private-state/forgery attempts. Existing wire encodings, borrowed lifetimes,
+atomic output behavior and caller-owned storage are unchanged. Contract misuse is a programmer
+error; malformed wire input still returns the typed error before any output write.
+
+Nimony's arithmetic intentionally wraps. Count/size preflight still uses uint64 comparisons,
+subtraction and division before host-int conversion or multiplication. Native cases at
+`high(int)-1`, `high(int)`, `high(int)+1` and `high(uint64)` reject oversized byte/element claims
+without allocating their advertised payloads or changing the output sentinel.

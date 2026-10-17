@@ -44,5 +44,19 @@ for this primitive at the pinned revision.
 
 ## API and validation
 
-See [the Nim codec guide](../docs/codec.md) and source modules under `src/`.
+See [the Nim codec guide](../docs/codec.md) and source modules under `src/codec/`.
 Independent references, official vectors, boundary/fuzz and failure-atomicity checks live under `tests/`.
+
+### Nimony natural-result safety
+
+On the `nimony` branch, `DecodeResult` keeps its Boolean-tagged representation but hides the
+success discriminator, decoded natural, consumed extent and failure reason. `ok` is read-only;
+`value` and `consumed` require success through Nimony `.requires`, while `error` requires failure.
+A failed/default result cannot masquerade as zero or publish cursor progress, and successful
+results cannot expose a default error reason. Default failure remains `truncated`.
+
+The source module alone constructs successful results. Invalid public payload access is a
+programmer contract error, rejected statically when proven or by a runtime guard otherwise.
+Malformed wire data still returns its typed reason. No wire, canonicality, byte-limit or ownership
+rule changes. The Nimony trial runner verifies failure/default accesses, success-side error
+accesses and attempts to bypass private storage, alongside the existing boundary and fuzz checks.

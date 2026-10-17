@@ -1,5 +1,4 @@
-## Intentional rejection protects nominal work-package identities or private owner storage.
+## A package identity cannot construct the direct segment-root import alternative.
 import ../../../src/codec/[work_package, work_report]
-
-var value: ImportReference
-value.root = PackageHash()
+let wrong = rootImport(PackageHash(), ImportIndex(0))
+discard wrong

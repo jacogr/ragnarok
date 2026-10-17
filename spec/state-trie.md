@@ -62,7 +62,8 @@ and survive mutation/destruction of the source values after return.
 
 ## Evidence and reproduction
 
-After `python3 tests/test_crypto.py`, run:
+The historical Nim 2 baseline ran the following after `python3 tests/test_crypto.py`
+(use the trial runner below on the experimental Nimony branch):
 
 ```sh
 python3 tests/test_state_trie_harness.py
@@ -89,7 +90,34 @@ checks, **not**
 unmodified current-schema conformance vectors. The current equations and authored 31-byte cases
 supply the specification evidence; the older state-layout suite retains its five singleton checks.
 
-Builds retain Nim 2.2.12, ARC, checked Clang LTO and all assertion/bounds/range/field/overflow guards.
+Historical baseline builds used Nim 2.2.12, ARC, checked Clang LTO and all
+assertion/bounds/range/field/overflow guards.
 Ignored `build/state-trie/` retains build commands, logs, request SHA-256 and results. Linux CI runs
 the suite after native crypto construction and uploads diagnostics. Local results are macOS arm64;
 Linux verification remains CI's responsibility after push. No timing or production scale is claimed.
+
+## Nimony branch port
+
+The [nightly trial](../docs/nimony-trial.md#eighteenth-increment-bounded-state-trie-roots) verifies
+this same root contract with checked ARC/Clang LTO on macOS ARM64. `StateTrieResult[T]` hides
+status/payload; read-only error access does not authorize a value, and every value getter requires
+success. This covers both completed public commitments and private recursive child identities.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony`. The runner
+preserves all 2,308 independent observations, six literal oracle checks and eleven explicitly
+projected historical maps. It checks root/count reads on default/resource/duplicate/backend
+failures, private recursive failed/default hashes and both original nominal-domain probes.
+
+A separate test-only observer counts primitive attempts and refuses immediately or after a known
+successful prefix. Policy/duplicate/topology failures and empty mappings perform no cryptographic
+work. A refusal after a completed child hash still publishes no root/progress, and normal recovery
+reproduces the original root. Production-linked corpus requests use the unmodified maintained
+primitive bridge. No fault or observer symbol is added to production.
+
+The white-box project suite exercises uint64 node-counter boundaries and the final-depth defense
+without constructing unsafe enormous sequences. Public LengthOverflow remains protected but is
+not claimed as exercised. After warmup, 1,000 scoped success/early-failure/late-failure/recovery/
+node-budget/duplicate cycles return live allocator occupancy to baseline while source values
+remain live and unchanged. This is workload-specific ARC evidence, not general leak freedom or
+recoverable allocation-failure support. State-component codecs, full M1 and Linux parity remain
+separate compiler-port gates.

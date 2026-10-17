@@ -120,3 +120,22 @@ The C12 width migration is complete. Empty dictionary bytes are unchanged; nonem
 E4/E8 pairs exclusively. [Typed composition](state-composition.md) preserves the same bounds and
 ownership contracts. Compact C13 gas is accepted by maintainer policy; M1 state parity remains
 incomplete pending request namespace policy. The request-namespace question is [parked for Gray Paper 0.8.1/0.8.2 review](state-clarifications.md).
+
+## Experimental Nimony branch
+
+The [Nimony trial](../docs/nimony-trial.md) verifies the unchanged 1,390 independent requests and
+seven literal reference checks. `PrivilegeResult[T]` uses private status/payload, read-only reasons
+and checked success-only accessors, including internal natural and layout proofs. Nullable owner
+storage is checked through stable retained locals. Fixed E4 roles/services, E8 gas and strictly
+increasing numeric dictionary order retain their existing representation and error precedence.
+
+Two native suites cover escaped/replaced/retained parents, copied metadata/assigners/pairs, empty
+dictionaries, late failures and arithmetic/storage boundaries. Fifty isolated runtime cases require
+the exact success contract; twelve privacy/read-only and two nominal probes reject compilation.
+The warmed 1,000-cycle ownership workload returns live occupancy 192 → 192 bytes locally on
+macOS ARM64, checked ARC/Clang LTO. This does not establish general leak freedom or Linux parity.
+
+Use `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` on this branch.
+The historical Nim 2 commands above describe the main-branch baseline. Actual Linux results and
+full M1/M2/M3 migration remain separate gates. The compact C13 gas policy and parked request
+namespace question are unchanged by this compiler port.

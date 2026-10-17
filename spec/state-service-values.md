@@ -126,5 +126,33 @@ runs the suite and retains logs; local validation is macOS arm64, with Linux con
 
 State chapters 1–16, account metadata and storage/preimage mappings now have codecs, but **M1 state
 parity remains incomplete**. Request-history framing is implemented; whole-state composition/root
-evidence and the chapter-13/request-length parity gates remain. Next planned bounded increment:
+evidence and the maintainer-parked request-length question remain. Chapter 13 follows the accepted
+compact gas and numeric service-key policy without an alternate-width fallback. Next planned bounded increment:
 **whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
+
+
+## Nimony branch verification
+
+The experimental branch ports this family to pristine Nimony 0.6.3 nightly `5b51edfed`, preserving
+namespace/key/value bytes, policy precedence and copy atomicity. `ServiceValueResult[T]` keeps its
+status/payload private behind a read-only reason and success-only accessor. Retained owner storage
+is explicitly nullable and checked through stable retained locals; copied metadata cannot expose
+mutable bytes. The private scratch-extent helper retains the existing native prefix-addition check.
+
+Run `python3 tools/test_nimony.py --compiler build/nimony-trial/nimony/bin/nimony` with the pinned
+trial compiler. The runner includes the original 2,047-request corpus, six literal checks, 12
+storage/16 preimage JSON mappings, sixteen unclassified raw trace captures and 83 partial roots.
+Two positive suites include retained/replaced owners, source/input/output independence, exact
+aliases, shifted overlaps, short-copy precedence and untouched suffixes. The separate test-only
+crypto observer proves backend refusal/recovery, preflight before hashing and scratch release;
+production corpus binaries link the unmodified maintained primitive bridge.
+
+Thirty-eight isolated actual/default reads reject through the exact success contract; eleven
+private/read-only compiler probes reject result/storage bypasses and two nominal probes reject
+code/preimage/final-key substitution. Scratch extents at `high(int)-4` and above are checked without
+fabricating huge open arrays or allocations. After 1,000 warmed lifetime/refusal/recovery cycles,
+public live allocation returns from 272 to 272 bytes locally. No upstream or private-runtime patch
+is used. Results are macOS ARM64, checked ARC/Clang LTO; Linux and full M1 parity remain gates.
+
+Next is the Nimony request-history family, preserving the maintainer's parked namespace question.
+See the [trial](../docs/nimony-trial.md) for cumulative totals and remaining work.

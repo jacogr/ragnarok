@@ -1,5 +1,6 @@
 ## GP 0.8.0 T chapter 10: fixed core sequence of optional (full guarantee, E4 registration slot).
 ## Structural serialization does not establish availability, credential validity or transition eligibility.
+import std/assertions
 import ./[bounded, assurances, guarantees, state_layout, state_trie]
 export Guarantee
 
@@ -10,12 +11,12 @@ type
   AssignmentCoreIndex* = distinct uint64
   ## A complete source/extracted value retains its immutable report and copies all fixed credential bytes.
   AvailabilityAssignment* = object
-    case present*: bool
+    case isPresent: bool
     of true:
-      guarantee*: Guarantee       # Full guarantee, including its own E4 slot and credentials.
-      registered*: AssignmentSlot # Additional registration time belongs to the assignment.
+      child: Guarantee             # Full guarantee, including its own E4 slot and credentials.
+      registration: AssignmentSlot # Additional registration time belongs to the assignment.
     of false:
-      discard                     # Absence has neither a default guarantee nor a fabricated timestamp.
+      discard                      # Absence has neither a default guarantee nor a fabricated timestamp.
   ## Chain/report/credential policy plus independent present-item and whole-parent byte ceilings.
   AvailabilityConfig* = object
     guarantee*: GuaranteeConfig
@@ -28,18 +29,18 @@ type
     InvalidValidator, InvalidOwner, InvalidIndex
   ## Only complete success exposes its application payload.
   AvailabilityResult*[T] = object
-    case error*: AvailabilityError
-    of AvailabilityError.None:
-      value*: T # Failure cannot masquerade as a valid empty assignment.
+    case status: AvailabilityError
+    of None:
+      completed: T # Failure cannot masquerade as a valid empty assignment.
     else:
-      discard   # Default and failures contain only their reason.
+      discard      # Default and failures contain only their reason.
   ## Private acyclic ARC storage retains child reports through immutable guarantee handles.
   AvailabilityData = ref object
     values: seq[AvailabilityAssignment]
     present: int
   ## Value handles share private immutable storage; replacing a handle cannot mutate retained siblings.
   AvailabilitySnapshot* = object
-    data: AvailabilityData
+    data: nil AvailabilityData
   ## Complete prefix decoding returns its owner and exact consumed extent together.
   AvailabilityRead* = object
     snapshot*: AvailabilitySnapshot
@@ -56,6 +57,26 @@ type
   Layout = object
     slots: array[341, SlotLayout]
     present, consumed: int
+
+## Read-only failure reasons cannot authorize parent values, child handles or parser progress.
+func error*[T](value: AvailabilityResult[T]): AvailabilityError = value.status
+## Every complete payload needs success selection in checked optimized builds too.
+func value*[T](value: AvailabilityResult[T]): T {.inline, requires: value.status ==
+    AvailabilityError.None.} =
+  value.completed
+## Absence contains neither a child report handle nor a registration timestamp; defaults are absent too.
+func absentAssignment*(): AvailabilityAssignment = AvailabilityAssignment(isPresent: false)
+## Capture a copied full guarantee whose immutable report handle is retained independently of its source.
+func presentAssignment*(guarantee: Guarantee, registered: AssignmentSlot): AvailabilityAssignment =
+  AvailabilityAssignment(isPresent: true, child: guarantee, registration: registered)
+## Inspect the optional alternative without allowing callers to retag its storage.
+func present*(assignment: AvailabilityAssignment): bool = assignment.isPresent
+## A present assignment alone authorizes a copied guarantee and retained immutable report child.
+func guarantee*(assignment: AvailabilityAssignment): Guarantee {.inline,
+    requires: assignment.isPresent.} = assignment.child
+## Registration zero remains distinct from an absent assignment with no readable timestamp.
+func registered*(assignment: AvailabilityAssignment): AssignmentSlot {.inline,
+    requires: assignment.isPresent.} = assignment.registration
 
 ## Reuse the existing guarantee profile domain before indexing the fixed local scan array.
 proc validate(config: AvailabilityConfig): AvailabilityError =
@@ -94,51 +115,51 @@ proc grow(cursor: var int, bytes: int, limit: ByteLimit): AvailabilityError =
 proc scan(input: openArray[byte], config: AvailabilityConfig): AvailabilityResult[Layout] =
   let valid = validate(config)
   if valid != AvailabilityError.None: return AvailabilityResult[Layout](
-      error: valid) # Configuration precedes input access.
-  var layout: Layout
+      status: valid) # Configuration precedes input access.
+  var layout = default(Layout)
   var cursor = 0
   # The sequence is fixed by core count, without an outer count prefix or omitted absent slots.
   for i in 0..<int(uint64(config.guarantee.cores)):
     var error = grow(cursor, 1, config.maxBytes)
     if error != AvailabilityError.None: return AvailabilityResult[Layout](
-        error: error) # Discriminator consumes parent budget.
+        status: error) # Discriminator consumes parent budget.
     if input.len < cursor: return AvailabilityResult[Layout](
-        error: AvailabilityError.Truncated) # Require tag before access.
+        status: AvailabilityError.Truncated) # Require tag before access.
     let tag = input[cursor-1]
     if tag > 1: return AvailabilityResult[Layout](
-        error: AvailabilityError.InvalidTag) # Only absent/present alternatives exist.
+        status: AvailabilityError.InvalidTag) # Only absent/present alternatives exist.
     if tag == 1:
       # Present-item policy bounds expensive nested parsing and later owner capture.
       if uint64(layout.present) >= uint64(config.maxPresent):
-        return AvailabilityResult[Layout](error: AvailabilityError.LimitExceeded) # Check before increment/child work.
+        return AvailabilityResult[Layout](status: AvailabilityError.LimitExceeded) # Check before increment/child work.
       let parsed = inspectGuarantee(input.toOpenArray(cursor, input.len-1), config.guarantee)
       if parsed.error != GuaranteeError.None:
-        return AvailabilityResult[Layout](error: childError(parsed.error)) # No partial earlier child owner.
+        return AvailabilityResult[Layout](status: childError(parsed.error)) # No partial earlier child owner.
       layout.slots[i].start = cursor
       layout.slots[i].length = parsed.value.consumed
       error = grow(cursor, parsed.value.consumed, config.maxBytes)
       if error != AvailabilityError.None: return AvailabilityResult[Layout](
-          error: error) # Full standalone guarantee contributes its exact length.
+          status: error) # Full standalone guarantee contributes its exact length.
       let timestamp = cursor
       error = grow(cursor, 4, config.maxBytes)
       if error != AvailabilityError.None: return AvailabilityResult[Layout](
-          error: error) # Registration time is an extra E4 field.
+          status: error) # Registration time is an extra E4 field.
       if input.len < cursor: return AvailabilityResult[Layout](
-          error: AvailabilityError.Truncated) # No partial timestamp.
+          status: AvailabilityError.Truncated) # No partial timestamp.
       var slot = 0'u32
       for j in 0..<4: slot = slot or (uint32(input[timestamp+j]) shl (j*8)) # Explicit little-endian E4 decoding.
       layout.slots[i].registered = AssignmentSlot(slot)
       layout.slots[i].present = true
       inc layout.present
   layout.consumed = cursor
-  AvailabilityResult[Layout](error: AvailabilityError.None, value: layout)
+  AvailabilityResult[Layout](status: AvailabilityError.None, completed: layout)
 
 ## Decode complete fixed-core state into private immutable parent/child storage only after full preflight.
 proc decodeAvailabilityState*(input: openArray[byte],
     config: AvailabilityConfig): AvailabilityResult[AvailabilityRead] =
   let checked = scan(input, config)
   if checked.error != AvailabilityError.None: return AvailabilityResult[AvailabilityRead](
-      error: checked.error) # No captured owners after failure.
+      status: checked.error) # No captured owners after failure.
   let layout = checked.value
   let data = AvailabilityData(values: newSeq[AvailabilityAssignment](int(uint64(
       config.guarantee.cores))), present: layout.present)
@@ -149,42 +170,42 @@ proc decodeAvailabilityState*(input: openArray[byte],
       let child = decodeGuarantee(input.toOpenArray(record.start, record.start+record.length-1),
           config.guarantee)
       if child.error != GuaranteeError.None:
-        return AvailabilityResult[AvailabilityRead](error: childError(
+        return AvailabilityResult[AvailabilityRead](status: childError(
             child.error)) # Preserve future child capture rejections.
-      data.values[i] = AvailabilityAssignment(present: true, guarantee: child.value.value,
-          registered: record.registered)
+      data.values[i] = presentAssignment(child.value.value, record.registered)
     else:
-      data.values[i] = AvailabilityAssignment(present: false) # Distinct from present with a zero timestamp.
-  AvailabilityResult[AvailabilityRead](error: AvailabilityError.None,
-    value: AvailabilityRead(snapshot: AvailabilitySnapshot(data: data), consumed: layout.consumed))
+      data.values[i] = absentAssignment() # Distinct from present with a zero timestamp.
+  AvailabilityResult[AvailabilityRead](status: AvailabilityError.None,
+    completed: AvailabilityRead(snapshot: AvailabilitySnapshot(data: data),
+        consumed: layout.consumed))
 
 ## Encode exact fixed-core source shape into an independent C(10) entry after every child validates.
 proc availabilityStateEntry*(values: openArray[AvailabilityAssignment],
     config: AvailabilityConfig): AvailabilityResult[StateEntry] =
   let valid = validate(config)
   if valid != AvailabilityError.None: return AvailabilityResult[StateEntry](
-      error: valid) # Invalid configuration cannot authorize source traversal.
+      status: valid) # Invalid configuration cannot authorize source traversal.
   if uint64(values.len) != uint64(config.guarantee.cores):
-    return AvailabilityResult[StateEntry](error: AvailabilityError.InvalidCount) # No outer count is emitted or inferred.
+    return AvailabilityResult[StateEntry](status: AvailabilityError.InvalidCount) # No outer count is emitted or inferred.
   var size = 0
   var present = 0'u64
   # Whole-source preflight precedes all child scratch/output allocation.
   for value in values:
     var error = grow(size, 1, config.maxBytes)
     if error != AvailabilityError.None: return AvailabilityResult[StateEntry](
-        error: error) # Every absent slot still needs a tag.
+        status: error) # Every absent slot still needs a tag.
     if value.present:
       if present >= uint64(config.maxPresent): return AvailabilityResult[StateEntry](
-          error: AvailabilityError.LimitExceeded) # Bound child work first.
+          status: AvailabilityError.LimitExceeded) # Bound child work first.
       let child = measureGuarantee(value.guarantee, config.guarantee)
       if child.error != GuaranteeError.None: return AvailabilityResult[StateEntry](
-          error: childError(child.error)) # Retain existing source policy.
+          status: childError(child.error)) # Retain existing source policy.
       error = grow(size, child.value, config.maxBytes)
       if error != AvailabilityError.None: return AvailabilityResult[StateEntry](
-          error: error) # Check complete standalone child extent.
+          status: error) # Check complete standalone child extent.
       error = grow(size, 4, config.maxBytes)
       if error != AvailabilityError.None: return AvailabilityResult[StateEntry](
-          error: error) # Additional registration timestamp is mandatory.
+          status: error) # Additional registration timestamp is mandatory.
       inc present
   var entry = StateEntry(key: chapterKey(StateChapter(10)), value: newSeq[byte](size))
   var cursor = 0
@@ -195,7 +216,7 @@ proc availabilityStateEntry*(values: openArray[AvailabilityAssignment],
     if value.present:
       let child = encodeGuaranteeValue(value.guarantee, config.guarantee)
       if child.error != GuaranteeError.None: return AvailabilityResult[StateEntry](
-          error: childError(child.error)) # No partially encoded entry escapes.
+          status: childError(child.error)) # No partially encoded entry escapes.
       for b in child.value:
         entry.value[cursor] = b # One temporary child buffer is released per iteration by ARC.
         inc cursor
@@ -203,21 +224,23 @@ proc availabilityStateEntry*(values: openArray[AvailabilityAssignment],
         entry.value[cursor] = byte((uint32(value.registered) shr (j*8)) and
             255) # E4 registered time, separate from child slot.
         inc cursor
-  AvailabilityResult[StateEntry](error: AvailabilityError.None, value: entry)
+  AvailabilityResult[StateEntry](status: AvailabilityError.None, completed: entry)
 
 ## Inspect copied parent counts without exposing mutable slot storage.
 proc availabilityInfo*(owner: AvailabilitySnapshot): AvailabilityResult[AvailabilityInfo] =
-  if owner.data.isNil: return AvailabilityResult[AvailabilityInfo](
-      error: AvailabilityError.InvalidOwner) # Defaults cannot masquerade as all-absent state.
-  AvailabilityResult[AvailabilityInfo](error: AvailabilityError.None,
-    value: AvailabilityInfo(cores: owner.data.values.len, present: owner.data.present))
+  let data = owner.data
+  if data == nil: return AvailabilityResult[AvailabilityInfo](
+      status: AvailabilityError.InvalidOwner) # Defaults cannot masquerade as all-absent state.
+  AvailabilityResult[AvailabilityInfo](status: AvailabilityError.None,
+    completed: AvailabilityInfo(cores: data.values.len, present: data.present))
 
 ## Extract a copied tagged assignment; its copied guarantee retains the report after parent release.
 proc availabilityAt*(owner: AvailabilitySnapshot, core: AssignmentCoreIndex): AvailabilityResult[
     AvailabilityAssignment] =
-  if owner.data.isNil: return AvailabilityResult[AvailabilityAssignment](
-      error: AvailabilityError.InvalidOwner) # No default slot from missing storage.
-  if uint64(core) >= uint64(owner.data.values.len): return AvailabilityResult[
-      AvailabilityAssignment](error: AvailabilityError.InvalidIndex) # Check before narrowing.
-  AvailabilityResult[AvailabilityAssignment](error: AvailabilityError.None,
-      value: owner.data.values[int(uint64(core))])
+  let data = owner.data
+  if data == nil: return AvailabilityResult[AvailabilityAssignment](
+      status: AvailabilityError.InvalidOwner) # No default slot from missing storage.
+  if uint64(core) >= uint64(data.values.len): return AvailabilityResult[
+      AvailabilityAssignment](status: AvailabilityError.InvalidIndex) # Check before narrowing.
+  AvailabilityResult[AvailabilityAssignment](status: AvailabilityError.None,
+      completed: data.values[int(uint64(core))])

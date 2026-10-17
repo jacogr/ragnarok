@@ -103,7 +103,8 @@ through its matching item owner. No mutable wire, backing pointer or detached sp
 Owner re-emission and copies validate complete destination capacity before writing and reject
 written destinations overlapping any retained wire bytes. Default owners and signed invalid
 indices fail. Every failed/default result carries only its reason, never values or progress.
-Nim variant-field guards protect both success results and import identity alternatives.
+On Nimony, private result/variant storage and success/selected-kind accessors protect both result
+values and import identity alternatives.
 
 ## Verification
 
@@ -120,5 +121,37 @@ strict gas boundaries and uint64 aggregate-overflow attempts; inclusive footprin
 interaction; malformed/overlong/huge count prefixes; deterministic structured/random input;
 late-source atomicity; descriptor/blob/import/commitment aliases; runtime variant guards;
 four nominal compiler rejection probes and two private-owner probes. Eight independent harness
-known-answer tests protect the Python oracle. Linux CI uses the same checked ARC/Clang LTO builds
-with assertions, bounds, ranges, field guards and overflow checks enabled.
+known-answer tests protect the Python oracle. The established Linux CI profile belongs to the
+Nim 2 baseline; the experimental Nimony port has not switched or passed that pipeline.
+
+## Nimony port verification
+
+The pinned nightly uses private `PackageResult[T]` status/value storage and read-only outcomes.
+`value` requires success for fixed records, metadata, owner handles and byte progress. Package/
+item references are private nullable ARC handles with stable local nil proofs before access;
+item indices are private and cannot be rebound. Capture, limits, preflight ordering and wire
+formats remain unchanged.
+
+`ImportReference.kind` is read-only. `root` requires Root; `package` requires Package. Both return
+copied nominal identities. Typed `rootImport`/`packageImport` factories preserve those domains;
+indices above 32767 still fail encoding preflight. The default remains a zero-index Root. Safe
+callers cannot retag or forge raw alternatives. The nominal wrong-identity probe uses the typed
+factory, preserving a real domain-mismatch check independently of read-only-property rejection.
+
+`tools/test_nimony.py` runs all 8,123 existing requests across context/import/commitment/item/
+package APIs. Published tiny/full bytes, full independently observed fields, source mutation,
+footprint/gas/dependency/count limits, malformed inputs and atomic destinations retain coverage.
+The adapter uses concrete fixed-record branches after this nightly rejected its template binding;
+all original operations remain covered. Blob roles are explicitly iterated in their original order.
+
+The native suite retains all alias probes using writable fixed-array views over actual backing
+allocations. It adds parent replacement, orphan child extraction/re-emission and independent
+copied identities. A warmed 1,000-cycle ARC workload leaves public live occupancy at 30,400 bytes
+on the trial Mac; outer fixtures stay live. This measures that workload, not RSS or general leak
+freedom. Fifty-one runtime misuse checks guard every public result instantiation and wrong import
+alternatives. Nineteen compilation checks reject result/owner/variant bypasses; four nominal
+checks protect import indices, host services, reference identities and commitment lengths.
+
+Commands, compiler metadata, source/corpus hashes and exact diagnostics are recorded in ignored
+`build/nimony-trial/verification/results.json` and adjacent logs. Local checked ARC/Clang LTO parity
+does not establish Linux or full-client migration; see [the trial](../docs/nimony-trial.md).

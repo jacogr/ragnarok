@@ -13,7 +13,7 @@ from test_quic_soak import resources, check_growth
 
 
 # Wait for exact lifecycle observations on currently live processes, retaining bounded resource peaks.
-def watch(processes, logs, predicates, peaks, seconds=15):
+def watch(processes, logs, predicates, peaks, seconds=15, thread_limits=None):
     deadline = time.monotonic() + seconds
     # A crashed process or stale transcript cannot satisfy a later recovery/admission barrier.
     while True:
@@ -21,8 +21,12 @@ def watch(processes, logs, predicates, peaks, seconds=15):
         for role, process in processes.items():
             assert process.poll() is None, (role, process.returncode, texts[role][-4000:])
             sample = resources(process.pid)
-            language = Path(process.args[0]).name.split('-')[0]
-            expected_threads = THREAD_BASELINES[language]
+            # Explicit role limits let trial executable names vary without loosening the fixed thread budget.
+            if thread_limits is None:
+                language = Path(process.args[0]).name.split('-')[0]
+                expected_threads = THREAD_BASELINES[language]
+            else:
+                expected_threads = thread_limits[role]
             assert 1 <= sample['threads'] <= expected_threads and sample['rss_bytes'] < 256 * 1024 * 1024, (role, sample, expected_threads, texts[role][-4000:])
             # Readiness/authentication establishes the one-dispatcher thread baseline.
             if any(line == 'READY' or line == 'AUTH_OK' or line.startswith('MESH_READY ') for line in texts[role].splitlines()):
@@ -51,9 +55,11 @@ def clean(language, text):
 
 
 # One stable logical peer survives twelve peer deaths and successfully exchanges queries after each restart.
-def disruption(languages, folder, rounds, warmup):
+def disruption(languages, folder, rounds, warmup, *, binaries=None, directory=None):
+    # Isolated trial binaries retain the original recovery, resource and gate schedules.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     name = '-'.join(languages)
-    directory = BUILD / 'resilience' / f'disruption-{name}'
+    directory = BUILD / 'resilience' / f'disruption-{name}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     keeper_gate = directory / f'keeper-gate-{time.time_ns()}'
     keeper_gate.mkdir()
@@ -61,12 +67,13 @@ def disruption(languages, folder, rounds, warmup):
     local_ports = ports()
     children, handles, idle = [], [], []
     peaks = {'keeper': {}, 'victim': {}}
+    limits = {'keeper': THREAD_BASELINES[languages[0]], 'victim': THREAD_BASELINES[languages[1]]}
 
     # Both processes use the same pinned TLS/CE policy; only their explicitly selected expiry profile differs.
     def launch(role, language, gate, count, path):
         index = 0 if role == 'a' else 1
         other = 'b' if role == 'a' else 'a'
-        command = [str(BUILD / f'{language}-peer'), 'mesh', str(local_ports[index]), str(local_ports[1-index]),
+        command = [str(binaries[language]), 'mesh', str(local_ports[index]), str(local_ports[1-index]),
                    str(folder / f'{role}.cert.pem'), str(folder / f'{role}.key.pem'), str(folder / f'{role}.pub'),
                    str(folder / f'{other}.pub'), 'jamnp-s/1/00000000', str(gate)]
         output = path.open('w'); handles.append(output)
@@ -79,7 +86,7 @@ def disruption(languages, folder, rounds, warmup):
     keeper = launch('a', languages[0], keeper_gate, rounds + 1, keeper_log)
     started = time.monotonic()
     try:
-        watch({'keeper': keeper}, {'keeper': keeper_log}, {'keeper': lambda text: 'MESH_READY ' in text}, peaks)
+        watch({'keeper': keeper}, {'keeper': keeper_log}, {'keeper': lambda text: 'MESH_READY ' in text}, peaks, thread_limits=limits)
         # The counterpart restarts with the same certificate/identity/listener port; the keeper's two engines never restart.
         for index in range(rounds):
             victim_gate = directory / f'victim-{index}-{time.time_ns()}'
@@ -88,23 +95,23 @@ def disruption(languages, folder, rounds, warmup):
             victim = launch('b', languages[1], victim_gate, 1, victim_log)
             processes = {'keeper': keeper, 'victim': victim}
             logs = {'keeper': keeper_log, 'victim': victim_log}
-            watch(processes, logs, {'victim': lambda text: 'MESH_READY ' in text}, peaks)
+            watch(processes, logs, {'victim': lambda text: 'MESH_READY ' in text}, peaks, thread_limits=limits)
             (keeper_gate / f'start-{index}').touch(); (victim_gate / 'start-0').touch()
             # Separate healthy completion from pending work so an early peer cannot prevent the other's idle-stream barrier.
             watch(processes, logs, {
                 'keeper': lambda text: f'MESH_EXCHANGED {index} 8' in text.splitlines(),
-                'victim': lambda text: 'MESH_EXCHANGED 0 8' in text.splitlines()}, peaks)
+                'victim': lambda text: 'MESH_EXCHANGED 0 8' in text.splitlines()}, peaks, thread_limits=limits)
             (keeper_gate / f'pending-{index}').touch(); (victim_gate / 'pending-0').touch()
             texts = watch(processes, logs, {
                 'keeper': lambda text: f'MESH_PENDING {index} 8' in text.splitlines(),
-                'victim': lambda text: 'MESH_PENDING 0 8' in text.splitlines()}, peaks)
+                'victim': lambda text: 'MESH_PENDING 0 8' in text.splitlines()}, peaks, thread_limits=limits)
             assert f'MESH_EXCHANGED {index} 8' in texts['keeper'].splitlines()
             assert 'MESH_EXCHANGED 0 8' in texts['victim'].splitlines()
             victim.kill(); assert victim.wait(timeout=5) == -9
             lost_at = time.monotonic()
             (keeper_gate / f'close-{index}').touch()
             texts = watch({'keeper': keeper}, {'keeper': keeper_log}, {
-                'keeper': lambda text: any(line.startswith(f'MESH_IDLE {index} ') for line in text.splitlines())}, peaks)
+                'keeper': lambda text: any(line.startswith(f'MESH_IDLE {index} ') for line in text.splitlines())}, peaks, thread_limits=limits)
             assert f'MESH_RECOVERED {index} 8' in texts['keeper'].splitlines()
             line = next(line for line in texts['keeper'].splitlines() if line.startswith(f'MESH_IDLE {index} '))
             _, allocated, incoming, outgoing, closed_incoming, closed_outgoing = map(int, line.split()[1:])
@@ -121,15 +128,15 @@ def disruption(languages, folder, rounds, warmup):
         final_peer = launch('b', languages[1], final_gate, 1, final_log)
         processes = {'keeper': keeper, 'victim': final_peer}
         logs = {'keeper': keeper_log, 'victim': final_log}
-        watch(processes, logs, {'victim': lambda text: 'MESH_READY ' in text}, peaks)
+        watch(processes, logs, {'victim': lambda text: 'MESH_READY ' in text}, peaks, thread_limits=limits)
         (keeper_gate / f'start-{rounds}').touch(); (final_gate / 'start-0').touch()
         watch(processes, logs, {
             'keeper': lambda text: f'MESH_EXCHANGED {rounds} 8' in text.splitlines(),
-            'victim': lambda text: 'MESH_EXCHANGED 0 8' in text.splitlines()}, peaks)
+            'victim': lambda text: 'MESH_EXCHANGED 0 8' in text.splitlines()}, peaks, thread_limits=limits)
         (keeper_gate / f'close-{rounds}').touch(); (final_gate / 'close-0').touch()
         watch(processes, logs, {
             'keeper': lambda text: any(line.startswith(f'MESH_IDLE {rounds} ') for line in text.splitlines()),
-            'victim': lambda text: any(line.startswith('MESH_IDLE 0 ') for line in text.splitlines())}, peaks)
+            'victim': lambda text: any(line.startswith('MESH_IDLE 0 ') for line in text.splitlines())}, peaks, thread_limits=limits)
         (final_gate / 'stop').touch()
         assert final_peer.wait(timeout=5) == 0, final_log.read_text()
         clean(languages[1], final_log.read_text())
@@ -153,28 +160,31 @@ def states(text):
 
 
 # Reproduce connection loss after authentication but before any stream callback can report failure.
-def closed_before_request(languages, folder):
-    directory = BUILD / 'resilience' / f'closed-before-request-{"-".join(languages)}'
+def closed_before_request(languages, folder, *, binaries=None, directory=None):
+    # Compiler-specific paths do not change the authenticated-close schedule or resource ceilings.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    directory = BUILD / 'resilience' / f'closed-before-request-{"-".join(languages)}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     port = ports()[0]
     logs = {role: directory / f'{role}.log' for role in ('server', 'client')}
     processes, handles = {}, []
     peaks = {role: {} for role in logs}
+    limits = dict(zip(logs, (THREAD_BASELINES[language] for language in languages)))
     try:
         # The listener uses the existing two-second crash profile; no new protocol/settings are introduced.
         output = logs['server'].open('w'); handles.append(output)
-        processes['server'] = subprocess.Popen([str(BUILD / f'{languages[0]}-peer'), 'server', str(port),
+        processes['server'] = subprocess.Popen([str(binaries[languages[0]]), 'server', str(port),
             str(folder / 'a.cert.pem'), str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '60000', 'overload'],
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(directory / f'stop-{time.time_ns()}')},
             stdout=output, stderr=subprocess.STDOUT)
         watch({'server': processes['server']}, {'server': logs['server']},
-              {'server': lambda text: 'READY' in text.splitlines()}, {'server': peaks['server']})
+              {'server': lambda text: 'READY' in text.splitlines()}, {'server': peaks['server']}, thread_limits=limits)
         output = logs['client'].open('w'); handles.append(output)
-        processes['client'] = subprocess.Popen([str(BUILD / f'{languages[1]}-peer'), 'client', str(port),
+        processes['client'] = subprocess.Popen([str(binaries[languages[1]]), 'client', str(port),
             str(folder / 'b.cert.pem'), str(folder / 'b.key.pem'), str(folder / 'a.pub'),
             'jamnp-s/1/00000000', '60000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
         # Idle mode deliberately opens no streams, so only connection retirement can settle this failure.
-        watch(processes, logs, {'client': lambda text: 'AUTH_OK' in text.splitlines()}, peaks)
+        watch(processes, logs, {'client': lambda text: 'AUTH_OK' in text.splitlines()}, peaks, thread_limits=limits)
         processes['server'].kill(); assert processes['server'].wait(timeout=5) == -9
         started = time.monotonic()
         assert processes['client'].wait(timeout=5) == 2, logs['client'].read_text()
@@ -198,8 +208,10 @@ def settle_probe(process, path, expected):
 
 
 # A retained IPv6 listener must refuse excess admission, release interrupted slots and resume healthy CE work.
-def overload(language, folder, rounds, warmup):
-    directory = BUILD / 'resilience' / f'overload-{language}'
+def overload(language, folder, rounds, warmup, *, binaries=None, directory=None):
+    # Keep the original admission workload while routing every load source to the checked compiler build.
+    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    directory = BUILD / 'resilience' / f'overload-{language}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     stop = directory / f'stop-{time.time_ns()}'
     server_log = directory / 'server.log'
@@ -207,7 +219,7 @@ def overload(language, folder, rounds, warmup):
     handles, children, idle = [], [], []
     peaks = {'server': {}}
     output = server_log.open('w'); handles.append(output)
-    server = subprocess.Popen([str(BUILD / f'{language}-peer'), 'server', str(port), str(folder / 'a.cert.pem'),
+    server = subprocess.Popen([str(binaries[language]), 'server', str(port), str(folder / 'a.cert.pem'),
         str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '120000', 'overload'],
         env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)}, stdout=output, stderr=subprocess.STDOUT)
     children.append(server)
@@ -217,7 +229,7 @@ def overload(language, folder, rounds, warmup):
     def client(index, label, implementation, mode):
         path = directory / f'{index}-{label}.log'
         output = path.open('w'); handles.append(output)
-        process = subprocess.Popen([str(BUILD / f'{implementation}-peer'), 'client', str(port), str(folder / 'b.cert.pem'),
+        process = subprocess.Popen([str(binaries[implementation]), 'client', str(port), str(folder / 'b.cert.pem'),
             str(folder / 'b.key.pem'), str(folder / 'a.pub'), 'jamnp-s/1/00000000', '60000', mode],
             stdout=output, stderr=subprocess.STDOUT)
         children.append(process)
@@ -225,7 +237,8 @@ def overload(language, folder, rounds, warmup):
 
     # Only the retained server is the resource subject here; intentionally killed load sources are reaped separately.
     def server_state(predicate):
-        return watch({'server': server}, {'server': server_log}, {'server': predicate}, peaks)['server']
+        return watch({'server': server}, {'server': server_log}, {'server': predicate}, peaks,
+                     thread_limits={'server': THREAD_BASELINES[language]})['server']
 
     accepted, connection_rejects, stream_rejects = 0, 0, 0
     try:

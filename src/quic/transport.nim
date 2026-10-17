@@ -1,10 +1,11 @@
-## Small project-maintained LSQUIC adapter. One standard-library selector owns nonblocking UDP and transport deadlines.
+## Maintained LSQUIC adapter. One bounded POSIX dispatcher services nonblocking UDP and deadlines.
 ## Native callbacks borrow this stack owner synchronously; no futures, callback closures or dependency patches are used.
-import std/[nativesockets, selectors, os]
-import posix
+import std/assertions
+import ./io
+export io.newDispatcher, io.close
 
-const BridgeHeader = "../../native/quic/transport_bridge.h"
-const CertHeader = "../../native/quic/cert_fields.h"
+const BridgeHeader = "transport_bridge.h"
+const CertHeader = "cert_fields.h"
 
 type
   # Explicit proof profiles keep short test deadlines and load admission separate from normal peer settings.
@@ -13,7 +14,7 @@ type
   # Read-only C byte element makes callback signatures match the shared const uint8_t ABI exactly.
   ConstByte* {.importc: "const uint8_t", header: BridgeHeader, pure, final.} = object
   # Opaque LSQUIC stream handle; its lifetime ends at the native close callback.
-  NativeStream* = distinct pointer
+  NativeStream* = distinct (nil pointer)
   # Certificate observations copy bounded primitive fields; JAM identity policy stays in the peer.
   CertFields* {.importc: "rq_cert_fields", header: CertHeader, bycopy.} = object
     edKey* {.importc: "ed_key".}, edSignature* {.importc: "ed_signature".}: cint
@@ -32,14 +33,13 @@ type
       port: uint16): cint {.cdecl, raises: [].}
   # An endpoint owns UDP/engine and owns or borrows its selector; it has no ARC reference back to its peer.
   Transport* = object
-    engine: pointer
-    socket: SocketHandle
-    socketOpen: bool
-    selector: Selector[int]
+    engine: nil pointer
+    socket: UdpEndpoint
+    selector: nil Dispatcher
     registered, selectorOwned, ipv6: bool
-    user: pointer
-    verify: VerifyCallback
-    stream: StreamCallback
+    user: nil pointer
+    verify: nil VerifyCallback
+    stream: nil StreamCallback
     buffer: array[2048, byte]
     stopping, failed: bool
 
@@ -50,40 +50,41 @@ proc parseCert*(der: ptr byte, length: csize_t, fields: ptr CertFields): cint {.
     header: CertHeader, cdecl, raises: [].}
 # Construct the shared native engine/TLS owner; strings are borrowed only during this call.
 proc transportNew(soak, server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
-    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): pointer {.importc: "rq_transport_new",
+    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): nil pointer {.importc: "rq_transport_new",
         header: BridgeHeader, cdecl, raises: [].}
 # Retain an IPv6 engine across reconnects; the native caller still owns UDP readiness and TLS identity policy.
 proc transportNew6(profile, server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
-    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): pointer {.importc: "rq_transport_new_ipv6_profile",
+    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): nil pointer {.importc: "rq_transport_new_ipv6_profile",
         header: BridgeHeader, cdecl, raises: [].}
 # Inspect a live stream's initiator without retaining any connection pointer.
-proc nativeLocal(engine: pointer, stream: NativeStream): cint {.importc: "rq_stream_local",
+proc nativeLocal(engine: nil pointer, stream: NativeStream): cint {.importc: "rq_stream_local",
     header: BridgeHeader, cdecl, raises: [].}
 # Dial one loopback peer through the retained native engine.
-proc nativeConnect(engine: pointer, port: uint16): cint {.importc: "rq_connect",
+proc nativeConnect(engine: nil pointer, port: uint16): cint {.importc: "rq_connect",
     header: BridgeHeader, cdecl, raises: [].}
 # Queue close while the socket still sends transport packets; callers then poll a short drain interval.
-proc nativeDisconnect(engine: pointer) {.importc: "rq_disconnect", header: BridgeHeader, cdecl,
+proc nativeDisconnect(engine: nil pointer) {.importc: "rq_disconnect", header: BridgeHeader, cdecl,
     raises: [].}
 # Observe connection lifecycle without retaining a raw native connection pointer.
-proc nativeMetric(engine: pointer, metric: cint): uint64 {.importc: "rq_peer_metric",
+proc nativeMetric(engine: nil pointer, metric: cint): uint64 {.importc: "rq_peer_metric",
     header: BridgeHeader, cdecl, raises: [].}
 # Consume one borrowed complete UDP datagram synchronously.
-proc packetIn(engine: pointer, bytes: ptr byte, length: csize_t,
+proc packetIn(engine: nil pointer, bytes: ptr byte, length: csize_t,
     port: uint16): cint {.importc: "rq_packet_in", header: BridgeHeader, cdecl, raises: [].}
 # Progress LSQUIC callbacks and pending packet writes on the selector thread.
-proc process(engine: pointer) {.importc: "rq_process", header: BridgeHeader, cdecl, raises: [].}
+proc process(engine: nil pointer) {.importc: "rq_process", header: BridgeHeader, cdecl, raises: [].}
 # Return the native relative timer deadline in microseconds.
-proc nextTick(engine: pointer): int64 {.importc: "rq_next_tick", header: BridgeHeader, cdecl,
+proc nextTick(engine: nil pointer): int64 {.importc: "rq_next_tick", header: BridgeHeader, cdecl,
     raises: [].}
 # Report pending/authenticated/rejected status independently of application success.
-proc nativeStatus(engine: pointer): cint {.importc: "rq_status", header: BridgeHeader, cdecl,
+proc nativeStatus(engine: nil pointer): cint {.importc: "rq_status", header: BridgeHeader, cdecl,
     raises: [].}
 # Destroy native state synchronously, delivering final stream closes while owners remain alive.
-proc transportFree(engine: pointer) {.importc: "rq_transport_free", header: BridgeHeader, cdecl,
+proc transportFree(engine: nil pointer) {.importc: "rq_transport_free", header: BridgeHeader, cdecl,
     raises: [].}
 # Create one bidirectional stream after authentication; application state is assigned by its open callback.
-proc nativeOpen(engine: pointer) {.importc: "rq_open_stream", header: BridgeHeader, cdecl, raises: [].}
+proc nativeOpen(engine: nil pointer) {.importc: "rq_open_stream", header: BridgeHeader, cdecl,
+    raises: [].}
 # Read accepted stream bytes; -2 is would-block, zero is FIN and other negative values are transport errors.
 proc streamRead*(stream: NativeStream, bytes: ptr byte,
     length: csize_t): int64 {.importc: "rq_stream_read", header: BridgeHeader, cdecl, raises: [].}
@@ -112,30 +113,6 @@ proc readDone*(stream: NativeStream) {.importc: "rq_stream_read_done", header: B
 proc streamAbort*(stream: NativeStream) {.importc: "rq_stream_abort", header: BridgeHeader, cdecl,
     raises: [].}
 
-# Build only IPv4 loopback addresses; endpoint scope matches the existing bounded proof.
-proc loopback(port: uint16): Sockaddr_in {.raises: [].} =
-  result.sin_family = typeof(result.sin_family)(posix.AF_INET)
-  result.sin_port = posix.htons(port)
-  result.sin_addr.s_addr = posix.htonl(0x7f000001'u32)
-  # BSD socket addresses include their byte size; Linux has no sin_len member.
-  when defined(macosx): cast[ptr uint8](addr result)[] = uint8(sizeof(result))
-
-# Build family-sized loopback storage for synchronous socket calls; no address pointer escapes.
-proc socketAddress(ipv6: bool, port: uint16): Sockaddr_storage {.raises: [].} =
-  # IPv6 metadata uses a full 128-bit address; this proof deliberately routes only ::1.
-  if ipv6:
-    let a = cast[ptr Sockaddr_in6](addr result)
-    a.sin6_family = typeof(a.sin6_family)(posix.AF_INET6)
-    a.sin6_port = posix.htons(port)
-    a.sin6_addr = in6addr_loopback
-    when defined(macosx): cast[ptr uint8](a)[] = uint8(sizeof(Sockaddr_in6)) # BSD address length.
-  else:
-    cast[ptr Sockaddr_in](addr result)[] = loopback(port) # Preserve the IPv4 matrix unchanged.
-
-# Select the OS address extent before a syscall, never the padded storage size.
-proc addressSize(ipv6: bool): SockLen {.raises: [].} =
-  SockLen(if ipv6: sizeof(Sockaddr_in6) else: sizeof(Sockaddr_in))
-
 # Determine request/reply direction per stream, independently of QUIC connection direction.
 proc locallyOpened*(owner: Transport, stream: NativeStream): bool {.raises: [].} =
   nativeLocal(owner.engine, stream) == 1
@@ -145,29 +122,29 @@ proc verifyForward(user: pointer, der: ptr ConstByte, length: csize_t): cint {.c
   let owner = cast[ptr Transport](user)
   # Shutdown cannot start another identity-validation operation.
   if owner.stopping: return 0
-  owner.verify(owner.user, der, length)
+  let verify = owner.verify
+  let peer = owner.user
+  if verify == nil or peer == nil: return 0 # Default/retired owners have no identity operation.
+  verify(peer, der, length)
 
 # Forward synchronous stream events while preserving the peer's distinct owner pointer.
 proc streamForward(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   let owner = cast[ptr Transport](user)
-  owner.stream(owner.user, stream, event)
+  let callback = owner.stream
+  let peer = owner.user
+  if callback != nil and peer != nil: callback(peer, stream, event) # Only initialized peer owners receive events.
 
 # Send C-owned bytes synchronously through nonblocking UDP; no borrowed packet memory escapes this callback.
 proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, port: uint16): cint {.cdecl,
     raises: [].} =
   let owner = cast[ptr Transport](user)
-  # Destruction may invoke callbacks after readiness has stopped; never touch a retired socket.
-  if owner.stopping or not owner.socketOpen: return 0
-  # Transport datagram capacity proves narrowing before the OS call.
+  # Destruction callbacks cannot touch a retired endpoint or retain packet memory.
+  if owner.stopping or not owner.socket.isOpen: return 0
+  # Validate narrowing before passing the C-owned buffer to the synchronous OS adapter.
   if length > csize_t(owner.buffer.len): owner.failed = true; return 0
-  var destination = socketAddress(owner.ipv6, port)
-  let sent = posix.sendto(owner.socket, bytes, int(length), 0,
-      cast[ptr SockAddr](addr destination), addressSize(owner.ipv6))
-  # Only a complete datagram is successful; partial/error sends must not fabricate packet delivery.
-  if sent == int(length): return 1
-  let error = osLastError()
-  # Readiness/interrupt races are retryable; persistent OS failures settle the bounded attempt.
-  if sent < 0 and error.int notin [EAGAIN.int, EWOULDBLOCK.int, EINTR.int]: owner.failed = true
+  let sent = owner.socket.send(cast[pointer](bytes), int(length), port)
+  if sent == int(length): return 1 # Only a complete datagram counts as delivered.
+  if sent == -1: owner.failed = true # Would-block/interrupt remains retryable.
   0
 
 # Retire selector/socket before native destruction; synchronous close callbacks still borrow the live peer/adapter.
@@ -175,15 +152,15 @@ proc closeTransport*(owner: var Transport) =
   owner.stopping = true
   # A registered descriptor must be removed before its number can be recycled by the OS.
   if owner.registered:
-    owner.selector.unregister(owner.socket)
+    let dispatcher = owner.selector
+    if dispatcher != nil: dispatcher.unregister(owner.socket) # Registration retires before descriptor close.
     owner.registered = false
   # Each successfully created selector/socket has exactly one release owner.
   if owner.selector != nil:
-    if owner.selectorOwned: owner.selector.close() # Borrowed dispatchers outlive both endpoint retirements.
+    let dispatcher = owner.selector
+    if dispatcher != nil and owner.selectorOwned: dispatcher.close() # Borrowed dispatchers outlive endpoint retirement.
     owner.selector = nil
-  if owner.socketOpen:
-    nativesockets.close(owner.socket)
-    owner.socketOpen = false
+  owner.socket.close() # Idempotent close follows readiness retirement.
   # Destruction delivers final native stream closes before the owning peer leaves scope.
   if owner.engine != nil:
     transportFree(owner.engine)
@@ -192,54 +169,44 @@ proc closeTransport*(owner: var Transport) =
 # Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
 proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
-        multi = false, ipv6 = false, dispatcher: Selector[int] = nil,
+        multi = false, ipv6 = false, dispatcher: nil Dispatcher = nil,
             profile = RetainedPeer): bool =
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
-  if owner.engine != nil or owner.socketOpen or owner.selector != nil: return false
+  if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
   owner = Transport()
   owner.ipv6 = ipv6
   owner.user = user
   owner.verify = verify
   owner.stream = stream
-  try:
-    owner.socket = createNativeSocket((if ipv6: nativesockets.AF_INET6 else: nativesockets.AF_INET),
-        SOCK_DGRAM, IPPROTO_UDP)
-    # A failed socket has no descriptor or selector to release.
-    if owner.socket == osInvalidSocket: return false
-    owner.socketOpen = true
-    owner.socket.setBlocking(false)
-    var local = socketAddress(ipv6, if server: port else: 0'u16)
-    # Bind before announcing readiness; the engine needs the actual ephemeral client port.
-    if posix.bindSocket(owner.socket, cast[ptr SockAddr](addr local), addressSize(ipv6)) != 0:
-      closeTransport(owner)
-      return false
-    var size = addressSize(ipv6)
-    # Read the assigned endpoint without allocating a networking wrapper object.
-    if getsockname(owner.socket, cast[ptr SockAddr](addr local), addr size) != 0:
-      closeTransport(owner)
-      return false
-    owner.selectorOwned = dispatcher == nil
-    owner.selector = if owner.selectorOwned: newSelector[int]() else: dispatcher
-    owner.selector.registerHandle(owner.socket, {Event.Read}, 0)
-    owner.registered = true
-    let actualPort = posix.ntohs(if ipv6: cast[ptr Sockaddr_in6](addr local).sin6_port else: cast[
-        ptr Sockaddr_in](addr local).sin_port)
-    # IPv6 mesh owners retain single-peer engines; legacy IPv4/service modes keep their original limits.
-    if ipv6:
-      owner.engine = transportNew6(cint(profile), cint(server), actualPort, cert.cstring,
-          key.cstring, alpn.cstring, addr owner, verifyForward, sendPacket, streamForward)
-    else:
-      owner.engine = transportNew((if multi: 2.cint else: cint(soak)), cint(server), actualPort,
-          cert.cstring, key.cstring, alpn.cstring, addr owner, verifyForward, sendPacket, streamForward)
-    # Failed TLS/native setup must release the already-bound I/O resources as well.
-    if owner.engine == nil:
-      closeTransport(owner)
-      return false
-    true
-  except CatchableError:
-    # Selector/socket setup errors retire every resource created before failure.
+  # Each setup failure has one owner for endpoint and dispatcher retirement.
+  if not owner.socket.open(ipv6, if server: port else: 0'u16): return false
+  owner.selectorOwned = dispatcher == nil
+  owner.selector = if dispatcher == nil: newDispatcher() else: dispatcher
+  let active = owner.selector
+  if active == nil or not active.register(owner.socket):
     closeTransport(owner)
-    false
+    return false
+  owner.registered = true
+  let actualPort = owner.socket.port
+  # Keep terminating-zero string storage alive until synchronous native setup returns.
+  var certText = cert
+  var keyText = key
+  var alpnText = alpn
+  let certPointer = certText.toCString()
+  let keyPointer = keyText.toCString()
+  let alpnPointer = alpnText.toCString()
+  # IPv6 mesh owners retain single-peer engines; legacy IPv4/service modes keep their original limits.
+  if ipv6:
+    owner.engine = transportNew6(cint(profile), cint(server), actualPort, certPointer,
+        keyPointer, alpnPointer, addr owner, verifyForward, sendPacket, streamForward)
+  else:
+    owner.engine = transportNew((if multi: 2.cint else: cint(soak)), cint(server), actualPort,
+        certPointer, keyPointer, alpnPointer, addr owner, verifyForward, sendPacket, streamForward)
+  # Failed TLS/native setup must release the already-bound I/O resources as well.
+  if owner.engine == nil:
+    closeTransport(owner)
+    return false
+  true
 
 # Report failure without dereferencing an uninitialized engine.
 proc transportStatus*(owner: Transport): int {.raises: [].} =
@@ -267,32 +234,15 @@ proc peerMetric*(owner: Transport, metric: int): uint64 {.raises: [].} =
 proc drain(owner: var Transport): bool =
   # Bounded synchronous reads reuse storage until each native packet call returns.
   for packet in 0..<64:
-    var source: Sockaddr_storage
-    var size = addressSize(owner.ipv6)
-    let received = posix.recvfrom(owner.socket, addr owner.buffer[0], owner.buffer.len, 0,
-        cast[ptr SockAddr](addr source), addr size)
-    # Interrupts retry; would-block retires this readiness notification, other OS errors settle the endpoint.
+    var port: uint16 = 0
+    let received = owner.socket.receive(owner.buffer, port)
+    # Retryable races yield to the next bounded dispatcher/timer iteration.
+    if received == -2: break
     if received < 0:
-      let error = osLastError()
-      if error.int == EINTR.int: continue # No delivered bytes.
-      if error.int in [EAGAIN.int, EWOULDBLOCK.int]: break # Ready queue drained.
       owner.failed = true
       return false
-    var allowed = false
-    var port: uint16
-    # Validate family and full loopback address before attributing a source port to the transport.
-    if owner.ipv6:
-      let a = cast[ptr Sockaddr_in6](addr source)
-      allowed = a.sin6_family == typeof(a.sin6_family)(posix.AF_INET6) and IN6_IS_ADDR_LOOPBACK(
-          addr a.sin6_addr) != 0
-      port = posix.ntohs(a.sin6_port)
-    else:
-      let a = cast[ptr Sockaddr_in](addr source)
-      allowed = a.sin_family == typeof(a.sin_family)(posix.AF_INET) and a.sin_addr.s_addr ==
-          posix.htonl(0x7f000001'u32)
-      port = posix.ntohs(a.sin_port)
     # Empty or out-of-scope datagrams cannot fabricate native peer activity.
-    if received > 0 and allowed:
+    if received > 0:
       discard packetIn(owner.engine, addr owner.buffer[0], csize_t(received), port)
       process(owner.engine)
   not owner.failed
@@ -300,13 +250,16 @@ proc drain(owner: var Transport): bool =
 # Progress one timer/readiness cycle for a standalone endpoint.
 proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
   # Retired or failed endpoints cannot restart native work.
-  if owner.stopping or owner.failed: return false
+  if owner.stopping or owner.failed or owner.engine == nil: return false
   let delay = min(clamp(maximumMs, 0, 10), int(clamp((nextTick(owner.engine) + 999) div 1000, 1'i64, 10'i64)))
-  var ready: array[1, ReadyKey]
-  let count = owner.selector.selectInto(delay, ready)
+  let dispatcher = owner.selector
+  if dispatcher == nil: return false # Retired/uninitialized dispatchers own no wait.
+  var ready = default(array[2, Ready])
+  let count = dispatcher.wait(delay, ready)
+  if count < 0: owner.failed = true; return false # OS/dispatcher failure is explicit.
   # Socket readiness and native deadlines share the same thread.
   if count > 0:
-    if Event.Error in ready[0].events: owner.failed = true; return false # Explicit descriptor failure.
+    if ready[0].failed: owner.failed = true; return false # Explicit descriptor failure.
     if not drain(owner): return false # Receive failure settles this endpoint.
   process(owner.engine)
   not owner.failed
@@ -315,41 +268,24 @@ proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
 proc pollPair*(incoming, outgoing: var Transport): bool =
   # Both sockets must borrow the same live dispatcher; do not silently introduce two blocking loops.
   if incoming.stopping or outgoing.stopping or incoming.failed or outgoing.failed or
+      incoming.engine == nil or outgoing.engine == nil or
       incoming.selector != outgoing.selector: return false
   let delay = int(clamp((min(nextTick(incoming.engine), nextTick(outgoing.engine)) + 999) div 1000,
       1'i64, 10'i64))
-  var ready: array[2, ReadyKey]
-  let count = incoming.selector.selectInto(delay, ready)
+  let dispatcher = incoming.selector
+  if dispatcher == nil: return false # A shared wait requires live metadata.
+  var ready = default(array[2, Ready])
+  let count = dispatcher.wait(delay, ready)
+  if count < 0: incoming.failed = true; outgoing.failed = true; return false # Both owners stop on wait failure.
   # Process each ready descriptor once, preserving bounded work for its sibling.
   for index in 0..<count:
-    let owner = if ready[index].fd == int(incoming.socket): addr incoming else: addr outgoing
-    if Event.Error in ready[index].events: owner.failed = true; return false # Descriptor failure is terminal.
+    let owner = if ready[index].descriptor == incoming.socket.descriptor: addr incoming else: addr outgoing
+    if ready[index].failed: owner.failed = true; return false # Descriptor failure is terminal.
     if not drain(owner[]): return false # A failed receive cannot be hidden by the other engine.
   process(incoming.engine)
   process(outgoing.engine)
   not incoming.failed and not outgoing.failed
 
-# Probe idle/ready descriptor retirement directly on the installed selector backend, with no LSQUIC engine.
+# Replay readiness retirement without TLS/native callbacks; the isolated suite adds IPv6/shared cases.
 proc ioSelfTest*() =
-  # Repeated registration/teardown must not retain descriptors or stale readiness into the next owner scope.
-  for iteration in 0..<256:
-    let socket = createNativeSocket(nativesockets.AF_INET, SOCK_DGRAM, IPPROTO_UDP)
-    doAssert socket != osInvalidSocket
-    socket.setBlocking(false)
-    var local = loopback(0)
-    doAssert posix.bindSocket(socket, cast[ptr SockAddr](addr local), SockLen(sizeof(local))) == 0
-    var size = SockLen(sizeof(local))
-    doAssert getsockname(socket, cast[ptr SockAddr](addr local), addr size) == 0
-    let selector = newSelector[int]()
-    selector.registerHandle(socket, {Event.Read}, 0)
-    var ready: array[1, ReadyKey]
-    # Half the cases deliver a datagram before registration retirement; others remain idle.
-    if iteration mod 2 == 0:
-      var payload = 99'u8
-      doAssert posix.sendto(socket, addr payload, 1, 0, cast[ptr SockAddr](addr local), size) == 1
-      doAssert selector.selectInto(10, ready) == 1
-    selector.unregister(socket)
-    nativesockets.close(socket)
-    doAssert selector.selectInto(0, ready) == 0
-    selector.close()
-  echo "Nim I/O selftest: 256 idle/ready UDP registration retirements passed"
+  io.retirementSelfTest(false)

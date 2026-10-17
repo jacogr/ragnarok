@@ -1,108 +1,70 @@
 # Development and verification
 
-Use Nim 2.2.12 with ARC, Clang and bundled nimpretty. Report and assurance adapters enable checked LTO,
-assertions, bounds, ranges, field and overflow guards. Core regression suites also exercise debug
-and release profiles. Install Rust 1.99.0 for the pinned historical
-Bandersnatch crate; keep its Cargo.lock and offline build policy. Python 3.12+ is tooling only.
+Use pinned **Nimony 0.6.3**, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, with ARC and
+Clang LTO. Assertions, bounds and supported access contracts stay enabled. Nimony arithmetic
+wraps intentionally; protocol sizes/conversions need explicit validation. Initialize every local
+scalar and pointer explicitly. The [compiler record](nimony-trial.md) documents the remaining
+safety limitations. Nim 2 is a historical control only.
 
-On macOS install the selected Nim, LLVM/Clang, CMake, zlib and OpenSSL with the normal local package
-manager and select an Xcode command-line SDK. Linux CI installs the checksum-pinned Nim archive
-through `tools/setup_ci_linux.py`; C/C++/CMake/zlib and lld come from Ubuntu packages.
-Initialize sources with `python3 tools/setup_submodules.py` before native builds.
+## Setup
 
-## Fast codec and boundary checks
+Install Python 3.12+, Clang/C++, CMake, zlib, OpenSSL and Rust 1.99.0. On macOS select an Xcode
+command-line SDK; Linux also needs lld. Then run:
 
 ```sh
+python3 tools/setup_nimony.py
+python3 tools/setup_submodules.py
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt --no-self-update
+rustup run 1.99.0 cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
+python3 tools/test.py
+```
+
+The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
+select exact official archives and SHA-256 checksums; no upstream installer runs. Both local
+setup and CI use the same host/identity/version checks. Tools stay under ignored `build/toolchain/`.
+Repeated setup verifies retained archives; unknown hosts fail before executing mismatched tools.
+Upstream source submodules remain pristine.
+
+`source build/toolchain/env.sh` optionally exports NIMONY, NIMPRETTY and compiler/formatter-only
+PATH entries. The normal runner resolves the installation automatically. Nimpretty comes from
+pinned Nim 2.2.12, but its compiler is not exported or supported as a production target. Its generic
+banner is 0.2; archive and installed binary hashes retain its provenance.
+
+## Verification and formatting
+
+`python3 tools/test.py` audits every production module, checks formatting and protocol provenance,
+rebuilds native primitives and checked drivers, and runs all migrated codec, crypto, networking,
+lifecycle and enabled proof-offload workloads. It then discovers every `test_*harness.py` suite.
+Cargo runs locked/offline after explicit provisioning. Failures stop the command. The parked
+request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.
+
+CI splits the same plan into `--suite modules` and `--suite runtime` for independent verdicts.
+An explicit `--compiler` is intended for CI, whose installer also exports NIMPRETTY. Historical
+individual Python runners retain references, fixtures and native-build helpers used by the
+cumulative suite; their old Nim 2 build entry points are not the supported way to run this tree.
+
+```sh
+source build/toolchain/env.sh
+python3 tools/format.py
 python3 tools/format.py --check
-python3 tests/test_codec.py
-python3 tests/test_bits.py
-python3 tests/test_collections.py
-python3 tests/test_c2.py
-python3 tests/test_bits_harness.py
-python3 tests/test_collections_harness.py
-python3 tests/test_c2_harness.py
-python3 tests/test_tickets.py
-python3 tests/test_tickets_harness.py
-python3 tests/test_guarantees.py
-python3 tests/test_guarantees_harness.py
-python3 tests/test_disputes.py
-python3 tests/test_disputes_harness.py
-python3 tests/test_work_package.py
-python3 tests/test_package_harness.py
-python3 tests/test_header.py
-python3 tests/test_block.py
-python3 tests/test_header_harness.py
-python3 tests/test_block_harness.py
-python3 tests/test_assurances.py
-python3 tests/test_assurances_types.py
-python3 tests/test_assurances_harness.py
 ```
 
-The codec runner includes native selftests, deterministic malformed input, official vectors,
-failure atomicity, immutable ownership and intentional nominal-domain compilation failures.
+Reports/logs remain under `build/nimony-trial/verification/` and `build/nimony-ci/modules/`.
+Temporary TLS keys never belong in commits or diagnostic artifacts. CI uploads logs/reports only.
 
-## Crypto and report checks
+## Bounded performance control
+
+Correctness and performance stay separate. The optional comparison extracts the pre-port Nim 2
+snapshot into ignored storage and builds an identical workload against it and current sources:
 
 ```sh
-python3 tests/test_crypto.py --fetch
-python3 tests/test_state_layout.py
-python3 tests/test_state_layout_harness.py
-python3 tests/test_state_trie.py
-python3 tests/test_state_trie_harness.py
-python3 tests/test_state_safrole.py
-python3 tests/test_state_safrole_harness.py
-python3 tests/test_state_consensus.py
-python3 tests/test_state_consensus_harness.py
-python3 tests/test_state_disputes.py
-python3 tests/test_state_disputes_harness.py
-python3 tests/test_state_history.py
-python3 tests/test_state_history_harness.py
-python3 tests/test_state_requests.py
-python3 tests/test_state_requests_harness.py
-python3 tests/test_state_service_values.py
-python3 tests/test_state_service_values_harness.py
-python3 tests/test_state_accounts.py
-python3 tests/test_state_accounts_harness.py
-python3 tests/test_state_outputs.py
-python3 tests/test_state_outputs_harness.py
-python3 tests/test_state_workqueues.py
-python3 tests/test_state_workqueues_harness.py
-python3 tests/test_state_statistics.py
-python3 tests/test_state_statistics_harness.py
-python3 tests/test_state_privileges.py
-python3 tests/test_state_privileges_harness.py
-python3 tests/test_state_availability.py
-python3 tests/test_state_availability_harness.py
-python3 tests/test_state_authorization.py
-python3 tests/test_state_authorization_harness.py
-python3 tests/test_bandersnatch.py --fetch
-python3 tests/test_work_report.py
-python3 tests/test_report_types.py
-python3 tests/test_report_harness.py
-python3 tests/test_assurance_crypto.py
-python3 tests/test_assurance_crypto_types.py
-python3 tests/test_assurance_crypto_harness.py
+python3 tools/compare_nimony.py --baseline-compiler /absolute/path/to/nim-2.2.12
 ```
 
-The native primitive build precedes report/context runners. Independently installed OpenSSL signs
-public fixture transcripts and first reproduces a pinned RFC8032 known answer. Tests do not use
-production secrets. `--skip-build` reuses a deliberately built adapter where supported.
-
-## Networking and integration
-
-```sh
-python3 tests/test_quic_harness.py
-python3 tests/test_quic.py --fetch
-python3 tests/test_quic_soak_harness.py
-python3 tests/test_quic_soak.py --skip-build
-python3 tests/test_quic_service.py --skip-build
-python3 tests/test_quic_mesh.py --skip-build
-python3 tests/test_quic_resilience.py --skip-build
-python3 tests/test_integration.py --reuse-native
-python3 tests/test_quic_offload.py --reuse-native
-```
-
-Integration/offload build distinct Nim binaries against already-built native libraries. Lifecycle
-runners retain their timeout, memory, descriptor and one-dispatcher-thread gates. Offload additionally
-observes two fixed worker threads. These finite tests are not production-capacity or leak-freedom claims.
-All build products and diagnostics go under `build/`; native production sources stay under `src/`.
+This requires Git object `aea27ad0789ddb0abbea24c3923d0eb192a67e3a` and the already-built pinned
+crypto library. Both builds use ARC, Clang, LTO and checked profiles. Seven samples alternate
+execution order with equal iteration counts. Setup, startup, compilation and preflight are outside
+native timing. A separate non-LTO observer prevents result pruning; overhead is reported without
+subtraction. Raw samples/source/tool hashes are retained in `build/nimony-comparison/results.json`.
+See [the measured comparison](nimony-performance.md) for scope and results; this is not a throughput
+or full-client performance promise, and adds no dual-compiler production path.

@@ -33,7 +33,7 @@ Reasons are uninitialized, invalidconfig, invalidkeyset, limitexceeded, invalidv
 noncanonical, wrongparent, invalidsignature and backendfailure. Message construction checks only
 core configuration and bitset padding before hashing; it cannot authorize an assurance by itself.
 
-This is the next bounded M2 composition slice. It does not implement pending-report eligibility,
+This bounded M2 composition slice does not implement pending-report eligibility,
 availability thresholds, validator-set selection, block import, state mutation or new primitives.
 The caller supplies the correct active validator set and post-judgement state remains external.
 The existing exceptional-point Ed25519 provider-policy discrepancy remains an explicit unresolved
@@ -46,3 +46,30 @@ empty/max records; wrong key-set length, validator/order/padding/parent errors; 
 failure before an earlier invalid signature; wrong key, signature, domain and hashed framing;
 and input immutability. Existing assurances and report suites are fresh-build baselines/rechecks.
 Intentional nominal parent/anchor and message/signature compiler probes remain separate diagnostics.
+
+## Nimony trial evidence
+
+The pinned Nimony branch preserves this transcript, verification order, synchronous input borrows
+and backend signature policy. Result status/payloads are private; read-only errors and a supported
+success precondition protect both fixed result types. No input-derived protocol allocation or
+retained input pointer is introduced.
+
+The runner replays all 2,087 frozen requests and four independent oracle checks against the real
+primitive bridge. A separate observer-linked suite checks source/extracted copies, complete
+preflight before hashing, immediate/delayed backend refusal, ordinary invalid signatures and
+recovery without input mutation. Public live occupancy returns 192 to 192 bytes after 1,000 warmed
+scopes. Twenty-four isolated actual/default payload reads reject at their success contracts, and
+seven private/read-only plus two nominal compiler probes reject at the intended boundaries.
+
+Results are local macOS ARM64, checked ARC/Clang LTO; Linux and full M3 parity remain separate.
+Guarantee/report signing composition now also passes. Bandersnatch owner safety and original
+contextual proof/JAM ticket/native-boundary/concurrency coverage now also pass locally. M3
+UDP/readiness and linked transport lifecycle checks now pass locally.
+Shared identity/DER/framing validation now also passes locally.
+CE 143 integration results and retained digest ownership now also pass locally.
+The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
+Retained CE 143 service and integrated digest lifecycles now also pass locally.
+Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
+Next: same-process endpoint soak and remaining admission/resilience coverage; Linux confirmation and documented
+normative policy gates remain separate. See the [cumulative trial](../docs/nimony-trial.md); the
+exceptional-point policy remains unresolved.

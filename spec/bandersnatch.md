@@ -106,3 +106,38 @@ Exact agreement with the draft's literal 16-byte challenge statement remains blo
 upstream clarification; `bandersnatch-pins.json` records both values, and `test_spec.py` reports one
 focused pending text-consistency check. This discrepancy does not justify retaining the old nonce
 implementation or claiming a full protocol/security audit. See [the migration audit](graypaper-0.8.0.md).
+
+## Nimony owner/result migration
+
+The pinned Nimony adapter preserves the release-reference ABI, 96/784-byte proof contracts,
+normalization and source/SRS pins. Results hide discriminators/payloads behind read-only errors
+and success preconditions. Key/setup ARC owners and their native handles express nullability
+explicitly; stable retained locals protect defaults/closed handles. Close invalidates all aliases,
+and final ARC release invokes the correct original Rust destructor once.
+
+The test-only owner observer delegates real allocations/frees, counts live keys/setups across
+scopes and injects constructor refusals without altering production/upstream code. Native tests
+cover escaped scopes, retained aliases/replacement, close/final release, source/fixed copies,
+capacity boundaries and recovery. It does not inspect freed memory or independently establish
+scalar zeroization. The key/import workload returns live Nim occupancy 192 to 192 bytes after
+1,000 warmed scopes; setup release is tested separately with the real SRS. Thirty-two isolated
+result guards and seventeen privacy plus three nominal compiler probes pass. Three maintained
+Rust bridge tests and the locked/offline Rust 1.99.0 build also pass.
+
+The contextual fixture driver now also passes all seven ordinary vectors, seven ring vectors and
+seven published JAM tickets, including exact bytes/outputs and wrong-domain rejections. One
+generated ring proof and sixteen additional contextual messages pass. Four native workers each
+complete 32 signing/verification rounds with independent owners and joined lifetimes. Native ABI
+checks reject 99 ordinary widths, 785 ring widths and 64 mutated proofs without partial output.
+The runner records 131 driver requests plus a separate failed-result contract probe.
+
+These are local macOS ARM64 results under checked ARC/Clang LTO. Implemented release-reference M2
+regression coverage now passes; Linux confirmation and the draft-text discrepancy remain separate.
+M3 UDP/readiness and linked transport lifecycle checks now pass locally.
+Shared identity/DER/framing validation now also passes locally.
+CE 143 integration results and retained digest ownership now also pass locally.
+The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
+Retained CE 143 service and integrated digest lifecycles now also pass locally.
+Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
+Next: same-process endpoint soak and remaining admission/resilience coverage. See the [cumulative
+trial](../docs/nimony-trial.md).

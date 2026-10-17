@@ -180,3 +180,28 @@ def trace_values():
                 activity_sha256=hashlib.sha256(activity[0]).hexdigest(), candidates=candidates,
                 matching_metadata_keys=[key.hex() for key in metadata_keys])))
     return result
+
+
+# Replay the frozen width evidence through exact capture without selecting new encoding rules.
+def requests():
+    from state_composition_oracle import chapters, capture, PROFILE, POLICY
+    from state_layout_oracle import token
+    binaries, traces = privilege_binaries(), trace_values()
+    lines = ['B '+' '.join(map(str, PROFILE))+' '+' '.join(token(v) for v in chapters())]
+    expected = ['selftest']
+    records = []
+    # Each exact-capture request records its identity and current decoder's complete-entry verdict.
+    def add(chapter, raw, profile, identity):
+        wanted = capture(chapter, raw, profile)
+        lines.append('C '+' '.join(map(str, (*profile, *POLICY, chapter)))+' '+token(raw))
+        expected.append(wanted)
+        records.append(dict(**identity, chapter=chapter, current_expected=wanted))
+    # Nonempty binaries are explicitly STF fields, not original Merkle-trie T12 values.
+    for raw, evidence in binaries:
+        profile = (2, 6, 6, 12) if '/tiny/' in evidence['path'] else (341, 1023, 1023, 600)
+        add(12, raw, profile, dict(path=evidence['path']+'.bin', phase='pre_state'))
+    # Both chapters are observed at exact original value extents, without replacing any wire field.
+    for privilege, activity, evidence in traces:
+        for chapter, raw in ((12, privilege), (13, activity)):
+            add(chapter, raw, (2, 6, 6, 12), dict(path=evidence['path'], phase=evidence['phase']))
+    return lines, expected, records, binaries, traces

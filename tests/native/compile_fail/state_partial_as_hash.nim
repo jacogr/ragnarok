@@ -1,5 +1,5 @@
 ## A truncated left commitment cannot implicitly become a complete child-node hash.
 import ../../../src/codec/state_layout
-var wrong: LeftChildCommitment
-var right: StateNodeHash
+let wrong = default(LeftChildCommitment)
+let right = default(StateNodeHash)
 discard encodeStateBranch(wrong, right)
