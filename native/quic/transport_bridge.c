@@ -8,6 +8,13 @@
 #include <netinet/in.h>
 #include <sys/uio.h>
 /* LSQUIC/TLS adapter only: no JAM identity, framing, codec or application protocol is implemented in C. */
+/* Fixed observation slots outlive their borrowed SSL key until its ex-data destructor releases them. */
+struct rq_handshake {
+    rq_transport *owner;
+    const SSL *ssl;
+    unsigned slot;
+    int settled, overflow;
+};
 struct rq_transport {
     lsquic_engine_t *engine;
     lsquic_conn_t *connection;
@@ -24,6 +31,8 @@ struct rq_transport {
     rq_verify_cb verify;
     rq_send_cb send;
     rq_stream_cb stream;
+    rq_handshake_cb handshake;
+    struct rq_handshake handshakes[RQ_HANDSHAKE_SLOTS], overflow_handshake;
     uint8_t alpn[256];
     unsigned alpn_length;
     int server, status;
@@ -51,6 +60,95 @@ static struct sockaddr_in address(uint16_t port) {
 #endif
     a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK); a.sin_port = htons(port);
     return a;
+}
+/* One process-lifetime BoringSSL index; every engine is driven by the same selector thread. */
+static int handshake_index = -1;
+/* SSL destruction must not dereference SSL itself: BoringSSL documents parent as unavailable here. */
+static void handshake_freed(void *parent, void *ptr, CRYPTO_EX_DATA *data, int index,
+                            long argl, void *argp) {
+    (void)parent; (void)data; (void)index; (void)argl; (void)argp;
+    struct rq_handshake *record = ptr;
+    if (!record) return; /* SSL objects that never started a handshake have no observation. */
+    struct rq_transport *t = record->owner;
+    if (t->handshake) {
+        if (record->overflow) {
+            /* An untracked handshake has one terminal outcome; account for it without a false correlation. */
+            t->handshake(t->user, RQ_HANDSHAKE_SLOTS, RQ_HANDSHAKE_DROPPED, NULL, 0, NULL, 0);
+        } else if (!record->settled) {
+            /* No successful TLS completion occurred before destruction, including endpoint cancellation. */
+            t->handshake(t->user, record->slot, RQ_HANDSHAKE_FAILED, NULL, 0, NULL, 0);
+        }
+    }
+    if (!record->overflow) record->ssl = NULL; /* The fixed slot can be reused only after SSL destruction. */
+}
+/* Observe documented TLS start/done signals only; no deprecated state-machine details are inspected. */
+static void handshake_info(const SSL *ssl, int type, int value) {
+    (void)value;
+    struct rq_transport *t = SSL_CTX_get_ex_data(SSL_get_SSL_CTX(ssl), 0);
+    if (!t || !t->handshake || !t->server) return; /* Disabled/client transports preserve their old callbacks. */
+    if (type == SSL_CB_HANDSHAKE_START) {
+        if (SSL_get_ex_data(ssl, handshake_index)) return; /* A repeated start must not allocate a second attempt. */
+        struct rq_handshake *record = &t->overflow_handshake;
+        for (unsigned i = 0; i < RQ_HANDSHAKE_SLOTS; ++i) {
+            if (!t->handshakes[i].ssl) { record = &t->handshakes[i]; break; } /* First reusable bounded slot. */
+        }
+        record->settled = 0;
+        if (!record->overflow) record->ssl = ssl; /* Identity only; never dereferenced after its destructor starts. */
+        if (!SSL_set_ex_data((SSL *)ssl, handshake_index, record)) {
+            if (!record->overflow) record->ssl = NULL; /* Allocation failure must not leak an observation slot. */
+            t->handshake(t->user, RQ_HANDSHAKE_SLOTS, RQ_HANDSHAKE_DROPPED, NULL, 0, NULL, 0);
+            return;
+        }
+        if (record->overflow) {
+            /* Saturation affects observations only: TLS admission and existing connection limits are unchanged. */
+            t->handshake(t->user, RQ_HANDSHAKE_SLOTS, RQ_HANDSHAKE_DROPPED, NULL, 0, NULL, 0);
+            return;
+        }
+        lsquic_conn_t *connection = lsquic_ssl_to_conn(ssl);
+        const struct sockaddr *local = NULL, *remote = NULL;
+        uint8_t address[16] = {0};
+        uint16_t port = 0;
+        if (!connection || lsquic_conn_get_sockaddr(connection, &local, &remote) != 0 || !remote) {
+            t->handshake(t->user, record->slot, RQ_HANDSHAKE_DROPPED, NULL, 0, NULL, 0);
+            return; /* Missing metadata cannot be replaced by an invented remote address. */
+        }
+        if (remote->sa_family == AF_INET6) {
+            const struct sockaddr_in6 *peer = (const struct sockaddr_in6 *)remote;
+            memcpy(address, &peer->sin6_addr, 16); port = ntohs(peer->sin6_port);
+        } else if (remote->sa_family == AF_INET) {
+            const struct sockaddr_in *peer = (const struct sockaddr_in *)remote;
+            address[10] = address[11] = 255; /* Canonical IPv4-mapped IPv6 address across the adapter ABI. */
+            memcpy(address + 12, &peer->sin_addr, 4); port = ntohs(peer->sin_port);
+        } else {
+            t->handshake(t->user, record->slot, RQ_HANDSHAKE_DROPPED, NULL, 0, NULL, 0);
+            return; /* Unsupported native address families remain missing observations. */
+        }
+        t->handshake(t->user, record->slot, RQ_HANDSHAKE_STARTED, address, port, NULL, 0);
+    } else if (type == SSL_CB_HANDSHAKE_DONE) {
+        struct rq_handshake *record = SSL_get_ex_data(ssl, handshake_index);
+        if (!record || record->overflow || record->settled) return; /* Overflow settles as a dropped outcome on free. */
+        record->settled = 1;
+        const STACK_OF(CRYPTO_BUFFER) *chain = SSL_get0_peer_certificates(ssl);
+        const CRYPTO_BUFFER *leaf = chain && sk_CRYPTO_BUFFER_num(chain) > 0
+          ? sk_CRYPTO_BUFFER_value(chain, 0) : NULL;
+        /* Native-language policy already validated this certificate; the observer copies its public identity. */
+        t->handshake(t->user, record->slot, RQ_HANDSHAKE_SUCCEEDED, NULL, 0,
+                     leaf ? CRYPTO_BUFFER_data(leaf) : NULL, leaf ? CRYPTO_BUFFER_len(leaf) : 0);
+    }
+    /* All other info notifications are deliberately ignored. */
+}
+/* Install before packet processing, with no dependency changes or per-connection observer allocations. */
+int rq_observe_handshakes(rq_transport *t, unsigned slots, rq_handshake_cb callback) {
+    if (!t || !t->server || t->accepted || t->handshake || !callback || slots != RQ_HANDSHAKE_SLOTS) return 0;
+    if (handshake_index < 0) handshake_index = SSL_get_ex_new_index(0, NULL, NULL, NULL, handshake_freed);
+    if (handshake_index < 0) return 0; /* Failed observer setup leaves the transport's TLS policy unchanged. */
+    for (unsigned i = 0; i < RQ_HANDSHAKE_SLOTS; ++i) {
+        t->handshakes[i].owner = t; t->handshakes[i].slot = i; /* Stable addresses until engine destruction. */
+    }
+    t->overflow_handshake.owner = t; t->overflow_handshake.overflow = 1;
+    t->handshake = callback;
+    SSL_CTX_set_info_callback(t->tls, handshake_info);
+    return 1;
 }
 /* Ask the native language to validate the leaf certificate while BoringSSL retains its borrowed DER storage. */
 static enum ssl_verify_result_t verify_certificate(SSL *ssl, uint8_t *alert) {

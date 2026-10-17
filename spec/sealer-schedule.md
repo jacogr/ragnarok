@@ -63,7 +63,7 @@ workload-specific ownership evidence, not a general leak audit.
 Two compiler privacy checks and two runtime extraction probes protect the result. Run
 `make check-modules check-unit check-failures check-guards check-python`. Reports, prepared fixture
 hashes and native evidence remain under ignored `build/tests/`. M1 codec behavior and outstanding
-specification checkpoints are unchanged; these tests do not establish complete Safrole or M4 parity.
+specification checkpoints are unchanged; these tests do not establish complete Safrole execution.
 
 ## Next bounded work in this PR
 

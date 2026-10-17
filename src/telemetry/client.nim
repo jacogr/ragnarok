@@ -272,3 +272,30 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
     # Backpressure and signals defer the same suffix; fatal errors start a fresh connection.
     if error != OSErrorCode(EAGAIN) and error != OSErrorCode(EWOULDBLOCK) and error != OSErrorCode(EINTR):
       client.failed(now)
+
+# Account for a native observation that lacked bounded tracking space or usable metadata.
+proc omit*(client: var Client, timestamp: Timestamp) =
+  if not client.enabled: return # Disabled clients do not consume positions.
+  if client.nextEvent == high(uint64):
+    client.close() # Correlation IDs never wrap.
+    return
+  inc client.nextEvent
+  if not client.opened: return # The next registration accounts for all missing positions.
+  if client.lost == 0: client.firstLost = timestamp # Retain only the contiguous loss interval.
+  client.lastLost = timestamp
+  inc client.lost
+
+# Record a remote endpoint before authentication; its public identity is not yet trusted.
+proc accepting*(client: var Client, now: int64, timestamp: Timestamp,
+    address: array[16, byte], port: uint16): EventId =
+  if not client.enabled: return EventId(0) # Disabled telemetry avoids encoding.
+  client.event(connectingIn(timestamp, address, port), now, timestamp, true)
+
+# Publish the authenticated identity or an explicitly unknown failure reason for one incoming attempt.
+proc acceptOutcome*(client: var Client, now: int64, timestamp: Timestamp, attempt: EventId,
+    identity: array[32, byte], authenticated: bool) =
+  if not client.enabled: return # Disabled telemetry avoids encoding.
+  if authenticated:
+    discard client.event(connectedIn(timestamp, attempt, identity), now, timestamp, true)
+  else:
+    discard client.event(connectInFailed(timestamp, attempt), now, timestamp, true)

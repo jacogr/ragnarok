@@ -5,6 +5,8 @@ import ./io
 export io.newDispatcher, io.close
 
 const BridgeHeader = "transport_bridge.h"
+# Must match RQ_HANDSHAKE_SLOTS; native registration checks this bound.
+const IncomingHandshakeSlots* = 64
 const CertHeader = "cert_fields.h"
 
 type
@@ -28,6 +30,9 @@ type
       raises: [].}
   # Stream events execute synchronously inside transport processing/destruction, with the peer owner still alive.
   StreamCallback* = proc(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].}
+  # Borrow address/DER only during a synchronous handshake observation, including engine teardown.
+  HandshakeCallback* = proc(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
+      port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].}
   # The UDP sender consumes a borrowed C packet before returning; zero means retry later.
   SendCallback = proc(user: pointer, bytes: ptr ConstByte, length: csize_t,
       port: uint16): cint {.cdecl, raises: [].}
@@ -40,6 +45,7 @@ type
     user: nil pointer
     verify: nil VerifyCallback
     stream: nil StreamCallback
+    handshake: nil HandshakeCallback
     buffer: array[2048, byte]
     stopping, failed: bool
 
@@ -300,3 +306,32 @@ proc ioSelfTest*() =
 
 # Copy the actual bound UDP port for local telemetry; no socket ownership escapes.
 proc localPort*(owner: Transport): uint16 = owner.socket.port
+
+# Public adapter discriminators are imported from the shared ABI, never JIP wire tags.
+let
+  HandshakeStarted* {.importc: "RQ_HANDSHAKE_STARTED", header: BridgeHeader.}: cint
+  HandshakeSucceeded* {.importc: "RQ_HANDSHAKE_SUCCEEDED", header: BridgeHeader.}: cint
+  HandshakeFailed* {.importc: "RQ_HANDSHAKE_FAILED", header: BridgeHeader.}: cint
+  HandshakeDropped* {.importc: "RQ_HANDSHAKE_DROPPED", header: BridgeHeader.}: cint
+
+# Enable before processing packets; native storage and callbacks remain valid through destruction.
+proc nativeObserve(engine: nil pointer, slots: cuint, callback: HandshakeCallback): cint {.
+    importc: "rq_observe_handshakes", header: BridgeHeader, cdecl, raises: [].}
+
+# Preserve the separate peer pointer while forwarding borrowed primitive observations.
+proc handshakeForward(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
+    port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].} =
+  let owner = cast[ptr Transport](user)
+  let callback = owner.handshake
+  let peer = owner.user
+  if callback != nil and peer != nil: # Teardown still owns both callback targets.
+    callback(peer, slot, event, address, port, der, length)
+
+# Register one optional server observer before the first poll; failure does not change TLS policy.
+proc observeHandshakes*(owner: var Transport, callback: HandshakeCallback): bool =
+  if owner.handshake != nil: return false # A failed replacement must preserve the original callback.
+  owner.handshake = callback
+  if nativeObserve(owner.engine, cuint(IncomingHandshakeSlots), handshakeForward) != 1:
+    owner.handshake = nil # Failed setup retains no observer.
+    return false
+  true

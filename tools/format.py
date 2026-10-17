@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Apply Nim's bundled formatter to implementation and test sources, or check without writing."""
+"""Apply pinned Nim and Rust formatters, or check both languages without writing."""
 import argparse
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -12,6 +13,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def format_source(path):
     return subprocess.run([os.environ.get('NIMPRETTY', 'nimpretty'), '--stdin', '--indent:2', '--maxLineLen:100'],
                           input=path.read_bytes(), capture_output=True, check=True).stdout
+
+
+# Cargo selects project-owned Rust modules; the explicit toolchain pin also applies outside Make.
+def format_rust(check):
+    toolchain = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
+    arguments = ['rustup', 'run', toolchain, 'cargo', 'fmt', '--manifest-path',
+                 str(ROOT/'native/bandersnatch/Cargo.toml')]
+    if check:
+        # Rustfmt reports differences without modifying sources during CI or local checks.
+        arguments += ['--', '--check']
+    return subprocess.run(arguments, cwd=ROOT).returncode == 0
 
 
 # Include native tests and intentional compile-failure fixtures in the same canonical style.
@@ -33,10 +45,12 @@ def main():
     # Each mismatch names its actual source so a failed CI check is actionable.
     for path in changed:
         print(f'{"Needs formatting" if args.check else "Formatted"}: {path}')
-    # A successful check certifies all retained Nim files match the pinned native formatter.
-    if args.check and changed:
+    # Run Rust even after Nim mismatches so one invocation reports both languages' formatting failures.
+    rust_passed = format_rust(args.check)
+    if not rust_passed or (args.check and changed):
+        # Neither a Rust failure nor pending Nim edits may produce a successful combined check.
         raise SystemExit(1)
-    print(f'Formatting {"check" if args.check else "run"} passed ({len(paths)} Nim source files).')
+    print(f'Formatting {"check" if args.check else "run"} passed ({len(paths)} Nim source files; Rust crate).')
 
 
 # Imports expose the formatter helper without editing the checkout.
