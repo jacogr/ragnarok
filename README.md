@@ -32,6 +32,15 @@ make check   # Provision dependencies, build and run complete verification.
 make         # Provision dependencies and build the proof peer as build/ragnarok.
 ```
 
+Select just the affected group while developing:
+
+```sh
+make check-unit     # Native suites, independent corpora and rejection probes.
+make check-e2e      # Real peers, services, resilience, soak and proof offload.
+make check-python   # Python references, tooling and provenance.
+make check-modules  # Every-source semantic compilation.
+```
+
 Make owns setup and test sequencing; `make help` lists the bounded test and formatting targets.
 `make setup` reuses an intact compiler/formatter and refreshes them when pins change. Make/Python and rustup are bootstrap prerequisites; Make installs missing Ubuntu native packages.
 macOS requires its native development tools. The default artifact is the current authenticated QUIC
@@ -44,7 +53,8 @@ verification never invokes the historical Nim 2 compiler.
 
 Verification includes the all-source audit, protocol provenance, formatting, independent Python
 harnesses and checked codec/crypto/networking/offload suites. Linux CI uses the same Make targets
-in separate runtime and module jobs. Generated builds, fixture keys and logs stay under ignored
+in four independent parallel jobs: source compilation, Python references/tooling, native unit/codec
+checks and end-to-end networking. Generated builds, fixture keys and logs stay under ignored
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 

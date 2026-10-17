@@ -27,15 +27,23 @@ def summarize(report, kind):
         guards = sum(len(rows) for key, rows in groups.items() if key not in ('suites', 'runtime', 'privacy', 'nominal', 'schemas', 'contracts', 'ownership_compile'))
         compilations = sum(len(report[key]) for key in ('privacy', 'nominal', 'schemas'))+len(report.get('contracts', []))+len(report.get('ownership_compile', []))
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
-        lines = ['## Runtime verification', '', '**Status: '+report['status']+'**', '',
+        lines = ['## Native unit and codec verification', '', '**Status: '+report['status']+'**', '',
                  f'- Native suites: {len(report["suites"])}', f'- Independent corpora: {len(corpora)}',
                  f'- Runtime misuse rejections: {guards}', f'- Compilation rejections: {compilations}', '',
                  'Passing implemented-scope tests is partial evidence, not full JAM client conformance.',
-                 'Corpus and lifecycle verdicts are listed below.', '',
+                 'Independent corpus verdicts are listed below.', '',
                  '| Corpus | Result | Requests |', '| --- | --- | --- |']
         # Preserve each corpus verdict rather than presenting aggregate counts as a substitute for failures.
         for key, row in corpora.items():
             lines.append('| `'+key+'` | '+('Pass' if row['passed'] else 'Fail')+' | '+str(row.get('requests', 'vectors/threads'))+' |')
+    elif kind == 'python':
+        # This group owns discovery only; it never claims native or networking coverage.
+        lines = ['## Python reference/tooling verification', '', '**Status: '+report['status']+'**', '',
+                 'Tests: '+str(report['tests'])+'; skipped: '+str(report['skipped'])+'.']
+    elif kind == 'e2e':
+        # Live networking keeps its own totals and resource evidence, separate from unit/corpus counts.
+        lines = ['## End-to-end networking verification', '', '**Status: '+report['status']+'**', '',
+                 'Entry-point selftests: '+str(len(report['suites']))+'.']
         if 'quic_peer' in report:
             # Keep authenticated exchanges distinct from pure corpora and failed-result contract probes.
             peer = report['quic_peer']
@@ -108,7 +116,7 @@ def summarize(report, kind):
 # Missing reports produce an explicit summary and a failing helper, preserving the preceding job failure.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=('runtime', 'modules'), required=True)
+    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'e2e'), required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()

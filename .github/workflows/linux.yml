@@ -15,94 +15,42 @@ concurrency:
   group: linux-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  linux:
-    name: Codec, crypto and QUIC (Ubuntu 24.04 x86-64)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Python 3.12
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-      - name: Checked codec, crypto, networking and independent harness coverage
-        run: make runtime
-      - name: Show verification coverage
-        if: always()
-        run: make summary-runtime SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      # Upload diagnostics only: never binaries, caches, dependency trees, certificates or private keys.
-      - name: Retain runtime evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: linux-runtime-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/runtime/*.log
-            build/tests/runtime/results.json
-            build/tests/runtime/offload/*.log
-            build/tests/runtime/offload/resources.json
-            build/tests/runtime/admission/*.log
-            build/tests/runtime/admission/resources.json
-            build/tests/runtime/closed-before-request/*.log
-            build/tests/runtime/endpoint-soak/*.log
-            build/tests/runtime/endpoint-soak/resources.json
-            build/tests/runtime/mesh/*.log
-            build/tests/runtime/mesh/resources.json
-            build/tests/runtime/mesh-bad-pin/*.log
-            build/tests/runtime/mesh-disruption/*.log
-            build/tests/runtime/mesh-disruption/resources.json
-            build/tests/runtime/retained-service/*.log
-            build/tests/runtime/retained-service/resources.json
-            build/tests/runtime/retained-integration/*.log
-            build/tests/runtime/retained-integration/resources.json
-            build/tests/runtime/peer-cases/**/*.log
-            build/tests/runtime/integration-requests.txt
-            build/tests/runtime/quic-protocol-requests.txt
-            build/quic/build.log
-            build/crypto/build.log
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
+# All verification groups use the same shell and Python output policy.
+defaults:
+  run:
+    shell: bash
 
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+# Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
+jobs:
   modules:
-    name: All-source compilation gate (Linux)
-    runs-on: ubuntu-24.04
+    name: Source compilation
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
+    runs-on: &linux-runner ubuntu-24.04
     steps:
-      - name: Checkout
+      - &checkout
+        name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Python 3.12
+      - &python
+        name: Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Audit every source module
-        run: make modules
-      - name: Show source compilation coverage
+      - name: Source compilation
+        run: make check-modules
+      - &summary
+        name: Show verification coverage
         if: always()
-        run: make summary-modules SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      - name: Retain source compilation evidence
+        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: &upload-artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-modules-${{ github.run_attempt }}
           retention-days: 7
@@ -111,3 +59,97 @@ jobs:
             build/ci/*.log
             build/tests/modules/*.log
             build/tests/modules/results.json
+
+  python:
+    name: Python reference and tooling tests
+    timeout-minutes: 15
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: Python reference and tooling tests
+        run: make check-python
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-python-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/python/*.log
+            build/tests/python/results.json
+
+  unit:
+    name: Native unit and codec tests
+    timeout-minutes: 30
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: Native unit and codec tests
+        run: make check-unit
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-unit-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/runtime/*.log
+            build/tests/runtime/results.json
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log
+
+  e2e:
+    name: End-to-end networking tests
+    timeout-minutes: 60
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: End-to-end networking tests
+        run: make check-e2e
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-e2e-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/e2e/*.log
+            build/tests/e2e/results.json
+            build/tests/e2e/offload/*.log
+            build/tests/e2e/offload/resources.json
+            build/tests/e2e/admission/*.log
+            build/tests/e2e/admission/resources.json
+            build/tests/e2e/closed-before-request/*.log
+            build/tests/e2e/endpoint-soak/*.log
+            build/tests/e2e/endpoint-soak/resources.json
+            build/tests/e2e/mesh/*.log
+            build/tests/e2e/mesh/resources.json
+            build/tests/e2e/mesh-bad-pin/*.log
+            build/tests/e2e/mesh-disruption/*.log
+            build/tests/e2e/mesh-disruption/resources.json
+            build/tests/e2e/retained-service/*.log
+            build/tests/e2e/retained-service/resources.json
+            build/tests/e2e/retained-integration/*.log
+            build/tests/e2e/retained-integration/resources.json
+            build/tests/e2e/peer-cases/**/*.log
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log

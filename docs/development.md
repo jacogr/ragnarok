@@ -30,12 +30,10 @@ banner is 0.2; archive and installed binary hashes retain its provenance.
 
 ## Verification and formatting
 
-`make check` audits every production module, checks formatting and protocol provenance,
-rebuilds native primitives and checked drivers, and runs all migrated codec, crypto, networking,
-lifecycle and enabled proof-offload workloads. The runtime verifier first runs all Python unittest
-classes once, including independent oracle safeguards, CI/setup checks and specification provenance.
-A fresh failed Python gate publishes failure and stops native preparation. Corpus results refer to
-that shared executed gate; they do not launch duplicate harness processes.
+`make check` runs four independently selectable groups: source compilation, Python discovery,
+native unit/corpus/negative checks and E2E networking. Use the affected group during development;
+CI schedules all four concurrently on separate runners. Python references/tooling/provenance
+unittests execute once in their own group; native and E2E groups do not rerun that discovery.
 Make first ensures the pinned compiler, pristine source submodules and locked Cargo dependencies;
 native builds then run Cargo locked/offline. Failures stop the command. The parked
 request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.
@@ -52,8 +50,10 @@ reference, negative-probe and orchestration responsibilities.
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
 | `make unit` | All 59 Hastur suites with their exact native/fixture profiles |
-| `make modules` | Every-source semantic compilation gate |
-| `make runtime` | Independent codec/crypto/networking/negative/runtime verification |
+| `make check-modules` / `make modules` | Every-source semantic compilation gate |
+| `make check-python` | Python reference/tooling/provenance tests |
+| `make check-unit` / `make runtime` | Native unit suites, independent corpora and rejection probes |
+| `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
 | `make format` / `make format-check` | Apply or check the pinned formatter |
 | `make help` | List commands without provisioning/building |
 
@@ -75,9 +75,10 @@ Clang, checked optimized builds, LTO and Linux lld. Its compiler-location-isolat
 libraries remain under `build/`; the executable is a development proof peer, not a full client.
 Top-level Make targets run serially because native preparation and verification share build caches.
 
-CI invokes `make modules` and `make runtime` as independent checks after checkout/Python setup.
+CI invokes the four `make check-*` targets independently after checkout/Python setup.
 The workflow has no separate directory, compiler, source, Rust or OS-package bootstrap recipes.
-`make summary-modules` / `make summary-runtime` render existing reports even after a failed job;
+`make summary-modules`, `summary-python`, `summary-unit` and `summary-e2e` render existing reports
+even after a failed job;
 `SUMMARY_OUTPUT` selects the local Markdown file or GitHub step summary.
 Superseded standalone codec/state Python runners are removed. Older commands recorded in
 specification/trial evidence describe historical runs, not additional supported runners.
@@ -87,7 +88,7 @@ make format
 make format-check
 ```
 
-Reports/logs remain under `build/tests/runtime/`, `build/tests/modules/` and `build/ci/`.
+Reports/logs remain under `build/tests/{runtime,modules,python,e2e}/` and `build/ci/`.
 Temporary TLS keys never belong in commits or diagnostic artifacts. CI uploads logs/reports only.
 
 ## Tooling audit
@@ -103,7 +104,10 @@ logic that would become longer, less portable or harder to validate as shell com
 | `build.py` | Checked platform-specific linker profile and maintained native library preparation |
 | `format.py` | Canonical formatter comparison without modifying files in check mode |
 | `native_tests.py` | Hastur discovery, linking profiles, fixture integrity and ARC observations |
-| `test_modules.py`, `test_runtime.py` | Complete source inventory and native/reference/negative/process verification |
+| `test_modules.py`, `test_runtime.py` | Source inventory and native unit/reference/rejection checks |
+| `test_python.py` | Single independent Python unittest discovery and report |
+| `test_e2e.py`, `e2e_checks.py` | Peer-entry selftests and unchanged live networking/resource workloads |
+| `native_checks.py` | Shared checked compiler/linker profile and command diagnostics |
 | `summarize_tests.py` | Structured evidence rendering and explicit missing/failed report handling |
 | `compare_nimony.py` | Optional historical compiler performance control; excluded from normal builds/tests |
 

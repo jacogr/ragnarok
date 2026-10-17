@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from setup_nimony import cache_directory
+from native_checks import NativeChecks, announce
 from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -713,17 +714,9 @@ COMPOSITE_MEMBERS = ('optional-value', 'optional-consumed', 'work-value', 'work-
 MEMBERS = ('offset', 'length', 'blob-consumed', 'written', 'count', 'sequence-consumed')
 
 
-# Keep exact arguments, status and output for every build/run, including intentional rejections.
-def command(arguments, name, environment=None, cwd=ROOT):
-    started = time.monotonic()
-    result = subprocess.run([str(arg) for arg in arguments], cwd=cwd,
-                            capture_output=True, text=True, timeout=180, env=environment)
-    output = result.stdout+result.stderr
-    log = BUILD/(name+'.log')
-    log.write_text(output)
-    return dict(command=[str(arg) for arg in arguments], exit_code=result.returncode,
-                elapsed_seconds=round(time.monotonic()-started, 6),
-                log=str(log.relative_to(ROOT)), output=output)
+# Unit/corpus commands own their workspace; E2E uses an independent instance of the same profile.
+checks = NativeChecks(BUILD)
+command, build = checks.command, checks.build
 
 
 # Compile independent rejection probes in private caches; consume results in original registry order.
@@ -741,49 +734,6 @@ def compile_rejections(compiler, expectations):
         yield from executor.map(check, expectations.items())
 
 
-# Run all reference/tooling/provenance unittest classes once and retain a compact shared gate record.
-def python_tests():
-    result = command([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'],
-                     'python-tests')
-    if result['exit_code'] != 0:
-        # Surface captured unittest failures in CI while retaining the complete diagnostic artifact.
-        announce('Python verification', False)
-        print(result['output'], flush=True)
-    return {key: value for key, value in result.items() if key != 'output'}
-
-
-# Use Nimony ARC/Clang release/LTO with bounds/contracts enabled; never use danger or noAssertions.
-def build(compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=()):
-    flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
-             '--boundchecks:on', '--passC:-flto', '--passL:-flto']
-    if platform.system() == 'Linux':
-        # Preserve the established Linux LTO linker choice on that host.
-        flags += ['--passL:-fuse-ld=lld']
-    if crypto_library is not None:
-        # Crypto clients use the maintained public C header and one explicit native library.
-        flags += [f'--passC:-I{ROOT/"native/crypto"}', f'--passL:{crypto_library}']
-    if quic_library is not None:
-        # QUIC clients use the unchanged maintained bridge and its public headers.
-        flags += [f'--passC:-I{ROOT/"native/quic"}', f'--passL:{quic_library}',
-                  f'--passL:-Wl,-rpath,{quic_library.parent}']
-    if native_libraries:
-        # Native Bandersnatch clients use one maintained header and explicit original/observer library paths.
-        flags += [f'--passC:-I{ROOT/"native/bandersnatch"}']
-        for library in native_libraries:
-            flags += [f'--passL:{library}', f'--passL:-Wl,-rpath,{library.parent}']
-    flags += ['-d:'+name for name in defines]
-    flags += ['--passC:'+flag for flag in cflags]
-    binary = BUILD/name
-    result = command([compiler, 'c', *flags, f'--nimcache:{cache_directory(compiler, BUILD, name)}',
-                      f'--out:{binary}', source], name+'-build')
-    return result, binary
-
-
-# Print each independent verdict so a deliberate remaining gate cannot conceal a new regression.
-def announce(name, passed):
-    print(('PASS ' if passed else 'FAIL ')+name, flush=True)
-
-
 # Verify implemented application coverage; passing tests do not establish full JAM client functionality.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -795,13 +745,6 @@ def main():
     (BUILD/'results.json').unlink(missing_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
                   python=platform.python_version()), suites=[], runtime=[], offload=[], integration=[], quic_protocol=[], bandersnatch=[], guarantee_message=[], assurance_context=[], bounded=[], primitive=[], composite=[], owned=[], reports=[], assurances=[], guarantees=[], tickets=[], disputes=[], packages=[], headers=[], blocks=[], bits=[], collections=[], c2=[], crypto=[], layout=[], trie=[], safrole=[], authorization=[], consensus=[], state_disputes=[], history=[], availability=[], privileges=[], statistics=[], workqueues=[], outputs=[], accounts=[], service_values=[], requests=[], composition=[], contracts=[], ownership_compile=[], schemas=[], privacy=[], nominal=[])
-    tooling = python_tests()
-    report['python_tests'] = tooling
-    if tooling['exit_code'] != 0:
-        # Publish an explicit failure before preparing native libraries or launching application workloads.
-        report.update(status='failed', failure_phase='python-tests')
-        (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
-        raise SystemExit(1)
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -837,7 +780,8 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'Makefile', 'tools/test_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
+                'Makefile', 'tools/native_checks.py', 'tools/test_python.py', 'tools/test_e2e.py',
+                'tools/e2e_checks.py', 'tools/test_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
                 'spec/toolchain.json', 'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
                 'tests/test_quic_offload_harness.py',
                 'tests/native/compile_fail/offload_pool_copy.nim', 'tests/nimony_peer.py', 'tests/test_quic_harness.py',
@@ -986,7 +930,7 @@ def main():
     source = BUILD/'report-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/report_driver.nim', 'report-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare all encoded bytes and decoded semantic fields, including malformed and published fixtures.
@@ -994,7 +938,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1026,8 +970,8 @@ def main():
                                wire_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                                expected_sha256=hashlib.sha256(expected.encode()).hexdigest(),
                                actual_sha256=hashlib.sha256(output.encode()).hexdigest()))
-    corpus = dict(build=compiled, harness=tooling, provider=provider, requests=len(cases), fixtures=len(values), checks=checks,
-                  passed=tooling['exit_code'] == 0 and len(cases) == len(checks) == 63 and all(row['passed'] for row in checks),
+    corpus = dict(build=compiled, provider=provider, requests=len(cases), fixtures=len(values), checks=checks,
+                  passed=len(cases) == len(checks) == 63 and all(row['passed'] for row in checks),
                   scope='full canonical report bytes and ordinary Ed25519 credential bindings; no assignment or point-policy decision')
     report['report_signature_corpus'] = corpus
     announce('independent full-report guarantee signature composition corpus', corpus['passed'])
@@ -1048,7 +992,7 @@ def main():
     source = BUILD/'assurance-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/assurances_driver.nim', 'assurances-codec')
-    corpus = dict(build=compiled, harness=tooling, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
+    corpus = dict(build=compiled, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
                   requests=len(lines), passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare complete named fields/bytes and errors; native assertions additionally protect atomic output/lifetimes.
@@ -1056,7 +1000,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1070,7 +1014,7 @@ def main():
     source = BUILD/'assurance-context-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/assurance_crypto_driver.nim', 'assurance-context-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, provider=provider, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, provider=provider, requests=len(lines), passed=False,
                   scope='fixed transcript and stateless validator-key/parent checks; no state eligibility or point-policy change',
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
@@ -1080,7 +1024,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected and len(lines) == 2087
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected and len(lines) == 2087
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         if not corpus['passed']:
             # Include missing/extra observations and retain the full output for exact replay.
@@ -1302,7 +1246,7 @@ def main():
     groups = {operation+'-'+kind: sum(line.startswith(operation+' '+kind+' ') for line in lines)
               for operation in ('D', 'E') for kind in ('E', 'B')}
     compiled, binary = build(compiler, ROOT/'tests/native/block_driver.nim', 'block-codec')
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare all six exact child wires/counts after source erasure and on-demand materialization.
@@ -1310,7 +1254,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1326,7 +1270,7 @@ def main():
     groups = {operation: sum(line.startswith(operation+' ') for line in lines)
               for operation in ('BD', 'BE', 'D', 'E')}
     compiled, binary = build(compiler, ROOT/'tests/native/bits_driver.nim', 'bits-codec')
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Observe every logical bit/count/extent after input erasure and compare both owner framing forms.
@@ -1334,7 +1278,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1350,7 +1294,7 @@ def main():
     groups = {kind: sum(line.split()[1] == kind for line in lines) for kind in ('F', 'S', 'M')}
     assert sum(groups.values()) == len(lines), groups
     compiled, binary = build(compiler, ROOT/'tests/native/collections_driver.nim', 'collection-codec')
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Compare copied logical fields, canonical wire, consumed progress and typed reasons after input erasure.
@@ -1358,7 +1302,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1379,7 +1323,7 @@ def main():
         groups[key] = groups.get(key, 0)+1
     assert sum(groups.values()) == len(lines), groups
     compiled, binary = build(compiler, ROOT/'tests/native/c2_driver.nim', 'c2-codec')
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), request_groups=groups,
+    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
                   passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
         # Observe every fixed field, payload/trace copy and exact owned wire after destructive caller mutation.
@@ -1387,7 +1331,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1401,7 +1345,7 @@ def main():
     source = BUILD/'layout-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_layout_driver.nim', 'layout-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   historical_projected_singletons=len(legacy_singletons()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1410,7 +1354,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1424,7 +1368,7 @@ def main():
     source = BUILD/'trie-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_trie_driver.nim', 'trie-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   historical_projected_maps=len(legacy_maps()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1433,7 +1377,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1447,7 +1391,7 @@ def main():
     source = BUILD/'safrole-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_safrole_driver.nim', 'safrole-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_derived_state_sources=len(safrole_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1456,7 +1400,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1470,7 +1414,7 @@ def main():
     source = BUILD/'authorization-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_authorization_driver.nim', 'authorization-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_derived_state_sources=len(authorization_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1479,7 +1423,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1493,7 +1437,7 @@ def main():
     source = BUILD/'consensus-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_consensus_driver.nim', 'consensus-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_derived_state_sources=len(consensus_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1502,7 +1446,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1516,7 +1460,7 @@ def main():
     source = BUILD/'state_disputes-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_disputes_driver.nim', 'state_disputes-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_disputes_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1525,7 +1469,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1539,7 +1483,7 @@ def main():
     source = BUILD/'state_history-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_history_driver.nim', 'state_history-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_history_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1548,7 +1492,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1562,7 +1506,7 @@ def main():
     source = BUILD/'state_availability-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_availability_driver.nim', 'state_availability-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_availability_published()), published_decode_verdicts=availability_verdicts(),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1571,7 +1515,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1585,7 +1529,7 @@ def main():
     source = BUILD/'state_privileges-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_privileges_driver.nim', 'state_privileges-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_derived_state_sources=len(state_privileges_published()),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1594,7 +1538,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1608,7 +1552,7 @@ def main():
     source = BUILD/'state_statistics-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_statistics_driver.nim', 'state_statistics-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_partial_validator_sources=len(state_statistics_published()), published_trace_components=statistics_traces(),
                   gas_encoding_policy="accepted canonical compact naturals; no fallback",
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
@@ -1618,7 +1562,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1640,7 +1584,7 @@ def main():
                            dependencies=dependencies, sha256=hashlib.sha256(data).hexdigest(),
                            complete_component_match=consumed == len(data) and workqueue_wire(kind, rows) == data))
     compiled, binary = build(compiler, ROOT/'tests/native/state_workqueues_driver.nim', 'state_workqueues-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_json_components=len(workqueue_published()), published_trace_components=traces,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     if compiled['exit_code'] == 0:
@@ -1649,7 +1593,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1671,7 +1615,7 @@ def main():
                            items=len(values), consumed=consumed, sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=consumed == len(entry['wire']) and outputs_wire(values) == entry['wire']))
     compiled, binary = build(compiler, ROOT/'tests/native/state_outputs_driver.nim', 'state_outputs-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_trace_components=traces,
                   scope='ordered fixed pairs; published traces empty, nonempty coverage authored; no accumulation execution',
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
@@ -1681,7 +1625,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1704,7 +1648,7 @@ def main():
                            sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=len(entry['wire']) == accounts_size and accounts_wire(fields) == entry['wire']))
     compiled, binary = build(compiler, ROOT/'tests/native/state_accounts_driver.nim', 'state_accounts-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_json_metadata=len(accounts_json()), published_trace_metadata=traces,
                   scope='C(255,service) fixed version-zero metadata; no nested maps, account validation or transitions',
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
@@ -1714,7 +1658,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1733,7 +1677,7 @@ def main():
                    bytes=len(entry['value']), sha256=hashlib.sha256(entry['value']).hexdigest(),
                    namespace='opaque; not recoverable from key') for entry in service_values_traces()]
     compiled, binary = build(compiler, ROOT/'tests/native/state_service_values_driver.nim', 'state_service_values-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_json_storage=sum(row[0] == 'S' for row in sources),
                   published_json_preimages=sum(row[0] == 'P' for row in sources),
                   published_opaque_trace_values=traces,
@@ -1745,7 +1689,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1769,7 +1713,7 @@ def main():
                            sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=consumed == len(entry['wire']) and requests_wire(slots) == entry['wire']))
     compiled, binary = build(compiler, ROOT/'tests/native/state_requests_driver.nim', 'state_requests-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_json_histories=len(published),
                   published_json_shapes={str(n): sum(len(row[3]) == n for row in published) for n in range(4)},
                   published_trace_histories=traces,
@@ -1783,7 +1727,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1798,7 +1742,7 @@ def main():
     source = BUILD/'composition-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/state_composition_driver.nim', 'state_composition-codec', crypto_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), passed=False,
+    corpus = dict(build=compiled, requests=len(lines), passed=False,
                   published_component_observations=components, published_composed_states=whole,
                   published_exact_captures=sum(row['verdict'] == 'ok' for row in components),
                   scope='exact typed chapter capture and complete mappings; opaque service values explicit; no transitions',
@@ -1809,7 +1753,7 @@ def main():
         output = result.pop('output')
         actual = output.splitlines()
         corpus['run'] = result
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
         if not corpus['passed']:
@@ -1827,8 +1771,8 @@ def main():
     result = command([BUILD/'trie-codec', source], 'state-roots-corpus') if report['trie_corpus']['build']['exit_code'] == 0 else dict(exit_code=1, output='Trie driver build failed')
     output = result.pop('output')
     actual = output.splitlines()
-    corpus = dict(requests=len(lines), run=result, harness=tooling,
-                  passed=tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected,
+    corpus = dict(requests=len(lines), run=result,
+                  passed=result['exit_code'] == 0 and actual == expected,
                   driver_build=report['trie_corpus']['build'], published_maps=[row for _, row in observations], variants=records,
                   distinct_published_roots=len({row['state_root'] for _, row in observations}),
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
@@ -1869,14 +1813,14 @@ def main():
                   if composition_build['exit_code'] == 0 else dict(exit_code=1, output='Composition driver build failed'))
         output = result.pop('output')
         actual = output.splitlines()
-        passed = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        passed = result['exit_code'] == 0 and actual == expected
         if family == 'state_widths':
             # All 36 original published values must capture exactly, without a compatibility fallback.
             passed = passed and len(lines) == 37 and actual[1:] == ['ok']*36
         else:
             # Four successful controls/predecessors and two duplicate-key post-states retain the existing policy.
             passed = passed and normative_match and len(lines) == 7 and len(witnesses) == 2
-        corpus = dict(requests=len(lines), run=result, harness=tooling, driver_build=composition_build,
+        corpus = dict(requests=len(lines), run=result, driver_build=composition_build,
                       passed=passed, evidence=evidence,
                       requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                       actual_sha256=hashlib.sha256(output.encode()).hexdigest(),
@@ -1956,7 +1900,7 @@ def main():
     source = BUILD/'quic-protocol-requests.txt'
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, ROOT/'tests/native/quic_protocol_driver.nim', 'quic-protocol-driver', quic_library=quic_library)
-    corpus = dict(build=compiled, harness=tooling, requests=len(lines), groups=groups, passed=False,
+    corpus = dict(build=compiled, requests=len(lines), groups=groups, passed=False,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest(),
                   scope='pinned SAN/DER identity and structural CE framing; no TLS handshake or fixture eligibility claim')
@@ -1967,7 +1911,7 @@ def main():
         actual = output.splitlines()
         corpus['run'] = result
         corpus['actual_sha256'] = hashlib.sha256(output.encode()).hexdigest()
-        corpus['passed'] = tooling['exit_code'] == 0 and result['exit_code'] == 0 and actual == expected
+        corpus['passed'] = result['exit_code'] == 0 and actual == expected
         if not corpus['passed']:
             # Missing, extra or differing rows remain reproducible against the retained public request file.
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
@@ -1984,146 +1928,9 @@ def main():
                 passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
                 report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
                 announce('QUIC '+origin+' '+member+' guard', passed)
-    # Shared process-startup and summary safeguards must stay effective with isolated compiler-specific binary paths.
-    # Build the actual peer entry point without invoking the historical compiler/build path.
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer', quic_library=quic_library)
-    report['quic_peer_build'] = compiled
-    report['quic_peer'] = dict(passed=False)
-    if compiled['exit_code'] == 0:
-        # Parser, readiness and mesh policy tests are separate positive suites, not network parity claims.
-        for name, flag in (('quic_peer_parser', '--selftest'), ('quic_peer_io', '--io-selftest'),
-                           ('quic_peer_mesh_policy', '--mesh-selftest')):
-            result = command([binary, flag], name)
-            report['suites'].append(dict(name=name, build=compiled, run=result, passed=result['exit_code'] == 0))
-            announce(name, result['exit_code'] == 0)
-        from nimony_peer import exchanges, controls
-        try:
-            # Reuse the original identity/framing matrix and retain both endpoint outputs in the evidence.
-            report['quic_peer'] = exchanges(binary, quic_fixtures, BUILD/'peer-cases')
-            report['quic_peer_controls'] = controls(binary, quic_fixtures)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # Preserve failure instead of allowing a later slice to turn a failed network attempt green.
-            report['quic_peer'] = dict(passed=False, failure=str(error))
-        announce('authenticated CE 143 peer matrix and repeated startup', report['quic_peer']['passed'])
-    # The enabled entry point must compile its migrated integration call sites and retain the original selftest.
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-integration', crypto_library,
-                             quic_library=quic_library, defines=('integration',))
-    row = dict(name='quic_peer_integration', build=compiled, passed=False)
-    if compiled['exit_code'] == 0:
-        # This no-socket selftest proves enabled composition wiring, not integrated service lifecycle parity.
-        row['run'] = command([binary, '--integration-selftest'], 'quic-peer-integration-selftest')
-        row['passed'] = row['run']['exit_code'] == 0
-    report['suites'].append(row)
-    announce('enabled peer integration entry point', row['passed'])
-    # Retained listeners reuse the original failure schedules, warmup, timeouts and scoped resource limits.
-    report['quic_service'] = dict(passed=False)
-    report['quic_integration_service'] = dict(passed=False)
-    if report['quic_peer_build']['exit_code'] == 0:
-        from test_quic_service import service as retained_service
-        try:
-            # One server engine survives sixteen waves, including malformed peers and two forced peer deaths.
-            result = retained_service('nim', quic_fixtures, 16, 4, binaries={'nim': BUILD/'quic-peer'},
-                                      directory=BUILD/'retained-service')
-            report['quic_service'] = dict(passed=True, result=result)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # Finalizers preserve logs and retire children; failure cannot be replaced by later integration success.
-            report['quic_service'] = dict(passed=False, failure=str(error))
-    announce('retained CE 143 service lifecycle', report['quic_service']['passed'])
-    if compiled['exit_code'] == 0:
-        from test_integration import service as integrated_service
-        try:
-            # Three concurrent identities per wave exercise real capture/hash/copy/cancellation owners.
-            result = integrated_service('nim', quic_fixtures, integration_wires, 12, 4,
-                                        binaries={'nim': binary}, directory=BUILD/'retained-integration')
-            report['quic_integration_service'] = dict(passed=True, result=result)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # Typed protocol rejections are checked by the harness; assertion/timeouts remain workload failures.
-            report['quic_integration_service'] = dict(passed=False, failure=str(error))
-    announce('retained integrated digest lifecycle', report['quic_integration_service']['passed'])
-    # Retained IPv6 peers keep both role engines through fallback, duplicate arbitration and reconnects.
-    report['quic_mesh'] = dict(passed=False)
-    report['quic_mesh_disruption'] = dict(passed=False)
-    if report['quic_peer_build']['exit_code'] == 0:
-        from test_quic_mesh import pairing as mesh_pairing
-        from test_quic_resilience import disruption as mesh_disruption
-        try:
-            # Reuse exact original rounds, warmup, wrong-identity gate and finite resource limits.
-            result = mesh_pairing(('nim', 'nim'), quic_fixtures, 16, 4,
-                                  binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh')
-            bad_pin = mesh_pairing(('nim', 'nim'), quic_fixtures, 1, 0, bad_pin=True,
-                                   binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh-bad-pin')
-            report['quic_mesh'] = dict(passed=True, result=result, bad_pin=bad_pin)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # All live endpoints retire in harness finalizers; a failed arbitration remains a failed gate.
-            report['quic_mesh'] = dict(passed=False, failure=str(error))
-        try:
-            # One keeper retains its two engines through twelve killed peers and a final healthy generation.
-            result = mesh_disruption(('nim', 'nim'), quic_fixtures, 12, 4,
-                                     binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh-disruption')
-            report['quic_mesh_disruption'] = dict(passed=True, result=result)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # Recovery must settle all eight pending operations before reconnect; ordinary mesh success cannot hide failure.
-            report['quic_mesh_disruption'] = dict(passed=False, failure=str(error))
-    announce('retained IPv6 mesh/reconnect and wrong identity', report['quic_mesh']['passed'])
-    announce('retained IPv6 peer-death recovery', report['quic_mesh_disruption']['passed'])
-    # Recreate both endpoints in the same processes; retained-engine tests cannot establish post-destruction cleanup.
-    report['quic_endpoint_soak'] = dict(passed=False)
-    if report['quic_peer_build']['exit_code'] == 0:
-        from test_quic_soak import pairing as endpoint_soak
-        try:
-            # Preserve the original forty sessions, eight warmup samples, mixed streams and finite budgets.
-            result = endpoint_soak('nim', 'nim', quic_fixtures, 40, 8,
-                                   binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'endpoint-soak')
-            report['quic_endpoint_soak'] = dict(passed=True, result=result)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # Finalizers retain resource evidence and kill live peers; later corpus success cannot hide failure.
-            report['quic_endpoint_soak'] = dict(passed=False, failure=str(error))
-    announce('same-process endpoint teardown soak', report['quic_endpoint_soak']['passed'])
-    # Admission and pre-request connection loss are independent gates; healthy mesh traffic cannot substitute for them.
-    report['quic_admission'] = dict(passed=False)
-    report['quic_closed_before_request'] = dict(passed=False)
-    if report['quic_peer_build']['exit_code'] == 0:
-        from test_quic_resilience import overload as admission, closed_before_request
-        try:
-            # Keep the original twelve waves/four warmup samples and exact connection/stream ceilings.
-            result = admission('nim', quic_fixtures, 12, 4, binaries={'nim': BUILD/'quic-peer'},
-                               directory=BUILD/'admission')
-            report['quic_admission'] = dict(passed=True, result=result)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # Capacity rejection must recover within the original deadlines and release all retained owners.
-            report['quic_admission'] = dict(passed=False, failure=str(error))
-        try:
-            # Idle clients open no application streams; connection close must settle the authenticated failure.
-            result = closed_before_request(('nim', 'nim'), quic_fixtures,
-                                           binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'closed-before-request')
-            report['quic_closed_before_request'] = dict(passed=True, result=result)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # A stale AUTH_OK marker cannot turn connection loss into successful application exchange.
-            report['quic_closed_before_request'] = dict(passed=False, failure=str(error))
-    announce('connection/stream admission recovery', report['quic_admission']['passed'])
-    announce('authenticated connection loss before request', report['quic_closed_before_request']['passed'])
-    # Preserve independent fixture identity, missing-marker rejection and failed-server cleanup in CI.
-    # Enabled workers use the same maintained Rust/QUIC ABIs and original queue/cancellation workload.
-    from test_quic_offload import corpus as offload_fixture, selftests as offload_selftests, exercise as offload_exercise
-    offload_wire, offload_metadata = offload_fixture(BUILD/'offload')
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-offload',
-                             native_libraries=(bs_library,), quic_library=quic_library, defines=('offload',))
-    report['quic_offload_build'] = compiled
-    report['quic_offload'] = dict(passed=False, fixture=offload_metadata)
-    if compiled['exit_code'] == 0:
-        try:
-            # Completed jobs retain capacity; held workers must join without a controller ever releasing their gate.
-            for row in offload_selftests(binary, offload_wire, BUILD/'offload'):
-                row['build'] = compiled
-                report['suites'].append(row)
-            # Ten waves preserve two workers, four job slots and 128 real verifications per accepted job.
-            result = offload_exercise('nim', quic_fixtures, offload_wire, 10, 2, 128,
-                                      binaries={'nim': binary}, directory=BUILD/'offload')
-            report['quic_offload'] = dict(passed=True, fixture=offload_metadata, result=result)
-        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
-            # A selftest, callback, resource or joined-shutdown failure cannot be hidden by another workload.
-            report['quic_offload'] = dict(passed=False, fixture=offload_metadata, failure=str(error))
-    announce('bounded proof offload and joined shutdown', report['quic_offload']['passed'])
+    # Completion guards need only their public fixture, not the E2E network/soak workloads.
+    from test_quic_offload import corpus as offload_fixture
+    offload_wire, _ = offload_fixture(BUILD/'offload-fixture')
     # The same guarded completion API must reject defaults and actual empty polls in both build profiles.
     for enabled in (False, True):
         compiled, binary = build(compiler, ROOT/'tests/native/nimony_offload_results.nim',
@@ -2787,7 +2594,7 @@ def main():
         report['nominal'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
     report['compiler_rejections_elapsed_seconds'] = round(time.monotonic()-rejection_started, 6)
-    step_passed = (tooling['exit_code'] == 0 and all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
+    step_passed = (all(row['passed'] for row in report['suites']) and len(report['runtime']) == 3
                    and all(row['passed'] for row in report['runtime']) and len(report['bounded']) == 12
                    and all(row['passed'] for row in report['bounded'])
                    and len(report['primitive']) == 13 and all(row['passed'] for row in report['primitive'])
@@ -2798,12 +2605,7 @@ def main():
                    and all(row['passed'] for row in report['bandersnatch'])
                    and report['bandersnatch_corpus']['passed']
                    and report['quic_protocol_corpus']['passed']
-                   and report['quic_mesh']['passed'] and report['quic_mesh_disruption']['passed']
-                   and report['quic_endpoint_soak']['passed']
-                   and report['quic_admission']['passed'] and report['quic_closed_before_request']['passed']
-                   and report['quic_offload']['passed'] and len(report['offload']) == 4 and all(row['passed'] for row in report['offload'])
-                   and report['quic_service']['passed'] and report['quic_integration_service']['passed']
-                   and report['quic_peer']['passed'] and report.get('quic_peer_controls', {}).get('passed', False)
+                   and len(report['offload']) == 4 and all(row['passed'] for row in report['offload'])
                    and report['integration_corpus']['passed']
                    and len(report['integration']) == 2*len(INTEGRATION_MEMBERS) and all(row['passed'] for row in report['integration'])
                    and len(report['quic_protocol']) == 8 and all(row['passed'] for row in report['quic_protocol'])

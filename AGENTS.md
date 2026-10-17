@@ -64,7 +64,8 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   `make check` (alias `make test`) for complete verification. Make owns setup dependencies and
   command sequencing; `make clean` removes all of `build/`.
   `make check` must provision tools/sources/native dependencies without project-specific pre-steps.
-  CI invokes the same Make targets. Nim 2 is a historical measurement control, never a second
+  CI runs `check-modules`, `check-python`, `check-unit` and `check-e2e` as independent parallel
+  jobs; use the affected group locally and `make check` for all four. Nim 2 is a historical measurement control, never a second
   production target. Keep compiler and dependency sources pristine. Follow [the compiler record](docs/nimony-trial.md) for limitations/evidence.
   Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 - The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
@@ -101,8 +102,11 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   Keep linked profiles and network/resource scenarios sequential. Hastur scheduling artifacts belong
   under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
   be faster on warm local repeats. Record timings without weakening test workloads or verdicts.
-- Keep Python reference/tooling/provenance unittest execution in the runtime verifier's single
-  fresh discovery gate; corpus reports share its verdict. Do not schedule duplicate harness runs.
+- Run Python reference/tooling/provenance unittest discovery once in `make check-python`.
+  Native unit/corpus checks and E2E networking must not launch duplicate Python discovery or
+  claim another group's verdict. Preserve every group's inventory, standalone setup, failure status,
+  logs and summary. E2E owns peer-entry selftests and live peer/service/resilience/soak/offload work;
+  unit checks own component suites, independent corpora and runtime/compiler rejection probes.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,

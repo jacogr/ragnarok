@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Run Python reference, tooling and provenance unittests once as an independent verification group."""
+import json
+from pathlib import Path
+import re
+import sys
+from native_checks import NativeChecks, ROOT, announce
+
+BUILD = ROOT/'build/tests/python'
+
+
+# Discovery uses only Python/reference infrastructure; native application assertions belong to other groups.
+def python_tests():
+    return NativeChecks(BUILD).command(
+        [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], 'python-tests')
+
+
+# A fresh failed or empty discovery cannot reuse an earlier green report.
+def main():
+    BUILD.mkdir(parents=True, exist_ok=True)
+    (BUILD/'results.json').unlink(missing_ok=True)
+    result = python_tests()
+    output = result.pop('output')
+    observed = re.search(r'Ran (\d+) tests? in ', output)
+    skipped = re.search(r'skipped=(\d+)', output)
+    total = int(observed.group(1)) if observed else 0
+    passed = result['exit_code'] == 0 and total > 0
+    report = dict(status='checks-passed' if passed else 'failed', tests=total,
+                  skipped=int(skipped.group(1)) if skipped else 0, check=result)
+    (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
+    announce('Python verification', passed)
+    print(output, flush=True)
+    raise SystemExit(0 if passed else 1)
+
+
+# Importing this command never launches discovery or provisions a compiler.
+if __name__ == '__main__':
+    main()

@@ -5,6 +5,28 @@ Migration now covers primitives, composite/block codecs and successive state fam
 Current total: **59/59 ordinary suites migrated; none remaining**.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
+## Current verification groups
+
+| Make target | Scope | CI job |
+| --- | --- | --- |
+| `check-modules` | Every-source semantic compilation | Source compilation |
+| `check-python` | One Python reference/tooling/provenance discovery | Python tests |
+| `check-unit` | 59 native suites, 41 corpora, runtime/compiler rejection probes | Native units/codecs |
+| `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
+
+`make check` runs all four locally; CI schedules them independently and concurrently on separate
+VMs. Each target provisions its own dependencies and writes its own report. There is no CI
+`needs` chain or duplicated Python discovery. `make unit` remains a quick native-only subset;
+`make runtime` aliases `check-unit`, and `make modules` aliases `check-modules`.
+
+Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus)
+and `build/tests/e2e/`. Combined native coverage remains 59 + 6 = 65 profiles. E2E retains the
+original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
+build uses the same shared checked native compiler profile as the unit verifier.
+
+Historical increment records below describe the earlier cumulative runner, including its former
+embedded Python gate and lifecycle reporting. Current reproduction uses the groups above.
+
 ## What the investigation found
 
 Most application assertions already live in Nim under `tests/native/`; Python currently compiles,
@@ -333,10 +355,10 @@ Evidence: `build/nim-tests/cleanup/full-check.log` and `comparison.json`. Linux 
 
 ## Clean bootstrap and canonical CI commands
 
-Make owns setup, command ordering and diagnostic directories. Linux CI invokes `make modules`
-and `make runtime`, then the corresponding `make summary-*` target; it has no separate compiler,
-submodule, Rust, package or directory setup commands. Normal reports live under
-`build/tests/modules/`, `build/tests/runtime/` and `build/ci/`. The older trial paths below are
+Make owns setup, command ordering and diagnostic directories. Linux CI invokes the four
+`make check-*` groups concurrently, then their corresponding `make summary-*` targets. There are
+no separate compiler, submodule, Rust, package or directory setup commands. Normal reports live
+under `build/tests/{modules,python,runtime,e2e}/` and `build/ci/`. The older trial paths below are
 historical evidence. `tools/test.py` is removed; native fixture/profile logic remains in
 `tools/native_tests.py`. See [the tooling audit](development.md#tooling-audit) for retained helpers.
 
@@ -358,14 +380,14 @@ targets were exercised against real reports. Full logs are `/tmp/ragnarok-cold-c
 `build/ci/cold-verification.json`. This is local verification; the revised Linux workflow still
 requires CI after push.
 
-## Final helper and reproduction cleanup
+## Final helper and reproduction cleanup (historical)
 
 The remaining historical Nim 2 builders and standalone crypto/network entry points are retired:
 17 functions and 460 net Python lines were removed. Maintained native builders, independent
 reference equations and process/resource helpers remain importable; every retained function body
 matches its pre-cleanup parsed form. The default proof-peer build still passes.
 
-The runtime verifier now runs one fresh `unittest discover -s tests -p 'test_*.py'` gate before
+At that increment, the runtime verifier ran one fresh `unittest discover -s tests -p 'test_*.py'` gate before
 native preparation. It includes all oracle/tooling harnesses, setup/CI safeguards and specification
 provenance. The report's `python_tests` entry records the executed command, status and log;
 per-corpus `harness` records reference that same complete gate. Thirty-four duplicate command
