@@ -188,3 +188,7 @@ Expiry/teardown collectors use observed authentication and explicit stop gates: 
 expire merely because startup or the CI scheduler took longer than a subsecond fixture lifetime.
 Telemetry failures retain their traceback in the E2E console and JSON report, and CI archives
 per-scenario telemetry logs alongside the report.
+
+Collector assertions count interleaved status frames in the event-ID sequence instead of assuming
+adjacent lifecycle frames or fixed IDs. A registration test deliberately waits past one status
+interval before dialing; duplicate lifecycle frames and loss markers still fail complete captures.

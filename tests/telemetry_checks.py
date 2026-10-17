@@ -25,6 +25,37 @@ def frame(connection):
     return read(size)
 
 
+# Borrow one collector socket and count every event, including statuses interleaved by scheduling.
+class EventCapture:
+    # Registration is read separately; the first subsequent frame has implicit event ID zero.
+    def __init__(self, connection):
+        self.connection = connection
+        self.position = 0
+
+    # Keep the test stream bounded while preserving the protocol's implicit ID namespace.
+    def event(self):
+        assert self.position < 128, 'unbounded telemetry capture'
+        event_id = self.position
+        value = frame(self.connection)
+        self.position += 1
+        return event_id, value
+
+    # Periodic status is independent of lifecycle transitions and may occur between any two of them.
+    def lifecycle(self, expected):
+        while True:
+            event_id, value = self.event()
+            if value[8] == 10:
+                continue # Count the status without assigning its ID to the expected lifecycle event.
+            assert value[8] == expected, (event_id, expected, value[8])
+            return event_id, value
+
+    # Trailing statuses are valid; any additional lifecycle event still fails the exactly-once check.
+    def end(self):
+        while self.connection.recv(1, socket.MSG_PEEK):
+            event_id, value = self.event()
+            assert value[8] == 10, ('unexpected trailing event', event_id, value[8])
+
+
 # Bind only loopback; closing this context releases the collector even after assertion failures.
 def listener(ipv6=False):
     server = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET)
@@ -83,7 +114,7 @@ def reconnect(binary, ipv6=False):
 
 
 # Start a real proof peer, observe its local identity and empty status, then complete normal CE traffic.
-def peer_registration(binary, certificates, chain, folder, ipv6=False):
+def peer_registration(binary, certificates, chain, folder, ipv6=False, startup_delay=0):
     folder.mkdir(parents=True, exist_ok=True)
     assert hashlib.sha256(chain.read_bytes()).hexdigest() == "c0e0dab1c242becf8ec2aa06916c74a3dc84ff9aca1c08a5df217a4d6bc4b1c3"
     spec = json.loads(chain.read_text())
@@ -110,8 +141,12 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False):
                 assert hello[155:187] == (certificates/'a.pub').read_bytes()
                 assert hello[187:203] == bytes.fromhex('00000000000000000000ffff7f000001')
                 assert int.from_bytes(hello[203:205], 'little') == port
-                status = frame(connection)
+                capture = EventCapture(connection)
+                _, status = capture.event()
                 assert status[8] == 10 and int.from_bytes(status[9:13], 'little') == 0
+                if startup_delay:
+                    # Force a status between registration and connection; lifecycle IDs must still correlate.
+                    time.sleep(startup_delay)
                 client = subprocess.run([str(binary), 'client', str(port),
                     str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
                     str(certificates/'a.pub'), alpn, '3000', 'clean', '--telemetry', endpoint,
@@ -121,26 +156,27 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False):
                 with outgoing:
                     outgoing.settimeout(5)
                     assert frame(outgoing)[0] == 1
-                    dialing = frame(outgoing)
+                    outgoing_capture = EventCapture(outgoing)
+                    dial_id, dialing = outgoing_capture.lifecycle(24)
                     assert dialing[8] == 24 and dialing[9:41] == (certificates/'a.pub').read_bytes()
                     assert dialing[41:57] == bytes.fromhex('00000000000000000000ffff7f000001')
                     assert int.from_bytes(dialing[57:59], 'little') == port
-                    connected = frame(outgoing)
-                    assert connected[8] == 26 and int.from_bytes(connected[9:17], 'little') == 0
-                    closed = frame(outgoing)
+                    _, connected = outgoing_capture.lifecycle(26)
+                    assert int.from_bytes(connected[9:17], 'little') == dial_id
+                    _, closed = outgoing_capture.lifecycle(27)
                     assert closed[8] == 27 and closed[9:41] == (certificates/'a.pub').read_bytes()
                     assert closed[41:] == b'\0\0' # Unknown terminator and reason remain explicitly absent.
-                    assert outgoing.recv(1) == b'' # Exactly one closure, followed by exporter shutdown.
-                incoming = frame(connection)
+                    outgoing_capture.end() # No duplicate closure; periodic status remains valid.
+                incoming_id, incoming = capture.lifecycle(21)
                 assert incoming[8] == 21 and incoming[9:25] == bytes.fromhex('00000000000000000000ffff7f000001')
                 assert int.from_bytes(incoming[25:27], 'little') > 0
-                accepted = frame(connection)
-                assert accepted[8] == 23 and int.from_bytes(accepted[9:17], 'little') == 1
+                _, accepted = capture.lifecycle(23)
+                assert accepted[8] == 23 and int.from_bytes(accepted[9:17], 'little') == incoming_id
                 assert accepted[17:] == (certificates/'b.pub').read_bytes()
-                closed = frame(connection)
+                _, closed = capture.lifecycle(27)
                 assert closed[8] == 27 and closed[9:41] == (certificates/'b.pub').read_bytes()
                 assert closed[41:] == b'\0\0'
-                assert connection.recv(1) == b'' # One real incoming close, with no duplicate during destruction.
+                capture.end() # One real incoming close, with no duplicate during destruction.
             stdout, stderr = process.communicate(timeout=5)
             (folder/'peer.log').write_bytes(stdout + stderr)
             assert process.returncode == 0 and b'EXCHANGE_OK 8' in stdout, (stdout, stderr)
@@ -166,10 +202,11 @@ def dial_failure(binary, certificates, chain, folder):
                 with connection:
                     connection.settimeout(5)
                     assert frame(connection)[0] == 1
-                    assert frame(connection)[8] == 24
-                    failed = frame(connection)
-                    assert failed[8] == 25 and failed[9:17] == bytes(8) and failed[17:] == b'\0'
-                    assert connection.recv(1) == b'' # Failed authentication must not invent a disconnected peer.
+                    capture = EventCapture(connection)
+                    attempt_id, _ = capture.lifecycle(24)
+                    _, failed = capture.lifecycle(25)
+                    assert failed[8] == 25 and int.from_bytes(failed[9:17], 'little') == attempt_id and failed[17:] == b'\0'
+                    capture.end() # Failed authentication must not invent a disconnected peer.
                 stdout, stderr = process.communicate(timeout=5)
                 (folder/'failed-dial.log').write_bytes(stdout + stderr)
                 assert process.returncode != 0 and b'AUTH_OK' not in stdout
@@ -202,25 +239,19 @@ def peer_loss(binary, certificates, chain, folder):
                 with connection:
                     connection.settimeout(8)
                     assert frame(connection)[0] == 1
-                    attempt = frame(connection)
+                    capture = EventCapture(connection)
+                    attempt_id, attempt = capture.lifecycle(24)
                     assert attempt[8] == 24 and attempt[41:57] == bytes(15) + b'\1'
-                    connected = frame(connection)
-                    assert connected[8] == 26 and connected[9:17] == bytes(8)
+                    _, connected = capture.lifecycle(26)
+                    assert connected[8] == 26 and int.from_bytes(connected[9:17], 'little') == attempt_id
                     assert select.select([server.stdout], [], [], 5)[0], 'server authentication did not complete'
                     assert server.stdout.readline().strip() == b'AUTH_OK'
                     server.kill() # Trigger expiry only after both sides really authenticated.
                     assert server.wait(timeout=5) == -9
-                    closed = None
-                    for _ in range(4):
-                        # Status can precede expiry; no failed-attempt event may replace authenticated closure.
-                        event = frame(connection)
-                        assert event[8] in (10, 27)
-                        if event[8] == 27:
-                            closed = event
-                            break
+                    _, closed = capture.lifecycle(27)
                     assert closed is not None and closed[9:41] == (certificates/'a.pub').read_bytes()
                     assert closed[41:] == b'\0\0'
-                    assert connection.recv(1) == b'' # Closure is emitted once, not for each polling turn.
+                    capture.end() # Closure is emitted once, despite trailing periodic statuses.
                 stdout, stderr = client.communicate(timeout=5)
                 (folder/'lost-peer-client.log').write_bytes(stdout + stderr)
                 assert client.returncode != 0 and b'AUTH_OK' in stdout and b'CONNECTION_CLOSED' in stdout
@@ -256,22 +287,11 @@ def incoming_failure(binary, certificates, chain, folder):
                     str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
                     '1800', 'clean'], capture_output=True, timeout=5)
                 assert client.returncode != 0
-                attempt = None
-                for event_id in range(4):
-                    # Status timing may vary; failure must reference the actual incoming event position.
-                    event = frame(connection)
-                    if event[8] == 21:
-                        assert attempt is None
-                        attempt = event_id
-                    elif event[8] == 22:
-                        assert attempt is not None and int.from_bytes(event[9:17], 'little') == attempt
-                        assert event[17:] == b'\0'
-                        break
-                    else:
-                        assert event[8] == 10 # Neither an authenticated identity nor a disconnect may be invented.
-                else:
-                    raise AssertionError('incoming failure was not observed')
-                assert connection.recv(1) == b''
+                capture = EventCapture(connection)
+                attempt_id, _ = capture.lifecycle(21)
+                _, failed = capture.lifecycle(22)
+                assert int.from_bytes(failed[9:17], 'little') == attempt_id and failed[17:] == b'\0'
+                capture.end() # No authenticated identity or disconnect may follow the failure.
             stdout, stderr = server.communicate(timeout=5)
             (folder/'incoming-failure.log').write_bytes(stdout + stderr)
             assert server.returncode != 0 and b'AUTH_OK' not in stdout
