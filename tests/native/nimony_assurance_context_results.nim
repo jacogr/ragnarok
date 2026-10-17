@@ -26,7 +26,7 @@ if mode.startsWith("message-"):
   let parsed = if useDefault: default(AssuranceContextResult[
       AssuranceSigningMessage]) else: assuranceMessage(parent, bits, cores)
   assert parsed.error == (if useDefault: AssuranceContextError.Uninitialized else: wanted)
-  echo array[46, byte](parsed.value)[0]
+  echo array[45, byte](parsed.value)[0]
 else:
   var config = AssuranceConfig(cores: CoreCount(2), validators: ValidatorCount(6))
   let seed = importSeed(default(array[32, byte])).value

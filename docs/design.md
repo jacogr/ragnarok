@@ -22,6 +22,11 @@ pool advancement from validated guarantee projections and post-accumulation queu
 adapter atomically replaces C(1), preserving C(2) and unrelated entries. See
 [the transition contract](../spec/authorization-transition.md); whole-block execution remains open.
 
+`src/state/history.nim` adds parent-state-root correction, accumulation-output Keccak trees,
+belt/super-peak advancement and bounded recent-history updates through the C(3) store adapter.
+See [the history transition contract](../spec/history-transition.md) for scheduling and the
+clarified hash-token notation; these components do not execute accumulation.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.

@@ -7,7 +7,7 @@ from report_fixtures import composition_cases, fixtures
 
 # Credential fixture construction must preserve exact original bytes, mutations and native expectations.
 class ReportSignatureHarness(unittest.TestCase):
-    # Freeze all 63 original cases, including independently signed ordinary credentials and expected verdicts.
+    # Freeze all 63 corrected-domain cases, including independently signed ordinary credentials and expected verdicts.
     def test_original_identity(self):
         provider, values = fixtures()
         cases = composition_cases(values)
@@ -19,7 +19,7 @@ class ReportSignatureHarness(unittest.TestCase):
         self.assertEqual(len(values), 7)
         self.assertEqual(len(cases), 63)
         self.assertEqual(sum(c['wanted'] for c in cases), 7)
-        self.assertEqual(identity, '14838e43aace5a7544b36a87d69c12fa271f4f712940d5e6117edac5ea3583fd')
+        self.assertEqual(identity, '4a563bc6348cbd3103553b3a40e39b9ede2eed3402311dc489ee7b6ec79cf887')
 
     # Hand-authored fields verify physical mutation offsets independently of the corpus's signature provider.
     def test_literal_mutations(self):

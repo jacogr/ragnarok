@@ -20,7 +20,7 @@ This stateless codec does not select current/previous rotation key sets, establi
 assignments, check timeslot eligibility or report anchors, enforce pending-core availability,
 compare shard count with the actual active population, or verify credentials. Callers must supply
 the appropriate structural ceiling and perform state/crypto checks separately. In particular,
-`GuaranteeSlot` is serialized in the wrapper but remains outside `$jam_guarantee || BLAKE2b(report)`.
+`GuaranteeSlot` is serialized in the wrapper but remains outside `jam_guarantee || BLAKE2b(report)`.
 The published tiny sample retains core 3 and is structurally checked under a permissive full
 ceiling, with a separate rejection under actual tiny parameters; it is not a chain-eligible report.
 

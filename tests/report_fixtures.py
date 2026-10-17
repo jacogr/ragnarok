@@ -43,10 +43,10 @@ def fixtures():
     values = []
     for name, value in corpus():
         wire = encode(value)
-        message = b'$jam_guarantee' + hashlib.blake2b(wire,digest_size=32).digest()
+        message = b'jam_guarantee' + hashlib.blake2b(wire,digest_size=32).digest()
         credentials = [openssl_sign(hashlib.sha256(f'ragnarok-public-test-seed-{i}'.encode()).digest(),message) for i in range(2)]
         assert credentials[0][0] != credentials[1][0]
-        wrong_domain = openssl_sign(hashlib.sha256(b'ragnarok-public-test-seed-0').digest(),b'jam_guarantee'+message[14:])
+        wrong_domain = openssl_sign(hashlib.sha256(b'ragnarok-public-test-seed-0').digest(),b'$jam_guarantee'+message[13:])
         values.append(dict(name=name,wire=wire,message=message,credentials=credentials,wrong_domain=wrong_domain))
     return provider, values
 
@@ -63,7 +63,7 @@ def check(binary, value, folder, credentials=None, wire=None):
     lines = result.stdout.splitlines()
     assert len(lines) == 1, result.stdout[:300]
     parts = lines[0].split()
-    expected_message = b'$jam_guarantee' + hashlib.blake2b(source,digest_size=32).digest()
+    expected_message = b'jam_guarantee' + hashlib.blake2b(source,digest_size=32).digest()
     assert len(parts) == 4 and parts[0] == 'VERIFY' and parts[1] == source.hex() and parts[2] == expected_message.hex()
     assert parts[3] in ('0','1')
     return parts[3] == '1'
