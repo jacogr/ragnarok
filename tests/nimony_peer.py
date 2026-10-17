@@ -26,7 +26,16 @@ def exchanges(binary, fixtures, folder):
 def controls(binary, fixtures):
     base = ['client', '1', str(fixtures/'b.cert.pem'), str(fixtures/'b.key.pem'),
             str(fixtures/'a.pub'), 'jamnp-s/1/00000000', '900']
-    cases = [('arity', []), ('role', ['other', *base[1:]])]
+    cases = [('arity', []), ('role', ['other', *base[1:]]),
+             ('telemetry-missing-endpoint', ['server', *base[1:], '--telemetry']),
+             ('telemetry-nontrailing', ['--telemetry', '127.0.0.1:9000', *base]),
+             ('telemetry-duplicate', [*base, '--telemetry', '127.0.0.1:9000', '--telemetry', '127.0.0.1:9001']),
+             ('chain-missing-value', [*base, '--telemetry', '127.0.0.1:9000', '--chain']),
+             ('chain-missing-option', [*base, '--telemetry', '127.0.0.1:9000']),
+             ('chain-without-telemetry', [*base, '--chain', 'unused.json']),
+             ('chain-duplicate', [*base, '--chain', 'a.json', '--chain', 'b.json']),
+             ('chain-option-as-value', [*base, '--chain', '--chain', '--telemetry', '127.0.0.1:9000']),
+             ('telemetry-selftest', ['--selftest', '--telemetry', '127.0.0.1:9000'])]
     # Host/native port narrowing and deadline validation must precede opening any endpoint.
     for text in ('0', '-1', '65536', 'not-a-port'):
         args = base.copy()

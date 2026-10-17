@@ -8,7 +8,7 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
     build, command = checks.build, checks.command
     # Shared process-startup and summary safeguards must stay effective with isolated compiler-specific binary paths.
     # Build the actual peer entry point without invoking the historical compiler/build path.
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer', quic_library=quic_library)
+    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer', crypto_library, quic_library=quic_library)
     report['quic_peer_build'] = compiled
     report['quic_peer'] = dict(passed=False)
     if compiled['exit_code'] == 0:
@@ -27,6 +27,19 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
             # Preserve failure instead of allowing a later slice to turn a failed network attempt green.
             report['quic_peer'] = dict(passed=False, failure=str(error))
         announce('authenticated CE 143 peer matrix and repeated startup', report['quic_peer']['passed'])
+    # Telemetry exercises native partial framing/reconnect and the actual optional peer CLI.
+    report['telemetry'] = dict(passed=False)
+    telemetry_build, telemetry_binary = build(compiler, ROOT/'tests/native/telemetry_driver.nim', 'telemetry-driver')
+    if compiled['exit_code'] == 0 and telemetry_build['exit_code'] == 0:
+        from telemetry_checks import reconnect, peer_registration
+        try:
+            observed = reconnect(telemetry_binary)
+            peer = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
+            report['telemetry'] = dict(passed=True, reconnect=observed, peer=peer)
+        except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
+            # Collector failures remain visible while process finalizers retire every live child.
+            report['telemetry'] = dict(passed=False, failure=str(error))
+    announce('JIP-3 telemetry registration/status/reconnect', report['telemetry']['passed'])
     # The enabled entry point must compile its migrated integration call sites and retain the original selftest.
     compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-integration', crypto_library,
                              quic_library=quic_library, defines=('integration',))
@@ -128,7 +141,7 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
     # Enabled workers use the same maintained Rust/QUIC ABIs and original queue/cancellation workload.
     from test_quic_offload import corpus as offload_fixture, selftests as offload_selftests, exercise as offload_exercise
     offload_wire, offload_metadata = offload_fixture(BUILD/'offload')
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-offload',
+    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-offload', crypto_library,
                              native_libraries=(bs_library,), quic_library=quic_library, defines=('offload',))
     report['quic_offload_build'] = compiled
     report['quic_offload'] = dict(passed=False, fixture=offload_metadata)
