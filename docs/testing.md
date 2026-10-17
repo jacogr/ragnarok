@@ -1,8 +1,9 @@
 # Native test migration
 
 Branch: `nim-tests`, based on merged Nimony migration commit `8db659c`.
-Five bounded groups are migrated: primitives/containers, composites/digests/snapshots,
-extrinsics, work-package/header/block codecs, and bitstrings/collections with private-wire checks.
+Six bounded groups are migrated: primitives/containers, composites/digests/snapshots,
+extrinsics, work-package/header/block codecs, bitstrings/collections, and C.2 records with
+private-wire checks.
 Production code, wire behavior, bounds/ownership contracts and independent references are unchanged.
 
 ## What the investigation found
@@ -51,10 +52,10 @@ crypto or network dependencies. Python is a thin path/flag launcher here. After 
 `build/toolchain/env.sh`, Hastur can also be invoked directly using its documented CLI; retain the
 flags printed by the supported command so checks and optimization settings do not change.
 
-The cumulative `python3 tools/test.py` path delegates all nineteen migrated suite identities to Hastur,
+The cumulative `python3 tools/test.py` path delegates all twenty-one migrated suite identities to Hastur,
 records its command/log/verdict and hashes each source and `.output` file. There is no second
 Python compile/run path for those suites in the supported cumulative runner. The remaining
-40 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
+38 of its 59 ordinary file-based suites still use the previous launcher, alongside specialized
 profiles and negative checks. CI already calls that cumulative path, so the native runner migration
 needs no duplicate workflow/job or second execution of migrated suites.
 
@@ -141,6 +142,20 @@ portable output markers authorize successful completion. No fixtures, foreign li
 framework features or production code are added. Independent bit/collection references and
 strict nominal/privacy/runtime-negative probes retain their existing roles and coverage.
 
+## Sixth converted group: C.2 records
+
+The bitstring/collection increment is committed as `344e5f6`. Public C.2 record regressions and
+their private-wire alias companion move with `git mv`. The public suite retains guarded result
+access, fixed-field copies, retained owner/source independence, strict resource-policy checks,
+atomic failures and complete destination aliases. The private body is unchanged apart from its
+relative production include path; production storage remains private.
+
+The original 1,000-cycle ARC workload and native equality assertion remain intact. The existing
+numeric evidence helper preserves `c2_arc_release`, bringing the quick/cumulative paths to ten
+ARC observations across twenty-one suites. Only the stdout observation becomes a portable
+success marker. Independent C.2 oracle/driver and strict privacy/nominal/runtime-negative checks
+retain their existing roles; no fixture, native dependency or production behavior changes.
+
 ## Python responsibilities and migration order
 
 | Test responsibility | Direction |
@@ -158,10 +173,11 @@ without comparing that file. See the pinned runner above and
 `.exitcode` alone: that would weaken the current nonzero-exit checks. Compiler-diagnostic goldens
 also need a portability review before replacing the existing specific rejection checks.
 
-Next bounded group: C.2 record suites, including their private-wire alias companion. State
-families follow, then native-linked crypto and networking ownership suites with explicit
-linker/fixture requirements. Named `suite`/`test` conversion can be revisited when the selected compiler supplies
-a supported implementation; no compiler upgrade or patch is part of this branch.
+Next bounded group: state key/layout and trie suites, with explicit native crypto/observer
+linking requirements. Remaining state families follow, then crypto and networking ownership
+suites with their required linker profiles and fixtures. Named `suite`/`test` conversion can be
+revisited when the selected compiler supplies a supported implementation; no compiler upgrade or
+patch is part of this branch.
 
 ## Verification of the first increment
 
@@ -275,3 +291,24 @@ Same pinned macOS ARM64 checked-LTO profile:
 Current migration totals: **19/59 ordinary file suites migrated, 40 remaining**. Earlier increment
 counts remain historical records above. Verification is local and focused; these results do not
 claim a new full QUIC/crypto lifecycle run or a Linux CI pass for this increment.
+
+
+## Verification of the sixth increment
+
+Same pinned macOS ARM64 checked-LTO profile:
+
+- All **twenty-one native suites** pass, retaining ten original 1,000-cycle ARC workloads and
+  their fresh equal before/after observations.
+- Injecting +1 into the C.2 after-release observation fails its original Nim assertion and
+  leaves no fresh success evidence: `build/nim-tests/sixth/native-faults.json`.
+- A freshly rebuilt C.2 driver matches **26,090 independent requests**. Commands and verdicts:
+  `build/nim-tests/sixth/corpora.json`.
+- All **235 Python harness tests** pass with the existing parked-policy skip. All **23 setup/CI
+  safeguards** pass; protocol provenance retains its existing draft-text skip.
+- All **864 Nim files** pass formatting. All twenty-one individual cumulative invocations pass,
+  all 59 suite source paths resolve, and the relocated private body is unchanged apart from its
+  include path. Records and logs: `build/nim-tests/sixth/`.
+
+Current migration totals: **21/59 ordinary file suites migrated, 38 remaining**. Earlier counts
+remain historical records above. These are focused local checks, not a fresh full QUIC/crypto
+lifecycle run or Linux CI result. Implemented M1 scope and protocol behavior remain unchanged.

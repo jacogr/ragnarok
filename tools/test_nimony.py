@@ -924,13 +924,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'c2' and row['passed']:
-                # Operand owners survive union/source retirement and release every retained/error snapshot at scope exit.
-                release = re.search(r'C2_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy observes this warmed workload, not RSS or general leak freedom.
-                    report['c2_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_statistics_private' and row['passed']:
             # Independent epoch, core and service copies retire with all retained/replaced owner handles.
             release = re.search(r'STATISTICS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

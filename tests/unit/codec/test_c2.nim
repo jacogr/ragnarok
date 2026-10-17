@@ -1,6 +1,7 @@
 ## Focused C.2 lifetime, resource, alias and selected-alternative regressions.
 import std/[assertions, syncio]
-import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
+import ../../support/arc_evidence
+import ../../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
 
 # Complete success is required before reading application fields, retained owners or progress.
 proc checked[T](parsed: RecordResult[T]): T =
@@ -164,5 +165,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: releaseCycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "C2_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve numeric observations outside the platform-independent success marker.
+recordArcRelease("c2", 1000, beforeRelease, afterRelease)
+echo "C2_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony C.2: retained owners, fixed copies, strict policy, source independence and aliases passed"
