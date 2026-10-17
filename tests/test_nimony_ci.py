@@ -15,6 +15,7 @@ from setup_ci_linux import download, extract
 from setup_nimony_ci_linux import verify_identity, verify_version
 from summarize_nimony_ci import summarize
 import audit_nimony_modules as modules
+import test_bandersnatch as bandersnatch
 
 
 # Build tiny inert tar fixtures; no test executes a downloaded or fabricated compiler.
@@ -43,6 +44,26 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('tools/test_nimony.py --compiler', text)
         self.assertIn('tools/audit_nimony_modules.py --compiler', text)
         self.assertNotIn('python3 tools/setup_ci_linux.py --destination', text)
+
+    # The shared native builder must work before any historical driver has created its output directory.
+    def test_bandersnatch_clean_build_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)/'build/bandersnatch'
+            features = 'secret-split\n'
+            outputs = ['rustc '+bandersnatch.PINS['rust']+' fixture',
+                       'cargo '+bandersnatch.PINS['rust']+' fixture', features]
+            with patch.object(bandersnatch, 'BUILD', folder), patch.object(
+                    bandersnatch.subprocess, 'check_output', side_effect=outputs), patch.object(
+                    bandersnatch, 'run') as run:
+                library = bandersnatch.build_native(False)
+                # Reusing the same directory must also succeed, without fetching dependencies.
+                with patch.object(bandersnatch.subprocess, 'check_output', side_effect=outputs):
+                    self.assertEqual(bandersnatch.build_native(False), library)
+            self.assertTrue((folder/'build.log').is_file())
+            self.assertEqual((folder/'cargo-features.log').read_text(), features)
+            self.assertEqual(library.parent, folder/'target/release')
+            self.assertEqual([call.args[0][1] for call in run.call_args_list],
+                             ['fmt', 'test', 'build']*2)
 
     # A stale/corrupt retained download must fail without trusting its filename or using the network.
     def test_cached_checksum_mismatch(self):

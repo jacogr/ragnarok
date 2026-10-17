@@ -75,6 +75,8 @@ def official_sources(fetch):
 
 # Build/test the reviewed locked Cargo closure independently of a language-driver compiler.
 def build_native(fetch):
+    # Every caller, including the Nimony runner on a clean checkout, needs the native log/target directory.
+    BUILD.mkdir(parents=True, exist_ok=True)
     assert subprocess.check_output(['rustc','--version'],text=True).startswith('rustc '+PINS['rust']+' ')
     assert subprocess.check_output(['cargo','--version'],text=True).startswith('cargo '+PINS['rust']+' ')
     manifest = ROOT / 'native/bandersnatch/Cargo.toml'
