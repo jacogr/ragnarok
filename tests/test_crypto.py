@@ -35,7 +35,8 @@ def build_native(paths):
     bssl, xkcp = paths['boringssl'], paths['xkcp']
     native = ROOT / 'build/native/boringssl'
     config = BUILD / 'config'
-    config.mkdir(exist_ok=True)
+    # Fresh production builds may not have run the test harness that creates BUILD.
+    config.mkdir(parents=True, exist_ok=True)
     (config / 'config.h').write_text('#define XKCP_has_KeccakP1600 1\n')
     include = [config, bssl / 'include', xkcp / 'lib/common', xkcp / 'lib/high/Keccak',
                xkcp / 'lib/low/KeccakP-1600/plain-64bits', xkcp / 'lib/low/KeccakP-1600/plain-64bits/SnP',
