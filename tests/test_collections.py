@@ -15,7 +15,7 @@ def main():
     commands=[]
     # Public lifetime tests, private typed-storage aliases and independent field adapters share checked ARC/Clang LTO.
     for source,name in (('test_collections','selftest'),('test_collections_private','private'),('collections_driver','driver')):
-        command=nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache');commands.append(command)
+        command=nim_command(ROOT/('tests/unit/codec' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache');commands.append(command)
         with (folder/f'{name}-build.log').open('w') as log:
             subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True)

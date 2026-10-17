@@ -1,6 +1,7 @@
 ## Focused lifetime, immutable-copy, atomicity, alias and runtime result-guard tests.
+import ../../support/arc_evidence
 import std/[assertions, syncio]
-import ../../src/codec/bitstrings
+import ../../../src/codec/bitstrings
 
 # Only a selected complete success can supply native metadata, owners or written extents.
 proc checked[T](parsed: BitResult[T]): T =
@@ -110,5 +111,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: releaseCycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "BITS_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve numeric observations outside the platform-independent success marker.
+recordArcRelease("bits", 1000, beforeRelease, afterRelease)
+echo "BITS_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony bits: retained ownership, atomicity, aliases and copied metadata passed"

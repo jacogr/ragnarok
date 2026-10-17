@@ -924,20 +924,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'bits' and row['passed']:
-                # Replaced handles, escaped sources and empty/nonempty captures release their final ARC references.
-                release = re.search(r'BITS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
-                    report['bits_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'collections' and row['passed']:
-                # Replaced typed sets/dictionaries and zero-width domains release their final ARC references.
-                release = re.search(r'COLLECTION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
-                    report['collection_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
             if name == 'c2' and row['passed']:
                 # Operand owners survive union/source retirement and release every retained/error snapshot at scope exit.
                 release = re.search(r'C2_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

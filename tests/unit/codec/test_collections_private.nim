@@ -1,6 +1,6 @@
 ## Project-only white-box alias checks; external compile probes separately enforce private snapshot storage.
 import std/[assertions, syncio]
-include ../../src/codec/collections
+include ../../../src/codec/collections
 
 # Private fixture storage setup requires a completely validated owner.
 proc checked[T](parsed: CollectionResult[T]): T =

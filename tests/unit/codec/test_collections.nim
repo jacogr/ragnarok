@@ -1,6 +1,7 @@
 ## Focused collection lifetime, copy independence, strict policy, zero-width and source alias regressions.
+import ../../support/arc_evidence
 import std/[assertions, syncio]
-import ../../src/codec/[collections, natural, fixed_unsigned, bounded]
+import ../../../src/codec/[collections, natural, fixed_unsigned, bounded]
 
 # Select complete success before reading metadata, scalars or retained handles.
 proc checked[T](parsed: CollectionResult[T]): T =
@@ -140,5 +141,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: releaseCycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "COLLECTION_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve numeric observations outside the platform-independent success marker.
+recordArcRelease("collections", 1000, beforeRelease, afterRelease)
+echo "COLLECTION_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony collections: retained value snapshots, strict policy, aliases and checked scalar writes passed"

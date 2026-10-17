@@ -1,0 +1,2 @@
+COLLECTION_ARC_RELEASE cycles=1000 unchanged
+Nimony collections: retained value snapshots, strict policy, aliases and checked scalar writes passed

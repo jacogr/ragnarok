@@ -1,6 +1,6 @@
 ## White-box tests use only our own module to reach private-wire aliases; external probes enforce privacy.
 import std/[assertions, syncio]
-include ../../src/codec/bitstrings
+include ../../../src/codec/bitstrings
 
 # Only successfully validated snapshots authorize private backing-allocation fixture setup.
 proc checked[T](parsed: BitResult[T]): T =

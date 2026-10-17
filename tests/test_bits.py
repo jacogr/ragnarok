@@ -16,7 +16,7 @@ def main():
     builds = []
     # Public tests, private-wire probes and the batch adapter all retain the selected checked LTO configuration.
     for source, name in (('test_bits', 'selftest'), ('test_bits_private', 'private'), ('bits_driver', 'driver')):
-        command = nim_command(ROOT/f'tests/native/{source}.nim', folder/name, folder/f'{name}-cache')
+        command = nim_command(ROOT/('tests/unit/codec' if source.startswith('test_') else 'tests/native')/(source+'.nim'), folder/name, folder/f'{name}-cache')
         builds.append(command)
         with (folder/f'{name}-build.log').open('w') as log:
             subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
