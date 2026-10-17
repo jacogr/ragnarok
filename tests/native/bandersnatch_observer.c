@@ -2,11 +2,12 @@
 #include "bridge.h"
 
 static int key_new_calls, key_free_calls, setup_new_calls, setup_free_calls;
-static int live_keys, live_setups, fail_flags;
+static int live_keys, live_setups, fail_flags, verify_calls;
 /* Reset only between scopes after every real allocation has been released; live counters cannot be reset away. */
 void bo_reset(int flags) {
     key_new_calls = key_free_calls = setup_new_calls = setup_free_calls = 0;
     fail_flags = flags;
+    verify_calls = 0;
 }
 /* Read counters by value without exposing native addresses or inspecting secret/freed storage. */
 int bo_key_news(void) { return key_new_calls; }
@@ -52,4 +53,13 @@ uint32_t bo_commit(const void *handle, const uint8_t *keys, size_t length, uint8
     ++commit_calls;
     if (fail_flags & 4) return 5;
     return bs_commit(handle, keys, length, out);
+}
+
+/* Observe/refuse proof verification without replacing any production proof or successful output. */
+int bo_verifies(void) { return verify_calls; }
+uint32_t bo_ring_verify(const void *handle, const uint8_t *root, const uint8_t *proof, size_t proof_len,
+                       const uint8_t *input, size_t input_len, const uint8_t *ad, size_t ad_len, uint8_t *out) {
+    ++verify_calls;
+    if (fail_flags & 8) return 5;
+    return bs_ring_verify(handle, root, proof, proof_len, input, input_len, ad, ad_len, out);
 }
