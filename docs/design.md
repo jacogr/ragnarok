@@ -38,6 +38,10 @@ and atomically publishes C(4)/C(8)/C(9), preserving schedules and accumulators.
 [The contract](../spec/validator-rotation.md) defines pre-time-advancement ordering; complete Safrole
 ticket/schedule/marker execution remains open.
 
+`src/state/ticket_admission.nim` verifies Safrole RingVRF tickets, checks eligibility/order/
+disjointness and selects the bounded posterior accumulator. [Its first-slice contract](../spec/ticket-admission.md)
+returns an immutable C(4) candidate; store publication, schedules and markers remain separate.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
