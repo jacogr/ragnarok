@@ -134,13 +134,12 @@ A scoped 1,000-cycle empty-admission workload requires identical live Nim alloca
 its fixture/store allocations remain retained throughout. Native setup live counts also return
 to zero after calls. These are workload-specific lifecycle checks, not a general memory audit.
 Two additional compiler privacy checks and two isolated runtime extraction probes protect the
-publication result. Runtime assertion probes remain in the existing unit group for this PR;
-moving them into an independent CI job is deferred to the next testing PR.
+publication result. Runtime assertion probes run in the independent `check-failures` CI group.
 
 ## Next bounded work
 
-Ticket admission and its C(4) adapter are complete within this documented scope. Next: Safrole
-sealer schedule selection (ticket outside-in permutation and fallback generation), followed by
-header epoch/winner marker validation. Seal authentication and complete Safrole/block execution
-remain separate increments. Keep the parent accumulator available for those schedule/marker rules
-rather than using the newly admitted accumulator as every stage's input.
+Ticket admission and its C(4) adapter are complete within this documented scope. The next
+[schedule-selection core](sealer-schedule.md) is implemented; atomic working-store publication
+is its follow-up. Header epoch/winner marker validation follows separately. Seal authentication
+and complete Safrole/block execution remain later increments. Retain the parent accumulator
+through all stages rather than using newly admitted tickets for schedule/marker selection.

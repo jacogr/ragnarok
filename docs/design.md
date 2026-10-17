@@ -41,7 +41,10 @@ ticket/schedule/marker execution remains open.
 `src/state/ticket_admission.nim` verifies Safrole RingVRF tickets, checks eligibility/order/
 disjointness and selects the bounded posterior accumulator. [Its first-slice contract](../spec/ticket-admission.md)
 returns an immutable C(4) candidate. `src/state/ticket_state.nim` atomically publishes it after
-checking staged entropy/time inputs; schedules, markers and complete block execution remain open.
+checking staged entropy/time inputs. `src/state/sealer_schedule.nim` selects the current schedule
+from separate parent/staged C(4), posterior active keys and entropy, covering outside-in tickets
+and fallback generation. [The schedule contract](../spec/sealer-schedule.md) bounds this candidate-only
+slice; atomic publication, header markers and complete block execution remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
