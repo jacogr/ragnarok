@@ -2,7 +2,7 @@
 
 Ragnarök's bounded proof peer can register with a JAM Tart collector and report its current
 authenticated peer count approximately every two seconds, plus outgoing connection attempts
-and their authentication outcomes. Telemetry is disabled by default.
+and their authentication outcomes and observed closures. Telemetry is disabled by default.
 This is a JIP-3 version-1 subset, not a claim of full telemetry or validator functionality.
 
 ## Run
@@ -51,14 +51,21 @@ it does not validate genesis consensus rules or recompute `genesis_state`.
   Native successful-handshake evidence determines success independently of application exchanges.
   A pending attempt settles on timeout, synchronous failure or early exit; failure reasons are
   empty when the native transport does not expose a reliable diagnosis.
+- Event 27: an authenticated outgoing connection closed, identified by its pinned remote public
+  key. The single-peer dialer requires both a successful native handshake and an observed native
+  close; a failed handshake never produces this event. It is emitted once after final processing,
+  before transport destruction. The terminator is absent and the reason empty because current
+  counters do not establish who initiated closure or why.
 - Event 0: dropped observations, with first/last timestamps and the exact number of omitted
   events when the fixed send buffer cannot accept them.
 
-Incoming connection events (20–23), disconnections (27), best/finalized blocks, sync, authoring,
+Incoming connection events (20–23), incoming-peer disconnections, best/finalized blocks, sync, authoring,
 execution, service, ticket and work-package events remain unimplemented. The current acceptor
 callback follows authentication; it cannot truthfully supply JIP-3's pre-handshake event 21.
-A future incoming/disconnection increment needs native lifecycle observations with peer identity,
-address and attempt correlation. Mesh remains outside this integration.
+Outgoing disconnections are limited to closes observed while the transport is alive, including
+graceful closes and idle expiry. Destroying an otherwise live endpoint does not fabricate a close
+observation. A future incoming lifecycle increment needs per-peer native observations with
+identity, address and attempt correlation. Mesh remains outside this integration.
 
 Frames use E4 little-endian payload length, then canonical JAM encoding. Strings use the existing
 natural codec. Status's core array has no length prefix. Event timestamps are microseconds from
@@ -120,6 +127,8 @@ frames, outgoing event layouts, correlation across dropped samples, and event-ID
 `make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
 `make check-e2e` includes a reset/reconnect collector and a real certificate-backed proof-peer
 exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome
-spanning a collector reset. Python is only the independent collector/test orchestrator;
+spanning a collector reset. It also checks exactly one disconnect after a graceful outgoing close,
+no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete
+application exchange. Python is only the independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.

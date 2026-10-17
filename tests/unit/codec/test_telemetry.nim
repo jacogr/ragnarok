@@ -155,10 +155,15 @@ assert blocked.buffer[dialFrame.len + 12] == 0
 assert number(blocked.buffer, dialFrame.len + 21, 8) == 1
 assert blocked.buffer[dialFrame.len + 29 + 12] == 26
 assert number(blocked.buffer, dialFrame.len + 29 + 13, 8) == 3
+let beforeClose = blocked.length
+blocked.peerDisconnected(4350, Timestamp(44), remoteIdentity)
+assert blocked.nextEvent == 7 and blocked.length == beforeClose + closed.len
+assert blocked.buffer[beforeClose + 12] == 27 and blocked.buffer[beforeClose + 13] == 123
+assert blocked.deadline == originalDeadline and blocked.offset == 5
 blocked.failed(4400)
-assert blocked.nextEvent == 6 # Failure retires bytes, never the process-wide correlation namespace.
+assert blocked.nextEvent == 7 # Failure retires bytes, never the process-wide correlation namespace.
 let offline = blocked.dialing(4500, Timestamp(45), remoteIdentity, remoteAddress, 9000)
-assert uint64(offline) == 6 and blocked.nextEvent == 7 and blocked.length == 0
+assert uint64(offline) == 7 and blocked.nextEvent == 8 and blocked.length == 0
 blocked.nextEvent = high(uint64)
 blocked.dialOutcome(4600, Timestamp(46), offline, false)
 assert not blocked.enabled and blocked.nextEvent == high(uint64) # Exhaustion disables rather than wraps.
