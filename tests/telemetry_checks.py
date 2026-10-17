@@ -24,9 +24,9 @@ def frame(connection):
 
 
 # Bind only loopback; closing this context releases the collector even after assertion failures.
-def listener():
-    server = socket.socket()
-    server.bind(('127.0.0.1', 0))
+def listener(ipv6=False):
+    server = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET)
+    server.bind(('::1' if ipv6 else '127.0.0.1', 0))
     server.listen(4)
     server.settimeout(12)
     return server
@@ -45,9 +45,10 @@ def stop(process):
 
 
 # A collector reset must cause a fresh registration, then new status frames, without killing the peer.
-def reconnect(binary):
-    with listener() as server:
-        endpoint = f'127.0.0.1:{server.getsockname()[1]}'
+def reconnect(binary, ipv6=False):
+    with listener(ipv6) as server:
+        host = '[::1]' if ipv6 else '127.0.0.1'
+        endpoint = f'{host}:{server.getsockname()[1]}'
         process = subprocess.Popen([str(binary), endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             first, _ = server.accept()
@@ -80,7 +81,7 @@ def reconnect(binary):
 
 
 # Start a real proof peer, observe its local identity and empty status, then complete normal CE traffic.
-def peer_registration(binary, certificates, chain, folder):
+def peer_registration(binary, certificates, chain, folder, ipv6=False):
     folder.mkdir(parents=True, exist_ok=True)
     assert hashlib.sha256(chain.read_bytes()).hexdigest() == "c0e0dab1c242becf8ec2aa06916c74a3dc84ff9aca1c08a5df217a4d6bc4b1c3"
     spec = json.loads(chain.read_text())
@@ -89,8 +90,9 @@ def peer_registration(binary, certificates, chain, folder):
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
     alpn = 'jamnp-s/1/' + genesis.hex()[:8]
-    with listener() as server:
-        endpoint = f'127.0.0.1:{server.getsockname()[1]}'
+    with listener(ipv6) as server:
+        host = '[::1]' if ipv6 else '127.0.0.1'
+        endpoint = f'{host}:{server.getsockname()[1]}'
         args = [str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
                 str(certificates/'a.key.pem'), str(certificates/'b.pub'), alpn, '7000',
                 '--chain', str(chain), '--telemetry', endpoint]

@@ -7,9 +7,10 @@ This is a JIP-3 version-1 subset, not a claim of full telemetry or validator fun
 
 ## Run
 
-Append `--telemetry HOST:PORT` to an existing `server` or `client` invocation. This increment
-accepts numeric IPv4 collector addresses and `localhost`; DNS names and IPv6 collector addresses
-remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
+Append `--telemetry HOST:PORT` to an existing `server` or `client` invocation. Collector endpoints
+accept numeric IPv4, `localhost` (IPv4 loopback), and bracketed IPv6 literals such as
+`--telemetry '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
+unbracketed IPv6 endpoints remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
 matching the existing peer mode and actual bound UDP port.
 
 Pass `--chain PATH` with an explicit JIP-4 JSON chain file. Both options are required together
@@ -152,7 +153,7 @@ on both IPv4 and IPv6, then completes one, closes it, reuses its slot, and check
 and overflow
 losses during destruction.
 `make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
-`make check-e2e` includes a reset/reconnect collector and a real certificate-backed proof-peer
+`make check-e2e` includes IPv4 and IPv6 reset/reconnect collectors and a real certificate-backed proof-peer
 exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome
 spanning a collector reset. It also checks exactly one disconnect after a graceful outgoing close,
 no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete

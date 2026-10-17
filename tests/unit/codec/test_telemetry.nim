@@ -84,10 +84,21 @@ assert number(failedIncoming, 13, 8) == 9 and failedIncoming[21] == 0
 
 # Strict numeric endpoint parsing fails atomically and never creates descriptors.
 for endpoint in ["", "localhost", "localhost:0", "localhost:65536", "127.0.0.1:-1",
-    "127.0.0.1: 1", "127.0.0.1:1:2", "127.0.0.999:9000", "127.0.0.1\0x:9000"]:
+    "127.0.0.1: 1", "127.0.0.1:1:2", "::1:9000", "[::1]", "[::1]:", "[]:1", "[::1]x:1",
+    "[::1]:0", "[::1]:65536", "[::1]:-1", "[::1]: 1", "[::1]:1:2",
+    "[127.0.0.1]:1", "[localhost]:1", "[fe80::1%lo0]:1", "[:::1]:1",
+    "[::1]extra:1", "[::1\0x]:1", "[12345::1]:1", "127.0.0.999:9000", "127.0.0.1\0x:9000"]:
   var invalid = default(Client)
-  assert not invalid.configure(endpoint, parsed.value)
+  assert not invalid.configure(endpoint, parsed.value), endpoint
   assert not invalid.enabled and not invalid.opened
+# Accepted literal forms select IPv6 and preserve the port without opening a descriptor.
+for endpoint in ["[::1]:1", "[2001:db8::abcd]:65535", "[::ffff:192.0.2.1]:9000",
+    "[ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255]:65535"]:
+  var literal = default(Client)
+  assert literal.configure(endpoint, parsed.value), endpoint
+  assert literal.ipv6 and not literal.opened
+  assert literal.address6.sin6_family == TSa_Family(ord(nativesocket.AF_INET6))
+  literal.close()
 var valid = default(Client)
 assert valid.configure("localhost:9000", parsed.value)
 assert not valid.configure("127.0.0.1:9001", parsed.value)
