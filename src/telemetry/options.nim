@@ -89,12 +89,35 @@ proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool): 
   if not parsed.ok: return false # Failed chain metadata cannot produce a registration.
   configure(client, optionValue("--telemetry"), parsed.value)
 
+# Convert wall time to the wire epoch; zero denotes an unavailable/pre-epoch local clock.
+proc eventTimestamp(): Timestamp =
+  let wall = getTime()
+  let seconds = wall.toUnix - 1_735_732_800'i64
+  if seconds < 0 or seconds > int64(high(uint64) div 1_000_000) - 1:
+    return Timestamp(0) # Do not narrow or wrap an unrepresentable local timestamp.
+  Timestamp(uint64(seconds) * 1_000_000 + uint64(wall.nanosecond div 1000))
+
 # Translate wall time for wire timestamps and monotonic time for retry/status deadlines.
 proc observe*(client: var Client, peers: uint32) =
   if not requested(): return # Default runs do not even query telemetry clocks.
-  let wall = getTime()
-  let seconds = wall.toUnix - 1_735_732_800'i64
-  # A clock before the Common Era cannot be represented; skip telemetry until corrected.
-  if seconds < 0 or seconds > int64(high(uint64) div 1_000_000) - 1: return
-  let timestamp = Timestamp(uint64(seconds) * 1_000_000 + uint64(wall.nanosecond div 1000))
-  client.tick(getMonoTime().ticks div 1_000_000, timestamp, peers)
+  client.tick(getMonoTime().ticks div 1_000_000, eventTimestamp(), peers)
+
+# The bounded proof dialer knows its pinned public identity and exact loopback destination before dialing.
+proc startDial*(client: var Client, identity: openArray[byte], port: uint16, ipv6: bool): EventId =
+  if not requested() or identity.len != 32: return EventId(0) # No instrumentation for disabled/invalid peers.
+  var key = default(array[32, byte])
+  for i in 0..<32: key[i] = identity[i] # Copy caller storage; no peer owner is retained.
+  var address = default(array[16, byte])
+  if ipv6:
+    address[15] = 1 # The actual IPv6 proof transport dials ::1.
+  else:
+    address[10] = 255 # IPv4 destinations use their JIP-3 mapped IPv6 representation.
+    address[11] = 255
+    address[12] = 127
+    address[15] = 1
+  client.dialing(getMonoTime().ticks div 1_000_000, eventTimestamp(), key, address, port)
+
+# Settle an outgoing attempt exactly once; callers use native authentication evidence, not application success.
+proc finishDial*(client: var Client, attempt: EventId, authenticated: bool) =
+  if not requested(): return # Disabled telemetry does not query clocks or encode frames.
+  client.dialOutcome(getMonoTime().ticks div 1_000_000, eventTimestamp(), attempt, authenticated)

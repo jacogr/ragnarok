@@ -54,6 +54,8 @@ def reconnect(binary):
                 first.settimeout(5)
                 hello = frame(first)
                 assert hello[0] == 1 and hello[25:27] == b'\x02\0'
+                attempt = frame(first)
+                assert attempt[8] == 24 # The driver emits attempt ID zero before its first status.
                 status = frame(first)
                 assert len(status) == 43 and status[8] == 10
                 assert struct.unpack_from('<I', status, 9)[0] == 7
@@ -63,6 +65,10 @@ def reconnect(binary):
             with second:
                 second.settimeout(5)
                 assert frame(second) == hello
+                skipped = frame(second)
+                assert skipped[8] == 0 and int.from_bytes(skipped[17:25], 'little') >= 2
+                outcome = frame(second)
+                assert outcome[8] == 26 and int.from_bytes(outcome[9:17], 'little') == 0
                 assert frame(second)[8] == 10
             stdout, stderr = process.communicate(timeout=5)
             assert process.returncode == 0, (stdout, stderr)
@@ -106,6 +112,16 @@ def peer_registration(binary, certificates, chain, folder):
                     str(certificates/'a.pub'), alpn, '3000', '--telemetry', endpoint,
                     '--chain', str(chain)], capture_output=True, timeout=6)
                 assert client.returncode == 0, (client.stdout, client.stderr)
+                outgoing, _ = server.accept()
+                with outgoing:
+                    outgoing.settimeout(5)
+                    assert frame(outgoing)[0] == 1
+                    dialing = frame(outgoing)
+                    assert dialing[8] == 24 and dialing[9:41] == (certificates/'a.pub').read_bytes()
+                    assert dialing[41:57] == bytes.fromhex('00000000000000000000ffff7f000001')
+                    assert int.from_bytes(dialing[57:59], 'little') == port
+                    connected = frame(outgoing)
+                    assert connected[8] == 26 and int.from_bytes(connected[9:17], 'little') == 0
             stdout, stderr = process.communicate(timeout=5)
             (folder/'peer.log').write_bytes(stdout + stderr)
             assert process.returncode == 0 and b'EXCHANGE_OK 8' in stdout, (stdout, stderr)
@@ -113,3 +129,31 @@ def peer_registration(binary, certificates, chain, folder):
             # A failed handshake must not leave the UDP listener or TCP exporter behind.
             stop(process)
     return dict(passed=True, genesis=genesis.hex(), identity='local certificate', peers_before_connect=0)
+
+
+# An unresponsive destination settles as a failed attempt, with no invented TLS reason or success event.
+def dial_failure(binary, certificates, chain, folder):
+    folder.mkdir(parents=True, exist_ok=True)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as silent:
+        silent.bind(('127.0.0.1', 0))
+        with listener() as collector:
+            endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
+            process = subprocess.Popen([str(binary), 'client', str(silent.getsockname()[1]),
+                str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'), str(certificates/'a.pub'),
+                'jamnp-s/1/245becfe', '500', '--telemetry', endpoint, '--chain', str(chain)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                connection, _ = collector.accept()
+                with connection:
+                    connection.settimeout(5)
+                    assert frame(connection)[0] == 1
+                    assert frame(connection)[8] == 24
+                    failed = frame(connection)
+                    assert failed[8] == 25 and failed[9:17] == bytes(8) and failed[17:] == b'\0'
+                stdout, stderr = process.communicate(timeout=5)
+                (folder/'failed-dial.log').write_bytes(stdout + stderr)
+                assert process.returncode != 0 and b'AUTH_OK' not in stdout
+            finally:
+                # Always release the bounded dialer, even on failed framing assertions.
+                stop(process)
+    return dict(passed=True, attempt=0, outcome='failed', reason='unknown')

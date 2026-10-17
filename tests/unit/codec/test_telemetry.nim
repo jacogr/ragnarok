@@ -48,6 +48,22 @@ assert loss.len == 29 and number(loss, 0, 4) == 25
 assert number(loss, 4, 8) == 11 and loss[12] == 0
 assert number(loss, 13, 8) == 19 and number(loss, 21, 8) == 3
 
+# Outgoing event layouts use fixed identity/address fields and little-endian correlation IDs.
+var remoteIdentity = default(array[32, byte])
+var remoteAddress = default(array[16, byte])
+remoteIdentity[0] = 123
+remoteAddress[15] = 1
+let dialFrame = connectingOut(Timestamp(17), remoteIdentity, remoteAddress, 9000)
+assert dialFrame.len == 63 and number(dialFrame, 0, 4) == 59
+assert number(dialFrame, 4, 8) == 17 and dialFrame[12] == 24
+assert dialFrame[13] == 123 and dialFrame[60] == 1 and number(dialFrame, 61, 2) == 9000
+let established = connectedOut(Timestamp(19), EventId(0x0102030405060708'u64))
+assert established.len == 21 and number(established, 0, 4) == 17 and established[12] == 26
+assert number(established, 13, 8) == 0x0102030405060708'u64
+let refused = connectOutFailed(Timestamp(20), EventId(7))
+assert refused.len == 22 and number(refused, 0, 4) == 18 and refused[12] == 25
+assert number(refused, 13, 8) == 7 and refused[21] == 0 # Empty reason is canonical.
+
 # Strict numeric endpoint parsing fails atomically and never creates descriptors.
 for endpoint in ["", "localhost", "localhost:0", "localhost:65536", "127.0.0.1:-1",
     "127.0.0.1: 1", "127.0.0.1:1:2", "127.0.0.999:9000", "127.0.0.1\0x:9000"]:
@@ -117,6 +133,28 @@ let resumed = receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0)
 assert resumed == 29 + sample.len
 assert number(scratch, 4, 8) == 10 and number(scratch, 13, 8) == 20
 assert number(scratch, 21, 8) == 2 and scratch[29 + 12] == 10
+# Correlation includes status and lost observations; append never overwrites a partial frame or deadline.
+assert blocked.nextEvent == 3
+let attempt = blocked.dialing(4100, Timestamp(41), remoteIdentity, remoteAddress, 9000)
+assert uint64(attempt) == 3 and blocked.length == dialFrame.len
+let originalDeadline = blocked.deadline
+blocked.offset = 5
+let skipped = blocked.event(sample, 4200, Timestamp(42), false)
+assert uint64(skipped) == 4 and blocked.lost == 1
+blocked.dialOutcome(4300, Timestamp(43), attempt, true)
+assert blocked.nextEvent == 6 and blocked.lost == 0 and blocked.offset == 5
+assert blocked.deadline == originalDeadline
+assert blocked.buffer[dialFrame.len + 12] == 0
+assert number(blocked.buffer, dialFrame.len + 21, 8) == 1
+assert blocked.buffer[dialFrame.len + 29 + 12] == 26
+assert number(blocked.buffer, dialFrame.len + 29 + 13, 8) == 3
+blocked.failed(4400)
+assert blocked.nextEvent == 6 # Failure retires bytes, never the process-wide correlation namespace.
+let offline = blocked.dialing(4500, Timestamp(45), remoteIdentity, remoteAddress, 9000)
+assert uint64(offline) == 6 and blocked.nextEvent == 7 and blocked.length == 0
+blocked.nextEvent = high(uint64)
+blocked.dialOutcome(4600, Timestamp(46), offline, false)
+assert not blocked.enabled and blocked.nextEvent == high(uint64) # Exhaustion disables rather than wraps.
 blocked.close()
 discard posix.close(descriptors[1])
 echo "telemetry ok"

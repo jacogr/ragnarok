@@ -499,8 +499,23 @@ proc runPeer*(): bool {.raises.} =
   if not telemetry.setup(paramStr(3), localPort(peer.transport), load):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
-  if server: progress "READY" # Announce only after listener binding and native setup.
-  elif not connectTransport(peer.transport, uint16(port)): return false # Dial setup failed before authentication.
+  var telemetryAttempt = EventId(0)
+  var telemetryPending = false
+  # Settle a still-pending dial on timeout, synchronous failure, cancellation or an early return.
+  defer:
+    if telemetryPending:
+      telemetry.finishDial(telemetryAttempt, peerMetric(peer.transport, 4) > 0)
+    let finalPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (
+        if transportStatus(peer.transport) == 1: 1'u32 else: 0'u32)
+    telemetry.observe(finalPeers) # One bounded best-effort send; shutdown never waits for the collector.
+  if server:
+    progress "READY" # Announce only after listener binding and native setup.
+  else:
+    telemetry.observe(0) # Queue registration before any lifecycle frame on the new collector stream.
+    telemetryAttempt = telemetry.startDial(peer.expected, uint16(port), load)
+    telemetryPending = true
+    if not connectTransport(peer.transport, uint16(port)): return false # Defer records this failed attempt.
+
   let started = getMonoTime()
   let stopFile = getEnv("RAGNAROK_SERVICE_STOP")
   let cancelFile = getEnv("RAGNAROK_OFFLOAD_CANCEL")
@@ -549,6 +564,10 @@ proc runPeer*(): bool {.raises.} =
             live # Explicit test shutdown also exercises pending jobs.
         break
     let status = transportStatus(peer.transport)
+    if telemetryPending and peerMetric(peer.transport, 4) > 0:
+      # Lifetime handshake evidence survives authentication and close occurring in the same native poll.
+      telemetry.finishDial(telemetryAttempt, true)
+      telemetryPending = false
     # Reusable IPv6 engines become idle after close; this CLI attempt cannot reconnect or finish without a live peer.
     if not server and peerMetric(peer.transport, 2) > 0 and peerMetric(peer.transport, 0) == 0:
       progress "CONNECTION_CLOSED"
