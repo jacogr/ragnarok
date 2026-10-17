@@ -1,0 +1,1 @@
+PASS entropy/time failures: fixed-state validation, atomic rollback, backend recovery and ARC release

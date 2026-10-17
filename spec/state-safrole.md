@@ -130,3 +130,9 @@ errors. After warmup, 1,000 scoped ownership/fixed-value/error cycles return liv
 to baseline. This is workload-specific ARC evidence, not general leak freedom or recoverable
 allocation-failure support. Full M1, Safrole execution, broader crypto and Linux parity remain
 separate gates; no dependency/compiler source patch or alternate wire representation is used.
+
+## Execution progression
+
+The fixed codecs remain separate from the [entropy/time execution slice](entropy-transition.md),
+which implements the accumulator/history equations and atomic C(6)/C(11) updates. It does not
+rotate validator sets, authenticate VRFs or execute the complete Safrole state transition.
