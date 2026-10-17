@@ -1,5 +1,5 @@
 import std/[assertions, syncio]
-import ../../src/codec/[bounded, natural, fixed_unsigned]
+import ../../../src/codec/[bounded, natural, fixed_unsigned]
 
 # Check byte-string boundaries, exact borrowed spans, every truncation and failure atomicity.
 proc checkBlob(size: int) =

@@ -33,7 +33,7 @@ def frame(data, width, limit, reference_decode):
 def verify_bounded(build, nim_flags, run, reference_encode, reference_decode):
     run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/bounded.nim'])
     run(['nim', 'c', *nim_flags, f'--out:{build / "nim-bounded-tests"}', '-r',
-         ROOT / 'tests/native/test_bounded.nim'])
+         ROOT / 'tests/unit/codec/test_bounded.nim'])
     # New limit/value distinctions must fail for both compilers, in addition to existing primitive checks.
     for name in ('raw_byte_limit', 'wrong_limit_domain', 'raw_sequence_values'):
         commands = [['nim', 'check', '--mm:arc', ROOT / f'tests/native/compile_fail/{name}.nim']]

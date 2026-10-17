@@ -156,7 +156,7 @@ def official_fixed_cases():
 def verify_fixed(build, nim_flags):
     run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/fixed_unsigned.nim'])
     run(['nim', 'c', *nim_flags, f'--out:{build / "nim-fixed-tests"}', '-r',
-         ROOT / 'tests/native/test_fixed_unsigned.nim'])
+         ROOT / 'tests/unit/codec/test_fixed_unsigned.nim'])
     # Domain distinctions must reject raw values, raw widths and general naturals in Nim.
     for name in ('fixed_raw_value', 'fixed_raw_width', 'natural_as_fixed'):
         commands = [['nim', 'check', '--mm:arc', ROOT / f'tests/native/compile_fail/{name}.nim']]
@@ -287,7 +287,7 @@ def main():
         build = Path(temporary)
         nim_flags = ['--mm:arc', f'--nimcache:{build / "nimcache"}']
         run(['nim', 'check', '--mm:arc', ROOT / 'src/codec/natural.nim'])
-        run(['nim', 'c', *nim_flags, f'--out:{build / "nim-tests"}', '-r', ROOT / 'tests/native/test_natural.nim'])
+        run(['nim', 'c', *nim_flags, f'--out:{build / "nim-tests"}', '-r', ROOT / 'tests/unit/codec/test_natural.nim'])
         # Result misuse is rejected even when a caller omits its success check; verify debug and release field guards.
         for mode in ([], ['-d:release']):
             run(['nim', 'c', *nim_flags, *mode, f'--out:{build / "nim-result-tests"}', '-r', ROOT / 'tests/native/test_result_safety.nim'])

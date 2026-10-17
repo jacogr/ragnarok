@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import cache_directory
+from native_tests import UNIT_SUITES, unit_source, unit_command
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
@@ -768,7 +769,9 @@ def main():
     report['clang_version'] = command(['clang', '--version'], 'clang-version')
     report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
     sources = (list((ROOT/'src/codec').glob('*.nim'))
-               + [ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
+               + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
+               + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
+               + [ROOT/'tools/native_tests.py', ROOT/'tests/test_native_units_harness.py']
                + [ROOT/'tests/native/ownership_checks.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
                + list((ROOT/'tests').glob('guarantees_*.py'))
@@ -891,6 +894,13 @@ def main():
     composition_fixture.write_text('\n'.join(raw.hex() for raw in composition_chapters())+'\n')
     # Existing positive suites retain their exact expected bytes, atomic errors and deterministic fuzzing.
     for name in SUITES:
+        if name in UNIT_SUITES:
+            # Hastur owns compilation, execution and exact expected-output verdicts for migrated code tests.
+            checked = command(unit_command(compiler, name), name+'-hastur')
+            report['suites'].append(dict(name=name, runner='hastur', check=checked,
+                                        passed=checked['exit_code'] == 0))
+            announce(name+' (Hastur)', checked['exit_code'] == 0)
+            continue
         compiled, binary = build(compiler, ROOT/f'tests/native/test_{name}.nim', name,
                                  crypto_observer if name in ('quic_integration', 'guarantee_message', 'assurance_context', 'crypto_seeds', 'state_layout', 'state_trie_private', 'service_values_private', 'state_requests_private', 'state_composition_private')
                                  else crypto_library if name in ('state_trie', 'state_safrole', 'state_authorization', 'state_authorization_private', 'state_consensus', 'state_consensus_private', 'state_disputes', 'state_disputes_private', 'state_history', 'state_history_private', 'state_availability', 'state_availability_private', 'state_privileges', 'state_privileges_private', 'state_statistics', 'state_statistics_private', 'state_workqueues', 'state_workqueues_private', 'state_outputs', 'state_outputs_private', 'state_accounts', 'state_accounts_private', 'state_service_values', 'state_requests') else None,

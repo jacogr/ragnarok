@@ -82,6 +82,12 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   indentation and a 100-column target. Preserve explanatory comments through formatting.
 - Keep upstream code/vectors in pinned submodules. Initialize with `python3 tools/setup_submodules.py`.
   Do not overwrite upstream edits, advance gitlinks or change locked versions without an authorized upgrade.
+- Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
+  to `tests/unit/` through the pinned Hastur native runner (`tools/test.py --suite unit`). Preserve
+  independent Python references and process/tooling orchestration. This nightly has no
+  `std/unittest`; do not vendor Nim 2's library or invent a replacement DSL. Retain strict compiler-
+  failure/crash probes until native runner semantics prove equally strong; `.exitcode` alone does
+  not require failure in the current Hastur. See [the migration plan](docs/testing.md).
 - Add important negative compilation checks and malformed/truncated/overflow/fuzz cases for decoders.
   Retain official vectors and independent test-only references; no Python production protocol runtime.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
@@ -103,7 +109,8 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 
 ## Layout
 - `src/`: Nim modules grouped under `codec/`, `crypto/`, `bandersnatch/` and `quic/`.
-- `tests/`: independent Python references/runners; `native/` contains Nim fixtures and selftests.
+- `tests/unit/`: native Nim application tests; `tests/native/`: drivers, remaining selftests and
+  negative fixtures. `tests/` also retains independent Python references and orchestration.
 - `native/`: maintained C/Rust primitive and transport bridges.
 - `spec/`, `vectors/`, `vendor/`: protocol interpretation, project fixtures and pinned upstreams.
 - `tools/`: reproducible setup and formatting. `docs/`: current architecture and development guides.

@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import ROOT, installed, host_pins, verify_identity, verify_version
+from native_tests import unit_command
 
 
 # Keep CI's independent runtime/module jobs and the complete local run on one explicit command plan.
@@ -16,6 +17,9 @@ def plan(suite, compiler):
                common+['tests/test_spec.py'], common+['tools/test_nimony.py', '--compiler', str(compiler)],
                common+['-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*harness.py']]
     modules = [common+['tools/audit_nimony_modules.py', '--compiler', str(compiler)]]
+    if suite == 'unit':
+        # Pure code suites use the compiler's own runner without building crypto/network dependencies.
+        return [unit_command(compiler)]
     if suite == 'runtime':
         # Runtime includes the independent Python orchestration/reference safeguards after native fixture preparation.
         return runtime
@@ -50,7 +54,7 @@ def environment(compiler=None):
 # Run every selected gate in order and preserve the first failed status instead of publishing partial success.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=('all', 'runtime', 'modules'), default='all')
+    parser.add_argument('--suite', choices=('all', 'runtime', 'modules', 'unit'), default='all')
     parser.add_argument('--compiler', type=Path)
     args = parser.parse_args()
     compiler, selected = environment(args.compiler)

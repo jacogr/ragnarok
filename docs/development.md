@@ -38,6 +38,11 @@ lifecycle and enabled proof-offload workloads. It then discovers every `test_*ha
 Cargo runs locked/offline after explicit provisioning. Failures stop the command. The parked
 request-namespace, draft-text and Ed25519 normative gates remain; tests cannot settle them.
 
+For the migrated code-only suites, `python3 tools/test.py --suite unit` invokes the pinned
+Hastur native runner without building crypto/network dependencies. The normal cumulative path
+runs those same suites through Hastur. See [native test migration](testing.md) for the current
+coverage, why `std/unittest` is unavailable on this nightly, and the next groups.
+
 CI splits the same plan into `--suite modules` and `--suite runtime` for independent verdicts.
 An explicit `--compiler` is intended for CI, whose installer also exports NIMPRETTY. Historical
 individual Python runners retain references, fixtures and native-build helpers used by the

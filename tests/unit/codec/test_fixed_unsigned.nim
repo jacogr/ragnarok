@@ -1,5 +1,5 @@
 import std/[assertions, syncio]
-import ../../src/codec/fixed_unsigned
+import ../../../src/codec/fixed_unsigned
 
 # Default primitive results preserve InvalidWidth; valid width-zero operations remain successes.
 let defaultEncoding = default(FixedEncodeResult)

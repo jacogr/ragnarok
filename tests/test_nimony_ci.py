@@ -98,7 +98,7 @@ class NimonyCISafeguards(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             compiler, formatter = folder/'compiler', folder/'formatter'
-            for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'lib/std/system.nim'):
+            for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'bin/hastur', 'lib/std/system.nim'):
                 # Inert fixture files exercise layout validation; no fabricated compiler is executed.
                 path = compiler/relative
                 path.parent.mkdir(parents=True, exist_ok=True)

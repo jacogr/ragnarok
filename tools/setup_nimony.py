@@ -21,7 +21,7 @@ def verify_identity(root, pins):
         if observed.get(key, '').strip() != value:
             raise ValueError('Unexpected Nimony archive identity: '+key)
     # These public tools and standard libraries must retain the official archive layout.
-    for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'lib/std/system.nim'):
+    for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'bin/hastur', 'lib/std/system.nim'):
         if not (root/relative).is_file():
             raise ValueError('Missing Nimony archive member: '+relative)
     return metadata
