@@ -171,10 +171,23 @@ blocked.peerDisconnected(4350, Timestamp(44), remoteIdentity)
 assert blocked.nextEvent == 7 and blocked.length == beforeClose + closed.len
 assert blocked.buffer[beforeClose + 12] == 27 and blocked.buffer[beforeClose + 13] == 123
 assert blocked.deadline == originalDeadline and blocked.offset == 5
+# Native tracking losses consume IDs and precede the next incoming frame without touching a partial prefix.
+let beforeIncoming = blocked.length
+blocked.omit(Timestamp(45))
+blocked.omit(Timestamp(46))
+let incomingId = blocked.accepting(4370, Timestamp(47), remoteAddress, 9000)
+assert uint64(incomingId) == 9 and blocked.buffer[beforeIncoming + 12] == 0
+assert number(blocked.buffer, beforeIncoming + 21, 8) == 2
+assert blocked.buffer[beforeIncoming + 29 + 12] == 21
+let beforeOutcome = blocked.length
+blocked.acceptOutcome(4380, Timestamp(48), incomingId, remoteIdentity, true)
+assert blocked.buffer[beforeOutcome + 12] == 23
+assert number(blocked.buffer, beforeOutcome + 13, 8) == 9
+assert blocked.nextEvent == 11 and blocked.deadline == originalDeadline and blocked.offset == 5
 blocked.failed(4400)
-assert blocked.nextEvent == 7 # Failure retires bytes, never the process-wide correlation namespace.
+assert blocked.nextEvent == 11 # Failure retires bytes, never the process-wide correlation namespace.
 let offline = blocked.dialing(4500, Timestamp(45), remoteIdentity, remoteAddress, 9000)
-assert uint64(offline) == 7 and blocked.nextEvent == 8 and blocked.length == 0
+assert uint64(offline) == 11 and blocked.nextEvent == 12 and blocked.length == 0
 blocked.nextEvent = high(uint64)
 blocked.dialOutcome(4600, Timestamp(46), offline, false)
 assert not blocked.enabled and blocked.nextEvent == high(uint64) # Exhaustion disables rather than wraps.

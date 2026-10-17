@@ -7,6 +7,13 @@ typedef struct rq_transport rq_transport;
 typedef int (*rq_verify_cb)(void *, const uint8_t *, size_t);
 typedef void (*rq_stream_cb)(void *, void *, int);
 typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, uint16_t);
+/* Optional TLS observations borrow address/DER only during the callback, before engine teardown ends. */
+enum { RQ_HANDSHAKE_SLOTS = 64, RQ_HANDSHAKE_STARTED = 0, RQ_HANDSHAKE_SUCCEEDED = 1,
+       RQ_HANDSHAKE_FAILED = 2, RQ_HANDSHAKE_DROPPED = 3 };
+typedef void (*rq_handshake_cb)(void *, unsigned, int, const uint8_t *, uint16_t,
+                               const uint8_t *, size_t);
+/* Enable once on an idle server; slot-count agreement protects the native-language fixed table. */
+int rq_observe_handshakes(rq_transport *, unsigned slots, rq_handshake_cb);
 /* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3..5 reserved for IPv6 proof profiles. Strings need only live during this call. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);

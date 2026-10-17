@@ -128,3 +128,42 @@ proc finishConnection*(client: var Client, identity: openArray[byte]) =
   var key = default(array[32, byte])
   for i in 0..<32: key[i] = identity[i] # No caller storage is retained by the bounded exporter.
   client.peerDisconnected(getMonoTime().ticks div 1_000_000, eventTimestamp(), key)
+
+# Fixed correlation storage belongs to the peer and outlives native SSL destruction callbacks.
+type IncomingAttempts* = object
+  active: array[IncomingHandshakeSlots, bool]
+  ids: array[IncomingHandshakeSlots, EventId]
+
+# Copy callback data immediately; only bounded frames are queued here, never socket operations.
+proc observeIncoming*(client: var Client, attempts: var IncomingAttempts, slot: cuint,
+    event: cint, address: ptr ConstByte, port: uint16, der: ptr ConstByte, length: csize_t) =
+  let stamp = eventTimestamp()
+  if event == HandshakeDropped or slot >= cuint(IncomingHandshakeSlots):
+    client.omit(stamp) # Overflow or missing primitive metadata cannot fabricate an attempt.
+    return
+  let index = int(slot)
+  let now = getMonoTime().ticks div 1_000_000
+  if event == HandshakeStarted:
+    if address == nil: # A missing address is not the all-zero endpoint.
+      client.omit(stamp)
+      return
+    var remote = default(array[16, byte])
+    let source = cast[ptr UncheckedArray[byte]](address)
+    for i in 0..<16: remote[i] = source[i] # Borrow ends before the callback returns.
+    attempts.ids[index] = client.accepting(now, stamp, remote, port)
+    attempts.active[index] = true
+  elif event == HandshakeSucceeded or event == HandshakeFailed:
+    if not attempts.active[index]: # A missing start cannot acquire another attempt's ID.
+      client.omit(stamp)
+      return
+    attempts.active[index] = false
+    var identity = default(array[32, byte])
+    if event == HandshakeSucceeded:
+      var fields {.noinit.}: CertFields
+      if der == nil or length == 0 or length > 8192 or
+          parseCert(cast[ptr byte](der), length, addr fields) != 1 or
+          fields.edKey != 1 or fields.keyLength != 32:
+        client.omit(stamp) # Authentication succeeded but unusable metadata cannot become a failure.
+        return
+      for i in 0..<32: identity[i] = fields.key[i] # Native extraction initializes these owned fields.
+    client.acceptOutcome(now, stamp, attempts.ids[index], identity, event == HandshakeSucceeded)
