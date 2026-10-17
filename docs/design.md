@@ -32,6 +32,10 @@ rotation on epoch crossing and atomic C(6)/C(11) publication. See
 [the transition contract](../spec/entropy-transition.md); VRF authentication and the rest of Safrole
 remain separate stages.
 
+`src/state/validators.nim` plans epoch roster rotation and complete offender-record nulling from
+immutable snapshots. [Its first-commit contract](../spec/validator-rotation.md) leaves ring-root
+recomputation and atomic state publication pending; it is not yet a completed Safrole rotation.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.

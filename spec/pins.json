@@ -204,7 +204,11 @@
       "stf/safrole/full/enact-epoch-change-with-no-tickets-3.json": "e755ebeeb4cec504193f55a70cfc1412329dd659d31139af7f445f0c41c7cb9d",
       "stf/safrole/full/enact-epoch-change-with-no-tickets-4.json": "f4b663eb58fcf3aef7b2f228c5b3a6072e237ff277f50385bd72baf78126ea43",
       "stf/safrole/full/skip-epochs-1.json": "dbdfb9b79d59900115016104c0088923872274f81f6edba9ad1ca186746a5fd3",
-      "stf/safrole/full/skip-epoch-tail-1.json": "2d73087d9631457f55bce6739a94e34d12e9376c404f9df2c370c6d906b97e7e"
+      "stf/safrole/full/skip-epoch-tail-1.json": "2d73087d9631457f55bce6739a94e34d12e9376c404f9df2c370c6d906b97e7e",
+      "stf/safrole/tiny/enact-epoch-change-with-padding-1.json": "725690011a2bb0ab6fbd25c434dffbe66bd218ca3803d1446b4cf2e9c66da35c",
+      "stf/safrole/full/enact-epoch-change-with-padding-1.json": "d22d579ef8c68de8c48cfa5c0281ab5e2e7664887de45a63530769a9e0ceb927",
+      "stf/safrole/full/enact-epoch-change-with-set-resize-1.json": "143944be868eb8d25a09af82e14f7bed5ee1d31908fa1e6c0cf0d82cdb7cbc4a",
+      "stf/safrole/full/enact-epoch-change-with-set-resize-2.json": "f459d6a2a9d64922910075c204f057dd4563872ce2890a8129f1189241417ee8"
     }
   },
   "toolchains": {

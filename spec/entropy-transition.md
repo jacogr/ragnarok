@@ -80,6 +80,6 @@ extraction. Three compiler probes reject payload access, retagging and stored en
 new VRF output. Run `make check-modules check-python check-unit check-guards`; fresh reports and
 source/ARC manifests live under `build/tests/`. Networking behavior is unchanged.
 
-Next suggested bounded Safrole slice: validator-set rotation and offender filtering at epoch
-boundaries. Ticket scheduling, ring commitments, seals/VRF authentication and marker validation
+The [validator-set rotation planner](validator-rotation.md) now begins the next Safrole slice;
+ring-root computation and coordinated publication remain pending in that PR. Ticket scheduling, ring commitments, seals/VRF authentication and marker validation
 remain subsequent work. Existing [M1 specification checkpoints](state-clarifications.md) are unchanged.
