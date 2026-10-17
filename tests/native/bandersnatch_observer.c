@@ -43,3 +43,13 @@ void bo_setup_free(void *handle) {
     if (handle) --live_setups;
     bs_setup_free(handle);
 }
+
+/* Count/refuse commitment at the maintained ABI boundary, before any backend output is published. */
+static int commit_calls;
+void bo_commit_reset(void) { commit_calls = 0; }
+int bo_commits(void) { return commit_calls; }
+uint32_t bo_commit(const void *handle, const uint8_t *keys, size_t length, uint8_t *out) {
+    ++commit_calls;
+    if (fail_flags & 4) return 5;
+    return bs_commit(handle, keys, length, out);
+}

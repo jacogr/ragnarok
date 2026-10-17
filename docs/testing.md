@@ -2,8 +2,8 @@
 
 Original migration branch: `nim-tests`, based on Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **71 ordinary native suites**, including three state-store, two authorization-transition and
-two history-transition, two entropy/time and two telemetry profiles; all original 59 suites remain migrated.
+Current total: **73 ordinary native suites**, including three state-store, two authorization-transition and
+two history-transition, two entropy/time, two validator-rotation and two telemetry profiles; all original 59 suites remain migrated.
 The migration preserved wire behavior, bounds/ownership contracts and independent references.
 Subsequent native suites cover the new storage foundation as recorded below.
 
@@ -13,8 +13,8 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 71 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
-| `check-guards` | 691 compiler rejection probes | Compiler rejection guards |
+| `check-unit` | 73 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
+| `check-guards` | 695 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
 `make check` runs all five locally; CI schedules them independently and concurrently on separate
@@ -24,7 +24,7 @@ VMs. Each target provisions its own dependencies and writes its own report. Ther
 
 Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
 `build/tests/guards/` (compiler rejections) and `build/tests/e2e/`. Combined native coverage remains
-71 + 6 = 77 profiles. The new [state store](../spec/state-store.md) has three native profiles and
+73 + 6 = 79 profiles. The new [state store](../spec/state-store.md) has three native profiles and
 five privacy probes and nine isolated runtime misuse checks. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
 build uses the same shared checked native compiler profile as the unit verifier.
@@ -49,6 +49,11 @@ with the corrected protocol bytes, including rejection of old-domain credentials
 The [entropy/time transition](../spec/entropy-transition.md) adds two native profiles, twelve
 published Safrole projections, four result-access probes and three compiler rejections. Both
 fixed chapters publish together; tests cover aggregate write budgets, rollback and ARC release.
+
+The [validator rotation](../spec/validator-rotation.md) adds two native suites, sixteen published
+roster/root projections and four compiler/four runtime result guards. Atomic C(4)/C(8)/C(9)
+publication preserves schedules/accumulators and is verified against ring/store refusal, exact
+chapter parsing, aggregate budgets and historical snapshot lifetimes.
 
 ## What the investigation found
 
@@ -107,7 +112,7 @@ explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and
 make unit
 ```
 
-That command runs **22 codec, 39 state, five crypto and five QUIC suites** through Hastur.
+That command runs **22 codec, 40 state, five crypto and five QUIC suites** through Hastur.
 The codec directory is dependency-free; other cases have explicit per-file profiles, including
 native-free UDP and disabled integration. The launcher prepares the same pristine pinned C/Rust
 crypto bridges, observers, LSQUIC/TLS and generated certificates/CE inputs as the cumulative run.

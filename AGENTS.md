@@ -107,7 +107,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Keep upstream code/vectors in pinned submodules. Initialize with `python3 tools/setup_submodules.py`.
   Do not overwrite upstream edits, advance gitlinks or change locked versions without an authorized upgrade.
 - Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
-  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 71
+  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 73
   ordinary suites run through the native runner; preserve explicit output, linking and fixture contracts. Preserve
   independent Python references and process/tooling orchestration. Remove superseded standalone
   runners once the supported path preserves their coverage; do not keep duplicate build entry points.
@@ -128,7 +128,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   claim another group's verdict. Preserve every group's inventory, standalone setup, failure status,
   logs and summary. E2E owns peer-entry selftests and live peer/service/resilience/soak/offload work;
   unit checks own component suites, independent corpora and runtime misuse probes;
-  compiler guards own all 691 contract/privacy/nominal/schema/ownership rejection checks.
+  compiler guards own all 695 contract/privacy/nominal/schema/ownership rejection checks.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,
@@ -139,6 +139,9 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - All commits must use semantic commit messages in Conventional Commits form:
   `type(scope): summary`, with an optional scope and a concise imperative summary. Use the type
   that describes the change, such as `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci` or `chore`.
+- Before the final push to a PR, fetch `origin` and merge the latest `origin/master` into the PR
+  branch. Resolve any conflicts and run the affected checks before pushing, so the final PR
+  revision includes the latest master. This does not authorize merging the PR itself.
 - Every AI run must include a suggested semantic commit message in its final report, accurately
   describing the changes made. If no files changed, explicitly report that no commit is needed.
 - For milestone increments, state current parity/remaining gaps and the next planned bounded chunk
