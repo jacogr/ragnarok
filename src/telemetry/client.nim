@@ -176,6 +176,12 @@ proc dialOutcome*(client: var Client, now: int64, timestamp: Timestamp, attempt:
   else:
     discard client.event(connectOutFailed(timestamp, attempt), now, timestamp, true)
 
+# Enqueue an observed authenticated peer closure using the same bounded event stream as its attempt.
+proc peerDisconnected*(client: var Client, now: int64, timestamp: Timestamp,
+    identity: array[32, byte]) =
+  if not client.enabled: return # Disabled clients do not allocate or consume event IDs.
+  discard client.event(disconnected(timestamp, identity), now, timestamp, true)
+
 # Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
 proc begin(client: var Client, now: int64, timestamp: Timestamp) =
   client.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)

@@ -504,9 +504,15 @@ proc runPeer*(): bool {.raises.} =
   # Settle a still-pending dial on timeout, synchronous failure, cancellation or an early return.
   defer:
     if telemetryPending:
-      telemetry.finishDial(telemetryAttempt, peerMetric(peer.transport, 4) > 0)
+      telemetry.finishDial(telemetryAttempt, authenticatedConnections(peer.transport) > 0)
+    if not server and authenticatedConnections(peer.transport) > 0 and closedConnections(
+        peer.transport) > 0:
+      # This endpoint dials exactly one pinned peer; a close counter alone could also mean handshake failure.
+      # Observe once, after final grace polling but before transport destruction triggers final teardown callbacks.
+      telemetry.finishConnection(peer.expected)
     let finalPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (
-        if transportStatus(peer.transport) == 1: 1'u32 else: 0'u32)
+        if transportStatus(peer.transport) == 1 and peerMetric(peer.transport, 0) >
+            0: 1'u32 else: 0'u32)
     telemetry.observe(finalPeers) # One bounded best-effort send; shutdown never waits for the collector.
   if server:
     progress "READY" # Announce only after listener binding and native setup.
@@ -531,9 +537,9 @@ proc runPeer*(): bool {.raises.} =
  # One dispatcher loop services all streams, UDP reads and LSQUIC/application deadlines.
   while not peer.failed and (peer.service or peer.completed < target) and (getMonoTime() -
       started).inMilliseconds < timeout:
-    # Server metrics count authenticated retained peers; client status excludes pending handshakes.
+    # Server metrics count authenticated peers; client status also requires a live slot after a close.
     let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
-        peer.transport) == 1: 1'u32 else: 0'u32)
+        peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
     telemetry.observe(telemetryPeers)
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
