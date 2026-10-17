@@ -167,3 +167,33 @@ proc observeIncoming*(client: var Client, attempts: var IncomingAttempts, slot: 
         return
       for i in 0..<32: identity[i] = fields.key[i] # Native extraction initializes these owned fields.
     client.acceptOutcome(now, stamp, attempts.ids[index], identity, event == HandshakeSucceeded)
+
+# The admitted-peer table copies authenticated public identities; no TLS/native pointer is retained.
+type IncomingPeers* = object
+  active, known: array[IncomingPeerSlots, bool]
+  identities: array[IncomingPeerSlots, array[32, byte]]
+
+# Admission only retains identity; a separately observed close produces JIP-3 event 27 exactly once.
+proc observePeer*(client: var Client, peers: var IncomingPeers, slot: cuint,
+    event: cint, der: ptr ConstByte, length: csize_t) =
+  if slot >= cuint(IncomingPeerSlots): return # Native registration proves this bound; reject invalid callbacks.
+  let index = int(slot)
+  if event == PeerAccepted:
+    peers.active[index] = true
+    peers.known[index] = false # Slot reuse never inherits the previous peer's identity.
+    peers.identities[index] = default(array[32, byte])
+    var fields {.noinit.}: CertFields
+    if der == nil or length == 0 or length > 8192 or
+        parseCert(cast[ptr byte](der), length, addr fields) != 1 or
+        fields.edKey != 1 or fields.keyLength != 32: return # Missing metadata cannot invent a public identity.
+    for i in 0..<32: peers.identities[index][i] = fields.key[i] # Copy while native DER remains borrowed.
+    peers.known[index] = true
+  elif event == PeerClosed and peers.active[index]:
+    peers.active[index] = false # Duplicate notifications cannot emit another closure for this lifetime.
+    let stamp = eventTimestamp()
+    if peers.known[index]:
+      client.peerDisconnected(getMonoTime().ticks div 1_000_000, stamp, peers.identities[index])
+    else:
+      client.omit(stamp) # A real close with unavailable identity is a dropped observation.
+    peers.known[index] = false
+    peers.identities[index] = default(array[32, byte])

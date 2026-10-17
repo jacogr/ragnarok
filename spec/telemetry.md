@@ -2,7 +2,7 @@
 
 Ragnarök's bounded proof peer can register with a JAM Tart collector and report its current
 authenticated peer count approximately every two seconds, incoming handshake lifecycles, and
-outgoing attempts, authentication outcomes and observed closures. Telemetry is disabled by default.
+outgoing attempts, authentication outcomes and observed incoming/outgoing closures. Telemetry is disabled by default.
 This is a JIP-3 version-1 subset, not a claim of full telemetry or validator functionality.
 
 ## Run
@@ -55,15 +55,16 @@ it does not validate genesis consensus rules or recompute `genesis_state`.
   Native successful-handshake evidence determines success independently of application exchanges.
   A pending attempt settles on timeout, synchronous failure or early exit; failure reasons are
   empty when the native transport does not expose a reliable diagnosis.
-- Event 27: an authenticated outgoing connection closed, identified by its pinned remote public
-  key. The single-peer dialer requires both a successful native handshake and an observed native
-  close; a failed handshake never produces this event. It is emitted once after final processing,
-  before transport destruction. The terminator is absent and the reason empty because current
-  counters do not establish who initiated closure or why.
+- Event 27: an authenticated incoming or outgoing connection closed, identified by its remote
+  public key. Incoming peers retain the certificate identity at native connection admission and
+  emit once from the corresponding close callback. The single-peer dialer requires both a
+  successful native handshake and an observed native close. Failed handshakes never produce
+  this event. The terminator is absent and the reason empty because these observations do not
+  establish who initiated closure or why.
 - Event 0: dropped observations, with first/last timestamps and the exact number of omitted
   events when the fixed send buffer cannot accept them.
 
-Incoming refusals (20), incoming-peer disconnections, best/finalized blocks, sync, authoring,
+Incoming refusals (20), best/finalized blocks, sync, authoring,
 execution, service, ticket and work-package events remain unimplemented. Incoming observations
 use the pinned libraries' public TLS handshake start/done and SSL ex-data destruction callbacks,
 with public LSQUIC socket-address access. TLS success precedes connection-slot admission and does
@@ -77,9 +78,16 @@ address or certificate metadata is also counted as loss, never replaced with inv
 Callbacks only copy borrowed data into bounded queued frames. The exporter and correlation table
 outlive engine teardown; shutdown makes one final nonblocking send and never waits for delivery.
 
-Outgoing disconnections are limited to closes observed while the transport is alive, including
-graceful closes and idle expiry. Destroying an otherwise live endpoint does not fabricate a close
-observation. Incoming disconnections need a separate authenticated peer-lifetime observation.
+Incoming connection admission uses LSQUIC's public peer-certificate API while TLS state is still
+available. A separate fixed 16-slot table copies only the authenticated public identities,
+matching the transport's admitted-connection limit. Closure clears the slot before reuse; missing
+certificate metadata produces a dropped observation instead of an invented identity. This table
+is independent of pending-handshake tracking, so handshake-observer saturation cannot assign
+another peer's identity to a close.
+
+Disconnections are limited to closes observed while the transport is alive, including graceful
+closes and idle expiry. Destroying an otherwise live endpoint does not fabricate a close event.
+Incoming peers rejected by connection-capacity admission never enter the retained peer table.
 Mesh remains outside this integration.
 
 Frames use E4 little-endian payload length, then canonical JAM encoding. Strings use the existing
@@ -149,7 +157,8 @@ exchange with telemetry enabled, an unresponsive outgoing destination, and an at
 spanning a collector reset. It also checks exactly one disconnect after a graceful outgoing close,
 no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete
 application exchange. Incoming cases check success identity/address/correlation, certificate
-rejection, and no duplicate terminal event on successful SSL destruction. Python is only the
+rejection, graceful close, two distinct identities across expiry/slot reuse, and no close event
+when the server shuts down with a live peer. Python is only the
 independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.

@@ -54,9 +54,10 @@ an OS thread. Optional RingVRF verification uses two workers and four total owne
 state, callbacks and retained mesh coordination; only lifecycle entry points are exported.
 
 An optional `src/telemetry/` exporter sends JIP-3 registration, status and correlated outgoing connection
-events, incoming handshake lifecycles and observed outgoing disconnections. Incoming TLS callbacks
+events, incoming handshake lifecycles and observed incoming/outgoing disconnections. Incoming TLS callbacks
 borrow a fixed 64-slot correlation table and exporter through engine teardown; saturation only
-loses observations. The exporter owns one nonblocking TCP socket
+loses observations. A separate 16-slot admitted-peer table retains copied identities until an
+observed close; engine destruction does not fabricate disconnections. The exporter owns one nonblocking TCP socket
 and a fixed send buffer, with no additional threads.
 An explicit JIP-4 file supplies network metadata; it does not initialize chain execution.
 See [telemetry scope and limits](../spec/telemetry.md).

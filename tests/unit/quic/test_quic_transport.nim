@@ -84,6 +84,7 @@ proc saturation(cert, key: string, ipv6: bool) =
   for i in 0..<clients.len:
     assert clients[i].openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000",
         addr counts, acceptFixture, stream, ipv6 = ipv6)
+    assert not clients[i].observePeers(peerEvent) # Incoming peer observers cannot attach to a dialer.
     assert not clients[i].observeHandshakes(handshake) # Outgoing engines cannot install incoming observers.
     assert clients[i].connectTransport(server.localPort)
     assert clients[i].pollTransport(0) # Emit ClientHello once; never consume the server's response.
@@ -136,6 +137,7 @@ proc main() {.raises.} =
   var owner = default(Transport)
   var token: byte = 0
   assert owner.transportStatus == -1
+  assert not owner.observePeers(peerEvent) # Failed registration on a default owner retains no callback.
   assert not owner.pollTransport(0)
   owner.closeTransport()
   owner.closeTransport()

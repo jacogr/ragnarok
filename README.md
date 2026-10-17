@@ -89,6 +89,6 @@ ownership, reproduction commands and outstanding protocol/security gates.
 
 The proof peer supports an opt-in JIP-3 telemetry subset: append `--telemetry HOST:PORT` and
 `--chain PATH` with an explicit JIP-4 chain file. It reports local node information and
-periodic peer/status observations, incoming/outgoing handshake outcomes and outgoing disconnections,
+periodic peer/status observations, incoming/outgoing handshake outcomes and observed disconnections,
 with bounded nonblocking TCP delivery and reconnects.
 See [telemetry usage, scope and verification](spec/telemetry.md).
