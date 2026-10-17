@@ -1510,7 +1510,7 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'Makefile', 'tools/native_checks.py', 'tools/native_dependencies.py', 'tools/build_crypto.py', 'tools/build_bandersnatch.py', 'tools/build_quic.py', 'tools/corpus_checks.py', 'tools/verification_inventory.py', 'tools/test_python.py', 'tools/test_e2e.py',
+                'Makefile', 'tools/native_checks.py', 'tools/native_dependencies.py', 'tools/build_crypto.py', 'tools/build_bandersnatch.py', 'tools/build_quic.py', 'tools/corpus_checks.py', 'tools/verification_inventory.py', 'tools/verification_inventory.json', 'tools/test_python.py', 'tools/test_e2e.py',
                 'tools/e2e_checks.py', 'tools/test_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
                 'spec/toolchain.json', 'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
                 'tests/test_quic_offload_harness.py',

@@ -100,10 +100,15 @@ Linux scheduling and elapsed-time effects require the PR CI run; no speedup is c
 
 ## Shared verification infrastructure
 
-`tools/verification_inventory.py` owns the ordinary native suite identities, independent corpus
-names and compiler/runtime rejection inventories. Native discovery, verification and summaries
-consume these declarations directly; compiler guards do not import the runtime executor.
-Discovery still checks checked-in native suites and their expected-output files.
+`tools/verification_inventory.json` owns the ordinary native suite identities, link profiles,
+ARC evidence names, independent corpus names and compiler/runtime rejection inventories.
+Each case or mapping occupies one line so concurrent additions produce small, reviewable diffs.
+Keep the existing execution order when editing; counts are explicit coverage requirements and
+must match the runtime probes. `tools/verification_inventory.py` loads this data, rejects duplicate
+object keys and cases, and preserves the consumers' tuple/list interfaces. Missing sections fail
+at import; native discovery still checks checked-in suites and their expected-output files, and
+verification still checks complete corpus/failure coverage. Both the loader and JSON data are
+included in report provenance. Compiler guards do not import the runtime executor.
 
 `tools/corpus_checks.py` compares complete native output against independently prepared expected
 rows. The runtime runner retains corpus-specific generation, linking, provenance and additional
