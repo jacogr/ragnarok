@@ -95,7 +95,8 @@ force full/light schemas into one database.
 
 This completes the bounded author/seal/entropy authentication increment. The marker dependency
 [#18](https://github.com/jacogr/ragnarok/pull/18) is merged, and this branch includes master.
-The next planned slice is complete Safrole stage coordination and atomic whole-stage
-publication, combining the existing rotation, admission, schedule, marker and authentication pieces.
+[Complete Safrole stage coordination and atomic whole-stage publication](safrole-transition.md)
+now combines the rotation, admission, schedule, marker and authentication pieces. The next planned
+slice binds block admission to parent/header/extrinsic commitments.
 Parent/extrinsic commitments, wall-clock admission and complete block execution remain separate
 checks. Component authentication does not itself establish prior stage lineage or full JAM parity.
