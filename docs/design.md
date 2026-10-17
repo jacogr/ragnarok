@@ -41,7 +41,12 @@ ticket/schedule/marker execution remains open.
 `src/state/ticket_admission.nim` verifies Safrole RingVRF tickets, checks eligibility/order/
 disjointness and selects the bounded posterior accumulator. [Its first-slice contract](../spec/ticket-admission.md)
 returns an immutable C(4) candidate. `src/state/ticket_state.nim` atomically publishes it after
-checking staged entropy/time inputs; schedules, markers and complete block execution remain open.
+checking staged entropy/time inputs. `src/state/sealer_schedule.nim` selects the current schedule
+from separate parent/staged C(4), posterior active keys and entropy, covering outside-in tickets
+and fallback generation. `src/state/sealer_state.nim` retains the parent snapshot and atomically
+publishes only C(4) after checking staged C(4)/C(6)/C(8)/C(11). The
+[schedule contract](../spec/sealer-schedule.md) defines this substep's rollback boundary; header
+markers and complete block execution remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
@@ -54,9 +59,10 @@ an OS thread. Optional RingVRF verification uses two workers and four total owne
 state, callbacks and retained mesh coordination; only lifecycle entry points are exported.
 
 An optional `src/telemetry/` exporter sends JIP-3 registration, status and correlated outgoing connection
-events, incoming handshake lifecycles and observed outgoing disconnections. Incoming TLS callbacks
+events, incoming handshake lifecycles and observed incoming/outgoing disconnections. Incoming TLS callbacks
 borrow a fixed 64-slot correlation table and exporter through engine teardown; saturation only
-loses observations. The exporter owns one nonblocking TCP socket
+loses observations. A separate 16-slot admitted-peer table retains copied identities until an
+observed close; engine destruction does not fabricate disconnections. The exporter owns one nonblocking TCP socket
 and a fixed send buffer, with no additional threads.
 An explicit JIP-4 file supplies network metadata; it does not initialize chain execution.
 See [telemetry scope and limits](../spec/telemetry.md).

@@ -25,7 +25,7 @@ from verification_inventory import (
     SAFROLE_MEMBERS, SERVICE_VALUES_MEMBERS, STATE_DISPUTES_MEMBERS, STATISTICS_MEMBERS,
     TICKET_MEMBERS, TRIE_ORIGINS, WORKQUEUES_MEMBERS,
 )
-from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures, unit_store_fixture, unit_authorization_fixture, unit_history_fixture, unit_signing_fixture, unit_entropy_fixture, unit_validator_fixture, unit_ticket_fixture
+from native_tests import UNIT_SUITES, unit_batches, unit_jobs, unit_work_directory, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources, unit_runtime_fixtures, unit_store_fixture, unit_authorization_fixture, unit_history_fixture, unit_signing_fixture, unit_entropy_fixture, unit_validator_fixture, unit_ticket_fixture, unit_sealer_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
@@ -915,6 +915,26 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
             passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
             report['ticket_state'].append(dict(origin=origin, passed=passed, run=result))
             announce('ticket state '+origin+' runtime guard', passed)
+    # Default and actually refused schedule results must not expose candidate payloads.
+    compiled, binary = build(compiler, ROOT/'tests/native/sealer_schedule_results.nim', 'sealer-schedule-results', crypto_library)
+    report['sealer_schedule_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Require the supported extraction contract, not a selector failure or unrelated crash.
+            result = command([binary, origin], 'sealer-schedule-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['sealer_schedule'].append(dict(origin=origin, passed=passed, run=result))
+            announce('sealer schedule '+origin+' runtime guard', passed)
+    # Default and actually refused schedule results must not expose candidate payloads.
+    compiled, binary = build(compiler, ROOT/'tests/native/sealer_state_results.nim', 'sealer-state-results', crypto_library)
+    report['sealer_state_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Require the supported extraction contract, not a selector failure or unrelated crash.
+            result = command([binary, origin], 'sealer-state-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['sealer_state'].append(dict(origin=origin, passed=passed, run=result))
+            announce('sealer state '+origin+' runtime guard', passed)
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
     report['assurance_context_build'] = compiled
@@ -1536,7 +1556,7 @@ def main():
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
-    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
+    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/sealer_schedule_fixtures.py', ROOT/'tests/native/sealer_schedule_results.nim', ROOT/'tests/native/sealer_state_results.nim', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
     # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
     sys.path.insert(0, str(ROOT/'tests'))
     from test_bandersnatch import fixture_path
@@ -1596,6 +1616,8 @@ def main():
         ticket_fixtures, report['ticket_stf_fixture'] = unit_ticket_fixture(BUILD)
         fixtures.update(validator_fixtures)
         fixtures.update(ticket_fixtures)
+        sealer_fixtures, report['sealer_stf_fixture'] = unit_sealer_fixture(BUILD)
+        fixtures.update(sealer_fixtures)
         run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires)
         step_passed = unit_passed(report)
     else:

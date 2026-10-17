@@ -32,6 +32,7 @@ type
     transport: Transport
     telemetry: nil ptr Client
     incoming: IncomingAttempts
+    incomingPeers: IncomingPeers
     expected: seq[byte]
     server, failed, stopping, service, mixed, integrated, mesh, recovering, overload: bool
     streams: array[64, StreamState]
@@ -68,6 +69,14 @@ proc onHandshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte
   let exporter = peer.telemetry
   if exporter != nil: # Only explicitly configured server telemetry installs this callback.
     exporter[].observeIncoming(peer.incoming, slot, event, address, port, der, length)
+
+# Retain admission metadata and report only native closes observed before engine destruction.
+proc onPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
+    length: csize_t) {.cdecl, raises: [].} =
+  let peer = cast[ptr Peer](user)
+  let exporter = peer.telemetry
+  if exporter != nil: # Disabled runs install no observer or retained identity table entries.
+    exporter[].observePeer(peer.incomingPeers, slot, event, der, length)
 
 # Settle one stream exactly once; soak rejections preserve healthy siblings on the same connection.
 proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: [].} =
@@ -514,7 +523,8 @@ proc runPeer*(): bool {.raises.} =
     return false
   if server and requested(): # Install before processing the first UDP packet.
     peer.telemetry = addr telemetry
-    if not observeHandshakes(peer.transport, onHandshake): return false # No partial observer setup.
+    if not observeHandshakes(peer.transport, onHandshake) or
+        not observePeers(peer.transport, onPeer): return false # Startup retires any partial observer setup.
   var telemetryAttempt = EventId(0)
   var telemetryPending = false
   # Settle a still-pending dial on timeout, synchronous failure, cancellation or an early return.

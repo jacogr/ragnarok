@@ -2,6 +2,7 @@
 #include <lsquic.h>
 #include <openssl/ssl.h>
 #include <openssl/pool.h>
+#include <openssl/x509.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -19,7 +20,7 @@ struct rq_transport {
     lsquic_engine_t *engine;
     lsquic_conn_t *connection;
     /* Stable bounded handles belong to the engine until on_conn_closed; no application payload lives here. */
-    lsquic_conn_t *connections[16];
+    lsquic_conn_t *connections[RQ_PEER_SLOTS];
     unsigned active, accepted, closed, peak, authenticated, capacity_rejected;
     int multi, persistent, ipv6, global_owned;
     SSL_CTX *tls;
@@ -32,6 +33,8 @@ struct rq_transport {
     rq_send_cb send;
     rq_stream_cb stream;
     rq_handshake_cb handshake;
+    rq_peer_cb peer;
+    int destroying, packets_seen;
     struct rq_handshake handshakes[RQ_HANDSHAKE_SLOTS], overflow_handshake;
     uint8_t alpn[256];
     unsigned alpn_length;
@@ -150,6 +153,29 @@ int rq_observe_handshakes(rq_transport *t, unsigned slots, rq_handshake_cb callb
     SSL_CTX_set_info_callback(t->tls, handshake_info);
     return 1;
 }
+/* Observe admitted peers independently of the larger pending-handshake table. */
+int rq_observe_peers(rq_transport *t, unsigned slots, rq_peer_cb callback) {
+    if (!t || !t->server || t->packets_seen || t->peer || !callback || slots != RQ_PEER_SLOTS)
+        return 0; /* Late registration could miss the identity belonging to an already-live slot. */
+    t->peer = callback;
+    return 1;
+}
+/* Public LSQUIC certificate access is valid during server admission; Nim copies the identity. */
+static void peer_accepted(rq_transport *t, lsquic_conn_t *connection, unsigned slot) {
+    if (!t->server || !t->peer) return; /* Disabled telemetry performs no certificate extraction. */
+    STACK_OF(X509) *chain = lsquic_conn_get_full_peer_cert_chain(connection);
+    uint8_t der[8192], *cursor = der;
+    int length = 0;
+    if (chain && sk_X509_num(chain) > 0 && sk_X509_num(chain) <= 8) {
+        /* Verification already bounded the peer chain; validate the DER extent before serialization. */
+        X509 *leaf = sk_X509_value(chain, 0);
+        int needed = i2d_X509(leaf, NULL);
+        if (needed > 0 && needed <= (int)sizeof(der) && i2d_X509(leaf, &cursor) == needed)
+            length = needed; /* No X509 or DER pointer escapes the synchronous observation. */
+    }
+    t->peer(t->user, slot, RQ_PEER_ACCEPTED, length ? der : NULL, (size_t)length);
+    sk_X509_pop_free(chain, X509_free);
+}
 /* Ask the native language to validate the leaf certificate while BoringSSL retains its borrowed DER storage. */
 static enum ssl_verify_result_t verify_certificate(SSL *ssl, uint8_t *alert) {
     struct rq_transport *t = SSL_CTX_get_ex_data(SSL_get_SSL_CTX(ssl), 0);
@@ -198,12 +224,16 @@ static int packets_out(void *ctx, const struct lsquic_out_spec *packets, unsigne
 static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
     struct rq_transport *t = ctx;
     /* Single-peer proofs retain their original ceiling; service admits at most sixteen authenticated peers. */
-    if ((!t->multi && t->active) || t->active == 16) {
+    if ((!t->multi && t->active) || t->active == RQ_PEER_SLOTS) {
         ++t->capacity_rejected; lsquic_conn_abort(connection); return NULL;
     }
     /* A vacant slot remains valid until this connection's final close callback. */
-    for (unsigned i = 0; i < 16; ++i) {
-        if (!t->connections[i]) { t->connections[i] = connection; break; }
+    for (unsigned i = 0; i < RQ_PEER_SLOTS; ++i) {
+        if (!t->connections[i]) {
+            t->connections[i] = connection;
+            peer_accepted(t, connection, i); /* Authenticated identity belongs to this retained slot only. */
+            break;
+        }
     }
     ++t->active; ++t->accepted;
     if (t->active > t->peak) t->peak = t->active; /* Observe actual overlap, not process concurrency alone. */
@@ -223,8 +253,10 @@ static void connection_closed(lsquic_conn_t *connection) {
     struct rq_transport *t = (struct rq_transport *)lsquic_conn_get_ctx(connection);
     if (!t) return; /* Over-capacity attempts have no retained native owner. */
     /* Release only the slot belonging to this close; other peers keep their contexts and streams. */
-    for (unsigned i = 0; i < 16; ++i) {
+    for (unsigned i = 0; i < RQ_PEER_SLOTS; ++i) {
         if (t->connections[i] == connection) {
+            if (t->server && t->peer && !t->destroying)
+                t->peer(t->user, i, RQ_PEER_CLOSED, NULL, 0); /* Real closure precedes slot reuse. */
             t->connections[i] = NULL; --t->active; ++t->closed; break;
         }
     }
@@ -310,6 +342,7 @@ int rq_connect(rq_transport *t, uint16_t port) {
 }
 /* Deliver borrowed UDP bytes with caller-supplied source port and retained TLS peer context. */
 int rq_packet_in(rq_transport *t, const uint8_t *bytes, size_t length, uint16_t port) {
+    t->packets_seen = 1; /* Optional observers cannot be installed after incoming processing starts. */
     struct sockaddr_in peer = address(port); struct sockaddr_in6 peer6 = address6(port);
     return lsquic_engine_packet_in(t->engine, bytes, length, local_address(t),
       t->ipv6 ? (struct sockaddr *)&peer6 : (struct sockaddr *)&peer, t, 0);
@@ -323,6 +356,7 @@ int rq_status(rq_transport *t) { return t->status; }
 /* Destruction invokes final callbacks while the native caller-owned context is still alive. */
 void rq_transport_free(rq_transport *t) {
     if (!t) return;
+    t->destroying = 1; /* Resource teardown does not itself prove an observed peer disconnection. */
     if (t->engine) lsquic_engine_destroy(t->engine); /* Final callbacks retire all retained connections before free. */
     SSL_CTX_free(t->tls);
     /* Cleanup occurs only after the final engine is destroyed; failed setup releases only its acquired lease. */
