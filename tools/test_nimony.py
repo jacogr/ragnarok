@@ -966,20 +966,6 @@ def main():
             if release is not None:
                 # Public live allocator occupancy is workload-specific, not RSS or general leak freedom.
                 report['consensus_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_authorization_private' and row['passed']:
-            # Nested pool/queue storage must release after callee return, replacement, alias retention and failure.
-            release = re.search(r'AUTHORIZATION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Public live allocator counts cover this warmed workload, not RSS or general leak freedom.
-                report['authorization_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-        if name == 'state_safrole' and row['passed']:
-            # Escaped/replaced immutable roster owners and fixed-entry temporaries must retire at final ARC release.
-            release = re.search(r'STATE_SAFROLE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-            row['passed'] = release is not None and release[1] == release[2]
-            if release is not None:
-                # Live allocator occupancy covers this warmed workload, not RSS or general leak freedom.
-                report['safrole_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
         if name == 'state_composition_private' and row['passed']:
             # Replaced snapshots, copied entries and late native refusals release all final scoped references.
             release = re.search(r'COMPOSITION_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])

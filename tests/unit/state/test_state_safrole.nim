@@ -1,6 +1,7 @@
 ## Supplementary immutable snapshot, fixed-copy and default/failure guard contracts.
 import std/[assertions, syncio]
-import ../../src/codec/[state_safrole, bounded, assurances]
+import ../../support/arc_evidence
+import ../../../src/codec/[state_safrole, bounded, assurances]
 
 ## Verify source destruction and extracted-copy mutation cannot change retained validator records.
 proc main() =
@@ -133,5 +134,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "STATE_SAFROLE_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_safrole", 1000, beforeRelease, afterRelease)
+echo "STATE_SAFROLE_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony state components: escaped/replaced owners, copied fields, arithmetic and scoped ARC release passed"

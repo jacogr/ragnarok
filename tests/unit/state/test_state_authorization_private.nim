@@ -1,6 +1,7 @@
 ## Project-only white-box arithmetic and public ownership cycles; no private compiler/runtime API is used.
 import std/[assertions, syncio]
-include ../../src/codec/state_authorization
+import ../../support/arc_evidence
+include ../../../src/codec/state_authorization
 
 # Return an immutable owner after all local source rows, entry bytes and wire aliases have retired.
 proc escaped(kind: AuthorizationKind, marker: byte): AuthorizationSnapshot =
@@ -87,5 +88,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: cycle()
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "AUTHORIZATION_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Preserve fresh numeric observations independently of portable expected output.
+recordArcRelease("state_authorization_private", 1000, beforeRelease, afterRelease)
+echo "AUTHORIZATION_ARC_RELEASE cycles=1000 unchanged"
 echo "Nimony authorization: escaped/replaced pool/queue owners, copied hashes, arithmetic and scoped ARC release passed"

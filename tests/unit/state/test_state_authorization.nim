@@ -1,6 +1,6 @@
 ## Supplementary ownership, copied-hash, index and guarded-result checks for authorization state.
 import std/[assertions, syncio]
-import ../../src/codec/[state_authorization, bounded, assurances]
+import ../../../src/codec/[state_authorization, bounded, assurances]
 
 ## Validate retained data remains immutable under caller wire/source/copy/handle mutation.
 proc main() =
