@@ -25,6 +25,37 @@ def frame(connection):
     return read(size)
 
 
+# Borrow one collector socket and count every event, including statuses interleaved by scheduling.
+class EventCapture:
+    # Registration is read separately; the first subsequent frame has implicit event ID zero.
+    def __init__(self, connection):
+        self.connection = connection
+        self.position = 0
+
+    # Keep the test stream bounded while preserving the protocol's implicit ID namespace.
+    def event(self):
+        assert self.position < 128, 'unbounded telemetry capture'
+        event_id = self.position
+        value = frame(self.connection)
+        self.position += 1
+        return event_id, value
+
+    # Periodic status is independent of lifecycle transitions and may occur between any two of them.
+    def lifecycle(self, expected):
+        while True:
+            event_id, value = self.event()
+            if value[8] == 10:
+                continue # Count the status without assigning its ID to the expected lifecycle event.
+            assert value[8] == expected, (event_id, expected, value[8])
+            return event_id, value
+
+    # Trailing statuses are valid; any additional lifecycle event still fails the exactly-once check.
+    def end(self):
+        while self.connection.recv(1, socket.MSG_PEEK):
+            event_id, value = self.event()
+            assert value[8] == 10, ('unexpected trailing event', event_id, value[8])
+
+
 # Bind only loopback; closing this context releases the collector even after assertion failures.
 def listener(ipv6=False):
     server = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET)
@@ -83,7 +114,7 @@ def reconnect(binary, ipv6=False):
 
 
 # Start a real proof peer, observe its local identity and empty status, then complete normal CE traffic.
-def peer_registration(binary, certificates, chain, folder, ipv6=False):
+def peer_registration(binary, certificates, chain, folder, ipv6=False, startup_delay=0):
     folder.mkdir(parents=True, exist_ok=True)
     assert hashlib.sha256(chain.read_bytes()).hexdigest() == "c0e0dab1c242becf8ec2aa06916c74a3dc84ff9aca1c08a5df217a4d6bc4b1c3"
     spec = json.loads(chain.read_text())
@@ -110,8 +141,12 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False):
                 assert hello[155:187] == (certificates/'a.pub').read_bytes()
                 assert hello[187:203] == bytes.fromhex('00000000000000000000ffff7f000001')
                 assert int.from_bytes(hello[203:205], 'little') == port
-                status = frame(connection)
+                capture = EventCapture(connection)
+                _, status = capture.event()
                 assert status[8] == 10 and int.from_bytes(status[9:13], 'little') == 0
+                if startup_delay:
+                    # Force a status between registration and connection; lifecycle IDs must still correlate.
+                    time.sleep(startup_delay)
                 client = subprocess.run([str(binary), 'client', str(port),
                     str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
                     str(certificates/'a.pub'), alpn, '3000', 'clean', '--telemetry', endpoint,
@@ -121,26 +156,27 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False):
                 with outgoing:
                     outgoing.settimeout(5)
                     assert frame(outgoing)[0] == 1
-                    dialing = frame(outgoing)
+                    outgoing_capture = EventCapture(outgoing)
+                    dial_id, dialing = outgoing_capture.lifecycle(24)
                     assert dialing[8] == 24 and dialing[9:41] == (certificates/'a.pub').read_bytes()
                     assert dialing[41:57] == bytes.fromhex('00000000000000000000ffff7f000001')
                     assert int.from_bytes(dialing[57:59], 'little') == port
-                    connected = frame(outgoing)
-                    assert connected[8] == 26 and int.from_bytes(connected[9:17], 'little') == 0
-                    closed = frame(outgoing)
+                    _, connected = outgoing_capture.lifecycle(26)
+                    assert int.from_bytes(connected[9:17], 'little') == dial_id
+                    _, closed = outgoing_capture.lifecycle(27)
                     assert closed[8] == 27 and closed[9:41] == (certificates/'a.pub').read_bytes()
                     assert closed[41:] == b'\0\0' # Unknown terminator and reason remain explicitly absent.
-                    assert outgoing.recv(1) == b'' # Exactly one closure, followed by exporter shutdown.
-                incoming = frame(connection)
+                    outgoing_capture.end() # No duplicate closure; periodic status remains valid.
+                incoming_id, incoming = capture.lifecycle(21)
                 assert incoming[8] == 21 and incoming[9:25] == bytes.fromhex('00000000000000000000ffff7f000001')
                 assert int.from_bytes(incoming[25:27], 'little') > 0
-                accepted = frame(connection)
-                assert accepted[8] == 23 and int.from_bytes(accepted[9:17], 'little') == 1
+                _, accepted = capture.lifecycle(23)
+                assert accepted[8] == 23 and int.from_bytes(accepted[9:17], 'little') == incoming_id
                 assert accepted[17:] == (certificates/'b.pub').read_bytes()
-                closed = frame(connection)
+                _, closed = capture.lifecycle(27)
                 assert closed[8] == 27 and closed[9:41] == (certificates/'b.pub').read_bytes()
                 assert closed[41:] == b'\0\0'
-                assert connection.recv(1) == b'' # One real incoming close, with no duplicate during destruction.
+                capture.end() # One real incoming close, with no duplicate during destruction.
             stdout, stderr = process.communicate(timeout=5)
             (folder/'peer.log').write_bytes(stdout + stderr)
             assert process.returncode == 0 and b'EXCHANGE_OK 8' in stdout, (stdout, stderr)
@@ -166,10 +202,11 @@ def dial_failure(binary, certificates, chain, folder):
                 with connection:
                     connection.settimeout(5)
                     assert frame(connection)[0] == 1
-                    assert frame(connection)[8] == 24
-                    failed = frame(connection)
-                    assert failed[8] == 25 and failed[9:17] == bytes(8) and failed[17:] == b'\0'
-                    assert connection.recv(1) == b'' # Failed authentication must not invent a disconnected peer.
+                    capture = EventCapture(connection)
+                    attempt_id, _ = capture.lifecycle(24)
+                    _, failed = capture.lifecycle(25)
+                    assert failed[8] == 25 and int.from_bytes(failed[9:17], 'little') == attempt_id and failed[17:] == b'\0'
+                    capture.end() # Failed authentication must not invent a disconnected peer.
                 stdout, stderr = process.communicate(timeout=5)
                 (folder/'failed-dial.log').write_bytes(stdout + stderr)
                 assert process.returncode != 0 and b'AUTH_OK' not in stdout
@@ -186,8 +223,8 @@ def peer_loss(binary, certificates, chain, folder):
         reservation.bind(('::1', 0))
         port = reservation.getsockname()[1]
     server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-        str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '800', 'idle'],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '30000', 'idle'],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
     try:
         assert select.select([server.stdout], [], [], 5)[0], 'peer listener did not become ready'
         assert server.stdout.readline().strip() == b'READY'
@@ -202,21 +239,19 @@ def peer_loss(binary, certificates, chain, folder):
                 with connection:
                     connection.settimeout(8)
                     assert frame(connection)[0] == 1
-                    attempt = frame(connection)
+                    capture = EventCapture(connection)
+                    attempt_id, attempt = capture.lifecycle(24)
                     assert attempt[8] == 24 and attempt[41:57] == bytes(15) + b'\1'
-                    connected = frame(connection)
-                    assert connected[8] == 26 and connected[9:17] == bytes(8)
-                    closed = None
-                    for _ in range(4):
-                        # Status can precede expiry; no failed-attempt event may replace authenticated closure.
-                        event = frame(connection)
-                        assert event[8] in (10, 27)
-                        if event[8] == 27:
-                            closed = event
-                            break
+                    _, connected = capture.lifecycle(26)
+                    assert connected[8] == 26 and int.from_bytes(connected[9:17], 'little') == attempt_id
+                    assert select.select([server.stdout], [], [], 5)[0], 'server authentication did not complete'
+                    assert server.stdout.readline().strip() == b'AUTH_OK'
+                    server.kill() # Trigger expiry only after both sides really authenticated.
+                    assert server.wait(timeout=5) == -9
+                    _, closed = capture.lifecycle(27)
                     assert closed is not None and closed[9:41] == (certificates/'a.pub').read_bytes()
                     assert closed[41:] == b'\0\0'
-                    assert connection.recv(1) == b'' # Closure is emitted once, not for each polling turn.
+                    capture.end() # Closure is emitted once, despite trailing periodic statuses.
                 stdout, stderr = client.communicate(timeout=5)
                 (folder/'lost-peer-client.log').write_bytes(stdout + stderr)
                 assert client.returncode != 0 and b'AUTH_OK' in stdout and b'CONNECTION_CLOSED' in stdout
@@ -225,7 +260,7 @@ def peer_loss(binary, certificates, chain, folder):
                 stop(client)
         stdout, stderr = server.communicate(timeout=5)
         (folder/'lost-peer-server.log').write_bytes(stdout + stderr)
-        assert server.returncode != 0 and b'AUTH_OK' in stdout
+        assert server.returncode == -9 # Authentication was consumed before the deliberate process loss.
     finally:
         # The silent application peer must never survive a failed telemetry assertion.
         stop(server)
@@ -252,22 +287,11 @@ def incoming_failure(binary, certificates, chain, folder):
                     str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
                     '1800', 'clean'], capture_output=True, timeout=5)
                 assert client.returncode != 0
-                attempt = None
-                for event_id in range(4):
-                    # Status timing may vary; failure must reference the actual incoming event position.
-                    event = frame(connection)
-                    if event[8] == 21:
-                        assert attempt is None
-                        attempt = event_id
-                    elif event[8] == 22:
-                        assert attempt is not None and int.from_bytes(event[9:17], 'little') == attempt
-                        assert event[17:] == b'\0'
-                        break
-                    else:
-                        assert event[8] == 10 # Neither an authenticated identity nor a disconnect may be invented.
-                else:
-                    raise AssertionError('incoming failure was not observed')
-                assert connection.recv(1) == b''
+                capture = EventCapture(connection)
+                attempt_id, _ = capture.lifecycle(21)
+                _, failed = capture.lifecycle(22)
+                assert int.from_bytes(failed[9:17], 'little') == attempt_id and failed[17:] == b'\0'
+                capture.end() # No authenticated identity or disconnect may follow the failure.
             stdout, stderr = server.communicate(timeout=5)
             (folder/'incoming-failure.log').write_bytes(stdout + stderr)
             assert server.returncode != 0 and b'AUTH_OK' not in stdout
@@ -278,28 +302,33 @@ def incoming_failure(binary, certificates, chain, folder):
 
 
 # A retained IPv6 listener reports each expired peer's own identity, and never fabricates a teardown close.
-def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
+def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup_delay=0):
     folder.mkdir(parents=True, exist_ok=True)
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('::1', 0))
         port = reservation.getsockname()[1]
     children = []
+    stop_gate = folder/f'incoming-stop-{time.time_ns()}'
     # Each child owns a distinct authenticated identity; the second reuses the first peer's retired slot.
     def launch(identity):
         child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/f'{identity}.cert.pem'),
             str(certificates/f'{identity}.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-            '700' if remote_loss else '6000', 'idle'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            '30000', 'idle'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         children.append(child)
     with listener() as collector:
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
         server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '8500' if remote_loss else '1200',
-            'idle', '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000',
+            'overload', '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop_gate)})
         try:
             connection, _ = collector.accept()
             with connection:
                 connection.settimeout(12)
                 assert frame(connection)[0] == 1
+                if startup_delay:
+                    # Regression: delay beyond the former 1.2-second server lifetime before starting the peer.
+                    time.sleep(startup_delay)
                 launch('b')
                 starts, successes, closes = [], [], []
                 for event_id in range(16):
@@ -316,12 +345,20 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
                         expected = 'b' if not successes else 'c'
                         assert event[17:] == (certificates/f'{expected}.pub').read_bytes()
                         successes.append(event[17:])
+                        if remote_loss:
+                            # Kill only after authenticated identity is observed; startup speed cannot consume the lifetime.
+                            children[-1].kill()
+                            assert children[-1].wait(timeout=5) == -9
+                        else:
+                            stop_gate.touch() # Destroy the listener with a confirmed live authenticated peer.
                     elif event[8] == 27:
                         assert remote_loss and len(closes) < len(successes)
                         assert event[9:41] == successes[len(closes)] and event[41:] == b'\0\0'
                         closes.append(event[9:41])
                         if len(closes) == 1:
                             launch('c') # Reuse the listener after actual expiry, without rebuilding its engine.
+                        else:
+                            stop_gate.touch() # Both expiry observations arrived before shutting down the listener.
                     else:
                         assert event[8] == 10 # No failure/drop event can substitute for an authenticated close.
                 else:
@@ -332,7 +369,7 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss):
                     assert children[0].poll() is None # The remote is still alive when the server retires.
             stdout, stderr = server.communicate(timeout=3)
             (folder/('incoming-expiry.log' if remote_loss else 'incoming-teardown.log')).write_bytes(stdout + stderr)
-            assert server.returncode != 0 and b'AUTH_OK' in stdout # Idle tests deliberately exchange no application data.
+            assert server.returncode == 2 and b'AUTH_OK' in stdout, (stdout, stderr) # Idle peers never complete application work.
         finally:
             # Cleanup remains bounded even if a telemetry identity or lifecycle assertion fails.
             stop(server)
@@ -488,3 +525,61 @@ def mesh_shutdown(binary, certificates, chain, folder, silent=False):
                 stop(process)
             for handle in handles.values():
                 handle.close()
+
+
+# A full real listener refuses one additional authenticated connection without displacing admitted peers.
+def capacity_refusal(binary, certificates, chain, folder):
+    from test_quic_mesh import ports
+    from test_quic_resilience import watch, states
+    folder.mkdir(parents=True, exist_ok=True)
+    port = ports()[0]
+    gate = folder/f'stop-{time.time_ns()}'
+    children, handles = [], []
+    server_log = folder/'server.log'
+    with listener() as collector:
+        try:
+            output = server_log.open('w'); handles.append(output)
+            server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
+                str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000', 'overload',
+                '--chain', str(chain), '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}'],
+                env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(gate)}, stdout=output, stderr=subprocess.STDOUT)
+            children.append(server)
+            # Observe native admission counters before creating the excess connection.
+            def state(predicate):
+                return watch({'server': server}, {'server': server_log}, {'server': predicate},
+                             {'server': {}}, thread_limits={'server': 1})
+            state(lambda text: 'READY' in text.splitlines())
+            for index in range(17):
+                output = (folder/f'client-{index}.log').open('w'); handles.append(output)
+                child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
+                    str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
+                    '30000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
+                children.append(child)
+                if index < 16:
+                    state(lambda text: bool(states(text)) and states(text)[-1][0] == index + 1)
+                else:
+                    state(lambda text: any(row[2] == 1 for row in states(text)))
+            assert all(child.poll() is None for child in children[1:17])
+            gate.touch() # End with admitted peers alive; destruction must not manufacture close observations.
+            assert server.wait(timeout=5) == 2, server_log.read_text()
+            _, events = completed_capture(collector)
+            starts, refusals, successes = {}, [], 0
+            for event_id, event in enumerate(events):
+                tag = event[8]
+                if tag == 21:
+                    starts[event_id] = event[9:27]
+                elif tag == 23:
+                    assert int.from_bytes(event[9:17], 'little') in starts
+                    successes += 1
+                elif tag == 20:
+                    assert len(event) == 27 and event[9:25] == socket.inet_pton(socket.AF_INET6, '::1')
+                    assert event[9:27] in starts.values() # Refusal identifies the actual attempted endpoint.
+                    refusals.append(event[9:27])
+                else:
+                    assert tag == 10, tag # Neither drops, failed TLS nor admitted-peer closes are expected.
+            assert len(starts) == 17 and successes == 17 and len(refusals) == 1
+            return dict(passed=True, admitted=16, refused=1)
+        finally:
+            # Every failure releases children and logs; no process escapes this bounded scenario.
+            for child in children: stop(child)
+            for output in handles: output.close()

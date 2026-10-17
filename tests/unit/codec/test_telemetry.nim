@@ -71,6 +71,13 @@ assert number(closed, 4, 8) == 23 and closed[12] == 27
 assert closed[13] == 123 and closed[45] == 0 and closed[46] == 0
 for i in 14..<45: assert closed[i] == 0 # Identity bytes are fixed-width, without a sequence prefix.
 
+# Refusal has an endpoint only: no invented identity, reason or correlation field.
+let capacityRefusal = connectionRefused(Timestamp(30), remoteAddress, 65535)
+assert capacityRefusal.len == 31 and number(capacityRefusal, 0, 4) == 27
+assert capacityRefusal[12] == 20 and number(capacityRefusal, 4, 8) == 30
+assert capacityRefusal[28] == 1 and number(capacityRefusal, 29, 2) == 65535
+for i in 13..<28: assert capacityRefusal[i] == 0 # Preserve every IPv6 address byte.
+
 # Incoming wire layouts preserve the pre-handshake event ID and add identity only on success.
 let incoming = connectingIn(Timestamp(31), remoteAddress, 9001)
 assert incoming.len == 31 and number(incoming, 0, 4) == 27 and incoming[12] == 21
@@ -195,10 +202,15 @@ blocked.acceptOutcome(4380, Timestamp(48), incomingId, remoteIdentity, true)
 assert blocked.buffer[beforeOutcome + 12] == 23
 assert number(blocked.buffer, beforeOutcome + 13, 8) == 9
 assert blocked.nextEvent == 11 and blocked.deadline == originalDeadline and blocked.offset == 5
+# Admission refusal appends after TLS success without allocating another correlation slot.
+let beforeRefusal = blocked.length
+blocked.refusing(4390, Timestamp(49), remoteAddress, 9000)
+assert blocked.nextEvent == 12 and blocked.buffer[beforeRefusal + 12] == 20
+assert blocked.length == beforeRefusal + capacityRefusal.len and blocked.deadline == originalDeadline
 blocked.failed(4400)
-assert blocked.nextEvent == 11 # Failure retires bytes, never the process-wide correlation namespace.
+assert blocked.nextEvent == 12 # Failure retires bytes, never the process-wide correlation namespace.
 let offline = blocked.dialing(4500, Timestamp(45), remoteIdentity, remoteAddress, 9000)
-assert uint64(offline) == 11 and blocked.nextEvent == 12 and blocked.length == 0
+assert uint64(offline) == 12 and blocked.nextEvent == 13 and blocked.length == 0
 blocked.nextEvent = high(uint64)
 blocked.dialOutcome(4600, Timestamp(46), offline, false)
 assert not blocked.enabled and blocked.nextEvent == high(uint64) # Exhaustion disables rather than wraps.
