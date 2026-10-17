@@ -4,6 +4,17 @@ import std/posix/posix
 import ./wire
 
 type
+  # Opaque native address bytes are filled only by inet_pton; no Nim array layout crosses the ABI.
+  In6Address {.importc: "struct in6_addr", header: "<netinet/in.h>", bycopy.} = object
+  # Public POSIX IPv6 ABI missing from the pinned standard library; C owns layout and sizeof.
+  # Zero initialization also clears flow information and the unsupported scope identifier.
+  Sockaddr_in6 {.importc: "struct sockaddr_in6", header: "<netinet/in.h>", bycopy.} = object
+    sin6_family: TSa_Family
+    sin6_port: uint16
+    sin6_addr: In6Address
+    when defined(macosx):
+      # Darwin includes a sockaddr length byte; Linux has no such member.
+      sin6_len: uint8
   # Stack-local readiness entry is borrowed only for one zero-timeout poll.
   PollEntry {.importc: "struct pollfd", header: "<poll.h>", bycopy.} = object
     fd: cint
@@ -13,6 +24,8 @@ type
     enabled, opened, connecting: bool
     fd: cint
     address: Sockaddr_in
+    address6: Sockaddr_in6
+    ipv6: bool
     metadata: Metadata
     buffer: array[2048, byte]
     length, offset: int
@@ -37,7 +50,7 @@ proc getOption(fd, level, option: cint, value: pointer,
 # Disable SIGPIPE per socket on BSD so a dead collector cannot terminate the peer.
 proc setOption(fd, level, option: cint, value: pointer,
     size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
-# Parse numeric IPv4 only; no DNS work occurs on the peer dispatcher.
+# Parse numeric IP literals only; no DNS work occurs on the peer dispatcher.
 proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
     header: "<arpa/inet.h>".}
 # Ports are converted independently of host byte order.
@@ -80,30 +93,54 @@ proc close*(client: var Client) =
 proc configure*(client: var Client, endpoint: string, metadata: Metadata): bool =
   # Reconfiguration could replace native ownership or a partially sent frame.
   if client.enabled or client.opened or metadata.coreCount == 0: return false
-  # Bound parsing storage before splitting even trusted command-line input.
-  if endpoint.len > 21: return false
-  let parts = endpoint.split(':')
-  # This increment supports numeric IPv4 and localhost only; no implicit port or DNS resolution.
-  if parts.len != 2 or parts[1].len == 0 or parts[1].len > 5: return false
+  # IPv6 mixed notation needs at most 45 host bytes, brackets, colon and five port digits.
+  if endpoint.len == 0 or endpoint.len > 53 or '\0' in endpoint: return false
+  let ipv6 = endpoint[0] == '['
+  var host = ""
+  var portText = ""
+  if ipv6:
+    # Brackets make the port separator unambiguous; scope IDs are deliberately unsupported.
+    let closing = endpoint.find(']')
+    if closing < 2 or closing + 2 >= endpoint.len or endpoint[closing + 1] != ':': return false
+    host = endpoint[1..<closing]
+    portText = endpoint[closing + 2..^1]
+  else:
+    # Keep the existing IPv4/localhost syntax strict; bare IPv6 is ambiguous.
+    let parts = endpoint.split(':')
+    if parts.len != 2: return false
+    host = if parts[0] == "localhost": "127.0.0.1" else: parts[0]
+    portText = parts[1]
+  if portText.len == 0 or portText.len > 5: return false # Bound arithmetic before decimal parsing.
   var port = 0
   # Decimal parsing rejects signs, whitespace and overflowing values before narrowing.
-  for character in parts[1]:
+  for character in portText:
     if character < '0' or character > '9': return false # Port syntax is strictly decimal.
     port = port * 10 + ord(character) - ord('0')
   if port < 1 or port > 65535: return false # Zero is not a remote collector endpoint.
-  var host = if parts[0] == "localhost": "127.0.0.1" else: parts[0]
   var address = default(Sockaddr_in)
-  # Reject embedded NULs rather than accepting a truncated native address string.
-  if host.len == 0 or host.len > 15 or '\0' in host: return false
+  var address6 = default(Sockaddr_in6)
   let hostPointer = host.toCString()
-  if parseAddress(cint(ord(nativesocket.AF_INET)), hostPointer, addr address.sin_addr) !=
-      1: return false
-  address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
-  address.sin_port = networkPort(uint16(port))
-  when defined(macosx):
-    # BSD requires the native sockaddr byte extent as well as its family.
-    address.sin_len = uint8(sizeof(Sockaddr_in))
+  if ipv6:
+    # Native parsing rejects malformed literals, zones and bracketed IPv4 without DNS.
+    if host.len > 45 or '%' in host or parseAddress(cint(ord(nativesocket.AF_INET6)), hostPointer,
+        addr address6.sin6_addr) != 1: return false
+    address6.sin6_family = TSa_Family(ord(nativesocket.AF_INET6))
+    address6.sin6_port = networkPort(uint16(port))
+    when defined(macosx):
+      # BSD requires the native sockaddr byte extent as well as its family.
+      address6.sin6_len = uint8(sizeof(Sockaddr_in6))
+  else:
+    # Preserve numeric IPv4 validation and its smaller native address representation.
+    if host.len == 0 or host.len > 15 or parseAddress(cint(ord(nativesocket.AF_INET)),
+        hostPointer, addr address.sin_addr) != 1: return false
+    address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
+    address.sin_port = networkPort(uint16(port))
+    when defined(macosx):
+      # BSD requires the native sockaddr byte extent as well as its family.
+      address.sin_len = uint8(sizeof(Sockaddr_in))
   client.address = address
+  client.address6 = address6
+  client.ipv6 = ipv6
   client.metadata = metadata
   client.retryAt = 0
   client.statusAt = 0
@@ -184,7 +221,8 @@ proc peerDisconnected*(client: var Client, now: int64, timestamp: Timestamp,
 
 # Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
 proc begin(client: var Client, now: int64, timestamp: Timestamp) =
-  client.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
+  let family = if client.ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET
+  client.fd = socket(cint(ord(family)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   # Resource exhaustion must not fail the peer or cause a busy retry loop.
   if client.fd < 0:
     client.failed(now)
@@ -203,7 +241,13 @@ proc begin(client: var Client, now: int64, timestamp: Timestamp) =
     if setOption(client.fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) != 0:
       client.failed(now)
       return
-  let connected = connectSocket(client.fd, addr client.address, SockLen(sizeof(Sockaddr_in)))
+  var connected = -1.cint
+  if client.ipv6:
+    # The configured family and exact sockaddr extent must agree on every reconnect.
+    connected = connectSocket(client.fd, addr client.address6, SockLen(sizeof(Sockaddr_in6)))
+  else:
+    # IPv4 collectors retain the original native connect representation.
+    connected = connectSocket(client.fd, addr client.address, SockLen(sizeof(Sockaddr_in)))
   # EINPROGRESS is normal; every other error schedules a bounded retry.
   if connected != 0 and osLastError() != OSErrorCode(EINPROGRESS):
     client.failed(now)
