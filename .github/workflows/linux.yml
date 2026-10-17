@@ -1,7 +1,9 @@
 name: Linux
 
+# Check master after pushes/merges; feature branches run through their PR only.
 "on":
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
