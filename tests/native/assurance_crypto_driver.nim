@@ -66,7 +66,7 @@ proc request(parts: seq[string]) =
     assert bits.bytes == savedBits.bytes
     if checked.error == AssuranceContextError.None:
       # Only the success branch permits access to its owned transcript bytes.
-      echo hexText(array[46, byte](checked.value))
+      echo hexText(array[45, byte](checked.value))
     else:
       # Failure exposes only a stable typed reason.
       echo ($checked.error).toLowerAscii()

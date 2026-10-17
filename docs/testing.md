@@ -2,8 +2,8 @@
 
 Original migration branch: `nim-tests`, based on Nimony migration commit `8db659c`.
 Migration now covers primitives, composite/block codecs and successive state families.
-Current total: **66 ordinary native suites**, including three state-store and two
-authorization-transition profiles plus two telemetry suites; all original 59 suites remain migrated.
+Current total: **69 ordinary native suites**, including three state-store, two authorization-transition and
+two history-transition profiles plus two telemetry suites; all original 59 suites remain migrated.
 The migration preserved wire behavior, bounds/ownership contracts and independent references.
 Subsequent native suites cover the new storage foundation as recorded below.
 
@@ -13,8 +13,8 @@ Subsequent native suites cover the new storage foundation as recorded below.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | Source compilation |
 | `check-python` | One Python reference/tooling/provenance discovery | Python tests |
-| `check-unit` | 66 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
-| `check-guards` | 685 compiler rejection probes | Compiler rejection guards |
+| `check-unit` | 69 native suites, 41 corpora, runtime misuse probes | Native units/codecs |
+| `check-guards` | 688 compiler rejection probes | Compiler rejection guards |
 | `check-e2e` | Six peer-entry selftests and live networking/resource scenarios | End-to-end networking |
 
 `make check` runs all five locally; CI schedules them independently and concurrently on separate
@@ -24,7 +24,7 @@ VMs. Each target provisions its own dependencies and writes its own report. Ther
 
 Reports live in `build/tests/modules/`, `build/tests/python/`, `build/tests/runtime/` (unit/corpus),
 `build/tests/guards/` (compiler rejections) and `build/tests/e2e/`. Combined native coverage remains
-66 + 6 = 72 profiles. The new [state store](../spec/state-store.md) has three native profiles and
+69 + 6 = 75 profiles. The new [state store](../spec/state-store.md) has three native profiles and
 five privacy probes and nine isolated runtime misuse checks. E2E retains the
 original rounds, warmups, failure schedules, timeouts and resource ceilings. Its self-contained
 build uses the same shared checked native compiler profile as the unit verifier.
@@ -36,6 +36,15 @@ The [authorization transition](../spec/authorization-transition.md) adds six pub
 STF cases, atomic store integration, 1,000 scoped ARC cycles, four result misuse probes and
 three compiler privacy/nominal rejections. These are additional execution tests, not duplicate
 Python implementations of the transition.
+
+The [recent-history transition](../spec/history-transition.md) adds eight published history cases,
+11 independent output-tree checks, two native profiles, six runtime misuse probes and three
+compiler rejections, including stage ordering, atomic rollback and scoped ARC evidence.
+
+The [signing-domain audit](../spec/signing-domains.md) adds a native suite for 1,035 external
+assurance/report credentials and independently sampled OpenSSL domain checks. Existing 2,087
+assurance and 63 report-composition workloads remain; their frozen hashes change intentionally
+with the corrected protocol bytes, including rejection of old-domain credentials.
 
 ## What the investigation found
 
@@ -94,7 +103,7 @@ explicitly; Linux retains lld. The backend command files confirm Clang `-O3` and
 make unit
 ```
 
-That command runs **22 codec, 35 state, four crypto and five QUIC suites** through Hastur.
+That command runs **22 codec, 37 state, five crypto and five QUIC suites** through Hastur.
 The codec directory is dependency-free; other cases have explicit per-file profiles, including
 native-free UDP and disabled integration. The launcher prepares the same pristine pinned C/Rust
 crypto bridges, observers, LSQUIC/TLS and generated certificates/CE inputs as the cumulative run.

@@ -1739,7 +1739,11 @@ Next is the M2 assurance signing-context/validator-key slice.
 ## Thirty-sixth bounded increment: M2 assurance signing contexts
 
 `src/crypto/assurance_context.nim` now targets the same pristine pinned Nimony nightly. The
-Gray Paper 0.8.0 `assurancesig` transcript stays exactly 46 bytes:
+Historical migration record: the following 46-byte transcript preserved the then-existing behavior.
+The later [credential-backed token audit](../spec/signing-domains.md) identifies and corrects
+its extra dollar byte; current assurance/guarantee transcripts are 45 bytes.
+
+Gray Paper 0.8.0 `assurancesig` transcript was retained as exactly 46 bytes:
 `$jam_available || Blake2b-256(parent32 || fixed_profile_bits)`. Canonical bits include the entire
 native storage domain. Verification retains configuration/key-count/count precedence, then all
 record index/order/padding/parent checks before any signature work. Validator identity selects

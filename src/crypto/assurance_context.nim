@@ -6,7 +6,7 @@ type
   # Expected block parent is distinct from an assurance anchor and from a computed digest.
   AssuranceParent* = distinct array[32, byte]
   # The normative domain and 32-byte digest form one owned, signature-independent message.
-  AssuranceSigningMessage* = distinct array[46, byte]
+  AssuranceSigningMessage* = distinct array[45, byte]
   # Only completed verification may produce a certified count; this is not availability/state approval.
   VerifiedAssuranceCount* = distinct uint64
   # Context errors preserve precise configuration, structural, parent and cryptographic failures.
@@ -44,7 +44,7 @@ proc canonicalBits(bits: AssuranceBits, cores: CoreCount): bool {.raises: [].} =
       return false
   true
 
-# Build exactly $jam_available || Blake2b-256(parent || fixed bits), without retaining any input.
+# Build exactly jam_available || Blake2b-256(parent || fixed bits), without retaining any input.
 proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
                        cores: CoreCount): AssuranceContextResult[
                            AssuranceSigningMessage] {.raises: [].} =
@@ -68,13 +68,13 @@ proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
   if hashed.error != CryptoError.None:
     return AssuranceContextResult[AssuranceSigningMessage](
         status: AssuranceContextError.BackendFailure)
-  var message = default(array[46, byte])
-  const domain = "$jam_available"
-  # The leading dollar sign is signed; no terminator or extra domain hash is inserted.
+  var message = default(array[45, byte])
+  const domain = "jam_available"
+  # The dollar sign in GP token notation is not a byte; no terminator or extra hash is inserted.
   for i in 0..<domain.len: message[i] = byte(domain[i])
   let digest = array[32, byte](hashed.value)
   # Blake2b is parameterized for 32 output bytes, preserving the digest's identity order.
-  for i in 0..<32: message[14+i] = digest[i]
+  for i in 0..<32: message[13+i] = digest[i]
   AssuranceContextResult[AssuranceSigningMessage](status: AssuranceContextError.None,
     completed: AssuranceSigningMessage(message))
 
@@ -123,7 +123,7 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
     if message.error != AssuranceContextError.None or signature.error != CryptoError.None:
       return AssuranceContextResult[VerifiedAssuranceCount](
           status: AssuranceContextError.BackendFailure)
-    let bytes = array[46, byte](message.value)
+    let bytes = array[45, byte](message.value)
     # The provider's existing exceptional-point policy is unchanged and remains documented separately.
     if not verify(keys[int(value.validator)], signature.value, bytes):
       return AssuranceContextResult[VerifiedAssuranceCount](

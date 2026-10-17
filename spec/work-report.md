@@ -41,7 +41,7 @@ only scalar metadata and copies of owner-bound payloads or complete wire leave t
 Nim retains private acyclic snapshot storage through ARC.
 
 The composed workload hashes canonical complete report bytes with Blake2b-256 and verifies
-ordinary Ed25519 over the ASCII `$jam_guarantee` concatenated with that hash. The guarantee
+ordinary Ed25519 over the ASCII `jam_guarantee` concatenated with that hash. The guarantee
 timeslot is not part of this signing message. Verification measures the existing backend
 verdict; it does not establish validator assignments or state eligibility. The documented
 small-order Ed25519 acceptance-policy difference remains unresolved. Authored ordinary-key
@@ -87,7 +87,7 @@ retained in ignored `build/tests/runtime/results.json` and adjacent logs.
 
 The full `report_driver.nim` now compiles on Nimony, dispatches its explicit crypto `check`
 subcommand and includes the same codec adapter for all 18,430 ordinary requests. All 63 original
-independent OpenSSL credential cases pass, comparing the complete re-encoded report, exact 46-byte
+independent OpenSSL credential cases pass, comparing the complete re-encoded report, exact 45-byte
 guarantee message and expected signature verdict. New 0.8.0 field mutations, wrong domain, swapped
 keys and individual corrupted signatures retain their original expectations.
 `GuaranteeMessageResult` keeps composition status/storage private, with read-only reasons and
@@ -104,3 +104,10 @@ Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
 Next: same-process endpoint soak and remaining admission/resilience coverage; Linux confirmation and documented
 normative policy gates
 remain separate. See [the compiler record](../docs/nimony-trial.md) for cumulative evidence.
+
+## Signing-token audit correction
+
+The [credential-backed audit](signing-domains.md) corrects the historical dollar-prefixed
+transcript to the 45-byte ASCII-domain message. It adds 1,035 unchanged upstream credentials
+and preserves old-domain rejection; earlier local hashlib/OpenSSL fixtures shared the same
+interpretation error and did not establish this interoperability property.

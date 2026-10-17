@@ -22,13 +22,13 @@ proc exercise() =
   let config = AssuranceConfig(cores: CoreCount(2), validators: ValidatorCount(6))
   let message = assuranceMessage(expectedParent, bits, config.cores)
   assert message.error == AssuranceContextError.None
-  let savedMessage = array[46, byte](message.value)
+  let savedMessage = array[45, byte](message.value)
   var copiedMessage = savedMessage
   copiedMessage[0] = 0
   bits.bytes[0] = 0
   parent[0] = 0
-  assert array[46, byte](message.value) == savedMessage # Input/copy mutation cannot alter completed bytes.
-  assert savedMessage[0] == byte('$') and savedMessage[13] == byte('e')
+  assert array[45, byte](message.value) == savedMessage # Input/copy mutation cannot alter completed bytes.
+  assert savedMessage[0] == byte('j') and savedMessage[12] == byte('e')
   let seed = importSeed(default(array[32, byte])).value
   let key = publicKey(seed).value
   let signature = array[64, byte](sign(seed, savedMessage).value)
