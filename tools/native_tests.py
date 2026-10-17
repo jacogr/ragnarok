@@ -7,14 +7,27 @@ import platform
 from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
-UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes')
+UNIT_SUITES = ('natural', 'fixed_unsigned', 'bounded', 'composite', 'work_digest', 'ownership', 'report_snapshots', 'tickets', 'assurances', 'guarantees', 'disputes', 'work_package', 'header', 'block', 'block_private')
 # These cases keep numeric allocation evidence as well as native equality assertions.
 ARC_SUITES = {'ownership': 'arc_release', 'report_snapshots': 'report_arc_release',
-              'guarantees': 'guarantee_arc_release', 'disputes': 'dispute_arc_release'}
+              'guarantees': 'guarantee_arc_release', 'disputes': 'dispute_arc_release',
+              'work_package': 'package_arc_release', 'header': 'header_arc_release', 'block': 'block_arc_release'}
 UNIT_ROOT = ROOT/'tests/unit/codec'
-# Exact independently authored report bytes replace the old per-run fixture argument.
-UNIT_FIXTURES = {'guarantees': ('RAGNAROK_GUARANTEE_FIXTURE', ROOT/'tests/fixtures/guarantee-report.bin',
-    '8f13efdbca5aa7c5158c7cc62c71e5a9ed6ab2e22032d46946f4a304c55688fc')}
+# Fixture targets may be files or directories; each entry lists every byte source that must match its pin.
+GUARANTEE_FIXTURE = ROOT/'tests/fixtures/guarantee-report.bin'
+BLOCK_FIXTURES = ROOT/'tests/fixtures/block-tiny'
+UNIT_FIXTURES = {
+    'guarantees': ('RAGNAROK_GUARANTEE_FIXTURE', GUARANTEE_FIXTURE, (
+        (GUARANTEE_FIXTURE, '8f13efdbca5aa7c5158c7cc62c71e5a9ed6ab2e22032d46946f4a304c55688fc'),)),
+    'block': ('RAGNAROK_BLOCK_FIXTURES', BLOCK_FIXTURES, (
+        (BLOCK_FIXTURES/'tickets.bin', '69d59e7ec8933d92a202d7a439b05f5f69ae3c0a4bf00bc08bf68dcaa256bde3'),
+        (BLOCK_FIXTURES/'preimages.bin', '874f3bed57dab9927170d5344b8489ad0662d5ee0c22a58ca25a362415cc8c90'),
+        (BLOCK_FIXTURES/'guarantees.bin', '4e5b4574b56bf0f0f974db8f4486fd14219f9d5f5a95c4743100bf5ed75ec690'),
+        (BLOCK_FIXTURES/'assurances.bin', '5438827a87cfd20f1eaccd8d20858a69af88df2459172a37e6aa9d9639c506e3'),
+        (BLOCK_FIXTURES/'disputes.bin', '83e526e84c919fb1efb020bee185c9f63c3692e004d13820546473ed59e31b21'),
+        (BLOCK_FIXTURES/'header.bin', 'c4f4658a9c04bca5d249c7ca5f14845bd012311213f6bb24076dcdddbb268fa2'),
+    )),
+}
 
 
 # Resolve a migrated suite without introducing a second copy or a fallback to its old native path.
@@ -68,10 +81,12 @@ def unit_environment(compiler, name=None, base=None):
             (directory/(case+'.json')).unlink(missing_ok=True)
         if case in UNIT_FIXTURES:
             # Refuse missing or changed fixture bytes before any native test can produce a success marker.
-            variable, path, expected = UNIT_FIXTURES[case]
-            if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
-                raise ValueError('Native unit fixture checksum mismatch: '+case)
-            environment[variable] = str(path)
+            variable, target, required = UNIT_FIXTURES[case]
+            for path, expected in required:
+                # A valid directory member cannot hide another missing or changed child input.
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    raise ValueError('Native unit fixture checksum mismatch: '+case+' '+path.name)
+            environment[variable] = str(target)
     return {**environment, 'RAGNAROK_TEST_EVIDENCE': str(directory)}
 
 
@@ -89,3 +104,8 @@ def unit_evidence(compiler, name):
         # A smaller schema workload cannot stand in for the original five-owner regression.
         raise ValueError('Incomplete native ARC schema workload')
     return observed
+
+
+# Flatten fixture groups into the exact input files consumed and hashed by cumulative verification.
+def unit_fixture_sources():
+    return [path for _, _, required in UNIT_FIXTURES.values() for path, _ in required]

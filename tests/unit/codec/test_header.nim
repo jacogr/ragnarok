@@ -1,6 +1,7 @@
 ## Native full/unsigned/marker ownership, lifetime, atomicity, alias and guarded-alternative regressions.
+import ../../support/arc_evidence
 import std/[assertions, syncio]
-import ../../src/codec/[header, bounded, assurances, tickets]
+import ../../../src/codec/[header, bounded, assurances, tickets]
 
 # Expected-success paths select the result branch before accessing complete values/progress.
 proc checked[T](parsed: HeaderResult[T]): T =
@@ -242,5 +243,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: releaseCycle(byte(i mod 256))
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "HEADER_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Retain numeric observations without platform-specific heap sizes in expected output.
+recordArcRelease("header", 1000, beforeRelease, afterRelease)
+echo "HEADER_ARC_RELEASE cycles=1000 unchanged"
 echo "Headers/markers: signing prefixes, retained replacements, guarded alternatives, aliases and ARC release passed"

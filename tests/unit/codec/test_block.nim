@@ -1,7 +1,12 @@
 ## Focused public composite ownership, child materialization, stricter-policy and atomicity regressions.
-import std/[assertions, cmdline, syncio]
-import ../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,
+import ../../support/arc_evidence
+import std/[assertions, envvars, syncio]
+import ../../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,
     disputes, header]
+
+# Missing fixture configuration must fail before constructing any relative or root-level child path.
+let fixtureFolder = getEnv("RAGNAROK_BLOCK_FIXTURES")
+assert fixtureFolder.len > 0, "block fixture directory is required"
 
 # Select complete successful parent values before reading fields/progress.
 proc checked[T](parsed: FrameResult[T]): T =
@@ -21,7 +26,7 @@ let config = FrameConfig(cores: CoreCount(2), validators: ValidatorCount(6), epo
 # Capture separately authored complete child fixtures; no parent decoder constructs the source for encoding tests.
 proc source(config: FrameConfig): Extrinsic {.raises.} =
   result = default(Extrinsic)
-  let folder = paramStr(1)
+  let folder = fixtureFolder
   result.tickets = checked(decodeComponent[ComponentKind.Tickets](bytes(folder & "/tickets.bin"), config)).owner
   result.preimages = checked(decodeComponent[ComponentKind.Preimages](bytes(folder &
       "/preimages.bin"), config)).owner
@@ -93,7 +98,8 @@ try:
   let d = readDisputes(checked(extrinsicDisputes(parsed.owner)))
   assert d.error == DisputeError.None and d.value.info.verdicts == 2
   # A complete block is sourced from the existing owned extrinsic and an independently captured sealed header.
-  let h = checked(decodeComponent[ComponentKind.Header](bytes(paramStr(1) & "/header.bin"), config)).owner
+  let h = checked(decodeComponent[ComponentKind.Header](bytes(fixtureFolder &
+      "/header.bin"), config)).owner
   let blockSource = Block(header: h, extrinsic: parent)
   let blockSize = checked(encodeBlock(blockSource, config, output))
   var blockOwner = checked(decodeBlock(output.toOpenArray(0, blockSize-1), config)).owner
@@ -125,7 +131,7 @@ try:
   assert encodeComponent(ticketPart, empty).error == FrameError.OutputTooSmall
   assert encodeBlock(blockSource, config, empty).error == FrameError.OutputTooSmall
   # Fresh captures own bytes, so reusing their original caller buffer as output is safe and deliberately supported.
-  var original = bytes(paramStr(1) & "/tickets.bin")
+  var original = bytes(fixtureFolder & "/tickets.bin")
   let independent = checked(decodeComponent[ComponentKind.Tickets](original, config)).owner
   for i in 0..<original.len: original[i] = 0
   assert checked(encodeComponent(independent, original)) == original.len
@@ -184,7 +190,9 @@ try:
   for i in 0..<1000: releaseCycle(blockSource, config, blockSize)
   let afterRelease = getOccupiedMem()
   assert beforeRelease == afterRelease
-  echo "BLOCK_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+  # Retain numeric observations without platform-specific heap sizes in expected output.
+  recordArcRelease("block", 1000, beforeRelease, afterRelease)
+  echo "BLOCK_ARC_RELEASE cycles=1000 unchanged"
   echo "Nimony blocks/extrinsics: retained children, typed causes, independent copies, policy and atomicity passed"
 except:
   # Missing trusted fixtures fail the suite without changing protocol error semantics.

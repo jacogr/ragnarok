@@ -119,7 +119,10 @@ class NativeUnitHarness(unittest.TestCase):
     # The committed report snapshot must equal the pre-existing independent oracle, not production output.
     def test_guarantee_fixture_reference(self):
         from guarantees_oracle import record
-        variable, path, expected = native_tests.UNIT_FIXTURES['guarantees']
+        variable, path, required = native_tests.UNIT_FIXTURES['guarantees']
+        self.assertEqual(len(required), 1)
+        self.assertEqual(required[0][0], path)
+        expected = required[0][1]
         self.assertEqual(path.read_bytes(), record(0)['report'])
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), expected)
         self.assertEqual(variable, 'RAGNAROK_GUARANTEE_FIXTURE')
@@ -129,7 +132,7 @@ class NativeUnitHarness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             path = folder/'fixture.bin'
-            fixture = ('RAGNAROK_GUARANTEE_FIXTURE', path, hashlib.sha256(b'fixture').hexdigest())
+            fixture = ('RAGNAROK_GUARANTEE_FIXTURE', path, ((path, hashlib.sha256(b'fixture').hexdigest()),))
             with patch.dict(native_tests.UNIT_FIXTURES, {'guarantees': fixture}, clear=True), patch.object(
                     native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
                 with self.assertRaises(FileNotFoundError):
@@ -141,6 +144,45 @@ class NativeUnitHarness(unittest.TestCase):
                 environment = native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees',
                     {'RAGNAROK_GUARANTEE_FIXTURE': '/stale/fixture'})
                 self.assertEqual(environment['RAGNAROK_GUARANTEE_FIXTURE'], str(path))
+
+    # Every saved tiny child must match the original independently authored canonical input.
+    def test_block_fixture_reference(self):
+        from block_oracle import published
+        variable, target, required = native_tests.UNIT_FIXTURES['block']
+        expected = dict(zip(('tickets', 'preimages', 'guarantees', 'assurances', 'disputes'),
+                            published('tiny', 'E', canonical=True)))
+        expected['header'] = published('tiny', 'B', canonical=True)[0]
+        self.assertEqual(len(required), 6)
+        for path, digest in required:
+            # Compare source bytes as well as hashes so the fixture cannot be refreshed from the production encoder.
+            with self.subTest(name=path.name):
+                self.assertEqual(path.parent, target)
+                self.assertEqual(path.read_bytes(), expected[path.stem])
+                self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
+        self.assertEqual(variable, 'RAGNAROK_BLOCK_FIXTURES')
+        sources = {path for path, _ in required} | {native_tests.UNIT_FIXTURES['guarantees'][1]}
+        self.assertEqual(set(native_tests.unit_fixture_sources()), sources)
+
+    # One valid sibling cannot mask a missing or changed later fixture in the same directory.
+    def test_block_fixture_group_rejection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            first, last = folder/'first.bin', folder/'last.bin'
+            first.write_bytes(b'first')
+            required = ((first, hashlib.sha256(b'first').hexdigest()),
+                        (last, hashlib.sha256(b'last').hexdigest()))
+            fixture = ('RAGNAROK_BLOCK_FIXTURES', folder, required)
+            with patch.dict(native_tests.UNIT_FIXTURES, {'block': fixture}, clear=True), patch.object(
+                    native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
+                with self.assertRaises(FileNotFoundError):
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'block')
+                last.write_bytes(b'changed')
+                with self.assertRaisesRegex(ValueError, 'checksum'):
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'block')
+                last.write_bytes(b'last')
+                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'block',
+                    {'RAGNAROK_BLOCK_FIXTURES': '/stale/directory'})
+                self.assertEqual(environment['RAGNAROK_BLOCK_FIXTURES'], str(folder))
 
 
 # This Python suite tests launcher safety only; native application tests run through Hastur.

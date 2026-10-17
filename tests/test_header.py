@@ -14,7 +14,7 @@ def main():
     # Keep focused native aliases/lifetimes separate from independently driven field/wire comparison.
     for source,name in (('test_header','selftest'),('header_driver','driver')):
         with (folder/f'{name}-build.log').open('w') as log:
-            subprocess.run(nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache'),
+            subprocess.run(nim_command(ROOT/('tests/unit/codec' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache'),
                 cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True)
     lines,expected=requests();path=folder/'requests.txt';path.write_text('\n'.join(lines)+'\n')

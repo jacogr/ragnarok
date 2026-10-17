@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify full extrinsic/block composition, independent boundaries, immutable ownership and nominal schemas."""
 import hashlib
+import os
 import json
 import subprocess
 from block_oracle import requests,published
@@ -19,9 +20,10 @@ def main():
     # Build public lifetime tests, private-wire alias probes and the independent batch adapter.
     for source,name in (('test_block','selftest'),('test_block_private','private'),('block_driver','driver')):
         with (folder/f'{name}-build.log').open('w') as log:
-            subprocess.run(nim_command(ROOT/f'tests/native/{source}.nim',folder/name,folder/f'{name}-cache'),
+            subprocess.run(nim_command(ROOT/('tests/unit/codec' if source.startswith('test_') else 'tests/native')/(source+'.nim'),folder/name,folder/f'{name}-cache'),
                 cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
-    subprocess.run([str(folder/'selftest'),str(fixture)],cwd=ROOT,check=True)
+    subprocess.run([str(folder/'selftest')],cwd=ROOT,check=True,
+                   env={**os.environ, 'RAGNAROK_BLOCK_FIXTURES': str(fixture)})
     subprocess.run([str(folder/'private')],cwd=ROOT,check=True)
     lines,expected=requests();path=folder/'requests.txt';path.write_text('\n'.join(lines)+'\n')
     result=subprocess.run([str(folder/'driver'),str(path)],capture_output=True,text=True,timeout=240,check=True)

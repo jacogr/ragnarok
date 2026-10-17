@@ -1,6 +1,7 @@
 ## Focused checked owner lifetimes, complete-output atomicity, alias and context/report consistency tests.
+import ../../support/arc_evidence
 import std/[assertions, syncio]
-import ../../src/codec/[work_package, work_report, work_digest, composite, bounded]
+import ../../../src/codec/[work_package, work_report, work_digest, composite, bounded]
 
 # Test-only success selection always checks the result branch before accessing a value.
 proc checked[T](parsed: PackageResult[T]): T =
@@ -240,5 +241,7 @@ let beforeRelease = getOccupiedMem()
 for i in 0..<1000: releaseCycle(byte(i mod 256))
 let afterRelease = getOccupiedMem()
 assert beforeRelease == afterRelease
-echo "PACKAGE_ARC_RELEASE cycles=1000 occupied_before=", beforeRelease, " occupied_after=", afterRelease
+# Retain numeric observations without platform-specific heap sizes in expected output.
+recordArcRelease("work_package", 1000, beforeRelease, afterRelease)
+echo "PACKAGE_ARC_RELEASE cycles=1000 unchanged"
 echo "Work-package family: retained replacements, orphan children, atomicity, aliases and ARC release passed"

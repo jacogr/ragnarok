@@ -1,0 +1,2 @@
+HEADER_ARC_RELEASE cycles=1000 unchanged
+Headers/markers: signing prefixes, retained replacements, guarded alternatives, aliases and ARC release passed

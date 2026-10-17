@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 from setup_nimony import cache_directory
-from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, UNIT_FIXTURES
+from native_tests import UNIT_SUITES, unit_source, unit_command, unit_environment, unit_evidence, ARC_SUITES, unit_fixture_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/nimony-trial/verification'
@@ -771,7 +771,7 @@ def main():
     sources = (list((ROOT/'src/codec').glob('*.nim'))
                + [unit_source(name) if name in UNIT_SUITES else ROOT/f'tests/native/test_{name}.nim' for name in SUITES]
                + [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
-               + [entry[1] for entry in UNIT_FIXTURES.values()]
+               + unit_fixture_sources()
                + [ROOT/'tools/native_tests.py', ROOT/'tests/test_native_units_harness.py']
                + [ROOT/'tests/support/ownership_checks.nim', ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/native/report_codec_driver.nim']
                + list((ROOT/'tests').glob('report_*.py'))
@@ -877,15 +877,6 @@ def main():
     from state_availability_oracle import record as availability_record
     availability_fixture = BUILD/'availability-report.bin'
     availability_fixture.write_bytes(availability_record(0)['report'])
-    # Native parent tests use independently authored policy-valid child fixtures, never parent decoder output.
-    from block_oracle import published as block_published
-    block_fixture = BUILD/'block-fixtures'
-    block_fixture.mkdir(exist_ok=True)
-    # These five children retain their exact independent tiny-profile source identities.
-    for name, data in zip(('tickets', 'preimages', 'guarantees', 'assurances', 'disputes'),
-                          block_published('tiny', 'E', canonical=True)):
-        (block_fixture/(name+'.bin')).write_bytes(data)
-    (block_fixture/'header.bin').write_bytes(block_published('tiny', 'B', canonical=True)[0])
     # Composition ownership probes consume independent literal chapters, not native round-trip fixtures.
     from state_composition_oracle import chapters as composition_chapters
     composition_fixture = BUILD/'composition-chapters.txt'
@@ -917,7 +908,7 @@ def main():
         row = dict(name=name, build=compiled, passed=False)
         if compiled['exit_code'] == 0:
             # Never run stale binaries after a failed build.
-            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [block_fixture] if name == 'block' else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [integration_wires, integration_reload] if name == 'quic_integration' else [])], name+'-run')
+            row['run'] = command([binary, *([composition_fixture] if name == 'state_composition_private' else [availability_fixture] if name in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private') else [quic_fixtures/'a.cert.pem', quic_fixtures/'a.key.pem'] if name == 'quic_transport' else [integration_wires, integration_reload] if name == 'quic_integration' else [])], name+'-run')
             row['passed'] = row['run']['exit_code'] == 0
             if name == 'quic_integration' and row['passed']:
                 # Every small retained parent/child/failure scope must release its final ARC references.
@@ -933,27 +924,6 @@ def main():
                 if release is not None:
                     # Public occupied memory measures this warmed scope workload, not RSS or general leak freedom.
                     report['quic_io_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'work_package' and row['passed']:
-                # Independent retained children must release their parent snapshots at the last child reference.
-                release = re.search(r'PACKAGE_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
-                    report['package_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'header' and row['passed']:
-                # Signing and marker views must retain their exact original snapshot until the last view is released.
-                release = re.search(r'HEADER_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy observes this isolated warmed ARC workload, not RSS or refcount internals.
-                    report['header_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
-            if name == 'block' and row['passed']:
-                # Replaced parents and all six materialized child families must release their final ARC references.
-                release = re.search(r'BLOCK_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
-                row['passed'] = release is not None and release[1] == release[2]
-                if release is not None:
-                    # Public live occupancy measures this warmed workload, not RSS or general leak freedom.
-                    report['block_arc_release'] = dict(cycles=1000, occupied_before=int(release[1]), occupied_after=int(release[2]))
             if name == 'bits' and row['passed']:
                 # Replaced handles, escaped sources and empty/nonempty captures release their final ARC references.
                 release = re.search(r'BITS_ARC_RELEASE cycles=1000 occupied_before=(\d+) occupied_after=(\d+)', row['run']['output'])
