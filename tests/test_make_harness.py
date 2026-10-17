@@ -77,13 +77,13 @@ import os
 import sys
 name = Path(__file__).name
 with Path('calls').open('a') as output:
-    output.write(name+'\\n')
+    output.write(name+(' --group failures' if '--group' in sys.argv else '')+'\\n')
 # Model the installer output contract without downloading or executing native tools.
 if name == 'setup_nimony.py':
     Path('build/toolchain').mkdir(parents=True, exist_ok=True)
     Path('build/toolchain/env.sh').write_text('export NIMONY=/fixture/nimony\\n')
 # A failing runtime must not turn green merely because tee successfully wrote its log.
-if name == 'test_runtime.py' and os.environ.get('FAIL_RUNTIME'):
+if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' in sys.argv and os.environ.get('FAIL_FAILURES'))):
     print('deliberate runtime failure')
     sys.exit(7)
 """
@@ -110,15 +110,20 @@ if name == 'test_runtime.py' and os.environ.get('FAIL_RUNTIME'):
             self.assertEqual(calls.count('setup_nimony.py'), 1)
             self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
             self.assertTrue((folder/'build/ci/runtime.log').is_file())
-            for name in ('test_python.py', 'test_modules.py', 'test_runtime.py', 'test_guards.py', 'test_e2e.py'):
+            for name in ('test_python.py', 'test_modules.py', 'test_runtime.py', 'test_runtime.py --group failures', 'test_guards.py', 'test_e2e.py'):
                 # Each group is scheduled once after clean; setup dependencies are shared by Make.
                 self.assertEqual(calls.count(name), 1)
+            self.assertTrue((folder/'build/ci/failures.log').is_file())
             self.assertTrue((folder/'build/ci/python.log').is_file())
             self.assertTrue((folder/'build/ci/e2e.log').is_file())
             failed = subprocess.run(arguments+['runtime'], cwd=folder,
                                     env={**environment, 'FAIL_RUNTIME': '1'}, capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('deliberate runtime failure', (folder/'build/ci/runtime.log').read_text())
+            failed = subprocess.run(arguments+['check-failures'], cwd=folder,
+                                    env={**environment, 'FAIL_FAILURES': '1'}, capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn('deliberate runtime failure', (folder/'build/ci/failures.log').read_text())
 
     # Both host profiles must keep ARC/checks/LTO, enable both maintained features and exclude every observer ABI.
     def test_checked_build_profile(self):
