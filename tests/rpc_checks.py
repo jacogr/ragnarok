@@ -225,6 +225,8 @@ def check_service_queries(connection, expected):
     header = expected['header_hash']
     cases = [
         ('statistics', [header], expected['statistics']),
+        ('ragnarok_stateValue', [header, 'CwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='], 'BwAAAA=='),
+        ('ragnarok_stateValue', [header, '/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='], None),
         ('beefyRoot', [header], expected['beefy_root']),
         ('workReport', [expected['work_report_hash']], expected['work_report']),
         ('workReport', [expected['ready_report_hash']], expected['ready_report']),
