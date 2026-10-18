@@ -1,0 +1,14 @@
+{
+  "source": "tests/native/history_transition_results.nim",
+  "build_name": "history-transition-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["root", "default"], "name": "history-transition-root-default", "diagnostic": "outcome.status == None", "description": "history transition root default runtime guard", "identity": {"member": "root", "origin": "default"}},
+    {"arguments": ["root", "error"], "name": "history-transition-root-error", "diagnostic": "outcome.status == None", "description": "history transition root error runtime guard", "identity": {"member": "root", "origin": "error"}},
+    {"arguments": ["entry", "default"], "name": "history-transition-entry-default", "diagnostic": "outcome.status == None", "description": "history transition entry default runtime guard", "identity": {"member": "entry", "origin": "default"}},
+    {"arguments": ["entry", "error"], "name": "history-transition-entry-error", "diagnostic": "outcome.status == None", "description": "history transition entry error runtime guard", "identity": {"member": "entry", "origin": "error"}},
+    {"arguments": ["state", "default"], "name": "history-transition-state-default", "diagnostic": "outcome.status == None", "description": "history transition state default runtime guard", "identity": {"member": "state", "origin": "default"}},
+    {"arguments": ["state", "error"], "name": "history-transition-state-error", "diagnostic": "outcome.status == None", "description": "history transition state error runtime guard", "identity": {"member": "state", "origin": "error"}}
+  ]
+}

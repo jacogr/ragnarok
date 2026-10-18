@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/safrole_markers_results.nim",
+  "build_name": "safrole-markers-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "safrole-markers-default", "diagnostic": "outcome.status == None", "description": "Safrole markers default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "safrole-markers-error", "diagnostic": "outcome.status == None", "description": "Safrole markers error runtime guard", "identity": {"origin": "error"}}
+  ]
+}

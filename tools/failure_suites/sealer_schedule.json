@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/sealer_schedule_results.nim",
+  "build_name": "sealer-schedule-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "sealer-schedule-default", "diagnostic": "outcome.status == None", "description": "sealer schedule default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "sealer-schedule-error", "diagnostic": "outcome.status == None", "description": "sealer schedule error runtime guard", "identity": {"origin": "error"}}
+  ]
+}

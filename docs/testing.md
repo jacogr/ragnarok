@@ -144,8 +144,8 @@ previously retained after build failure remain opt-in so failed reports preserve
 
 `tools/failure_checks.py` preserves the exact exit-code-1, expected-diagnostic and
 `[AssertionDefect]` predicate for ordinary runtime guard probes, including complete command logs
-and identity fields. `tools/failure_suites.json` lists fixed state-result builds and cases, one
-case per line. Its loader rejects duplicate keys, identities or log names, missing cases and empty
+and identity fields. `tools/failure_suites/<family>.json` lists fixed state-result builds and cases, one
+case per line. The loader rejects duplicate keys, identities or log names, missing cases and empty
 diagnostics against the separate coverage counts. Native linking, case order and subprocess
 isolation remain unchanged. Wrapping behavior, positive controls, conditional variant diagnostics
 and fixture-dependent case generation remain explicit in the runtime runner. Both the helper and
@@ -870,7 +870,7 @@ runtime and all-source compilation jobs on 2026-10-17:
 This verifies the completed native-suite migration on Linux. Subsequent Makefile additions
 are separately verified locally and are not part of those run revisions.
 
-Runtime failure suites keep ordinary case identities in `tools/failure_suites.json`, one case per
+Runtime failure suites keep ordinary case identities in `tools/failure_suites/<family>.json`, one case per
 line. Suite defaults specify argument fields, labels and diagnostics; exceptional cases override
 those values explicitly. The loader expands and validates the exact counts, distinct identities
 and log names before running any probes. Fixture-dependent probes, offload completion checks,
@@ -880,3 +880,17 @@ language-policy observations and store positive controls remain explicit in the 
 suite sources, fixture manifests, source globs and pinned vector expansions remain explicit Python
 rules. The runtime hashes the inventory itself alongside every resolved input; a missing input
 still fails verification.
+
+Run `make check-inventory` for a fast, Python-only preflight before opening a verification PR.
+It validates per-family fields, build profiles, source paths, case counts, diagnostics and global
+build/probe log uniqueness, then checks that every family file has exactly one explicit runner
+call. It also checks native source/output coverage, compiler-rejection inputs and project-owned
+provenance paths. It runs before setup in the normal verification targets. Every Linux CI job, including E2E,
+also exposes it as a separate required step before its workload. A failed inventory check stops
+that job before native setup. Vendor input bytes
+remain the responsibility of the existing pinned-submodule setup and runtime provenance checks.
+
+Add a failure family as `tools/failure_suites/<family>.json`, retaining one case per line, its
+independent count in `verification_inventory.json` and an explicit `run_failure_suite` call at
+the intended position. Alphabetical file loading does not change execution order. All family
+files are automatically included in runtime provenance; no central list of JSON files is needed.

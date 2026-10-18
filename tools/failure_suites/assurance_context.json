@@ -1,0 +1,39 @@
+{
+  "source": "tests/native/nimony_assurance_context_results.nim",
+  "build_name": "assurance-context-results",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "name_template": "assurance-context-{origin}-{member}",
+  "description_template": "{origin} assurance context {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "message-config"}},
+    {"identity": {"origin": "default", "member": "message-padding"}},
+    {"identity": {"origin": "default", "member": "message-backend"}},
+    {"identity": {"origin": "default", "member": "verify-config"}},
+    {"identity": {"origin": "default", "member": "verify-keys"}},
+    {"identity": {"origin": "default", "member": "verify-count"}},
+    {"identity": {"origin": "default", "member": "verify-index"}},
+    {"identity": {"origin": "default", "member": "verify-order"}},
+    {"identity": {"origin": "default", "member": "verify-padding"}},
+    {"identity": {"origin": "default", "member": "verify-parent"}},
+    {"identity": {"origin": "default", "member": "verify-backend"}},
+    {"identity": {"origin": "default", "member": "verify-signature"}},
+    {"identity": {"origin": "error", "member": "message-config"}},
+    {"identity": {"origin": "error", "member": "message-padding"}},
+    {"identity": {"origin": "error", "member": "message-backend"}},
+    {"identity": {"origin": "error", "member": "verify-config"}},
+    {"identity": {"origin": "error", "member": "verify-keys"}},
+    {"identity": {"origin": "error", "member": "verify-count"}},
+    {"identity": {"origin": "error", "member": "verify-index"}},
+    {"identity": {"origin": "error", "member": "verify-order"}},
+    {"identity": {"origin": "error", "member": "verify-padding"}},
+    {"identity": {"origin": "error", "member": "verify-parent"}},
+    {"identity": {"origin": "error", "member": "verify-backend"}},
+    {"identity": {"origin": "error", "member": "verify-signature"}}
+  ]
+}

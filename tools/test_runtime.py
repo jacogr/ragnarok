@@ -978,6 +978,7 @@ def main():
     report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
     # Literal provenance inputs are merge-friendly data; discovery rules remain explicit.
     sources = [ROOT/path for path in RUNTIME_SOURCES]
+    sources += sorted((ROOT/'tools/failure_suites').glob('*.json'))
     sources += list((ROOT/'src/codec').glob('*.nim')) + list((ROOT/'src/state').glob('*.nim'))
     sources += [unit_source(name) for name in UNIT_SUITES]
     sources += [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]

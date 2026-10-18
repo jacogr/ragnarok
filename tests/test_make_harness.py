@@ -102,6 +102,9 @@ import sys
 name = Path(__file__).name
 with Path('calls').open('a') as output:
     output.write(name+(' --group failures' if '--group' in sys.argv else '')+'\\n')
+# A malformed inventory must stop Make before it invokes provisioning or native verification.
+if name == 'check_inventory.py' and os.environ.get('FAIL_INVENTORY'):
+    sys.exit(7)
 # Model the installer output contract without downloading or executing native tools.
 if name == 'setup_nimony.py':
     Path('build/toolchain').mkdir(parents=True, exist_ok=True)
@@ -111,7 +114,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
     print('deliberate runtime failure')
     sys.exit(7)
 """
-            for name in ('setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
+            for name in ('check_inventory', 'setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
                 # The test exercises Make ordering/status; native behavior has its own application coverage.
                 (folder/'tools'/(name+'.py')).write_text(stub)
             for name in ('test_spec', 'test_nimony_ci'):
@@ -132,6 +135,8 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             calls = (folder/'calls').read_text().splitlines()
             self.assertEqual(calls.count('setup_nimony.py'), 1)
+            self.assertEqual(calls.count('check_inventory.py'), 1)
+            self.assertLess(calls.index('check_inventory.py'), calls.index('setup_nimony.py'))
             self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
             self.assertTrue((folder/'build/ci/runtime.log').is_file())
             for name in ('test_python.py', 'test_modules.py', 'test_runtime.py', 'test_runtime.py --group failures', 'test_guards.py', 'test_e2e.py'):
@@ -148,6 +153,11 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                                     env={**environment, 'FAIL_FAILURES': '1'}, capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('deliberate runtime failure', (folder/'build/ci/failures.log').read_text())
+            (folder/'calls').write_text('')
+            failed = subprocess.run(arguments+['check-unit'], cwd=folder,
+                                    env={**environment, 'FAIL_INVENTORY': '1'}, capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertEqual((folder/'calls').read_text().splitlines(), ['check_inventory.py'])
 
     # Both host profiles must keep ARC/checks/LTO, enable both maintained features and exclude every observer ABI.
     def test_checked_build_profile(self):

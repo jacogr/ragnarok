@@ -1,0 +1,41 @@
+{
+  "source": "tests/native/nimony_trie_results.nim",
+  "build_name": "trie-results",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "name_template": "trie-{origin}-{member}",
+  "description_template": "{origin} trie {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "root"}},
+    {"identity": {"origin": "default", "member": "entries"}},
+    {"identity": {"origin": "default", "member": "nodes"}},
+    {"identity": {"origin": "item-limit", "member": "root"}},
+    {"identity": {"origin": "item-limit", "member": "entries"}},
+    {"identity": {"origin": "item-limit", "member": "nodes"}},
+    {"identity": {"origin": "per-value-limit", "member": "root"}},
+    {"identity": {"origin": "per-value-limit", "member": "entries"}},
+    {"identity": {"origin": "per-value-limit", "member": "nodes"}},
+    {"identity": {"origin": "total-value-limit", "member": "root"}},
+    {"identity": {"origin": "total-value-limit", "member": "entries"}},
+    {"identity": {"origin": "total-value-limit", "member": "nodes"}},
+    {"identity": {"origin": "node-limit", "member": "root"}},
+    {"identity": {"origin": "node-limit", "member": "entries"}},
+    {"identity": {"origin": "node-limit", "member": "nodes"}},
+    {"identity": {"origin": "duplicate", "member": "root"}},
+    {"identity": {"origin": "duplicate", "member": "entries"}},
+    {"identity": {"origin": "duplicate", "member": "nodes"}},
+    {"identity": {"origin": "backend-first", "member": "root"}},
+    {"identity": {"origin": "backend-first", "member": "entries"}},
+    {"identity": {"origin": "backend-first", "member": "nodes"}},
+    {"identity": {"origin": "backend-late", "member": "root"}},
+    {"identity": {"origin": "backend-late", "member": "entries"}},
+    {"identity": {"origin": "backend-late", "member": "nodes"}},
+    {"identity": {"origin": "default", "member": "child-hash"}},
+    {"identity": {"origin": "error", "member": "child-hash"}}
+  ]
+}

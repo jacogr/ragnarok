@@ -50,7 +50,7 @@ class NimonyCISafeguards(unittest.TestCase):
         triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
         self.assertEqual(triggers.strip(),
                          'push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:')
-        for target in ('check-python', 'check-modules', 'check-unit', 'check-guards', 'check-e2e',
+        for target in ('check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
@@ -60,6 +60,23 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('nimony-trial', text)
         self.assertNotIn('tools/setup_nimony.py', text)
         self.assertNotIn('cargo fetch', text)
+
+    # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
+    def test_ci_inventory_preflight(self):
+        text = (ROOT/'.github/workflows/linux.yml').read_text()
+        definition = text.split('      - &inventory\n', 1)[1].split('      - ', 1)[0]
+        self.assertEqual(definition.strip(),
+                         'name: Validate verification inventory\n        run: make check-inventory')
+        jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop')
+        positions = [text.index('\n  '+job+':\n') for job in jobs]+[len(text)]
+        for index, job in enumerate(jobs):
+            # Keeping the step in each job avoids relying on another job's result or skipped dependencies.
+            with self.subTest(job=job):
+                section = text[positions[index]:positions[index+1]]
+                preflight = '- &inventory' if job == 'modules' else '- *inventory'
+                self.assertEqual(section.count(preflight), 1)
+                self.assertLess(section.index(preflight), section.index('run: make check-'+job))
+        self.assertNotIn('continue-on-error:', text)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
