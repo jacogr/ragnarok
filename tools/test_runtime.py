@@ -178,6 +178,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_queue')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_operands')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_context')
+    # Default, absent-yield and refused state effects must reject through selected-success extraction.
+    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_effects')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_inputs')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_invocation')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_round')

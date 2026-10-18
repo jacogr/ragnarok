@@ -1,0 +1,118 @@
+{
+  "build_name": "accumulation-effect-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "accumulation-effect-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "refused"
+      },
+      "name": "accumulation-effect-refused"
+    },
+    {
+      "arguments": [
+        "dimension"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "dimension"
+      },
+      "name": "accumulation-effect-dimension"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "source"
+      },
+      "name": "accumulation-effect-source"
+    },
+    {
+      "arguments": [
+        "initial"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "initial"
+      },
+      "name": "accumulation-effect-initial"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "info"
+      },
+      "name": "accumulation-effect-info"
+    },
+    {
+      "arguments": [
+        "yield"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "yield"
+      },
+      "name": "accumulation-effect-yield"
+    },
+    {
+      "arguments": [
+        "absent"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "absent"
+      },
+      "name": "accumulation-effect-absent"
+    },
+    {
+      "arguments": [
+        "record"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "record"
+      },
+      "name": "accumulation-effect-record"
+    },
+    {
+      "arguments": [
+        "checkpoint"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "checkpoint"
+      },
+      "name": "accumulation-effect-checkpoint"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "source": "tests/native/accumulation_effect_results.nim"
+}

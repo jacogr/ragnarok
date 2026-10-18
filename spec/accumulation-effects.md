@@ -20,7 +20,8 @@ responsibility. Accept no arbitrary replacement account map or forged initial co
 is applied implicitly on yield. This slice adds no execution/termination verdict, outgoing transfers,
 provisions, persistent publication or full accumulation STF claim.
 
-PVM machine initialization is already implemented separately in open PR #130. This state slice
+PVM machine initialization is covered separately by
+[PR #130](https://github.com/jacogr/ragnarok/pull/130). This state slice
 avoids duplicating that work and supplies the context mutations needed by future host dispatch.
 
 ## Completion tests
@@ -31,6 +32,56 @@ fixed-value model. Verify both dimensions retain the same credited source accoun
 identities, avoid hashing/writes, survive source release, and release acyclic owners across 1,000
 cycles. Typed default/invalid-dimension/absent-yield failures, private storage, nominal commitment
 arguments and strict selected-result extraction require compiler/runtime probes.
+
+## Implemented ownership and API contract
+
+`src/state/accumulation_effects.nim` constructs `AccumulationEffects` only through
+`prepareAccumulationEffects(PreparedAccumulationContexts)`. Both dimensions initially retain one
+immutable `AccumulationEffectContext`. `recordAccumulationYield` creates a new regular version and
+retains the old exceptional snapshot; `checkpointAccumulationEffects` gives the new pair the same
+current regular child in both positions. Neither operation changes the caller's pair or any earlier
+retained context. There are no back-references to parent pairs, so histories remain acyclic.
+
+`effectContext` validates the dimension before extraction. `effectInfo` reports current yield
+presence and copied service/next-ID/empty outgoing-effect facts. `effectYield` returns a copied
+`OutputCommitment` only when present; missing yield is a typed `YieldAbsent` reason with no hash
+payload. An all-zero commitment remains present. Private variant storage also omits the hash when
+absent. `effectsSource` retains original preparation; `effectInitialContext` explicitly exposes
+initial account/chapter/bootstrap backing, whose initial yield facts are not the current effect
+version's yield. Callers read current yield through `effectInfo`/`effectYield`.
+
+All operations use constant-sized metadata and retained immutable owners. They perform no hashes,
+state writes, input traversal, new identifier search or additional transfer credit. The retained
+source accounts include pre-invocation credit even in the exceptional dimension. Current state
+mutations are deliberately limited to yield/checkpoint; future account/queue/provision/transfer
+operations must extend this private current-context representation before claiming those effects.
+
+Native `test_accumulation_effects.nim` uses real public-API service/input/bootstrap/context
+preparation over a complete authored map. It checks all 32 hash bytes, zero/nonzero/replaced values,
+explicit/repeated checkpoints, both dimensions against a 256-step scalar model, source release,
+unchanged roots/roles/credited balance/input provenance and a refused hash provider. A shared native
+test helper also supplies the initialized absent-yield runtime rejection case. Six compiler probes
+protect private pairs/contexts/result tags/payloads and nominal hash/dimension arguments. Ten strict
+runtime probes require the selected-success diagnostic. No upstream programs, vectors or sources
+are copied; these are direct implication-equation witnesses, not complete host-call or STF runs.
+
+## Local verification
+
+Affected verification used
+`make check-inventory format-check check-modules check-unit check-failures check-guards check-python`.
+All 102 source modules, 114 native suites, 41 corpora and runtime probes passed. The initial compiler
+run correctly refused two privacy fixtures for an earlier constant-construction error; binding the
+owners before private-field access made those fixtures require the intended privacy diagnostic.
+A constant-invalid runtime fixture was also changed to dynamic result selection. Production
+behavior did not change after the native unit run. Final inventory/format/compiler/Python checks
+passed: all 888 compiler rejections and 406 Python tests, with three existing skips. All ten final
+runtime effect probes were additionally rerun against the final fixture.
+
+The ARC witness retained 59,808 occupied bytes before and after 1,000 cycles. Evidence is under
+`build/accumulation-effects/verification.log`, `final-guards-tooling.log`, `probes/` and
+`build/tests/{modules,runtime,failures,guards}/results.json`. The first log retains its guard-fixture
+failure; the final tooling log records the corrected complete guard and Python verdicts. E2E
+networking behavior is unchanged and was not rerun locally. Linux CI verifies the pushed head.
 
 ## Next bounded work
 
