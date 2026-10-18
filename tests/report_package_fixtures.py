@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Original signed report/history/known-set projections; no invented parent queue/accumulated chapters."""
 from report_policy_fixtures import prepare as policy_prepare
 

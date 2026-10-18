@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published exact C(10) projections plus post-assurance ordering, captured time, budgets and ownership boundaries.
 import std/[assertions, envvars, strutils, syncio]
 import ../../../src/state/[report_assignments, guarantee_credentials, availability]

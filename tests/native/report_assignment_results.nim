@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default/refused plans and absent captured credential context cannot expose successful payloads.
 import std/[cmdline, syncio]
 import ../../src/state/[report_assignments, guarantee_credentials]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Original report STF post-assurance input and expected proposed C(10); no other transition is synthesized."""
 from report_policy_fixtures import prepare as policy_prepare
 

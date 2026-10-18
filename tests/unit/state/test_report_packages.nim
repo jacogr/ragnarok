@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Original signed package-relation projections and authored complete parent-pipeline/ownership boundaries.
 import std/[assertions, envvars, strutils, syncio]
 import ../../../src/state/[report_packages, report_anchors, report_policy, guarantee_credentials, store]
