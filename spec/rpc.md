@@ -32,7 +32,7 @@ Send a WebSocket text message:
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
 unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
-remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics and service-data subscriptions
+remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics, service-data and service-value subscriptions
 are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -614,7 +614,7 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Best-block, best-chain statistics and service-data methods are enabled; finalized and other service
+Best-block, best-chain statistics, service-data and service-value methods are enabled; finalized and other service
 subscriptions remain unavailable.
 `ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
 The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
@@ -749,4 +749,48 @@ notification-form calls, sequential batches, terminal-error isolation and ARC re
 socket tests publish account creation, balance change, removal and malformed metadata while keeping
 the same connection alive. Live process tests check present and absent accounts, unavailable chains,
 finalized refusal and cancellation. Importer integration, finalized tracking and subscriptions for
-service values, preimages and request histories remain separate bounded increments.
+preimages and request histories remain separate bounded increments.
+
+
+## Best-chain service-value subscriptions
+
+`subscribeServiceValue(id, key, false)` and `unsubscribeServiceValue(subscription)` implement the
+best-chain part of pinned JIP-2 Methods / subscribeServiceValue. The required arguments are a uint32
+service ID, a canonical padded Base64 key and a Boolean. Empty keys are valid; keys larger than
+4,096 decoded bytes, malformed encodings, narrowing/float IDs and invalid argument shapes return
+`-32602` before allocating a subscription. Finalized tracking (`true`) returns error 0, and the
+stateless adapter continues to reject subscription methods.
+
+Each connection-owned selector retains its nominal service ID and an immutable owned key of at
+most 4 KiB. Eight shared subscription slots bound retained key storage to 32 KiB per connection.
+The key is copied from decoded input, never borrowed from a request buffer or exposed mutably.
+Candidate session copies share immutable ARC key owners; cancellation, terminal removal and
+connection retirement release those handles. No state map/value owner is retained by a selector.
+
+The initial update and each published head use method `subscribeServiceValue`, with a Chain
+Subscription Update in `params.result`: `{"header_hash": "…", "slot": n, "value": null-or-Blob}`.
+Reads use the same service-account validation, maintained storage namespace/key derivation and
+32 KiB raw-value ceiling as `serviceValue(hash, id, key)`. Missing accounts/keys return `null` and
+remain subscribed. Present zero-length values return the empty Base64 string, never `null`.
+Orphaned storage entries do not establish service presence. Opaque bytes are preserved exactly.
+
+Malformed/unsupported account metadata, backend failures and oversized values reject initial
+subscription with error 0. The same failures on a later head emit one terminal `params.error`
+string and remove only the affected subscription. Existing shared ID sequencing, corresponding-
+method cancellation, batch/notification-form calls, update ordering and slow-client policy are
+unchanged. Both sixteen pending messages and 65,535 serialized pending bytes remain enforced
+before publication commits; key ownership is bounded separately as above.
+
+Each storage subscription performs one bounded key derivation plus an account/value read per
+publication. At most eight such operations occur per connection and 64 across the listener. Values
+are sized before copying/encoding, and publication retains no old views. Every published head
+emits an update, including unchanged values, matching the other implemented subscription families.
+
+Native coverage includes exact present/null/empty results, independent keys, caller-buffer isolation,
+canonical encoding, 4,096/4,097-byte key boundaries, 32 KiB value/queue limits, unavailable/finalized
+refusal, malformed accounts, wrong-family cancellation, batches and notification-form calls. ARC
+checks retire eight maximum-sized keys. Connected socket tests publish binary value creation, empty
+value replacement, deletion, orphaned storage and an oversized value; only the latter terminates
+the subscription, and the connection survives. Live process tests check present/missing values,
+finalized refusal and cancellation. Importer integration, finalized tracking, service-preimage and
+service-request subscriptions remain outstanding.

@@ -11,6 +11,7 @@ import std/[assertions, syncio, base64]
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../../src/codec/state_trie import StateEntry
 from ../../../src/codec/state_layout import chapterKey, chapterServiceKey, StateChapter
+from ../../../src/codec/state_service_values import serviceStorageKey, ServiceValueError, error, value
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
 
@@ -1311,6 +1312,87 @@ for iteration in 0..<20:
   retireAccountSubscriptions() # Temporary metadata copies and queued strings have acyclic lifetimes.
 assert getOccupiedMem() <= accountSubscriptionBaseline + 256
 
+# Storage subscriptions retain independent bounded keys and preserve null versus present empty bytes.
+const SubscribeValue = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeServiceValue\",\"params\":[42,\"a2V5\",false],\"id\":61}"
+let unsubscribeValue = UnsubscribeBest.replace("unsubscribeBestBlock", "unsubscribeServiceValue")
+let absentValueUpdate = absentAccountUpdate.replace("subscribeServiceData", "subscribeServiceValue")
+let presentValueUpdate = absentValueUpdate.replace("\"value\":null",
+    "\"value\":\"aGVsbG8Ad29ybGQ=\"")
+let valueFailure = accountFailure.replace("subscribeServiceData", "subscribeServiceValue").replace(
+  "Invalid or unavailable service data", "Invalid, unavailable or oversized service value")
+var valueSession = default(RpcSession)
+assert "-32601" in respond(SubscribeValue, serviceInfo)
+assert "\"code\":0" in respond(SubscribeValue, info, valueSession)
+assert "Finalized chain view unavailable" in respond(SubscribeValue.replace("false", "true"),
+    serviceInfo, valueSession)
+assert "\"code\":0" in respond(SubscribeValue.replace("[42,", "[43,"), serviceInfo, valueSession)
+assert "\"code\":0" in respond(SubscribeValue.replace("a2V5", "b3ZlcnNpemU="), serviceInfo, valueSession)
+for bad in ["a", "a===", "a2V5=", "AB==", "a2V_", repeat("eA==", 2), base64.encode(repeat("x", 4097))]:
+  assert "-32602" in respond(SubscribeValue.replace("a2V5", bad), serviceInfo,
+      valueSession) # Invalid canonical encoding and oversized keys consume no subscription.
+for bad in ["", "42", "42,false", "-1,\"\",false", "4294967296,\"\",false", "42,0,false",
+    "42,null,false", "42,\"\",0", "42,\"\",false,0"]:
+  assert "-32602" in respond(SubscribeValue.replace("42,\"a2V5\",false", bad), serviceInfo,
+      valueSession) # All three positional arguments have exact types.
+var ownedRequest = SubscribeValue
+assert respond(ownedRequest, serviceInfo, valueSession) == SubscribedBest
+ownedRequest = SubscribeValue.replace("a2V5", "bm9uZQ==") # Later caller edits cannot retarget the retained key.
+assert valueSession.nextUpdate() == presentValueUpdate
+assert respond(SubscribeValue.replace("a2V5", ""), serviceInfo, valueSession) ==
+    SubscribedBest.replace("\"result\":1", "\"result\":2")
+assert valueSession.nextUpdate() == absentValueUpdate.replace("\"subscription\":1",
+    "\"subscription\":2").replace("\"value\":null", "\"value\":\"\"")
+assert valueSession.queueChainUpdates(serviceInfo.chain.bestBlock)
+assert valueSession.nextUpdate() == presentValueUpdate # Two keys for one service remain independent.
+assert "\"value\":\"\"" in valueSession.nextUpdate()
+assert respond(unsubscribeAccount, serviceInfo, valueSession) == UnsubscribedBest.replace("true", "false")
+assert respond(unsubscribeValue, serviceInfo, valueSession) == UnsubscribedBest
+assert valueSession.queueChainUpdates(withGenesis.chain.bestBlock)
+assert valueSession.nextUpdate() == absentValueUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert valueSession.nextUpdate() == ""
+var orphanValue = default(RpcSession)
+assert respond(SubscribeValue.replace("[42,", "[44,"), serviceInfo, orphanValue) == SubscribedBest
+assert orphanValue.nextUpdate() == absentValueUpdate # Orphaned storage cannot establish service presence.
+var valueLimits = default(RpcSession)
+assert respond(SubscribeValue.replace("a2V5", base64.encode(repeat("x", 4096))), serviceInfo,
+    valueLimits) == SubscribedBest
+assert valueLimits.nextUpdate() == absentValueUpdate
+assert respond(unsubscribeValue, serviceInfo, valueLimits) == UnsubscribedBest
+let largeValueCall = SubscribeValue.replace("a2V5", "bGFyZ2U=")
+assert respond(largeValueCall, serviceInfo, valueLimits) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+assert "\"code\":0" in respond(largeValueCall, serviceInfo,
+    valueLimits) # Two maximum-sized values exceed the shared byte FIFO.
+let largeValueUpdate = valueLimits.nextUpdate()
+assert largeValueUpdate.len > 43000 and largeValueUpdate.len < MaxSubscriptionQueueBytes
+assert respond(largeValueCall, serviceInfo, valueLimits) == SubscribedBest.replace("\"result\":1",
+    "\"result\":3") # Refusal consumed neither ID nor key ownership.
+assert "\"subscription\":3" in valueLimits.nextUpdate()
+var valueBatch = default(RpcSession)
+assert respond("[" & SubscribeValue & "," & unsubscribeValue & "]", serviceInfo, valueBatch) ==
+  "[" & SubscribedBest & "," & UnsubscribedBest & "]"
+assert valueBatch.nextUpdate() == ""
+assert respond(SubscribeValue.replace(",\"id\":61", ""), serviceInfo, valueBatch) == ""
+assert valueBatch.nextUpdate() == presentValueUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert respond(unsubscribeValue.replace("[1]", "[2]").replace(",\"id\":62", ""), serviceInfo,
+    valueBatch) == ""
+assert valueBatch.queueChainUpdates(serviceInfo.chain.bestBlock)
+assert valueBatch.nextUpdate() == ""
+
+## Disconnect and candidate-session copies must release all eight maximum-sized retained keys.
+proc retireValueKeys() =
+  var retired = default(Connection)
+  let maximumKey = SubscribeValue.replace("a2V5", base64.encode(repeat("x", 4096)))
+  for identity in 1..MaxSubscriptions:
+    discard respond(maximumKey, serviceInfo, retired.session) # Each successful subscription owns a private bounded selector.
+  assert retired.session.queueChainUpdates(serviceInfo.chain.bestBlock)
+  retired.close()
+  assert retired.session.nextUpdate() == ""
+retireValueKeys()
+let valueKeyBaseline = getOccupiedMem()
+for iteration in 0..<20:
+  retireValueKeys() # Decoder, array copies, FIFO strings and key owners all retire on close.
+assert getOccupiedMem() <= valueKeyBaseline + 256
+
 ## Repeated connection retirement must release queued notifications and copied tentative session storage.
 proc retireSubscriptions() =
   var retired = default(Connection)
@@ -1530,6 +1612,53 @@ proc publicationLifecycle() =
       let expected = absentAccountUpdate.replace("\"subscription\":1",
           "\"subscription\":2").replace(genesisHash,
         base64.encode(array[32, byte](accountHead.value.blockHash))).replace("\"slot\":7",
+            "\"slot\":" & $atSlot).replace("\"value\":null", "\"value\":" & value)
+      assert publicationReply(survivor[1]) == frame(expected)
+  assert owner.connections[1].opened
+  let storageKey = serviceStorageKey(ServiceIndex(42), @[byte('k'), byte('e'), byte('y')],
+      ByteLimit(3))
+  assert storageKey.error == ServiceValueError.None
+  let accountEntry = StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)),
+      value: newSeq[byte](89))
+  let emptyStorageHead = childSnapshot(owner.chain.bestBlock.value, 35, genesisParameters.value,
+      accounts = @[accountEntry])
+  assert owner.publishBlock(emptyStorageHead) == ViewAdvanceError.None
+  var valuePacket = masked(SubscribeValue)
+  assert sendBytes(survivor[1], valuePacket.toCString(), csize_t(valuePacket.len), 0) ==
+      valuePacket.len
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+      "\"result\":3"))
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(absentValueUpdate.replace("\"subscription\":1",
+      "\"subscription\":3").replace(genesisHash,
+    base64.encode(array[32, byte](emptyStorageHead.value.blockHash))).replace("\"slot\":7",
+        "\"slot\":35"))
+  for atSlot in 36'u32..40'u32:
+    var entries = @[accountEntry]
+    var value = "null"
+    if atSlot == 36:
+      entries.add(StateEntry(key: storageKey.value, value: @[0'u8,
+          255'u8])) # Opaque binary values must survive unchanged.
+      value = "\"AP8=\""
+    elif atSlot == 37:
+      entries.add(StateEntry(key: storageKey.value, value: @[])) # A present zero-length value is not missing.
+      value = "\"\""
+    elif atSlot == 39:
+      entries = @[StateEntry(key: storageKey.value, value: @[1'u8])] # An orphan entry still yields null.
+    elif atSlot == 40:
+      entries.add(StateEntry(key: storageKey.value, value: newSeq[byte](
+          32769))) # Reject before copying/encoding oversized values.
+    let storageHead = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value,
+        accounts = entries)
+    assert owner.publishBlock(storageHead) == ViewAdvanceError.None
+    owner.tick(0)
+    if atSlot == 40:
+      assert publicationReply(survivor[1]) == frame(valueFailure.replace("\"subscription\":1",
+          "\"subscription\":3")) # Only the oversized-value subscription is retired.
+    else:
+      let expected = absentValueUpdate.replace("\"subscription\":1", "\"subscription\":3").replace(genesisHash,
+        base64.encode(array[32, byte](storageHead.value.blockHash))).replace("\"slot\":7",
             "\"slot\":" & $atSlot).replace("\"value\":null", "\"value\":" & value)
       assert publicationReply(survivor[1]) == frame(expected)
   assert owner.connections[1].opened

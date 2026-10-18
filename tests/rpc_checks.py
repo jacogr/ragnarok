@@ -174,6 +174,22 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                                           params=dict(subscription=account_id, result={**expected_head, 'value': account_value}))
                     send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceData', params=[account_id], id=67)))
                     assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=67, result=True)
+                assert 'subscribeServiceValue' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceValue', params=[42, 'a2V5', True], id=68)))
+                assert json.loads(receive(connection)[1])['error']['code'] == 0
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceValue', params=[42, 'a2V5', False], id=69)))
+                value_subscription = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert value_subscription['error']['code'] == 0 # Missing chain state cannot be reported as a missing key.
+                else:
+                    value_id = 4 if service_queries else 3
+                    assert value_subscription == dict(jsonrpc='2.0', id=69, result=value_id)
+                    update = json.loads(receive(connection)[1])
+                    stored_value = expected_genesis['value'] if service_queries else None
+                    assert update == dict(jsonrpc='2.0', method='subscribeServiceValue',
+                                          params=dict(subscription=value_id, result={**expected_head, 'value': stored_value}))
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceValue', params=[value_id], id=70)))
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=70, result=True)
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])
