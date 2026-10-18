@@ -86,5 +86,6 @@
   "disputes_transition": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
   "availability_transition": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
   "guarantor_assignments": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
-  "guarantee_credentials": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true}
+  "guarantee_credentials": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
+  "report_policy": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true}
 }

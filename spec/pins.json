@@ -357,7 +357,21 @@
       "stf/reports/tiny/out_of_order_guarantees-1.json": "9322ff666023a95715fe10430597b8d6885dfce82e437d6833f8b6d6d7ec323d",
       "stf/reports/tiny/report_before_last_rotation-1.json": "93c579ca49dbbdba7cd69c969adb3025ed8cce828c4786447d07c29e8632f796",
       "stf/reports/tiny/report_prev_rotation-1.json": "bb5011cab61ead218a54e1dcf9b9741155fe4aa1b1d368e835ce13d1ac77b3fa",
-      "stf/reports/tiny/wrong_assignment-1.json": "1e5b2fa49ac3aa0c52aefcde5ee3cb37eb860d8a390ad05095b834c84333d46b"
+      "stf/reports/tiny/wrong_assignment-1.json": "1e5b2fa49ac3aa0c52aefcde5ee3cb37eb860d8a390ad05095b834c84333d46b",
+      "stf/reports/tiny/not_authorized-1.json": "46d71aa98c25f4dd97e03035d1cbb8e907e79d859fe0217fcd58d1ae2b574c13",
+      "stf/reports/full/service_item_gas_too_low-1.json": "a7ce1bcc840d1897b3bbfeb9bfe1c0a18832f74c57e1e804879839c01f9237a8",
+      "stf/reports/full/not_authorized-1.json": "b5d344e75aec3ba9ced6444caf74bdb848553d94e9c24e3232467c39d897d918",
+      "stf/reports/tiny/high_work_report_gas-1.json": "1988bfdea376624e8fb7aa96b5e06b1963f17d921c73339d79144e25091abeea",
+      "stf/reports/tiny/service_item_gas_too_low-1.json": "cdadc942ab1d18f0f8ce65ccfd4aed9fa87121ea9078dcae070b9053c6bcbd0f",
+      "stf/reports/full/bad_code_hash-1.json": "6fa23b6338d72960dbfabcf0dddf7dc2b24fa6541f9be54a3d29a39c7498dd20",
+      "stf/reports/full/bad_service_id-1.json": "12449654907c991942e344bb730c181c1d43f98149dab2802eacf6e2cd6bd461",
+      "stf/reports/tiny/bad_code_hash-1.json": "e008447980a3d29de4d25052087a76738947b3411f61b47dd5b8a7d8c2a22d27",
+      "stf/reports/tiny/too_high_work_report_gas-1.json": "54a34e8e6abcce666263933cfcd19bc221f4dab6d81a1e415c759d20f006d53d",
+      "stf/reports/tiny/bad_service_id-1.json": "06a09a6404663365654e731b7b80bf5543855414c1c3eb85cf895407fb530d1b",
+      "stf/reports/full/not_authorized-2.json": "c9205303a6482a36d0c71903f82d9bf86b8657b83d6d9ee4d9652157bf3a9640",
+      "stf/reports/tiny/not_authorized-2.json": "031ffa644c2aa0f1f84e62457b5fdc7f295d846a7815d1b1f8adef4a3cb8657e",
+      "stf/reports/full/high_work_report_gas-1.json": "3698d18c2c910d64e7ad49194b302940394ee49ed96b8c891446d9fae29292f7",
+      "stf/reports/full/too_high_work_report_gas-1.json": "9eeab623c51cc6adda65182bb5ec46a07da07bad2bfe772a3659d1a5d155dfbd"
     }
   },
   "toolchains": {
