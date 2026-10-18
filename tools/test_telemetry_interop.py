@@ -246,6 +246,10 @@ def main():
             case = report['scenarios'][scenario] = dict(passed=False)
             run(args.peer.resolve(), args.collector.resolve(), case, scenario, BUILD/scenario)
             case['passed'] = True
+        from telemetry_interop_restart import run_restart
+        case = report['scenarios']['collector-restart'] = dict(passed=False)
+        run_restart(args.peer.resolve(), args.collector.resolve(), case, BUILD/'collector-restart')
+        case['passed'] = True
         report['passed'] = True
     except Exception as error:
         report['failure'] = repr(error) # Preserve the diagnostic and fail the optional target honestly.
