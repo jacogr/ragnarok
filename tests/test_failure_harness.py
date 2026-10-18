@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from failure_checks import FAILURE_SUITES, load_suites, probe_failure, run_failure_suite
+from failure_checks import FAILURE_SUITES, case_details, load_suites, probe_failure, run_failure_suite
 
 
 # Test process-boundary failures without compiling native code or replacing independent references.
@@ -95,3 +95,33 @@ class FailureHarness(unittest.TestCase):
             path.write_text('{"validator_rotation": {}, "validator_rotation": {}}')
             with self.assertRaisesRegex(ValueError, 'Duplicate'):
                 load_suites(path)
+
+    # Shared defaults and explicit exceptional cases must retain typed arguments and exact diagnostics.
+    def test_case_defaults_and_overrides(self):
+        suite = dict(argument_fields=['member', 'origin'], name_template='{origin}-{member}',
+                     description_template='{member} guard', diagnostic='value.status == None')
+        ordinary = dict(identity=dict(member='value', origin='default'))
+        self.assertEqual(case_details(suite, ordinary), dict(identity=ordinary['identity'],
+            arguments=['value', 'default'], name='default-value', description='value guard',
+            diagnostic='value.status == None'))
+        exceptional = dict(identity=dict(member='length', origin='decoded', inactive_mode=0),
+                           arguments=['field-length', 'decoded', 0], name='shape-length',
+                           description='inactive length', diagnostic='history.mode == Requested')
+        self.assertEqual(case_details(suite, exceptional), exceptional)
+
+    # Unlinked, instrumented crypto, QUIC and integration suites retain their distinct native profiles.
+    def test_ordinary_build_profiles(self):
+        for group, crypto, options in (
+                ('bounded', None, {}), ('crypto', 'observer', {}),
+                ('quic_protocol', None, {'quic_library': 'quic'}),
+                ('integration', 'observer', {'defines': ('integration',)})):
+            # A failed build makes this a profile/refusal check without simulating native verdicts.
+            with self.subTest(group=group):
+                build = Mock(return_value=(dict(exit_code=1), Path('/stale')))
+                command = Mock()
+                report = {group: []}
+                run_failure_suite('compiler', report, {'observer': 'observer', 'quic': 'quic'},
+                                  build, command, group)
+                self.assertEqual(build.call_args.args[3], crypto)
+                self.assertEqual(build.call_args.kwargs, options)
+                command.assert_not_called()
