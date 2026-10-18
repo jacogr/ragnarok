@@ -168,6 +168,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_memory_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_execution')
+    # Host replies publish only valid posterior snapshots and no stale suspension metadata.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_response')
     # Initialization failures never expose a partially prepared machine.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_initialization')
     # Local return-buffer refusals never expose bytes or a copied prefix.

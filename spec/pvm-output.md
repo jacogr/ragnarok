@@ -64,5 +64,6 @@ ARC release evidence. Compiler and isolated runtime probes enforce private resul
 nominal copy limits and failure payload selection.
 
 Standard initialization, bounded guest execution and halt output capture now compose.
-Host transitions, signed host-gas accounting and complete argument/JAM invocation
-wrappers remain separate bounded work; existing execution specification gates remain.
+Trusted [host-response application](pvm-host-response.md) now composes with these operations.
+Host dispatch, signed gas accounting and complete argument/JAM invocation wrappers
+remain separate bounded work; existing execution specification gates remain.
