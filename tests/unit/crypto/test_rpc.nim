@@ -8,7 +8,7 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/chain/services
+import ../../../src/chain/[services, statistics]
 include ../../../src/rpc/server
 
 # Construct independently masked client frames; test payloads stay within the medium-length format.
@@ -280,6 +280,66 @@ slot.output = ""
 slot.input = masked("", 0)
 slot.process(info, 3)
 assert slot.closing and slot.output == frame("\x03\xea", 8)
+# Independently encoded chapter 13: two six-validator E4 arrays, four core tuples and one service.
+let activityHex = "06" & repeat("00000000", 36) & "06" & repeat("00000000", 36) & repeat("00", 32) &
+    "012a000000" & repeat("00", 10) & "ff" & repeat("ff", 8)
+let activityKey = "0d" & repeat("00", 30)
+let previousKey = "09" & repeat("00", 30)
+# Build a fresh configured view, preserving independent current and previous roster encodings.
+proc activityInfo(wire: string, previous = "06" & repeat("00", 2016)): ClientInfo =
+  let state = genesisState[0..^2] & ",\"" & previousKey & "\":\"" & previous & "\",\"" &
+      activityKey & "\":\"" & wire & "\"}"
+  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value))
+let activityCall = "{\"jsonrpc\":\"2.0\",\"method\":\"statistics\",\"params\":[\"" & genesisHash &
+    "\"],\"id\":1}"
+let activityOwner = activityInfo(activityHex)
+let activityAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"BgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEqAAAAAAAAAAAAAAAAAP///////////w==\"}"
+assert respond(activityCall, activityOwner) == activityAnswer
+assert respond("[" & activityCall & "," & activityCall & "]", activityOwner) == "[" &
+    activityAnswer & "," & activityAnswer & "]"
+assert respond(activityCall.replace(",\"id\":1", ""), activityOwner) == ""
+assert "\"statistics\"" in respond(request, activityOwner)
+assert "\"code\":0" in respond(activityCall, withGenesis) # Missing chapter is not null or zero statistics.
+assert "\"code\":1" in respond(activityCall, info)
+assert "\"code\":1" in respond(activityCall.replace(genesisHash, repeat("A", 43) & "="), activityOwner)
+for hash in ["x", "", "AB=="]: # Hash syntax is validated before accessing the snapshot.
+  assert "\"code\":-32602" in respond(activityCall.replace(genesisHash, hash), activityOwner)
+assert "\"code\":-32602" in respond(activityCall.replace("],", ",0],"), activityOwner)
+for size in 0..<(activityHex.len div 2): # Every truncated chapter must fail rather than exposing its valid prefix.
+  assert "\"code\":0" in respond(activityCall, activityInfo(activityHex[0..<size*2]))
+for bad in [activityHex & "00", "05" & activityHex[2..^1], repeat("00", 32769)]:
+  assert "\"code\":0" in respond(activityCall, activityInfo(bad)) # Suffix, population mismatch and size policy.
+# Reject duplicate service keys and an overlong zero gas encoding in otherwise complete chapters.
+let serviceTuple = "2a000000" & repeat("00", 11)
+for bad in [activityHex[0..<644] & "02" & serviceTuple & serviceTuple,
+    activityHex[0..^19] & "8000"]:
+  assert "\"code\":0" in respond(activityCall, activityInfo(bad))
+assert "\"code\":0" in respond(activityCall, activityInfo(activityHex, "00"))
+assert "\"code\":0" in respond(activityCall, activityInfo(activityHex, "06" & repeat("00", 2016) & "00"))
+# Different valid previous populations are accepted only when chapter 13 matches that actual roster.
+let resizedHex = activityHex[0..<290] & "09" & repeat("00000000", 54) & activityHex[580..^1]
+assert "\"result\"" in respond(activityCall, activityInfo(resizedHex, "09" & repeat("00", 3024)))
+assert statistics.statistics(default(Genesis), ByteLimit(32768)).error ==
+    StatisticsReadError.Uninitialized
+let limitedActivity = statistics.statistics(activityOwner.genesis.value, ByteLimit((
+    activityHex.len div 2) - 1))
+assert limitedActivity.error == StatisticsReadError.LimitExceeded
+
+# Copies extracted from a retained statistics view cannot mutate its original bytes.
+let activityView = statistics.statistics(activityOwner.genesis.value, ByteLimit(32768))
+assert activityView.error == StatisticsReadError.None
+var activityCopy = activityView.value.bytes
+activityCopy[0] = 0
+assert activityView.value.bytes[0] == 6
+# Repeated decoding and response construction must release roster and statistics temporary owners.
+proc retireActivityReply() =
+  assert respond(activityCall, activityOwner) == activityAnswer
+retireActivityReply()
+let activityBaseline = getOccupiedMem()
+for iteration in 0..<100: retireActivityReply() # Warm repeated calls must not retain decoder snapshots.
+assert getOccupiedMem() <= activityBaseline + 256
+
 # Disabled and default native owners are safe to tick, close repeatedly and destroy.
 var server = default(Server)
 assert server.start(0, "server")

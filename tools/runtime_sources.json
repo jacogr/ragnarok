@@ -336,5 +336,7 @@
   "src/pvm/gas.nim",
   "tests/pvm_gas_reference.py",
   "tests/test_pvm_gas_reference.py",
-  "tests/native/pvm_gas_results.nim"
+  "tests/native/pvm_gas_results.nim",
+  "src/chain/statistics.nim",
+  "tests/native/compile_fail/rpc_statistics_result_private.nim"
 ]

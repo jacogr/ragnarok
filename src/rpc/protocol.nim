@@ -11,11 +11,11 @@
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
-import ../chain/[parameters, genesis, services]
+import ../chain/[parameters, genesis, services, statistics]
 import ../codec/[state_trie, state_layout]
 
 const MaxReplyBytes = 65535 # One canonical medium-length WS frame, including batch punctuation.
-const MaxServiceReplyBytes = 32768 # Bound each raw value copy/hash before Base64 encoding.
+const MaxBlobReplyBytes = 32768 # Bound each raw value copy/hash before Base64 encoding.
 const ReplyBudgetError = "RPC response exceeds configured output budget"
 
 const Platform = when defined(linux): "linux" elif defined(macosx): "macos" else: "unknown"
@@ -311,7 +311,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
       GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"statistics\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -370,7 +370,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
           "}}" # Unknown blocks cannot yield a false absence verdict.
     let view = info.genesis.value
     # Reserve the envelope and exact quoted ID before converting the remaining budget to raw bytes.
-    let budget = ByteLimit(min(MaxServiceReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
+    let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
     var found = default(ServiceReadResult)
     if methodName == "serviceData":
       found = services.serviceData(view, ServiceIndex(service), budget) # Metadata uses C(255, service).
@@ -390,7 +390,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         "Invalid or unreadable service state") # Do not publish malformed imported state.
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
         found.value.bytes)) & "}"
-  if methodName in ["parent", "stateRoot"]:
+  if methodName in ["parent", "stateRoot", "statistics"]:
     if parameters < 0: return error(id, -32602, "Expected one header hash") # Hash lookup always needs an argument.
     let argument = parameters + 1
     if values[parameters].next != argument + 1 or values[argument].kind != stringValue:
@@ -398,9 +398,19 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     let hash = values[argument].text
     if not validHash(hash): return error(id, -32602,
         "Expected padded Base64 hash") # Reject malformed identities before lookup.
-    if methodName == "stateRoot" and info.genesis.error == GenesisError.None:
+    if methodName != "parent" and info.genesis.error == GenesisError.None:
       let view = info.genesis.value
       if hash == base64.encode(array[32, byte](view.blockHash)):
+        if methodName == "statistics":
+          # Use the same raw-value and aggregate reply ceilings as service blobs.
+          let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
+          let found = statistics.statistics(view, budget)
+          if found.error == StatisticsReadError.LimitExceeded:
+            return error(id, 0, ReplyBudgetError) # A complete value must fit; no truncation.
+          if found.error != StatisticsReadError.None:
+            return error(id, 0, "Invalid or unavailable activity statistics") # Missing chapters are not empty statistics.
+          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+              found.value.bytes)) & "}"
         return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(array[32,
             byte](view.stateRoot))) & "}"
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
