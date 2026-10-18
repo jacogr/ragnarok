@@ -3,7 +3,8 @@
 
 """Independent RFC 6455 socket checks against the actual peer executable, with no WebSocket dependency.
 
-Exposes exact, send, receive, connect, ready, run for the verification harness.
+Exposes socket helpers and run for live protocol checks; parameter_checks verifies configured
+parameters, shared telemetry startup, immutable configuration and rejected invalid inputs.
 """
 import base64
 import hashlib
@@ -13,6 +14,7 @@ import socket
 import struct
 import subprocess
 import time
+from pathlib import Path
 
 
 # Read exactly one bounded wire field; premature EOF is a failed protocol exchange.
@@ -79,7 +81,7 @@ def ready(process, log):
 
 
 # Exercise RPC on a real retained peer while an independent QUIC client completes application work.
-def run(binary, certificates, folder):
+def run(binary, certificates, folder, chain=None, telemetry=False):
     folder.mkdir(parents=True, exist_ok=True)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
@@ -93,6 +95,10 @@ def run(binary, certificates, folder):
     command = [str(binary), 'server', str(peer_port), str(certificates/'a.cert.pem'),
                str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '30000', 'service',
                '--rpc-port', str(rpc_port)]
+    if chain is not None:
+        command += ['--chain', str(chain)] # The same CLI supports RPC with and without telemetry.
+    if telemetry:
+        command += ['--telemetry', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
     with log.open('wb') as output:
         process = subprocess.Popen(command, env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)},
                                    stdout=output, stderr=subprocess.STDOUT)
@@ -111,6 +117,24 @@ def run(binary, certificates, folder):
                 assert opcode == 1 and result['id'] == 'client'
                 assert result['result']['rpc']['transport'] == 'websocket'
                 assert result['result']['connectedPeers'] == 0 and result['result']['bestBlock'] is None
+                assert 'parameters' in result['result']['rpc']['methods']
+                parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
+                send(connection, json.dumps(parameter_call))
+                parameters = json.loads(receive(connection)[1])
+                if chain is None:
+                    assert parameters['error']['code'] == 0 # Missing configuration is explicit, never a default network.
+                else:
+                    expected = json.loads((Path(__file__).parent/'fixtures/rpc-parameters-result.json').read_text())
+                    assert parameters == dict(jsonrpc='2.0', id=19, result=expected)
+                    # File changes after startup cannot change the node's immutable parameter snapshot.
+                    chain.write_text('{}')
+                    send(connection, json.dumps(parameter_call))
+                    assert json.loads(receive(connection)[1]) == parameters
+                    send(connection, json.dumps([parameter_call] * 16))
+                    assert json.loads(receive(connection)[1]) == [parameters] * 16
+                send(connection, json.dumps(dict(parameter_call, params=[1])))
+                assert json.loads(receive(connection)[1])['error']['code'] == -32602
+
                 # A notification contributes no response; the next identified call must be received first.
                 send(connection, json.dumps(dict(jsonrpc='2.0', method='ragnarok_clientInfo')))
                 send(connection, json.dumps([request, dict(jsonrpc='2.0', method='bestBlock', id=2), False]))
@@ -172,3 +196,30 @@ def run(binary, certificates, folder):
             process.wait(timeout=5)
     return dict(passed=True, transport='websocket', quic_progress=True, bounded_admission=True,
                 clean_shutdown=True, log=str(log))
+
+
+# Run configured and unconfigured startup, then prove explicitly malformed chains fail before serving.
+def parameter_checks(binary, certificates, folder):
+    folder.mkdir(parents=True, exist_ok=True)
+    chain = folder/'chain.json'
+    chain.write_text((Path(__file__).parent/'fixtures/rpc-parameters.json').read_text())
+    result = run(binary, certificates, folder/'configured', chain)
+    # Reuse the existing valid genesis header while keeping the independent parameter fixture.
+    combined = json.loads((Path(__file__).parent/'fixtures/rpc-parameters.json').read_text())
+    combined['genesis_header'] = json.loads((Path(__file__).parent/'fixtures/telemetry-dev.json').read_text())['genesis_header']
+    chain.write_text(json.dumps(combined))
+    shared = run(binary, certificates, folder/'shared', chain, telemetry=True)
+    assert shared['passed']
+    with socket.socket() as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        rpc_port = reservation.getsockname()[1]
+    # The preceding run changed its source file to {}; startup must now reject that incomplete configuration.
+    arguments = [str(binary), 'server', '19899', str(certificates/'a.cert.pem'),
+                 str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '100', 'valid',
+                 '--rpc-port', str(rpc_port), '--chain', str(chain)]
+    failed = subprocess.run(arguments, capture_output=True, timeout=5)
+    assert failed.returncode != 0 and b'Invalid RPC listener or --chain parameters' in failed.stderr
+    chain.unlink()
+    missing = subprocess.run(arguments, capture_output=True, timeout=5)
+    assert missing.returncode != 0 and b'Invalid RPC listener or --chain parameters' in missing.stderr
+    return dict(passed=result['passed'], immutable_configuration=True, invalid_startup_rejected=True)

@@ -105,25 +105,15 @@ context is next; PVM execution and full block execution remain later work.
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See
 [the program decoding contract](../spec/pvm-program.md). This is the first PVM
-increment; machine state, memory, gas, execution and host calls remain open.
-
-`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
-formats into copied values backed by an immutable program owner. See
-[the program decoding contract](../spec/pvm-program.md). This is the first PVM
-increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
-with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine.md),
-including its explicit wrapping-access specification gate. Gas charging, instruction
-execution and host calls remain open.
-
-`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
-formats into copied values backed by an immutable program owner. See
-[the program decoding contract](../spec/pvm-program.md). This is the first PVM
 increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
 with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine.md),
 including its explicit wrapping-access specification gate. `src/pvm/registers.nim`
 evaluates all 85 register-only instruction mutations against a copied register file;
-see [the register semantics contract](../spec/pvm-registers.md). Gas charging, complete
-instruction stepping, control flow, memory-instruction integration and host calls remain open.
+see [the register semantics contract](../spec/pvm-registers.md). `src/pvm/gas.nim`
+calculates whole-block pipeline costs with bounded storage and a local cycle limit;
+[the gas contract](../spec/pvm-gas.md) records independent witnesses and the negative
+branch-target specification gate. Machine gas charging, instruction stepping, control
+flow, memory-instruction integration and host calls remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
@@ -147,8 +137,10 @@ See [telemetry scope and limits](../spec/telemetry.md).
 
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
 at most eight nonblocking loopback connections and bounded input/output buffers. The first
-method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Chain queries
-and subscriptions remain unavailable until a real chain backend exists. See [RPC scope](../spec/rpc.md).
+method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Other chain queries
+and subscriptions remain unavailable until a real chain backend exists. `parameters()` reads an immutable
+GP 0.8.0 parameter snapshot from the explicit chainspec; four live-state fields are documented zero
+placeholders. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

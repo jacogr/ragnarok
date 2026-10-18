@@ -37,7 +37,7 @@ class NativeUnitHarness(unittest.TestCase):
         names = [name for _, members, _ in batches for name in members]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
-        self.assertEqual(len(batches[0][1]), 26)
+        self.assertEqual(len(batches[0][1]), 27)
         self.assertIsNone(batches[0][2])
         for name, members, target in batches[1:]:
             # Every profile with special linking or runtime resources remains a single-file invocation.
@@ -191,7 +191,7 @@ class NativeUnitHarness(unittest.TestCase):
     def test_runtime_fixture_required(self):
         with temporary_folder() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
-                for name in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
+                for name in ('pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
                              'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state',
                              'safrole_authentication', 'safrole_auth_state', 'safrole_transition',
                              'extrinsic_commitment', 'block_admission', 'disputes_transition',
