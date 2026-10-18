@@ -102,6 +102,17 @@
       "identity": {
         "origin": "projection"
       }
+    },
+    {
+      "arguments": [
+        "prior"
+      ],
+      "name": "accumulation-service-prior",
+      "diagnostic": "outcome.status == None",
+      "description": "Pre-credit state selected-success guard",
+      "identity": {
+        "origin": "prior"
+      }
     }
   ]
 }

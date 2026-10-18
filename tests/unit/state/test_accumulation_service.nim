@@ -158,7 +158,7 @@ proc boundaries(): PreparedAccumulationService =
   let transferred = prepareAccumulationInputs(source.invocationOperands.value,
     [DeferredTransfer(destination: ServiceIndex(42))], [], roundConfig().inputs).value
   assert prepareAccumulationService(transferred, InvocationServiceIndex(0), state, HeaderSlot(3),
-      config).error == AccumulationServiceError.InvalidInputs
+      config).error == AccumulationServiceError.None # Zero transfers are valid and preserve the balance.
   assert array[32, byte](owner.serviceState.value.commitment.root) == array[32, byte](
       state.commitment.root)
   let empty = default(PreparedAccumulationService)

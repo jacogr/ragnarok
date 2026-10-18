@@ -16,7 +16,8 @@ partial state and next free ID, empty transfers and provisions, and absent yield
 
 The bound adapter must derive state and profile from the original block certificate rather than
 accept caller-supplied substitute components. Parent partial state and posterior entropy have
-separate provenance. No mutable checkpoint, host call, PVM dispatch, transfer credit or publication
+separate provenance. [Incoming credit](accumulation-credit.md) precedes context construction.
+No mutable checkpoint, host call, PVM dispatch or publication
 is included, and a complete-state source must not be confused with a light-node partial map.
 
 ## Completion tests
@@ -35,7 +36,7 @@ initial `I`; the initial-only type cannot express pending transfers, provisions 
 `contextInfo` reports their zero/absent initial values, service and next free ID. There is no
 checkpoint mutation or execution-outcome API in this slice.
 
-`contextAccounts` retains the original complete `StateStoreSnapshot`, including all service
+`contextAccounts` retains the post-credit complete `StateStoreSnapshot`, including all service
 metadata, storage and preimages, rather than copying only the invoking account. It also retains
 unrelated chapters: this is an account-backing source, not a filtered mapping or a new partial-state
 root. The invoking account was decoded by service preparation and is available through
@@ -96,5 +97,5 @@ revisions separately. E2E behavior is unchanged and that group was not rerun loc
 
 Prepare the standard accumulation machine-entry binding (`Psi_M`, entry point 5) from the retained
 code, gas and compact arguments, coordinated with the PVM standard-initialization implementation.
-Checkpoint/host effects, termination selection, transfer credit, later rounds and publication need
+Checkpoint/host effects, termination selection, later rounds and publication need
 subsequent bounded work backed by genuine execution outcomes.

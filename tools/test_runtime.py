@@ -109,7 +109,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Actual and default failures cover every public generic payload family.
         cases = [(member, origin, 'outcome.status == None')
                  for member in ('store', 'snapshot', 'lookup') for origin in ('default', 'error')]
-        cases += [('metadata', 'default', 'not snapshot.data == nil'),
+        cases += [('fork', 'default', 'outcome.status == None'),
+                  ('metadata', 'default', 'not snapshot.data == nil'),
                   ('length', 'default', 'not view.owner.data == nil'),
                   ('bytes', 'default', 'not view.owner.data == nil')]
         for member, origin, sentinel in cases:

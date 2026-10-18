@@ -3,10 +3,10 @@
 
 ## GP 0.8.0 accounts code lookup and Psi_A entry gate for one prepared accumulation service.
 ## Exposes immutable account/input/code contexts and an admitted-parent/slot-bound initial-round adapter.
-## No PVM validation, transfer credit, execution outcome or state publication is performed.
+## Incoming transfer credit is retained on a private complete-map branch; no PVM execution or caller publication.
 
 import ../codec/[bounded, composite, work_digest, state_accounts, state_layout,
-  state_service_values, header, owned]
+  state_service_values, header, owned, c2_records]
 import ../crypto/primitives
 import ./[accumulation_inputs, accumulation_round, accumulation_queue, report_admission,
   block_transition, block_admission, store]
@@ -24,8 +24,8 @@ type
   ## Failures expose no partially resolved account, code or input sequence.
   AccumulationServiceError* {.pure.} = enum
     Uninitialized, None, InvalidInputs, InvalidIndex, InvalidState, MissingAccount,
-    MalformedAccount, LimitExceeded, BackendFailure, CodeUnavailable, InvalidRound
-  ## Copied metadata preserves original account fields and exact declared invocation gas and input counts.
+    MalformedAccount, LimitExceeded, BackendFailure, CodeUnavailable, InvalidRound, BalanceOverflow
+  ## Copied post-credit metadata preserves other account fields and exact invocation gas/input counts.
   AccumulationServiceInfo* = object
     service*: ServiceIndex
     slot*: HeaderSlot
@@ -36,7 +36,7 @@ type
   ## Private acyclic storage retains the exact complete map and inputs, with an independent code suffix copy.
   ServiceData = ref object
     info: AccumulationServiceInfo
-    state: StateStoreSnapshot
+    state, prior: StateStoreSnapshot
     inputs: PreparedAccumulationInputs
     index: InvocationServiceIndex
     code: seq[byte]
@@ -73,7 +73,7 @@ proc serviceInfo*(plan: PreparedAccumulationService): AccumulationServiceResult[
   AccumulationServiceResult[AccumulationServiceInfo](status: AccumulationServiceError.None,
     completed: data.info)
 
-## Retain the exact state independently of the context handle for later execution-context construction.
+## Retain the post-credit complete state independently for later skip or execution-context construction.
 proc serviceState*(plan: PreparedAccumulationService): AccumulationServiceResult[
     StateStoreSnapshot] =
   let data = plan.data
@@ -81,6 +81,17 @@ proc serviceState*(plan: PreparedAccumulationService): AccumulationServiceResult
       status: AccumulationServiceError.Uninitialized) # No substitute parent map.
   AccumulationServiceResult[StateStoreSnapshot](status: AccumulationServiceError.None,
       completed: data.state)
+
+## Retain the exact pre-credit source separately; extracting or reusing either view never credits again.
+proc servicePriorState*(plan: PreparedAccumulationService): AccumulationServiceResult[
+    StateStoreSnapshot] =
+  let data = plan.data
+  if data == nil:
+    # No default source can stand in for an initialized complete map.
+    return AccumulationServiceResult[StateStoreSnapshot](
+        status: AccumulationServiceError.Uninitialized)
+  AccumulationServiceResult[StateStoreSnapshot](status: AccumulationServiceError.None,
+    completed: data.prior)
 
 ## Extract one input only from this context's original service group; no second service selector is accepted.
 proc serviceInputAt*(plan: PreparedAccumulationService,
@@ -121,8 +132,6 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
       fail(AccumulationServiceError.InvalidIndex) # Nominal service ordinal must fit before state work.
     fail(AccumulationServiceError.InvalidInputs) # Default inputs are not a valid empty invocation.
   let source = selected.value
-  if source.transfers != 0:
-    fail(AccumulationServiceError.InvalidInputs) # Transfer credit requires a separate real state-transition slice.
   let found = state.lookup(chapterServiceKey(StateChapter(255), source.service))
   if found.error == StateStoreError.MissingKey:
     fail(AccumulationServiceError.MissingAccount) # Do not invent account fields or an execution result.
@@ -133,7 +142,17 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
   let account = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
   if account.error != ServiceMetadataError.None:
     fail(AccumulationServiceError.MalformedAccount) # No unsupported version or malformed metadata fallback.
-  let metadata = account.value.metadata
+  var metadata = account.value.metadata
+  let originalBalance = uint64(metadata.balance)
+  var balance = originalBalance
+  # Prepared groups already filter destinations and put transfers before operands, preserving order.
+  for i in 0..<source.transfers:
+    let input = inputs.invocationInputAt(index, InvocationInputIndex(uint64(i))).value
+    let amount = uint64(input.transfer.amount)
+    if amount > high(uint64)-balance:
+      fail(AccumulationServiceError.BalanceOverflow) # Ordinary GP addition must remain in the balance domain.
+    balance += amount
+  metadata.balance = AccountBalance(balance)
   let key = servicePreimageKey(source.service, ServicePreimageHash(array[32, byte](
       metadata.codeHash)), ByteLimit(32))
   if key.error != ServiceValueError.None:
@@ -167,8 +186,22 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
     fail(AccumulationServiceError.InvalidState) # Only actual absence becomes Missing code.
   else:
     discard # Present account with no code preimage is an ordinary non-executing Psi_A gate.
+  var credited = state
+  if balance != originalBalance:
+    # Fork the entire retained map with inherited ceilings; never reconstruct a partial account-only root.
+    var working = state.forkStateStore.value
+    let entry = serviceMetadataEntry(source.service, metadata, ByteLimit(
+        ServiceMetadataBytes)).value
+    let applied = working.apply([StateWrite(key: entry.key, kind: StateWriteKind.Put,
+        value: entry.value)])
+    if applied.error == StateStoreError.BackendFailure:
+      fail(AccumulationServiceError.BackendFailure) # Late Merklization failure exposes no credited owner.
+    if applied.error != StateStoreError.None:
+      fail(AccumulationServiceError.LimitExceeded) # Inherited write/trie budgets apply to the complete branch.
+    credited = applied.value
   AccumulationServiceResult[PreparedAccumulationService](status: AccumulationServiceError.None,
-    completed: PreparedAccumulationService(data: ServiceData(state: state, inputs: inputs,
+    completed: PreparedAccumulationService(data: ServiceData(state: credited, prior: state,
+      inputs: inputs,
       index: index,
       code: code, info: AccumulationServiceInfo(service: source.service, slot: slot,
         gas: source.gas,

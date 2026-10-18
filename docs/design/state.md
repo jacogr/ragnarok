@@ -5,6 +5,8 @@ update their feature contract rather than appending progress here.
 
 `src/state/` owns the in-memory serialized-state store: atomic write batches publish complete
 immutable snapshots and recompute roots through the existing Merklization implementation.
+Snapshots can fork private complete-map working stores with inherited resource ceilings; branches share
+only immutable prior owners and publish independently.
 See [the storage contract](../../spec/state-store.md). Native replay verifies seven published pre/post mapping pairs; this is not state-transition
 execution.
 

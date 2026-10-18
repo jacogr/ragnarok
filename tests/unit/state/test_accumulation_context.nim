@@ -83,12 +83,16 @@ proc components(seed = 0): seq[StateEntry] =
     privilegeStateEntry(roles, cfg.privileges).value]
 
 ## Retain a real service bootstrap over the supplied complete state, with unrelated account/storage records.
-proc bootstrap(chapters: seq[StateEntry]): PreparedAccumulationInvocation =
+proc bootstrap(chapters: seq[StateEntry], credit = false): PreparedAccumulationInvocation =
   let queue = planAccumulationQueues([], newSeq[byte](12), newSeq[byte](12), HeaderSlot(0),
       queueConfig()).value
   let operands = prepareAccumulationOperands(queue, AccumulationReportPrefix(0), roundConfig().operands).value
-  let inputs = prepareAccumulationInputs(operands, [], [AlwaysAccumulate(service: ServiceIndex(
-      42))], roundConfig().inputs).value
+  let transfers = if credit: @[DeferredTransfer(destination: ServiceIndex(42),
+      amount: TransferBalance(7)),
+    DeferredTransfer(destination: ServiceIndex(42), amount: TransferBalance(13))]
+  else: @[] # Existing transfer-free witnesses keep their original metadata expectations.
+  let inputs = prepareAccumulationInputs(operands, transfers, [AlwaysAccumulate(
+      service: ServiceIndex(42))], roundConfig().inputs).value
   let raw = @[0'u8]
   let hash = array[32, byte](blake2b256(raw).value)
   var entries = @[serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(codeHash: CodeHash(hash),
@@ -104,6 +108,23 @@ proc bootstrap(chapters: seq[StateEntry]): PreparedAccumulationInvocation =
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(0), state, HeaderSlot(128),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
   prepareAccumulationInvocation(service, default(StateEntropyWord), ServiceProbeLimit(1)).value
+
+## Incoming transfers credit both initial dimensions once, with matching copied self and complete account backing.
+proc creditedContexts() =
+  let invocation = bootstrap(components(), true)
+  assert uint64(invocation.bootstrapInfo.value.inputs) == 2
+  let prepared = prepareAccumulationContexts(invocation, contextConfig()).value
+  # Both initial dimensions start at the same post-transfer I, with no outgoing effects.
+  for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exceptional]:
+    let context = prepared.initialContext(dimension).value
+    assert uint64(context.contextSelf.value.balance) == 119
+    let account = context.contextAccounts.value.lookup(chapterServiceKey(StateChapter(255),
+        ServiceIndex(42))).value
+    assert uint64(decodeServiceMetadata(account.bytes, ByteLimit(89)).value.metadata.balance) == 119
+    assert context.contextInfo.value.transfers == 0
+    let prior = invocation.bootstrapService.value.servicePriorState.value.lookup(chapterServiceKey(
+      StateChapter(255), ServiceIndex(42))).value
+    assert uint64(decodeServiceMetadata(prior.bytes, ByteLimit(89)).value.metadata.balance) == 99
 
 ## Both I dimensions preserve exact metadata/children and source ownership after locals disappear.
 proc checkPair(pair: PreparedAccumulationContexts, seed = 0) =
@@ -261,6 +282,27 @@ proc boundCase(base: OwnedReport): BlockAccumulationContexts =
   let admitted = planBlockReports(context.staged, context.older, config()).value
   let queue = planBlockAccumulationQueue(admitted, queueConfig()).value
   let round = planBlockInitialAccumulation(queue, roundConfig()).value
+  # A pure projection can supply transfers beside real report operands without claiming a later-round certificate.
+  let mixedInputs = prepareAccumulationInputs(round.roundProjection.value.roundInputs.value.invocationOperands.value,
+    [DeferredTransfer(destination: ServiceIndex(42), amount: TransferBalance(7))], [], roundConfig().inputs).value
+  let mixedService = prepareAccumulationService(mixedInputs, InvocationServiceIndex(0),
+      context.original.snapshot.value,
+    HeaderSlot(2), AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0),
+        preimageBytes: ByteLimit(1))).value
+  assert mixedService.serviceInfo.value.transfers == 1 and mixedService.serviceInfo.value.operands > 0
+  assert mixedService.serviceInputAt(InvocationInputIndex(0)).value.kind ==
+      AccumulationKind.Transfer
+  assert mixedService.serviceInputAt(InvocationInputIndex(1)).value.kind == AccumulationKind.Operand
+  let mixed = prepareAccumulationInvocation(mixedService, default(StateEntropyWord),
+      ServiceProbeLimit(1)).value
+  assert uint64(mixed.bootstrapInfo.value.inputs) == uint64(
+      mixedService.serviceInfo.value.operands)+1
+  let credited = prepareAccumulationContexts(mixed, contextConfig()).value.initialContext(
+      AccumulationDimension.Exceptional).value
+  let original = context.original.snapshot.value.lookup(chapterServiceKey(StateChapter(255),
+      ServiceIndex(42))).value
+  assert uint64(credited.contextSelf.value.balance) == uint64(decodeServiceMetadata(original.bytes,
+      ByteLimit(89)).value.metadata.balance)+7
   let service = prepareBlockAccumulationService(round, InvocationServiceIndex(0),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
   let invocation = prepareBlockAccumulationInvocation(service, ServiceProbeLimit(1)).value
@@ -323,6 +365,7 @@ proc lifetime() =
 
 ## Run authored complete-state cases and retain every child after source locals leave scope.
 proc main() {.raises.} =
+  creditedContexts()
   let retained = boundaries()
   checkPair(retained)
   # Deterministic patterned cases test complete field contents without another production-language oracle.
