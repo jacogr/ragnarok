@@ -13,4 +13,5 @@ placeholders. `src/chain/genesis.nim` retains the configured serialized map thro
 state store, checks header/roster/time framing and computes its root at startup. It does not validate
 all state chapters or run consensus. `src/chain/services.nim` reads account metadata, storage
 values and verified preimages through immutable store views; RPC bounds raw values and aggregate
-batch responses before copying them. RPC and telemetry share the same startup file snapshot. See [RPC scope](../../spec/rpc.md).
+batch responses before copying them. `src/chain/statistics.nim` validates C(13) against retained
+core configuration and current/previous rosters before returning its exact bytes. RPC and telemetry share the same startup file snapshot. See [RPC scope](../../spec/rpc.md).

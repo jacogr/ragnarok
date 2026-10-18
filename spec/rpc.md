@@ -31,7 +31,7 @@ Send a WebSocket text message:
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)` and the service queries below are implemented; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)` and the service queries below are implemented; other JIP-2 chain methods
 and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -158,6 +158,29 @@ and output limits. Expected namespace keys, hashes and roots were independently 
 Python hashlib and the existing trie reference. Native tests also cover malformed arguments,
 orphan entries, inconsistent preimages and owner isolation. Live WebSocket tests check exact
 results and bounded batches with IDs whose escaping expands their encoded size.
+
+## Genesis-only activity statistics
+
+`statistics(header_hash)` follows the pinned JIP-2 method of that name and returns the exact
+C(13) bytes as padded Base64. It requires one canonical 32-byte header hash. An unknown block
+returns error `1` with that hash in `error.data`; invalid arguments return `-32602`.
+Missing or malformed statistics/context return error `0`, never `null` or fabricated zero activity.
+
+Before returning bytes, `src/chain/statistics.nim` validates the complete chapter with the existing
+[activity statistics codec](state-statistics.md), including the accepted compact gas encoding.
+Decoding uses the core count retained with genesis and the actual C(8)/C(9) validator populations;
+these populations may differ after resizing. Both rosters and statistics must decode exactly,
+with no trailing bytes. This is structural validation, not verification of activity against blocks.
+
+The same 32 KiB raw-blob and 65,535-byte aggregate reply limits apply. Oversized values or a batch
+with insufficient space return error `0` without truncation. Roster copies are independently
+bounded to 1 MiB each; decoder populations and service counts also obey their existing limits.
+Queries read only the immutable startup snapshot. `subscribeStatistics` remains unavailable.
+
+Native tests cover independent literal bytes (including uint64-max compact gas), all truncated
+chapter prefixes, malformed counts/dictionaries, differing roster populations, missing data,
+response limits, notifications, batches and repeated ARC cleanup. The live WS harness checks
+exact statistics from the frozen service fixture after the source file has changed.
 
 ## Protocol and bounds
 
