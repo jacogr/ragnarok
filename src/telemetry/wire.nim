@@ -10,6 +10,7 @@ const MaxCores* = 1024
 const ProtocolVersion = 1'u8 # JIP-3 "Node information": telemetry protocol version.
 const DroppedEvent = 0'u8 # JIP-3 event 0: a contiguous run of omitted observations.
 const StatusEvent = 10'u8 # JIP-3 event 10: current peer counts and pool sizes.
+const ConnectionRefusedEvent = 20'u8 # JIP-3 event 20: an incoming connection is explicitly refused.
 const ConnectingInEvent = 21'u8 # JIP-3 event 21: an incoming handshake starts.
 const ConnectInFailedEvent = 22'u8 # JIP-3 event 22: that incoming handshake fails.
 const ConnectedInEvent = 23'u8 # JIP-3 event 23: that incoming handshake succeeds.
@@ -186,4 +187,13 @@ proc connectInFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
   result.add(ConnectInFailedEvent)
   result.fixed(uint64(attempt), 8)
   result.text("")
+  result.frame()
+
+# Report an explicit admission refusal with only its copied remote endpoint, as required by JIP-3.
+proc connectionRefused*(timestamp: Timestamp, address: array[16, byte], port: uint16): seq[byte] =
+  result = @[0'u8, 0, 0, 0]
+  result.fixed(uint64(timestamp), 8)
+  result.add(ConnectionRefusedEvent)
+  for item in address: result.add(item) # Fixed IPv6-format bytes, without a length prefix.
+  result.fixed(port, 2)
   result.frame()

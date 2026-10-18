@@ -15,6 +15,12 @@ template progress*() {.varargs.} =
   stdout.flushFile()
 
 type
+  # One retained dial generation owns its event ID and native counter baselines until actual retirement.
+  # These scalars retain no transport pointers and prevent a previous generation settling a new attempt.
+  MeshDial = object
+    active, pending, authenticated: bool
+    attempt: EventId
+    authenticatedBefore, closedBefore: uint64
   # One bounded native stream owns application storage until its final close callback.
   StreamState = object
     handle: NativeStream
@@ -33,6 +39,7 @@ type
     telemetry: nil ptr Client
     incoming: IncomingAttempts
     incomingPeers: IncomingPeers
+    meshDial: MeshDial
     expected: seq[byte]
     server, failed, stopping, service, mixed, integrated, mesh, recovering, overload: bool
     streams: array[64, StreamState]
@@ -755,14 +762,56 @@ proc pendingMesh(peer: ptr Peer): bool {.raises: [].} =
       inc local
   local == 4 and remote == 4
 
-# Drive both role engines from their one dispatcher, surfacing framing or socket failures as bounded outcomes.
+# Settle the current retained outgoing generation from cumulative native evidence, even on a failed poll.
+proc observeMeshDial(outgoing: var Peer) =
+  let exporter = outgoing.telemetry
+  if exporter == nil or not outgoing.meshDial.active: return # No exporter work for disabled or idle owners.
+  if outgoing.meshDial.pending and authenticatedConnections(outgoing.transport) >
+      outgoing.meshDial.authenticatedBefore:
+    # Authentication and close may both occur in one dispatcher turn; preserve their wire order.
+    exporter[].finishDial(outgoing.meshDial.attempt, true)
+    outgoing.meshDial.pending = false
+    outgoing.meshDial.authenticated = true
+  if exporter != nil and closedConnections(outgoing.transport) > outgoing.meshDial.closedBefore:
+    if outgoing.meshDial.pending:
+      exporter[].finishDial(outgoing.meshDial.attempt, false) # Failed authentication never emits a disconnect.
+    elif outgoing.meshDial.authenticated:
+      exporter[].finishConnection(outgoing.expected) # Exactly one close for this authenticated generation.
+    outgoing.meshDial.active = false
+    outgoing.meshDial.pending = false
+    outgoing.meshDial.authenticated = false
+
+# Sample one logical remote peer across both retained engines; duplicate arbitration must not double count it.
+proc observeMesh(incoming, outgoing: var Peer) =
+  if incoming.telemetry == nil: return # Disabled mesh runs add no clock, encoding or socket work.
+  observeMeshDial(outgoing)
+  let connected = peerMetric(incoming.transport, 0) > 0 or
+      (outgoing.meshDial.authenticated and peerMetric(outgoing.transport, 0) > 0)
+  let exporter = incoming.telemetry
+  if exporter != nil: # Re-establish the borrow after observing the other role's mutable owner.
+    exporter[].observe(if connected: 1'u32 else: 0'u32)
+
+# Capture only actual dials; a suppressed preferred direction during fallback creates no attempt.
+proc dialMesh(outgoing: var Peer, port: uint16): bool =
+  let exporter = outgoing.telemetry
+  if exporter != nil:
+    # All prior native connections retire before a mesh round can reuse this fixed observation slot.
+    outgoing.meshDial = MeshDial(active: true, pending: true,
+      attempt: exporter[].startDial(outgoing.expected, port, true),
+      authenticatedBefore: authenticatedConnections(outgoing.transport),
+      closedBefore: closedConnections(outgoing.transport))
+  connectTransport(outgoing.transport, port)
+
+# Drive both role engines from one dispatcher and perform at most one exporter tick per turn.
 proc meshPoll(incoming, outgoing: var Peer): bool =
-  pollPair(incoming.transport, outgoing.transport) and not incoming.failed and not outgoing.failed
+  result = pollPair(incoming.transport, outgoing.transport) and not incoming.failed and
+      not outgoing.failed
+  observeMesh(incoming, outgoing) # Final counter changes remain observable even if polling reports failure.
 
 # Retain two IPv6 engines through sixteen externally gated reconnects and simultaneous CE queries.
 proc runMesh*(): bool {.raises.} =
   # Validate all trusted controls before opening sockets or narrowing ports.
-  if paramCount() != 9: return false
+  if peerParamCount() != 9: return false
   let localPort = parseInt(paramStr(2))
   let remotePort = parseInt(paramStr(3))
   let rounds = parseInt(getEnv("RAGNAROK_MESH_ROUNDS", "16"))
@@ -783,10 +832,20 @@ proc runMesh*(): bool {.raises.} =
   defer: dispatcher.close() # Both borrowed endpoint registrations retire first, in reverse defer order.
   var incoming = Peer(server: true, mesh: true, expected: expected, attack: "valid")
   var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
+  var telemetry = default(Client)
+  defer: telemetry.close() # The single exporter outlives both engines and their final synchronous callbacks.
   defer:
+    observeMeshDial(outgoing) # Observe real closes before destruction can change native counters.
+    if outgoing.meshDial.pending:
+      telemetry.finishDial(outgoing.meshDial.attempt,
+          false) # Settle cancellation/timeout without inventing a close.
+      outgoing.meshDial.pending = false
     incoming.stopping = true; outgoing.stopping = true
     closeTransport(outgoing.transport)
-    closeTransport(incoming.transport) # TLS globals outlive the first engine destruction.
+    closeTransport(incoming.transport) # TLS globals and incoming correlation storage remain alive.
+    if incoming.telemetry != nil:
+      incoming.telemetry = nil; outgoing.telemetry = nil # End callback borrows only after both engines retire.
+      telemetry.observe(0) # One final nonblocking send; shutdown never waits for delivery.
   # The listener is persistent; outgoing binds once to an ephemeral IPv6 port and keeps it across reconnects.
   if not openTransport(incoming.transport, true, false, uint16(localPort), paramStr(4), paramStr(5),
       paramStr(8), addr incoming, verifyPeer, onStream, ipv6 = true,
@@ -794,6 +853,15 @@ proc runMesh*(): bool {.raises.} =
   if not openTransport(outgoing.transport, false, false, 0, paramStr(4), paramStr(5),
       paramStr(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
           dispatcher = dispatcher, profile = profile): return false
+  # Register the listening identity/address once, independent of the ephemeral outgoing UDP socket.
+  if not telemetry.setup(paramStr(4), uint16(localPort), true):
+    stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
+    return false
+  if requested():
+    incoming.telemetry = addr telemetry; outgoing.telemetry = addr telemetry
+    if not observeHandshakes(incoming.transport, onHandshake) or
+        not observePeers(incoming.transport, onPeer): return false # Defer retires partial observer setup.
+    telemetry.observe(0) # Registration precedes queued lifecycle events from either engine.
   progress "MESH_READY ", int(initiator)
   var authenticatedIn, authenticatedOut = 0'u64
   # All rounds retain these exact stack/socket/dispatcher/TLS/engine owners.
@@ -810,10 +878,10 @@ proc runMesh*(): bool {.raises.} =
     if fallback:
       while (getMonoTime() - started).inMilliseconds < 5000:
         if not meshPoll(incoming, outgoing): return false # Keep the listener responsive while waiting.
-      if not initiator and not connectTransport(outgoing.transport, uint16(
+      if not initiator and not dialMesh(outgoing, uint16(
           remotePort)): return false
     else:
-      if not connectTransport(outgoing.transport, uint16(
+      if not dialMesh(outgoing, uint16(
           remotePort)): return false # Deliberately race both dials.
     let useOutgoing = if fallback: not initiator else: initiator
     let kept = if useOutgoing: addr outgoing else: addr incoming

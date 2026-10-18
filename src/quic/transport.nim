@@ -32,7 +32,7 @@ type
       raises: [].}
   # Stream events execute synchronously inside transport processing/destruction, with the peer owner still alive.
   StreamCallback* = proc(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].}
-  # Borrow address/DER only during a synchronous handshake observation, including engine teardown.
+  # Borrow address/DER only during a synchronous handshake/admission observation, including engine teardown.
   HandshakeCallback* = proc(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
       port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].}
   # Admitted-peer events borrow DER only on admission; closure names the same fixed slot.
@@ -315,6 +315,7 @@ proc localPort*(owner: Transport): uint16 = owner.socket.port
 
 # Public adapter discriminators are imported from the shared ABI, never JIP wire tags.
 let
+  AdmissionRefused* {.importc: "RQ_ADMISSION_REFUSED", header: BridgeHeader.}: cint
   HandshakeStarted* {.importc: "RQ_HANDSHAKE_STARTED", header: BridgeHeader.}: cint
   HandshakeSucceeded* {.importc: "RQ_HANDSHAKE_SUCCEEDED", header: BridgeHeader.}: cint
   HandshakeFailed* {.importc: "RQ_HANDSHAKE_FAILED", header: BridgeHeader.}: cint
