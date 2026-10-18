@@ -173,6 +173,7 @@
   "tests/native/pvm_fetch_context_results.nim",
   "tests/native/pvm_fetch_inputs_results.nim",
   "tests/native/pvm_fetch_package_results.nim",
+  "tests/native/pvm_fetch_parameters_results.nim",
   "tests/native/pvm_fetch_results.nim",
   "tests/native/pvm_gas_results.nim",
   "tests/native/pvm_host_execution_results.nim",

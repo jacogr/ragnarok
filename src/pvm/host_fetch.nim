@@ -1,12 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Evaluate fetch for optional entropy, trace, package and external-input values, or directly borrowed values.
-## Exposes FetchContext capture, bounded package/input attachment and selector responses.
+## Evaluate fetch for configured parameters and optional entropy, trace, package and external inputs.
+## Exposes FetchContext capture, parameter/package/input attachment and selector responses.
 ## FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
 ## Capture owns bounded immutable context; responses own memory copies. See spec/pvm-fetch-context.md.
 
 import ./[machine, step]
+import ../chain/parameters
 import ../codec/[work_package, fixed_unsigned]
 
 type
@@ -70,11 +71,15 @@ type
     entropy: FetchEntropy
     tracePresence: FetchPresence
     trace: seq[byte]
+  # Fixed parameter encoding is captured once from the configured chain snapshot.
+  FetchParameterData = ref object
+    bytes: array[ParameterBytes, byte]
   # Public immutable handle; default is invalid, while explicit all-absent capture is valid.
   FetchContext* = object
     data: nil FetchContextData
     packageData: nil FetchPackageData
     inputData: nil FetchInputData
+    parameterData: nil FetchParameterData
   # Capture failures carry only the local reason, never a partial owner or borrowed input span.
   FetchContextResult* = object
     case status: FetchError
@@ -112,7 +117,17 @@ proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
   let owner = FetchContextData(entropyPresence: entropyPresence, entropy: selectedEntropy,
     tracePresence: tracePresence, trace: copied)
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner,
-      packageData: nil, inputData: nil))
+      packageData: nil, inputData: nil, parameterData: nil))
+
+# Attach the configured chain parameters while preserving all invocation-specific selections.
+# Missing/default parameters are local configuration errors, never an absent protocol value.
+proc withFetchParameters*(context: FetchContext, parameters: Parameters): FetchContextResult =
+  if context.data == nil or not parameters.valid:
+    # Reject uninitialized context or parameters before allocating the fixed-size snapshot.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  FetchContextResult(status: FetchError.None, completed: FetchContext(data: context.data,
+    packageData: context.packageData, inputData: context.inputData,
+    parameterData: FetchParameterData(bytes: encodeParameters(parameters))))
 
 # Replace both external-input selections while retaining package, entropy and trace snapshots.
 # Preflight all counts, current-item indices and aggregate bytes before any variable allocation.
@@ -185,7 +200,8 @@ proc withFetchInputs*(context: FetchContext, source: FetchInputs,
         # Fixed arrays cannot retain references into caller-owned sequences.
         copied.imports[i][j] = source.imports[i][j]
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: context.data,
-    packageData: context.packageData, inputData: FetchInputData(values: copied)))
+    packageData: context.packageData, inputData: FetchInputData(values: copied),
+        parameterData: context.parameterData))
 
 # Write one bounded fixed-width summary field using the canonical scalar codec.
 # Private callers pass disjoint fields inside a fixed 62-byte summary; failure publishes no owner.
@@ -233,7 +249,8 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
   if presence == FetchPresence.Absent:
     # Clearing only the package selection preserves the original immutable entropy/trace owner.
     return FetchContextResult(status: FetchError.None,
-      completed: FetchContext(data: context.data, packageData: nil, inputData: context.inputData))
+      completed: FetchContext(data: context.data, packageData: nil, inputData: context.inputData,
+          parameterData: context.parameterData))
   let described = workPackageInfo(package)
   if described.error != PackageError.None:
     # Default codec handles are local misuse, not an absent protocol package.
@@ -311,7 +328,7 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
       return FetchContextResult(status: FetchError.InvalidContext)
   FetchContextResult(status: FetchError.None,
     completed: FetchContext(data: context.data, packageData: captured,
-        inputData: context.inputData))
+        inputData: context.inputData, parameterData: context.parameterData))
 
 # Inspect a result without exposing mutable variant storage.
 func error*(r: FetchResult): FetchError = r.status
@@ -331,7 +348,7 @@ proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
     return FetchResult(status: FetchError.InvalidMemory)
   let requested = uint64(registers[9])
   # Splitting before multiplication computes ceil(rate*z/1024) for all uint64 z without overflow.
-  # Private callers use rate <= 96 and base <= 317, so the total and any deficit fit signed 64 bits.
+  # Private callers use rate <= 96 and base <= 390, so the total and any deficit fit signed 64 bits.
   let cost = base + (requested div 1024) * rate + ((requested mod 1024) * rate + 1023) div 1024
   if uint64(gas) < cost:
     # General-host underfunding takes precedence over guest memory and local copy-size checks.
@@ -385,7 +402,7 @@ proc fetchTraceResponse*(gas: MachineGas, registers: RegisterFile, memory: Memor
     trace: openArray[byte], limit: MemoryByteLimit): FetchResult =
   fetchValue(gas, registers, memory, trace, true, 2, 80, 96, limit)
 
-# Select entropy, trace or package values for host identifier 2; other known selectors remain refusals.
+# Select configured parameters and invocation values for host identifier 2; remaining selectors refuse.
 # Values >= 16 are protocol-unknown selectors (cost 80, NONE), not unknown host identifiers.
 # Invalid context/memory and local copy caps remain typed failures for fallible host dispatch.
 proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: RegisterFile,
@@ -396,6 +413,12 @@ proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: Re
     return FetchResult(status: FetchError.InvalidContext)
   let selector = uint64(registers[10])
   case selector
+  of 0:
+    # Parameters are always present in a configured invocation; no NONE fallback is defined.
+    let parameters = context.parameterData
+    if parameters == nil:
+      return FetchResult(status: FetchError.InvalidContext)
+    fetchValue(gas, registers, memory, parameters.bytes, true, 0, 390, 0, limit)
   of 1:
     # Entropy is exactly 32 bytes when present; absence retains selector 1's fixed charge.
     fetchValue(gas, registers, memory, array[32, byte](owner.entropy),

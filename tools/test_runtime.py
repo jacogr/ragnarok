@@ -175,6 +175,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # Package blob capture refuses invalid owners and aggregate limits without partial snapshots.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_inputs')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_package')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_parameters')
     # Host dispatch and shared instruction budgets never expose failed execution payloads.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_execution')
     # Fallible callbacks preserve their reasons without exposing partial execution payloads.
