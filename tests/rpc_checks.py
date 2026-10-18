@@ -133,6 +133,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     assert parameters['error']['code'] == 0 # Missing configuration is explicit, never a default network.
                 else:
                     expected = json.loads((Path(__file__).parent/'fixtures/rpc-parameters-result.json').read_text())
+                    if expected_genesis is not None:
+                        # Both frozen genesis fixtures contain six active validators, despite four cores.
+                        expected['V1']['val_count'] = 6
                     assert parameters == dict(jsonrpc='2.0', id=19, result=expected)
                     # File changes after startup cannot change the node's immutable parameter snapshot.
                     chain.write_text('{}')
