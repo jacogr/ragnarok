@@ -31,7 +31,7 @@ Send a WebSocket text message:
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)` and `stateRoot(hash)` are implemented as described below; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)` and the service queries below are implemented; other JIP-2 chain methods
 and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -126,6 +126,39 @@ not a deployable network genesis; expected hash/root values come from Python has
 independent trie reference. Native and live WS tests cover exact results, absent/unknown data,
 malformed pairs and hashes, shared telemetry startup, and file mutation after capture.
 
+## Genesis-only service queries
+
+The pinned JIP-2 `serviceData(header_hash, service_id)`,
+`serviceValue(header_hash, service_id, key)` and
+`servicePreimage(header_hash, service_id, hash)` read the same retained genesis map.
+The block and preimage hashes are canonical padded Base64 encoding exactly 32 bytes.
+Service IDs use unsigned JSON integer syntax in the uint32 range; storage keys are canonical
+padded Base64, including the empty string, with at most 4,096 decoded bytes.
+
+`serviceData` returns the serialized C(255, service) record: the existing GP 0.8.0
+version-zero 89-byte metadata layout. Storage and preimage queries use the maintained
+state-key constructors and require an existing, structurally valid account record.
+Preimages are checked against their Blake2b-256 hash before returning them. These local
+checks do not establish whole-genesis consensus validity. See [service state serialization](state-service-values.md)
+and the pinned GP 0.8.0 state Merklization/account definitions referenced there.
+
+Results are Base64 byte strings. Missing accounts or entries return `null`; a present empty
+value returns `""`. Unknown blocks return JIP-2 error `1` with the requested hash in
+`error.data`. Malformed arguments return `-32602`; malformed metadata, inconsistent preimages,
+backend failures and output-budget exhaustion return error `0`. Notifications remain silent.
+
+Each returned raw value is limited to 32 KiB. A batch shares a 65,535-byte encoded response
+budget, reserving space for every request's exact escaped ID and error envelope before reading
+values. A value that fits alone may receive error `0` in a batch; callers can retry it alone.
+Values are never truncated. Snapshot-owned views are immutable, and copying/hashing follows
+size checks. No persistent service database, post-genesis state or subscription is added.
+
+Synthetic service fixtures cover metadata, absent and empty values, preimages, uint32 boundaries,
+and output limits. Expected namespace keys, hashes and roots were independently generated with
+Python hashlib and the existing trie reference. Native tests also cover malformed arguments,
+orphan entries, inconsistent preimages and owner isolation. Live WebSocket tests check exact
+results and bounded batches with IDs whose escaping expands their encoded size.
+
 ## Protocol and bounds
 
 Only WebSocket version 13 is supported; HTTP is used solely for the RFC 6455 upgrade handshake.
@@ -157,7 +190,8 @@ frame lengths are rejected because their canonical minimum exceeds the configure
 Resource limits are eight connections, 4 KiB upgrade headers, 16 KiB messages, 16 nesting levels,
 2048 JSON values and 16 requests per batch. Input/output is owned per connection. Each dispatcher
 turn performs at most one accept and one read (4 KiB), frame dispatch and write per slot. Responses
-are bounded by the aggregate request-ID bytes plus sixteen bounded diagnostics or parameter results (below the 64 KiB frame limit).
+share a 65,535-byte budget, including escaped request IDs, envelopes and batch punctuation.
+Responses that exceed their remaining allowance return a reserved error envelope.
 Backpressure pauses reads until the outstanding response is delivered. Handshakes, partial
 messages, fragmented messages and queued writes have five-second budgets; idle upgraded
 connections expire after thirty seconds. Ping/pong cannot extend a fragmented message's budget.
