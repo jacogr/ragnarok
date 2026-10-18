@@ -5,7 +5,7 @@
 ## immutable, acyclic ARC graphs. Updates return independent snapshots.
 ##
 ## Exposes immutable Memory/Machine snapshots, page capture/replacement, checked scalar
-## load/store and copied register/state updates.
+## load/store, programOf/memoryOf child access and copied register/state updates.
 
 import ./program
 
@@ -306,3 +306,9 @@ proc store*(machine: Machine, address: MemoryAddress, width: AccessWidth,
   # Forward the complete reason, including a fault address, without publishing a partial machine.
   if updated.error != MachineError.None: return failure[Machine, Memory](updated)
   withMemory(machine, updated.value)
+
+# Retain the immutable program belonging to this exact snapshot; never accept a separate substitute.
+proc programOf*(machine: Machine): MachineResult[Program] =
+  # Default handles have no program identity to expose.
+  if machine.data == nil: return MachineResult[Program](status: MachineError.InvalidOwner)
+  MachineResult[Program](status: MachineError.None, completed: machine.data.program)
