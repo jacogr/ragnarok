@@ -33,11 +33,12 @@ def read_frame(connection):
 
 # One joined worker forwards at most one 2048-byte frame at a time and records only registrations.
 class RegistrationRelay:
-    def __init__(self, destination):
-        """Bind a private IPv4 listener; own its socket and worker until context exit."""
+    def __init__(self, destination, ipv6=False):
+        """Bind a private loopback listener in the requested family; own its socket and worker until context exit."""
         self.destination = destination
-        self.listener = socket.socket()
-        self.listener.bind(('127.0.0.1', 0))
+        self.listener = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_STREAM)
+        self.listener.bind(('::1' if ipv6 else '127.0.0.1', 0))
+        self.connections = []
         self.listener.listen(2)
         self.listener.settimeout(0.1)
         self.port = self.listener.getsockname()[1]
@@ -71,6 +72,9 @@ class RegistrationRelay:
                     incoming.settimeout(2)
                     try:
                         with socket.create_connection(self.destination, timeout=2) as outgoing:
+                            assert len(self.connections) < 4, 'unexpected relay connection loop'
+                            self.connections.append(dict(incoming=incoming.getsockname()[0],
+                                                         outgoing=outgoing.getpeername()[0]))
                             first = True
                             while not self.finished.is_set():
                                 # The collector sends no telemetry replies; EOF propagates its real termination.
@@ -146,10 +150,11 @@ def verify_replay(before, after, identities, port):
 
 # Shared child/socket ownership for the incoming and outgoing real-collector restart scenarios.
 class RestartSession:
-    def __init__(self, owners, folder, collector, telemetry_port, api_port):
+    def __init__(self, owners, folder, collector, telemetry_port, api_port, ipv6=False):
         """Borrow the scenario ExitStack and keep all generated diagnostics in its private directory."""
         self.owners, self.folder, self.collector = owners, folder, collector
         self.telemetry_port, self.api_port = telemetry_port, api_port
+        self.telemetry_host = '[::1]' if ipv6 else '127.0.0.1'
 
     # All logs survive failure; ExitStack reaps every child before closing its output file.
     def launch(self, name, arguments, env=None):
@@ -160,7 +165,7 @@ class RestartSession:
 
     # Readiness is the collector's HTTP response, not a startup delay.
     def backend(self, name):
-        child = self.launch(name, [self.collector, '--no-database', '--telemetry-bind', f'127.0.0.1:{self.telemetry_port}',
+        child = self.launch(name, [self.collector, '--no-database', '--telemetry-bind', f'{self.telemetry_host}:{self.telemetry_port}',
                              '--api-bind', f'127.0.0.1:{self.api_port}', '--ingestion-threads', '0'])
         deadline = time.monotonic() + 15
         while True:
@@ -204,26 +209,30 @@ class RestartSession:
 
 
 # Complete a pending dial after restarting the real collector; prove separate peer work during its absence.
-def run_restart(binary, collector, report, folder):
+def run_restart(binary, collector, report, folder, ipv6=False):
     from test_quic import fixtures
     folder.mkdir(parents=True, exist_ok=True)
     certificates = folder/'certificates'
     fixtures(certificates)
     identities = {role: (certificates/f'{key}.pub').read_bytes().hex()
                   for role, key in (('server', 'a'), ('client', 'b'))}
-    telemetry_port, api_port, udp_port = ports()
+    telemetry_port, api_port, udp_port = ports(ipv6=ipv6)
+    host = '::1' if ipv6 else '127.0.0.1'
+    cli_host = '[::1]' if ipv6 else host
+    report['telemetry_host'] = host
     with ExitStack() as owners:
-        session = RestartSession(owners, folder, collector, telemetry_port, api_port)
+        session = RestartSession(owners, folder, collector, telemetry_port, api_port, ipv6=ipv6)
         launch, backend = session.launch, session.backend
         subscribe, history, ready = session.subscribe, session.history, session.ready
 
         first = backend('collector-before')
         messages = report['before_messages'] = []
         stream = subscribe(messages)
-        relay = owners.enter_context(RegistrationRelay(('127.0.0.1', telemetry_port)))
+        relay = owners.enter_context(RegistrationRelay((host, telemetry_port), ipv6=ipv6))
         report['registrations'] = relay.registrations
+        report['relay_connections'] = relay.connections
         report['identities'] = identities
-        controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--telemetry', f'127.0.0.1:{relay.port}']
+        controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--telemetry', f'{cli_host}:{relay.port}']
         gate = owners.enter_context(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
         gate.bind(('127.0.0.1', 0))
         gate.settimeout(0.1)
@@ -245,7 +254,7 @@ def run_restart(binary, collector, report, folder):
         # A separate telemetry-enabled exchange must finish while the collector remains stopped.
         _, _, outage_port = ports()
         outage_controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json',
-                           '--telemetry', f'127.0.0.1:{telemetry_port}']
+                           '--telemetry', f'{cli_host}:{telemetry_port}']
         outage_server = launch('outage-server', [binary, 'server', outage_port, certificates/'a.cert.pem',
             certificates/'a.key.pem', certificates/'b.pub', 'jamnp-s/1/245becfe', '15000', *outage_controls])
         ready(outage_server, 'outage-server')
@@ -303,6 +312,8 @@ def run_restart(binary, collector, report, folder):
         report['after'] = history(stream, messages, deadline)
         report['replay'] = verify_replay(report['before'], report['after'], identities, gate.getsockname()[1])
         report['registrations'] = list(relay.registrations)
+        report['relay_connections'] = list(relay.connections)
+        assert report['relay_connections'] == [dict(incoming=host, outgoing=host)] * 2
         verify_registrations(report['registrations'], identities['client'],
                              json.loads((ROOT/'tests/fixtures/telemetry-dev.json').read_text()))
         for role in ('server', 'client', 'outage-server', 'outage-client'):

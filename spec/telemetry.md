@@ -337,3 +337,22 @@ destruction must add no synthetic closes. All generated children are reaped by t
 
 This checks the implemented post-TLS capacity refusal against the actual collector. It does not
 claim pre-TLS refusal detection, and it adds no new production event or admission policy.
+
+### IPv6 collector transport
+
+The same CI target requires a separate outgoing restart scenario with
+`--telemetry '[::1]:PORT'`. Both the registration relay and real JAM Tart ingestion socket
+bind IPv6 loopback. The report records the actual accepted and upstream socket addresses
+for both connections and requires `::1`, so an IPv4 fallback cannot satisfy this case.
+The collector's HTTP/WebSocket observation API and the QUIC peer exchange remain IPv4;
+this scenario specifically verifies the telemetry TCP transport family.
+
+The IPv6 case retains the same byte-identical chain/node registration checks, decoded status,
+pending-attempt correlation, dropped-prefix replay and authenticated close checks as IPv4.
+A separate telemetry-enabled exchange must also finish during the IPv6 collector outage.
+Missing IPv6 support, failed reconnect or decoding errors fail the CI job without skipping;
+its existing artifact includes the additional scenario's logs and evidence.
+
+This completes the planned real-collector checks for the currently implemented telemetry
+subset. Further event coverage depends on new node functionality; validator, block and
+work-package reporting and database-backed collector recovery remain outside this scope.
