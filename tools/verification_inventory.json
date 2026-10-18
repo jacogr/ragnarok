@@ -939,6 +939,9 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
+    "pvm_raw_address": ["instruction(", "[2] expected: CodeAddress but got: uint64"],
+    "pvm_jump_as_address": ["instruction(", "[2] expected: CodeAddress but got: JumpIndex"],
+    "pvm_swapped_limit": ["decodeProgram(", "[3] expected: ProgramByteLimit but got: JumpCountLimit"],
     "raw_integer": ["encode(", "[1] expected: JamNatural but got: uint64"],
     "fixed_raw_value": ["encodeFixed(", "[1] expected: FixedUnsigned but got: uint64"],
     "fixed_raw_width": ["encodeFixed(", "[2] expected: ByteWidth but got: int64"],
