@@ -45,7 +45,7 @@ def observe(processes, logs, marker, peaks, seconds=15, thread_limits=None):
 
 
 # Keep both logical peer processes and all four role engines alive for the complete externally gated workload.
-def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, directory=None, telemetry=None):
+def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, directory=None, telemetry=None, checkpoint=None):
     # Compiler-specific binary/log paths preserve the same retained engine and gate schedules.
     binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     name = '-'.join(languages) + ('-bad-pin' if bad_pin else '')
@@ -80,6 +80,8 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
         for role, text in texts.items():
             if not bad_pin:
                 assert f'MESH_READY {int(decisions[role])}' in text.splitlines(), (role, decisions, text)
+        if checkpoint is not None:
+            checkpoint(-1) # Collector setup runs only after both real peers announce readiness.
         # A wrong expected identity must fail both directions before any CE application exchange starts.
         if bad_pin:
             (gate / 'start-0').touch()
@@ -114,6 +116,8 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
                 sample['allocated_bytes'] = allocated
                 sample['thread_baseline'] = thread_limits[role]
                 idle[role].append(sample)
+            if checkpoint is not None:
+                checkpoint(round_index) # Fault injection cannot release a round before both peers retire it.
             if telemetry is not None:
                 # Observe idle status before the next round can authenticate another generation.
                 time.sleep(2.1)

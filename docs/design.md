@@ -58,7 +58,15 @@ keys without requiring the new entropy accumulator to exist. Authenticated outpu
 atomic entropy/time updater. `src/state/safrole_transition.nim` now coordinates validator rotation,
 ticket admission, schedules, markers and authenticated entropy on private candidates, then publishes
 changed C(4)/C(6)/C(8)/C(9)/C(11) in one atomic batch. See [the stage contract](../spec/safrole-transition.md).
-Disputes execution, header/block commitment checks, wall-clock admission and whole-block execution remain open.
+`src/state/block_admission.nim` now binds a single immutable block to its full parent header, complete
+parent-state root and five-family extrinsic commitment, then extracts that block's own tickets for
+Safrole. `src/crypto/extrinsic_commitment.nim` implements the special preimage/report hash projections.
+See [the admission contract](../spec/block-admission.md). `src/state/disputes.nim` now validates
+verdicts/evidence and plans C(5)/C(10), including exact new-offender markers.
+`src/state/block_transition.nim` composes admission, derived disputes offenders and Safrole on a
+private map, publishing only on complete success. See [the disputes contract](../spec/disputes-transition.md)
+for pinned STF coverage and two dummy-assignment fixture incompatibilities. Availability processing,
+wall-clock admission and whole-block execution remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
