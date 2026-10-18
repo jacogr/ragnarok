@@ -344,6 +344,7 @@
   "tests/test_pvm_step_reference.py",
   "tests/native/pvm_step_results.nim",
   "tests/native/pvm_memory_step_results.nim",
+  "tests/native/pvm_execution_results.nim",
   "src/chain/statistics.nim",
   "tests/native/compile_fail/rpc_statistics_result_private.nim",
   "tests/native/compile_fail/rpc_service_list_private.nim"

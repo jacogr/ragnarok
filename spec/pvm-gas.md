@@ -105,6 +105,7 @@ before replay. Standalone native launches require this freshly prepared manifest
 
 The [single-step executor](pvm-step.md) now composes charging with immutable
 successor snapshots, unchanged out-of-gas state and single-step terminal outcomes.
-Memory faults preserve the paid block charge for repair/retry. Recursive execution,
-standard initialization and host calls remain separate work. The negative branch-cost and wrapping-memory specification gates
+Memory faults preserve the paid block charge for repair/retry. The bounded
+[executor](pvm-execution.md) now handles host suspension and recursive exit rules;
+standard initialization and host functions remain separate work. The negative branch-cost and wrapping-memory specification gates
 remain explicit; this is not a complete PVM or JAM invocation implementation.
