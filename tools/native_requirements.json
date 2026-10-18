@@ -1,4 +1,6 @@
 {
+  "pvm_machine": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
+  "pvm_program": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "telemetry": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "telemetry_chain": {"directory": "state", "libraries": ["crypto"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": false},
   "natural": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
