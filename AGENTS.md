@@ -102,8 +102,11 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   do not invent interim restrictions or adopt open #564 format changes without matching evidence.
 - Complete the authorized bounded increment and report it, then wait for the maintainer's next
   explicit go-ahead before starting another increment.
-- Read `docs/design.md` before architectural changes. State scope, applicable spec references and
-  the tests that will demonstrate completion before editing protocol behavior.
+- Read `docs/design.md` and the relevant `docs/design/<module>.md` before architectural changes.
+  Keep the overview stable; edit only the owning module's architecture page when its boundaries
+  change. Routine increments record implementation status, evidence and next work in their own
+  `spec/<feature>.md`; do not append feature-progress logs to the shared design index/module pages.
+  State scope, applicable spec references and completion tests before editing protocol behavior.
 - Prefer idiomatic Nim and small coherent changes; avoid speculative full-client scaffolding.
 - Document **every structure/type and function** for a maintainer learning Nim. Explain purpose,
   inputs, outputs, errors, ownership and lifetime where relevant.
@@ -153,6 +156,15 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   and the existing top-level section layout. The inventory loader rejects unordered sections;
   run `make check-inventory` before committing. Any genuinely order-dependent future section
   needs an explicit documented validator exception and a regression test, not silent reordering.
+- Native test requirements belong in `tools/native_requirements/<source-family>/<suite>.json`,
+  one file per suite, named with the suite's consistent feature prefix. Keep independent JSON fields
+  alphabetical; discovery groups source families and suite names lexicographically and rejects
+  duplicate/misplaced profiles. Do not recreate a shared append-only requirement manifest.
+- Apply module/feature grouping and lexicographic insertion to other unordered requirement/source
+  registries too. `tools/runtime_sources.json` is alphabetical by repository-relative path; new
+  per-suite requirement files and existing failure-family files are discovered automatically.
+  Preserve genuinely ordered values, including native library/link/include order, positional
+  diagnostic records and runtime scenario steps. Document and test any new ordering exception.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,
@@ -166,6 +178,14 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Force pushes are prohibited, including `--force`, `--force-with-lease` and equivalent
   refspecs or API operations. Never rewrite published branch history, even to correct a commit
   message. Preserve published commits and make corrections in new commits; merge updates normally.
+- Before merging master into a stacked PR whose parent was squash-merged, reconcile the
+  original parent tip with its landed squash first. After fetching and with a clean checkout,
+  run `python3 tools/sync_stack.py --parent <original-parent-tip> --landed <squash-commit>`.
+  The helper requires the parent to be in HEAD, the squash to be on origin/master, and exact
+  tree equality before recording ancestry without changing files. If it refuses, inspect and
+  resolve a normal merge; never bypass its checks with a blanket ours/theirs resolution.
+  Then merge current origin/master normally, test and propagate the updated parent through
+  each open child in order. Recheck this at every parent landing, not only at PR creation.
 - Before the final push to a PR, fetch `origin` and merge the latest `origin/master` into the PR
   branch. Resolve any conflicts and run the affected checks before pushing, so the final PR
   revision includes the latest master. This does not authorize merging the PR itself.

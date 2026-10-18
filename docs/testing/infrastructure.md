@@ -3,19 +3,24 @@
 `tools/verification_inventory.json` owns the ordinary native suite identities, link profiles,
 ARC evidence names, independent corpus names and compiler/runtime rejection inventories.
 Each case or mapping occupies one line so concurrent additions produce small, reviewable diffs.
-Keep the existing execution order when editing; counts are explicit coverage requirements and
+Keep independent names alphabetical within their inventory section; counts are coverage requirements
+and
 must match the runtime probes. `tools/verification_inventory.py` loads this data, rejects duplicate
 object keys and cases, and preserves the consumers' tuple/list interfaces. Missing sections fail
 at import; native discovery still checks checked-in suites and their expected-output files, and
 verification still checks complete corpus/failure coverage. Both the loader and JSON data are
 included in report provenance. Compiler guards do not import the runtime executor.
 
-`tools/native_requirements.json` declares each suite's source directory, ordered libraries,
-headers, observer call-site renames, compiler defines and fresh-fixture requirement, one suite
-per line. The loader requires exact coverage of the execution inventory, validates the primary
-link profile and rejects unknown fields/settings. `make check-inventory` (also run explicitly
-by each CI job) loads these requirements before provisioning. Keep suite execution order in
-`verification_inventory.json`; the requirements file does not schedule tests.
+`tools/native_requirements/<source-family>/<suite>.json` declares one suite's source directory,
+ordered libraries, headers, observer call-site renames, compiler defines and fresh-fixture
+requirement.
+Source-family directories match `tests/unit/`; suite filenames use the same feature prefix as the
+execution inventory. The loader discovers paths alphabetically, rejects duplicate suite identities,
+misplaced files, unordered independent fields and unknown settings, and requires exact inventory
+coverage and the existing primary link profile. Library/include/observer arrays preserve their
+explicit order. Discovery does not schedule suites: execution remains owned by the inventory.
+`make check-inventory` loads these profiles before provisioning. New suites add their own file;
+no shared manifest entry or central provenance-path addition is needed.
 `tools/native_fixtures.py` separates schedule, markers, authentication, transition, commitment,
 admission, disputes and availability preparation. Its aggregate entry point preserves the
 historical preparation order and nested sealer evidence schema; each feature can also be
@@ -53,9 +58,13 @@ those values explicitly. The loader expands and validates the exact counts, dist
 and log names before running any probes. Fixture-dependent probes, offload completion checks,
 language-policy observations and store positive controls remain explicit in the runner.
 
-`tools/runtime_sources.json` lists literal runtime provenance inputs, one path per line. Native
+`tools/runtime_sources.json` lists literal runtime provenance inputs, alphabetically by
+repository-relative
+path, one path per line. The preflight rejects append-only or randomly prepended additions. Native
 suite sources, fixture manifests, source globs and pinned vector expansions remain explicit Python
-rules. The runtime hashes the inventory itself alongside every resolved input; a missing input
+rules. Per-suite native requirement files and per-family failure files are discovered and hashed
+automatically. The runtime hashes the inventory itself alongside every resolved input; a missing
+input
 still fails verification.
 
 Run `make check-inventory` for a fast, Python-only preflight before opening a verification PR.
