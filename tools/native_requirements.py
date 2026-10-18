@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Validate per-suite native requirements before any dependency preparation or execution."""
+"""Validate per-suite native requirements before any dependency preparation or execution.
+
+Exposes NATIVE_REQUIREMENTS and validate_requirements for declarative linking, ARC and fixture
+profiles.
+"""
 import json
 from pathlib import Path
 from verification_inventory import UNIT_SUITES, UNIT_LINKS, unique_object

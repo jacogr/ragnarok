@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated request result and inactive timestamp reads require exact supported success/shape contracts.
+## Isolated request result and inactive timestamp reads require exact supported success/shape
+## contracts.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_requests
 # Faults apply to this test-only observer-linked adapter, never production corpus binaries.

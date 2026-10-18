@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 authorization STF vectors plus literal oldest-removal, queue-cycle and atomic-store tests.
+## GP 0.8.0 authorization STF vectors plus literal oldest-removal, queue-cycle and atomic-store
+## tests.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/authorization_transition_fixture
 import ../../../src/state/[authorization, store]

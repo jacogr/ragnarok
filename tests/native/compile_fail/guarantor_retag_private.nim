@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## External callers cannot access private guarantor storage.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/state/guarantors
 let owner = default(GuarantorResult[GuarantorPlan])
 discard owner.status # Must fail during semantic compilation.

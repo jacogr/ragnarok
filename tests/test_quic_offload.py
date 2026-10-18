@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Fixed worker RingVRF verification alongside persistent native QUIC, with bounded owned jobs."""
+"""Fixed worker RingVRF verification alongside persistent native QUIC, with bounded owned jobs.
+
+Exposes corpus, selftests, exercise for the verification harness.
+"""
 import hashlib
 import json
 import os

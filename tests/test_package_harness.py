@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal known answers and independent policy checks protect the package oracle itself."""
+"""Literal known answers and independent policy checks protect the package oracle itself.
+
+Exposes PackageHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import copy
 import unittest
 from package_oracle import DEFAULT,MAX_BUNDLE,example,published,wire,fields,decode,encode

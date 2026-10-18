@@ -2,5 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## History timeslots cannot substitute for the key's advertised E4 length.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/[state_requests, bounded]
 discard serviceRequestKey(ServiceIndex(0), default(ServicePreimageHash), RequestSlot(0), ByteLimit(32))

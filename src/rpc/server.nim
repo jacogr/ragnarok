@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
+##
+## Exposes the Server owner and start/tick/close lifecycle, with bounded connection slots
+## serviced by the caller.
+
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol]

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Supplementary immutable lifetime, copied tuple, independent population and result/index guards.
+## Supplementary immutable lifetime, copied tuple, independent population and result/index
+## guards.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[state_statistics, bounded]
 

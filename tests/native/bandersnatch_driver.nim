@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted fixture adapter: no production secrets
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 # exact widths enter the typed primitive APIs.
 import std/[assertions, cmdline, strutils, syncio, rawthreads]
 import ./batch_support

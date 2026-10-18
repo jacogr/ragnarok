@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Transport pinned assurance STF bytes and expected reports; all transition assertions run natively."""
+"""Transport pinned assurance STF bytes and expected reports; all transition assertions run natively.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 import hashlib
 import json
 import subprocess

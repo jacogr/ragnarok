@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Shared deterministic report-policy test contexts; no production verifier or verdict is replaced.
+## Shared deterministic report-policy test contexts; no production verifier or verdict is
+## replaced.
+##
+## Exposes signed report-policy fixtures and trusted transport helpers shared by native report
+## tests.
+
 import std/[assertions, parseutils]
 import ../../src/state/[report_policy, guarantee_credentials, guarantors, store]
 import ../../src/codec/[guarantees, assurances, bounded, state_safrole, header,

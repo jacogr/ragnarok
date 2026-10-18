@@ -2,7 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 T chapter 16 and recent_history lastaccoutspec: ordered last accumulation outputs.
-## This codec preserves supplied sequence order; accumulation and output-log commitment derivation are separate.
+## This codec preserves supplied sequence order; accumulation and output-log commitment
+## derivation are separate.
+##
+## Exposes output-log profiles and records, chapter-16 entry construction/decoding and ordered
+## item access.
+
 import std/assertions
 import ./[natural, bounded, composite, state_layout, state_trie]
 export ServiceIndex

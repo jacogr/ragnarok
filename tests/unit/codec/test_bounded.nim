@@ -1,6 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Exercise bounded byte strings and fixed-width sequences, including truncation, borrowed spans
+## and atomic writes.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[bounded, natural, fixed_unsigned]
 

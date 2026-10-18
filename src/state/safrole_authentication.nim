@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 safrole.tex ticketconditiontrue/ticketconditionfalse and vrfsigcheck.
-## Authenticate a complete immutable header against supplied posterior schedule/active keys and parent history.
+## GP 0.8.0 safrole.tex ticketconditiontrue/ticketconditionfalse and vrfsigcheck. Authenticate a
+## complete immutable header against supplied posterior schedule/active keys and parent history.
+##
+## Exposes authenticateSafroleSeal and checked authentication results for ticket or fallback-key
+## schedules.
+
 import ../codec/[state_safrole, state_consensus, header, bounded]
 import ../bandersnatch/bandersnatch
 import ./entropy

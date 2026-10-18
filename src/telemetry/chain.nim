@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded JIP-4 telemetry metadata extraction, not chain-state validation or initialization.
+##
+## Exposes chainMetadata to read bounded chain-spec metadata into owned telemetry fields.
+
 import std/[parsejson, streams, strutils, parseutils]
 import ../crypto/primitives
 import ./wire

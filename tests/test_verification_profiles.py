@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check shared native compiler profiles and isolated workspaces."""
+"""Check shared native compiler profiles and isolated workspaces.
+
+Exposes VerificationProfiles for unittest discovery; test methods exercise the stated contracts.
+"""
 from pathlib import Path
 import sys
 import unittest

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated failed/default result and selected source/metadata/decoded-union accesses require their exact contracts.
+## Isolated failed/default result and selected source/metadata/decoded-union accesses require
+## their exact contracts.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
 let useDefault = paramStr(2) == "default"

@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent optional/work/preimage references and official composite-vector checks."""
+"""Independent optional/work/preimage references and official composite-vector checks.
+
+Exposes token, count_at, blob_at, batch_requests for the verification harness.
+"""
 import hashlib
 import json
 from pathlib import Path

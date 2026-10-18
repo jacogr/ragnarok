@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 C.2 complete extrinsic/block composition over immutable schema-bound components.
+##
+## Exposes typed component, extrinsic and block snapshots, composition codecs and checked
+## child/cause accessors.
+
 import std/assertions
 import ./[bounded, composite, owned, tickets, assurances, guarantees, disputes, header]
 

@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Feature-owned corpus orchestration; expected results remain in independent test oracles."""
+"""Feature-owned corpus orchestration; expected results remain in independent test oracles.
+
+Exposes run_services to execute service-state corpora and record their verdicts.
+"""
 from functools import partial
 from pathlib import Path
 import hashlib

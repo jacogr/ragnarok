@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated default/failed authorization result reads cover entries, owners, counts, hashes and private framing.
+## Isolated default/failed authorization result reads cover entries, owners, counts, hashes and
+## private framing.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_authorization
 let useDefault = paramStr(2) == "default"

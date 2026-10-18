@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Persistent-engine multi-peer regression, with bounded cleanup and ownership checks."""
+"""Persistent-engine multi-peer regression, with bounded cleanup and ownership checks.
+
+Exposes check_cleanup, wait_service, service for the verification harness.
+"""
 from functools import partial
 import json
 import os

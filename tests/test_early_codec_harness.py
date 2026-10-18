@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Freeze original independent early-codec request/expectation coverage before native agreement."""
+"""Freeze original independent early-codec request/expectation coverage before native agreement.
+
+Exposes EarlyCodecHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import hashlib
 import unittest
 from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode

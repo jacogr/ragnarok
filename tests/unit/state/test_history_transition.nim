@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published history STF transitions, independent accumulation trees and authored boundary/ordering tests.
+## Published history STF transitions, independent accumulation trees and authored
+## boundary/ordering tests.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/history_transition_fixture
 import ../../../src/state/[history, store]

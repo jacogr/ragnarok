@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Ensure inventory edits cannot silently overwrite guards or duplicate coverage."""
+"""Ensure inventory edits cannot silently overwrite guards or duplicate coverage.
+
+Exposes VerificationInventory for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import json
 from pathlib import Path
 import sys

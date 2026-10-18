@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Opt-in real JAM Tart collector check; launch only caller-selected binaries on loopback."""
+"""Opt-in real JAM Tart collector check; launch only caller-selected binaries on loopback.
+
+Exposes collector validation and run orchestration; main launches the explicitly selected
+peer/collector scenario.
+"""
 import argparse
 from contextlib import ExitStack
 import hashlib

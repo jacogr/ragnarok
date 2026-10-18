@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Real JAM Tart incoming handshake replay and listener generation reuse after a collector restart."""
+"""Real JAM Tart incoming handshake replay and listener generation reuse after a collector restart.
+
+Exposes verify_incoming and run_incoming for collector-observed incoming replay and listener
+reuse.
+"""
 from contextlib import ExitStack
 import json
 import os

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Fixed-value metadata contracts: no heap owner, independent source/input copies and failure guards.
+## Fixed-value metadata contracts: no heap owner, independent source/input copies and failure
+## guards.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[state_accounts, bounded]
 

@@ -1,6 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Exercise PVM program framing, opcode/operand decoding, jump tables, ownership and
+## malformed-input boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/program
 import ../../../src/codec/natural

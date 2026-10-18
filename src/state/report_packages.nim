@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 reporting_assurance.tex contextual validity: package uniqueness, dependencies and segment mappings.
+## GP 0.8.0 reporting_assurance.tex contextual validity: package uniqueness, dependencies and
+## segment mappings.
+##
+## Exposes inspectReportPackages/checkReportPackages and access to the certified recent-report
+## context.
+
 import std/algorithm
 import ../codec/[bounded, state_history, state_availability, state_workqueues, report_owned, work_report]
 import ./[report_anchors, report_policy, guarantee_credentials, store]

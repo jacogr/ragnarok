@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated actual/default public and private work-queue result reads require their exact success contract.
+## Isolated actual/default public and private work-queue result reads require their exact
+## success contract.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_workqueues
 var fixture: seq[byte] = @[]

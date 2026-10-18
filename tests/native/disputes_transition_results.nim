@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused plans and nonselected block-stage reasons cannot expose successful payloads.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/state/[disputes, block_transition, block_admission, safrole_transition, store, availability]
 import ../../src/codec/[disputes, block_codec, header]

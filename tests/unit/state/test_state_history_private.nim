@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Project-only lifetime, optional-value and arithmetic checks using public allocator observations.
+## Project-only lifetime, optional-value and arithmetic checks using public allocator
+## observations.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 include ../../../src/codec/state_history

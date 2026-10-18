@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted roster fixture construction uses structural codecs, not cryptographic key validation.
+##
+## Exposes explicit roster profiles and deterministic validator fixtures, with the codec domains
+## needed by callers.
+
 import std/assertions
 import ../../src/codec/[state_safrole, assurances, bounded]
 from ../../src/codec/disputes import OffenderKey

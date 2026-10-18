@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Verify protocol source identity, published migration provenance and explicit unresolved parity gates."""
+"""Verify protocol source identity, published migration provenance and explicit unresolved parity gates.
+
+Exposes SpecificationTests for unittest discovery; test methods exercise the stated contracts.
+"""
 import hashlib
 import json
 import subprocess

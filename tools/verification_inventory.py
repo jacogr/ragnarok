@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Load merge-friendly verification data while retaining the harness's public value types."""
+"""Load merge-friendly verification data while retaining the harness's public value types.
+
+Exposes validated suite/guard/corpus identities, per-family budgets and RUNTIME_SOURCES loaded
+from JSON inventories.
+"""
 import json
 from pathlib import Path
 

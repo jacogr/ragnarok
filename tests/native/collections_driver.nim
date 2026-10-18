@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted adapter independently constructs logical scalars and observes immutable collection fields and exact wire.
+## Trusted adapter independently constructs logical scalars and observes immutable collection
+## fields and exact wire.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[collections, natural, fixed_unsigned, bounded]
 

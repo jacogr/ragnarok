@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent primitive codec references and pinned fixture cases. Python stdlib only."""
+"""Independent primitive codec references and pinned fixture cases. Python stdlib only.
+
+Exposes independent natural/fixed-width encode/decode references and request generators backed
+by pinned primitive vectors.
+"""
 import hashlib
 import json
 from pathlib import Path

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted full-parent adapter: independent typed child sources, ownership checks and exact prefix observation.
+## Trusted full-parent adapter: independent typed child sources, ownership checks and exact
+## prefix observation.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,
     disputes, header]

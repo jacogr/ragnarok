@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Verify checked native suites, independent corpora, runtime misuse contracts."""
+"""Verify checked native suites, independent corpora, runtime misuse contracts.
+
+Exposes unit/failure verdicts and run_unit/run_failures; main selects the verification group and
+writes its report.
+"""
 import argparse
 import os
 import hashlib

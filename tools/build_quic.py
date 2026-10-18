@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build the pinned quic ABI for production and verification with identical source checks."""
+"""Build the pinned quic ABI for production and verification with identical source checks.
+
+Exposes dependencies and build_native for pristine QUIC/TLS dependency preparation and bridge
+compilation.
+"""
 import json
 import platform
 from native_dependencies import ROOT, require_submodule, run

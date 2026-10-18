@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 safrole.tex: coordinate authenticated Safrole changes before one canonical publication.
-## Full-state maps only; posterior disputes offenders are supplied, not executed by this stage.
+## GP 0.8.0 safrole.tex: coordinate authenticated Safrole changes before one canonical
+## publication. Full-state maps only; posterior disputes offenders are supplied, not executed by
+## this stage.
+##
+## Exposes advanceSafroleState with typed rotation, ticket, schedule, marker, authentication,
+## entropy and publication failures.
+
 import ../codec/[state_safrole, state_consensus, state_layout, state_trie, header, tickets, bounded]
 from ../codec/disputes import OffenderKey
 import ./[store, validator_state, ticket_admission, sealer_schedule, safrole_markers,

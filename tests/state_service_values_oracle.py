@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent storage/preimage domains, raw values and opaque keyed capture equations for T service maps."""
+"""Independent storage/preimage domains, raw values and opaque keyed capture equations for T service maps.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import json
 import random

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A package identity cannot construct the direct segment-root import alternative.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/[work_package, work_report]
 let wrong = rootImport(PackageHash(), ImportIndex(0))
 discard wrong

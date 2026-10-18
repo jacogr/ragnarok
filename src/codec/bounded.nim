@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded containers: Gray Paper v0.8.0 C.1.2/C.1.3, with C.1.1/C.1.7 primitives.
+##
+## Exposes byte/element limits, borrowed byte spans and bounded byte-string/fixed-width sequence
+## encoders and decoders.
+
 import ./natural
 import ./fixed_unsigned
 

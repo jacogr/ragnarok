@@ -1,6 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Exercise telemetry client internals, event encoding, bounded queues and connection-state
+## handling.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 include ../../../src/telemetry/client
 

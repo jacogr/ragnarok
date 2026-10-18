@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Feature-owned native fixture preparation; independent oracles retain their byte contracts."""
+"""Feature-owned native fixture preparation; independent oracles retain their byte contracts.
+
+Exposes per-feature fixture preparation and unit_runtime_fixtures for the native launchers.
+"""
 import sys
 import hashlib
 from setup_nimony import ROOT

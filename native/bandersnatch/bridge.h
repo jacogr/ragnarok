@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Declares the synchronous Bandersnatch C ABI used by Nim. Exposes opaque key/setup owners,
+// fixed signature/proof operations and explicit release functions.
+
 #ifndef RAGNAROK_BANDERSNATCH_H
 #define RAGNAROK_BANDERSNATCH_H
 #include <stddef.h>

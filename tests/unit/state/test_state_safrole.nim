@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supplementary immutable snapshot, fixed-copy and default/failure guard contracts.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/codec/[state_safrole, bounded, assurances]

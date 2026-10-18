@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed two-worker proof queue. Only copied values cross threads; no stream/TLS/ARC owner does.
+##
+## Exposes nominal job generations and completion results, plus the feature-gated proof-pool
+## submission, cancellation and polling API.
+
 const OffloadEnabled* = defined(offload)
 # Nominal generations cannot be confused with native stream handles or fixture indices.
 type

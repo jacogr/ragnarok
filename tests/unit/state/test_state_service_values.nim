@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Supplementary retained key/value lifetime, independent copies, atomic destination and result contracts.
+## Supplementary retained key/value lifetime, independent copies, atomic destination and result
+## contracts.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[state_service_values, bounded]
 

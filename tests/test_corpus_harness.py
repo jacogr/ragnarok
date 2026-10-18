@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Protect corpus verdicts and evidence against partial output, stale binaries and process failures."""
+"""Protect corpus verdicts and evidence against partial output, stale binaries and process failures.
+
+Exposes CorpusHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import hashlib
 from pathlib import Path
 import subprocess

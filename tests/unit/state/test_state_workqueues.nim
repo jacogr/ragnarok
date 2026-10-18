@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supplementary ring/source/copy/child-lifetime, typed owner/index and failure-guard contracts.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[state_workqueues, report_owned, owned, bounded]
 

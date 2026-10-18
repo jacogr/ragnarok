@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Run the unchanged peer/lifecycle/resource workloads in an E2E-owned workspace."""
+"""Run the unchanged peer/lifecycle/resource workloads in an E2E-owned workspace.
+
+Exposes run to orchestrate peer, service, resilience, soak, offload and telemetry workloads in
+the E2E workspace.
+"""
 import subprocess
 import traceback
 from native_checks import ROOT, announce

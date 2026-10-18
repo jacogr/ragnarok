@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Focused checked owner lifetimes, complete-output atomicity, alias and context/report consistency tests.
+## Focused checked owner lifetimes, complete-output atomicity, alias and context/report
+## consistency tests.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
 import std/[assertions, syncio]
 import ../../../src/codec/[work_package, work_report, work_digest, composite, bounded]

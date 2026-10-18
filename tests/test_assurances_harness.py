@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent contract examples for the frozen assurances oracle and source profile correction."""
+"""Independent contract examples for the frozen assurances oracle and source profile correction.
+
+Exposes AssurancesOracleTests for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import unittest
 from assurances_oracle import decode, encode, logical, official, record, requests, wire
 from report_oracle import requests as report_requests

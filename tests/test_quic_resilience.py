@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Bounded IPv6 peer-loss recovery and connection/stream saturation; no throughput assertions."""
+"""Bounded IPv6 peer-loss recovery and connection/stream saturation; no throughput assertions.
+
+Exposes disruption, closed_before_request and overload scenarios with bounded process/resource
+observation and cleanup.
+"""
 import json
 import os
 from pathlib import Path
