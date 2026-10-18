@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 header.tex parent/state/extrinsic bindings over one immutable decoded block.
-## This is a full-state admission boundary, not complete block validity or disputes execution.
+## GP 0.8.0 header.tex parent/state/extrinsic bindings over one immutable decoded block. This is
+## a full-state admission boundary, not complete block validity or disputes execution.
+##
+## Exposes validateBlockCommitments and advanceBlockSafrole, returning admitted
+## block/header/state views or typed stage failures.
+
 import std/assertions
 import ../codec/[block_codec, header, bounded, state_safrole, state_layout, state_trie]
 from ../codec/disputes import OffenderKey

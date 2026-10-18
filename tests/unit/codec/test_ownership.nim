@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Owned snapshot regressions: mutation, original lifetime, detached copies, typed failures and nested records.
+## Owned snapshot regressions: mutation, original lifetime, detached copies, typed failures and
+## nested records.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/codec/[bounded, composite, work_digest, owned]

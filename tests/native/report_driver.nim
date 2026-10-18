@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Full report adapter: the crypto check subcommand and standalone codec batch share exact codec coverage.
+## Full report adapter: the crypto check subcommand and standalone codec batch share exact codec
+## coverage.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[cmdline, syncio]
 import ./report_check
 # Explicit credential verification remains a separate integration workload.

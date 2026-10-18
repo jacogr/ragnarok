@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Independent header.tex projections include rich published data, every family and multi-byte counts.
+## Independent header.tex projections include rich published data, every family and multi-byte
+## counts.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/crypto/extrinsic_commitment
 import ../../../src/codec/[block_codec, bounded, composite, header, disputes]

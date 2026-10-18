@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Prepare the unchanged pinned LSQUIC/TLS library and ignored fixture identities for Nimony."""
+"""Prepare the unchanged pinned LSQUIC/TLS library and ignored fixture identities for Nimony.
+
+Exposes prepare for the verification harness.
+"""
 from test_quic import BUILD, PINS, fixtures
 from build_quic import dependencies, build_native
 

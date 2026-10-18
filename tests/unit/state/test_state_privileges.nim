@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supplementary snapshot, domain, index, late-failure and runtime variant-guard contracts.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[state_privileges, bounded]
 

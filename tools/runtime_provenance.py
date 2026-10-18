@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Resolve runtime provenance and reject omitted verification tooling before setup."""
+"""Resolve runtime provenance and reject omitted verification tooling before setup.
+
+Exposes runtime_sources and validate_coverage for complete verification input tracking.
+"""
 from pathlib import Path
 from verification_inventory import RUNTIME_SOURCES, UNIT_SUITES, PRIVATE, NOMINAL, CONTRACTS
 

@@ -1,6 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+# Defines the maintained Bandersnatch bridge crate and its pinned Rust dependencies. Exposes the
+# library build configuration consumed by Cargo and the native build tooling.
+
 [package]
 name = "ragnarok-bandersnatch"
 version = "0.1.0"

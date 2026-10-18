@@ -1,9 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 header/judgments/safrole/reporting_assurance: atomic admission, disputes, Safrole and assurances.
-## Lower-level prefix through assurances; report_transition.advanceBlockReports includes report publication.
-## Other extrinsics, wall-clock admission and complete block execution remain separate stages.
+## GP 0.8.0 header/judgments/safrole/reporting_assurance: atomic admission, disputes, Safrole
+## and assurances. Lower-level prefix through assurances; report_transition.advanceBlockReports
+## includes report publication. Other extrinsics, wall-clock admission and complete block
+## execution remain separate stages.
+##
+## Exposes blockTransitionProfile and advanceBlockState with checked admission, disputes,
+## Safrole and availability results.
+
 import ../codec/[block_codec, header, tickets, state_disputes, state_safrole, state_layout, assurances]
 from ../crypto/assurance_context import AssuranceParent
 import ./[store, block_admission, disputes, safrole_transition, availability]

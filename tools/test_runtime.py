@@ -4,8 +4,8 @@
 
 """Verify checked native suites, independent corpora and runtime misuse contracts.
 
-The CLI selects unit or runtime-failure verification. Exposes inventory verdict helpers and
-run_failures; checked native compilation, fixtures and evidence remain group-owned.
+Exposes unit/failure verdicts and run_unit/run_failures; main selects the verification group and
+writes its report. Checked native compilation, fixtures and evidence remain group-owned.
 """
 import argparse
 import os

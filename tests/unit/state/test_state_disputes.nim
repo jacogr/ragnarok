@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Supplementary whole-state ownership, type-separated fields, result/index and copied-value checks.
+## Supplementary whole-state ownership, type-separated fields, result/index and copied-value
+## checks.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[state_disputes, bounded]
 

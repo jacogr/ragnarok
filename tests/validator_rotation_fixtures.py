@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Transport pinned Safrole roster projections; expected rotation/filtering always comes from upstream."""
+"""Transport pinned Safrole roster projections; expected rotation/filtering always comes from upstream.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 import hashlib
 import json
 import subprocess

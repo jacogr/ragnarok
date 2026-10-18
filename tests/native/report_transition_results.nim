@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Default/refused transitions and wrong selected causes cannot expose final snapshots or private candidates.
+## Default/refused transitions and wrong selected causes cannot expose final snapshots or
+## private candidates.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/cmdline
 import ../../src/state/[report_transition, block_transition, store]
 import ../../src/codec/[block_codec, header]

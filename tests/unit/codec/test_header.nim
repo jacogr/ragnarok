@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Native full/unsigned/marker ownership, lifetime, atomicity, alias and guarded-alternative regressions.
+## Native full/unsigned/marker ownership, lifetime, atomicity, alias and guarded-alternative
+## regressions.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
 import std/[assertions, syncio]
 import ../../../src/codec/[header, bounded, assurances, tickets]

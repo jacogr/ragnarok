@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted history constructors; expected transitions and hash commitments remain separately authored.
+## Trusted history constructors; expected transitions and hash commitments remain separately
+## authored.
+##
+## Exposes bounded history profiles, source constructors and re-exported history/output codec
+## domains.
+
 import std/assertions
 import ../../src/codec/[state_history, state_outputs, bounded, assurances]
 export state_history, state_outputs, bounded, assurances

@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build the current proof peer with the maintained native ABIs and checked Nimony profile."""
+"""Build the current proof peer with the maintained native ABIs and checked Nimony profile.
+
+Exposes build_command and a build CLI that compiles the proof peer with the selected checked
+profile.
+"""
 import json
 import os
 import platform

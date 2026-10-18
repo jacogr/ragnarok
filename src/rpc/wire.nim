@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded RFC 6455 framing and UTF-8 validation; owned strings never retain socket buffers.
+##
+## Exposes UTF-8 validation, WebSocket upgrade/framing and incremental frame decoding with
+## checked payload/status access.
+
 import std/[strutils, base64, sha1]
 
 const MaxMessage* = 16384

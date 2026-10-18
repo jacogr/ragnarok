@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Prepare trusted native storage replay inputs from exact already-pinned published mapping blobs."""
+"""Prepare trusted native storage replay inputs from exact already-pinned published mapping blobs.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 import hashlib
 import json
 from state_roots_oracle import published, TRACE_PATHS

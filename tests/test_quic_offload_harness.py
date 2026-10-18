@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent fixture identity and fail-closed worker lifecycle orchestration checks."""
+"""Independent fixture identity and fail-closed worker lifecycle orchestration checks.
+
+Exposes OffloadHarnessTests for unittest discovery; test methods exercise the stated contracts.
+"""
 from pathlib import Path
 import tempfile
 import unittest

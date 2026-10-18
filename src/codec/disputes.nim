@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 C.2 disputes: canonical verdicts/judgments and culprit/fault evidence.
-## Framing and structural ceilings do not establish contextual quorum or signature validity.
+## GP 0.8.0 C.2 disputes: canonical verdicts/judgments and culprit/fault evidence. Framing and
+## structural ceilings do not establish contextual quorum or signature validity.
+##
+## Exposes dispute records and immutable snapshots, encoding/decoding, inspection and bounded
+## verdict/judgment/evidence access.
+
 import std/assertions
 import ./[natural, bounded, assurances]
 

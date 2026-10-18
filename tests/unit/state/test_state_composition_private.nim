@@ -1,9 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Project-only whole-mapping ownership, preflight, arithmetic and backend cleanup checks.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/envvars
 import ../../support/arc_evidence
-## Project-only whole-mapping ownership, preflight, arithmetic and backend cleanup checks.
 include ../../../src/codec/state_composition
 include ../../native/composition_fixture
 let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),

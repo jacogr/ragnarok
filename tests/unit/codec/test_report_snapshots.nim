@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Report ownership regressions supplement the full independent wire/semantic corpus.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/codec/[bounded, composite, work_digest, work_report, report_owned, owned]

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full work digest, pinned Gray Paper v0.8.0 C.2 and reporting equation workdigest.
+##
+## Exposes nominal digest fields, WorkDigest and borrowed
+## encodeDigestBorrowed/decodeDigestBorrowed results.
+
 import ./[natural, fixed_unsigned, bounded, composite]
 
 type

@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 state serialization T chapter 4, Safrole basic state and C.2 ticket records.
-## This codec preserves state sequences; cryptographic validity and epoch transitions remain external.
+## GP 0.8.0 state serialization T chapter 4, Safrole basic state and C.2 ticket records. This
+## codec preserves state sequences; cryptographic validity and epoch transitions remain
+## external.
+##
+## Exposes explicit ticket/key schedules, Safrole state codecs and copied
+## pending-validator/sealer/accumulated-ticket access.
+
 import std/assertions
 import ./[natural, bounded, assurances, state_layout, state_trie, state_safrole]
 from ./header import WinningTicket, WinningTicketId, EpochSlots

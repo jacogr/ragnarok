@@ -4,7 +4,7 @@
 """Feature-owned native fixture preparation; independent oracles retain their byte contracts.
 
 Exposes unit_*_fixture adapters that return native-suite environment manifests and hashed
-evidence, plus unit_sealer_fixture aggregation and QUIC runtime-fixture transport.
+evidence, plus unit_sealer_fixture aggregation and unit_runtime_fixtures for QUIC transport.
 """
 import sys
 import hashlib

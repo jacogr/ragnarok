@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Read-only Safrole authentication context before publishing the new entropy/time accumulator.
+##
+## Exposes authenticateSafroleHeaderState to authenticate a header using retained parent and
+## staged state snapshots.
+
 import ../codec/[state_safrole, state_consensus, state_layout, header]
 import ./[safrole_authentication, store]
 

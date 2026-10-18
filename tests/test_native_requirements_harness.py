@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Guard declarative native profiles and independent feature fixture preparation."""
+"""Guard declarative native profiles and independent feature fixture preparation.
+
+Exposes NativeRequirementsHarness for unittest discovery; test methods exercise the stated
+contracts.
+"""
 from contextlib import ExitStack
 from copy import deepcopy
 from pathlib import Path

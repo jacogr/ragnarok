@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Default and actually refused schedule selections cannot expose an immutable candidate payload.
+## Default and actually refused schedule selections cannot expose an immutable candidate
+## payload.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/sealer_schedule
 import ../../src/codec/[state_safrole, state_consensus]

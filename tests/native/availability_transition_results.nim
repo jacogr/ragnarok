@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Refused/default availability results and opaque owners cannot expose reports, updates or nonselected causes.
+## Refused/default availability results and opaque owners cannot expose reports, updates or
+## nonselected causes.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/state/[availability, block_transition, store]
 import ../../src/codec/[state_availability, state_safrole, assurances]

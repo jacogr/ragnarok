@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Original signed package-relation projections and authored complete parent-pipeline/ownership boundaries.
+## Original signed package-relation projections and authored complete parent-pipeline/ownership
+## boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../../src/state/[report_packages, report_anchors, report_policy, guarantee_credentials, store]
 import ../../../src/codec/[bounded, guarantees, assurances, state_safrole, disputes, header,

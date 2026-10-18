@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Declares the QUIC transport C ABI. Exposes opaque owners, callbacks, stream operations and
+// copied transport observations to the Nim event loop.
+
 #ifndef RQ_TRANSPORT_BRIDGE_H
 #define RQ_TRANSPORT_BRIDGE_H
 #include <stdint.h>

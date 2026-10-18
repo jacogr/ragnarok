@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published shuffle permutations plus rotation, posterior offender, resizing and owner boundaries.
+## Published shuffle permutations plus rotation, posterior offender, resizing and owner
+## boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/guarantors
 import ../../../src/codec/[state_safrole, assurances, bounded, header, guarantees, work_report, disputes]

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Failed/default plans cannot expose mutable success storage.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/state/validators
 let hidden = default(ValidatorRotationResult)
 discard hidden.completed

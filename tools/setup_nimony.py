@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Install the same pinned Nimony compiler/formatter for local development and Linux CI."""
+"""Install the same pinned Nimony compiler/formatter for local development and Linux CI.
+
+Exposes pinned compiler installation/identity checks and cache paths; main provisions the
+selected host toolchain.
+"""
 import argparse
 import json
 import os

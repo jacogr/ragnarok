@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Transport unchanged report STF credential projections; all verification and verdict assertions run in Nim."""
+"""Transport unchanged report STF credential projections; all verification and verdict assertions run in Nim.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 import hashlib
 import json
 import subprocess

@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal independent-oracle anchors; production code is not imported here."""
+"""Literal independent-oracle anchors; production code is not imported here.
+
+Exposes ProtocolOracleTests for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from quic_protocol_oracle import name, frame
 

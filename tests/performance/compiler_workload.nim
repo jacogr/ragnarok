@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Identical checked workload compiled against isolated pre-port and current source snapshots.
+##
+## Provides a standalone measurement executable; reported timings are performance observations,
+## not correctness verdicts.
+
 import std/[assertions, syncio]
 import ./src/codec/[natural, fixed_unsigned, bounded, owned]
 import ./src/crypto/primitives

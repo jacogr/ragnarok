@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP v0.8.0 assurancesig: fixed owned transcripts and stateless validator-key/parent verification.
+## GP v0.8.0 assurancesig: fixed owned transcripts and stateless validator-key/parent
+## verification.
+##
+## Exposes assuranceMessage and verifyAssurances with owned transcripts and checked verification
+## counts.
+
 import ./primitives
 import ../codec/assurances
 

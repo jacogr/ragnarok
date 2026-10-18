@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Successful account payloads are private behind the guarded result accessor.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/[state_accounts, state_trie]
 let parsed = default(ServiceMetadataResult[ServiceMetadataRead])
 discard parsed.completed

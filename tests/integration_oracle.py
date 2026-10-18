@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent C.2 prefix oracle and hashlib key binding for the CE fixture integration workload."""
+"""Independent C.2 prefix oracle and hashlib key binding for the CE fixture integration workload.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 from digest_checks import parse_digest
 from test_codec import reference_decode

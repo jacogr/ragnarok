@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Deliberately invalid: bounded limits and fixed-element values require their own domain types.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/[bounded, fixed_unsigned]
 let values = [1'u64]
 var output = default(array[10, byte])

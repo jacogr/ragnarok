@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Default, refused and wrong-stage report results cannot expose values or disconnected child reasons.
+## Default, refused and wrong-stage report results cannot expose values or disconnected child
+## reasons.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/cmdline
 import ../../src/state/[report_admission, block_transition]
 let missing = default(BlockTransitionResult)

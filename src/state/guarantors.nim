@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 utilities.tex and reporting_assurance.tex: shuffled, rotated guarantor assignments.
-## Plans use posterior rosters/entropy/offenders. They do not verify signatures or publish C(10).
+## Plans use posterior rosters/entropy/offenders. They do not verify signatures or publish
+## C(10).
+##
+## Exposes validator shuffling, planGuarantors and bounded guarantorAt/shuffledIndex access.
+
 import ../codec/[state_safrole, assurances, bounded, header, guarantees, work_report]
 from ../codec/disputes import OffenderKey
 import ../crypto/primitives

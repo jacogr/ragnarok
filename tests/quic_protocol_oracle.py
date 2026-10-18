@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent arbitrary-precision SAN/framing expectations and real certificate-policy fixtures."""
+"""Independent arbitrary-precision SAN/framing expectations and real certificate-policy fixtures.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import random
 import subprocess
 

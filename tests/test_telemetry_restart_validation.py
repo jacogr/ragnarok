@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Negative controls for restart correlation, immutable registration and bounded byte forwarding."""
+"""Negative controls for restart correlation, immutable registration and bounded byte forwarding.
+
+Exposes RestartValidationTests for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import copy
 import hashlib
 import io

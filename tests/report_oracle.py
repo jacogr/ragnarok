@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent mathematical work-report oracle and deterministic shared corpus (test-only)."""
+"""Independent mathematical work-report oracle and deterministic shared corpus (test-only).
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import copy
 import hashlib
 import json

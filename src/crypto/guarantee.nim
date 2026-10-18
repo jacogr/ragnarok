@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP v0.8.0 guarantorsig composition; callers validate and serialize complete report bytes.
+##
+## Exposes guaranteeMessage and its owned signing-transcript/result types.
+
 import ./primitives
 
 type

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Pinned JAMNP-S identity and CE framing checks, independent of peer scheduling and test workloads.
+## Pinned JAMNP-S identity and CE framing checks, independent of peer scheduling and test
+## workloads.
+##
+## Exposes nominal peer/frame lengths, peer-name validation, frame inspection and checked
+## parsing results.
+
 import ./transport
 
 type

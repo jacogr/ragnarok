@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 C.2 availability specifications and accumulation input records; see spec/c2-records.md.
+## GP 0.8.0 C.2 availability specifications and accumulation input records; see
+## spec/c2-records.md.
+##
+## Exposes availability specifications, deferred transfers and accumulation operands with source
+## constructors, codecs and copied payload access.
+
 import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_digest, work_report, assurances]
 

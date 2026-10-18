@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent test-only assurance transcripts and ordinary OpenSSL credential fixtures."""
+"""Independent test-only assurance transcripts and ordinary OpenSSL credential fixtures.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 from functools import lru_cache
 from assurances_oracle import ROOT, logical, record, record_error, config_error, token

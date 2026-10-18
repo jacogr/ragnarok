@@ -83,6 +83,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   `SPDX-License-Identifier: MIT OR Apache-2.0` as comments at the start of project-owned source
   and build files, after any shebang. Preserve third-party attribution and do not insert comments
   into formats that do not support them, such as JSON, or into generated files.
+- Follow the SPDX header with a concise file-level description of purpose and exposed types,
+  operations or executable/harness entry points. Use `##` documentation comments for Nim, module
+  docstrings for Python and `//!` for Rust so documentation tools can extract them. Keep these
+  summaries accurate when interfaces change; describe test fixtures as tests, not production APIs.
 - Use `make setup` for pinned tools/dependencies, `make` for the current proof-peer build and
   `make check` (alias `make test`) for complete verification. Make owns setup dependencies and
   command sequencing; `make clean` removes all of `build/`.

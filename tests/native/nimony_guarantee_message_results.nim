@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Default/backend-failed guarantee signing messages must stop at their supported success contract.
+## Default/backend-failed guarantee signing messages must stop at their supported success
+## contract.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/crypto/[primitives, guarantee]
 # Faults are available only in the test observer library; production callers cannot force provider outcomes.

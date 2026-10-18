@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal T-order, dictionary association and MMR optional encoding checks for the independent history reference."""
+"""Literal T-order, dictionary association and MMR optional encoding checks for the independent history reference.
+
+Exposes HistoryHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from state_history_oracle import wire,encode,decode,MAX,BROAD
 

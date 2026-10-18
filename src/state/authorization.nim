@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 authorization pool transition, authorization.tex and notation.tex sequence operators.
-## Queue inputs must already reflect accumulation; guarantee core/hash projections are caller-validated.
+## GP 0.8.0 authorization pool transition, authorization.tex and notation.tex sequence
+## operators. Queue inputs must already reflect accumulation; guarantee core/hash projections
+## are caller-validated.
+##
+## Exposes advanceAuthorization for immutable planning and advanceAuthorizationState for atomic
+## full-state publication.
+
 import ../codec/[state_authorization, state_layout, state_trie, bounded]
 import ./store
 

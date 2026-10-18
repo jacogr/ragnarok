@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Project-only white-box alias checks; external compile probes separately enforce private snapshot storage.
+## Project-only white-box alias checks; external compile probes separately enforce private
+## snapshot storage.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 include ../../../src/codec/collections
 

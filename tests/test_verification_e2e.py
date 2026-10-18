@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check E2E workload completeness and disjoint suite ownership."""
+"""Check E2E workload completeness and disjoint suite ownership.
+
+Exposes VerificationE2E for unittest discovery; test methods exercise the stated contracts.
+"""
 from pathlib import Path
 import sys
 import unittest

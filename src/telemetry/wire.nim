@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JIP-3 v1 registration and event encoding; pinned layout and limits: spec/telemetry.md.
-## Values own their bytes; encoding never retains borrowed input or native pointers.
+## JIP-3 v1 registration and event encoding; pinned layout and limits: spec/telemetry.md. Values
+## own their bytes; encoding never retains borrowed input or native pointers.
+##
+## Exposes typed metadata and registration/status/connection event encoders with checked owned
+## wire results.
+
 import ../codec/natural
 
 const MetadataSize* = 204

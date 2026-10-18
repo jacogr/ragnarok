@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Unchanged report STF projections and authored credential, population, reporter-set and ownership boundaries.
+## Unchanged report STF projections and authored credential, population, reporter-set and
+## ownership boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[guarantee_credentials, guarantors]
 import ../../../src/codec/[guarantees, assurances, bounded, state_safrole, header, disputes,

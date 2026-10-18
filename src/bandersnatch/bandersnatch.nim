@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Typed synchronous primitives for the GP 0.8.0 release-designated ark-vrf 0.2.2 Bandersnatch profile.
-## Inputs are borrowed for one call. No implicit protocol domains or codec serialization.
+## Typed synchronous primitives for the GP 0.8.0 release-designated ark-vrf 0.2.2 Bandersnatch
+## profile. Inputs are borrowed for one call. No implicit protocol domains or codec
+## serialization.
+##
+## Exposes owned scalar/setup handles, fixed signature/proof types, signing, verification and
+## ring commitments through the maintained native ABI.
+
 const Header = "bridge.h"
 # Import a canonical nonzero scalar into one opaque native owner.
 proc keyNew(data: nil pointer, length: csize_t, output: ptr (

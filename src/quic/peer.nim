@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded CLI controls for private peer sessions; every run returns through native/ARC cleanup before exit.
+## Bounded CLI controls for private peer sessions; every run returns through native/ARC cleanup
+## before exit.
+##
+## Provides the proof-peer command-line entry point, selecting selftests and peer/mesh workloads
+## with optional telemetry and RPC.
+
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./[session, transport, integration, offload]

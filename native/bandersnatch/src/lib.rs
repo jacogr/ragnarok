@@ -3,6 +3,9 @@
 
 //! Synchronous maintained primitive ABI for the GP 0.8.0 release-designated ark-vrf 0.2.2 profile.
 //! No protocol domain/codec logic or dependency source patches. All outputs commit only on success.
+//!
+//! Exposes bs_* C ABI functions for owned keys/setups, signing, verification and ring
+//! commitments; Rust allocations remain behind opaque handles.
 use ark_vrf::{
     reexports::ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
     suites::bandersnatch as bs,

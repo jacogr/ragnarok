@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent Required-connectivity anchors and fixed resource gates for retained IPv6 recovery."""
+"""Independent Required-connectivity anchors and fixed resource gates for retained IPv6 recovery.
+
+Exposes MeshHarnessTests for unittest discovery; test methods exercise the stated contracts.
+"""
 from pathlib import Path
 import tempfile
 import unittest

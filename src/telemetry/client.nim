@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded optional TCP exporter. One owner, no threads, DNS, blocking connect or retained callbacks.
+## Bounded optional TCP exporter. One owner, no threads, DNS, blocking connect or retained
+## callbacks.
+##
+## Exposes exporter configuration/close/tick and incoming/outgoing connection event reporting
+## over one retained client owner.
+
 import std/[strutils, oserrors, nativesocket]
 import std/posix/posix
 import ./wire

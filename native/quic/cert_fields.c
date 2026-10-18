@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Extracts bounded X.509 observations using BoringSSL. Exposes certificate-field parsing and
+// fixed owned observations; Nim decides protocol acceptance.
+
 #include "cert_fields.h"
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>

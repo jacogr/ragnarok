@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 T chapter 13 and statistics activityspec: retained structural statistics, not updates.
+## GP 0.8.0 T chapter 13 and statistics activityspec: retained structural statistics, not
+## updates.
+##
+## Exposes activity profiles and snapshots, chapter-13 entry construction/decoding and
+## validator/core/service statistics access.
+
 import std/assertions
 import ./[natural, bounded, composite, assurances, state_layout, state_trie]
 export ServiceIndex, CoreCount, ValidatorCount

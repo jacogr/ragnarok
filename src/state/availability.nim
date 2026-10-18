@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 reporting_assurance.tex: parent-roster assurances, available reports and post-assurance C(10).
-## Accumulation and new guarantees are separate stages; owned plans retain complete report children.
+## GP 0.8.0 reporting_assurance.tex: parent-roster assurances, available reports and
+## post-assurance C(10). Accumulation and new guarantees are separate stages; owned plans retain
+## complete report children.
+##
+## Exposes planAvailability, retained assignment/report access and advanceAvailabilityState with
+## checked contextual failure results.
+
 import std/assertions
 import ../codec/[assurances, bounded, natural, state_safrole, state_availability,
   state_layout, state_trie, report_owned]

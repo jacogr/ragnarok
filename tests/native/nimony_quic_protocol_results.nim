@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Every unsuccessful/default/pending parser result must reject payload selection at its contract.
+## Every unsuccessful/default/pending parser result must reject payload selection at its
+## contract.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/quic/protocol
 

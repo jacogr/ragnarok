@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime-selected misuse probes cover primitive success payloads and failure-only reasons.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import ../../src/codec/[natural, fixed_unsigned]
 import std/[cmdline, syncio]
 # Both default construction and actual failures must reject every success-only accessor.

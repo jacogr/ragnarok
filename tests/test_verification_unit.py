@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check native unit and corpus report completeness."""
+"""Check native unit and corpus report completeness.
+
+Exposes VerificationUnit for unittest discovery; test methods exercise the stated contracts.
+"""
 import ast
 from pathlib import Path
 import sys

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## White-box project-owned private-wire aliases; external compilation probes enforce that storage remains inaccessible.
+## White-box project-owned private-wire aliases; external compilation probes enforce that
+## storage remains inaccessible.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 include ../../../src/codec/c2_records
 

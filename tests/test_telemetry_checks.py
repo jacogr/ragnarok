@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Collector-harness regressions: statuses consume IDs without hiding duplicate or dropped events."""
+"""Collector-harness regressions: statuses consume IDs without hiding duplicate or dropped events.
+
+Exposes CollectorCaptureTests, RecoveredMeshTests for unittest discovery; test methods exercise
+the stated contracts.
+"""
 import socket
 import struct
 import unittest

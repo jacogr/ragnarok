@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Replay the original authenticated CE 143 matrix against an isolated checked Nimony peer."""
+"""Replay the original authenticated CE 143 matrix against an isolated checked Nimony peer.
+
+Exposes exchanges, controls for the verification harness.
+"""
 import subprocess
 from test_quic import SCENARIOS, attempt
 

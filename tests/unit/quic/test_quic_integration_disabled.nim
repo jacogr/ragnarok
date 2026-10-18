@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Ordinary binaries compile without the crypto provider and cannot claim enabled integration success.
+## Ordinary binaries compile without the crypto provider and cannot claim enabled integration
+## success.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/quic/integration
 assert not IntegrationEnabled

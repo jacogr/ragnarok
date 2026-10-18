@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-only numeric observations: ownership assertions remain in the calling Nim suite.
+##
+## Exposes recordArcRelease to write per-suite allocation observations for the verification
+## harness.
+
 import std/[envvars, syncio, assertions]
 
 # Write copied live-allocation measurements after the caller's isolated release workload.

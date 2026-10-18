@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 C.1.3/C.1.5/C.1.6 typed canonical collections; see spec/collections.md.
+##
+## Exposes typed scalar schemas, canonical set/dictionary codecs and immutable collection
+## accessors.
+
 import std/assertions
 import ./[natural, fixed_unsigned, bounded]
 

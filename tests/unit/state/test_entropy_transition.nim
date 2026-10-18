@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published Safrole entropy/time projections, fixed hash known answer and epoch/slot boundaries.
+## Published Safrole entropy/time projections, fixed hash known answer and epoch/slot
+## boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/entropy_transition_fixture
 import ../../../src/state/[entropy, store]
