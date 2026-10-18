@@ -104,7 +104,7 @@ it is not presented as an upstream full-block accumulation fixture.
 ## Remaining work and next bounded slice
 
 Accumulation execution, gas-dependent prefix selection, deferred transfers, service mutations and
-execution-dependent C(14)/C(15) publication remain open. A suitable next slice derives the owned
-per-service operand inputs from this ordered report plan, following the paper's Execution operand
-tuple definition and existing operand codecs. Keep actual PVM invocation and posterior state
-publication separate until their required execution outcomes exist.
+execution-dependent C(14)/C(15) publication remain open. Report-derived owned per-service operands now have a separate
+[preparation contract](accumulation-operands.md), following the paper's Execution operand tuple
+and existing codecs. Transfer/privilege invocation context is next. Keep actual PVM invocation
+and posterior state publication separate until their required execution outcomes exist.

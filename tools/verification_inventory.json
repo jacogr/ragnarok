@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "accumulation_operands",
     "accumulation_queue",
     "assurance_context",
     "assurances",
@@ -111,6 +112,11 @@
     "account_result_read_private": "completed",
     "account_result_retag": "status",
     "account_result_value_write": "value",
+    "accumulation_operand_bound_private": "data",
+    "accumulation_operand_bound_result_private": "completed",
+    "accumulation_operand_owner_private": "data",
+    "accumulation_operand_result_private": "completed",
+    "accumulation_operand_retag_private": "status",
     "accumulation_queue_bound_private": "data",
     "accumulation_queue_bound_result_private": "completed",
     "accumulation_queue_owner_private": "data",
@@ -806,6 +812,9 @@
     "account_bytes_as_items": "got: AccountStorageBytes but wanted: AccountStorageItems",
     "account_gas_as_balance": "got: Gas but wanted: AccountBalance",
     "account_slot_as_parent": "got: AccountSlot but wanted: ServiceIndex",
+    "accumulation_operand_group_as_operand": "[3] expected: ServiceOperandIndex but got: OperandServiceIndex",
+    "accumulation_operand_raw_prefix": "[2] expected: AccumulationReportPrefix but got: uint64",
+    "accumulation_operand_service_as_group": "[2] expected: OperandServiceIndex but got: ServiceIndex",
     "accumulation_queue_index_as_hash": "[3] expected: WorkQueueHashIndex but got: AccumulationIndex",
     "accumulation_queue_slot_as_index": "[2] expected: AccumulationIndex but got: WorkQueueSlot",
     "assignment_guarantee_slot": "GuaranteeSlot",
@@ -1016,6 +1025,9 @@
     "entry-owner"
   ],
   "EARLY_NOMINAL": {
+    "accumulation_operand_group_as_operand": ["serviceOperandAt(", "[3] expected: ServiceOperandIndex but got: OperandServiceIndex"],
+    "accumulation_operand_raw_prefix": ["prepareAccumulationOperands(", "[2] expected: AccumulationReportPrefix but got: uint64"],
+    "accumulation_operand_service_as_group": ["operandServiceAt(", "[2] expected: OperandServiceIndex but got: ServiceIndex"],
     "accumulation_queue_index_as_hash": ["accumulationDependencyAt(", "[3] expected: WorkQueueHashIndex but got: AccumulationIndex"],
     "accumulation_queue_slot_as_index": ["accumulationAt(", "[2] expected: AccumulationIndex but got: WorkQueueSlot"],
     "authorization_core_as_slot": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"],
@@ -1064,6 +1076,7 @@
   ],
   "FAILURE_COUNTS": {
     "accounts": 16,
+    "accumulation_operands": 9,
     "accumulation_queue": 7,
     "assurance_context": 24,
     "assurances": 10,
@@ -1179,6 +1192,7 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "accumulation_operands": "accumulation_operands_arc_release",
     "accumulation_queue": "accumulation_queue_arc_release",
     "assurance_context": "assurance_context_arc_release",
     "authorization_transition_failure": "authorization_transition_arc_release",
@@ -1239,6 +1253,7 @@
     "work_package": "package_arc_release"
   },
   "UNIT_LINKS": {
+    "accumulation_operands": "observer",
     "accumulation_queue": "observer",
     "assurance_context": "observer",
     "authorization_transition": "crypto",

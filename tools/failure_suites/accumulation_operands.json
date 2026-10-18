@@ -1,0 +1,109 @@
+{
+  "source": "tests/native/accumulation_operand_results.nim",
+  "build_name": "accumulation-operand-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-operands-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands default extraction guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "name": "accumulation-operands-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands refused extraction guard",
+      "identity": {
+        "origin": "refused"
+      }
+    },
+    {
+      "arguments": [
+        "count"
+      ],
+      "name": "accumulation-operands-count",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands count extraction guard",
+      "identity": {
+        "origin": "count"
+      }
+    },
+    {
+      "arguments": [
+        "group"
+      ],
+      "name": "accumulation-operands-group",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands group extraction guard",
+      "identity": {
+        "origin": "group"
+      }
+    },
+    {
+      "arguments": [
+        "operand"
+      ],
+      "name": "accumulation-operands-operand",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands operand extraction guard",
+      "identity": {
+        "origin": "operand"
+      }
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "name": "accumulation-operands-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands source extraction guard",
+      "identity": {
+        "origin": "source"
+      }
+    },
+    {
+      "arguments": [
+        "prefix"
+      ],
+      "name": "accumulation-operands-prefix",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands prefix extraction guard",
+      "identity": {
+        "origin": "prefix"
+      }
+    },
+    {
+      "arguments": [
+        "bound"
+      ],
+      "name": "accumulation-operands-bound",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands bound extraction guard",
+      "identity": {
+        "origin": "bound"
+      }
+    },
+    {
+      "arguments": [
+        "provenance"
+      ],
+      "name": "accumulation-operands-provenance",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation operands provenance extraction guard",
+      "identity": {
+        "origin": "provenance"
+      }
+    }
+  ]
+}
