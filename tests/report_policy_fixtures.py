@@ -19,7 +19,8 @@ CASES = ('report_curr_rotation-1', 'report_prev_rotation-1', 'multiple_reports-1
 
 
 # Project only fields consumed by this read-only stage; never alter signatures or expected outcomes.
-def prepare(folder, cases=CASES, filename="report-policy", include_history=False):
+def prepare(folder, cases=CASES, filename="report-policy", include_history=False, include_packages=False):
+    assert not include_packages or include_history
     pins = json.loads((ROOT/'spec/pins.json').read_text())['vectors']
     pools, indices, rows, sources = [], {}, [], []
     for profile in ('tiny', 'full'):
@@ -42,7 +43,9 @@ def prepare(folder, cases=CASES, filename="report-policy", include_history=False
             records = []
             for value in case['input']['guarantees']:
                 # The projection has no lookup codec fallback or silent field loss.
-                assert not value['report']['segment_root_lookup']
+                if not include_packages:
+                    # Earlier fixture families deliberately retain their empty-lookup-only contract.
+                    assert not value['report']['segment_root_lookup']
                 records.append(dict(report=report_wire(from_json(value['report'])), slot=value['slot'],
                     credentials=[(v['validator_index'], bytes.fromhex(v['signature'][2:])) for v in value['signatures']]))
             accounts = []
@@ -59,7 +62,8 @@ def prepare(folder, cases=CASES, filename="report-policy", include_history=False
             rows.append(' '.join(['case', path, '2' if profile == 'tiny' else '341', expected,
                 str(case['input']['slot']), *handles, ''.join(v[2:] for v in state['entropy']),
                 ''.join(v[2:] for v in state['offenders']) or '-', wire(records).hex(), auth.hex(),
-                ','.join(accounts) or '-'] + ([state_bytes(state['recent_blocks'])] if include_history else [])))
+                ','.join(accounts) or '-'] + ([state_bytes(state['recent_blocks'])] if include_history else [])
+                + ([(''.join(v[2:] for v in case['input']['known_packages']) or '-')] if include_packages else [])))
             sources.append(dict(path=path, sha256=digest, expected=expected))
     assert len(rows) == 2*len(cases)
     folder.mkdir(parents=True, exist_ok=True)

@@ -154,6 +154,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'guarantee_credentials')
     run_failure_suite(compiler, report, libraries, build, command, 'report_policy')
     run_failure_suite(compiler, report, libraries, build, command, 'report_anchors')
+    run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
