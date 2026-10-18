@@ -913,3 +913,14 @@ rules also count as coverage. Historical exceptions live in `runtime_provenance.
 with a reason; missing, already-covered or unjustified exceptions fail preflight. This check
 also catches untracked new helpers locally. Native sources and fixtures retain their separate
 inventory checks; this policy does not claim complete dependency-graph discovery.
+
+Corpus orchestration lives in `tools/corpus_codec.py`, `corpus_state.py`, `corpus_services.py`,
+`corpus_crypto.py` and `corpus_network.py`. `test_runtime.run_unit` schedules their entry points
+explicitly in the established order. State-root checks reuse the trie build, and width/namespace
+checks reuse the composition build; failed builds must never run stale executables. Keep
+independent expected-value generation in `tests/`, separate from these process/report adapters.
+
+`tools/native_preparation.py` shares native library, integration reload and feature-fixture
+assembly between the standalone Hastur entry point and cumulative runtime verification.
+Feature adapters live in `native_fixtures.py`; callers own their output directories and report
+serialization. Preparation failures propagate before any dependent suite is scheduled.
