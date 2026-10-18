@@ -142,7 +142,9 @@ remain unavailable until block import and update events exist. `parameters()` re
 GP 0.8.0 parameter snapshot from the explicit chainspec; four live-state fields are documented zero
 placeholders. `src/chain/genesis.nim` retains the configured serialized map through the existing
 state store, checks header/roster/time framing and computes its root at startup. It does not validate
-all state chapters or run consensus. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
+all state chapters or run consensus. `src/chain/services.nim` reads account metadata, storage
+values and verified preimages through immutable store views; RPC bounds raw values and aggregate
+batch responses before copying them. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

@@ -645,6 +645,7 @@
     "rpc_genesis_result_private": "status",
     "rpc_parameters_owner_private": "numbers",
     "rpc_parameters_result_private": "success",
+    "rpc_service_result_private": "status",
     "safrole_auth_private": "completed",
     "safrole_auth_retag": "status",
     "safrole_epoch_private": "epochValue",

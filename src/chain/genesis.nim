@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable configured genesis view, rooted with the existing complete-map store.
-## Exposes GenesisResult, guarded snapshot accessors and captureGenesis. The configured map is
+## Exposes GenesisResult, guarded snapshot accessors, read-only lookup and captureGenesis. The configured map is
 ## trusted as complete; structural validation does not establish consensus or validate every chapter.
 
 import ./parameters
@@ -45,6 +45,10 @@ func blockHash*(value: Genesis): BlockHash {.requires: value.ready.} = value.ide
 func slot*(value: Genesis): uint32 {.requires: value.ready.} = value.timeslot
 ## Read the computed posterior root of the supplied genesis map, not the header's prior-state field.
 proc stateRoot*(value: Genesis): StateRoot {.requires: value.ready.} = value.state.commitment.root
+
+## Read a serialized key from this retained snapshot; the view owns its lifetime, and default owners fail.
+proc lookup*(value: Genesis, key: StateKey): StateStoreResult[StateValue] =
+  store.lookup(value.state, key)
 
 ## Validate header framing against the supplied active roster and time, then own the complete map.
 ## Input bytes are borrowed only during this call; no signature or whole-state validation is claimed.
