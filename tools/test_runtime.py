@@ -158,6 +158,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_machine')
     # Register results publish values only after successful opcode evaluation.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_registers')
+    # Gas failures never expose a partial or uninitialized block charge.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_gas')
     run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
     run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
     run_failure_suite(compiler, report, libraries, build, command, 'report_admission')
