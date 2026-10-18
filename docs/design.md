@@ -96,6 +96,19 @@ private working store and publishes the final C(10) only on complete success. Se
 [the atomic publication contract](../spec/report-transition.md). Accumulation history/queue
 planning is next; PVM execution and full block execution remain later work.
 
+`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
+formats into copied values backed by an immutable program owner. See
+[the program decoding contract](../spec/pvm-program.md). This is the first PVM
+increment; machine state, memory, gas, execution and host calls remain open.
+
+`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
+formats into copied values backed by an immutable program owner. See
+[the program decoding contract](../spec/pvm-program.md). This is the first PVM
+increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
+with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine.md),
+including its explicit wrapping-access specification gate. Gas charging, instruction
+execution and host calls remain open.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
@@ -115,6 +128,11 @@ and a fixed send buffer, with no additional threads. Retained mesh role engines 
 and event-ID sequence; status counts their single pinned remote peer once across duplicate connections.
 An explicit JIP-4 file supplies network metadata; it does not initialize chain execution.
 See [telemetry scope and limits](../spec/telemetry.md).
+
+An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
+at most eight nonblocking loopback connections and bounded input/output buffers. The first
+method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Chain queries
+and subscriptions remain unavailable until a real chain backend exists. See [RPC scope](../spec/rpc.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

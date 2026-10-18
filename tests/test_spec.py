@@ -31,6 +31,14 @@ class SpecificationTests(unittest.TestCase):
             pin = json.loads((ROOT/f'spec/{name}-pins.json').read_text())
             self.assertEqual(pin['graypaper_commit'], entry['commit'])
 
+    # Memory regression witnesses must remain traceable to pristine, immutable upstream sources.
+    def test_polkavm_cross_check_sources(self):
+        entry = json.loads((ROOT/'spec/polkavm-pins.json').read_text())
+        path = require_submodule(entry)
+        # Pin whole source files so later upstream changes cannot silently alter the cited witnesses.
+        for name, digest in entry['source_sha256'].items():
+            self.assertEqual(hashlib.sha256((path/name).read_bytes()).hexdigest(), digest, name)
+
     # Published source and frozen field positions prove that fixtures contain all three 0.8.0 additions.
     def test_published_report_sources(self):
         entry = PINS['vectors']

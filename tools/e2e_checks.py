@@ -31,6 +31,16 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
             # Preserve failure instead of allowing a later slice to turn a failed network attempt green.
             report['quic_peer'] = dict(passed=False, failure=str(error))
         announce('authenticated CE 143 peer matrix and repeated startup', report['quic_peer']['passed'])
+    # RPC shares the real peer dispatcher; independent socket checks also require concurrent QUIC progress.
+    report['rpc'] = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        from rpc_checks import run as rpc_checks
+        try:
+            report['rpc'] = rpc_checks(binary, quic_fixtures, BUILD/'rpc')
+        except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+            # A protocol, cleanup or concurrency failure is an independent required E2E verdict.
+            report['rpc'] = dict(passed=False, failure=str(error))
+    announce('WebSocket RPC and concurrent peer progress', report['rpc']['passed'])
     # Telemetry exercises native partial framing/reconnect and the actual optional peer CLI.
     report['telemetry'] = dict(passed=False)
     telemetry_build, telemetry_binary = build(compiler, ROOT/'tests/native/telemetry_driver.nim', 'telemetry-driver')
