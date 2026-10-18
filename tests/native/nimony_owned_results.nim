@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Generic owned-result payloads and copied optional/work metadata reject invalid safe-code reads.
 import ../../src/codec/[owned, bounded, composite]
 import std/[cmdline, syncio]

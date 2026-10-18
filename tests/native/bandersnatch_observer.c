@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ragnarök contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 /* Test-only counters/faults wrap the maintained Rust ABI; production calls and upstream code are unchanged. */
 #include "bridge.h"
 

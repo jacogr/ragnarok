@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default/backend-failed guarantee signing messages must stop at their supported success contract.
 import std/[assertions, cmdline, syncio]
 import ../../src/crypto/[primitives, guarantee]

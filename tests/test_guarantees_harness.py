@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent guarantee oracle examples guard wrapper framing and failure precedence."""
 import copy
 import unittest

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated checked result extraction for default/real failures must reject without publishing progress.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[entropy, store]

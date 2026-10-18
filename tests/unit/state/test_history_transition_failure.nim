@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## History publication and Keccak refusals preserve retained state; ARC scopes release all scratch owners.
 import std/[assertions, syncio]
 import ../../support/[history_transition_fixture, arc_evidence]

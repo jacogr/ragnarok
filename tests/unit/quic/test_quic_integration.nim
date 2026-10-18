@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import ../../support/arc_evidence
 ## Enabled CE fixture composition, private snapshot/bank aliases, native refusal and scoped ARC release.
 import std/[assertions, envvars, syncio]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Build pristine native crypto and test-only observation without changing production or upstream sources."""
 import platform
 import subprocess

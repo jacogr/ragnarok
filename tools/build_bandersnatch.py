@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Build the pinned bandersnatch ABI for production and verification with identical source checks."""
 import hashlib
 import json

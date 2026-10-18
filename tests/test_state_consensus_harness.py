@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal chapter-4 offsets, fixed schedule framing and resource checks for the independent reference."""
 import unittest
 from state_consensus_oracle import wire,encode,decode,MAX

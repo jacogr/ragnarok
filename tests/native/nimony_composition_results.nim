@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated default/actual composition failures cannot expose chapters, maps, roots or extracted entries.
 include ../../src/codec/state_composition
 include ./composition_fixture

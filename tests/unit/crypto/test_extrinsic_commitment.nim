@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent header.tex projections include rich published data, every family and multi-byte counts.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/crypto/extrinsic_commitment

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal framing, cardinality and resource checks for the independent state reference."""
 import unittest
 from state_safrole_oracle import extent,decode,MAX

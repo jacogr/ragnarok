@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted fixture adapter: independent typed sources and individual decoded field observation.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[disputes, bounded, assurances]

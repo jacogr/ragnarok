@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 Boolean and packed bitstring codecs; see spec/bitstrings.md for wire and lifetime rules.
 import ./natural
 

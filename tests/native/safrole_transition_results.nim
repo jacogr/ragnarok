@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default/refused coordinator payloads and nonselected stage reasons must never be readable.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[safrole_transition, store]

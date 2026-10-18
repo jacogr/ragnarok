@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal chapter-16 framing, ordering and resource tests independent of native code."""
 import unittest
 from state_outputs_oracle import wire,encode,decode,DEFAULT,MAX

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T chapter 3, recent history and MMR encoding; state transitions/hashing remain external.
 ## See spec/state-history.md for exact field order, policies and synchronous ownership contracts.
 import std/assertions

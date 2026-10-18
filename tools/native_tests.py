@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Launch native application tests through the Hastur shipped with the pinned Nimony archive."""
 from pathlib import Path
 import json

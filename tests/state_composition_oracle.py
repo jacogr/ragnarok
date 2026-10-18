@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent full composition equations over exact chapter extents and typed service fields."""
 import hashlib
 import random

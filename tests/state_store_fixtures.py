@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Prepare trusted native storage replay inputs from exact already-pinned published mapping blobs."""
 import hashlib
 import json

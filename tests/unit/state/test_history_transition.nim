@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published history STF transitions, independent accumulation trees and authored boundary/ordering tests.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/history_transition_fixture

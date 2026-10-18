@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Publish a selected Safrole schedule atomically in the full-state working map.
 ## Retain the parent snapshot before rotation/admission; staged chapters supply posterior inputs.
 import ../codec/[state_safrole, state_consensus, state_layout, state_trie, tickets]

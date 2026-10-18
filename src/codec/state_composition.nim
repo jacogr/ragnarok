@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T composition with migrated dictionary widths; C13 gas follows the vector-compatible compact policy.
 ## Chapter snapshots are exact typed captures; this does not validate transitions or settle parity gates.
 import std/assertions

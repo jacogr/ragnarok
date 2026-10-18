@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Fail-closed validation of the external collector's typed JSON, without launching it."""
 import copy
 import unittest

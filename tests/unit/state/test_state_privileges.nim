@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Supplementary snapshot, domain, index, late-failure and runtime variant-guard contracts.
 import std/[assertions, syncio]
 import ../../../src/codec/[state_privileges, bounded]

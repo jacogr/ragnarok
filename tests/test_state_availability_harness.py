@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal optional assignment composition and independent guarantee/registration time checks."""
 import unittest
 from state_availability_oracle import wire,encode,decode,record,frame_wire,MAX

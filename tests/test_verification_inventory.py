@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Ensure inventory edits cannot silently overwrite guards or duplicate coverage."""
 import json
 from pathlib import Path

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent chapter-10 composition over the existing mathematical guarantee/report reference."""
 import hashlib
 import json

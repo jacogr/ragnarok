@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Real incoming TLS callbacks across collector resets, with opaque UDP reply gating."""
 from contextlib import ExitStack, contextmanager
 import json

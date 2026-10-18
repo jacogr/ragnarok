@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent collector JSON fixtures for incoming replay and listener generation isolation."""
 import copy
 import unittest

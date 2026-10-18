@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted fixture adapter: no production secrets
 # exact widths enter the typed primitive APIs.
 import std/[assertions, cmdline, strutils, syncio, rawthreads]

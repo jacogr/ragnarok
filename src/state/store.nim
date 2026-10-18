@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Owned in-memory serialized JAM state, using GP 0.8.0 M/B/L through stateTrieRoot.
 ## Single-threaded handles publish complete immutable snapshots; borrowed write inputs stay stable
 ## for apply. Snapshot retention is caller-controlled, with no disk storage or incremental trie yet.

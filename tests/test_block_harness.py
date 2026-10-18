@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Known-answer checks protect independent complete composite framing and nested-error attribution."""
 import unittest
 from block_oracle import TINY,FULL,example,published,parse,decode,encode,preimage_inspect

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted bounded fixture adapter for independent guarantee fields and immutable owner checks.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[guarantees, report_owned, owned, bounded, assurances]
