@@ -169,7 +169,14 @@ spanning a collector reset. A real outgoing peer also starts behind a bound UDP 
 a TCP reset, identical registration and dropped-prefix replay does the harness forward its opaque
 datagrams. Authentication must reference the original, now-covered attempt ID; both peers must
 complete eight CE 143 requests, while the client reports exactly one close without further loss.
-The test-only relay has one joined worker and no user-space packet queue. It also checks exactly
+The test-only relay has one joined worker and no user-space packet queue. Incoming reconnect
+cases instead hold the server's reply flight in a bounded test-only relay (64 datagrams, 128 KiB),
+release it after registration and dropped-prefix replay, and require the original incoming ID on
+success or certificate rejection. The retained listener then accepts a fresh generation with a new
+ID; successful generations complete the mixed eight-request CE workload and close exactly once.
+The rejection callback runs at SSL destruction, freeing the first handshake slot before its next
+use. Rejection produces no admitted-peer close. The normal service profile avoids the idle client's
+two-second expiry while waiting for the exporter's five-second retry. It also checks exactly
 one disconnect after a graceful outgoing close,
 no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete
 application exchange. Incoming cases check success identity/address/correlation, certificate
