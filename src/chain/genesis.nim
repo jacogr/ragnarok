@@ -19,6 +19,7 @@ type
     state: StateStoreSnapshot
     identity: BlockHash
     timeslot: uint32
+    corePopulation: CoreCount
   ## Absent configuration differs from a supplied but invalid genesis pair.
   GenesisError* {.pure.} = enum
     Unavailable, None, Invalid
@@ -41,6 +42,8 @@ func unavailableGenesis*(): GenesisResult = GenesisResult(status: GenesisError.U
 func invalidGenesis*(): GenesisResult = GenesisResult(status: GenesisError.Invalid)
 ## Return the copied block identity.
 func blockHash*(value: Genesis): BlockHash {.requires: value.ready.} = value.identity
+## Return the retained core configuration used to decode this snapshot.
+func cores*(value: Genesis): CoreCount {.requires: value.ready.} = value.corePopulation
 ## Return the copied genesis timeslot.
 func slot*(value: Genesis): uint32 {.requires: value.ready.} = value.timeslot
 ## Read the computed posterior root of the supplied genesis map, not the header's prior-state field.
@@ -93,4 +96,5 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   let hashed = blake2b256(wire)
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
   GenesisResult(status: GenesisError.None, completed: Genesis(ready: true, state: saved.value,
-    identity: BlockHash(array[32, byte](hashed.value)), timeslot: uint32(info.value.unsigned.slot)))
+    identity: BlockHash(array[32, byte](hashed.value)), corePopulation: CoreCount(cores),
+        timeslot: uint32(info.value.unsigned.slot)))
