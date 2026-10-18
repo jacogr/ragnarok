@@ -671,4 +671,55 @@ for iteration in 0..<100:
   # Only the original configured snapshot remains live between calls.
   retireReadyReply()
 assert getOccupiedMem() <= readyBaseline + 256
+
+# The extension addresses the exact 31-byte serialized map key, not a service storage preimage.
+let rawTimeKey = "CwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+let rawMissingKey = "/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+let rawCall = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ragnarok_stateValue\",\"params\":[\"" &
+    genesisHash & "\",\"" & rawTimeKey & "\"]}"
+let rawAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"BwAAAA==\"}"
+assert respond(rawCall, withGenesis) == rawAnswer
+assert respond(rawCall.replace(rawTimeKey, rawMissingKey), withGenesis) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":null}"
+assert "\"ragnarok_stateValue\"" in respond(request, withGenesis)
+assert respond(rawCall.replace(",\"id\":1", ""), withGenesis) == ""
+assert respond("[" & rawCall & "," & rawCall & "]", withGenesis) == "[" & rawAnswer & "," &
+    rawAnswer & "]"
+# Unknown or absent blocks preserve error 1 and the requested hash.
+for owner in [info, withGenesis]:
+  let unknownHash = repeat("A", 43) & "="
+  assert respond(rawCall.replace(genesisHash, unknownHash), owner) ==
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":\"" &
+      unknownHash & "\"}}"
+# Wrong lengths, noncanonical padding, alternate alphabets and malformed argument shapes reject.
+for key in ["", "AA==", repeat("A", 43) & "=", rawTimeKey[0..^2], rawTimeKey & "=",
+    rawTimeKey.replace("AA==", "AB=="), "_" & rawTimeKey[1..^1]]:
+  assert "\"code\":-32602" in respond(rawCall.replace(rawTimeKey, key), withGenesis)
+for args in ["[]", "[0,0]", "[\"" & genesisHash & "\"]", "[\"" & genesisHash & "\",[]]",
+    "[\"" & genesisHash & "\",\"" & rawTimeKey & "\",0]"]:
+  assert "\"code\":-32602" in respond(rawCall.replace("[\"" & genesisHash & "\",\"" & rawTimeKey &
+      "\"]", args), withGenesis)
+proc rawValueInfo(hex: string): ClientInfo =
+  ## Capture opaque bytes at an otherwise absent serialized key; no schema validation is implied.
+  let state = genesisState[0..^2] & ",\"ff" & repeat("00", 30) & "\":\"" & hex & "\"}"
+  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value))
+let rawOpaqueCall = rawCall.replace(rawTimeKey, rawMissingKey)
+assert respond(rawOpaqueCall, rawValueInfo("")) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"\"}"
+assert respond(rawOpaqueCall, rawValueInfo("ff00")) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"/wA=\"}"
+let rawLarge = rawValueInfo(repeat("78", 32768))
+let rawLargeReply = respond(rawOpaqueCall, rawLarge)
+assert base64.encode(repeat("x", 32768)) in rawLargeReply
+assert "\"code\":0" in respond(rawOpaqueCall, rawValueInfo(repeat("78", 32769)))
+let rawBatch = respond("[" & rawOpaqueCall & "," & rawOpaqueCall & "]", rawLarge)
+assert rawBatch.len <= 65535 and "\"code\":0" in rawBatch
+assert rawLargeReply in rawBatch # A later refusal does not truncate an earlier complete reply.
+proc retireRawReply() =
+  ## Repeated raw copies and response serialization must release all temporary storage.
+  assert respond(rawCall, withGenesis) == rawAnswer
+retireRawReply()
+let rawBaseline = getOccupiedMem()
+for iteration in 0..<100:
+  # Retain only the original immutable map between calls.
+  retireRawReply()
+assert getOccupiedMem() <= rawBaseline + 256
 echo "rpc ok"
