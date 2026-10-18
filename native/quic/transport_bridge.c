@@ -64,6 +64,23 @@ static struct sockaddr_in address(uint16_t port) {
     a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK); a.sin_port = htons(port);
     return a;
 }
+/* Copy public endpoint metadata while the connection lives; no sockaddr pointer escapes. */
+static int peer_address(lsquic_conn_t *connection, uint8_t address[16], uint16_t *port) {
+    const struct sockaddr *local = NULL, *remote = NULL;
+    if (!connection || lsquic_conn_get_sockaddr(connection, &local, &remote) != 0 || !remote)
+        return 0; /* Missing metadata cannot become an invented all-zero endpoint. */
+    if (remote->sa_family == AF_INET6) {
+        const struct sockaddr_in6 *peer = (const struct sockaddr_in6 *)remote;
+        memcpy(address, &peer->sin6_addr, 16); *port = ntohs(peer->sin6_port);
+    } else if (remote->sa_family == AF_INET) {
+        const struct sockaddr_in *peer = (const struct sockaddr_in *)remote;
+        address[10] = address[11] = 255; /* Canonical IPv4-mapped IPv6 address. */
+        memcpy(address + 12, &peer->sin_addr, 4); *port = ntohs(peer->sin_port);
+    } else {
+        return 0; /* Unsupported families remain missing observations. */
+    }
+    return 1;
+}
 /* One process-lifetime BoringSSL index; every engine is driven by the same selector thread. */
 static int handshake_index = -1;
 /* SSL destruction must not dereference SSL itself: BoringSSL documents parent as unavailable here. */
@@ -108,23 +125,11 @@ static void handshake_info(const SSL *ssl, int type, int value) {
             return;
         }
         lsquic_conn_t *connection = lsquic_ssl_to_conn(ssl);
-        const struct sockaddr *local = NULL, *remote = NULL;
         uint8_t address[16] = {0};
         uint16_t port = 0;
-        if (!connection || lsquic_conn_get_sockaddr(connection, &local, &remote) != 0 || !remote) {
+        if (!peer_address(connection, address, &port)) {
             t->handshake(t->user, record->slot, RQ_HANDSHAKE_DROPPED, NULL, 0, NULL, 0);
             return; /* Missing metadata cannot be replaced by an invented remote address. */
-        }
-        if (remote->sa_family == AF_INET6) {
-            const struct sockaddr_in6 *peer = (const struct sockaddr_in6 *)remote;
-            memcpy(address, &peer->sin6_addr, 16); port = ntohs(peer->sin6_port);
-        } else if (remote->sa_family == AF_INET) {
-            const struct sockaddr_in *peer = (const struct sockaddr_in *)remote;
-            address[10] = address[11] = 255; /* Canonical IPv4-mapped IPv6 address across the adapter ABI. */
-            memcpy(address + 12, &peer->sin_addr, 4); port = ntohs(peer->sin_port);
-        } else {
-            t->handshake(t->user, record->slot, RQ_HANDSHAKE_DROPPED, NULL, 0, NULL, 0);
-            return; /* Unsupported native address families remain missing observations. */
         }
         t->handshake(t->user, record->slot, RQ_HANDSHAKE_STARTED, address, port, NULL, 0);
     } else if (type == SSL_CB_HANDSHAKE_DONE) {
@@ -225,6 +230,14 @@ static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
     struct rq_transport *t = ctx;
     /* Single-peer proofs retain their original ceiling; service admits at most sixteen authenticated peers. */
     if ((!t->multi && t->active) || t->active == RQ_PEER_SLOTS) {
+        if (t->server && t->handshake) {
+            /* Admission refusal is independent of TLS success and consumes no retained peer slot. */
+            uint8_t address[16] = {0};
+            uint16_t port = 0;
+            int known = peer_address(connection, address, &port);
+            t->handshake(t->user, RQ_HANDSHAKE_SLOTS, RQ_ADMISSION_REFUSED,
+                         known ? address : NULL, port, NULL, 0);
+        }
         ++t->capacity_rejected; lsquic_conn_abort(connection); return NULL;
     }
     /* A vacant slot remains valid until this connection's final close callback. */
