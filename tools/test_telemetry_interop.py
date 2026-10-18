@@ -257,6 +257,10 @@ def main():
             case = report['scenarios'][name] = dict(passed=False)
             run_incoming(args.peer.resolve(), args.collector.resolve(), case, BUILD/name, rejected)
             case['passed'] = True
+        from telemetry_interop_capacity import run_capacity
+        case = report['scenarios']['capacity-refusal'] = dict(passed=False)
+        run_capacity(args.peer.resolve(), args.collector.resolve(), case, BUILD/'capacity-refusal')
+        case['passed'] = True
         report['passed'] = True
     except Exception as error:
         report['failure'] = repr(error) # Preserve the diagnostic and fail the optional target honestly.
