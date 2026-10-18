@@ -94,7 +94,10 @@ capacity. See [the binding contract](../spec/report-admission.md).
 `src/state/report_transition.nim` now composes that planner with the earlier coordinator on one
 private working store and publishes the final C(10) only on complete success. See
 [the atomic publication contract](../spec/report-transition.md). Accumulation history/queue
-planning is next; PVM execution and full block execution remain later work.
+planning now lives in `src/state/accumulation_queue.nim`: it derives the exact assurance output and
+parent C(14)/C(15) from completed report admission, then computes dependency removal and deterministic
+ready waves without writes. See [the queue contract](../spec/accumulation-queue.md). Per-service
+operand preparation is next; PVM execution and full block execution remain later work.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See
@@ -138,9 +141,14 @@ See [telemetry scope and limits](../spec/telemetry.md).
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
 at most eight nonblocking loopback connections and bounded input/output buffers. The first
 method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Other chain queries
-and subscriptions remain unavailable until a real chain backend exists. `parameters()` reads an immutable
+now expose a genesis-only immutable view when an explicit genesis pair is supplied; subscriptions
+remain unavailable until block import and update events exist. `parameters()` reads an immutable
 GP 0.8.0 parameter snapshot from the explicit chainspec; four live-state fields are documented zero
-placeholders. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
+placeholders. `src/chain/genesis.nim` retains the configured serialized map through the existing
+state store, checks header/roster/time framing and computes its root at startup. It does not validate
+all state chapters or run consensus. `src/chain/services.nim` reads account metadata, storage
+values and verified preimages through immutable store views; RPC bounds raw values and aggregate
+batch responses before copying them. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

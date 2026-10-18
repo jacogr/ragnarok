@@ -96,7 +96,10 @@ See [telemetry usage, scope and verification](spec/telemetry.md).
 The proof peer also supports an opt-in WebSocket JSON-RPC endpoint: append `--rpc-port 19800`
 and connect to `ws://127.0.0.1:19800/`. `ragnarok_clientInfo` reports client diagnostics.
 `parameters()` reads GP 0.8.0 configuration from `--chain`; four state-derived fields are
-documented zero placeholders. Other JIP-2 methods and subscriptions remain unavailable.
+documented zero placeholders. A configured genesis header/state pair enables genesis-only
+`bestBlock()`, `stateRoot(hash)` and bounded `serviceData`, `serviceValue` and `servicePreimage`
+queries; `parent(hash)` reports unavailable. Block import,
+finalization and subscriptions remain future work.
 See [RPC scope and usage](spec/rpc.md).
 
 ## License
