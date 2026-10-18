@@ -966,6 +966,29 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
             passed = result['exit_code'] == 1 and expected in result['output'] and '[AssertionDefect]' in result['output']
             report['safrole_transition'].append(dict(origin=origin, passed=passed, run=result))
             announce('Safrole transition '+origin+' runtime guard', passed)
+    # A refused commitment must never expose a default digest as a successful application value.
+    compiled, binary = build(compiler, ROOT/'tests/native/extrinsic_commitment_results.nim', 'extrinsic-commitment-results', crypto_observer)
+    report['extrinsic_commitment_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Require the exact supported extraction contract and intended assertion exit.
+            result = command([binary, origin], 'extrinsic-commitment-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['extrinsic_commitment'].append(dict(origin=origin, passed=passed, run=result))
+            announce('Extrinsic commitment '+origin+' runtime guard', passed)
+    # Isolate bound-owner, composed success and each stage-reason accessor from all other guards.
+    compiled, binary = build(compiler, ROOT/'tests/native/block_admission_results.nim', 'block-admission-results', crypto_library, native_libraries=(bs_library,))
+    report['block_admission_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('admission-default', 'admission-error', 'composed-default', 'composed-error', 'admission-reason', 'safrole-reason', 'block', 'header', 'parent', 'state'):
+            # Private owner access has its own nil precondition; unrelated assertion text cannot pass.
+            result = command([binary, origin, 'default'], 'block-admission-'+origin)
+            expected = ('binding.data' if origin in ('block', 'header', 'parent', 'state') else
+                        'outcome.status == AdmissionFailure' if origin == 'admission-reason' else
+                        'outcome.status == SafroleFailure' if origin == 'safrole-reason' else 'outcome.status == None')
+            passed = result['exit_code'] == 1 and expected in result['output'] and '[AssertionDefect]' in result['output']
+            report['block_admission'].append(dict(origin=origin, passed=passed, run=result))
+            announce('Block admission '+origin+' runtime guard', passed)
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
     report['assurance_context_build'] = compiled
@@ -1587,6 +1610,7 @@ def main():
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
+    sources += [ROOT/'src/crypto/extrinsic_commitment.nim', ROOT/'tests/block_admission_fixtures.py', ROOT/'tests/native/block_admission_results.nim', ROOT/'tests/native/extrinsic_commitment_results.nim']
     sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/sealer_schedule_fixtures.py', ROOT/'tests/safrole_marker_fixtures.py', ROOT/'tests/safrole_authentication_fixtures.py', ROOT/'tests/safrole_transition_fixtures.py', ROOT/'tests/native/safrole_transition_results.nim', ROOT/'tests/native/safrole_authentication_results.nim', ROOT/'tests/native/safrole_markers_results.nim', ROOT/'tests/native/sealer_schedule_results.nim', ROOT/'tests/native/sealer_state_results.nim', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
     # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
     sys.path.insert(0, str(ROOT/'tests'))
