@@ -59,13 +59,25 @@ configured genesis snapshot. It is captured once with the same roster used for h
 not inferred from `3 * core_count` or a test profile. Without a genesis pair, it remains **0 to
 mean “not yet derived.”** This genesis-only value does not track future epoch rotations.
 
-**Remaining zero placeholders:** `tickets_attempts_number`, `basic_piece_len`, and
+`tickets_attempts_number` uses GP 0.8.0 Safrole’s `ceil(2 * epoch_period / pending_validator_count)`
+from the retained **pending** roster in C(4), independently of active C(8). For example, 600 slots
+and nine pending validators yield 134 attempts, even with six active validators. Startup exactly
+decodes the complete chapter (including schedule and accumulator) once, then retains only the
+derived scalar. Queries neither copy nor decode C(4). Both ticket and fallback-key schedules work.
+
+Missing, malformed, trailing or policy-limited C(4) leaves this field at the documented zero; it
+does not reject an otherwise accepted genesis or infer a roster from C(8). This optional derivation
+is capped at 1 MiB of chapter bytes, 1,023 pending validators and 4,096 epoch/accumulator entries.
+These are local resource ceilings, not protocol constants. Structural decoding does not establish
+key validity, ticket eligibility, ring-root consistency or consensus validity. As with `val_count`,
+the value describes the frozen configured state and does not track later epochs.
+
+**Remaining zero placeholders:** `basic_piece_len` and
 `segment_piece_count` return **0 to mean “not yet derived.” These are not actual chain values.**
 This is an explicitly documented incomplete implementation of their JIP-2 meanings, selected by
 the maintainer; placeholders must not be used to size validator sets, produce tickets or encode data.
 The remaining derivations require additional state interpretation:
 
-- `tickets_attempts_number` must follow GP 0.8.0 Safrole's `ceil(2 * epoch_period / pending_validator_count)`.
 - Erasure-coding sizes must follow GP 0.8.0's validator-dependent original-shard count and fixed
   4,104-byte segment, with the JIP-2 mapping specified when live-state support is added.
 
@@ -302,7 +314,10 @@ not substitute for the Linux CI groups.
 Parameter coverage uses independently specified fixture bytes and the complete expected V1 object,
 including 64-bit maxima and the four zeros in parameters-only operation. Genesis-backed tests
 check actual active populations of 6, 9 and 12 with four configured cores, retained source isolation,
-batches and notifications. Live genesis fixtures independently expect six active validators.
+batches and notifications. Ticket tests vary pending populations independently of the six active
+validators, exercise both schedule tags, exact division and rounding, malformed/trailing/truncated
+chapters and byte/epoch ceilings. Live genesis fixtures independently expect six active validators;
+the service fixture includes nine pending validators and expects 134 ticket attempts.
 Native tests cover truncation, malformed hex,
 configuration syntax/duplicates, invalid basic settings, snapshot isolation, unavailable configuration,
 argument validation and batches. Compiler probes protect private configuration/result fields and

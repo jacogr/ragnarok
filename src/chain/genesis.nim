@@ -4,15 +4,18 @@
 ## Immutable configured genesis view, rooted with the existing complete-map store.
 ## Exposes GenesisResult, guarded snapshot accessors, read-only lookup, serviceCount/serviceAt
 ## and captureGenesis. The configured map is trusted as complete; structural validation does not
-## establish consensus or validate every chapter.
+## establish consensus or validate every chapter. Optional C(4) supplies a cached RPC ticket limit.
 
-import std/algorithm
+import std/[algorithm, assertions]
 import ./parameters
-import ../codec/[header, assurances, bounded, state_layout, state_trie, state_safrole, state_accounts]
+import ../codec/[header, assurances, bounded, state_layout, state_trie, state_safrole,
+    state_accounts, state_consensus]
 import ../state/store
 import ../crypto/primitives
 
 type
+  ## Advertised ticket-attempt limit; zero explicitly represents an unavailable derivation.
+  RpcTicketAttempts* = distinct uint64
   ## An ordinal in the retained service list, distinct from a service ID or state key.
   ServiceListIndex* = distinct int
   ## Ordinal in the retained sorted serialized-key index, bound to its genesis owner.
@@ -28,6 +31,7 @@ type
     timeslot: uint32
     epochLength: EpochSlots          # Captured with the same parameters as header validation.
     corePopulation: CoreCount
+    ticketLimit: RpcTicketAttempts   # Cached at capture; optional C(4) never runs in the dispatcher.
     activePopulation: ValidatorCount # Actual C(8) population used for header validation.
     keys: seq[StateKey]              # Private fixed-width copies; at most 16384 entries.
     services: seq[ServiceIndex]      # Private sorted IDs captured with the same immutable state.
@@ -59,6 +63,8 @@ func header*(value: Genesis): OwnedHeader {.requires: value.ready.} = value.seal
 func cores*(value: Genesis): CoreCount {.requires: value.ready.} = value.corePopulation
 ## Return the copied active validator population from the exactly decoded C(8) roster.
 func activeValidators*(value: Genesis): ValidatorCount {.requires: value.ready.} = value.activePopulation
+## Return the cached RPC ticket limit, or its documented zero when C(4) cannot be derived.
+func ticketAttempts*(value: Genesis): RpcTicketAttempts {.requires: value.ready.} = value.ticketLimit
 ## Return the captured epoch-ring length used to decode retained ready state.
 func epochSlots*(value: Genesis): EpochSlots {.requires: value.ready.} = value.epochLength
 ## Return the copied genesis timeslot.
@@ -138,6 +144,36 @@ proc stateRoot*(value: Genesis): StateRoot {.requires: value.ready.} = value.sta
 proc lookup*(value: Genesis, key: StateKey): StateStoreResult[StateValue] =
   store.lookup(value.state, key)
 
+## Derive the advertised limit from complete C(4), borrowing only a validated immutable store.
+## Missing, malformed or policy-limited optional state maps to the documented RPC zero placeholder.
+## This checks serialization, not key validity, ticket eligibility or Safrole consensus transitions.
+proc captureTicketAttempts(state: StateStoreSnapshot, cores: CoreCount,
+    epoch: EpochSlots): RpcTicketAttempts =
+  let slots = uint64(epoch)
+  if slots == 0 or slots > 4096:
+    return RpcTicketAttempts(0) # Bound schedule and accumulator work independently of wire size.
+  let found = state.lookup(chapterKey(StateChapter(4)))
+  if found.error != StateStoreError.None:
+    return RpcTicketAttempts(0) # Optional state must not manufacture a pending roster.
+  if found.value.byteLength > 1024 * 1024:
+    return RpcTicketAttempts(0) # Bound copying before obtaining the chapter bytes.
+  let wire = found.value.bytes
+  let decoded = decodeSafroleState(wire, SafroleStateConfig(
+    validators: ValidatorStateConfig(cores: cores, validators: ElementLimit(1023),
+      maxBytes: ByteLimit(1024 * 1024)), epochSlots: epoch,
+    maxAccumulator: ElementLimit(4096), maxBytes: ByteLimit(1024 * 1024)))
+  if decoded.error != StateComponentError.None:
+    return RpcTicketAttempts(0) # A valid roster prefix alone cannot authorize a derived value.
+  if decoded.value.consumed != wire.len:
+    return RpcTicketAttempts(0) # Reject trailing bytes after the complete Safrole chapter.
+  let metadata = safroleInfo(decoded.value.snapshot)
+  if metadata.error != StateComponentError.None:
+    return RpcTicketAttempts(0) # Only the successful owner supplies the pending population.
+  let pending = uint64(metadata.value.validators)
+  assert pending >= 6 # The exact roster decoder established a nonzero valid population.
+  # The 4096-slot ceiling proves multiplication and ceiling-division addition cannot overflow.
+  RpcTicketAttempts((2 * slots + pending - 1) div pending)
+
 ## Validate header framing against the supplied active roster and time, then own the complete map.
 ## Input bytes are borrowed only during this call; no signature or whole-state validation is claimed.
 proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
@@ -181,6 +217,8 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   let hashed = blake2b256(wire)
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
   GenesisResult(status: GenesisError.None, completed: Genesis(ready: true, state: saved.value,
+    ticketLimit: captureTicketAttempts(saved.value, CoreCount(cores), EpochSlots(parameters.get(
+        epochPeriod))),
     sealedHeader: decoded.value.owner, activePopulation: ValidatorCount(count.value),
     identity: BlockHash(array[32, byte](hashed.value)), epochLength: EpochSlots(parameters.get(
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
