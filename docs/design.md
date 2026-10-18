@@ -107,10 +107,11 @@ see [the register semantics contract](../spec/pvm-registers.md). `src/pvm/gas.ni
 calculates whole-block pipeline costs with bounded storage and a local cycle limit;
 [the gas contract](../spec/pvm-gas.md) records independent witnesses and the negative
 branch-target specification gate. `src/pvm/step.nim` now charges whole blocks and
-executes register and control-flow steps into immutable machine snapshots, preserving
+executes register, control-flow and scalar memory steps into immutable machine snapshots, preserving
 the full state on out-of-gas and the specified single-step terminal PCs; see
-[the stepping contract](../spec/pvm-step.md). Memory-instruction integration, host
-calls and recursive execution remain open.
+[the stepping contract](../spec/pvm-step.md). Memory faults retain the paid block charge
+and permit repair/retry without double charging. Host calls and recursive execution
+remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2

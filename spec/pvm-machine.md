@@ -130,8 +130,7 @@ protect owners, result state and nominal domains. Five isolated runtime misuse
 probes enforce value-versus-fault selection through the existing failure harness.
 
 No standalone official PVM execution corpus is claimed by these tests. The pinned
-execution-vector gap described in `pvm-program.md` remains. Next: instruction
-execution in bounded opcode groups, with gas charging and exact exceptional state
-semantics grounded in the pinned specification. This increment does not implement
-gas charging, halt/host-call outcomes, page-fault resumption, standard initialization,
-host functions or any complete JAM invocation.
+execution-vector gap described in `pvm-program.md` remains. The separate
+[single-step executor](pvm-step.md) now integrates memory instructions, gas charging
+and fault repair/retry while preserving the explicit wrapping-access gate.
+Standard initialization, host functions and complete JAM invocation remain open.

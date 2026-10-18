@@ -1,4 +1,4 @@
-# Charged register and control-flow PVM steps
+# Charged PVM single steps
 
 ## Scope and normative ordering
 
@@ -13,6 +13,9 @@ mutation tables. The chapter hash remains in `spec/pins.json`.
 static/dynamic jumps, both load-and-jump forms, all conditional branches, trap and
 dynamic halt. Both entry points implement subsets of `Psi_1`, not the recursive
 `Psi` executor. `stepRegisters` preserves its existing capability boundary.
+`stepMemory(machine, limit)` adds all 30 scalar load/store instructions to the
+register/control subset; only host `ecalli` remains outside its opcode capability.
+The inherited specification gates still prevent a full execution-conformance claim.
 Each API first validates its owner and supported opcode. Instructions outside its
 capability boundary (host calls and memory accesses for `stepControl`) return a
 local `UnsupportedInstruction` with no outcome, even when guest gas is zero.
@@ -37,10 +40,12 @@ with zero remaining gas and a zero local simulation limit.
 
 `StepResult` has private status/payload fields and a success-only `value` accessor.
 Successful evaluation carries a copied `StepOutcome` with `Continued`, `OutOfGas`,
-`Panic` or `Halt`
-and its immutable `Machine`. Local errors carry no machine or tentative gas debit:
+`Panic`, `Halt` or `Fault` and its immutable `Machine`. Outcome `exit` is read-only;
+only the private `Fault` alternative stores a physical page, exposed by a guarded
+`faultPage` accessor. Local errors carry no machine or tentative gas debit:
 `InvalidMachine`, `UnsupportedInstruction`, `GasCycleLimitExceeded` and the inherited
-`NegativeBranchTarget` specification gate. Default results are `Uninitialized`.
+`NegativeBranchTarget` and `AmbiguousAccessOrder` specification gates. Default
+results are `Uninitialized`.
 Guest out-of-gas is a completed evaluation, not one of those local errors.
 
 The program is extracted from the source snapshot via `programOf`; callers cannot
@@ -106,6 +111,44 @@ define negative byte indices. A trusted prepaid snapshot bypasses pricing and th
 instruction itself correctly panics on the invalid destination. Static unconditional
 negative targets have no such pricing dependency and panic after normal charging.
 
+## Memory instructions and exceptions
+
+The pinned GP 0.8.0 instruction tables define absolute immediate stores (30–33),
+absolute loads/register stores (52–62), indirect immediate stores (70–73), and
+indirect register stores/loads (120–130). `stepMemory` implements all these widths
+and operand roles using the existing immutable scalar memory API. Decoded register
+indices remain saturated at 12. Indirect operands are read before any destination
+write, including aliased loads. Address operands are reduced modulo 2^32 before
+addition, so the intermediate fits 33 bits without overflowing a host register;
+scalar byte addressing then preserves the specified cyclic memory domain.
+
+Loads read little-endian bytes and sign-extend only i8/i16/i32 forms. Stores write
+the low requested bytes, including sign-extended immediate values for 64-bit stores.
+A successful access advances PC by `1 + skip`, preserves the charged flag, and
+publishes only the specified register or memory mutation. Source snapshots and
+unchanged pages remain immutable; cross-page stores preflight every byte before
+publishing any write.
+
+The final-state and charged-flag equations in “Single-Step State Transition” govern
+exception ordering. Insufficient gas wins before memory inspection and returns the
+original snapshot. After an affordable charge, a protected-memory `Panic` or a
+`Fault` retains the debit and charged flag but restores the original PC, all
+registers, and memory. Unlike trap, memory panic does not increment PC. The fault
+reason is the aligned physical byte address of the first inaccessible page, not
+its page ordinal. Default and non-fault outcomes cannot expose a fabricated page.
+
+An environment may replace/remap memory through `withPage`/`withMemory` and retry
+the faulting instruction. The retained charged flag bypasses cost simulation and
+subtraction on both repeated faults and repaired retries, including zero gas and
+a zero local simulation limit. This is state repair through existing trusted APIs,
+not a host allocator or standard JAM initialization implementation.
+
+For the existing ambiguous high-page-fault/low-page-wrap case, the step returns
+local `AmbiguousAccessOrder` with no machine or gas progress. It does not turn the
+pinned prose/equation disagreement into a guest fault or panic. Out-of-gas still
+wins before inspection. See [the memory gate](pvm-machine.md#explicit-unresolved-specification-gate)
+for the exact conflicting witness and behavior when the high page is accessible.
+
 ## Evidence
 
 A test-only reference composes the existing independent mathematical register oracle
@@ -143,9 +186,22 @@ all CPU fields, original snapshots and retained memory are compared. Existing
 independent arithmetic traces also run through the broader entry point, and ARC
 release cycles now include terminal snapshots.
 
+The memory suite independently encodes all 30 opcodes and compares complete CPU
+states and page images across permission pairs, sign patterns, ordinary/page-edge
+addresses, absent pages, low protection, cyclic wrap and aliased register roles.
+Every witness runs prepaid, at exact gas, and underfunded. It checks sign extension,
+low-byte stores, unchanged failure prefixes, physical fault pages, repeated faults,
+repaired store/load retries, saturated indices and address sums exceeding 64 bits.
+The existing independent arithmetic traces and control witnesses also execute through
+`stepMemory`. Compiler guards protect outcome state/page privacy and nominal limits;
+isolated runtime probes reject fault-page access on every non-fault alternative and
+value access on the ambiguity gate. ARC release cycles include source/fault/repair/
+success graphs. Inputs are original native witnesses; no upstream implementation,
+licence or binary fixture is copied into the project.
+
 ## Remaining execution work
 
-Next bounded increment: memory instructions and their fault/panic ordering.
+Next bounded increment: host-call suspension and bounded recursive execution.
 Host calls, recursive `Psi`, standard initialization and complete JAM invocation
 remain unimplemented. The
 negative branch-price and wrapping-memory specification gates remain unresolved.
