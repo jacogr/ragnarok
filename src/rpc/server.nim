@@ -4,7 +4,7 @@
 ## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
 ##
 ## Exposes the Server owner, publishBlock handoff and start/tick/close lifecycle.
-## The caller services bounded connection slots and per-connection best-block subscription queues.
+## The caller services bounded connection slots and per-connection chain subscription queues.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -145,7 +145,7 @@ proc start*(server: var Server, port: uint16, role: string,
 
 ## Publish a caller-validated direct child between ticks on the same dispatcher thread.
 ## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
-## current view and forward advanceView's reason. Success replaces the chain and queues descriptors,
+## current view and forward advanceView's reason. Success replaces the chain and queues subscription updates,
 ## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
 ## This is not a thread-safe import/validation API.
 proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceError =
@@ -157,7 +157,7 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
   server.chain = update.value
   for slot in mitems(server.connections):
     if slot.opened and slot.upgraded and not slot.closing: # Only usable WS connections receive events.
-      if not slot.session.queueBestBlock(child):
+      if not slot.session.queueChainUpdates(child):
         slot.close() # Disconnect only the overflowing consumer; never drop updates or reject the chain head.
   ViewAdvanceError.None
 
@@ -308,7 +308,7 @@ proc tick*(server: var Server, peers: uint32) =
       if slot.opened and slot.output.len == 0:
         slot.process(info, now)
     if slot.opened and not slot.closing and slot.output.len == 0:
-      let update = slot.session.nextBestUpdate()
+      let update = slot.session.nextUpdate()
       if update.len > 0:
         slot.output = frame(update) # Request replies precede queued notifications on this connection.
         slot.offset = 0

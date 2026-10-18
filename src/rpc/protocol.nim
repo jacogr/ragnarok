@@ -8,7 +8,7 @@
 ## responses. configuredParameters and configuredGenesis validate bounded chainspec text into
 ## owned parameter and genesis snapshots;
 ## parameters() derives active-roster erasure geometry and pending-roster ticket limits;
-## missing state uses zero. RpcSession owns bounded best-block subscriptions and serialized updates.
+## missing state uses zero. RpcSession owns bounded best-block/statistics subscriptions and updates.
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
@@ -16,8 +16,9 @@ import ../chain/[parameters, genesis, services, statistics, beefy, reports, prov
 import ../codec/[state_trie, state_layout, header]
 import ../state/store
 
-const MaxBestSubscriptions* = 8 # Per WebSocket connection; IDs are never reused within a session.
-const MaxBestUpdates* = 16 # Bounded FIFO of serialized descriptors, not retained state snapshots.
+const MaxSubscriptions* = 8 # Per WebSocket connection; IDs are never reused within a session.
+const MaxSubscriptionUpdates* = 16 # Bounded FIFO of serialized updates, not retained state snapshots.
+const MaxSubscriptionQueueBytes* = 65535 # Additional byte ceiling shared by all pending update kinds.
 
 const MaxReplyBytes = 65535 # One canonical medium-length WS frame, including batch punctuation.
 const MaxBlobReplyBytes = 32768 # Bound each raw value copy/hash before Base64 encoding.
@@ -38,17 +39,23 @@ type
     index: int
     children: int
   ## Connection-local subscription identity; zero is reserved for an unused fixed table entry.
-  BestSubscriptionId = distinct uint32
+  SubscriptionId = distinct uint32
+  ## Supported chain subscriptions share capacity and IDs, but use their own cancellation method.
+  SubscriptionKind {.pure.} = enum BestBlock, Statistics
+  ## One active subscription; zero identity marks a vacant entry regardless of its default kind.
+  Subscription = object
+    identity: SubscriptionId
+    kind: SubscriptionKind
   ## One owned notification, kept separately from the transport's possibly partly written frame.
-  BestUpdate = object
-    identity: BestSubscriptionId
+  SubscriptionUpdate = object
+    identity: SubscriptionId
     text: string
   ## Private bounded subscription table and FIFO; no callbacks, pointers or state-map owners escape.
   RpcSession* = object
     lastId: uint32
-    active: array[MaxBestSubscriptions, BestSubscriptionId]
-    pending: array[MaxBestUpdates, BestUpdate]
-    pendingCount: int
+    active: array[MaxSubscriptions, Subscription]
+    pending: array[MaxSubscriptionUpdates, SubscriptionUpdate]
+    pendingCount, pendingBytes: int
   ## Caller supplies only observed runtime information, copied synchronously during dispatch.
   ClientInfo* = object
     uptimeMs*: int64
@@ -337,83 +344,136 @@ proc error(id: string, code: int, message: string): string =
   "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":" & $code & ",\"message\":" & quote(
       message) & "}}"
 
-## Append a descriptor notification after the caller has reserved one FIFO slot.
-proc enqueueBest(session: var RpcSession, identity: BestSubscriptionId, value: string) =
-  session.pending[session.pendingCount] = BestUpdate(identity: identity,
-    text: "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":{\"subscription\":" &
-      $uint32(identity) & ",\"result\":" & value & "}}")
-  inc session.pendingCount
+## Build a JIP-2 notification with either a complete result or a terminal human-readable error.
+proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure: string): string =
+  let methodName = if kind == SubscriptionKind.BestBlock: "subscribeBestBlock" else: "subscribeStatistics"
+  let payload = if failure.len == 0: "\"result\":" & value else: "\"error\":" & quote(failure)
+  "{\"jsonrpc\":\"2.0\",\"method\":" & quote(methodName) & ",\"params\":{\"subscription\":" &
+    $uint32(identity) & "," & payload & "}}"
 
-## Queue every active subscriber's update atomically, or return false without changing this FIFO.
-## The server closes an overflowing consumer; no head update is silently coalesced or dropped.
-proc queueBestBlock*(session: var RpcSession, head: BlockSnapshotResult): bool =
+## Encode validated C(13) once per publication/session; failures never expose a partial result.
+proc statisticsUpdate(head: BlockSnapshot): string =
+  let found = statistics.statistics(head, ByteLimit(MaxBlobReplyBytes))
+  if found.error != StatisticsReadError.None:
+    return "" # Missing, malformed and oversized statistics all terminate this subscription family.
+  let blockInfo = descriptor(head)
+  blockInfo[0..^2] & ",\"value\":" & quote(base64.encode(found.value.bytes)) & "}"
+
+## Append an already sized notification; callers reserve both a FIFO slot and its serialized bytes.
+proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: string) =
+  session.pending[session.pendingCount] = SubscriptionUpdate(identity: identity, text: text)
+  inc session.pendingCount
+  session.pendingBytes += text.len
+
+## Queue all active updates atomically, or leave the session intact if either queue limit is exceeded.
+## Decode statistics at most once per session, only when requested; failed statistics emit a terminal
+## error for those subscribers while best-block subscriptions continue. No state snapshots are retained.
+proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): bool =
   if head.error != GenesisError.None:
     return false # Failed captures never expose a descriptor or mutate pending updates.
   var count = 0
-  for identity in session.active:
-    if uint32(identity) != 0:
-      inc count # Reserve capacity before serializing or appending any subscriber's notification.
-  if count > MaxBestUpdates - session.pendingCount:
-    return false # Caller owns the slow-client policy; accepted chain publication is independent.
+  var wantsStatistics = false
+  for item in session.active:
+    if uint32(item.identity) != 0:
+      inc count # Reserve slots before deriving any values.
+      if item.kind == SubscriptionKind.Statistics:
+        wantsStatistics = true # Share one C(13) decode among every statistics subscriber on this connection.
+  if count > MaxSubscriptionUpdates - session.pendingCount:
+    return false # Caller disconnects the slow consumer without rejecting chain publication.
   if count == 0:
-    return true # Unsubscribed connections retain neither descriptors nor state snapshots.
-  let value = descriptor(head.value)
-  for identity in session.active:
-    if uint32(identity) != 0:
-      session.enqueueBest(identity, value) # Publication order and table order define FIFO ordering.
+    return true # Unsubscribed connections do no state decoding or JSON work.
+  let blockInfo = descriptor(head.value)
+  let activity = if wantsStatistics: statisticsUpdate(head.value) else: ""
+  var messages = default(array[MaxSubscriptions, string])
+  var bytes = session.pendingBytes
+  for index, item in session.active:
+    if uint32(item.identity) != 0:
+      let failure = if item.kind == SubscriptionKind.Statistics and activity.len == 0:
+        "Invalid, unavailable or oversized activity statistics" else: ""
+      let value = if item.kind == SubscriptionKind.Statistics: activity else: blockInfo
+      messages[index] = updateText(item.identity, item.kind, value, failure)
+      if messages[index].len > MaxSubscriptionQueueBytes - bytes:
+        return false # No messages or terminal removals have committed yet.
+      bytes += messages[index].len
+  for index in 0..<MaxSubscriptions:
+    let item = session.active[index] # Copy the fixed record before mutating the queue/table.
+    if uint32(item.identity) != 0:
+      session.enqueueUpdate(item.identity, messages[index]) # Commit only after the entire publication fits.
+      if item.kind == SubscriptionKind.Statistics and activity.len == 0:
+        session.active[index] = default(Subscription) # Its queued error is terminal; unrelated subscriptions survive.
   true
 
-## Consume one pending notification only when transport output is empty; default sessions return empty.
-proc nextBestUpdate*(session: var RpcSession): string =
+## Consume one pending notification only when transport output is empty, releasing its byte allowance.
+proc nextUpdate*(session: var RpcSession): string =
   if session.pendingCount == 0:
     return "" # No allocation or descriptor work for ordinary RPC connections.
   result = session.pending[0].text
+  session.pendingBytes -= result.len
   dec session.pendingCount
   for index in 0..<session.pendingCount:
     session.pending[index] = session.pending[index + 1] # Shift at most fifteen owned string handles.
-  session.pending[session.pendingCount] = default(BestUpdate) # Release the vacated tail's ownership.
+  session.pending[session.pendingCount] = default(SubscriptionUpdate) # Release the vacated tail's ownership.
 
-## Validate and execute the two connection-local subscription methods; errors carry no partial mutation.
-## Initial snapshots and boolean cancellation results are local policies where JIP-2 is unspecified.
-proc bestSubscription(values: seq[Value], parameters: int, methodName, id: string,
+## Validate subscription calls and family-specific cancellation; failed calls leave tables unchanged.
+## Initial snapshots, boolean cancellation and terminal-error removal are documented local policies.
+proc chainSubscription(values: seq[Value], parameters: int, methodName, id: string,
     info: ClientInfo, session: var RpcSession): string =
   if parameters >= 0 and values[parameters].kind != arrayValue:
     return error(id, -32602, "Expected positional params") # Named arguments are not JIP-2 calls.
-  if methodName == "subscribeBestBlock":
-    if parameters >= 0 and values[parameters].next != parameters + 1:
-      return error(id, -32602, "Expected no parameters") # The best-block subscription has no finalized flag.
+  let kind = if methodName in ["subscribeStatistics",
+      "unsubscribeStatistics"]: SubscriptionKind.Statistics else: SubscriptionKind.BestBlock
+  if methodName in ["subscribeBestBlock", "subscribeStatistics"]:
+    if kind == SubscriptionKind.Statistics:
+      if parameters < 0 or values[parameters].next != parameters + 2 or
+          values[parameters + 1].kind != literalValue or values[parameters + 1].text notin ["true", "false"]:
+        return error(id, -32602, "Expected finalized boolean") # Never interpret numbers, null or containers as flags.
+      if values[parameters + 1].text == "true":
+        return error(id, 0, "Finalized chain view unavailable") # Do not substitute best-chain state for finality.
+    elif parameters >= 0 and values[parameters].next != parameters + 1:
+      return error(id, -32602, "Expected no parameters") # Best-block subscriptions have no finalized flag.
     let head = info.chain.bestBlock
     if head.error != GenesisError.None:
       return error(id, 0, "Chain view unavailable") # Do not accept a subscription without a chain source.
     var free = -1
-    for index in 0..<MaxBestSubscriptions:
-      if uint32(session.active[index]) == 0:
-        free = index # Use the first vacant entry; IDs remain monotonically increasing after cancellation.
+    for index in 0..<MaxSubscriptions:
+      if uint32(session.active[index].identity) == 0:
+        free = index # Reuse the table slot, never its subscription identity.
         break
-    if free < 0 or session.pendingCount == MaxBestUpdates or session.lastId == high(uint32):
-      return error(id, 0, "Subscription capacity exhausted") # Never wrap IDs or overrun a bounded queue.
+    if free < 0 or session.pendingCount == MaxSubscriptionUpdates or session.lastId == high(uint32):
+      return error(id, 0, "Subscription capacity exhausted") # Never wrap IDs or overrun bounded slots.
+    let value = if kind == SubscriptionKind.Statistics: statisticsUpdate(
+        head.value) else: descriptor(head.value)
+    if value.len == 0:
+      return error(id, 0, "Invalid, unavailable or oversized activity statistics") # No initial success without a valid value.
+    let identity = SubscriptionId(session.lastId + 1)
+    let message = updateText(identity, kind, value, "")
+    if message.len > MaxSubscriptionQueueBytes - session.pendingBytes:
+      return error(id, 0, "Subscription capacity exhausted") # Byte refusal cannot consume an ID or discard older updates.
     inc session.lastId
-    let identity = BestSubscriptionId(session.lastId)
-    session.active[free] = identity
-    session.enqueueBest(identity, descriptor(head.value))
+    session.active[free] = Subscription(identity: identity, kind: kind)
+    session.enqueueUpdate(identity, message)
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $session.lastId & "}"
   var number = 0'u32
   if parameters < 0 or values[parameters].next != parameters + 2 or
       not serviceNumber(values[parameters + 1], number):
     return error(id, -32602, "Expected uint32 subscription ID") # Reject malformed IDs before touching tables.
   var found = false
-  for index in 0..<MaxBestSubscriptions:
-    if number != 0 and uint32(session.active[index]) == number:
-      session.active[index] = BestSubscriptionId(0) # Only IDs owned by this connection can be canceled.
+  for index in 0..<MaxSubscriptions:
+    if number != 0 and uint32(session.active[index].identity) == number and session.active[
+        index].kind == kind:
+      session.active[index] = default(Subscription) # Cancellation must use the corresponding subscription method.
       found = true
-  var kept = 0
-  for index in 0..<session.pendingCount:
-    if uint32(session.pending[index].identity) != number:
-      session.pending[kept] = session.pending[index] # Preserve FIFO order for other subscribers.
-      inc kept
-  for index in kept..<session.pendingCount:
-    session.pending[index] = default(BestUpdate) # Cancellation releases undelivered serialized updates.
-  session.pendingCount = kept
+  if found:
+    var kept = 0
+    for index in 0..<session.pendingCount:
+      if uint32(session.pending[index].identity) != number:
+        session.pending[kept] = session.pending[index] # Preserve FIFO order for other subscribers.
+        inc kept
+      else:
+        session.pendingBytes -= session.pending[index].text.len # Release only this ID's undelivered byte allowance.
+    for index in kept..<session.pendingCount:
+      session.pending[index] = default(SubscriptionUpdate) # Release vacated tail ownership after compaction.
+    session.pendingCount = kept
   "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $found & "}"
 
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
@@ -429,7 +489,7 @@ proc clientInfo(info: ClientInfo, stateful: bool): string =
       GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
   result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
-      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\"" else: "") & "]")
+      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\"" else: "") & "]")
   result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -461,8 +521,9 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     else: discard # JSON-RPC permits additional envelope members.
     i = token.next
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
-  if stateful and methodName in ["subscribeBestBlock", "unsubscribeBestBlock"]:
-    let response = bestSubscription(values, parameters, methodName, id, info, session)
+  if stateful and methodName in ["subscribeBestBlock", "unsubscribeBestBlock",
+      "subscribeStatistics", "unsubscribeStatistics"]:
+    let response = chainSubscription(values, parameters, methodName, id, info, session)
     return if hasId: response else: "" # Notifications execute but never receive a JSON-RPC reply.
   if not hasId: return "" # All remaining methods are read-only and have no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
