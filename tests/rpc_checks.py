@@ -225,6 +225,7 @@ def check_service_queries(connection, expected):
     header = expected['header_hash']
     cases = [
         ('statistics', [header], expected['statistics']),
+        ('beefyRoot', [header], expected['beefy_root']),
         ('listServices', [header], [42, 4294967295]),
         ('serviceRequest', [header, 42, 'A'*43+'=', 0], []),
         ('serviceRequest', [header, 42, 'A'*43+'=', 1], [0]),

@@ -679,6 +679,7 @@
     "request_result_read_private": "completed",
     "request_result_retag": "status",
     "request_result_value_write": "value",
+    "rpc_beefy_result_private": "status",
     "rpc_genesis_owner_private": "state",
     "rpc_genesis_result_private": "status",
     "rpc_parameters_owner_private": "numbers",

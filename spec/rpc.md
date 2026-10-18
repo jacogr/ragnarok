@@ -31,7 +31,7 @@ Send a WebSocket text message:
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)` and the service queries below are implemented; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)` and the service queries below are implemented; other JIP-2 chain methods
 and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -301,3 +301,29 @@ configuration syntax/duplicates, invalid basic settings, snapshot isolation, una
 argument validation and batches. Compiler probes protect private configuration/result fields and
 reject extraction from known failure. Live WS checks exercise configured and unconfigured nodes,
 file mutation after startup, maximum-size batches, and invalid/missing configuration startup.
+
+## BEEFY root query
+
+`beefyRoot(header_hash)` returns the padded Base64 accumulation-log super-peak from the
+newest C(3) history record for the configured genesis block. This follows JIP-2 at the revision
+above and Gray Paper 0.8.0 revision `07f041dabd073f9018b418e9ee72e79dd2185401`,
+`text/beefy.tex`, equation `accoutsignedcommitment` (`last(recenthistory).superpeak`).
+It reads the stored commitment; it does not return a signature, assert finality, or recompute
+and validate the history's consistency with the MMR peaks.
+
+`src/chain/beefy.nim` exactly decodes C(3), checks the newest header and slot against the
+retained block, and copies its nominal root. Missing or empty history, malformed/suffixed
+bytes, mismatched identity/slot and policy refusal return RPC error 0; an unknown block
+returns error 1 with its requested hash. Empty history is not interpreted as a zero root;
+a matching record may legitimately contain zero. Input is bounded before copying to 256 KiB,
+eight records, 341 packages per record, 2728 total packages and 1024 peak positions. These
+are RPC resource policies, not additional consensus limits. Failed/default results carry
+no root; successful extraction returns a fixed copy with no retained decoder lifetime.
+
+Native tests use independently encoded history records to check last-record selection,
+nonzero/zero roots, missing/empty/truncated/suffixed/oversized histories, mismatched headers
+and slots, unknown blocks, argument validation, batches and notifications. Live WebSocket
+checks read a fixed expected root after the source chainspec has been changed, proving
+startup snapshot isolation. No live block import, BEEFY signing/finality, or subscriptions
+are added. The next RPC increment should follow the available block-import/update pipeline;
+subscriptions and live head/finality views still require those state sources.

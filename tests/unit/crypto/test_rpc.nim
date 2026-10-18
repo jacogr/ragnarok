@@ -8,7 +8,7 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/chain/[services, statistics]
+import ../../../src/chain/[services, statistics, beefy]
 include ../../../src/rpc/server
 
 # Construct independently masked client frames; test payloads stay within the medium-length format.
@@ -489,4 +489,50 @@ retireGenesis() # Warm parsing and trie allocation before measuring retained sto
 let genesisBaseline = getOccupiedMem()
 for iteration in 0..<20: retireGenesis() # Independent maps expose a missing custom-destructor field release.
 assert getOccupiedMem() <= genesisBaseline + 256
+
+# Independent C(3) bytes bind the newest super-peak to the configured header and slot.
+proc beefyInfo(wire: string): ClientInfo =
+  ## Capture a fresh immutable configured map with the supplied history bytes.
+  let state = genesisState[0..^2] & ",\"03" & repeat("00", 30) & "\":\"" & wire & "\"}"
+  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
+    genesisParameters.value))
+let beefyCall = rootRequest.replace("stateRoot", "beefyRoot")
+let historyHeader = "e6638eb23c6a531864cb91d8bf1a26c66feeedd83b55cc2a72c9c35900428ed4"
+let historyRecord = historyHeader & repeat("ab", 32) & repeat("00", 32) & "0700000000"
+let beefyWire = "01" & historyRecord & "00"
+let beefyOwner = beefyInfo(beefyWire)
+let beefyAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s=\"}"
+assert respond(beefyCall, beefyOwner) == beefyAnswer
+assert respond("[" & beefyCall & "," & beefyCall & "]", beefyOwner) == "[" & beefyAnswer & "," &
+    beefyAnswer & "]"
+assert respond(beefyCall.replace(",\"id\":1", ""), beefyOwner) == ""
+assert "\"beefyRoot\"" in respond(request, beefyOwner)
+assert "\"code\":0" in respond(beefyCall, withGenesis)
+assert "\"code\":1" in respond(beefyCall, info)
+assert "\"code\":1" in respond(beefyCall.replace(genesisHash, repeat("A", 43) & "="), beefyOwner)
+assert "\"code\":-32602" in respond(beefyCall.replace(genesisHash, "bad"), beefyOwner)
+# Empty/malformed/suffixed history and a mismatched newest block must never publish a root.
+for wire in ["0000", "", "09", beefyWire & "00", beefyWire[0..^3],
+    beefyWire.replace(historyHeader, repeat("00", 32)),
+    beefyWire.replace("07000000", "08000000")]:
+  assert "\"code\":0" in respond(beefyCall, beefyInfo(wire))
+# Older records may differ; selection is explicitly the last record, including a legitimate zero root.
+assert respond(beefyCall, beefyInfo("02" & historyRecord.replace("ab", "cd") & historyRecord &
+    "00")) == beefyAnswer
+assert "\"result\":\"" & repeat("A", 43) & "=\"" in respond(beefyCall, beefyInfo(beefyWire.replace(
+    "ab", "00")))
+assert beefyRoot(default(Genesis)).error == BeefyReadError.Uninitialized
+# Reject oversized chapters before copying their untrusted contents.
+assert "\"code\":0" in respond(beefyCall, beefyInfo(repeat("00", 262145)))
+
+# Repeated decoding must retire its history owner after copying the fixed reply root.
+proc retireBeefyReply() =
+  ## Exercise decoder and JSON ownership without retaining the transient history snapshot.
+  assert respond(beefyCall, beefyOwner) == beefyAnswer
+retireBeefyReply()
+let beefyBaseline = getOccupiedMem()
+for iteration in 0..<100:
+  # Fresh decoder owners must all release their arrays and package/peak storage.
+  retireBeefyReply()
+assert getOccupiedMem() <= beefyBaseline + 256
 echo "rpc ok"

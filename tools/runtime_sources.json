@@ -18,6 +18,7 @@
   "spec/quic-proof-pins.json",
   "spec/toolchain.json",
   "src/bandersnatch/bandersnatch.nim",
+  "src/chain/beefy.nim",
   "src/chain/genesis.nim",
   "src/chain/parameters.nim",
   "src/chain/services.nim",
