@@ -131,6 +131,17 @@ at import; native discovery still checks checked-in suites and their expected-ou
 verification still checks complete corpus/failure coverage. Both the loader and JSON data are
 included in report provenance. Compiler guards do not import the runtime executor.
 
+`tools/native_requirements.json` declares each suite's source directory, ordered libraries,
+headers, observer call-site renames, compiler defines and fresh-fixture requirement, one suite
+per line. The loader requires exact coverage of the execution inventory, validates the primary
+link profile and rejects unknown fields/settings. `make check-inventory` (also run explicitly
+by each CI job) loads these requirements before provisioning. Keep suite execution order in
+`verification_inventory.json`; the requirements file does not schedule tests.
+`tools/native_fixtures.py` separates schedule, markers, authentication, transition, commitment,
+admission, disputes and availability preparation. Its aggregate entry point preserves the
+historical preparation order and nested sealer evidence schema; each feature can also be
+prepared independently. All new tooling and metadata are included in runtime provenance.
+
 `tools/corpus_checks.py` compares complete native output against independently prepared expected
 rows. The runtime runner retains corpus-specific generation, linking, provenance and additional
 coverage predicates. The shared comparison preserves nonzero-exit rejection, missing/extra-row
@@ -894,3 +905,11 @@ Add a failure family as `tools/failure_suites/<family>.json`, retaining one case
 independent count in `verification_inventory.json` and an explicit `run_failure_suite` call at
 the intended position. Alphabetical file loading does not change execution order. All family
 files are automatically included in runtime provenance; no central list of JSON files is needed.
+
+Provenance preflight checks all Python files recursively under `tools/` and `tests/`, plus
+JSON files under `tools/`, against the exact source expansion used by runtime reports.
+Add newly introduced helpers to `tools/runtime_sources.json`; existing explicit discovery
+rules also count as coverage. Historical exceptions live in `runtime_provenance.EXCLUSIONS`
+with a reason; missing, already-covered or unjustified exceptions fail preflight. This check
+also catches untracked new helpers locally. Native sources and fixtures retain their separate
+inventory checks; this policy does not claim complete dependency-graph discovery.

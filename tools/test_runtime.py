@@ -977,17 +977,9 @@ def main():
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
     report['clang_version'] = command(['clang', '--version'], 'clang-version')
     report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
-    # Literal provenance inputs are merge-friendly data; discovery rules remain explicit.
-    sources = [ROOT/path for path in RUNTIME_SOURCES]
-    sources += sorted((ROOT/'tools/failure_suites').glob('*.json'))
-    sources += list((ROOT/'src/codec').glob('*.nim')) + list((ROOT/'src/state').glob('*.nim'))
-    sources += [unit_source(name) for name in UNIT_SUITES]
-    sources += [unit_source(name).with_suffix('.output') for name in UNIT_SUITES]
-    sources += unit_fixture_sources()
-    sources += list((ROOT/'tests').glob('report_*.py')) + list((ROOT/'tests').glob('guarantees_*.py'))
-    sources += list((ROOT/'tests/native').glob('nimony_*.nim'))
-    sources += [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL, *CONTRACTS)]
-    sources += [Path(__file__).resolve()]
+    # Use the same source expansion as CI's omission check.
+    from runtime_provenance import runtime_sources
+    sources = runtime_sources()
     # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
     sys.path.insert(0, str(ROOT/'tests'))
     from test_bandersnatch import fixture_path
