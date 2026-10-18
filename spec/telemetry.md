@@ -248,7 +248,7 @@ verdicts under `build/tests/telemetry-interop/`.
 
 The collector remains an independent compatibility check, not the protocol authority. This
 suite covers registration acceptance and successful/failed status/connection observations; it does
-not establish database persistence, dashboard rendering, reconnect behavior in JAM Tart, or
+not establish database persistence, dashboard rendering, or
 support for unimplemented validator events. The normal tests retain their deterministic loss,
 backpressure and reconnect coverage.
 
@@ -271,3 +271,27 @@ No upstream sources or lockfile are patched. The caller controls the external bi
 records its actual SHA-256 alongside the peer binary hash, decoded messages and verdict in
 `build/tests/telemetry-interop/results.json`. Collector and peer logs are retained in that directory.
 A failed build, startup, decode or assertion must remain a failure, not a skipped interoperability pass.
+
+### Real collector restart and replay
+
+The interoperability CI job also restarts the pinned, unmodified collector while a real outgoing
+QUIC handshake remains pending behind a bound UDP gate. A single joined TCP relay forwards exact,
+bounded JIP-3 frames to JAM Tart and records only the first registration of each connection.
+The two registrations must be byte-identical and match the local certificate, explicit protocol
+parameters and independently hashed genesis header. The no-database collector does not expose the
+full registration through its API, so this byte comparison supplements its actual acceptance.
+
+The old collector must decode the outgoing attempt before it stops. While it is down, a separate
+telemetry-enabled pair completes eight CE requests; the original pending peer processes remain
+alive. After restart, retained WebSocket history must show one dropped prefix covering the old
+attempt and a correctly shaped status before the gate forwards any QUIC datagrams. The pending
+pair then completes eight requests. The recovered success must reference the original per-node
+attempt ID, followed by exactly one authenticated close. Additional attempts, loss markers,
+authentication outcomes or closes fail the check. Collector-global envelope IDs are not used as
+JIP-3 references. This checks correlation across a lost prefix, not delivery of the missing events.
+
+Both collector logs, peer logs, observed histories and registration bytes are retained in the
+interoperability evidence. Relays have bounded buffers, cancellation and joined workers; they
+implement no TLS or JAM behavior. This scenario covers an outgoing pending handshake and a fresh
+no-database collector process. Incoming pending-handshake replay and database-backed recovery
+remain separate coverage gaps.
