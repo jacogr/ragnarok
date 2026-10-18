@@ -6,7 +6,7 @@ update their feature contract rather than appending progress here.
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
 at most eight nonblocking loopback connections and bounded input/output buffers. The first
 method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Other chain queries
-now expose a genesis-only immutable view when an explicit genesis pair is supplied; subscriptions
+start with a genesis-only immutable view when an explicit genesis pair is supplied; subscriptions
 remain unavailable until block import and update events exist. `parameters()` reads an immutable
 GP 0.8.0 parameter snapshot from the explicit chainspec and the retained active validator count
 when genesis is present. Optional complete C(4) decoding at capture supplies a cached ticket-attempt
@@ -32,6 +32,7 @@ in RPC; typed hashes cross the provider boundary. Startup configuration and wire
 unchanged. `BlockSnapshot` generalizes the existing owner while preserving the `Genesis` aliases
 and startup capture wrapper. Each successful append uses a fresh private sequence and evicts the
 oldest snapshot when full; existing readers continue to own their previous snapshots. Retention
-is bounded per view, not across arbitrarily many caller-held views. Future validated block-import
-integration belongs behind this boundary; no live importer, fork choice, finality or update events
+is bounded per view, not across arbitrarily many caller-held views. The server exposes `publishBlock`
+for same-dispatcher handoff between ticks; it installs a successful append without changing queued replies or transport ownership. Future validated block-import
+integration must call this boundary; no live importer, fork choice, finality or update events
 are provided here. Retained-report lookup still searches only the selected head.

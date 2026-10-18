@@ -535,8 +535,8 @@ by consumers. Parameters remain the separately captured startup configuration.
 
 This is an internal boundary refactor with unchanged WS methods, result/error shapes, response
 budgets and genesis-only scope under the pinned JIP-2 references above. It does not introduce a
-live importer, persistent historical storage, finality, subscriptions or a server view-replacement operation.
-Those require a validated chain source and event integration in a subsequent bounded increment.
+live importer, persistent historical storage, finality or subscriptions.
+The bounded history and dispatcher handoff below extend this initial boundary.
 Native tests cover empty/invalid/unknown lookup, unavailable parents, report-budget propagation,
 retained-result lifetime and copied request/batch isolation. Existing native and live WS suites
 remain regression coverage; a compiler rejection probe protects private provider storage.
@@ -573,9 +573,32 @@ callers that keep old views also keep their state, so future import integration 
 readers. Each snapshot retains the existing map/header/trie resource ceilings. The append API copies
 at most eight handles and does not duplicate maps, decode chapters or run consensus.
 
-The CLI still initializes a genesis-only view; no RPC method accepts arbitrary blocks and the server
-has no live view-replacement hook yet. A future importer must supply execution-validated snapshots
-and manage head selection/events. Tests exercise two-block best/parent/state/header/raw-value reads,
+The CLI still initializes a genesis-only view; no RPC method accepts arbitrary blocks. The
+dispatcher handoff below provides publication, while a future importer must supply execution-validated
+snapshots and manage head selection/events. Tests exercise two-block best/parent/state/header/raw-value reads,
 slot gaps, every rejection reason, full-tuple mismatch beyond core/epoch fields, eight-block capacity,
 eviction, unavailable evicted parents, and retained old-view/result/batch lifetime. Compiler probes
 protect the append discriminator and reject extracting a known failed result.
+
+## Dispatcher publication handoff
+
+`Server.publishBlock(child)` installs a new bounded history between dispatcher ticks. The caller
+must run it on the listener's dispatcher thread and supply an execution-validated snapshot; the
+method performs only the existing `advanceView` linkage/configuration checks described above.
+This is an internal application API, not a JSON-RPC method or a claim of block-import validation.
+No JIP-2 wire method or result shape changes.
+
+Default, disabled, closed and unseeded servers return `ViewAdvanceError.Uninitialized`. Other
+rejections forward the provider's reason and leave the selected view intact. Successful publication
+copies at most eight snapshot handles, replaces the server's chain view and preserves listener,
+connections, startup parameters and queued response bytes/offsets. Each following tick captures
+the new view once for all its request contexts. Already serialized replies keep their original
+bytes; incomplete incoming requests use the view of the tick that completes their processing.
+There are no cross-thread calls, locks, callbacks or subscription events.
+
+Native tests use a real ephemeral listener and connected nonblocking sockets carrying masked WS
+frames to check publication while a reply is partly written, subsequent batch queries on the same
+connection, historical lookup, old-context lifetime, all append rejection reasons, repeated
+publication, incomplete input across an update and default/disabled/unseeded/closed lifecycle behavior.
+The complete importer must still call this boundary after successful execution and head selection; CLI startup remains
+genesis-only until that integration exists. Finality, reorgs and subscriptions remain separate work.

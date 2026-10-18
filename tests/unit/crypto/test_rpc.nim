@@ -1088,4 +1088,99 @@ assert respond(rootRequest, historicalInfo) == respond(rootRequest, withGenesis)
 assert respond("[" & rootRequest & "," & rootRequest & "]", historicalInfo) ==
   "[" & respond(rootRequest, withGenesis) & "," & respond(rootRequest, withGenesis) & "]"
 
+## Native connected sockets exercise actual tick IO without reserving a fixed TCP port.
+proc rpcSocketPair(domain, kind, protocol: cint, pair: pointer): cint {.
+  importc: "socketpair", header: "<sys/socket.h>".}
+
+## Read one small expected frame suffix; all fixture sockets are nonblocking, so failures cannot hang.
+proc publicationReply(fd: cint): string =
+  result = ""
+  var bytes = default(array[4096, char])
+  let count = receive(fd, addr bytes[0], csize_t(bytes.len), 0)
+  assert count > 0
+  for index in 0..<count:
+    result.add(bytes[index]) # Copy only the initialized native receive prefix.
+
+## Own an ephemeral listener and connected WS transport while publishing between dispatcher turns.
+## Synthetic snapshots establish handoff behavior only, not execution/signature validity.
+proc publicationLifecycle() =
+  var owner = default(Server)
+  assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
+  assert owner.start(0, "test", genesisParameters, capturedGenesis)
+  assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
+  owner.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
+  assert owner.fd >= 0
+  owner.opened = true # Transfer the real listener to the destructor before any subsequent assertion.
+  var address = default(Sockaddr_in)
+  address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
+  when defined(macosx):
+    address.sin_len = uint8(sizeof(address)) # Darwin requires the socket-address extent.
+  var loopback = "127.0.0.1"
+  assert parseAddress(cint(ord(nativesocket.AF_INET)), loopback.toCString(),
+    addr address.sin_addr) == 1
+  assert nonblocking(owner.fd)
+  assert bindSocket(owner.fd, addr address, SockLen(sizeof(address))) == 0
+  assert listenSocket(owner.fd, 1) == 0
+  assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
+  owner.chain = historySeed
+  owner.parameters = genesisParameters
+  var pair = default(array[2, cint])
+  assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+    0, addr pair[0]) == 0
+  owner.connections[0].fd = pair[0]
+  owner.connections[0].opened = true
+  defer: discard posix.close(pair[1])
+  assert nonblocking(pair[0]) and nonblocking(pair[1])
+  owner.connections[0].upgraded = true
+  owner.connections[0].deadline = getMonoTime().ticks div 1_000_000 + 30000
+  let previous = ClientInfo(chain: owner.chain)
+  let queued = frame(respond(bestRequest, previous))
+  owner.connections[0].output = queued
+  owner.connections[0].offset = 5 # Model a response whose prefix was already written before publication.
+  let listener = owner.fd
+  assert owner.publishBlock(historyChild) == ViewAdvanceError.None
+  assert owner.fd == listener and owner.connections[0].fd == pair[0]
+  assert owner.connections[0].output == queued and owner.connections[0].offset == 5
+  owner.tick(0)
+  assert publicationReply(pair[1]) == queued.substr(5)
+  assert owner.connections[0].output.len == 0
+  assert respond(bestRequest, previous) == respond(bestRequest, withGenesis)
+  var packet = masked("[" & bestRequest & "," & rootRequest & "]")
+  let packetData = packet.toCString()
+  assert sendBytes(pair[1], packetData, csize_t(packet.len), 0) == packet.len
+  owner.tick(0)
+  assert publicationReply(pair[1]) == frame(respond("[" & bestRequest & "," & rootRequest & "]",
+    historicalInfo)) # The same live connection sees the new head and retained genesis state.
+  assert owner.publishBlock(historyChild) == ViewAdvanceError.Duplicate
+  assert owner.publishBlock(invalidGenesis()) == ViewAdvanceError.InvalidSnapshot
+  assert owner.publishBlock(childSnapshot(historyChild.value, 10, genesisParameters.value,
+    badParent = true)) == ViewAdvanceError.NotChild
+  assert owner.publishBlock(childSnapshot(historyChild.value, 9,
+    genesisParameters.value)) == ViewAdvanceError.SlotNotIncreasing
+  assert owner.publishBlock(childSnapshot(historyChild.value, 10, genesisParameters.value,
+    badRoot = true)) == ViewAdvanceError.StateMismatch
+  assert owner.publishBlock(childSnapshot(historyChild.value, 10,
+    changedSettings.value)) == ViewAdvanceError.ParametersMismatch
+  assert owner.chain.retainedCount == 2 and owner.chain.bestBlock.value.slot == 9
+  let pending = masked(bestRequest)
+  var prefix = pending.substr(0, 7)
+  var suffix = pending.substr(8)
+  assert sendBytes(pair[1], prefix.toCString(), csize_t(prefix.len), 0) == prefix.len
+  owner.tick(0)
+  assert owner.connections[0].input.len == prefix.len
+  assert owner.connections[0].output.len == 0
+  let next = childSnapshot(historyChild.value, 10, genesisParameters.value)
+  assert owner.publishBlock(next) == ViewAdvanceError.None
+  assert owner.chain.bestBlock.value.slot == 10
+  assert sendBytes(pair[1], suffix.toCString(), csize_t(suffix.len), 0) == suffix.len
+  owner.tick(0)
+  let current = ClientInfo(parameters: genesisParameters, chain: owner.chain)
+  assert publicationReply(pair[1]) == frame(respond(bestRequest,
+      current)) # An incomplete input observes the view when processing completes.
+  owner.close()
+  assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
+  owner.tick(0)
+  owner.close() # Shutdown remains idempotent after successful publications.
+
+publicationLifecycle()
 echo "rpc ok"
