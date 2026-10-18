@@ -106,7 +106,8 @@ natural codec. Status's core array has no length prefix. Event timestamps are mi
 
 The exporter owns one non-copyable TCP descriptor and a fixed 2048-byte send buffer. Each peer
 iteration performs at most one zero-timeout poll and one nonblocking send. Partial sends resume
-at the exact suffix. Connect/write stalls time out after five seconds; failures retry after five
+at the exact suffix. Scheduled statuses append behind queued lifecycle frames when space permits;
+a coincident status deadline does not itself discard an observation. Connect/write stalls time out after five seconds; failures retry after five
 seconds and resend registration. Implicit event IDs count every observation, including dropped
 ones, and remain monotonic for the exporter lifetime. After reconnecting, registration is followed
 by a dropped prefix covering all prior positions so later outcomes retain their original attempt
@@ -156,7 +157,7 @@ The binary is not a project dependency, and no downloaded executable is needed f
 
 `make check-unit` includes native wire/metadata tests, malformed chain JSON/hex cases, independent
 hash expectations, a saturated socket pair, partial-send continuation and ordered dropped/status
-frames, incoming/outgoing event layouts, correlation across dropped samples, and event-ID exhaustion.
+frames, a close queued exactly at a status deadline without spurious loss, incoming/outgoing event layouts, correlation across dropped samples, and event-ID exhaustion.
 The native transport suite holds 65 unfinished TLS handshakes against the 64 observation slots
 on both IPv4 and IPv6, then completes one, closes it, reuses its slot, and checks tracked failures
 and overflow
@@ -184,7 +185,9 @@ separate handshake-observation table does not report a refusal. The pinned publi
 `lsquic_engine_packet_in` return values also cover version negotiation, resets and ignored packets;
 they cannot establish a pre-TLS admission refusal and are not translated into event 20.
 
-Expiry/teardown collectors use observed authentication and explicit stop gates: a child cannot
+Expiry/teardown collectors wait for both remote authentication and the current connection’s
+retained server slot before killing a peer or releasing an explicit stop gate. TLS-success
+telemetry alone is not an admission barrier: a child cannot
 expire merely because startup or the CI scheduler took longer than a subsecond fixture lifetime.
 Telemetry failures retain their traceback in the E2E console and JSON report, and CI archives
 per-scenario telemetry logs alongside the report.

@@ -170,9 +170,8 @@ proc queue(client: var Client, bytes: openArray[byte], now: int64) =
   for i in 0..<bytes.len: client.buffer[i] = bytes[i]
 
 # Assign one implicit ID even when a bounded buffer or disconnected collector loses the event.
-# Lifecycle frames may append behind a partial frame; sampled statuses retain their coalescing policy.
-proc event(client: var Client, bytes: openArray[byte], now: int64, timestamp: Timestamp,
-    append: bool): EventId =
+# Every frame may append behind a partial frame when the fixed buffer has room.
+proc event(client: var Client, bytes: openArray[byte], now: int64, timestamp: Timestamp): EventId =
   result = EventId(client.nextEvent)
   if not client.enabled: return # Disabled instrumentation neither allocates IDs nor owns resources.
   if client.nextEvent == high(uint64):
@@ -181,7 +180,7 @@ proc event(client: var Client, bytes: openArray[byte], now: int64, timestamp: Ti
   inc client.nextEvent
   if not client.opened: return # The next registration's dropped prefix accounts for this position.
   let markerSize = if client.lost > 0: 29 else: 0
-  if (client.length > 0 and not append) or bytes.len + markerSize > client.buffer.len - client.length:
+  if bytes.len + markerSize > client.buffer.len - client.length:
     if client.lost == 0: client.firstLost = timestamp # Bound storage for a contiguous missing run.
     client.lastLost = timestamp
     inc client.lost
@@ -202,22 +201,22 @@ proc event(client: var Client, bytes: openArray[byte], now: int64, timestamp: Ti
 proc dialing*(client: var Client, now: int64, timestamp: Timestamp, identity: array[32, byte],
     address: array[16, byte], port: uint16): EventId =
   if not client.enabled: return EventId(0) # Avoid encoding or allocation when telemetry is disabled.
-  client.event(connectingOut(timestamp, identity, address, port), now, timestamp, true)
+  client.event(connectingOut(timestamp, identity, address, port), now, timestamp)
 
 # Publish exactly one terminal authentication outcome for a previously captured outgoing attempt.
 proc dialOutcome*(client: var Client, now: int64, timestamp: Timestamp, attempt: EventId,
     authenticated: bool) =
   if not client.enabled: return # Disabled clients never encode events.
   if authenticated:
-    discard client.event(connectedOut(timestamp, attempt), now, timestamp, true)
+    discard client.event(connectedOut(timestamp, attempt), now, timestamp)
   else:
-    discard client.event(connectOutFailed(timestamp, attempt), now, timestamp, true)
+    discard client.event(connectOutFailed(timestamp, attempt), now, timestamp)
 
 # Enqueue an observed authenticated peer closure using the same bounded event stream as its attempt.
 proc peerDisconnected*(client: var Client, now: int64, timestamp: Timestamp,
     identity: array[32, byte]) =
   if not client.enabled: return # Disabled clients do not allocate or consume event IDs.
-  discard client.event(disconnected(timestamp, identity), now, timestamp, true)
+  discard client.event(disconnected(timestamp, identity), now, timestamp)
 
 # Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
 proc begin(client: var Client, now: int64, timestamp: Timestamp) =
@@ -277,7 +276,7 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
   # Status is sampled every two seconds without catch-up loops after a delayed dispatcher turn.
   if now >= client.statusAt:
     client.statusAt = now + 2000
-    discard client.event(status(client.metadata, timestamp, peers), now, timestamp, false)
+    discard client.event(status(client.metadata, timestamp, peers), now, timestamp)
   if not client.enabled: return # ID exhaustion may have retired the descriptor while sampling status.
   var entry = PollEntry(fd: client.fd, events: Writable, revents: 0)
   let ready = poll(addr entry, 1, 0)
@@ -333,19 +332,19 @@ proc omit*(client: var Client, timestamp: Timestamp) =
 proc accepting*(client: var Client, now: int64, timestamp: Timestamp,
     address: array[16, byte], port: uint16): EventId =
   if not client.enabled: return EventId(0) # Disabled telemetry avoids encoding.
-  client.event(connectingIn(timestamp, address, port), now, timestamp, true)
+  client.event(connectingIn(timestamp, address, port), now, timestamp)
 
 # Publish the authenticated identity or an explicitly unknown failure reason for one incoming attempt.
 proc acceptOutcome*(client: var Client, now: int64, timestamp: Timestamp, attempt: EventId,
     identity: array[32, byte], authenticated: bool) =
   if not client.enabled: return # Disabled telemetry avoids encoding.
   if authenticated:
-    discard client.event(connectedIn(timestamp, attempt, identity), now, timestamp, true)
+    discard client.event(connectedIn(timestamp, attempt, identity), now, timestamp)
   else:
-    discard client.event(connectInFailed(timestamp, attempt), now, timestamp, true)
+    discard client.event(connectInFailed(timestamp, attempt), now, timestamp)
 
 # Queue a real admission refusal in the same bounded event-ID and loss sequence as other observations.
 proc refusing*(client: var Client, now: int64, timestamp: Timestamp,
     address: array[16, byte], port: uint16) =
   if not client.enabled: return # Disabled telemetry performs no encoding work.
-  discard client.event(connectionRefused(timestamp, address, port), now, timestamp, true)
+  discard client.event(connectionRefused(timestamp, address, port), now, timestamp)
