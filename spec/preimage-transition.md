@@ -99,6 +99,16 @@ probes protect owners/results, statistics ordinals and candidate slots; seven st
 protect default/refused result extraction. A 1,000-cycle native ARC test covers admission,
 publication and duplicate refusal without retaining discarded owners or candidates.
 
+Local combined-tree verification passed after adopting the native restack containing the PVM
+initializer:
+`make check-inventory format-check check-modules check-unit check-failures check-guards check-python`.
+This run compiled 99 source modules, passed 112 native suites and all corpora/runtime/compiler
+checks, and passed 404 Python tests with three existing skips. The preimage ARC loop retained
+10,944 occupied bytes before and after all 1,000 cycles. Reports are reproducible under
+`build/tests/{modules,runtime,failures,guards}/results.json`; the final local log is
+`build/preimage-transition/verification.log`. Linux CI verifies pushed revisions separately.
+E2E behavior is unchanged and that group was not rerun locally for this state-only feature.
+
 ## Next bounded work
 
 Incoming transfer credit before invocation. Full C(13) assembly and block-level preimage publication
