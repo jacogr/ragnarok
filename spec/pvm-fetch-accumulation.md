@@ -52,5 +52,5 @@ No upstream code or vectors are copied.
 All sixteen fetch selectors now have implementations, with explicit invocation data
 and configured parameters where required. This is fetch coverage, not full PVM host
 or service invocation parity. Complete invocation assembly, remaining host functions
-and the documented positive gas-domain gate remain open. Next bounded increment:
-bind accumulation fetch context to prepared service invocation inputs.
+and the documented positive gas-domain gate remain open. The [prepared-input adapter](pvm-fetch-invocation.md) now binds a selected service group
+to fetch; complete service invocation assembly remains open.

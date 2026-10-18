@@ -531,14 +531,27 @@ proc copyOperandTrace*(owner: OwnedOperand, output: var openArray[byte]): Record
   if data == nil: return RecordResult[int](status: RecordError.InvalidOwner) # Default owners cannot authorize extraction.
   extract(owner, data.layout.auth, output)
 
+# Validate an immutable operand against a fresh policy without allocating output storage.
+# Returns its complete canonical tagged extent; defaults and stricter budgets fail without a size.
+proc ownedOperandSize*(owner: OwnedOperand, limits: OperandLimits): RecordResult[int] =
+  let data = owner.data
+  if data == nil:
+    # Only a validated owner can supply bytes for policy revalidation.
+    return RecordResult[int](status: RecordError.InvalidOwner)
+  let parsed = scanOperand(data.wire, limits)
+  if parsed.error != RecordError.None:
+    # Do not bypass tighter capture limits merely because the record was decoded earlier.
+    return RecordResult[int](status: parsed.error)
+  RecordResult[int](status: RecordError.None, completed: data.wire.len)
+
 # Re-emit exact immutable operand bytes only after checking the current caller's policy, capacity and private-wire aliases.
 proc encodeOwnedOperand*(owner: OwnedOperand, limits: OperandLimits,
     output: var openArray[byte]): RecordResult[int] =
   let data = owner.data
   if data == nil: return RecordResult[int](status: RecordError.InvalidOwner) # Defaults differ from validated empty payloads.
-  let parsed = scanOperand(data.wire, limits)
-  if parsed.error != RecordError.None: return RecordResult[int](
-      status: parsed.error) # Stricter new limits are not bypassed by old capture.
+  let measured = ownedOperandSize(owner, limits)
+  if measured.error != RecordError.None: return RecordResult[int](
+      status: measured.error) # Stricter new limits are not bypassed by old capture.
   if output.len < data.wire.len: return RecordResult[int](
       status: RecordError.OutputTooSmall) # Whole frame must fit.
   # The public byref owner type preserves caller-handle identity for this complete descriptor alias check.
