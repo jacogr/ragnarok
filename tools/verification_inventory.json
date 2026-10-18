@@ -677,6 +677,7 @@
     "rpc_service_result_private": "status",
     "rpc_state_keys_private": "keys",
     "rpc_statistics_result_private": "status",
+    "rpc_ticket_attempts_private": "ticketLimit",
     "safrole_auth_private": "completed",
     "safrole_auth_retag": "status",
     "safrole_epoch_private": "epochValue",

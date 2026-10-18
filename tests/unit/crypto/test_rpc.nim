@@ -856,4 +856,51 @@ assert respond(parameterRequest, ClientInfo(parameters: configured,
   genesis: invalidGenesis())) == parameterAnswer
 assert respond(parameterRequest, configuredInfo) == parameterAnswer
 
+## Build a synthetic complete C(4) with an independently chosen pending roster and empty accumulator.
+proc ticketChapter(population, epoch: int, tag = "01"): string =
+  let width = if tag == "00": 33 else: 32 # Both maintained schedule alternatives have fixed slot widths.
+  toHex(population, 2) & repeat("00", population * 336 + 144) & tag &
+    repeat("00", epoch * width) & "00"
+
+## Capture optional Safrole bytes with six active validators, independently of the pending roster.
+proc ticketContext(wire: string, epoch = 600): ClientInfo =
+  var parameterWire = ParameterHex
+  for index in 0..<4:
+    # Replace the E4 epoch length without changing any unrelated fetch tuple field.
+    let octet = toHex((epoch shr (8 * index)) and 255, 2)
+    parameterWire[60 + index * 2] = octet[0]
+    parameterWire[61 + index * 2] = octet[1]
+  let parameters = decodeParametersHex(parameterWire)
+  assert parameters.ok
+  let state = genesisState[0..^2] & ",\"04" & repeat("00", 30) & "\":\"" & wire & "\"}"
+  var source = genesisText.replace(genesisState, state)
+  let captured = configuredGenesis(source, parameters.value)
+  assert captured.error == GenesisError.None
+  source = "{}" # The derived limit and retained map must survive source replacement.
+  ClientInfo(parameters: parameters, genesis: captured)
+
+for population in [6, 9, 12]:
+  # Active population stays six: pending sizes independently produce exact and rounded-up limits.
+  let expected = if population == 6: 200 elif population == 9: 134 else: 100
+  for tag in ["00", "01"]:
+    # Schedule kind does not alter the pending population used by the pinned formula.
+    let owner = ticketContext(ticketChapter(population, 600, tag))
+    let answer = parameterAnswer.replace("\"val_count\":0", "\"val_count\":6").replace(
+      "\"tickets_attempts_number\":0", "\"tickets_attempts_number\":" & $expected)
+    assert uint64(owner.genesis.value.ticketAttempts) == uint64(expected)
+    assert respond(parameterRequest, owner) == answer
+    assert respond("[" & parameterRequest & "," & parameterRequest & "]", owner) ==
+      "[" & answer & "," & answer & "]"
+    assert respond(parameterRequest.replace(",\"id\":7", ""), owner) == ""
+let completeTickets = ticketChapter(9, 600)
+for malformed in ["", "09", completeTickets[0..^3], completeTickets & "00",
+    ticketChapter(9, 600, "02"), ticketChapter(5, 600), ticketChapter(15, 600),
+    completeTickets[0..^3] & "01", repeat("00", 1024 * 1024 + 1)]:
+  # Missing fields, bad tags/populations/accumulators, trailing bytes and resource limits preserve zero.
+  let owner = ticketContext(malformed)
+  assert uint64(owner.genesis.value.ticketAttempts) == 0
+  assert respond(parameterRequest, owner) == parameterAnswer.replace("\"val_count\":0", "\"val_count\":6")
+assert uint64(ticketContext(ticketChapter(9, 4096), 4096).genesis.value.ticketAttempts) == 911
+assert uint64(ticketContext(ticketChapter(9, 4097), 4097).genesis.value.ticketAttempts) == 0
+
 echo "rpc ok"

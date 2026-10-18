@@ -136,6 +136,8 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     if expected_genesis is not None:
                         # Both frozen genesis fixtures contain six active validators, despite four cores.
                         expected['V1']['val_count'] = 6
+                        # Only the service fixture has complete C(4), with nine pending validators.
+                        expected['V1']['tickets_attempts_number'] = expected_genesis.get('tickets_attempts_number', 0)
                     assert parameters == dict(jsonrpc='2.0', id=19, result=expected)
                     # File changes after startup cannot change the node's immutable parameter snapshot.
                     chain.write_text('{}')

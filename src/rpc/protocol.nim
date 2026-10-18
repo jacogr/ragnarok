@@ -7,7 +7,7 @@
 ## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
 ## responses. configuredParameters and configuredGenesis validate bounded chainspec text into
 ## owned parameter and genesis snapshots;
-## parameters() derives the active validator count when genesis is configured; other gaps use zero.
+## parameters() derives active validator and pending-roster ticket limits; unavailable gaps use zero.
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
@@ -278,7 +278,7 @@ proc configuredParameters*(text: string): ParameterResult =
   decodeParametersHex(encoded)
 
 # Map the immutable GP fetch tuple to JIP-2 V1 without machine signed/float conversions.
-# The active population comes from retained C(8); absent state and other derivation gaps use zero.
+# Captured C(8)/C(4) supply active population and ticket attempts; unavailable derivations use zero.
 proc parameterObject(parameters: Parameters, genesis: GenesisResult): string =
   const Names: array[Parameter, string] = [
     "deposit_per_item", "deposit_per_byte", "deposit_per_account", "core_count",
@@ -293,9 +293,11 @@ proc parameterObject(parameters: Parameters, genesis: GenesisResult): string =
     if field != low(Parameter): result.add(',')
     result.add(quote(Names[field]) & ":" & $parameters.get(field))
   var validators = 0
+  var attempts = 0'u64
   if genesis.error == GenesisError.None:
     validators = int(genesis.value.activeValidators) # Extract only the validated immutable owner.
-  result.add(",\"tickets_attempts_number\":0,\"val_count\":" & $validators)
+    attempts = uint64(genesis.value.ticketAttempts)
+  result.add(",\"tickets_attempts_number\":" & $attempts & ",\"val_count\":" & $validators)
   result.add(",\"basic_piece_len\":0,\"segment_piece_count\":0}}")
 
 # Construct a JSON-RPC error; id is already a validated JSON scalar, never arbitrary caller text.

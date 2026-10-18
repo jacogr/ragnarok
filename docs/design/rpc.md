@@ -9,7 +9,9 @@ method, `ragnarok_clientInfo`, reports implementation and observed runtime metad
 now expose a genesis-only immutable view when an explicit genesis pair is supplied; subscriptions
 remain unavailable until block import and update events exist. `parameters()` reads an immutable
 GP 0.8.0 parameter snapshot from the explicit chainspec and the retained active validator count
-when genesis is present; remaining derivation gaps are documented zero placeholders.
+when genesis is present. Optional complete C(4) decoding at capture supplies a cached ticket-attempt
+limit from the pending roster; queries do no Safrole decoding. Remaining derivation gaps are
+documented zero placeholders.
 `src/chain/genesis.nim` retains the configured serialized map through the existing state store, checks header/roster/time framing, retains the immutable sealed-header codec owner, and computes
 its root at startup. It does not validate
 all state chapters or run consensus. `src/chain/services.nim` reads account metadata, storage
