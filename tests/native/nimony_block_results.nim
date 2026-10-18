@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Every default/failed parent result and wrong nested-schema alternative is tested in a separate process.
 import std/[cmdline, syncio]
 import ../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent T chapter-3 byte equations: header/super-peak/state/E4-slot, dictionaries and optional belt peaks."""
 import hashlib
 import json

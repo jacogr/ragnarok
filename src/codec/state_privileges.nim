@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T chapter 12: E4 role services and a count-prefixed E4-service/E8-gas dictionary.
 ## Serialization preserves privileges; it does not authorize services or execute privilege changes.
 import std/assertions

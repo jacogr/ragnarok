@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent GP v0.8.0 assurances encoding, semantic oracle and deterministic verification corpus."""
 import hashlib
 import json

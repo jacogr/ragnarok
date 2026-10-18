@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import std/[assertions, syncio]
 include ../../../src/telemetry/client
 

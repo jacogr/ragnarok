@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP v0.8.0 C.2 assurances: allocation-free owned records and atomic caller-buffer operations.
 import ./natural
 

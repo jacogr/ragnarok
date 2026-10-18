@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Native guarantee owner, late-failure, alias and default-result safety checks.
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]

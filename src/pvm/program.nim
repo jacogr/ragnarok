@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 program deblob and operand decoding; see spec/pvm-program.md.
 ## Input is borrowed during validation, then copied into private acyclic ARC storage.
 import ../codec/natural

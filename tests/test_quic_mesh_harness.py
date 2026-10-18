@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent Required-connectivity anchors and fixed resource gates for retained IPv6 recovery."""
 from pathlib import Path
 import tempfile

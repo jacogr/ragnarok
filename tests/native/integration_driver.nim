@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent raw-wire requests exercise enabled codec/crypto composition without a transport engine.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support

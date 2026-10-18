@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Bounded optional TCP exporter. One owner, no threads, DNS, blocking connect or retained callbacks.
 import std/[strutils, oserrors, nativesocket]
 import std/posix/posix

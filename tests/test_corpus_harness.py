@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Protect corpus verdicts and evidence against partial output, stale binaries and process failures."""
 import hashlib
 from pathlib import Path

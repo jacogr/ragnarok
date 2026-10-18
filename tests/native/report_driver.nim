@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Full report adapter: the crypto check subcommand and standalone codec batch share exact codec coverage.
 import std/[cmdline, syncio]
 import ./report_check

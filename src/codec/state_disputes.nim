@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T(state) chapter 5: four independently sorted variable sets.
 ## Structural framing does not prove verdict validity, key eligibility or dispute transitions.
 import std/assertions

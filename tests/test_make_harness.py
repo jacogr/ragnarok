@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Check that the Make front end preserves pinned tooling and the checked public native build profile."""
 from pathlib import Path
 import tempfile

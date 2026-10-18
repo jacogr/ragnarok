@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent decimal-field source transport and copied-value observation for chapter 13.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_statistics, state_trie, bounded]

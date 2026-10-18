@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted fixed entropy/time fixtures use separate nominal state and VRF-output domains.
 import ../../src/codec/state_safrole
 from ../../src/codec/header import EpochSlots

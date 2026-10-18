@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import ../../support/arc_evidence
 ## Privileged native misuse test: safe public APIs cannot expose a backing alias, but atomic copy still guards it.
 import std/[assertions, syncio]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import ../../support/arc_evidence
 ## White-box tests observe explicit wipes while bytes are live; no freed memory or private runtime state is read.
 import std/[assertions, syncio]

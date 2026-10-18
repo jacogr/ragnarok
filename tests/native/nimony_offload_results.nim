@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and actually empty completion polls must not expose a fabricated generation or verdict.
 import std/[assertions, cmdline, syncio]
 import ../../src/quic/offload

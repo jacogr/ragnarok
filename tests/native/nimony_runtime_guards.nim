@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trial-only subprocess probes distinguish runtime guards from intentional wrapping arithmetic.
 import std/[assertions, cmdline, syncio]
 # Runtime argument values prevent folding either invalid operation into a compile-time diagnostic.

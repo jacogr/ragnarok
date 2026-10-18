@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent tagged source histories and fixed-copy observations for service request entries.
 import std/[assertions, cmdline, syncio, strutils, parseutils]
 import ../../src/codec/[state_requests, state_trie, bounded]

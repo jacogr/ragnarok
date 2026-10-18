@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import ../../support/arc_evidence
 ## Guarantee transcript fixed copies, exact known answers and observer-only backend refusal/recovery.
 import std/[assertions, syncio]

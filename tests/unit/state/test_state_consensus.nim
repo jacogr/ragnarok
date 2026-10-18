@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Whole-parent ownership, variant and copied-child regression checks.
 import std/[assertions, syncio]
 import ../../../src/codec/[state_consensus, state_safrole, bounded, assurances]

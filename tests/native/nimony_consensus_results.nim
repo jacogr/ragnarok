@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated chapter failure/default reads and inactive source-schedule reads require supported contracts.
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_consensus

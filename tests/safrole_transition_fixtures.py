@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport complete Safrole inputs and expected chapters from existing pinned signed traces."""
 import hashlib
 import json

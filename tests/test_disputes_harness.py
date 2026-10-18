@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Known-answer checks for the test-only disputes oracle and its published fixture distinction."""
 import copy
 import unittest

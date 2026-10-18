@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted source/observation adapter for independent authorization state equations.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_authorization, state_trie, bounded, assurances]

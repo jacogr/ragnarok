@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Focused lifetime, immutable-copy, atomicity, alias and runtime result-guard tests.
 import ../../support/arc_evidence
 import std/[assertions, syncio]

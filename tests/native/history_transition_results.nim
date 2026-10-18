@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Dynamic checked extraction probes for default and actual history failures.
 import std/[assertions, cmdline, syncio]
 import ../support/history_transition_fixture

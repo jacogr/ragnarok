@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## External tiny/full credentials bind the exact ASCII token bytes independently of local signing code.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/crypto/[assurance_context, guarantee, primitives]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and actually failed admissions cannot expose a fabricated candidate owner.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/ticket_admission

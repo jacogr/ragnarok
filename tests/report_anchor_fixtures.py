@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Unchanged report STF recent-anchor projections; upstream supplies no retained ancestor headers."""
 from report_policy_fixtures import prepare as policy_prepare
 

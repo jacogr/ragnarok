@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated default/failed crypto payload reads must stop at the success contract before using bytes or owners.
 import std/[cmdline, syncio]
 import ../../src/crypto/primitives

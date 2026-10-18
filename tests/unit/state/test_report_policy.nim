@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published signed report policy projections and authored gas, metadata, snapshot and release boundaries.
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[report_policy, guarantee_credentials, guarantors, store]

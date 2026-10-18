@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent T chapter-5 canonical set framing; JSON set fields are explicitly sorted when deriving fixtures."""
 import hashlib
 import json

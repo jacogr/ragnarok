@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal count/E4/key/shape/policy anchors independent of native code."""
 import unittest
 from state_requests_oracle import key,wire,decode,encode,MAX

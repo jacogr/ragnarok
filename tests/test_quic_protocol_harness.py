@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal independent-oracle anchors; production code is not imported here."""
 import unittest
 from quic_protocol_oracle import name, frame

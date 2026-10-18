@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent E4-length/hash request keys and fixed tagged 0..3 timeslot history equations."""
 import hashlib
 import random

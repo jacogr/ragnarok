@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Supplementary ring/source/copy/child-lifetime, typed owner/index and failure-guard contracts.
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[state_workqueues, report_owned, owned, bounded]

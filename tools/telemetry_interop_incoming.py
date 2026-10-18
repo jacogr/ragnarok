@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Real JAM Tart incoming handshake replay and listener generation reuse after a collector restart."""
 from contextlib import ExitStack
 import json
