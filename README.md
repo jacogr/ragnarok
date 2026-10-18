@@ -92,3 +92,12 @@ The proof peer (`server`, `client` and retained `mesh`) supports an opt-in JIP-3
 periodic peer/status observations, incoming/outgoing handshake outcomes and observed disconnections,
 with bounded nonblocking TCP delivery and reconnects.
 See [telemetry usage, scope and verification](spec/telemetry.md).
+
+## License
+
+Ragnarök is licensed under either of the following, at your option:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or [Apache license text](https://www.apache.org/licenses/LICENSE-2.0))
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or [MIT license text](https://opensource.org/licenses/MIT))
+
+Third-party dependencies and fixtures retain their respective licenses.
