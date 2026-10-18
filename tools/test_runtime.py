@@ -147,6 +147,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'disputes_transition')
     # Availability plans, reports and typed context causes require their own successful/failed alternative.
     run_failure_suite(compiler, report, libraries, build, command, 'availability_transition')
+    run_failure_suite(compiler, report, libraries, build, command, 'guarantor_assignments')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.

@@ -85,7 +85,8 @@
     "extrinsic_commitment",
     "block_admission",
     "disputes_transition",
-    "availability_transition"
+    "availability_transition",
+    "guarantor_assignments"
   ],
   "PRIVATE": {
     "safrole_transition_payload_private": "completed",
@@ -718,7 +719,11 @@
     "availability_transition_context_private": "contextReason",
     "availability_transition_plan_private": "data",
     "availability_transition_result_retag": "status",
-    "block_availability_private": "availabilityReason"
+    "block_availability_private": "availabilityReason",
+    "guarantor_result_private": "completed",
+    "guarantor_retag_private": "status",
+    "guarantor_plan_private": "data",
+    "guarantor_permutation_private": "data"
   },
   "NOMINAL": {
     "swapped_report_root": "got: ReportHash but wanted: ReportHash",
@@ -1003,7 +1008,8 @@
     "extrinsic_commitment": 2,
     "block_admission": 10,
     "disputes_transition": 10,
-    "availability_transition": 8
+    "availability_transition": 8,
+    "guarantor_assignments": 2
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1093,7 +1099,8 @@
     "guarantee_message": "guarantee_message_arc_release",
     "bandersnatch_owners": "bandersnatch_arc_release",
     "quic_io": "quic_io_arc_release",
-    "quic_integration": "integration_arc_release"
+    "quic_integration": "integration_arc_release",
+    "guarantor_assignments": "guarantor_assignments_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1159,6 +1166,7 @@
     "extrinsic_commitment": "observer",
     "availability_transition": "observer",
     "disputes_transition": "observer",
-    "block_admission": "observer"
+    "block_admission": "observer",
+    "guarantor_assignments": "observer"
   }
 }

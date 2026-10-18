@@ -76,6 +76,15 @@ def unit_availability_fixture(folder):
     return {'availability_transition': fixture}, evidence
 
 
+# Prepare independent guarantor assignment inputs and retain the published fixture hash.
+def unit_guarantors_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from guarantor_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_GUARANTORS', path, ((path, evidence['fixture_sha256']),))
+    return {'guarantor_assignments': fixture}, evidence
+
+
 # Keep the historical preparation order and nested report schema for existing evidence consumers.
 def unit_sealer_fixture(folder):
     fixtures, evidence = unit_schedule_fixture(folder)
@@ -93,6 +102,9 @@ def unit_sealer_fixture(folder):
     fixtures.update(disputes_fixtures)
     availability_fixtures, availability_evidence = unit_availability_fixture(folder)
     fixtures.update(availability_fixtures)
+    guarantors_fixtures, guarantors_evidence = unit_guarantors_fixture(folder)
+    fixtures.update(guarantors_fixtures)
+    evidence['guarantors'] = guarantors_evidence
     evidence['availability'] = availability_evidence
     evidence['disputes'] = disputes_evidence
     evidence['admission'] = admission_evidence
