@@ -3,7 +3,7 @@
 
 """Literal GP table extraction and an unbounded, simultaneous-transition gas reference.
 
-Exposes test-only tables, simulation, encoding and fixtures helpers; reads pinned submodule text
+Exposes test-only tables, simulation, encoding, fixtures and prepare helpers; reads pinned submodule text
 without executing or copying upstream implementation code."""
 from pathlib import Path
 import random
@@ -193,21 +193,79 @@ def blob(sequence, prefix=()):
     return b'\0\0'+natural(len(code))+code+bitmap
 
 
-# Hand-translated compatible upstream register-only timelines; no upstream assembly is executed.
+# Translate a restricted set of compatible assembly witnesses directly from the pinned submodule.
 def upstream_cases():
-    i = instruction
-    return {
-        'parallel_simple': [i(200, 1, 2, 0), i(200, 1, 2, 1), i(0)],
-        'sequential_simple': [i(200, 1, 2, 0), i(200, 0, 2, 1), i(0)],
-        'sequential_decode_limits': [i(20, a=n) for n in range(4)]+[i(0)],
-        'resource_limits_mul': [i(202, 1, 2, 0), i(202, 3, 4, 1), i(0)],
-        'mul_with_dep': [i(200, 1, 2, 0), i(202, 0, 3, 4), i(0)],
-        'register_move': [i(51, a=5), i(100, a=5, d=0), i(149, a=1, b=0), i(0)],
-        'empty': [i(1)],
-        'cmov_destination_is_part_of_the_dependency_chain': [i(202, 0, 3, 0), i(218, 1, 2, 0), i(0)],
-        'cmov_imm_destination_is_part_of_the_dependency_chain': [i(202, 0, 3, 0), i(147, 0, 2), i(0)],
-        'cmov_independent': [i(218, 1, 2, 0), i(0)],
-    }
+    text = (ROOT/'vendor/polkavm/crates/polkavm-common/src/simulator.rs').read_text()
+    names = ('parallel_simple', 'sequential_simple', 'sequential_decode_limits',
+             'resource_limits_mul', 'mul_with_dep', 'register_move', 'empty',
+             'cmov_destination_is_part_of_the_dependency_chain',
+             'cmov_imm_destination_is_part_of_the_dependency_chain', 'cmov_independent')
+    registers = {**{'a'+str(i): i for i in range(6)}, 's0': 6}
+    cases = {}
+    for name in names:
+        # Only the program string of an exact named test is consumed; Rust is never executed.
+        body = re.search(r'fn test_'+name+r'\(\) \{(.*?)\n    \}', text, re.S)[1]
+        assembly = re.findall(r'"([^"\\]*)"', body)[0]
+        sequence = []
+        for line in assembly.splitlines():
+            # Whitespace carries no instruction semantics in these restricted examples.
+            line = line.strip()
+            if not line:
+                continue
+            if line in ('trap', 'fallthrough'):
+                # Both terminators have fixed GP costs.
+                sequence.append(instruction(0 if line == 'trap' else 1))
+                continue
+            destination, expression = line.split(' = ')
+            destination = registers[destination]
+            if ' if ' in expression:
+                # Conditional moves retain their old destination as a source dependency.
+                value, condition = expression.split(' if ')
+                test, literal = condition.split(' == ')
+                assert literal == '0'
+                sequence.append(instruction(218, registers[value], registers[test], destination)
+                                if value in registers else
+                                instruction(147, destination, registers[test], displacement=int(value, 0)))
+            elif ' + ' in expression or ' * ' in expression:
+                # This adapter admits only full-width addition/multiplication and immediate addition.
+                left, operator, right = expression.split()
+                if right in registers:
+                    sequence.append(instruction(200 if operator == '+' else 202,
+                                                registers[left], registers[right], destination))
+                else:
+                    # Numeric right operands occur only in the selected immediate-add witness.
+                    assert operator == '+'
+                    sequence.append(instruction(149, destination, registers[left], displacement=int(right, 0)))
+            elif expression in registers:
+                # Copies keep their source/destination relationship for frontend renaming.
+                sequence.append(instruction(100, registers[expression], d=destination))
+            else:
+                # Literal loads select exactly the compact/extended instruction width used upstream.
+                value = int(expression, 0)
+                op = 51 if -(1 << 31) <= value < (1 << 31) else 20
+                raw = instruction(op, destination)
+                sequence.append(raw[:2]+(value % (1 << (64 if op == 20 else 32))).to_bytes(8 if op == 20 else 4, 'little'))
+        cases[name] = sequence
+    return cases
+
+
+# Generate ephemeral native input after verifying the pinned source identities; no upstream files are copied.
+def prepare(folder):
+    import hashlib
+    import json
+    from dependencies import require_submodule
+    pins = json.loads((ROOT/'spec/pins.json').read_text())['graypaper']
+    assert hashlib.sha256((ROOT/pins['path']/'text/pvm.tex').read_bytes()).hexdigest() == pins['source_sha256']['text/pvm.tex']
+    upstream = json.loads((ROOT/'spec/polkavm-pins.json').read_text())
+    path = require_submodule(upstream)
+    for name in ('crates/polkavm-common/src/simulator.rs', 'LICENSE-MIT'):
+        # Full source hashes prevent accepting modified upstream examples or notices.
+        assert hashlib.sha256((path/name).read_bytes()).hexdigest() == upstream['source_sha256'][name]
+    data, count = fixtures()
+    target = Path(folder)/'pvm-gas.bin'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return target, dict(cases=count, fixture_sha256=hashlib.sha256(data).hexdigest())
 
 
 # Freeze opcode/aliasing coverage, resource saturation, long buffers and deterministic mixed blocks.

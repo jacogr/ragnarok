@@ -68,7 +68,7 @@ for all valid program blobs until the specification supplies that definition.
 
 ## Independent evidence
 
-The frozen `tests/fixtures/pvm-gas.bin` contains **1,728** blocks. A Python test-only
+The generated `build/` gas fixture contains **1,728** blocks. A Python test-only
 reference reads numeric opcode mutations and cost macros directly from the pinned
 TeX, then simulates with unbounded historical entries, dependency sets and separate
 next-state copies. Production code uses handwritten profiles and a compact fixed
@@ -85,19 +85,21 @@ address/limit types; four isolated runtime misuse processes check failed access.
 
 Ten compatible register-only/termination timelines are cross-checked against pinned
 PolkaVM `crates/polkavm-common/src/simulator.rs` at
-`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. Their assembly register dependencies are
-hand-translated into GP encodings; expected costs come from the original timeline
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. A restricted test-only adapter reads their assembly directly from the submodule and
+translates register dependencies into GP encodings; expected costs come from the original timeline
 widths minus three. Immediate values do not affect these profiles. Source and MIT
-license hashes are retained in `spec/polkavm-pins.json`, with attribution beside the
-fixture. No upstream source is executed. PolkaVM L1-load timelines are deliberately
+license hashes are retained in `spec/polkavm-pins.json`; the original MIT licence stays
+in `vendor/polkavm/LICENSE-MIT`. No upstream code, licence or generated binary is
+copied into project sources. No upstream source is executed. PolkaVM L1-load timelines are deliberately
 excluded because their four-cycle load latency differs from the pinned GP model.
 These are compatible cost witnesses, not complete cross-VM execution vectors or
 saved fuzz crashes.
 
 The binary format is `PVMGAS01`, a four-byte little-endian row count, then records of
 start (4 bytes), expected charge (8), exact simulation cycles (8), blob length (4)
-and that many blob bytes. Python checks exact regeneration; the native harness
-checks the frozen SHA-256 before replay.
+and that many blob bytes. Python checks deterministic regeneration; fixture preparation verifies the source pins
+and writes under ignored `build/`. The native harness checks the prepared SHA-256
+before replay. Standalone native launches require this freshly prepared manifest.
 
 ## Remaining work
 

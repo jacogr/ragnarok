@@ -191,7 +191,7 @@ class NativeUnitHarness(unittest.TestCase):
     def test_runtime_fixture_required(self):
         with temporary_folder() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
-                for name in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
+                for name in ('pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
                              'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state',
                              'safrole_authentication', 'safrole_auth_state', 'safrole_transition',
                              'extrinsic_commitment', 'block_admission', 'disputes_transition',
@@ -307,7 +307,7 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
         self.assertEqual(variable, 'RAGNAROK_BLOCK_FIXTURES')
         sources = {path for path, _ in required} | {native_tests.UNIT_FIXTURES['guarantees'][1]}
-        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT, native_tests.COMPOSITION_FIXTURE, native_tests.PVM_REGISTERS, native_tests.PVM_GAS})
+        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT, native_tests.COMPOSITION_FIXTURE, native_tests.PVM_REGISTERS})
 
     # State report consumers must retain the same independently authored byte fixture and checksum.
     def test_state_report_reference(self):

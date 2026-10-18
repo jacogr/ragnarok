@@ -12,7 +12,7 @@ from setup_nimony import ROOT
 from native_fixtures import (
     unit_runtime_fixtures, unit_store_fixture, unit_authorization_fixture, unit_history_fixture,
     unit_signing_fixture, unit_entropy_fixture, unit_validator_fixture, unit_ticket_fixture,
-    unit_sealer_fixture,
+    unit_sealer_fixture, unit_pvm_gas_fixture,
 )
 
 
@@ -64,6 +64,9 @@ def prepare_integration(folder):
 def prepare_unit_fixtures(folder, certificates, wires, reload, record=None):
     fixtures = unit_runtime_fixtures(certificates, wires, reload)
     evidence = {}
+    gas, evidence['pvm_gas_fixture'] = unit_pvm_gas_fixture(folder)
+    fixtures.update(gas)
+    record_evidence(record, 'pvm_gas_fixture', evidence['pvm_gas_fixture'])
     store, evidence['store_replay_fixture'] = unit_store_fixture(folder)
     record_evidence(record, 'store_replay_fixture', evidence['store_replay_fixture'])
     fixtures.update(store)

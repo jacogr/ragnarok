@@ -44,11 +44,6 @@ PVM_REGISTERS = ROOT/'tests/fixtures/pvm-registers.bin'
 UNIT_FIXTURES['pvm_registers'] = ('RAGNAROK_PVM_REGISTERS', PVM_REGISTERS,
     ((PVM_REGISTERS, '1abf6f399808dad7ed612200443342717de0e6b75c66eb232ecb4b8c3a2c5d2b'),))
 
-# Freeze the independent whole-block pipeline corpus before native replay.
-PVM_GAS = ROOT/'tests/fixtures/pvm-gas.bin'
-UNIT_FIXTURES['pvm_gas'] = ('RAGNAROK_PVM_GAS', PVM_GAS,
-    ((PVM_GAS, '0c6c8579ddd96dc2c14399a7f2a117a6693b082a4edda5d589da6a34c1c2461a'),))
-
 # Shared independent report bytes retain availability and queued-report fixture identity.
 STATE_REPORT = ROOT/'tests/fixtures/state-report.bin'
 for case in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private'):

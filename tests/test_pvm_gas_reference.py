@@ -3,13 +3,14 @@
 
 """Gas fixture provenance, pinned compatible timelines and explicit specification gates.
 
-Exposes GasReferenceTests for unittest discovery; direct invocation validates existing fixtures."""
+Exposes GasReferenceTests for unittest discovery; direct invocation validates generated fixture contracts."""
 import hashlib
 import json
 import re
 import unittest
+import tempfile
 from dependencies import require_submodule
-from pvm_gas_reference import ROOT, tables, fixtures, simulate, instruction, upstream_cases, cost
+from pvm_gas_reference import ROOT, tables, fixtures, simulate, instruction, upstream_cases, cost, prepare
 
 
 # The model is test-only; these assertions never invoke production code to generate expectations.
@@ -24,13 +25,18 @@ class GasReferenceTests(unittest.TestCase):
         for name in ('crates/polkavm-common/src/simulator.rs', 'LICENSE-MIT'):
             # Read only pinned source text; no upstream compiler or execution is required.
             self.assertEqual(hashlib.sha256((path/name).read_bytes()).hexdigest(), upstream['source_sha256'][name])
-        self.assertTrue((ROOT/'tests/fixtures/pvm-gas.LICENSE').read_bytes().endswith((path/'LICENSE-MIT').read_bytes()))
 
-    # Independent state transitions must exactly regenerate the frozen native binary.
+    # Independent state transitions must exactly regenerate the generated native binary.
     def test_reproducible_fixture(self):
         data, count = fixtures()
         self.assertGreater(count, 1000)
-        self.assertEqual(data, (ROOT/'tests/fixtures/pvm-gas.bin').read_bytes())
+        self.assertEqual(hashlib.sha256(data).hexdigest(),
+                         'f82132da32266d6ed08252cde48cc1c725a97e23ab3948881b8ac9217b635209')
+        with tempfile.TemporaryDirectory() as folder:
+            # Native input is generated under a caller-owned build directory, never checked in.
+            path, evidence = prepare(folder)
+            self.assertEqual(data, path.read_bytes())
+            self.assertEqual(evidence['fixture_sha256'], hashlib.sha256(data).hexdigest())
 
     # Selected timelines use compatible register-only costs, excluding PolkaVM's four-cycle L1 loads.
     def test_upstream_timelines(self):
