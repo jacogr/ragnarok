@@ -10,6 +10,9 @@ from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
 from verification_inventory import UNIT_SUITES, ARC_SUITES, UNIT_LINKS
+from native_requirements import NATIVE_REQUIREMENTS
+# Preserve the public entry point and historical evidence shape while features prepare independently.
+from native_fixtures import unit_sealer_fixture
 UNIT_ROOT = ROOT/'tests/unit/codec'
 STATE_ROOT = ROOT/'tests/unit/state'
 CRYPTO_ROOT = ROOT/'tests/unit/crypto'
@@ -47,13 +50,8 @@ def unit_source(name):
     if name not in UNIT_SUITES:
         # Unknown names belong to later migration chunks, never a silently omitted native case.
         raise ValueError('Unknown migrated unit suite: '+name)
-    if name.startswith('quic_'):
-        # Transport lifecycle and disabled integration retain their own native suite directory.
-        return QUIC_ROOT/('test_'+name+'.nim')
-    # Crypto ownership cases share the runner without being mistaken for state serialization tests.
-    if name in ('crypto_seeds', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners', 'extrinsic_commitment'):
-        return CRYPTO_ROOT/('test_'+name+'.nim')
-    return (STATE_ROOT if name in UNIT_LINKS else UNIT_ROOT)/('test_'+name+'.nim')
+    directories = {'codec': UNIT_ROOT, 'state': STATE_ROOT, 'crypto': CRYPTO_ROOT, 'quic': QUIC_ROOT}
+    return directories[NATIVE_REQUIREMENTS[name]['directory']]/('test_'+name+'.nim')
 
 
 # Bound independent test workers explicitly; callers can request serial controls without changing semantics.
@@ -89,7 +87,8 @@ def unit_command(compiler, name=None, libraries=None):
         if libraries is None or profile not in libraries:
             # Linked application tests require an explicit result from pinned native preparation.
             raise ValueError('Missing native unit library profile: '+profile)
-        profiles = ('bandersnatch_observer', 'bandersnatch', profile) if name in ('validator_state', 'ticket_admission', 'ticket_state', 'sealer_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'block_admission') else ('bandersnatch_observer', profile) if name == 'bandersnatch_owners' else (profile,)
+        requirements = NATIVE_REQUIREMENTS[name]
+        profiles = requirements['libraries']
         for key in profiles:
             # The Rust owner observer and production primitive remain separate unchanged libraries.
             if key not in libraries:
@@ -102,28 +101,15 @@ def unit_command(compiler, name=None, libraries=None):
             if key in ('bandersnatch', 'bandersnatch_observer') or profile == 'quic':
                 # Locate the maintained Rust ABI and observer on both supported hosts.
                 flags.append('--passL:-Wl,-rpath,'+str(library.parent))
-        include = 'bandersnatch' if name == 'bandersnatch_owners' else 'quic' if profile == 'quic' else 'crypto'
-        flags.append('--passC:-I'+str(ROOT/'native'/include))
-        if name in ('validator_state', 'ticket_admission', 'ticket_state', 'sealer_state'):
-            # Keep both native headers available without changing production ABI declarations.
-            flags.append('--passC:-I'+str(ROOT/'native/bandersnatch'))
-            for function in ('setup_new', 'setup_free', 'ring_verify' if name in ('ticket_admission', 'ticket_state', 'sealer_state') else 'commit'):
-                # Only this refusal profile observes setup/commit calls; real native release still runs.
-                flags.append('--passC:-Dbs_'+function+'=bo_'+function)
-        if name in ('safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'block_admission'):
-            # Observe only ordinary verification call sites; production Rust remains pristine.
-            flags += ['--passC:-I'+str(ROOT/'native/bandersnatch'), '--passC:-Dbs_verify=bo_verify']
-        if name in ('safrole_transition', 'block_admission'):
-            # Observe every native stage while preserving the unchanged production ABI and output.
-            for function in ('setup_new', 'setup_free', 'commit', 'ring_verify'):
-                flags.append('--passC:-Dbs_'+function+'=bo_'+function)
-        if name == 'bandersnatch_owners':
-            # Rename only these test call sites, exactly as in the existing owner-observation profile.
-            for function in ('key_new', 'key_free', 'setup_new', 'setup_free'):
-                flags.append('--passC:-Dbs_'+function+'=bo_'+function)
-    if name == 'quic_integration':
-        # Exercise the enabled provider separately from its default typed-refusal profile.
-        flags.append('-d:integration')
+        for include in requirements['includes']:
+            # Headers retain their explicit order after the ordered native library arguments.
+            flags.append('--passC:-I'+str(ROOT/'native'/include))
+        for function in requirements['observers']:
+            # Rename only declared test call sites; production libraries remain unchanged.
+            flags.append('--passC:-Dbs_'+function+'=bo_'+function)
+    for define in NATIVE_REQUIREMENTS[name]['defines'] if name is not None else ():
+        # Integration remains an explicit per-suite opt-in, independent of library preparation.
+        flags.append('-d:'+define)
     if platform.system() == 'Linux':
         # Keep the established Linux LTO linker rather than relying on the runner's defaults.
         flags.append('--passL:-fuse-ld=lld')
@@ -157,7 +143,7 @@ def unit_environment(compiler, name=None, base=None, fixtures=None):
         # Other suite observations may belong to another completed per-suite invocation.
         if case in ARC_SUITES:
             (directory/(case+'.json')).unlink(missing_ok=True)
-        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'extrinsic_commitment', 'block_admission', 'disputes_transition', 'availability_transition') and case not in manifest:
+        if NATIVE_REQUIREMENTS[case]['prepared'] and case not in manifest:
             # Inherited paths cannot replace newly prepared native transport/integration fixtures.
             raise ValueError('Missing prepared native unit fixtures: '+case)
         if case in manifest:
@@ -209,43 +195,6 @@ def unit_ticket_fixture(folder):
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_TICKET_ADMISSION', path, ((path, evidence['fixture_sha256']),))
     return {'ticket_admission': fixture, 'ticket_state': fixture}, evidence
-
-
-# Only trusted upstream fields are transported; the native suite executes every schedule equation.
-def unit_sealer_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from sealer_schedule_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_SEALER_SCHEDULE', path, ((path, evidence['fixture_sha256']),))
-    from safrole_marker_fixtures import prepare as prepare_markers
-    marker_path, marker_evidence = prepare_markers(folder)
-    marker_fixture = ('RAGNAROK_SAFROLE_MARKERS', marker_path, ((marker_path, marker_evidence['fixture_sha256']),))
-    from safrole_authentication_fixtures import prepare as prepare_authentication
-    auth_path, auth_evidence = prepare_authentication(folder)
-    auth_fixture = ('RAGNAROK_SAFROLE_AUTHENTICATION', auth_path, ((auth_path, auth_evidence['fixture_sha256']),))
-    from safrole_transition_fixtures import prepare as prepare_transition
-    stage_path, stage_evidence = prepare_transition(folder)
-    stage_fixture = ('RAGNAROK_SAFROLE_TRANSITION', stage_path, ((stage_path, stage_evidence['fixture_sha256']),))
-    from block_admission_fixtures import prepare as prepare_commitment
-    commitment_path, commitment_evidence = prepare_commitment(folder)
-    commitment_fixture = ('RAGNAROK_EXTRINSIC_COMMITMENT', commitment_path, ((commitment_path, commitment_evidence['fixture_sha256']),))
-    from block_admission_fixtures import prepare_admission
-    admission_path, admission_evidence = prepare_admission(folder)
-    admission_fixture = ('RAGNAROK_BLOCK_ADMISSION', admission_path, ((admission_path, admission_evidence['fixture_sha256']),))
-    from disputes_transition_fixtures import prepare as prepare_disputes
-    disputes_path, disputes_evidence = prepare_disputes(folder)
-    disputes_fixture = ('RAGNAROK_DISPUTES_TRANSITION', disputes_path, ((disputes_path, disputes_evidence['fixture_sha256']),))
-    from availability_transition_fixtures import prepare as prepare_availability
-    availability_path, availability_evidence = prepare_availability(folder)
-    availability_fixture = ('RAGNAROK_AVAILABILITY_TRANSITION', availability_path, ((availability_path, availability_evidence['fixture_sha256']),))
-    evidence['availability'] = availability_evidence
-    evidence['disputes'] = disputes_evidence
-    evidence['admission'] = admission_evidence
-    evidence['commitment'] = commitment_evidence
-    evidence['transition'] = stage_evidence
-    evidence['authentication'] = auth_evidence
-    evidence['markers'] = marker_evidence
-    return {'sealer_schedule': fixture, 'sealer_state': fixture, 'safrole_markers': marker_fixture, 'marker_state': marker_fixture, 'safrole_authentication': auth_fixture, 'safrole_auth_state': auth_fixture, 'safrole_transition': stage_fixture, 'extrinsic_commitment': commitment_fixture, 'block_admission': admission_fixture, 'disputes_transition': disputes_fixture, 'availability_transition': availability_fixture}, evidence
 
 
 # Prepare exact published roster projections for the bounded planner's native assertions.

@@ -131,6 +131,17 @@ at import; native discovery still checks checked-in suites and their expected-ou
 verification still checks complete corpus/failure coverage. Both the loader and JSON data are
 included in report provenance. Compiler guards do not import the runtime executor.
 
+`tools/native_requirements.json` declares each suite's source directory, ordered libraries,
+headers, observer call-site renames, compiler defines and fresh-fixture requirement, one suite
+per line. The loader requires exact coverage of the execution inventory, validates the primary
+link profile and rejects unknown fields/settings. `make check-inventory` (also run explicitly
+by each CI job) loads these requirements before provisioning. Keep suite execution order in
+`verification_inventory.json`; the requirements file does not schedule tests.
+`tools/native_fixtures.py` separates schedule, markers, authentication, transition, commitment,
+admission, disputes and availability preparation. Its aggregate entry point preserves the
+historical preparation order and nested sealer evidence schema; each feature can also be
+prepared independently. All new tooling and metadata are included in runtime provenance.
+
 `tools/corpus_checks.py` compares complete native output against independently prepared expected
 rows. The runtime runner retains corpus-specific generation, linking, provenance and additional
 coverage predicates. The shared comparison preserves nonzero-exit rejection, missing/extra-row
