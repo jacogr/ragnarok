@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and refused policy results cannot expose a successful certificate.
 import std/[cmdline, syncio]
 import ../../src/state/[report_policy, guarantee_credentials, store]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Failed/default header results and absent marker alternatives reject invalid application access.
 import std/[cmdline, syncio]
 import ../../src/codec/[header, bounded, assurances]

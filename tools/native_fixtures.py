@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Feature-owned native fixture preparation; independent oracles retain their byte contracts."""
 import sys
 import hashlib

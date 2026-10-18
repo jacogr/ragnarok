@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Supplementary scope retention, fixed-copy independence and result/owner/index guards for output logs.
 import std/[assertions, syncio]
 import ../../../src/codec/[state_outputs, bounded]

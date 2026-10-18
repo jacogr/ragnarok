@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Unchanged report STF projections and authored credential, population, reporter-set and ownership boundaries.
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[guarantee_credentials, guarantors]

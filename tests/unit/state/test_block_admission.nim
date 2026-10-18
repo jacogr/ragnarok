@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Real signed blocks bind exact parent headers and complete parent-state maps before atomic Safrole execution.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[block_admission, safrole_transition, safrole_authentication, store,

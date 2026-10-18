@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Shared deterministic report-policy test contexts; no production verifier or verdict is replaced.
 import std/[assertions, parseutils]
 import ../../src/state/[report_policy, guarantee_credentials, guarantors, store]

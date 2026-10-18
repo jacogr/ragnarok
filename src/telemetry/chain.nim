@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Bounded JIP-4 telemetry metadata extraction, not chain-state validation or initialization.
 import std/[parsejson, streams, strutils, parseutils]
 import ../crypto/primitives

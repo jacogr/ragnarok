@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## A package identity cannot construct the direct segment-root import alternative.
 import ../../../src/codec/[work_package, work_report]
 let wrong = rootImport(PackageHash(), ImportIndex(0))

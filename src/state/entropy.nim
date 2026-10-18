@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 safrole.tex timekeeping/entropy equations and header.tex strict parent-slot ordering.
 ## Caller authenticates the header entropy VRF output and checks wall-clock admission separately.
 import ../codec/[state_safrole, state_layout, state_trie]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 recent_history.tex and merklization.tex: parent correction, output tree and belt advancement.
 ## Inputs project already validated headers/guarantees and completed accumulation, not block validity.
 import std/algorithm

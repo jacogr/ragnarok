@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Structurally decoded header markers bind retained parent and staged state without writes or hashing.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[safrole_markers, marker_state, store]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 header.tex parent/state/extrinsic bindings over one immutable decoded block.
 ## This is a full-state admission boundary, not complete block validity or disputes execution.
 import std/assertions

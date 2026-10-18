@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## No default/refused admission or nonselected reason can expose block/state/progress.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[block_admission, safrole_transition, store]

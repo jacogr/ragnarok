@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and actually refused commitments cannot expose a digest.
 import std/[assertions, cmdline, syncio]
 import ../../src/crypto/extrinsic_commitment

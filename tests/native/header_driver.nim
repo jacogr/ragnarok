@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted independent typed-source and field-observation adapter for header/marker codecs.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[header, bounded, assurances, tickets]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport unchanged pinned report-policy inputs; native tests own all policy verdicts."""
 import hashlib
 import json

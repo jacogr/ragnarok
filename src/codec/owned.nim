@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Owned snapshots over the pinned C.1.2/C.1.3/C.2 borrowed codecs.
 ## Input must be stable during a call; successful snapshots retain only the consumed prefix.
 import ./[natural, bounded, composite, work_digest]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and actually refused guarantor results cannot expose a successful owner.
 import std/[cmdline, syncio]
 import ../../src/state/guarantors

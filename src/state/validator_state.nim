@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 safrole.tex roster/root rotation, published atomically into a full-state working store.
 ## Run before entropy/time advancement: C(11) still contains the parent slot. No ticket/schedule execution.
 import ../codec/[state_safrole, state_consensus, state_layout, state_trie, assurances, bounded]

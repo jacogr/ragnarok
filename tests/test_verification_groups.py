@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Guard disjoint verification ownership and failure verdicts when CI groups run independently."""
 import ast
 import json

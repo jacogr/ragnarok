@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 reporting_assurance.tex guarantorsig/reporters and active-population erasure-shard equality.
 ## This certifies credentials only; history, authorization, service/gas and package checks precede C(10) publication.
 import ../codec/[guarantees, assurances, bounded, state_safrole, disputes, report_owned, owned, natural]

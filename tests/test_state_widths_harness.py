@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal fixed/natural alternatives protect the diagnostic investigation without upstream execution."""
 import unittest
 from state_widths_oracle import privilege_wire, statistics_wire, statistics_candidate

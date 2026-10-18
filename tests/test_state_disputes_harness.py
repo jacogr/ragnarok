@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal canonical set boundaries, independent framing and state-transition scope checks."""
 import unittest
 from state_disputes_oracle import wire,encode,decode,MAX

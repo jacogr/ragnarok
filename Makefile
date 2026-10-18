@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 # Make owns setup dependencies and command sequencing; helpers retain validation and native logic.
 .DEFAULT_GOAL := build
 # Put flags in SHELL for both macOS Make 3.81 and newer Linux Make.

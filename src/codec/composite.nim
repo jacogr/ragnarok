@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Composite codecs, pinned Gray Paper v0.8.0 C.1.3/C.2. No heap allocation.
 import ./natural
 import ./fixed_unsigned

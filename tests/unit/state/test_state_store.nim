@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Storage semantics and ownership tests; published transition-map replay is a separate increment.
 import std/[assertions, syncio]
 import ../../../src/state/store

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Shared fixtures and process checks for owned C.2 codecs, Blake2b-256 and persistent CE 143."""
 from functools import partial
 import hashlib
