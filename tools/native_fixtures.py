@@ -85,6 +85,15 @@ def unit_guarantors_fixture(folder):
     return {'guarantor_assignments': fixture}, evidence
 
 
+# Prepare unchanged credential projections independently from other report-state fixture families.
+def unit_guarantee_credentials_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from guarantee_credential_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_GUARANTEE_CREDENTIALS', path, ((path, evidence['fixture_sha256']),))
+    return {'guarantee_credentials': fixture}, evidence
+
+
 # Keep the historical preparation order and nested report schema for existing evidence consumers.
 def unit_sealer_fixture(folder):
     fixtures, evidence = unit_schedule_fixture(folder)
@@ -104,6 +113,9 @@ def unit_sealer_fixture(folder):
     fixtures.update(availability_fixtures)
     guarantors_fixtures, guarantors_evidence = unit_guarantors_fixture(folder)
     fixtures.update(guarantors_fixtures)
+    credential_fixtures, credential_evidence = unit_guarantee_credentials_fixture(folder)
+    fixtures.update(credential_fixtures)
+    evidence['guarantee_credentials'] = credential_evidence
     evidence['guarantors'] = guarantors_evidence
     evidence['availability'] = availability_evidence
     evidence['disputes'] = disputes_evidence
