@@ -14,9 +14,14 @@ type
   GuaranteeCredentialError* {.pure.} = enum
     Uninitialized, None, StructureFailure, AssignmentFailure, InactiveCore, WrongErasureShards,
     WrongAssignment, InvalidSignature, BackendFailure, LimitExceeded, InvalidIndex
+  ## Copied candidate context belongs to the completed verification, including an empty guarantee batch.
+  VerifiedGuaranteeContext* = object
+    slot*: StateTime
+    population*: ValidatorCount
   ## Private acyclic storage keeps copied guarantees/report handles and the exact assignment context together.
   CredentialData = ref object
     assignments: GuarantorPlan
+    context: VerifiedGuaranteeContext
     guarantees: seq[Guarantee]
     reporters: seq[StateEdKey]
   ## Immutable success handle cannot be forged by substituting a key table or mutable report buffer.
@@ -53,6 +58,16 @@ proc verifiedGuaranteeCount*(owner: VerifiedGuaranteeCredentials): GuaranteeCred
     return GuaranteeCredentialResult[int](status: GuaranteeCredentialError.Uninitialized) # No owner.
   GuaranteeCredentialResult[int](status: GuaranteeCredentialError.None,
       completed: data.guarantees.len)
+
+## Retain candidate time and current active population from the exact completed verification context.
+proc verifiedGuaranteeContext*(owner: VerifiedGuaranteeCredentials): GuaranteeCredentialResult[
+    VerifiedGuaranteeContext] =
+  let data = owner.data
+  if data == nil:
+    return GuaranteeCredentialResult[VerifiedGuaranteeContext](
+        status: GuaranteeCredentialError.Uninitialized) # No invented genesis context.
+  GuaranteeCredentialResult[VerifiedGuaranteeContext](status: GuaranteeCredentialError.None,
+      completed: data.context)
 
 ## Return one copied record retaining its immutable report; modifying the copy cannot change this verified owner.
 proc verifiedGuaranteeAt*(owner: VerifiedGuaranteeCredentials,
@@ -159,7 +174,7 @@ proc verifyGuaranteeCredentials*(values: openArray[Guarantee], active,
       assignmentReason: planned.error) # Empty batches also require valid posterior context.
   let population = uint64(validatorCount(active).value)
   let data = CredentialData(assignments: planned.value, guarantees: newSeq[Guarantee](values.len),
-      reporters: @[])
+      reporters: @[], context: VerifiedGuaranteeContext(slot: slot, population: ValidatorCount(population)))
   for i, value in values:
     let info = ownedReportInfo(value.report).value
     let core = uint64(info.core)

@@ -407,7 +407,9 @@
       "stf/reports/tiny/segment_root_lookup_invalid-1.json": "7b9fe3a51bc72cafb407f987214a3b36ac9e7c0ba7cc704c39c02ba462cf27ae",
       "stf/reports/tiny/segment_root_lookup_invalid-2.json": "022029a8e4b94e0662f31c7381ecbf1355b13d2464b10f58a4a90e5abcb78e8d",
       "stf/reports/tiny/too_many_dependencies-1.json": "76b834006cad6025930377c937c6e125b0366abf01862a061fc784aad533011f",
-      "stf/reports/tiny/with_avail_assignments-1.json": "7def63fd4c8f39a8612f1ec12f18b48725ebd3a99e3fd5f8d45b20caeca9ae76"
+      "stf/reports/tiny/with_avail_assignments-1.json": "7def63fd4c8f39a8612f1ec12f18b48725ebd3a99e3fd5f8d45b20caeca9ae76",
+      "stf/reports/full/core_engaged-1.json": "e66c20b282a1a2f3069e4f28f10a14738530a8ae0d6d6b5dcab82af58230af01",
+      "stf/reports/tiny/core_engaged-1.json": "2df0b26e2b2a3fbcbbbacc99dcb95574fc2cec660db8fc7e7ecdeb6c7b5d19a6"
     }
   },
   "toolchains": {
