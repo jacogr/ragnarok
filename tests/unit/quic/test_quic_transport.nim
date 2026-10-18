@@ -13,7 +13,8 @@ proc acceptFixture(user: pointer, der: ptr ConstByte, length: csize_t): cint {.c
 # Test-owned observations retain counters only; all native pointers are borrowed for one callback.
 type HandshakeCounts = object
   starts, successes, failures, dropped: int
-  peerStarts, peerCloses: int
+  peerStarts, peerCloses, refusals: int
+  refusedPort: uint16
   peers: array[IncomingPeerSlots, bool]
   ipv6: bool
   active: array[IncomingHandshakeSlots, bool]
@@ -22,6 +23,17 @@ type HandshakeCounts = object
 proc handshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
     port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].} =
   let counts = cast[ptr HandshakeCounts](user)
+  if event == AdmissionRefused:
+    assert slot == cuint(IncomingHandshakeSlots) and address != nil and port != 0
+    let remote = cast[ptr UncheckedArray[byte]](address)
+    assert remote[15] == 1
+    if counts.ipv6:
+      for i in 0..<15: assert remote[i] == 0 # Refusals preserve native IPv6 loopback.
+    else:
+      assert remote[10] == 255 and remote[11] == 255 and remote[12] == 127
+    inc counts.refusals
+    counts.refusedPort = port
+    return # Capacity refusal has no TLS correlation slot to retire.
   if event == HandshakeDropped:
     inc counts.dropped # Overflow carries no invented correlation or identity.
     return
@@ -128,7 +140,36 @@ proc saturation(cert, key: string, ipv6: bool) =
   server.closeTransport()
   assert counts.peerCloses == 1 # Engine teardown must not fabricate a second observed close.
   assert counts.failures == IncomingHandshakeSlots - 1 and counts.dropped == 2
+  assert counts.refusals == 0 # Observation saturation never implies admission refusal.
   for active in counts.active: assert not active # Every tracked lifetime settled before storage retirement.
+
+# Fill the real admitted-peer table and observe only the explicit excess-connection refusal.
+proc admissionRefusal(cert, key: string, ipv6: bool) =
+  var counts = default(HandshakeCounts)
+  counts.ipv6 = ipv6
+  var server = default(Transport)
+  var clients = default(array[IncomingPeerSlots + 1, Transport])
+  defer:
+    server.closeTransport() # Teardown cannot invent closures for the refused peer.
+    for i in 0..<clients.len: clients[i].closeTransport() # Retire every test engine once.
+  assert server.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+      addr counts, acceptFixture, stream, multi = true, ipv6 = ipv6, profile = SaturatedService)
+  assert server.observePeers(peerEvent) and server.observeHandshakes(handshake)
+  for i in 0..<clients.len:
+    assert clients[i].openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000",
+        addr counts, acceptFixture, stream, ipv6 = ipv6)
+    assert clients[i].connectTransport(server.localPort)
+    for turn in 0..<500:
+      for live in 0..i: discard clients[live].pollTransport(0) # Drive all retained engines, including keepalives.
+      assert server.pollTransport(1)
+      if counts.peerStarts + counts.refusals == i + 1: break # Observe decisions, not elapsed sleeps.
+    assert counts.peerStarts + counts.refusals == i + 1
+  assert counts.peerStarts == IncomingPeerSlots and counts.refusals == 1
+  assert counts.refusedPort == clients[IncomingPeerSlots].localPort
+  assert counts.peerCloses == 0 and server.peerMetric(0) == uint64(IncomingPeerSlots)
+  assert server.peerMetric(5) == 1 and counts.successes == IncomingPeerSlots + 1
+  server.closeTransport()
+  assert counts.refusals == 1 and counts.peerCloses == 0 # Refused connections never occupy a peer slot.
 
 # Exercise native construction failure and success with the exact production I/O owner and LSQUIC engine.
 proc main() {.raises.} =
@@ -171,6 +212,7 @@ proc main() {.raises.} =
     outgoing.closeTransport()
   for ipv6 in [false, true]: # Reuse the process-wide SSL observer index across complete engine retirement.
     saturation(args[0], args[1], ipv6)
+    admissionRefusal(args[0], args[1], ipv6)
   echo "Nimony shared transport: 4 IPv4/IPv6 engine pairs passed"
   echo "Nimony transport: 16 IPv4/IPv6 native setup/teardown cycles passed"
 

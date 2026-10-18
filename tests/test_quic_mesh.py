@@ -45,7 +45,7 @@ def observe(processes, logs, marker, peaks, seconds=15, thread_limits=None):
 
 
 # Keep both logical peer processes and all four role engines alive for the complete externally gated workload.
-def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, directory=None):
+def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, directory=None, telemetry=None):
     # Compiler-specific binary/log paths preserve the same retained engine and gate schedules.
     binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
     name = '-'.join(languages) + ('-bad-pin' if bad_pin else '')
@@ -70,6 +70,9 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
             command = [str(binaries[language]), 'mesh', str(local_ports[index]), str(local_ports[1-index]),
                        str(folder / f'{role}.cert.pem'), str(folder / f'{role}.key.pem'),
                        str(folder / f'{role}.pub'), str(folder / f'{remote_pin}.pub'), 'jamnp-s/1/00000000', str(gate)]
+            if telemetry is not None:
+                # Optional collector controls exercise the real trailing CLI without changing mesh policy.
+                command += ['--chain', str(telemetry['chain']), '--telemetry', telemetry[role]]
             handles[role] = logs[role].open('w')
             processes[role] = subprocess.Popen(command, stdout=handles[role], stderr=subprocess.STDOUT,
                 env={**os.environ, 'RAGNAROK_MESH_ROUNDS': str(rounds), 'RAGNAROK_MESH_FALLBACK': '0' if bad_pin else '1'})
@@ -95,6 +98,9 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
                 assert f'MESH_CONNECTED {round_index} {int(expected_direction)}' in text.splitlines(), (role, text)
                 if round_index:
                     assert f'MESH_DUPLICATE {round_index}' in text.splitlines(), (role, text)
+            if telemetry is not None:
+                # Hold the authenticated state past one status interval while the peer dispatcher keeps ticking.
+                time.sleep(2.1)
             (gate / f'close-{round_index}').touch()
             texts = observe(processes, logs, f'MESH_IDLE {round_index} ', peaks, thread_limits=thread_limits)
             # Exact accepted/closed equality proves complete retirement before another dial on the same engines.
@@ -108,6 +114,9 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
                 sample['allocated_bytes'] = allocated
                 sample['thread_baseline'] = thread_limits[role]
                 idle[role].append(sample)
+            if telemetry is not None:
+                # Observe idle status before the next round can authenticate another generation.
+                time.sleep(2.1)
         budgets = {role: check_growth(samples, warmup, languages[0 if role == 'a' else 1]) for role, samples in idle.items()}
         (gate / 'stop').touch()
         for role, process in processes.items():
@@ -117,7 +126,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
             assert int(fields[2]) <= int(fields[1]) + 65536, fields
         result = {'pairing': name, 'rounds': rounds, 'fallback_timeout_seconds': 5,
                   'bidirectional_queries': rounds * 8, 'duplicate_connections_retired': rounds - 1,
-                  'retained_engines_per_peer': 2, 'thread_baselines': thread_limits, 'peaks': peaks, 'idle_budgets': budgets,
+                  'listener_ports': dict(zip(logs, local_ports)), 'retained_engines_per_peer': 2, 'thread_baselines': thread_limits, 'peaks': peaks, 'idle_budgets': budgets,
                   'seconds': time.monotonic() - started}
         (directory / 'resources.json').write_text(json.dumps({'result': result, 'idle_samples': idle}, indent=2) + '\n')
         return result

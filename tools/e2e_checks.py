@@ -1,5 +1,6 @@
 """Run the unchanged peer/lifecycle/resource workloads in an E2E-owned workspace."""
 import subprocess
+import traceback
 from native_checks import ROOT, announce
 
 # Peer-entry selftests and networking workloads retain their original flags, rounds and finalizers.
@@ -31,21 +32,27 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
     report['telemetry'] = dict(passed=False)
     telemetry_build, telemetry_binary = build(compiler, ROOT/'tests/native/telemetry_driver.nim', 'telemetry-driver')
     if compiled['exit_code'] == 0 and telemetry_build['exit_code'] == 0:
-        from telemetry_checks import reconnect, peer_registration, dial_failure, peer_loss, incoming_failure, incoming_lifetimes
+        from telemetry_checks import reconnect, peer_registration, dial_failure, peer_loss, incoming_failure, incoming_lifetimes, mesh_lifetimes, mesh_shutdown, capacity_refusal
         try:
+            refusal = capacity_refusal(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-refusal')
             observed = reconnect(telemetry_binary)
             observed6 = reconnect(telemetry_binary, ipv6=True)
-            peer = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
+            peer = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', startup_delay=2.1)
             peer6 = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-ipv6', ipv6=True)
             failed = dial_failure(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
             lost = peer_loss(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
             incoming = incoming_failure(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
             expiry = incoming_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', True)
-            teardown = incoming_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', False)
-            report['telemetry'] = dict(passed=True, reconnect=observed, reconnect_ipv6=observed6, peer=peer, peer_ipv6=peer6, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
+            teardown = incoming_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', False, startup_delay=1.5)
+            mesh = mesh_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh')
+            mesh_failed = mesh_lifetimes(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh-failed', bad_pin=True)
+            mesh_pending = mesh_shutdown(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh-pending', silent=True)
+            mesh_teardown = mesh_shutdown(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh-teardown')
+            report['telemetry'] = dict(passed=True, capacity_refusal=refusal, mesh=mesh, mesh_failed=mesh_failed, mesh_pending=mesh_pending, mesh_teardown=mesh_teardown, reconnect=observed, reconnect_ipv6=observed6, peer=peer, peer_ipv6=peer6, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # Collector failures remain visible while process finalizers retire every live child.
-            report['telemetry'] = dict(passed=False, failure=str(error))
+            report['telemetry'] = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
+            print(report['telemetry']['traceback'], flush=True) # Preserve the scenario and assertion in CI console output.
     announce('JIP-3 telemetry registration/status/reconnect', report['telemetry']['passed'])
     # The enabled entry point must compile its migrated integration call sites and retain the original selftest.
     compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-integration', crypto_library,
