@@ -98,9 +98,16 @@
     "report_assignments",
     "report_admission",
     "report_transition",
-    "accumulation_queue"
+    "accumulation_queue",
+    "accumulation_operands"
   ],
   "PRIVATE": {
+    "accumulation_operand_result_private": "completed",
+    "accumulation_operand_retag_private": "status",
+    "accumulation_operand_owner_private": "data",
+    "accumulation_operand_bound_private": "data",
+    "accumulation_operand_bound_result_private": "completed",
+
     "accumulation_queue_result_private": "completed",
     "accumulation_queue_retag_private": "status",
     "accumulation_queue_owner_private": "data",
@@ -783,6 +790,10 @@
     "report_transition_publication_private": "publicationReason"
   },
   "NOMINAL": {
+    "accumulation_operand_raw_prefix": "[2] expected: AccumulationReportPrefix but got: uint64",
+    "accumulation_operand_service_as_group": "[2] expected: OperandServiceIndex but got: ServiceIndex",
+    "accumulation_operand_group_as_operand": "[3] expected: ServiceOperandIndex but got: OperandServiceIndex",
+
     "accumulation_queue_slot_as_index": "[2] expected: AccumulationIndex but got: WorkQueueSlot",
     "accumulation_queue_index_as_hash": "[3] expected: WorkQueueHashIndex but got: AccumulationIndex",
 
@@ -990,6 +1001,10 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
+    "accumulation_operand_raw_prefix": ["prepareAccumulationOperands(", "[2] expected: AccumulationReportPrefix but got: uint64"],
+    "accumulation_operand_service_as_group": ["operandServiceAt(", "[2] expected: OperandServiceIndex but got: ServiceIndex"],
+    "accumulation_operand_group_as_operand": ["serviceOperandAt(", "[3] expected: ServiceOperandIndex but got: OperandServiceIndex"],
+
     "accumulation_queue_slot_as_index": ["accumulationAt(", "[2] expected: AccumulationIndex but got: WorkQueueSlot"],
     "accumulation_queue_index_as_hash": ["accumulationDependencyAt(", "[3] expected: WorkQueueHashIndex but got: AccumulationIndex"],
     "pvm_register_raw_address": ["evaluateRegisters(", "[2] expected: CodeAddress but got: uint64"],
@@ -1097,7 +1112,8 @@
     "report_assignments": 3,
     "report_admission": 10,
     "report_transition": 6,
-    "accumulation_queue": 7
+    "accumulation_queue": 7,
+    "accumulation_operands": 9
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1197,7 +1213,8 @@
     "report_assignments": "report_assignments_arc_release",
     "report_admission": "report_admission_arc_release",
     "report_transition": "report_transition_arc_release",
-    "accumulation_queue": "accumulation_queue_arc_release"
+    "accumulation_queue": "accumulation_queue_arc_release",
+    "accumulation_operands": "accumulation_operands_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1272,6 +1289,7 @@
     "report_assignments": "observer",
     "report_admission": "observer",
     "report_transition": "observer",
-    "accumulation_queue": "observer"
+    "accumulation_queue": "observer",
+    "accumulation_operands": "observer"
   }
 }

@@ -316,5 +316,17 @@
   "tests/native/compile_fail/accumulation_queue_bound_result_private.nim",
   "tests/native/compile_fail/accumulation_queue_slot_as_index.nim",
   "tests/native/compile_fail/accumulation_queue_index_as_hash.nim",
-  "tests/test_accumulation_queue_harness.py"
+  "tests/test_accumulation_queue_harness.py",
+  "src/state/accumulation_operands.nim",
+  "tests/accumulation_operand_fixtures.py",
+  "tests/test_accumulation_operand_harness.py",
+  "tests/native/accumulation_operand_results.nim",
+  "tests/native/compile_fail/accumulation_operand_result_private.nim",
+  "tests/native/compile_fail/accumulation_operand_retag_private.nim",
+  "tests/native/compile_fail/accumulation_operand_owner_private.nim",
+  "tests/native/compile_fail/accumulation_operand_bound_private.nim",
+  "tests/native/compile_fail/accumulation_operand_bound_result_private.nim",
+  "tests/native/compile_fail/accumulation_operand_raw_prefix.nim",
+  "tests/native/compile_fail/accumulation_operand_service_as_group.nim",
+  "tests/native/compile_fail/accumulation_operand_group_as_operand.nim"
 ]

@@ -96,8 +96,11 @@ private working store and publishes the final C(10) only on complete success. Se
 [the atomic publication contract](../spec/report-transition.md). Accumulation history/queue
 planning now lives in `src/state/accumulation_queue.nim`: it derives the exact assurance output and
 parent C(14)/C(15) from completed report admission, then computes dependency removal and deterministic
-ready waves without writes. See [the queue contract](../spec/accumulation-queue.md). Per-service
-operand preparation is next; PVM execution and full block execution remain later work.
+ready waves without writes. See [the queue contract](../spec/accumulation-queue.md).
+`src/state/accumulation_operands.nim` now prepares report-derived per-service C.2 operands from
+an explicit priority prefix, preserving inner order and bound source provenance. See
+[the operand preparation contract](../spec/accumulation-operands.md). Transfer/privilege invocation
+context is next; PVM execution and full block execution remain later work.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See

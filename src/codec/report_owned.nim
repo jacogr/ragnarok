@@ -17,13 +17,13 @@ type
   # Copying this opaque handle retains the immutable snapshot automatically; no manual release is required.
   OwnedReport* = object
     data: nil ReportData
-  # Fixed/count metadata owns values and never exposes mutable bytes or detached source coordinates.
+  # Fixed/count metadata includes trace length and never exposes mutable bytes or detached source coordinates.
   OwnedReportInfo* = object
     header*: ReportHeader
     core*: CoreIndex
     authorizer*: AuthorizerHash
     authGas*: Gas
-    prerequisiteCount*, lookupCount*, digestCount*, consumed*: int
+    prerequisiteCount*, lookupCount*, digestCount*, authBytes*, consumed*: int
 
 # Preserve exact wire failures while adding the existing owner/index/allocation failure domain.
 proc reportOwnedError(error: CompositeError): OwnershipError {.raises: [].} =
@@ -61,7 +61,8 @@ proc ownedReportInfo*(owner: OwnedReport): OwnedResult[OwnedReportInfo] {.raises
     header: value.header,
     core: value.core, authorizer: value.authorizer, authGas: value.authGas,
     prerequisiteCount: value.prerequisiteCount,
-    lookupCount: value.lookupCount, digestCount: value.digestCount, consumed: data.wire.len))
+    lookupCount: value.lookupCount, digestCount: value.digestCount,
+    authBytes: value.authOutput.length, consumed: data.wire.len))
 
 # Compare storage ranges by address difference without overflowing pointer-end arithmetic.
 proc reportOwnerOverlaps(data: ReportData, output: var openArray[byte],
