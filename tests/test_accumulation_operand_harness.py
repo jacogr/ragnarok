@@ -40,6 +40,7 @@ class AccumulationOperandHarness(unittest.TestCase):
 
     # Work errors remain ordinary operand values and still carry the full authorization trace.
     def test_work_error(self):
+        # Every error tag must preserve the same trace without a successful payload field.
         for tag in range(1, 7):
             value = self.source(1, [(7, tag, b'')])
             expected = wire('O', (bytes([1])*32, bytes([2])*32, bytes([3])*32,

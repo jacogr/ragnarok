@@ -104,6 +104,7 @@ proc literal(base: OwnedReport): AccumulationQueuePlan =
   assert prepared.operandServiceCount.value == 4
   assert uint64(prepared.operandReportPrefix.value) == 2
   assert prepared.operandQueue.value.accumulationCount.value == 2
+  # Fixed numeric service IDs must order groups independently of source report identity.
   for i, service in [0'u32, 9, 42, high(uint32)]:
     assert uint32(prepared.operandServiceAt(OperandServiceIndex(i)).value.service) ==
         service # Fixed service order.
@@ -163,6 +164,7 @@ proc projections() {.raises.} =
       assert uint32(info.service) == uint32(parseInt(fields[0])), f[0]
       let expected = fields[1].split(',')
       assert info.operands == expected.len, f[0]
+      # Exact whole-record equality checks every source-derived field and canonical framing.
       for j in 0..<expected.len:
         let operand = owner.serviceOperandAt(OperandServiceIndex(i), ServiceOperandIndex(j)).value
         assert bytes(operand) == unhex(expected[j]), f[0] & " " & $i & " " &
@@ -183,6 +185,7 @@ proc boundaries(source: AccumulationQueuePlan) =
   # Derive independent observed totals from complete owners before enforcing exact construction limits.
   for i in 0..<accepted.operandServiceCount.value:
     let group = accepted.operandServiceAt(OperandServiceIndex(i)).value
+    # Include every independently retained record in aggregate byte/blob limits.
     for j in 0..<group.operands:
       let info = operandInfo(accepted.serviceOperandAt(OperandServiceIndex(i), ServiceOperandIndex(
           j)).value).value

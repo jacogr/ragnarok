@@ -18,8 +18,10 @@ from c2_oracle import wire
 # Numeric service enumeration changes only group order; report/digest order inside each group is preserved.
 def grouped(selected, prefix):
     groups = {}
+    # The explicit prefix excludes reports reserved for a later accumulation round.
     for report in selected[:prefix]:
         value = report['layout']
+        # Preserve original digest order while filtering into service-specific input sequences.
         for service, code, payload_hash, gas, tag, payload, load in value['digests']:
             # Code hashes and refinement metrics are deliberately not members of an accumulation operand.
             header = value['header']
@@ -43,7 +45,9 @@ def prepare(folder):
     lines = []
     template = None
     sources = []
+    # Both chain profiles retain their exact pinned queue/report fields.
     for chain, cores in (('tiny', 2), ('full', 341)):
+        # These scenarios cover nonempty selection and unresolved dependency queues.
         for name in ('accumulate_ready_queued_reports-1', 'enqueue_and_unlock_chain-1',
                      'enqueue_and_unlock_chain_wraps-1'):
             path = f'stf/accumulate/{chain}/{name}.json'
@@ -54,20 +58,25 @@ def prepare(folder):
             available = [report(x) for x in case['input']['reports']]
             history = [{bytes.fromhex(x[2:]) for x in bucket} for bucket in state['accumulated']]
             selected, _, _ = priority(available, ready, history, case['input']['slot'])
+            # Empty, partial and complete prefixes must map without inventing execution outcomes.
             for prefix in (0, len(selected)//2, len(selected)):
                 lines.append(case_row(path, cores, available, ready, history, case['input']['slot'], prefix))
             sources.append(path)
+            # Reuse a report payload template only for explicitly authored cases below.
             if template is None:
                 template = next(r['layout'] for bucket in ready for r, _ in bucket)
     rng = random.Random(0x4F504552414E44)
+    # Seeded cases exercise every work tag and cross-boundary natural/blob lengths.
     for case in range(128):
         available = []
+        # Multiple reports share services but retain distinct package/segment/authorizer identities.
         for index in range(rng.randrange(1, 9)):
             header = bytearray(template['header'])
             header[:32] = bytes([index+1])+bytes(31)
             header[70:102] = bytes([index+40])*32
             services = sorted(rng.sample([0, 1, 42, 1729, 2**32-1], rng.randrange(1, 6)))
             digests = []
+            # Each digest gets its own result, payload hash and accumulation gas.
             for position, service in enumerate(services):
                 tag = (case+index+position) % 7
                 payload = bytes([index+3])*rng.choice((0, 1, 127, 128)) if tag == 0 else b''

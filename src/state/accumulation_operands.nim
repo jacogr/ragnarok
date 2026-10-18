@@ -194,6 +194,7 @@ proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: Accumula
   var services = 0'u64
   # Count the union of report-derived service IDs before constructing any operand owners.
   for i in 0..<descriptors.len:
+    # Count each service only at the start of its sorted descriptor run.
     if i == 0 or uint32(descriptors[i].service) != uint32(descriptors[i-1].service):
       if services >= uint64(config.services):
         fail(AccumulationOperandError.LimitExceeded) # Refuse a later new group atomically.
@@ -208,6 +209,7 @@ proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: Accumula
     if copiedTrace.error != OwnershipError.None or copiedTrace.value != trace.len:
       fail(AccumulationOperandError.InvalidOperand) # No partial copied source can produce an owner.
     var output = failedOperandOutput(WorkKind.OutOfGas)
+    # Successful work owns copyable result bytes; errors retain only their original discriminator.
     if digest.output.kind == WorkKind.Success:
       var payload = newSeq[byte](item.outputBytes)
       let copied = copyReportBlob(item.report, item.digest+1, payload)
