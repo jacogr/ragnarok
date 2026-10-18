@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated failure/default result and inactive metadata reads must reject with their supported contracts.
+## Isolated failure/default result and inactive metadata reads must reject with their supported
+## contracts.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/codec/[state_layout, bounded, composite]
 # Native refusals exist only in the test observer, never the production primitive library.

@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Each runtime failure must reject cost access at the exact public success precondition.
+## Negative runtime fixture for the public gas-result success precondition.
+## The executable selects a failure by command-line argument and attempts forbidden cost access.
+
 import std/cmdline
 import ../../src/pvm/[program, gas]
 let selection = paramStr(1)

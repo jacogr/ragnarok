@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 T chapter 10: fixed core sequence of optional (full guarantee, E4 registration slot).
-## Structural serialization does not establish availability, credential validity or transition eligibility.
+## GP 0.8.0 T chapter 10: fixed core sequence of optional (full guarantee, E4 registration
+## slot). Structural serialization does not establish availability, credential validity or
+## transition eligibility.
+##
+## Exposes explicit absent/present assignments, chapter-10 encoding/decoding and retained
+## guarantee/registration access.
+
 import std/assertions
 import ./[bounded, assurances, guarantees, state_layout, state_trie]
 export Guarantee

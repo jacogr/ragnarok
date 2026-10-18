@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native guarantee owner, late-failure, alias and default-result safety checks.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[guarantees, report_owned, owned, bounded, assurances]

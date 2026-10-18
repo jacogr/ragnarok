@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check every source module with the selected Nimony compiler; never accept an expected-failure allowlist."""
+"""Check every source module with the selected Nimony compiler; never accept an expected-failure allowlist.
+
+Exposes check_module/audit and a CLI that semantically checks every production Nim module.
+"""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial

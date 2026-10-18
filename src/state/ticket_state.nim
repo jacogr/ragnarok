@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 Safrole ticket admission: publish only C(4) in a private full-state working store.
-## Rotation and entropy/time run first; caller retains the parent slot for epoch-reset decisions.
+## Rotation and entropy/time run first; caller retains the parent slot for epoch-reset
+## decisions.
+##
+## Exposes admitSafroleTicketsState and checked full-state publication results.
+
 import ../codec/[state_safrole, state_consensus, state_layout, state_trie, tickets]
 import ./[ticket_admission, store]
 

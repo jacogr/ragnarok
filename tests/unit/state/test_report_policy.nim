@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published signed report policy projections and authored gas, metadata, snapshot and release boundaries.
+## Published signed report policy projections and authored gas, metadata, snapshot and release
+## boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[report_policy, guarantee_credentials, guarantors, store]
 import ../../../src/codec/[guarantees, assurances, bounded, state_safrole, disputes,

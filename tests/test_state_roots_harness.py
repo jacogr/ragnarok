@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal transport and unresolved state-width gates for complete mapping evidence."""
+"""Literal transport and unresolved state-width gates for complete mapping evidence.
+
+Exposes StateRootsHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from state_roots_oracle import mapping, requests
 from state_trie_oracle import tree

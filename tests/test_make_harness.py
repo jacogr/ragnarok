@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check that the Make front end preserves pinned tooling and the checked public native build profile."""
+"""Check that the Make front end preserves pinned tooling and the checked public native build profile.
+
+Exposes MakeHarness, FormatterHarness for unittest discovery; test methods exercise the stated
+contracts.
+"""
 from pathlib import Path
 import tempfile
 import json

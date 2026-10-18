@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Each subprocess deliberately reads one success-only bounded result member after failure/default.
+## Each subprocess deliberately reads one success-only bounded result member after
+## failure/default.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import ../../src/codec/[bounded, fixed_unsigned]
 import std/[cmdline, syncio]
 # Runtime fixture selection prevents one statically known default from rejecting the whole test build.

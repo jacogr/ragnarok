@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Run strict assertion probes and fixed state-result suites without changing native diagnostics."""
+"""Run strict assertion probes and fixed state-result suites without changing native diagnostics.
+
+Exposes validated FAILURE_SUITES, strict probe_failure and run_failure_suite orchestration with
+retained diagnostics.
+"""
 import json
 import re
 from pathlib import Path

@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Regression checks for lifecycle markers interleaved with Linux transport diagnostics."""
+"""Regression checks for lifecycle markers interleaved with Linux transport diagnostics.
+
+Exposes MarkerTests, AllocationTests for unittest discovery; test methods exercise the stated
+contracts.
+"""
 from pathlib import Path
 import tempfile
 import unittest

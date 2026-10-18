@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Prepare the pristine pinned Rust ABI and a separate owner-observation library for the Nimony trial."""
+"""Prepare the pristine pinned Rust ABI and a separate owner-observation library for the Nimony trial.
+
+Exposes prepare for the verification harness.
+"""
 import platform
 import subprocess
 from test_bandersnatch import ROOT, PINS

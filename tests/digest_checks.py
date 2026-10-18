@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent full work-digest oracle, pinned official vectors and shared native checks."""
+"""Independent full work-digest oracle, pinned official vectors and shared native checks.
+
+Exposes token, wire_for, text_for, parse_digest, batch_requests for the verification harness.
+"""
 import json
 from pathlib import Path
 import random

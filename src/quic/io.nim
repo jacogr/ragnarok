@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Single-threaded bounded POSIX readiness and loopback UDP for the maintained QUIC adapter.
-## No pending syscall retains buffers; unregister precedes descriptor close and descriptor reuse.
+## Single-threaded bounded POSIX readiness and loopback UDP for the maintained QUIC adapter. No
+## pending syscall retains buffers; unregister precedes descriptor close and descriptor reuse.
+##
+## Exposes dispatcher and UDP endpoint ownership, descriptor registration, bounded
+## wait/send/receive and explicit close operations.
+
 import std/[assertions, oserrors, nativesocket, syncio]
 import std/posix/posix
 

@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent shared-infrastructure checks for assurance signing contexts and frozen fixture hashes."""
+"""Independent shared-infrastructure checks for assurance signing contexts and frozen fixture hashes.
+
+Exposes ContextOracleTests for unittest discovery; test methods exercise the stated contracts.
+"""
 import hashlib
 import json
 import unittest

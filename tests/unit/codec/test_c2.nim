@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Focused C.2 lifetime, resource, alias and selected-alternative regressions.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]

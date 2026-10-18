@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## History publication and Keccak refusals preserve retained state; ARC scopes release all scratch owners.
+## History publication and Keccak refusals preserve retained state; ARC scopes release all
+## scratch owners.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/[history_transition_fixture, arc_evidence]
 import ../../../src/state/[history, store]

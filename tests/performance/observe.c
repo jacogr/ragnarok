@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Provides non-LTO observation and timing support for compiler comparisons. Exposes rb_observe,
+// rb_control and rb_now_ns without implementing application logic.
+
 /* Non-LTO observation/timing only; no protocol, crypto, allocator or application logic. */
 #include <stddef.h>
 #include <stdint.h>

@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Maintained crypto build, independent vector equations and native ABI checks."""
+"""Maintained crypto build, independent vector equations and native ABI checks.
+
+Exposes query, keccak256, test, generated_signatures, bridge_checks for the verification
+harness.
+"""
 import ctypes
 import hashlib
 import json

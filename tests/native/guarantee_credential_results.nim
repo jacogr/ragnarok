@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Default/refused certification results and nonselected child reasons cannot expose successful data.
+## Default/refused certification results and nonselected child reasons cannot expose successful
+## data.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/state/guarantee_credentials
 import ../../src/codec/state_safrole

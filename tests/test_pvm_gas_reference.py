@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Gas fixture provenance, pinned compatible timelines and explicit specification gates."""
+"""Gas fixture provenance, pinned compatible timelines and explicit specification gates.
+
+Exposes GasReferenceTests for unittest discovery; direct invocation validates existing fixtures."""
 import hashlib
 import json
 import re

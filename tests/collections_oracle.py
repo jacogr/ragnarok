@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent C.1 collection equations: logical order, pair-count framing and explicit variable-set wrapping."""
+"""Independent C.1 collection equations: logical order, pair-count framing and explicit variable-set wrapping.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import json
 import random

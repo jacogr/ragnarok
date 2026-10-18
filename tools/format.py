@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Apply pinned Nim and Rust formatters, or check both languages without writing."""
+"""Apply pinned Nim and Rust formatters, or check both languages without writing.
+
+Exposes format_source/format_rust and a CLI to apply or check the pinned source formatters.
+"""
 import argparse
 import json
 import os

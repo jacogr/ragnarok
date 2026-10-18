@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Result success payloads cannot be read outside the guarded accessor.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/[state_outputs, state_trie]
 let parsed = default(OutputLogResult[AccumulationOutput])
 discard parsed.completed

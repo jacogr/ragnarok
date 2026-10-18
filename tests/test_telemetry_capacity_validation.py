@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent collector JSON verdict tests for capacity refusal and slot recovery."""
+"""Independent collector JSON verdict tests for capacity refusal and slot recovery.
+
+Exposes CapacityValidationTests for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import copy
 import unittest
 from telemetry_interop_capacity import verify_capacity

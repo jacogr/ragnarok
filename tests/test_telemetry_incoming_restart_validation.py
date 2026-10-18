@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent collector JSON fixtures for incoming replay and listener generation isolation."""
+"""Independent collector JSON fixtures for incoming replay and listener generation isolation.
+
+Exposes IncomingRestartValidationTests for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import copy
 import unittest
 from telemetry_interop_incoming import verify_incoming

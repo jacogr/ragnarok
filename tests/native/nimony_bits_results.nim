@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Each failed/default Boolean/bitstring result read runs in its own checked optimized process.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/codec/bitstrings
 let useDefault = paramStr(2) == "default"

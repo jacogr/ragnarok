@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default and actually failed admissions cannot expose a fabricated candidate owner.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/ticket_admission
 import ../../src/codec/[state_safrole, state_consensus]

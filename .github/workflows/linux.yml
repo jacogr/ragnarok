@@ -1,6 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+# Defines Linux CI verification and evidence collection. Exposes independently scheduled checks
+# through GitHub Actions jobs using the maintained Make targets.
+
 name: Linux
 
 # Check master after pushes/merges; feature branches run through their PR only.

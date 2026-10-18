@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 whole-block pipeline simulation; see spec/pvm-gas.md.
+## Exposes blockGas, nominal BlockGas/GasCycleLimit values and guarded GasResult outcomes.
 ## The simulator borrows an immutable program and uses bounded stack storage only.
+
 import ./program
 
 type

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published proof/selection projections plus authored transcript, ordering, policy and owner boundaries.
+## Published proof/selection projections plus authored transcript, ordering, policy and owner
+## boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/ticket_admission
 import ../../../src/codec/[state_safrole, state_consensus, tickets, bounded, assurances]

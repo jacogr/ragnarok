@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build the pinned GP 0.8.0 release-reference Bandersnatch Rust ABI and check Nim."""
+"""Build the pinned GP 0.8.0 release-reference Bandersnatch Rust ABI and check Nim.
+
+Exposes suite, generated_proofs and bridge_checks, plus pinned fixture loading and native query
+helpers.
+"""
 import ctypes
 import hashlib
 import json

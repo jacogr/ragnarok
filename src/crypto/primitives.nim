@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP v0.8.0 Cryptography: raw-byte Blake2b-256, legacy Keccak-256 and ordinary RFC 8032 Ed25519.
-## Inputs are borrowed synchronously; outputs own bytes. Domain/codec composition belongs to callers.
+## GP v0.8.0 Cryptography: raw-byte Blake2b-256, legacy Keccak-256 and ordinary RFC 8032
+## Ed25519. Inputs are borrowed synchronously; outputs own bytes. Domain/codec composition
+## belongs to callers.
+##
+## Exposes typed seeds, public keys and signatures, explicit seed clearing, hashing, key
+## derivation, signing and verification.
+
 const Header = "primitive_bridge.h"
 
 # Erase owned seed storage with the backend's explicit wipe, including on last ARC release.

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared genuinely signed block fixtures for report planning and atomic publication tests.
+##
+## Exposes signed block/report context builders shared by report admission and publication
+## tests.
+
 import std/[assertions, envvars, strutils, syncio, sequtils]
 import ../../src/state/[report_admission, report_assignments, report_policy, report_anchors,
   report_packages, guarantee_credentials, block_transition, block_admission, store,

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent source fields and copied-value observations for C(255, service) metadata.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, syncio, strutils, parseutils]
 import ../../src/codec/[state_accounts, state_trie, bounded]
 

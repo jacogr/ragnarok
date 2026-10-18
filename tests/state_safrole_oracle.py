@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent T(state) chapters 6/7/8/9/11; published fields are derived state-value cases."""
+"""Independent T(state) chapters 6/7/8/9/11; published fields are derived state-value cases.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import json
 import random

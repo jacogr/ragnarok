@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Bounded checked-LTO migration comparison; isolated Nim 2 history is a control, never a supported target."""
+"""Bounded checked-LTO migration comparison; isolated Nim 2 history is a control, never a supported target.
+
+Provides a bounded compiler-comparison CLI and build/sample helpers for historical migration
+evidence.
+"""
 import argparse
 import hashlib
 import io

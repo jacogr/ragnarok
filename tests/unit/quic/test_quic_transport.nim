@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Link the real maintained transport bridge; no protocol peer migration is claimed by these tests.
+## Link the real maintained transport bridge; no protocol peer migration is claimed by these
+## tests.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, syncio]
 include ../../../src/quic/transport
 

@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Shared checked native compilation and diagnostic capture for independent verification groups."""
+"""Shared checked native compilation and diagnostic capture for independent verification groups.
+
+Exposes NativeChecks and announce for checked compilation, process execution and retained
+diagnostics.
+"""
 from pathlib import Path
 import platform
 import subprocess

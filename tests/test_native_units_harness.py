@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Guard native test discovery and the pinned checked profile; application assertions live in Nim."""
+"""Guard native test discovery and the pinned checked profile; application assertions live in Nim.
+
+Exposes NativeUnitHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 from pathlib import Path
 import json
 import hashlib

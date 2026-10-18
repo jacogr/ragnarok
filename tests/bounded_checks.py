@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent bounded-container reference cases (stdlib only)."""
+"""Independent bounded-container reference cases (stdlib only).
+
+Exposes token, frame, batch_requests for the verification harness.
+"""
 import json
 from pathlib import Path
 import random

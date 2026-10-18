@@ -2,7 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 Appendix C.2 tickets extrinsic: E(count) followed by E1 attempt and 784 proof bytes.
-## Proofs and attempts are structural values here; Safrole eligibility and cryptography are external.
+## Proofs and attempts are structural values here; Safrole eligibility and cryptography are
+## external.
+##
+## Exposes Ticket and TicketAttempt domains, encodeTickets/decodeTickets, inspection and checked
+## count/extent results.
+
 import ./natural
 
 type

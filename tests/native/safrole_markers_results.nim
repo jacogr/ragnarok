@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default and actually refused marker derivations cannot expose a complete expected pair.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/safrole_markers
 import ../../src/codec/[state_safrole, header]

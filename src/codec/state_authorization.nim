@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 T(state) chapters 1/2 and authorization eq:authstatecomposition.
-## Entries encode ordered core pools/queues; no authorization or state transition is executed.
+## GP 0.8.0 T(state) chapters 1/2 and authorization eq:authstatecomposition. Entries encode
+## ordered core pools/queues; no authorization or state transition is executed.
+##
+## Exposes authorization profiles and snapshots, state entry construction/decoding and bounded
+## per-core authorizer access.
+
 import std/assertions
 import ./[natural, bounded, assurances, state_layout, state_trie]
 from ./work_report import AuthorizerHash

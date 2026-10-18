@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Known-answer source/offset checks protect the independent header oracle from mirrored mistakes."""
+"""Known-answer source/offset checks protect the independent header oracle from mirrored mistakes.
+
+Exposes HeaderHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import copy
 import unittest
 from header_oracle import TINY,FULL,example,published,wire,fields,decode,encode

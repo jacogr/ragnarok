@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Project-only ready/accumulated lifetime, copied-child and arithmetic checks; no private
+## runtime hooks.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
-## Project-only ready/accumulated lifetime, copied-child and arithmetic checks; no private runtime hooks.
 import std/[assertions, envvars, syncio]
 include ../../../src/codec/state_workqueues
 var fixture: seq[byte] = @[]

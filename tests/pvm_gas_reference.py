@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal GP table extraction and an unbounded, simultaneous-transition gas reference."""
+"""Literal GP table extraction and an unbounded, simultaneous-transition gas reference.
+
+Exposes test-only tables, simulation, encoding and fixtures helpers; reads pinned submodule text
+without executing or copying upstream implementation code."""
 from pathlib import Path
 import random
 import re

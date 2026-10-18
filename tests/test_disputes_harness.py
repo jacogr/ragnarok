@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Known-answer checks for the test-only disputes oracle and its published fixture distinction."""
+"""Known-answer checks for the test-only disputes oracle and its published fixture distinction.
+
+Exposes DisputesHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import copy
 import unittest
 from disputes_oracle import example,wire,fields,encode,decode,published

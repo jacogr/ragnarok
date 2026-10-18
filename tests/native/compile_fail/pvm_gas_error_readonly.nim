@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Reject forged gas results or untyped simulation boundaries.
+## Negative compiler fixture for gas-result privacy or nominal simulation boundaries.
+## This test intentionally fails compilation at the forbidden access or mismatched call below.
+
 import ../../../src/pvm/[program, gas]
 var r = default(GasResult)
 r.error = GasError.None

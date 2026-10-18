@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Transport unchanged pinned disputes STF inputs/answers; no reference transition or signature shortcut."""
+"""Transport unchanged pinned disputes STF inputs/answers; no reference transition or signature shortcut.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 import copy
 import hashlib
 import json

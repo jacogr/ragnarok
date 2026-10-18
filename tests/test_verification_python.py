@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check fresh Python evidence and rejection of empty discovery."""
+"""Check fresh Python evidence and rejection of empty discovery.
+
+Exposes VerificationPython for unittest discovery; test methods exercise the stated contracts.
+"""
 import json
 from pathlib import Path
 import sys

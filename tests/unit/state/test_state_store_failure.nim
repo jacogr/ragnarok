@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Backend refusal and ARC lifetime tests use the existing project-owned primitive observer.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/state/store

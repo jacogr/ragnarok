@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Launch native application tests through the Hastur shipped with the pinned Nimony archive."""
+"""Launch native application tests through the Hastur shipped with the pinned Nimony archive.
+
+Exposes native suite planning, compiler commands, environments and evidence paths; main runs the
+standalone native test launcher.
+"""
 from pathlib import Path
 import json
 import hashlib

@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Project-only retained child/report, immutable copy and arithmetic checks using public
+## allocator observations.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
-## Project-only retained child/report, immutable copy and arithmetic checks using public allocator observations.
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[report_owned, owned]
 include ../../../src/codec/state_availability

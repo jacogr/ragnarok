@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Fail-closed validation of the external collector's typed JSON, without launching it."""
+"""Fail-closed validation of the external collector's typed JSON, without launching it.
+
+Exposes InteropOutputTests, CollectorBatchTests for unittest discovery; test methods exercise
+the stated contracts.
+"""
 import copy
 import unittest
 from test_telemetry_interop import event_rows, verify

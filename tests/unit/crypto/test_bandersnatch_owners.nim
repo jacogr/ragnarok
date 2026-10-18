@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Native key/setup ownership, fixed-copy imports and failure recovery over the unchanged Rust
+## ABI.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
-## Native key/setup ownership, fixed-copy imports and failure recovery over the unchanged Rust ABI.
 import std/[assertions, syncio]
 import ../../native/batch_support
 import ../../../src/bandersnatch/bandersnatch

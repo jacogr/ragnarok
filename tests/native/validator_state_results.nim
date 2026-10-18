@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Default/failed publication outcomes reject snapshot extraction through the intended checked contract.
+## Default/failed publication outcomes reject snapshot extraction through the intended checked
+## contract.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[validator_state, store]
 import ../../src/codec/state_safrole

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted test adapter; command arguments contain public test fixtures only, never production secrets.
+## Trusted test adapter; command arguments contain public test fixtures only, never production
+## secrets.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils, rawthreads]
 import ../../src/crypto/primitives
 

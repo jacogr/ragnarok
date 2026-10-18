@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime-selected report result probes must fail on their intended success contract.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/codec/[composite, work_report, report_owned, owned]
 

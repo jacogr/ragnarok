@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Stored entropy and newly supplied VRF output belong to distinct nominal domains.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/state/entropy
 import ../../../src/codec/state_safrole
 from ../../../src/codec/header import EpochSlots

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Parent snapshot storage cannot be replaced or exposed by application callers.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/state_consensus
 let owner = SafroleStateSnapshot(data: nil)
 discard owner

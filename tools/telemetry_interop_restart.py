@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Bounded real-collector restart scenario; relays forward opaque bytes without implementing JAM."""
+"""Bounded real-collector restart scenario; relays forward opaque bytes without implementing JAM.
+
+Exposes RegistrationRelay, RestartSession and replay/registration validators for bounded
+collector restarts.
+"""
 from contextlib import ExitStack
 import hashlib
 import json

@@ -2,5 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Callers cannot forge success or change read-only result state.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/state_outputs
 discard OutputLogResult[int](status: OutputLogError.None, completed: 0)

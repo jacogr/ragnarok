@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent GP 0.8.0 work-package codec construction, parsing and policy checks (test only)."""
+"""Independent GP 0.8.0 work-package codec construction, parsing and policy checks (test only).
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import copy
 import hashlib
 import json

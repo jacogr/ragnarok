@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Reproduce the native arithmetic fixture from an independent oracle and frozen upstream inputs."""
+"""Reproduce the native arithmetic fixture from an independent oracle and frozen upstream inputs.
+
+Exposes RegisterReferenceTests for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import hashlib
 import json
 import unittest

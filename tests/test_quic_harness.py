@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""QUIC peer startup regressions: UDP port ownership, bounded readiness and useful diagnostics."""
+"""QUIC peer startup regressions: UDP port ownership, bounded readiness and useful diagnostics.
+
+Exposes StartupTests for unittest discovery; test methods exercise the stated contracts.
+"""
 from pathlib import Path
 import errno
 import socket

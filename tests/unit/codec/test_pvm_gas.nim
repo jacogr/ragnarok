@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Replay independent GP pipeline fixtures, including exact cycle-budget boundaries.
+## Native gas tests replay independent GP pipeline fixtures and exact cycle-budget boundaries.
+## The executable reads RAGNAROK_PVM_GAS, checks blockGas and reports a failing exit on mismatch.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, gas]
 
