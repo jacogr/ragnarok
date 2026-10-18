@@ -96,6 +96,9 @@ proc witness(op: byte, width: int, address, base, offset: uint64, alias: bool,
       elif mode == 1: price else: price - 1), blockCharged: mode == 0, registers: regs)
     let source = captureMachine(program, memory, initial).value
     let answer = stepMemory(source, GasCycleLimit(if mode == 0: 0'u64 else: 1000'u64))
+    let executed = execute(source, ExecutionStepLimit(2),
+      GasCycleLimit(if mode == 0: 0'u64 else: 1000'u64))
+    assert executed.error == answer.error
     same(machineInfo(source).value, initial)
     samePages(memoryOf(source).value, pages)
     if mode == 2:
@@ -103,6 +106,9 @@ proc witness(op: byte, width: int, address, base, offset: uint64, alias: bool,
       assert answer.error == StepError.None and answer.value.exit == StepExit.OutOfGas
       same(machineInfo(answer.value.machine).value, initial)
       samePages(memoryOf(answer.value.machine).value, pages)
+      assert executed.value.exit == StepExit.OutOfGas
+      same(machineInfo(executed.value.machine).value, initial)
+      samePages(memoryOf(executed.value.machine).value, pages)
       continue
     if ambiguous:
       # The pinned ambiguity must never publish a charged snapshot or a consensus fault/panic.
@@ -154,6 +160,18 @@ proc witness(op: byte, width: int, address, base, offset: uint64, alias: bool,
       assert exit == StepExit.Panic
     same(machineInfo(answer.value.machine).value, expected)
     samePages(memoryOf(answer.value.machine).value, expectedPages)
+    # A successful memory instruction reaches the following trap; exceptions stop at the access itself.
+    let expectedExit = (if exit == StepExit.Continued: StepExit.Panic else: exit)
+    assert executed.value.exit == expectedExit
+    var executedInfo = expected
+    if expectedExit == StepExit.Panic:
+      # Recursive Psi normalizes a final panic PC regardless of its memory/trap origin.
+      executedInfo.pc = CodeAddress(0)
+    if expectedExit == StepExit.Fault:
+      # Normalization must preserve the fault page rather than losing exit metadata.
+      assert uint32(executed.value.faultPage) == fault
+    same(machineInfo(executed.value.machine).value, executedInfo)
+    samePages(memoryOf(executed.value.machine).value, expectedPages)
 
 # Cross all memory opcodes, permission pairs, sign patterns and near-page-boundary addresses.
 for row in 0..<ops.len:
