@@ -43,4 +43,5 @@ coverage. This is independent implementation evidence, not full host-function pa
 resolves fetch absence using pinned notation. Remaining: complete invocation context selection,
 additional selectors, staged service state, gas-used accounting and end-to-end invocation policy.
 [Package blob capture](pvm-fetch-package.md) now provides validated package selectors.
-Next bounded chunk: encoded refinement context and work-item summaries.
+Encoded refinement context and summaries are covered by [selectors 10–12](pvm-fetch-summaries.md).
+Next bounded chunk: full encoded package fetch.

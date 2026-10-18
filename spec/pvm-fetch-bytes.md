@@ -37,4 +37,5 @@ a present empty trace returns zero. Both retain the original selector's requeste
 Other known selectors and complete service invocation assembly remain open. Independent fixtures
 establish only the stated subset, not complete fetch or invocation parity.
 [Package blob fetch](pvm-fetch-package.md) now supplies configuration, token and item payloads.
-Next bounded chunk: encoded refinement context and work-item summaries.
+Encoded refinement context and summaries are covered by [selectors 10–12](pvm-fetch-summaries.md).
+Next bounded chunk: full encoded package fetch.
