@@ -103,6 +103,15 @@ def unit_report_policy_fixture(folder):
     return {'report_policy': fixture}, evidence
 
 
+# Transport original recent-anchor inputs without inventing unavailable external ancestor headers.
+def unit_report_anchors_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from report_anchor_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_REPORT_ANCHORS', path, ((path, evidence['fixture_sha256']),))
+    return {'report_anchors': fixture}, evidence
+
+
 # Keep the historical preparation order and nested report schema for existing evidence consumers.
 def unit_sealer_fixture(folder):
     fixtures, evidence = unit_schedule_fixture(folder)
@@ -126,6 +135,9 @@ def unit_sealer_fixture(folder):
     fixtures.update(credential_fixtures)
     policy_fixtures, policy_evidence = unit_report_policy_fixture(folder)
     fixtures.update(policy_fixtures)
+    anchor_fixtures, anchor_evidence = unit_report_anchors_fixture(folder)
+    fixtures.update(anchor_fixtures)
+    evidence['report_anchors'] = anchor_evidence
     evidence['report_policy'] = policy_evidence
     evidence['guarantee_credentials'] = credential_evidence
     evidence['guarantors'] = guarantors_evidence
