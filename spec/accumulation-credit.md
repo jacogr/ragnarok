@@ -77,6 +77,13 @@ and `build/tests/{modules,runtime,failures,guards}/results.json`. The first log 
 Python harness failure rather than claiming that initial command exited successfully. E2E networking
 behavior is unchanged and was not rerun locally; Linux CI validates the pushed revision separately.
 
+GitHub subsequently restacked this branch onto master `d298b44` after the RPC merges. The unpublished
+implementation was preserved and replayed onto remote `f80cbf2` without conflicts or force pushing.
+The complete affected command then passed again on the combined tree: 101 source modules, 113 native
+suites, 41 corpora, all runtime checks, 882 compiler rejections, and 406 Python tests with the same
+three existing skips. See `build/accumulation-credit/verification-restacked.log` and `restack.json`.
+The credit ARC witness again retained exactly 12,048 bytes across all 1,000 cycles.
+
 ## Next bounded work
 
 Connect standard accumulation machine entry to the prepared invocation/context boundary, then add
