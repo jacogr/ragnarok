@@ -192,8 +192,8 @@ def unit_sealer_fixture(folder):
     evidence['guarantors'] = guarantors_evidence
     evidence['availability'] = availability_evidence
     evidence['disputes'] = disputes_evidence
-    evidence['accumulation_queue'] = queue_evidence
     evidence['admission'] = admission_evidence
+    evidence['accumulation_queue'] = queue_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence
     evidence['authentication'] = authentication_evidence
