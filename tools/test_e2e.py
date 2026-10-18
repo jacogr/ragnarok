@@ -51,7 +51,8 @@ def main():
                    ROOT/'spec/toolchain.json', ROOT/'spec/quic-proof-pins.json',
                    ROOT/'spec/bandersnatch-pins.json', *sorted((ROOT/'src/quic').glob('*.nim')),
                    *sorted((ROOT/'src/telemetry').glob('*.nim')), ROOT/'tests/telemetry_checks.py', ROOT/'tests/fixtures/telemetry-dev.json',
-                   *sorted((ROOT/'src/rpc').glob('*.nim')), ROOT/'tests/rpc_checks.py',
+                   *sorted((ROOT/'src/rpc').glob('*.nim')), *sorted((ROOT/'src/chain').glob('*.nim')), ROOT/'tests/rpc_checks.py',
+                   ROOT/'tests/fixtures/rpc-parameters.json', ROOT/'tests/fixtures/rpc-parameters-result.json',
                    *[ROOT/'tests'/name for name in ('nimony_peer.py', 'test_quic_service.py',
                      'test_quic_mesh.py', 'test_quic_resilience.py', 'test_quic_soak.py',
                      'test_quic_offload.py', 'test_integration.py')]]

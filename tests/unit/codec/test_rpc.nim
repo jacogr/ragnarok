@@ -67,6 +67,59 @@ assert validUtf8("\xf0\x9f\x98\x80")
 for bad in ["\xc0\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\x80", "\xe2\x82"]:
   assert not validUtf8(bad) # Reject overlong, surrogate, out-of-range and truncated scalars.
 
+# Literal independent field values exercise all 29 offsets/widths, including an unsigned 64-bit maximum.
+const ParameterHex = "ffffffffffffffff02000000000000000300000000000000040005000000580200000700000000000000080000000000000009000000000000000a000000000000000b000c000d000e000f000000100011001200130014001500160000001700000018000000190000001a0000001b0000001c000000f4010000"
+const ParameterJson = "{\"V1\":{\"deposit_per_item\":18446744073709551615,\"deposit_per_byte\":2,\"deposit_per_account\":3,\"core_count\":4,\"min_turnaround_period\":5,\"epoch_period\":600,\"max_accumulate_gas\":7,\"max_is_authorized_gas\":8,\"max_refine_gas\":9,\"block_gas_limit\":10,\"recent_block_count\":11,\"max_work_items\":12,\"max_dependencies\":13,\"max_tickets_per_block\":14,\"max_lookup_anchor_age\":15,\"auth_window\":16,\"slot_period_sec\":17,\"auth_queue_len\":18,\"rotation_period\":19,\"max_extrinsics\":20,\"availability_timeout\":21,\"max_authorizer_code_size\":22,\"max_input\":23,\"max_service_code_size\":24,\"max_imports\":25,\"max_report_elective_data\":26,\"transfer_memo_size\":27,\"max_exports\":28,\"epoch_tail_start\":500,\"tickets_attempts_number\":0,\"val_count\":0,\"basic_piece_len\":0,\"segment_piece_count\":0}}"
+let configText = "{\"protocol_parameters\":\"" & ParameterHex & "\"}"
+let configured = configuredParameters(configText)
+assert configured.ok
+assert configured.value.get(depositPerItem) == high(uint64)
+assert configured.value.get(coreCount) == 4 and configured.value.get(epochTailStart) == 500
+var configuredInfo = info
+configuredInfo.parameters = configured
+let parameterRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"parameters\",\"params\":[],\"id\":7}"
+let parameterAnswer = "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":" & ParameterJson & "}"
+assert respond(parameterRequest, configuredInfo) == parameterAnswer
+assert respond(parameterRequest.replace(",\"params\":[]", ""), configuredInfo) == parameterAnswer
+assert "\"code\":0," in respond(parameterRequest, info) # No chain means unavailable, not all-zero settings.
+assert "-32602" in respond(parameterRequest.replace("[]", "[1]"), configuredInfo)
+assert "-32602" in respond(parameterRequest.replace("[]", "{}"), configuredInfo)
+assert respond(parameterRequest.replace(",\"id\":7", ""), configuredInfo) == ""
+assert respond("[" & parameterRequest & "," & parameterRequest & "]", configuredInfo) ==
+  "[" & parameterAnswer & "," & parameterAnswer & "]"
+assert "\"parameters\"" in respond(request, configuredInfo)
+let noParameters = default(ParameterResult)
+assert not noParameters.ok
+for size in 0..<ParameterBytes: # Every truncated tuple must fail before publishing fields.
+  assert not decodeParameters(newSeq[byte](size)).ok
+assert not decodeParameters(newSeq[byte](ParameterBytes + 1)).ok
+assert not decodeParametersHex(repeat("0", ParameterBytes * 2)).ok # Zero clocks and population are unusable.
+assert configuredParameters(configText.replace(ParameterHex, ParameterHex.toUpperAscii())).ok
+for bad in ["{}", "[]", "null", configText & "{}", configText & "/*x*/",
+    "{\"protocol_parameters\":null}", "{\"protocol_parameters\":12}",
+    configText.replace("}", ",\"protocol_parameters\":\"" & ParameterHex & "\"}"),
+    configText.replace("}", ",\"extra\":1,\"extra\":2}"),
+    configText.replace(ParameterHex, ParameterHex[0..^2]),
+    configText.replace(ParameterHex, "gg" & ParameterHex[2..^1]),
+    configText.replace(ParameterHex, "0x" & ParameterHex),
+    configText.replace(ParameterHex, repeat("0", ParameterBytes * 2))]:
+  assert not configuredParameters(bad).ok # Invalid syntax, missing/duplicate fields and malformed bytes fail closed.
+# Startup parsing has its own finite budget, independent of the smaller per-message RPC limit.
+assert not configuredParameters(repeat(" ", 8 * 1024 * 1024 + 1)).ok
+assert not configuredParameters("{\"protocol_parameters\":\"" & ParameterHex &
+  "\",\"extra\":" & repeat("[", 33) & "0" & repeat("]", 33) & "}").ok
+# Mutating borrowed source storage cannot change a previously decoded startup snapshot.
+var parameterBytes = default(array[ParameterBytes, byte])
+parameterBytes[24] = 2; parameterBytes[30] = 10; parameterBytes[80] = 6; parameterBytes[84] = 1
+let retained = decodeParameters(parameterBytes)
+assert retained.ok
+parameterBytes[24] = 9
+assert retained.value.get(coreCount) == 2
+parameterBytes[30] = 0
+assert not decodeParameters(parameterBytes).ok
+parameterBytes[30] = 10; parameterBytes[118] = 11
+assert not decodeParameters(parameterBytes).ok # Epoch tail cannot follow the epoch it belongs to.
+
 let header = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(header) # RFC 6455 section 1.3 known answer.
 assert upgrade(header.replace("GET /", "POST /")).len == 0

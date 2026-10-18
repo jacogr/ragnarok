@@ -34,9 +34,11 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
     # RPC shares the real peer dispatcher; independent socket checks also require concurrent QUIC progress.
     report['rpc'] = dict(passed=False)
     if compiled['exit_code'] == 0:
-        from rpc_checks import run as rpc_checks
+        from rpc_checks import run as rpc_checks, parameter_checks
         try:
             report['rpc'] = rpc_checks(binary, quic_fixtures, BUILD/'rpc')
+            report['rpc']['parameters'] = parameter_checks(binary, quic_fixtures, BUILD/'rpc-parameters')
+            report['rpc']['passed'] &= report['rpc']['parameters']['passed']
         except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
             # A protocol, cleanup or concurrency failure is an independent required E2E verdict.
             report['rpc'] = dict(passed=False, failure=str(error))

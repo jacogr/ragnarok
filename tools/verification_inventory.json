@@ -97,6 +97,8 @@
     "report_assignments"
   ],
   "PRIVATE": {
+    "parameters_owner_private": "numbers",
+    "parameters_result_private": "success",
     "pvm_memory_owner_private": "data",
     "pvm_machine_owner_private": "data",
     "pvm_machine_payload_private": "completed",
@@ -867,6 +869,7 @@
     "history_accumulation_as_parent": "AccumulationRoot"
   },
   "CONTRACTS": {
+    "parameters_known_failure": "decoded.success",
     "safrole_auth_success_forge": "not reason == None",
     "history_known_absent_hash": "peak.isPresent",
     "assignment_known_absent_guarantee": "assignment.isPresent",

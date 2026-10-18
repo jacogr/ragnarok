@@ -518,7 +518,10 @@ proc runPeer*(): bool {.raises.} =
   if not server and peer.expected.len != 32: return false # Every dialer pins the server identity.
   var rpc = default(Server)
   defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
-  if not rpc.start(rpcPort(), paramStr(1)): return false # An explicitly requested listener must bind successfully.
+  let chainText = loadChainText() # One bounded startup snapshot feeds both optional services.
+  if not rpc.setupRpc(paramStr(1), chainText):
+    stderr.writeLine("Invalid RPC listener or --chain parameters")
+    return false # No listener remains open on configuration failure.
   var telemetry = default(Client)
   defer: telemetry.close() # Best-effort telemetry never delays peer shutdown.
   # Cleanup must also run after poll/setup failures; both stack owners remain alive until final native callbacks finish.
@@ -533,7 +536,7 @@ proc runPeer*(): bool {.raises.} =
           onStream, peer.service, ipv6 = load, profile = (
               if peer.overload or peer.offloading: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
   # Derive the telemetry peer identity/address from this endpoint, with an explicit chain file.
-  if not telemetry.setup(paramStr(3), localPort(peer.transport), load):
+  if not telemetry.setup(paramStr(3), localPort(peer.transport), load, chainText):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
   if server and requested(): # Install before processing the first UDP packet.
@@ -848,7 +851,10 @@ proc runMesh*(): bool {.raises.} =
   var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
   var rpc = default(Server)
   defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
-  if not rpc.start(rpcPort(), paramStr(1)): return false # An explicitly requested listener must bind successfully.
+  let chainText = loadChainText() # One bounded startup snapshot feeds both optional services.
+  if not rpc.setupRpc(paramStr(1), chainText):
+    stderr.writeLine("Invalid RPC listener or --chain parameters")
+    return false # No listener remains open on configuration failure.
   var telemetry = default(Client)
   defer: telemetry.close() # The single exporter outlives both engines and their final synchronous callbacks.
   defer:
@@ -871,7 +877,7 @@ proc runMesh*(): bool {.raises.} =
       paramStr(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
           dispatcher = dispatcher, profile = profile): return false
   # Register the listening identity/address once, independent of the ephemeral outgoing UDP socket.
-  if not telemetry.setup(paramStr(4), uint16(localPort), true):
+  if not telemetry.setup(paramStr(4), uint16(localPort), true, chainText):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
   if requested():

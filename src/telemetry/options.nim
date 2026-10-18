@@ -5,6 +5,8 @@
 import std/[os, syncio, times, monotimes, strutils, base64]
 import ./[wire, client, chain]
 import ../quic/transport
+import ../rpc/[server, protocol]
+import ../chain/parameters
 export wire, client
 
 # Locate the first reserved option; all configuration pairs must follow positional peer arguments.
@@ -33,7 +35,9 @@ proc validTelemetryOption*(): bool =
         port = port * 10 + ord(c) - ord('0')
       if port notin 1..65535: return false
     i += 2
-  ("--telemetry" in seen) == ("--chain" in seen)
+  # Telemetry needs a chain; RPC may use the same chain independently or run diagnostics without one.
+  ("--telemetry" notin seen or "--chain" in seen) and
+    ("--chain" notin seen or "--telemetry" in seen or "--rpc-port" in seen)
 
 # Read a validated option; absent optional features have no implicit configuration.
 proc optionValue(name: string): string =
@@ -71,10 +75,21 @@ proc boundedFile(path: string, limit: int): string {.raises.} =
   text.setLen(count)
   result = move(text)
 
+# Read one startup snapshot for both RPC and telemetry so they cannot observe different file revisions.
+proc loadChainText*(): string {.raises.} = boundedFile(optionValue("--chain"), MaxChainBytes)
+
+# An explicit RPC chain must validate before opening the listener; missing configuration remains unavailable.
+proc setupRpc*(rpc: var Server, role: string, text: string): bool =
+  var parameters = default(ParameterResult)
+  if rpcPort() != 0 and optionValue("--chain").len > 0:
+    parameters = configuredParameters(text)
+    if not parameters.ok: return false # Fail startup rather than advertise a partial/default parameter set.
+  rpc.start(rpcPort(), role, parameters)
+
 # Build registration from explicit JIP-4 configuration and the actual local certificate/socket.
-proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool): bool {.raises.} =
+proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool,
+    text: string): bool {.raises.} =
   if not requested(): return true # Absence is the default and requires no configuration.
-  let text = boundedFile(optionValue("--chain"), MaxChainBytes)
   if text.len == 0: return false # Never invent a chain or use an implicit development network.
   let pem = boundedFile(certificate, 16384).strip()
   const beginMarker = "-----BEGIN CERTIFICATE-----"
