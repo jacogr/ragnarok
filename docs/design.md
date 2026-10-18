@@ -65,7 +65,11 @@ See [the admission contract](../spec/block-admission.md). `src/state/disputes.ni
 verdicts/evidence and plans C(5)/C(10), including exact new-offender markers.
 `src/state/block_transition.nim` composes admission, derived disputes offenders and Safrole on a
 private map, publishing only on complete success. See [the disputes contract](../spec/disputes-transition.md)
-for pinned STF coverage and two dummy-assignment fixture incompatibilities. Availability processing,
+for pinned STF coverage and two dummy-assignment fixture incompatibilities.
+`src/state/availability.nim` now verifies assurances using parent keys, retains newly available
+reports, and advances post-disputes C(10) for strict supermajority, timeout and population-size
+changes. The block coordinator includes this stage before its final publication; see
+[the availability contract](../spec/availability-transition.md). New guarantee assignment, accumulation,
 wall-clock admission and whole-block execution remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
