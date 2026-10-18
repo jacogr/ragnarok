@@ -1,0 +1,41 @@
+{
+  "source": "tests/native/pvm_initialization_results.nim",
+  "build_name": "pvm-initialization-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-initialization-default",
+      "diagnostic": "r.status == None",
+      "description": "PVM initialization failure payload default"
+    },
+    {
+      "identity": {
+        "origin": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "pvm-initialization-invalid",
+      "diagnostic": "r.status == None",
+      "description": "PVM initialization failure payload invalid"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-initialization-limit",
+      "diagnostic": "r.status == None",
+      "description": "PVM initialization failure payload limit"
+    }
+  ]
+}
