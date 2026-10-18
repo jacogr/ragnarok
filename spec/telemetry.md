@@ -219,13 +219,14 @@ thread, descriptor/RSS/allocation bounds and clean process shutdown throughout t
 A non-reading low-volume collector does not necessarily saturate the OS send buffer; deterministic
 socket-pair unit tests separately prove fixed-buffer saturation, partial writes and exact loss counts.
 
-## Optional JAM Tart interoperability check
+## JAM Tart interoperability check
 
 `make check-telemetry-interop JAMTART=/absolute/path/to/tart-backend` builds the current
 Ragnarök peer, creates isolated fixture identities, and launches the explicitly selected collector
 with `--no-database` on ephemeral loopback TCP/HTTP ports. It requires no PostgreSQL instance.
-This optional check is separate from the six self-contained CI groups and adds no production
-runtime dependency. Its hash-pinned WebSocket client lives in an ignored build-local Python venv.
+A separate Linux CI job runs `make check-telemetry-interop-ci` on every PR and master push,
+building the pinned collector before running this check. It adds no production runtime dependency.
+The six existing verification groups retain their scope; `make check` runs those six groups. Its hash-pinned WebSocket client lives in an ignored build-local Python venv.
 
 The harness waits for a subscription acknowledgement, then requires a decoded two-core status
 before starting a real authenticated CE 143 exchange. Both peers must finish eight requests.
@@ -242,16 +243,18 @@ backpressure and reconnect coverage.
 
 The reference collector for this check is
 [JAM Tart](https://github.com/paritytech/jamtart/tree/76debc1b1b90889749d0129ca18ffdb5d96d17a4),
-revision `76debc1b1b90889749d0129ca18ffdb5d96d17a4` (GP 0.8.0 update). To build that unmodified
-reference locally after `make setup`:
+revision `76debc1b1b90889749d0129ca18ffdb5d96d17a4` (GP 0.8.0 update), pinned by the
+`vendor/jamtart` gitlink. Reproduce the CI job locally with:
 
 ```sh
-git clone https://github.com/paritytech/jamtart.git build/jamtart-reference
-git -C build/jamtart-reference checkout 76debc1b1b90889749d0129ca18ffdb5d96d17a4
-cargo +1.99.0 build --locked --no-default-features --bin tart-backend \
-  --manifest-path build/jamtart-reference/Cargo.toml
-make check-telemetry-interop JAMTART="$PWD/build/jamtart-reference/target/debug/tart-backend"
+make check-telemetry-interop-ci
 ```
+
+Make initializes the pristine submodule, builds `tart-backend` with the shared pinned Rust
+compiler, `--locked` and `--no-default-features`, and runs the harness with that binary.
+Cargo output stays under `build/jamtart-reference-target`. No database service is required.
+CI retains build/setup logs and the harness report even when the job fails, excluding generated
+fixture keys. The explicit `JAMTART` target remains available for checking another supplied binary.
 
 No upstream sources or lockfile are patched. The caller controls the external binary; the harness
 records its actual SHA-256 alongside the peer binary hash, decoded messages and verdict in
