@@ -65,7 +65,7 @@ Reproduce with `make check-modules check-unit check-failures check-guards check-
 
 ## Next bounded work
 
-Verify guarantee credentials against these selected assignments and exact canonical report signing
-bytes, reject currently inactive report cores and inconsistent erasure-shard counts, and retain the
-verified reporter-key set. Complete history/anchor, service/gas, authorization, dependency/package
-checks and atomic new C(10) assignment follow before integration into the block coordinator.
+The [credential verifier](guarantee-credentials.md) now checks selected assignments, exact report
+signatures, current-core/shard constraints and reporter identities. Authorization-pool and
+service/code-hash/gas admission are next; history/anchor and dependency/package checks precede
+atomic new C(10) assignment and block-coordinator integration.
