@@ -167,6 +167,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # Local step failures never expose a partially charged machine.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_memory_step')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_execution')
     run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
     run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
     run_failure_suite(compiler, report, libraries, build, command, 'report_admission')

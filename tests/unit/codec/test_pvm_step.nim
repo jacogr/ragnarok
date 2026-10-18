@@ -124,6 +124,10 @@ for row in 0..<count:
       assert memoryCapable.error == StepError.None and memoryCapable.value.exit ==
           StepExit.Continued
       same(machineInfo(memoryCapable.value.machine).value, expected)
+      # Complete Psi_1 capability preserves the same independent arithmetic trace expectations.
+      let full = stepOnce(prior, GasCycleLimit(if index == 0 and mode != 2: cycles else: 0))
+      assert full.error == StepError.None and full.value.exit == StepExit.Continued
+      same(machineInfo(full.value.machine).value, expected)
       same(machineInfo(prior).value, priorInfo)
       assert uint64(load(memoryOf(current).value, MemoryAddress(65536), AccessWidth(1)).value) == 165
     # Trap is deliberately outside this bounded executor, never a fabricated terminal outcome.
@@ -240,6 +244,10 @@ proc controlCase(owner: Program, entry: uint64, registers: RegisterFile,
     let memoryCapable = stepMemory(source, GasCycleLimit(if prepaid: 0'u64 else: 1000'u64))
     assert memoryCapable.error == StepError.None and memoryCapable.value.exit == expectedExit
     same(machineInfo(memoryCapable.value.machine).value, expected)
+    # Adding ecalli support must preserve every already-covered control mutation and terminal PC.
+    let full = stepOnce(source, GasCycleLimit(if prepaid: 0'u64 else: 1000'u64))
+    assert full.error == StepError.None and full.value.exit == expectedExit
+    same(machineInfo(full.value.machine).value, expected)
     same(machineInfo(source).value, initial)
     assert uint64(load(memoryOf(answer.value.machine).value, MemoryAddress(65536),
         AccessWidth(1)).value) == 165
