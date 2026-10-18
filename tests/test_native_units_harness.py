@@ -37,7 +37,9 @@ class NativeUnitHarness(unittest.TestCase):
         names = [name for _, members, _ in batches for name in members]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
-        self.assertEqual(len(batches[0][1]), 27)
+        self.assertIn("natural", batches[0][1])
+        self.assertNotIn("rpc", batches[0][1])
+        self.assertEqual(native_tests.UNIT_LINKS["rpc"], "crypto")
         self.assertIsNone(batches[0][2])
         for name, members, target in batches[1:]:
             # Every profile with special linking or runtime resources remains a single-file invocation.

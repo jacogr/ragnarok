@@ -103,12 +103,6 @@
     "accumulation_operands"
   ],
   "PRIVATE": {
-    "accumulation_operand_result_private": "completed",
-    "accumulation_operand_retag_private": "status",
-    "accumulation_operand_owner_private": "data",
-    "accumulation_operand_bound_private": "data",
-    "accumulation_operand_bound_result_private": "completed",
-
     "accumulation_queue_result_private": "completed",
     "accumulation_queue_retag_private": "status",
     "accumulation_queue_owner_private": "data",
@@ -117,6 +111,8 @@
 
     "rpc_parameters_owner_private": "numbers",
     "rpc_parameters_result_private": "success",
+    "rpc_genesis_owner_private": "state",
+    "rpc_genesis_result_private": "status",
     "pvm_gas_payload_private": "completed",
     "pvm_gas_retag_private": "status",
     "pvm_gas_error_readonly": "error",
@@ -793,13 +789,14 @@
     "report_transition_retag_private": "status",
     "report_transition_stage_private": "stageReason",
     "report_transition_report_private": "reportReason",
-    "report_transition_publication_private": "publicationReason"
+    "report_transition_publication_private": "publicationReason",
+    "accumulation_operand_result_private": "completed",
+    "accumulation_operand_retag_private": "status",
+    "accumulation_operand_owner_private": "data",
+    "accumulation_operand_bound_private": "data",
+    "accumulation_operand_bound_result_private": "completed"
   },
   "NOMINAL": {
-    "accumulation_operand_raw_prefix": "[2] expected: AccumulationReportPrefix but got: uint64",
-    "accumulation_operand_service_as_group": "[2] expected: OperandServiceIndex but got: ServiceIndex",
-    "accumulation_operand_group_as_operand": "[3] expected: ServiceOperandIndex but got: OperandServiceIndex",
-
     "accumulation_queue_slot_as_index": "[2] expected: AccumulationIndex but got: WorkQueueSlot",
     "accumulation_queue_index_as_hash": "[3] expected: WorkQueueHashIndex but got: AccumulationIndex",
 
@@ -909,7 +906,10 @@
     "bs_output_as_public": "got: BsOutput but wanted: BsPublicKey",
     "entropy_word_as_input": "StateEntropyWord",
     "authorization_core_as_slot": "AuthorizationCoreIndex",
-    "history_accumulation_as_parent": "AccumulationRoot"
+    "history_accumulation_as_parent": "AccumulationRoot",
+    "accumulation_operand_raw_prefix": "[2] expected: AccumulationReportPrefix but got: uint64",
+    "accumulation_operand_service_as_group": "[2] expected: OperandServiceIndex but got: ServiceIndex",
+    "accumulation_operand_group_as_operand": "[3] expected: ServiceOperandIndex but got: OperandServiceIndex"
   },
   "CONTRACTS": {
     "rpc_parameters_known_failure": "decoded.success",
@@ -1010,10 +1010,6 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
-    "accumulation_operand_raw_prefix": ["prepareAccumulationOperands(", "[2] expected: AccumulationReportPrefix but got: uint64"],
-    "accumulation_operand_service_as_group": ["operandServiceAt(", "[2] expected: OperandServiceIndex but got: ServiceIndex"],
-    "accumulation_operand_group_as_operand": ["serviceOperandAt(", "[3] expected: ServiceOperandIndex but got: OperandServiceIndex"],
-
     "accumulation_queue_slot_as_index": ["accumulationAt(", "[2] expected: AccumulationIndex but got: WorkQueueSlot"],
     "accumulation_queue_index_as_hash": ["accumulationDependencyAt(", "[3] expected: WorkQueueHashIndex but got: AccumulationIndex"],
     "pvm_gas_raw_address": ["blockGas(", "[2] expected: CodeAddress but got: uint64"],
@@ -1036,7 +1032,10 @@
     "raw_work_variant": ["encodeWorkBorrowed(", "[1] expected: WorkOutput but got: uint8"],
     "entropy_word_as_input": ["advanceEntropyTime(", "[4] expected: EntropyInput but got: StateEntropyWord"],
     "history_accumulation_as_parent": ["correctHistoryParent(", "[2] expected: HistoryStateRoot but got: AccumulationRoot"],
-    "authorization_core_as_slot": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"]
+    "authorization_core_as_slot": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"],
+    "accumulation_operand_raw_prefix": ["prepareAccumulationOperands(", "[2] expected: AccumulationReportPrefix but got: uint64"],
+    "accumulation_operand_service_as_group": ["operandServiceAt(", "[2] expected: OperandServiceIndex but got: ServiceIndex"],
+    "accumulation_operand_group_as_operand": ["serviceOperandAt(", "[3] expected: ServiceOperandIndex but got: OperandServiceIndex"]
   },
   "BS_MEMBERS": [
     "key-short",
@@ -1229,6 +1228,7 @@
     "accumulation_operands": "accumulation_operands_arc_release"
   },
   "UNIT_LINKS": {
+    "rpc": "crypto",
     "safrole_transition": "observer",
     "safrole_auth_state": "observer",
     "safrole_authentication": "crypto",

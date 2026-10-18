@@ -44,10 +44,11 @@ def receive(connection):
     first, second = exact(connection, 2)
     assert first & 0x80 and not second & 0x80 and not first & 0x70
     size = second & 127
+    assert size != 127 # Reject the 64-bit length discriminator, not a decoded 127-byte payload.
     if size == 126:
         size, = struct.unpack('!H', exact(connection, 2))
         assert size >= 126
-    assert size < 65536 and size != 127
+    assert size < 65536
     return first & 15, exact(connection, size)
 
 
@@ -99,6 +100,10 @@ def run(binary, certificates, folder, chain=None, telemetry=False):
         command += ['--chain', str(chain)] # The same CLI supports RPC with and without telemetry.
     if telemetry:
         command += ['--telemetry', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
+    expected_genesis = None
+    if chain is not None and 'genesis_state' in json.loads(chain.read_text()):
+        # This harness uses the frozen synthetic genesis for every configured chain view.
+        expected_genesis = json.loads((Path(__file__).parent/'fixtures/rpc-genesis-result.json').read_text())
     with log.open('wb') as output:
         process = subprocess.Popen(command, env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)},
                                    stdout=output, stderr=subprocess.STDOUT)
@@ -116,7 +121,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False):
                 result = json.loads(payload)
                 assert opcode == 1 and result['id'] == 'client'
                 assert result['result']['rpc']['transport'] == 'websocket'
-                assert result['result']['connectedPeers'] == 0 and result['result']['bestBlock'] is None
+                assert result['result']['connectedPeers'] == 0
+                expected_head = None if expected_genesis is None else {k: expected_genesis[k] for k in ('header_hash', 'slot')}
+                assert result['result']['bestBlock'] == expected_head
                 assert 'parameters' in result['result']['rpc']['methods']
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
@@ -139,7 +146,18 @@ def run(binary, certificates, folder, chain=None, telemetry=False):
                 send(connection, json.dumps(dict(jsonrpc='2.0', method='ragnarok_clientInfo')))
                 send(connection, json.dumps([request, dict(jsonrpc='2.0', method='bestBlock', id=2), False]))
                 response = json.loads(receive(connection)[1])
-                assert len(response) == 3 and response[1]['error']['code'] == -32601
+                assert len(response) == 3
+                if expected_head is None:
+                    assert response[1]['error']['code'] == 0 # No configured genesis head.
+                else:
+                    assert response[1]['result'] == expected_head # File mutation did not change the retained chain.
+                    query = dict(jsonrpc='2.0', method='stateRoot', params=[expected_head['header_hash']], id=3)
+                    send(connection, json.dumps(query))
+                    assert json.loads(receive(connection)[1])['result'] == expected_genesis['state_root']
+                    send(connection, json.dumps(dict(query, method='parent')))
+                    assert json.loads(receive(connection)[1])['error'] == dict(code=1, message='Block unavailable', data=expected_head['header_hash'])
+                    send(connection, json.dumps(dict(query, params=['not a hash'])))
+                    assert json.loads(receive(connection)[1])['error']['code'] == -32602
                 assert response[2]['error']['code'] == -32600
                 send(connection, '{broken')
                 assert json.loads(receive(connection)[1])['error']['code'] == -32700
@@ -204,9 +222,8 @@ def parameter_checks(binary, certificates, folder):
     chain = folder/'chain.json'
     chain.write_text((Path(__file__).parent/'fixtures/rpc-parameters.json').read_text())
     result = run(binary, certificates, folder/'configured', chain)
-    # Reuse the existing valid genesis header while keeping the independent parameter fixture.
-    combined = json.loads((Path(__file__).parent/'fixtures/rpc-parameters.json').read_text())
-    combined['genesis_header'] = json.loads((Path(__file__).parent/'fixtures/telemetry-dev.json').read_text())['genesis_header']
+    # The independent synthetic genesis supports queries and shared telemetry startup.
+    combined = json.loads((Path(__file__).parent/'fixtures/rpc-genesis.json').read_text())
     chain.write_text(json.dumps(combined))
     shared = run(binary, certificates, folder/'shared', chain, telemetry=True)
     assert shared['passed']
@@ -219,6 +236,12 @@ def parameter_checks(binary, certificates, folder):
                  '--rpc-port', str(rpc_port), '--chain', str(chain)]
     failed = subprocess.run(arguments, capture_output=True, timeout=5)
     assert failed.returncode != 0 and b'Invalid RPC listener or --chain parameters' in failed.stderr
+    # Supplied genesis fields must form a complete valid pair before a listener can open.
+    for malformed in (dict(combined, genesis_state={}), dict(combined, genesis_header='00'),
+                      {key: value for key, value in combined.items() if key != 'genesis_state'}):
+        chain.write_text(json.dumps(malformed))
+        rejected = subprocess.run(arguments, capture_output=True, timeout=5)
+        assert rejected.returncode != 0 and b'Invalid RPC listener or --chain parameters' in rejected.stderr
     chain.unlink()
     missing = subprocess.run(arguments, capture_output=True, timeout=5)
     assert missing.returncode != 0 and b'Invalid RPC listener or --chain parameters' in missing.stderr

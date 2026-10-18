@@ -1,4 +1,9 @@
 [
+  "tests/native/compile_fail/rpc_genesis_owner_private.nim",
+  "tests/native/compile_fail/rpc_genesis_result_private.nim",
+  "tests/fixtures/rpc-genesis.json",
+  "tests/fixtures/rpc-genesis-result.json",
+  "src/chain/genesis.nim",
   "tests/native/compile_fail/rpc_parameters_owner_private.nim",
   "tests/native/compile_fail/rpc_parameters_result_private.nim",
   "tests/native/compile_fail/rpc_parameters_known_failure.nim",
@@ -6,6 +11,7 @@
   "tests/fixtures/rpc-parameters.json",
   "tests/fixtures/rpc-parameters-result.json",
   "tests/rpc_checks.py",
+  "tests/test_rpc_checks.py",
   "tests/native/compile_fail/rpc_server_copy.nim",
   "src/rpc/wire.nim",
   "src/rpc/protocol.nim",
@@ -323,6 +329,10 @@
   "tests/native/compile_fail/accumulation_queue_slot_as_index.nim",
   "tests/native/compile_fail/accumulation_queue_index_as_hash.nim",
   "tests/test_accumulation_queue_harness.py",
+  "src/pvm/gas.nim",
+  "tests/pvm_gas_reference.py",
+  "tests/test_pvm_gas_reference.py",
+  "tests/native/pvm_gas_results.nim",
   "src/state/accumulation_operands.nim",
   "tests/accumulation_operand_fixtures.py",
   "tests/test_accumulation_operand_harness.py",
@@ -334,9 +344,5 @@
   "tests/native/compile_fail/accumulation_operand_bound_result_private.nim",
   "tests/native/compile_fail/accumulation_operand_raw_prefix.nim",
   "tests/native/compile_fail/accumulation_operand_service_as_group.nim",
-  "tests/native/compile_fail/accumulation_operand_group_as_operand.nim",
-  "src/pvm/gas.nim",
-  "tests/pvm_gas_reference.py",
-  "tests/test_pvm_gas_reference.py",
-  "tests/native/pvm_gas_results.nim"
+  "tests/native/compile_fail/accumulation_operand_group_as_operand.nim"
 ]
