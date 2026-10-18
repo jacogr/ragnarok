@@ -135,9 +135,12 @@ See [telemetry scope and limits](../spec/telemetry.md).
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
 at most eight nonblocking loopback connections and bounded input/output buffers. The first
 method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Other chain queries
-and subscriptions remain unavailable until a real chain backend exists. `parameters()` reads an immutable
+now expose a genesis-only immutable view when an explicit genesis pair is supplied; subscriptions
+remain unavailable until block import and update events exist. `parameters()` reads an immutable
 GP 0.8.0 parameter snapshot from the explicit chainspec; four live-state fields are documented zero
-placeholders. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
+placeholders. `src/chain/genesis.nim` retains the configured serialized map through the existing
+state store, checks header/roster/time framing and computes its root at startup. It does not validate
+all state chapters or run consensus. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

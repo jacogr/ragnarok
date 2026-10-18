@@ -110,6 +110,8 @@
 
     "rpc_parameters_owner_private": "numbers",
     "rpc_parameters_result_private": "success",
+    "rpc_genesis_owner_private": "state",
+    "rpc_genesis_result_private": "status",
     "pvm_gas_payload_private": "completed",
     "pvm_gas_retag_private": "status",
     "pvm_gas_error_readonly": "error",
@@ -1212,6 +1214,7 @@
     "accumulation_queue": "accumulation_queue_arc_release"
   },
   "UNIT_LINKS": {
+    "rpc": "crypto",
     "safrole_transition": "observer",
     "safrole_auth_state": "observer",
     "safrole_authentication": "crypto",
