@@ -1,0 +1,63 @@
+{
+  "source": "tests/native/pvm_machine_results.nim",
+  "build_name": "pvm-machine-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default-value"
+      },
+      "arguments": [
+        "default-value"
+      ],
+      "name": "pvm-machine-default-value",
+      "diagnostic": "r.status == None",
+      "description": "PVM selected-result guard default-value"
+    },
+    {
+      "identity": {
+        "origin": "error-value"
+      },
+      "arguments": [
+        "error-value"
+      ],
+      "name": "pvm-machine-error-value",
+      "diagnostic": "r.status == None",
+      "description": "PVM selected-result guard error-value"
+    },
+    {
+      "identity": {
+        "origin": "fault-value"
+      },
+      "arguments": [
+        "fault-value"
+      ],
+      "name": "pvm-machine-fault-value",
+      "diagnostic": "r.status == None",
+      "description": "PVM selected-result guard fault-value"
+    },
+    {
+      "identity": {
+        "origin": "panic-page"
+      },
+      "arguments": [
+        "panic-page"
+      ],
+      "name": "pvm-machine-panic-page",
+      "diagnostic": "r.status == Fault",
+      "description": "PVM selected-result guard panic-page"
+    },
+    {
+      "identity": {
+        "origin": "success-page"
+      },
+      "arguments": [
+        "success-page"
+      ],
+      "name": "pvm-machine-success-page",
+      "diagnostic": "r.status == Fault",
+      "description": "PVM selected-result guard success-page"
+    }
+  ]
+}

@@ -28,3 +28,6 @@
 [submodule "vendor/jamtart"]
 	path = vendor/jamtart
 	url = https://github.com/paritytech/jamtart.git
+[submodule "vendor/polkavm"]
+	path = vendor/polkavm
+	url = https://github.com/paritytech/polkavm.git

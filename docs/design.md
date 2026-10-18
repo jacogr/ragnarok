@@ -85,7 +85,23 @@ caller-supplied trusted parent context. See [the anchor contract](../spec/report
 `src/state/report_packages.nim` checks package uniqueness against recent/current reports and the
 prior pipeline, resolves prerequisites and exact segment-root pairs, and derives existing identities
 from parent C(10)/C(14)/C(15). See [the package contract](../spec/report-packages.md).
-Post-assurance core capacity, C(10) publication and report-stage coordinator integration remain subsequent slices.
+`src/state/report_assignments.nim` plans new C(10) assignments only on vacant post-assurance cores,
+using candidate time and active population retained in the credential certificate. It preserves
+untouched guarantees and registration times; see [the assignment contract](../spec/report-assignments.md).
+Complete report-stage binding, C(10) publication and coordinator integration remain subsequent slices.
+
+`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
+formats into copied values backed by an immutable program owner. See
+[the program decoding contract](../spec/pvm-program.md). This is the first PVM
+increment; machine state, memory, gas, execution and host calls remain open.
+
+`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
+formats into copied values backed by an immutable program owner. See
+[the program decoding contract](../spec/pvm-program.md). This is the first PVM
+increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
+with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine.md),
+including its explicit wrapping-access specification gate. Gas charging, instruction
+execution and host calls remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2

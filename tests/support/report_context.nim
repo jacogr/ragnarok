@@ -78,7 +78,7 @@ proc reportFor*(base: OwnedReport, core: int, gases: openArray[uint64], service 
 
 
 ## Sign authored reports with deterministic public test keys and the real assignment/transcript machinery.
-proc certify*(reports: openArray[OwnedReport]): VerifiedGuaranteeCredentials =
+proc certify*(reports: openArray[OwnedReport], slot = 12'u32): VerifiedGuaranteeCredentials =
   let config = credentialConfig(2)
   var keys = newSeq[EdSeed](6)
   var values = newSeq[StateValidator](6)
@@ -89,12 +89,12 @@ proc certify*(reports: openArray[OwnedReport]): VerifiedGuaranteeCredentials =
     values[i].ed25519 = StateEdKey(array[32, byte](publicKey(keys[i]).value)) # Test-only identities.
   let bytes = validatorEntry(ValidatorChapter.Active, values, config.assignments.roster).value.value
   let roster = decodeStateValidators(bytes, config.assignments.roster).value.value
-  let plan = planGuarantors(roster, roster, default(StateEntropy), StateTime(12), [],
+  let plan = planGuarantors(roster, roster, default(StateEntropy), StateTime(slot), [],
       config.assignments).value
   var records: seq[Guarantee] = @[]
   # Each report retains independent core identity and complete owned bytes.
   for report in reports:
-    var record = Guarantee(report: report, slot: GuaranteeSlot(12), credentialCount: 2,
+    var record = Guarantee(report: report, slot: GuaranteeSlot(slot), credentialCount: 2,
       credentials: default(array[3, GuaranteeCredential]))
     let message = array[45, byte](guaranteeMessage(reportBytes(report)).value)
     var found = 0
@@ -107,7 +107,7 @@ proc certify*(reports: openArray[OwnedReport]): VerifiedGuaranteeCredentials =
         inc found
     assert found == 2
     records.add(record)
-  verifyGuaranteeCredentials(records, roster, roster, default(StateEntropy), StateTime(12), [], config).value
+  verifyGuaranteeCredentials(records, roster, roster, default(StateEntropy), StateTime(slot), [], config).value
 
 
 ## Construct exact parent pool and independently keyed service metadata for authored reports.
