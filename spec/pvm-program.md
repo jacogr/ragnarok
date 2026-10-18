@@ -71,6 +71,8 @@ published PVM execution-vector parity claim. Tests use independently specified
 literal bytes and expected operands; a compatible execution corpus remains a gate
 for the interpreter increment. No upstream pins are advanced.
 
-Memory, gas charging, instruction execution, standard program initialization,
+The [machine/memory increment](pvm-machine.md) now supplies immutable snapshots and
+scalar memory access, with an explicit unresolved wrapping-access gate. Gas charging,
+instruction execution, standard program initialization,
 host calls, invocation wrappers and whole JAM execution remain unimplemented.
-Next bounded increment: machine state and memory with exact failure-state tests.
+Next bounded increment: instruction execution and gas accounting.

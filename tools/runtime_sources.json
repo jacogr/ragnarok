@@ -22,6 +22,8 @@
   "src/crypto/guarantee.nim",
   "src/crypto/primitives.nim",
   "src/pvm/program.nim",
+  "src/pvm/machine.nim",
+  "tests/native/pvm_machine_results.nim",
   "src/quic/integration.nim",
   "src/quic/io.nim",
   "src/quic/offload.nim",
