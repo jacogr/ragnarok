@@ -1,0 +1,96 @@
+{
+  "build_name": "accumulation-skip-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "accumulation-skip-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "refused"
+      },
+      "name": "accumulation-skip-refused"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "info"
+      },
+      "name": "accumulation-skip-info"
+    },
+    {
+      "arguments": [
+        "state"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "state"
+      },
+      "name": "accumulation-skip-state"
+    },
+    {
+      "arguments": [
+        "service"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "service"
+      },
+      "name": "accumulation-skip-service"
+    },
+    {
+      "arguments": [
+        "projection"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "projection"
+      },
+      "name": "accumulation-skip-projection"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "source"
+      },
+      "name": "accumulation-skip-source"
+    },
+    {
+      "arguments": [
+        "bound-refused"
+      ],
+      "description": "Skipped accumulation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "bound-refused"
+      },
+      "name": "accumulation-skip-bound-refused"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "source": "tests/native/accumulation_skip_results.nim"
+}
