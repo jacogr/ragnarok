@@ -518,3 +518,25 @@ bytes exercise size and aggregate-batch refusal; their hashes were computed inde
 with Python Blake2b. Private-field rejection protects the retained header. Existing server
 retirement checks now also cover its header owner. Live WS checks retrieve the sealed header
 after chainspec mutation and independently hash its bytes to the advertised block identity.
+
+## Immutable chain-view boundary
+
+RPC selects blocks through `ChainView` (`src/chain/provider.nim`) rather than comparing each
+request with the configured genesis hash itself. `bestBlock`, exact `blockAt`, `parentOf` and
+bounded `reportAt` form the typed read interface. The initial `genesisView` adapter owns the
+existing genesis snapshot. Empty/invalid configuration supplies no block; unknown hashes never
+fall back to the best block, and raw parent-header bytes never invent a parent descriptor.
+
+The provider accepts nominal binary hashes; JSON/Base64 parsing and JIP-2 error mapping stay in
+RPC. Successful block and report results retain immutable owners after the originating view is
+released. Each dispatcher tick captures one `ClientInfo` read view, and a batch uses that same
+view throughout. Copies have acyclic ARC ownership; private provider storage cannot be mutated
+by consumers. Parameters remain the separately captured startup configuration.
+
+This is an internal boundary refactor with unchanged WS methods, result/error shapes, response
+budgets and genesis-only scope under the pinned JIP-2 references above. It does not introduce a
+live importer, historical storage, finality, subscriptions or a public view-replacement operation.
+Those require a validated chain source and event integration in a subsequent bounded increment.
+Native tests cover empty/invalid/unknown lookup, unavailable parents, report-budget propagation,
+retained-result lifetime and copied request/batch isolation. Existing native and live WS suites
+remain regression coverage; a compiler rejection probe protects private provider storage.

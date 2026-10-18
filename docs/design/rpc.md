@@ -20,3 +20,12 @@ batch responses before copying them. `src/chain/statistics.nim` validates C(13) 
 core configuration and current/previous rosters before returning its exact bytes. Genesis capture
 also owns a bounded sorted serialized-key index for binary-search pagination; key access returns
 fixed copies without exporting state-map storage. It retains sorted IDs from exact valid account entries for bounded `listServices` responses. RPC and telemetry share the same startup file snapshot. See [RPC scope](../../spec/rpc.md).
+
+`src/chain/provider.nim` owns the immutable `ChainView` boundary for best-block selection,
+exact hash/parent lookup and bounded retained-report lookup. The current adapter wraps the
+existing validated genesis snapshot; result payloads retain their own ARC lifetime. RPC receives
+one copied view per dispatcher tick, shared by that tick’s request contexts and batch members.
+Replacing a separate view handle cannot alter an existing context. JSON/Base64 handling remains
+in RPC; typed hashes cross the provider boundary. Startup configuration and wire behavior are
+unchanged. Future block-import integration belongs behind this boundary; this adapter adds no
+history, mutable provider, finality, callbacks or update events.
