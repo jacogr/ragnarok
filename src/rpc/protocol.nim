@@ -148,6 +148,7 @@ proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
   # Each pair has exactly two hexadecimal digits, excluding prefixes and separators.
   for i in 0..<bytes.len:
     var value = 0
+    # Accumulate exactly two nibbles so narrowing to a byte is proved safe.
     for j in 0..<2:
       let c = text[2 * i + j]
       if c notin HexDigits: return false # Invalid input publishes no partial bytes.
@@ -158,8 +159,10 @@ proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
 
 # Import an optional complete genesis pair using the same strict bounded JSON policy as parameters.
 proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
+  # Reject absent, oversized or non-UTF-8 input before token allocation.
   if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text): return invalidGenesis()
   var values: seq[Value] = @[]
+  # Only a complete strict JSON object can describe a chainspec.
   if not parseValues(text, values, 262144, 32) or values[0].kind !=
       objectValue: return invalidGenesis()
   var headerIndex = -1
@@ -169,7 +172,7 @@ proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
   # Root duplicates are ambiguous even when they name fields this slice does not consume.
   while i < values[0].next:
     let key = values[i].text
-    if keys.len >= 64 or key in keys: return invalidGenesis()
+    if keys.len >= 64 or key in keys: return invalidGenesis() # Bound metadata and reject ambiguous duplicates.
     keys.add(key)
     inc i
     if key == "genesis_header": headerIndex = i # Record positions only after syntax validation.
@@ -177,18 +180,19 @@ proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
     i = values[i].next
   if headerIndex < 0 and stateIndex < 0: return unavailableGenesis() # Parameters-only configuration remains supported.
   if headerIndex < 0 or stateIndex < 0: return invalidGenesis() # An explicit pair must be complete.
+  # The header is one encoded blob and state is a serialized key/value object.
   if values[headerIndex].kind != stringValue or values[stateIndex].kind !=
       objectValue: return invalidGenesis()
   var wire: seq[byte] = @[]
-  if not decodeHex(values[headerIndex].text, 256 * 1024, wire): return invalidGenesis()
+  if not decodeHex(values[headerIndex].text, 256 * 1024, wire): return invalidGenesis() # Bound the header before decoding.
   var entries: seq[StateEntry] = @[]
   var total = 0
   i = stateIndex + 1
   # Decode map keys and values under independent count and byte budgets before retaining them.
   while i < values[stateIndex].next:
-    if entries.len >= 16384 or values[i].text.len != 62: return invalidGenesis()
+    if entries.len >= 16384 or values[i].text.len != 62: return invalidGenesis() # Every serialized key has exactly 31 bytes.
     var keyBytes, data: seq[byte] = @[]
-    if not decodeHex(values[i].text, 31, keyBytes): return invalidGenesis()
+    if not decodeHex(values[i].text, 31, keyBytes): return invalidGenesis() # Reject non-hex key encodings.
     inc i
     if values[i].kind != stringValue or not decodeHex(values[i].text, 4 * 1024 * 1024 - total, data):
       return invalidGenesis() # Nested and non-string state values are not serialized state.

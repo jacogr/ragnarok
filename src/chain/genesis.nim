@@ -58,8 +58,8 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   # Required context is obtained from actual serialized state, never inferred from core count.
   for entry in entries:
     let key = array[31, byte](entry.key)
-    if key == array[31, byte](chapterKey(StateChapter(8))): roster = entry.value
-    elif key == array[31, byte](chapterKey(StateChapter(11))): time = entry.value
+    if key == array[31, byte](chapterKey(StateChapter(8))): roster = entry.value # Active author population.
+    elif key == array[31, byte](chapterKey(StateChapter(11))): time = entry.value # State/header slot consistency.
   let validators = decodeStateValidators(roster, ValidatorStateConfig(cores: CoreCount(cores),
     validators: ElementLimit(1023), maxBytes: ByteLimit(1024 * 1024)))
   if validators.error != StateComponentError.None: return invalidGenesis() # Missing or malformed C(8).
