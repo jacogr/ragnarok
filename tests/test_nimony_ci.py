@@ -6,8 +6,8 @@ from pathlib import Path
 import sys
 import subprocess
 import tarfile
-import tempfile
 import unittest
+from harness_fixtures import temporary_folder
 import threading
 from unittest.mock import patch
 
@@ -28,6 +28,11 @@ def archive(name, data=b'fixture'):
         member.size = len(data)
         tar.addfile(member, io.BytesIO(data))
     return output.getvalue()
+
+
+# Supply fresh empty groups so summary scenarios can test scope without borrowing other jobs' evidence.
+def network_report(**workloads):
+    return dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[], **workloads)
 
 
 # Rejection paths prevent archive substitution, source omissions and misleading green migration summaries.
@@ -57,8 +62,8 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)/'build/bandersnatch'
+        with temporary_folder() as temporary:
+            folder = temporary/'build/bandersnatch'
             features = 'secret-split\n'
             outputs = ['rustc '+bandersnatch.PINS['rust']+' fixture',
                        'cargo '+bandersnatch.PINS['rust']+' fixture', features]
@@ -121,8 +126,7 @@ class NimonyCISafeguards(unittest.TestCase):
     # A fresh failed Python group must publish failure rather than reuse stale successful discovery.
     def test_python_gate_failure(self):
         import test_python
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             (folder/'results.json').write_text(json.dumps(dict(status='checks-passed')))
             failed = dict(command=['fixture'], exit_code=7, log='fixture.log', output='failed test')
             with patch.object(test_python, 'BUILD', folder), patch.object(
@@ -165,8 +169,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Extracting a formatter archive must expose only nimpretty, with safe repeated symlink handling.
     def test_formatter_only_installation(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             compiler, formatter = folder/'compiler', folder/'formatter'
             for relative in ('bin/nimony', 'bin/nifmake', 'bin/niflink', 'bin/hastur', 'lib/std/system.nim'):
                 # Inert fixture files exercise layout validation; no fabricated compiler is executed.
@@ -193,8 +196,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Normal local verification must reject modified tools and changed pins before running any workload.
     def test_installed_binary_integrity(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             compiler, formatter = folder/'nimony', folder/'nimpretty'
             compiler.write_bytes(b'compiler fixture')
             formatter.write_bytes(b'formatter fixture')
@@ -223,8 +225,8 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # A stale/corrupt retained download must fail without trusting its filename or using the network.
     def test_cached_checksum_mismatch(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary)/'tool.archive'
+        with temporary_folder() as temporary:
+            path = temporary/'tool.archive'
             path.write_bytes(b'changed bytes')
             with patch('urllib.request.urlopen', side_effect=AssertionError('unexpected network')):
                 with self.assertRaises(ValueError):
@@ -232,8 +234,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Data filtering must reject traversal rather than create a file outside the installation directory.
     def test_archive_traversal(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        with temporary_folder() as root:
             with self.assertRaises(tarfile.FilterError):
                 extract(archive('tool/../../escaped'), root/'install')
             self.assertFalse((root/'escaped').exists())
@@ -246,16 +247,15 @@ class NimonyCISafeguards(unittest.TestCase):
             for name in ('first/tool', 'second/tool'):
                 member = tarfile.TarInfo(name)
                 tar.addfile(member)
-        with tempfile.TemporaryDirectory() as temporary:
+        with temporary_folder() as temporary:
             with self.assertRaises(ValueError):
-                extract(data.getvalue(), Path(temporary))
-            self.assertEqual(list(Path(temporary).iterdir()), [])
+                extract(data.getvalue(), temporary)
+            self.assertEqual(list(temporary.iterdir()), [])
 
     # Same-version archives for a different platform or commit are not accepted as the selected nightly.
     def test_identity_mismatch(self):
         pins = host_pins(json.loads((ROOT/'spec/toolchain.json').read_text()), 'Linux', 'x86_64')
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        with temporary_folder() as root:
             (root/'NIGHTLY.txt').write_text('nimony-commit: '+pins['commit']+'\ndate: '+pins['date']+'\nplatform: macos_arm64\n')
             with self.assertRaisesRegex(ValueError, 'platform'):
                 verify_identity(root, pins)
@@ -287,8 +287,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Inventory discovery must include a newly added module and keep a failed module red while checking later files.
     def test_inventory_failure_and_new_module(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        with temporary_folder() as root:
             (root/'src').mkdir()
             # The third file represents new code that must not rely on a manually updated allowlist.
             for name in ('a.nim', 'b.nim', 'new.nim'):
@@ -310,8 +309,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # A stalled compiler cannot be counted as a pass or silently disappear from the inventory.
     def test_module_timeout_is_failure(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        with temporary_folder() as root:
             source = root/'module.nim'
             source.write_text('discard\n')
             with patch.object(modules, 'ROOT', root), patch.object(modules.subprocess, 'run', side_effect=subprocess.TimeoutExpired('compiler', 180)):
@@ -322,8 +320,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # The always-run renderer still fails when the preceding runner never produced usable evidence.
     def test_missing_report_cli(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        with temporary_folder() as root:
             output = root/'summary.md'
             result = subprocess.run([sys.executable, str(ROOT/'tools/summarize_tests.py'), '--kind', 'runtime',
                                      '--report', str(root/'missing.json'), '--output', str(output)], capture_output=True, text=True)
@@ -341,7 +338,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # A failed network matrix must remain visible without inflating corpus or contract-guard totals.
     def test_peer_summary_scope(self):
-        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+        report = network_report(
                       quic_peer=dict(passed=False, matrix_cases=16, repeated_valid=12))
         text = summarize(report, 'e2e')
         self.assertIn('Authenticated CE 143 peer matrix: Fail', text)
@@ -351,7 +348,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Independent lifecycle verdicts must stay visible without counting network waves as compiler or corpus checks.
     def test_retained_summary_scope(self):
-        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+        report = network_report(
                       quic_service=dict(passed=True, result=dict(rounds=16, idle=[{}]*16,
                                                                accepted_and_retired_connections=66)),
                       quic_integration_service=dict(passed=False, failure='cancelled owner remained live'))
@@ -364,7 +361,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # A failed recovery workload cannot disappear behind healthy reconnect rounds or inflate codec metrics.
     def test_mesh_summary_scope(self):
-        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+        report = network_report(
                       quic_mesh=dict(passed=True, result=dict(rounds=16, bidirectional_queries=128)),
                       quic_mesh_disruption=dict(passed=False, failure='pending owners not settled'))
         text = summarize(report, 'e2e')
@@ -378,7 +375,7 @@ class NimonyCISafeguards(unittest.TestCase):
         for passed in (False, True):
             # Exercise both verdicts so incomplete evidence cannot be rendered as successful session coverage.
             with self.subTest(passed=passed):
-                report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                report = network_report(
                               quic_endpoint_soak=dict(passed=passed, result=dict(rounds=40)))
                 text = summarize(report, 'e2e')
                 self.assertIn('Same-process endpoint teardown soak: '+('Pass' if passed else 'Fail'), text)
@@ -388,7 +385,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Passing capacity recovery cannot hide a failed authenticated-close check or inflate compiler metrics.
     def test_admission_summary_scope(self):
-        report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+        report = network_report(
                       quic_admission=dict(passed=True, result=dict(waves=12, retired_connections=312,
                                                                  healthy_queries_after_release=12)),
                       quic_closed_before_request=dict(passed=False))
@@ -409,7 +406,7 @@ class NimonyCISafeguards(unittest.TestCase):
         for passed in (False, True):
             # Both verdicts must remain visible, and counts belong only to a completed workload.
             with self.subTest(passed=passed):
-                report = dict(status='blocked', suites=[], runtime=[], privacy=[], nominal=[], schemas=[],
+                report = network_report(
                               quic_offload=dict(passed=passed, result=dict(rounds=10, workers=2, job_cap=4,
                                                                           verified_jobs=30, healthy_light_queries=70)))
                 text = summarize(report, 'e2e')

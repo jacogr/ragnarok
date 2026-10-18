@@ -3,8 +3,8 @@ from pathlib import Path
 import json
 import hashlib
 import sys
-import tempfile
 import unittest
+from harness_fixtures import temporary_folder, native_libraries
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,9 +41,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Worker limits affect only directory discovery; linked and networking cases stay serial.
     def test_bounded_codec_workers(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
+        with temporary_folder('hastur') as folder:
             for ci, expected in (('true', '4'), ('', '4')):
                 # Both CI and local discovery use the maintainer-selected four-worker default.
                 with patch.dict(native_tests.os.environ, {'CI': ci}):
@@ -63,8 +61,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Relative scheduling history must stay under build, isolated across relocated compiler installations.
     def test_runner_work_directory(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             with patch.object(native_tests, 'ROOT', folder):
                 first = native_tests.unit_work_directory(folder/'one/nimony')
                 second = native_tests.unit_work_directory(folder/'two/nimony')
@@ -75,15 +72,13 @@ class NativeUnitHarness(unittest.TestCase):
 
     # An absent archive runner cannot fall back to an unrelated executable on PATH.
     def test_missing_pinned_runner(self):
-        with tempfile.TemporaryDirectory() as temporary:
+        with temporary_folder() as temporary:
             with self.assertRaises(FileNotFoundError):
-                native_tests.unit_command(Path(temporary)/'nimony')
+                native_tests.unit_command(temporary/'nimony')
 
     # Hastur considers zero discovered tests successful; reject that misleading project-level result explicitly.
     def test_empty_discovery(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
+        with temporary_folder('hastur') as folder:
             empty = folder/'empty'
             empty.mkdir()
             with patch.object(native_tests, 'UNIT_ROOT', empty):
@@ -92,9 +87,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Each migrated positive test needs its checked-in output expectation before any native tool runs.
     def test_missing_expected_output(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
+        with temporary_folder('hastur') as folder:
             (folder/'test_missing.nim').write_text('assert true\n')
             with patch.object(native_tests, 'UNIT_ROOT', folder):
                 with self.assertRaisesRegex(FileNotFoundError, 'expected output'):
@@ -102,9 +95,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Both supported hosts must retain ARC, Clang, checks and LTO while isolating native test processes.
     def test_checked_host_profiles(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
+        with temporary_folder('hastur') as folder:
             for system in ('Linux', 'Darwin'):
                 # Compare semantic flags and resolved tool identity, not one platform's temporary path spelling.
                 with self.subTest(system=system), patch.object(native_tests.platform, 'system', return_value=system):
@@ -121,14 +112,8 @@ class NativeUnitHarness(unittest.TestCase):
 
     # The quick plan discovers pure codecs once and links each state case with its explicit native profile.
     def test_unit_entrypoint(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
-            libraries = {'crypto': folder/'production', 'observer': folder/'observer',
-                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer', 'quic': folder/'quic'}
-            for path in libraries.values():
-                # Separate files make accidental observer/production substitution visible in the command plan.
-                path.touch()
+        with temporary_folder('hastur') as folder:
+            libraries = native_libraries(folder)
             commands = unit_plan(folder/'nimony', libraries)
             self.assertEqual(len(commands), 1+len(native_tests.UNIT_LINKS))
             self.assertEqual(Path(commands[0][0]), (folder/'hastur').resolve())
@@ -142,9 +127,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Missing linked profiles must fail before a stale native executable can satisfy a positive test.
     def test_linked_library_required(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
+        with temporary_folder('hastur') as folder:
             for libraries in (None, {}, {'crypto': folder/'missing'}):
                 # A production-only map cannot satisfy a suite requiring refusal observation.
                 with self.subTest(libraries=libraries), self.assertRaisesRegex(ValueError, 'profile: observer'):
@@ -154,14 +137,8 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Host-specific linker flags and isolated caches must survive both production and instrumented profiles.
     def test_linked_host_profiles(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
-            libraries = {'crypto': folder/'production', 'observer': folder/'observer',
-                         'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer', 'quic': folder/'quic'}
-            for path in libraries.values():
-                # The launcher needs real files; dummy bytes are enough for command-only safeguards.
-                path.touch()
+        with temporary_folder('hastur') as folder:
+            libraries = native_libraries(folder)
             for system in ('Linux', 'Darwin'):
                 # No native build occurs here; compare the planned Linux and local linking profiles explicitly.
                 with patch.object(native_tests.platform, 'system', return_value=system):
@@ -198,9 +175,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # A moved linked source needs its own golden; the pure directory's expectations cannot cover it.
     def test_linked_expected_output_required(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
-            (folder/'hastur').touch()
+        with temporary_folder('hastur') as folder:
             (folder/'test_state_trie.nim').write_text('assert true\n')
             with patch.object(native_tests, 'STATE_ROOT', folder):
                 with self.assertRaisesRegex(FileNotFoundError, 'expected output'):
@@ -208,8 +183,8 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Generated certificates/CE inputs must be explicitly prepared; inherited variables alone cannot satisfy them.
     def test_runtime_fixture_required(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            with patch.object(native_tests, 'unit_evidence_directory', return_value=Path(temporary)):
+        with temporary_folder() as temporary:
+            with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
                 for name in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state'):
                     # An old environment path is insufficient without a newly supplied required-file manifest.
                     with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'prepared native unit fixtures'):
@@ -217,8 +192,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # A changed later CE child must fail even when every earlier input and all paths remain valid.
     def test_runtime_fixture_integrity(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             for name in ('a.cert.pem', 'a.key.pem'):
                 # Certificate contents are irrelevant for manifest-only tooling checks.
                 (folder/name).write_bytes(b'fixture')
@@ -238,8 +212,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Fresh runs must remove their own old observation while preserving unrelated completed suite data.
     def test_fresh_arc_observations(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             owner = folder/'ownership.json'
             report = folder/'report_snapshots.json'
             owner.write_text('{}')
@@ -259,8 +232,7 @@ class NativeUnitHarness(unittest.TestCase):
         invalid = [[], {}, {**valid, 'cycles': 999}, {**valid, 'occupied_after': 193},
                    {**valid, 'occupied_before': '192'}, {**valid, 'schemas': 4},
                    {**valid, 'occupied_before': True}, {**valid, 'extra': 0}]
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=folder):
                 for observed in invalid:
                     # Reject every malformed alternative, including booleans that Python otherwise treats as integers.
@@ -276,8 +248,8 @@ class NativeUnitHarness(unittest.TestCase):
 
     # A file removed before execution must be produced again; a previous green run is not evidence.
     def test_missing_arc_observation(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            with patch.object(native_tests, 'unit_evidence_directory', return_value=Path(temporary)):
+        with temporary_folder() as temporary:
+            with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
                 with self.assertRaises(FileNotFoundError):
                     native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership')
 
@@ -294,8 +266,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Missing/changed fixtures cannot be replaced by an inherited environment path or stale build artifact.
     def test_guarantee_fixture_rejection(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             path = folder/'fixture.bin'
             fixture = ('RAGNAROK_GUARANTEE_FIXTURE', path, ((path, hashlib.sha256(b'fixture').hexdigest()),))
             with patch.dict(native_tests.UNIT_FIXTURES, {'guarantees': fixture}, clear=True), patch.object(
@@ -347,8 +318,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # One valid sibling cannot mask a missing or changed later fixture in the same directory.
     def test_block_fixture_group_rejection(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary)
+        with temporary_folder() as folder:
             first, last = folder/'first.bin', folder/'last.bin'
             first.write_bytes(b'first')
             required = ((first, hashlib.sha256(b'first').hexdigest()),

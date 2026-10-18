@@ -43,6 +43,7 @@
   "tests/digest_checks.py",
   "tests/disputes_oracle.py",
   "tests/entropy_transition_fixtures.py",
+  "tests/harness_fixtures.py",
   "tests/header_oracle.py",
   "tests/history_transition_fixtures.py",
   "tests/integration_oracle.py",
