@@ -175,20 +175,35 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - All commits must use semantic commit messages in Conventional Commits form:
   `type(scope): summary`, with an optional scope and a concise imperative summary. Use the type
   that describes the change, such as `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci` or `chore`.
-- Force pushes are prohibited, including `--force`, `--force-with-lease` and equivalent
-  refspecs or API operations. Never rewrite published branch history, even to correct a commit
-  message. Preserve published commits and make corrections in new commits; merge updates normally.
-- Before merging master into a stacked PR whose parent was squash-merged, reconcile the
-  original parent tip with its landed squash first. After fetching and with a clean checkout,
+- A maintainer request for a **stacked PR** means a registered native GitHub pull request stack.
+  Setting a dependent base branch or writing "depends on #N" does not register a stack. Use the
+  website's "Start a pull request stack" option, `gh stack link`, or a supported stack API.
+  Verify GitHub displays numbered stack membership (such as `1/2`, `2/2`) or confirms equivalent
+  stack/position metadata before reporting success. If registration fails or is unavailable,
+  report that explicitly; never silently substitute ordinary dependent PRs.
+- Keep squash merging available for native stacks. GitHub automatically rebases/re-targets the
+  remaining layers after a lower layer lands. Use its native stack workflow for trunk updates;
+  do not independently merge master into every layer or run `sync_stack.py` on a native stack.
+  Fetch the updated remote heads and safely reconcile local checkouts before continuing, preserving
+  uncommitted work. See the
+  [GitHub stack reference](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests).
+- Ad hoc force pushes remain prohibited, including `--force`, `--force-with-lease`, direct ref API
+  updates and CLI wrappers that rewrite published history. GitHub-managed restacking through its
+  registered native stack workflow is the narrow exception, including automatic updates after an
+  authorized merge and the native "Rebase stack" action. Verify stack membership first; never
+  extend this exception to unrelated branches or rewriting history to correct commit messages.
+- For legacy, unregistered dependent PRs only: before merging master after a parent squash,
+  reconcile the original parent tip with its landed squash first. Fetch and use a clean checkout:
   run `python3 tools/sync_stack.py --parent <original-parent-tip> --landed <squash-commit>`.
   The helper requires the parent to be in HEAD, the squash to be on origin/master, and exact
   tree equality before recording ancestry without changing files. If it refuses, inspect and
   resolve a normal merge; never bypass its checks with a blanket ours/theirs resolution.
   Then merge current origin/master normally, test and propagate the updated parent through
   each open child in order. Recheck this at every parent landing, not only at PR creation.
-- Before the final push to a PR, fetch `origin` and merge the latest `origin/master` into the PR
-  branch. Resolve any conflicts and run the affected checks before pushing, so the final PR
-  revision includes the latest master. This does not authorize merging the PR itself.
+- Before the final push to an ordinary PR, fetch `origin` and merge the latest `origin/master`
+  into the PR branch. Resolve conflicts and run affected checks before pushing. For registered
+  native stacks, use the stack workflow above and verify the updated remote stack instead of
+  applying independent master merges to its layers. Neither process authorizes merging the PR.
 - Every AI run must include a suggested semantic commit message in its final report, accurately
   describing the changes made. If no files changed, explicitly report that no commit is needed.
 - For milestone increments, state current parity/remaining gaps and the next planned bounded chunk
