@@ -5,7 +5,7 @@
 ## immutable, acyclic ARC graphs. Updates return independent snapshots.
 ##
 ## Exposes immutable Memory/Machine snapshots, page capture/replacement, checked scalar
-## load/store, programOf/memoryOf child access and copied register/state updates.
+## load/store, programOf/memoryOf child access, copied state updates and terminal-state capture.
 
 import ./program
 
@@ -258,6 +258,18 @@ proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): Machi
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
   # Reuse the base PR's instruction-boundary validation without re-decoding or copying its program.
   if instruction(program, info.pc).error != ProgramError.None:
+    return MachineResult[Machine](status: MachineError.InvalidProgram)
+  MachineResult[Machine](status: MachineError.None,
+    completed: Machine(data: MachineData(program: program, memory: memory, info: info)))
+
+# Capture a terminal execution snapshot whose PC need not identify an executable instruction.
+# This trusted boundary preserves Psi_1 trap PCs beyond the code; it does not validate an exit reason.
+# Program/memory are immutable owned children; no caller-owned mutable state is retained.
+proc captureTerminalMachine*(program: Program, memory: Memory,
+    info: MachineInfo): MachineResult[Machine] =
+  # Even terminal snapshots require genuine program and memory owners.
+  if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
+  if codeLength(program).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
   MachineResult[Machine](status: MachineError.None,
     completed: Machine(data: MachineData(program: program, memory: memory, info: info)))

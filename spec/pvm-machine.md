@@ -9,11 +9,17 @@ Transition). No specification or vector pins change.
 ## Scope and ownership
 
 `src/pvm/machine.nim` captures thirteen 64-bit registers, a validated program/entry
-address, unsigned 64-bit gas, the block-charged flag, and immutable memory. This is
+address through `captureMachine`, unsigned 64-bit gas, the block-charged flag, and immutable memory. This is
 an explicit machine-state constructor, not the standard JAM program initializer.
 CPU metadata and page images returned to callers are copies. The program owner
 comes from the first increment; memory/program handles retained by a machine stay
 valid after their original handles and input buffers leave scope.
+
+`captureTerminalMachine` separately captures a trusted terminal state with valid
+program/memory owners and any register-width PC. This preserves the single-step
+trap increment beyond code without relaxing executable-entry validation. It does
+not authenticate an exit reason; callers follow `StepOutcome.exit` when deciding
+whether to execute again. See [single-step terminal semantics](pvm-step.md).
 
 Memory is a sorted sparse sequence of immutable page references. Each page owns
 4096 bytes and inaccessible/read-only/read-write permission. A missing page has
