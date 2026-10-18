@@ -84,14 +84,10 @@ This is bounded ownership evidence rather than a general memory audit.
 Reproduce with `make check-modules check-unit check-failures check-guards check-python` using the
 pinned nightly, ARC and checked Clang LTO. Generated source evidence and fixtures stay in `build/`.
 
-## Next bounded work
+## Integration and next bounded work
 
-[Authorization-pool and service/code-hash/gas policy](report-policy.md) is implemented separately.
-[Recent/lookup anchors](report-anchors.md) are also implemented separately.
-[Package/dependency checks](report-packages.md) are now separate stages.
-[Post-assurance capacity and assignment planning](report-assignments.md) are also implemented.
-Next publish C(10) atomically through the block coordinator. Accumulation/PVM execution remains later work.
-
-The [block-bound report planner](report-admission.md) now composes these checks over the real
-coordinator result and its retained parent/staged context. Atomic C(10) publication and complete
-block-coordinator rollback remain the next bounded increment.
+The [block-bound planner](report-admission.md) composes these checks over the real block and
+retained parent/post-assurance context. [Atomic report publication](report-transition.md) now
+runs that planner inside the private block transaction, preserving whole-parent rollback.
+Next plan accumulation history/queues from newly available reports. PVM execution and complete
+block execution remain later work.

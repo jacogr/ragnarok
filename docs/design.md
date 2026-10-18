@@ -69,7 +69,7 @@ for pinned STF coverage and two dummy-assignment fixture incompatibilities.
 `src/state/availability.nim` now verifies assurances using parent keys, retains newly available
 reports, and advances post-disputes C(10) for strict supermajority, timeout and population-size
 changes. The block coordinator includes this stage before its final publication; see
-[the availability contract](../spec/availability-transition.md). New guarantee assignment, accumulation,
+[the availability contract](../spec/availability-transition.md). New guarantee assignment is now integrated below; accumulation,
 wall-clock admission and whole-block execution remain open.
 `src/state/guarantors.nim` supplies immutable current/previous rotation assignments from posterior
 rosters, entropy and offenders. See [the assignment contract](../spec/guarantor-assignments.md);
@@ -90,8 +90,11 @@ using candidate time and active population retained in the credential certificat
 untouched guarantees and registration times; see [the assignment contract](../spec/report-assignments.md).
 `src/state/report_admission.nim` now binds all those checks to one private successful coordinator
 result, deriving the actual block/parent, corrected history, posterior credentials and post-assurance
-capacity. See [the binding contract](../spec/report-admission.md). Atomic C(10) publication through
-the coordinator remains the next bounded slice.
+capacity. See [the binding contract](../spec/report-admission.md).
+`src/state/report_transition.nim` now composes that planner with the earlier coordinator on one
+private working store and publishes the final C(10) only on complete success. See
+[the atomic publication contract](../spec/report-transition.md). Accumulation history/queue
+planning is next; PVM execution and full block execution remain later work.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 reporting_assurance.tex: bind every implemented report check to one completed block stage.
-## Pure planning retains authenticated staged context; publication and accumulation remain separate increments.
+## Pure planning retains authenticated staged context; report_transition owns atomic publication.
 import ../codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
   state_disputes, state_history, state_layout, state_availability]
 import ./[store, block_transition, block_admission, guarantee_credentials, report_policy,
