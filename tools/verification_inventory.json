@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "pvm_execution",
     "pvm_memory_step",
     "pvm_step",
     "pvm_gas",
@@ -103,6 +104,7 @@
     "report_transition"
   ],
   "PRIVATE": {
+    "pvm_host_private": "callNumber",
     "pvm_step_fault_private": "failedPage",
     "pvm_step_exit_private": "kind",
     "pvm_step_exit_readonly": "exit",
@@ -791,6 +793,9 @@
     "report_transition_publication_private": "publicationReason"
   },
   "NOMINAL": {
+    "pvm_execute_raw_steps": "[2] expected: ExecutionStepLimit but got: uint64",
+    "pvm_execute_swapped_limits": "[2] expected: ExecutionStepLimit but got: GasCycleLimit",
+    "pvm_execute_raw_gas": "[3] expected: GasCycleLimit but got: uint64",
     "pvm_memory_step_raw_limit": "[2] expected: GasCycleLimit but got: uint64",
     "pvm_step_raw_limit": "[2] expected: GasCycleLimit but got: uint64",
     "pvm_gas_raw_address": "[2] expected: CodeAddress but got: uint64",
@@ -1000,6 +1005,9 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
+    "pvm_execute_raw_steps": ["execute(", "[2] expected: ExecutionStepLimit but got: uint64"],
+    "pvm_execute_swapped_limits": ["execute(", "[2] expected: ExecutionStepLimit but got: GasCycleLimit"],
+    "pvm_execute_raw_gas": ["execute(", "[3] expected: GasCycleLimit but got: uint64"],
     "pvm_memory_step_raw_limit": ["stepMemory(", "[2] expected: GasCycleLimit but got: uint64"],
     "pvm_step_raw_limit": ["stepRegisters(", "[2] expected: GasCycleLimit but got: uint64"],
     "pvm_gas_raw_address": ["blockGas(", "[2] expected: CodeAddress but got: uint64"],
@@ -1043,6 +1051,7 @@
     "normalize-short"
   ],
   "FAILURE_COUNTS": {
+    "pvm_execution": 9,
     "pvm_memory_step": 6,
     "pvm_step": 5,
     "pvm_gas": 4,
@@ -1157,6 +1166,7 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "pvm_execution": "pvm_execution_arc_release",
     "pvm_memory_step": "pvm_memory_step_arc_release",
     "pvm_step": "pvm_step_arc_release",
     "pvm_machine": "pvm_machine_arc_release",

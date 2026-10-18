@@ -110,8 +110,10 @@ branch-target specification gate. `src/pvm/step.nim` now charges whole blocks an
 executes register, control-flow and scalar memory steps into immutable machine snapshots, preserving
 the full state on out-of-gas and the specified single-step terminal PCs; see
 [the stepping contract](../spec/pvm-step.md). Memory faults retain the paid block charge
-and permit repair/retry without double charging. Host calls and recursive execution
-remain open.
+and permit repair/retry without double charging. Complete single-step capability now
+includes host suspension, and bounded iterative execution applies recursive exit rules;
+see [the execution contract](../spec/pvm-execution.md). Standard initialization and
+host-function integration remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
