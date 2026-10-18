@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 header/judgments/safrole/reporting_assurance: atomic admission, disputes, Safrole and assurances.
+## Lower-level prefix through assurances; report_transition.advanceBlockReports includes report publication.
 ## Other extrinsics, wall-clock admission and complete block execution remain separate stages.
 import ../codec/[block_codec, header, tickets, state_disputes, state_safrole, state_layout, assurances]
 from ../crypto/assurance_context import AssuranceParent
@@ -18,7 +19,7 @@ type
     disputes*: DisputesPlan
     safrole*: SafroleTransition   # Intermediate state before assurance-driven C(10) changes.
     availability*: AvailabilityPlan
-    snapshot*: StateStoreSnapshot # Final accepted state after every implemented stage.
+    snapshot*: StateStoreSnapshot # Post-assurance prefix, before report admission/publication.
   ## Stage-specific reasons and success are mutually exclusive and private.
   BlockTransitionResult* = object
     case status: BlockTransitionError

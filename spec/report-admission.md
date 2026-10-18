@@ -40,9 +40,10 @@ the assignment byte accessor continues returning a detached mutable copy.
 
 ## Scope and publication boundary
 
-This is a read-only, full-state report-stage planner. It consumes the real earlier coordinator
-result, but does not yet extend `advanceBlockState` to perform report admission before publication.
-A caller must not treat that earlier result alone as acceptance of nonempty guarantee extrinsics.
+This is a read-only, full-state report-stage planner. The
+[atomic publication coordinator](report-transition.md) now consumes it before replacing the
+canonical state handle. The lower-level `advanceBlockState` result alone still does not accept
+nonempty guarantees; use `advanceBlockReports` for the complete implemented report prefix.
 There is no mutable store parameter or state write in this planner. Its success certifies these
 implemented report checks against that retained stage, not accumulation, PVM, whole-block validity,
 wall-clock admission or independently authenticated chain ancestry. The supplied trusted parent
@@ -77,7 +78,6 @@ check-python` with the pinned compiler, ARC and checked Clang LTO.
 
 ## Next bounded work
 
-Compose this planner inside a block coordinator's private working-state transaction and publish
-the resulting C(10) only after every report check succeeds. Add whole-block rollback tests for
-late report refusals and publication/hash failures, preserving parent package context and actual
-post-assurance ordering. Accumulation and PVM execution remain subsequent work.
+Atomic publication with whole-block rollback is now implemented by
+[the report transition](report-transition.md). Next plan accumulation history/queue ordering from
+newly available reports; PVM execution and execution-dependent posterior publication remain later.

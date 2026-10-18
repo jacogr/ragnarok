@@ -1,0 +1,76 @@
+{
+  "source": "tests/native/report_transition_results.nim",
+  "build_name": "report-transition-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "report-transition-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Report transition default extraction guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "error"
+      ],
+      "name": "report-transition-error",
+      "diagnostic": "outcome.status == None",
+      "description": "Report transition error extraction guard",
+      "identity": {
+        "origin": "error"
+      }
+    },
+    {
+      "arguments": [
+        "stage"
+      ],
+      "name": "report-transition-stage",
+      "diagnostic": "outcome.status == StageFailure",
+      "description": "Report transition stage extraction guard",
+      "identity": {
+        "origin": "stage"
+      }
+    },
+    {
+      "arguments": [
+        "report"
+      ],
+      "name": "report-transition-report",
+      "diagnostic": "outcome.status == ReportFailure",
+      "description": "Report transition report extraction guard",
+      "identity": {
+        "origin": "report"
+      }
+    },
+    {
+      "arguments": [
+        "publication"
+      ],
+      "name": "report-transition-publication",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Report transition publication extraction guard",
+      "identity": {
+        "origin": "publication"
+      }
+    },
+    {
+      "arguments": [
+        "nested"
+      ],
+      "name": "report-transition-nested",
+      "diagnostic": "outcome.status == None",
+      "description": "Report transition nested extraction guard",
+      "identity": {
+        "origin": "nested"
+      }
+    }
+  ]
+}
