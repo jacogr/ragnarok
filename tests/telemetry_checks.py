@@ -1,4 +1,5 @@
 """Bounded real TCP collector tests, including actual proof-peer CLI registration."""
+from contextlib import ExitStack
 import hashlib
 import os
 import time
@@ -57,9 +58,10 @@ class EventCapture:
 
 
 # Bind only loopback; closing this context releases the collector even after assertion failures.
-def listener(ipv6=False):
+def listener(ipv6=False, port=0):
     server = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET)
-    server.bind(('::1' if ipv6 else '127.0.0.1', 0))
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(('::1' if ipv6 else '127.0.0.1', port))
     server.listen(4)
     server.settimeout(12)
     return server
@@ -603,3 +605,105 @@ def capacity_refusal(binary, certificates, chain, folder):
             # Every failure releases children and logs; no process escapes this bounded scenario.
             for child in children: stop(child)
             for output in handles: output.close()
+
+
+# Validate complete successful mesh lifetimes using IDs that already include any reconnect loss prefix.
+def recovered_mesh_events(events, identity, expected):
+    starts, outcomes, closes, statuses = {}, {}, 0, []
+    for event_id, event in events:
+        # A healthy recovered collector must not conceal failed handshakes or additional loss markers.
+        tag = event[8]
+        assert tag in (10, 21, 23, 24, 26, 27), (event_id, tag)
+        if tag == 10:
+            statuses.append(int.from_bytes(event[9:13], 'little'))
+        elif tag in (21, 24):
+            assert event_id not in starts
+            starts[event_id] = tag
+            offset = 9 if tag == 21 else 41
+            assert event[offset:offset + 16] == socket.inet_pton(socket.AF_INET6, '::1')
+            assert int.from_bytes(event[offset + 16:offset + 18], 'little') > 0
+            if tag == 24:
+                assert event[9:41] == identity # Dial metadata must still name the pinned counterpart.
+        elif tag in (23, 26):
+            attempt = int.from_bytes(event[9:17], 'little')
+            assert attempt in starts and attempt not in outcomes and attempt < event_id, (event_id, attempt, starts)
+            assert starts[attempt] == (21 if tag == 23 else 24)
+            outcomes[attempt] = tag
+            if tag == 23:
+                assert event[17:] == identity # Incoming success supplies its authenticated public key.
+        else:
+            assert event[9:41] == identity and event[41:] == b'\0\0'
+            closes += 1
+    assert len(starts) == expected and starts.keys() == outcomes.keys() and closes == expected, (starts, outcomes, closes)
+    assert set(statuses) <= {0, 1}, statuses
+    return dict(attempts=len(starts), closes=closes, statuses=statuses)
+
+
+# Real mesh traffic survives non-reading collectors, connection resets, listener outages and exporter recovery.
+def mesh_collector_isolation(binary, certificates, chain, folder):
+    from test_quic_mesh import pairing
+    folder.mkdir(parents=True, exist_ok=True)
+    roles = ('a', 'b')
+    identities = {role: (certificates/f'{role}.pub').read_bytes() for role in roles}
+    with ExitStack() as owned:
+        collectors = {role: owned.enter_context(listener(ipv6=role == 'b')) for role in roles}
+        ports = {role: collector.getsockname()[1] for role, collector in collectors.items()}
+        controls = dict(chain=chain, a=f'127.0.0.1:{ports["a"]}', b=f'[::1]:{ports["b"]}')
+        streams, captures, registrations, observed, prefixes = {}, {}, {}, {}, {}
+        # Pairing owns all peer processes; this checkpoint owns only collector-side socket lifetimes.
+        def checkpoint(round_index):
+            if round_index == -1:
+                for role in roles:
+                    connection, _ = collectors[role].accept()
+                    streams[role] = owned.enter_context(connection)
+                    connection.settimeout(5)
+                    registrations[role] = frame(connection)
+                    assert registrations[role][0] == 1 and registrations[role][155:187] == identities[role]
+                    captures[role] = EventCapture(connection)
+                # Do not read any events until both peers finish the first complete exchange/retirement.
+            elif round_index == 0:
+                for role in roles:
+                    events = []
+                    while True:
+                        event_id, event = captures[role].event()
+                        events.append((event_id, event))
+                        if event[8] == 27:
+                            break # The real retirement marker is the barrier; no guessed drain delay is needed.
+                    other = 'b' if role == 'a' else 'a'
+                    recovered_mesh_events(events, identities[other], 1)
+                    observed[role] = captures[role].position
+                    streams[role].setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+                    streams[role].close() # RST exercises native send-error/SIGPIPE isolation.
+                    collectors[role].close() # The next complete mesh round runs with no collector listener.
+            elif round_index == 1:
+                for role in roles:
+                    collectors[role] = owned.enter_context(listener(ipv6=role == 'b', port=ports[role]))
+                for role in roles:
+                    connection, _ = collectors[role].accept()
+                    streams[role] = owned.enter_context(connection)
+                    connection.settimeout(5)
+                    assert frame(connection) == registrations[role] # Recovery preserves advertised node/network metadata.
+                    skipped = frame(connection)
+                    assert len(skipped) == 25 and skipped[8] == 0, skipped.hex()
+                    prefix = int.from_bytes(skipped[17:25], 'little')
+                    # The unavailable round contributes two attempts, two successes and two closes per node.
+                    assert prefix >= observed[role] + 6, (role, prefix, observed[role])
+                    prefixes[role] = prefix
+                    captures[role] = EventCapture(connection)
+                    captures[role].position = prefix # A loss marker advances by its count, not by one frame.
+            # Later rounds keep the recovered stream connected; final capture verifies every lifecycle.
+        result = pairing(('nim', 'nim'), certificates, 8, 0, binaries={'nim': binary}, directory=folder,
+                         telemetry=controls, checkpoint=checkpoint)
+        evidence = {}
+        for role in roles:
+            events = []
+            while streams[role].recv(1, socket.MSG_PEEK):
+                events.append(captures[role].event()) # EventCapture enforces a fixed bound even on malformed streams.
+            other = 'b' if role == 'a' else 'a'
+            evidence[role] = recovered_mesh_events(events, identities[other], 12)
+            assert set(evidence[role]['statuses']) == {0, 1}
+            evidence[role].update(registrations=2, observed_before_reset=observed[role], skipped_prefix=prefixes[role])
+        report = dict(passed=True, nonreading_rounds=1, unavailable_rounds=1, recovered_rounds=6,
+                      mesh=result, collectors=evidence)
+        (folder/'collectors.json').write_text(json.dumps(report, indent=2) + '\n')
+        return report
