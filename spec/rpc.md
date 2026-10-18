@@ -31,7 +31,7 @@ Send a WebSocket text message:
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)` and the service queries below are implemented; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)` and the service queries below are implemented; other JIP-2 chain methods
 and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -159,6 +159,35 @@ Python hashlib and the existing trie reference. Native tests also cover malforme
 orphan entries, inconsistent preimages and owner isolation. Live WebSocket tests check exact
 results and bounded batches with IDs whose escaping expands their encoded size.
 
+## Genesis-only preimage request histories
+
+`serviceRequest(header_hash, id, hash, len)` follows the pinned JIP-2 method, using the maintained
+GP 0.8.0 `C(service, E4(length) || hash)` key constructor and request-history decoder. Hashes use
+the same canonical 32-byte Base64 format; service ID and advertised length use unsigned JSON
+integer syntax across the full uint32 range. No allocation depends on the advertised length.
+
+A missing account or key returns `null`; a present requested-but-unprovided history returns `[]`.
+A provided history returns 1–3 exact unsigned slot numbers: supplied, forgotten, requested again.
+The entire value must be a canonical count plus up to three E4 slots (at most 13 bytes). Bad counts,
+truncated slots, suffixes and invalid account metadata return error `0`. Unknown blocks return
+error `1`; invalid arguments return `-32602`. Existing notification and shared batch-budget rules apply.
+These are structural reads of the retained snapshot, not checks of chronology, provision validity
+or cross-map account invariants. No subscription, submission or state update is added.
+
+**Pinned namespace limitation:** lengths `4294967294` and `4294967295` share serialized key
+namespaces with preimages and storage under GP 0.8.0. A missing key still returns `null`, but a
+present key returns error `0` with an explicit ambiguity message, even if its bytes decode as a
+history. The map alone cannot identify their logical origin. This is an RPC information limit,
+not a new invalid-length rule: the full E4 parser/codec domain, specification pins, duplicate-key
+policy and pending [request namespace](request-namespace.md) migration remain unchanged.
+
+Native tests freeze independently computed request keys and cover all four history shapes,
+zero/max slots, full length parsing, malformed histories, every truncated three-slot prefix,
+present/absent marker keys, missing accounts, batches, notifications and repeated ARC cleanup.
+The live WebSocket harness checks exact histories and errors after the chainspec file has changed.
+A `rpc_` compiler probe protects the result discriminator. See [request serialization](state-requests.md)
+for the pinned GP equations and codec ownership contract.
+
 ## Genesis-only activity statistics
 
 `statistics(header_hash)` follows the pinned JIP-2 method of that name and returns the exact
@@ -181,6 +210,33 @@ Native tests cover independent literal bytes (including uint64-max compact gas),
 chapter prefixes, malformed counts/dictionaries, differing roster populations, missing data,
 response limits, notifications, batches and repeated ARC cleanup. The live WS harness checks
 exact statistics from the frozen service fixture after the source file has changed.
+
+## Genesis-only service discovery
+
+`listServices(header_hash)` follows the pinned JIP-2 best-effort discovery method. It returns
+an array of unsigned service IDs in ascending numeric order, including ID zero when present.
+The supplied hash must identify the configured genesis snapshot. Unknown blocks return error `1`
+with the requested hash in `error.data`; malformed hashes or argument lists return `-32602`.
+A known snapshot with no discoverable accounts returns `[]`.
+
+Discovery runs once at genesis capture. It recognizes only exact GP 0.8.0 C(255, service) keys
+with complete supported version-zero metadata, using the existing account decoder. Malformed,
+truncated, extended or unsupported metadata is omitted. Storage/preimage entries do not establish
+an account, and matching only the first key byte is insufficient. This best-effort list describes
+the structurally valid accounts found in the operator-supplied map; it is not proof of account
+eligibility, activity or whole-state consensus validity. See [service metadata](state-accounts.md)
+and the pinned JIP-2 `listServices` definition.
+
+The private list contains copied scalar IDs and retains no source aliases. It is bounded by the
+existing 16,384-entry genesis map limit; duplicate map keys are rejected before discovery.
+Requests do not scan the map or decode metadata. Rendering shares the 65,535-byte reply budget:
+a list too large for its single/batch allowance returns error `0`, never a silently truncated list.
+The protocol has no pagination parameter, and subscriptions remain unavailable.
+
+Native tests cover numeric versus serialized-key ordering, zero/uint32-max IDs, exact key shape,
+malformed records, orphan keys, empty lists, unknown blocks, immutable extraction, notifications,
+batches and large-list response limits. Live WebSocket tests verify discovery from the frozen
+service map after startup file mutation. A `rpc_` compiler probe protects the private ID sequence.
 
 ## Protocol and bounds
 
