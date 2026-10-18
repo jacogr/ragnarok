@@ -63,4 +63,5 @@ Standard initialization, execution with trusted host dispatch and output capture
 compose. Concrete JAM host functions, staged service context, signed gas accounting
 and complete invocation policy remain open; the existing execution specification
 gates remain unchanged. The next bounded chunk is a concrete host-context operation
-with independent normative witnesses, rather than additional generic dispatch layers.
+with independent normative witnesses. [Host byte-range memory access](pvm-host-memory.md)
+provides its bounded, atomic memory-copy boundary; it does not yet supply host selectors or charging.

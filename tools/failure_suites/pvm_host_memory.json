@@ -1,0 +1,110 @@
+{
+  "source": "tests/native/pvm_host_memory_results.nim",
+  "build_name": "pvm-host-memory-results",
+  "cases": [
+    {
+      "identity": {
+        "operation": "read",
+        "reason": "fault"
+      },
+      "arguments": [
+        "read",
+        "fault"
+      ],
+      "name": "pvm-host-memory-read-fault",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload read fault"
+    },
+    {
+      "identity": {
+        "operation": "read",
+        "reason": "limit"
+      },
+      "arguments": [
+        "read",
+        "limit"
+      ],
+      "name": "pvm-host-memory-read-limit",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload read limit"
+    },
+    {
+      "identity": {
+        "operation": "read",
+        "reason": "owner"
+      },
+      "arguments": [
+        "read",
+        "owner"
+      ],
+      "name": "pvm-host-memory-read-owner",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload read owner"
+    },
+    {
+      "identity": {
+        "operation": "read",
+        "reason": "range"
+      },
+      "arguments": [
+        "read",
+        "range"
+      ],
+      "name": "pvm-host-memory-read-range",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload read range"
+    },
+    {
+      "identity": {
+        "operation": "write",
+        "reason": "fault"
+      },
+      "arguments": [
+        "write",
+        "fault"
+      ],
+      "name": "pvm-host-memory-write-fault",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload write fault"
+    },
+    {
+      "identity": {
+        "operation": "write",
+        "reason": "limit"
+      },
+      "arguments": [
+        "write",
+        "limit"
+      ],
+      "name": "pvm-host-memory-write-limit",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload write limit"
+    },
+    {
+      "identity": {
+        "operation": "write",
+        "reason": "owner"
+      },
+      "arguments": [
+        "write",
+        "owner"
+      ],
+      "name": "pvm-host-memory-write-owner",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload write owner"
+    },
+    {
+      "identity": {
+        "operation": "write",
+        "reason": "range"
+      },
+      "arguments": [
+        "write",
+        "range"
+      ],
+      "name": "pvm-host-memory-write-range",
+      "diagnostic": "r.status == None",
+      "description": "Host memory failure payload write range"
+    }
+  ]
+}
