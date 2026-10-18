@@ -1,0 +1,107 @@
+{
+  "source": "tests/native/accumulation_service_results.nim",
+  "build_name": "accumulation-service-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-service-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "name": "accumulation-service-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "refused"
+      }
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "name": "accumulation-service-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "info"
+      }
+    },
+    {
+      "arguments": [
+        "state"
+      ],
+      "name": "accumulation-service-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "state"
+      }
+    },
+    {
+      "arguments": [
+        "input"
+      ],
+      "name": "accumulation-service-input",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "input"
+      }
+    },
+    {
+      "arguments": [
+        "code"
+      ],
+      "name": "accumulation-service-code",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "code"
+      }
+    },
+    {
+      "arguments": [
+        "unavailable"
+      ],
+      "name": "accumulation-service-unavailable",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "unavailable"
+      }
+    },
+    {
+      "arguments": [
+        "round"
+      ],
+      "name": "accumulation-service-round",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "round"
+      }
+    },
+    {
+      "arguments": [
+        "projection"
+      ],
+      "name": "accumulation-service-projection",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation service selected-success guard",
+      "identity": {
+        "origin": "projection"
+      }
+    }
+  ]
+}
