@@ -1,5 +1,6 @@
 """Feature-owned native fixture preparation; independent oracles retain their byte contracts."""
 import sys
+import hashlib
 from setup_nimony import ROOT
 
 
@@ -100,3 +101,78 @@ def unit_sealer_fixture(folder):
     evidence['authentication'] = authentication_evidence
     evidence['markers'] = markers_evidence
     return fixtures, evidence
+
+
+# Prepare published storage bytes once per invocation; native assertions own all store verdicts.
+def unit_store_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from state_store_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_STORE_REPLAY', path, ((path, evidence['fixture_sha256']),))
+    return {'state_store_replay': fixture}, evidence
+
+
+# Admission fixtures contain upstream proof/accumulator values, not a Python implementation of selection.
+def unit_ticket_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from ticket_admission_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_TICKET_ADMISSION', path, ((path, evidence['fixture_sha256']),))
+    return {'ticket_admission': fixture, 'ticket_state': fixture}, evidence
+
+
+# Prepare exact published roster projections for the bounded planner's native assertions.
+def unit_validator_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from validator_rotation_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_VALIDATOR_STF', path, ((path, evidence['fixture_sha256']),))
+    return {'validator_rotation': fixture, 'validator_state': fixture}, evidence
+
+
+# Prepare only the published entropy/time projections, keeping full Safrole execution outside this suite.
+def unit_entropy_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from entropy_transition_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_ENTROPY_STF', path, ((path, evidence['fixture_sha256']),))
+    return {'entropy_transition': fixture}, evidence
+
+
+# Prepare public upstream credentials with independent OpenSSL positive/old-domain verdicts.
+def unit_signing_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from signing_domain_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_SIGNING_DOMAINS', path, ((path, evidence['fixture_sha256']),))
+    return {'signing_domains': fixture}, evidence
+
+
+# Prepare published history cases and independent output-tree commitments for native assertions.
+def unit_history_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from history_transition_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_HISTORY_STF', path, ((path, evidence['fixture_sha256']),))
+    return {'history_transition': fixture}, evidence
+
+
+# Prepare complete pinned authorization STF cases; the native suite executes and asserts the subsystem.
+def unit_authorization_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from authorization_transition_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_AUTHORIZATION_STF', path, ((path, evidence['fixture_sha256']),))
+    return {'authorization_transition': fixture}, evidence
+
+
+# Describe freshly generated certificates and independent CE fixtures without committing private keys.
+def unit_runtime_fixtures(certificates, original, reload):
+    transport = {'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
+                 'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
+    integration = {'RAGNAROK_TEST_WIRES': original, 'RAGNAROK_TEST_RELOAD': reload}
+    # Every referenced input is hashed and rechecked before the native process, including later siblings.
+    cert_files = tuple((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in transport.values())
+    wires = tuple((folder/(str(index)+'.bin'), hashlib.sha256((folder/(str(index)+'.bin')).read_bytes()).hexdigest())
+                  for folder in (original, reload) for index in range(8))
+    return {'quic_transport': (None, transport, cert_files), 'quic_integration': (None, integration, wires)}
