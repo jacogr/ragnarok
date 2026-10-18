@@ -21,6 +21,7 @@
   "src/crypto/extrinsic_commitment.nim",
   "src/crypto/guarantee.nim",
   "src/crypto/primitives.nim",
+  "src/pvm/program.nim",
   "src/quic/integration.nim",
   "src/quic/io.nim",
   "src/quic/offload.nim",

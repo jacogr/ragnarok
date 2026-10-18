@@ -87,6 +87,11 @@ prior pipeline, resolves prerequisites and exact segment-root pairs, and derives
 from parent C(10)/C(14)/C(15). See [the package contract](../spec/report-packages.md).
 Post-assurance core capacity, C(10) publication and report-stage coordinator integration remain subsequent slices.
 
+`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
+formats into copied values backed by an immutable program owner. See
+[the program decoding contract](../spec/pvm-program.md). This is the first PVM
+increment; machine state, memory, gas, execution and host calls remain open.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.
