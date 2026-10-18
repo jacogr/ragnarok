@@ -318,3 +318,22 @@ not met by this sequential scenario: exit code 2 plus the exact `SERVICE_DONE` c
 while each successful client must exit zero. This is the same service profile used by the existing
 incoming capture tests. The CI artifact retains per-case histories and collector/client/server
 logs without fixture keys. The original outgoing restart and failure/success scenarios still run.
+
+### Real collector capacity refusal and recovery
+
+The collector CI job fills all 16 admitted slots of one retained IPv6 listener and waits for both
+native admission counters and a decoded 16-peer status. A seventeenth client uses a distinct
+certificate identity. Its TLS success precedes native capacity admission, so JAM Tart must decode
+21/23 followed by event 20 with that attempt's actual IPv6 source address and port. The refused
+client must fail its request and must not produce an admitted-peer disconnect.
+
+The harness kills one held client, waits for native retirement and its decoded close, and sends
+a fresh one-request probe using a third client identity. The probe must succeed and close normally
+while the other 15 clients remain alive. Full collector history must contain exactly 18 attempts,
+18 TLS successes, one refusal, and only the two observed admitted-peer closes. Status must stay
+within 0–16 admitted connections and finish at 15. The explicit stop gate then ends the listener
+with those holders still alive: exit code 2 and `SERVICE_DONE 17 2 16` are required, and endpoint
+destruction must add no synthetic closes. All generated children are reaped by the harness.
+
+This checks the implemented post-TLS capacity refusal against the actual collector. It does not
+claim pre-TLS refusal detection, and it adds no new production event or admission policy.
