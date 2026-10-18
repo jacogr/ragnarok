@@ -138,6 +138,15 @@ rejection, exact output hashes, first-mismatch indices and build-failure refusal
 existing command runner's timeout and full logs. Specialized signature, proof and reused-driver
 checks retain their explicit paths.
 
+`tools/failure_checks.py` preserves the exact exit-code-1, expected-diagnostic and
+`[AssertionDefect]` predicate for ordinary runtime guard probes, including complete command logs
+and identity fields. `tools/failure_suites.json` lists fixed state-result builds and cases, one
+case per line. Its loader rejects duplicate keys, identities or log names, missing cases and empty
+diagnostics against the separate coverage counts. Native linking, case order and subprocess
+isolation remain unchanged. Wrapping behavior, positive controls, conditional variant diagnostics
+and fixture-dependent case generation remain explicit in the runtime runner. Both the helper and
+case data are included in report provenance.
+
 Production and test adapters share `tools/build_crypto.py`, `tools/build_bandersnatch.py` and
 `tools/build_quic.py`. `tools/native_dependencies.py` owns pristine submodule checks and logged
 build commands. Production builds do not import test harnesses; independent equations, published

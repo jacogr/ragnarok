@@ -1,0 +1,138 @@
+{
+  "authorization_transition": {
+    "source": "tests/native/authorization_transition_results.nim",
+    "build_name": "authorization-transition-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {"arguments": ["entry", "default"], "name": "authorization-transition-entry-default", "diagnostic": "outcome.status == None", "description": "authorization transition entry default runtime guard", "identity": {"member": "entry", "origin": "default"}},
+      {"arguments": ["entry", "error"], "name": "authorization-transition-entry-error", "diagnostic": "outcome.status == None", "description": "authorization transition entry error runtime guard", "identity": {"member": "entry", "origin": "error"}},
+      {"arguments": ["state", "default"], "name": "authorization-transition-state-default", "diagnostic": "outcome.status == None", "description": "authorization transition state default runtime guard", "identity": {"member": "state", "origin": "default"}},
+      {"arguments": ["state", "error"], "name": "authorization-transition-state-error", "diagnostic": "outcome.status == None", "description": "authorization transition state error runtime guard", "identity": {"member": "state", "origin": "error"}}
+    ]
+  },
+  "history_transition": {
+    "source": "tests/native/history_transition_results.nim",
+    "build_name": "history-transition-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {"arguments": ["root", "default"], "name": "history-transition-root-default", "diagnostic": "outcome.status == None", "description": "history transition root default runtime guard", "identity": {"member": "root", "origin": "default"}},
+      {"arguments": ["root", "error"], "name": "history-transition-root-error", "diagnostic": "outcome.status == None", "description": "history transition root error runtime guard", "identity": {"member": "root", "origin": "error"}},
+      {"arguments": ["entry", "default"], "name": "history-transition-entry-default", "diagnostic": "outcome.status == None", "description": "history transition entry default runtime guard", "identity": {"member": "entry", "origin": "default"}},
+      {"arguments": ["entry", "error"], "name": "history-transition-entry-error", "diagnostic": "outcome.status == None", "description": "history transition entry error runtime guard", "identity": {"member": "entry", "origin": "error"}},
+      {"arguments": ["state", "default"], "name": "history-transition-state-default", "diagnostic": "outcome.status == None", "description": "history transition state default runtime guard", "identity": {"member": "state", "origin": "default"}},
+      {"arguments": ["state", "error"], "name": "history-transition-state-error", "diagnostic": "outcome.status == None", "description": "history transition state error runtime guard", "identity": {"member": "state", "origin": "error"}}
+    ]
+  },
+  "entropy_transition": {
+    "source": "tests/native/entropy_transition_results.nim",
+    "build_name": "entropy-transition-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {"arguments": ["update", "default"], "name": "entropy-transition-update-default", "diagnostic": "outcome.status == None", "description": "entropy transition update default runtime guard", "identity": {"member": "update", "origin": "default"}},
+      {"arguments": ["update", "error"], "name": "entropy-transition-update-error", "diagnostic": "outcome.status == None", "description": "entropy transition update error runtime guard", "identity": {"member": "update", "origin": "error"}},
+      {"arguments": ["state", "default"], "name": "entropy-transition-state-default", "diagnostic": "outcome.status == None", "description": "entropy transition state default runtime guard", "identity": {"member": "state", "origin": "default"}},
+      {"arguments": ["state", "error"], "name": "entropy-transition-state-error", "diagnostic": "outcome.status == None", "description": "entropy transition state error runtime guard", "identity": {"member": "state", "origin": "error"}}
+    ]
+  },
+  "validator_rotation": {
+    "source": "tests/native/validator_rotation_results.nim",
+    "build_name": "validator-rotation-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {"arguments": ["default"], "name": "validator-rotation-default", "diagnostic": "outcome.status == None", "description": "validator rotation default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "validator-rotation-error", "diagnostic": "outcome.status == None", "description": "validator rotation error runtime guard", "identity": {"origin": "error"}}
+    ]
+  },
+  "validator_state": {
+    "source": "tests/native/validator_state_results.nim",
+    "build_name": "validator-state-results",
+    "crypto_library": "crypto",
+    "native_libraries": ["bandersnatch"],
+    "cases": [
+      {"arguments": ["default"], "name": "validator-state-default", "diagnostic": "outcome.status == None", "description": "validator state default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "validator-state-error", "diagnostic": "outcome.status == None", "description": "validator state error runtime guard", "identity": {"origin": "error"}}
+    ]
+  },
+  "ticket_admission": {
+    "source": "tests/native/ticket_admission_results.nim",
+    "build_name": "ticket-admission-results",
+    "crypto_library": "crypto",
+    "native_libraries": ["bandersnatch"],
+    "cases": [
+      {"arguments": ["default"], "name": "ticket-admission-default", "diagnostic": "outcome.status == None", "description": "ticket admission default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "ticket-admission-error", "diagnostic": "outcome.status == None", "description": "ticket admission error runtime guard", "identity": {"origin": "error"}}
+    ]
+  },
+  "ticket_state": {
+    "source": "tests/native/ticket_state_results.nim",
+    "build_name": "ticket-state-results",
+    "crypto_library": "crypto",
+    "native_libraries": ["bandersnatch"],
+    "cases": [
+      {"arguments": ["default"], "name": "ticket-state-default", "diagnostic": "outcome.status == None", "description": "ticket state default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "ticket-state-error", "diagnostic": "outcome.status == None", "description": "ticket state error runtime guard", "identity": {"origin": "error"}}
+    ]
+  },
+  "sealer_schedule": {
+    "source": "tests/native/sealer_schedule_results.nim",
+    "build_name": "sealer-schedule-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {"arguments": ["default"], "name": "sealer-schedule-default", "diagnostic": "outcome.status == None", "description": "sealer schedule default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "sealer-schedule-error", "diagnostic": "outcome.status == None", "description": "sealer schedule error runtime guard", "identity": {"origin": "error"}}
+    ]
+  },
+  "sealer_state": {
+    "source": "tests/native/sealer_state_results.nim",
+    "build_name": "sealer-state-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {"arguments": ["default"], "name": "sealer-state-default", "diagnostic": "outcome.status == None", "description": "sealer state default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "sealer-state-error", "diagnostic": "outcome.status == None", "description": "sealer state error runtime guard", "identity": {"origin": "error"}}
+    ]
+  },
+  "safrole_markers": {
+    "source": "tests/native/safrole_markers_results.nim",
+    "build_name": "safrole-markers-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {"arguments": ["default"], "name": "safrole-markers-default", "diagnostic": "outcome.status == None", "description": "Safrole markers default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "safrole-markers-error", "diagnostic": "outcome.status == None", "description": "Safrole markers error runtime guard", "identity": {"origin": "error"}}
+    ]
+  },
+  "safrole_authentication": {
+    "source": "tests/native/safrole_authentication_results.nim",
+    "build_name": "safrole-authentication-results",
+    "crypto_library": "crypto",
+    "native_libraries": ["bandersnatch"],
+    "cases": [
+      {"arguments": ["default", "none"], "name": "safrole-authentication-default", "diagnostic": "outcome.status == None", "description": "Safrole authentication default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error", "none"], "name": "safrole-authentication-error", "diagnostic": "outcome.status == None", "description": "Safrole authentication error runtime guard", "identity": {"origin": "error"}},
+      {"arguments": ["forge", "none"], "name": "safrole-authentication-forge", "diagnostic": "not reason == None", "description": "Safrole authentication forge runtime guard", "identity": {"origin": "forge"}}
+    ]
+  },
+  "safrole_transition": {
+    "source": "tests/native/safrole_transition_results.nim",
+    "build_name": "safrole-transition-results",
+    "crypto_library": "crypto",
+    "native_libraries": ["bandersnatch"],
+    "cases": [
+      {"arguments": ["default"], "name": "safrole-transition-default", "diagnostic": "outcome.status == None", "description": "Safrole transition default runtime guard", "identity": {"origin": "default"}},
+      {"arguments": ["error"], "name": "safrole-transition-error", "diagnostic": "outcome.status == None", "description": "Safrole transition error runtime guard", "identity": {"origin": "error"}},
+      {"arguments": ["rotation"], "name": "safrole-transition-rotation", "diagnostic": "outcome.status == RotationFailure", "description": "Safrole transition rotation runtime guard", "identity": {"origin": "rotation"}},
+      {"arguments": ["admission"], "name": "safrole-transition-admission", "diagnostic": "outcome.status == AdmissionFailure", "description": "Safrole transition admission runtime guard", "identity": {"origin": "admission"}},
+      {"arguments": ["schedule"], "name": "safrole-transition-schedule", "diagnostic": "outcome.status == ScheduleFailure", "description": "Safrole transition schedule runtime guard", "identity": {"origin": "schedule"}},
+      {"arguments": ["marker"], "name": "safrole-transition-marker", "diagnostic": "outcome.status == MarkerFailure", "description": "Safrole transition marker runtime guard", "identity": {"origin": "marker"}},
+      {"arguments": ["authentication"], "name": "safrole-transition-authentication", "diagnostic": "outcome.status == AuthenticationFailure", "description": "Safrole transition authentication runtime guard", "identity": {"origin": "authentication"}},
+      {"arguments": ["entropy"], "name": "safrole-transition-entropy", "diagnostic": "outcome.status == EntropyFailure", "description": "Safrole transition entropy runtime guard", "identity": {"origin": "entropy"}},
+      {"arguments": ["publication"], "name": "safrole-transition-publication", "diagnostic": "outcome.status == PublicationFailure", "description": "Safrole transition publication runtime guard", "identity": {"origin": "publication"}}
+    ]
+  }
+}
