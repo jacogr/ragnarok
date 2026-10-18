@@ -94,7 +94,10 @@ capacity. See [the binding contract](../spec/report-admission.md).
 `src/state/report_transition.nim` now composes that planner with the earlier coordinator on one
 private working store and publishes the final C(10) only on complete success. See
 [the atomic publication contract](../spec/report-transition.md). Accumulation history/queue
-planning is next; PVM execution and full block execution remain later work.
+planning now lives in `src/state/accumulation_queue.nim`: it derives the exact assurance output and
+parent C(14)/C(15) from completed report admission, then computes dependency removal and deterministic
+ready waves without writes. See [the queue contract](../spec/accumulation-queue.md). Per-service
+operand preparation is next; PVM execution and full block execution remain later work.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See

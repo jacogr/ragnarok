@@ -1,0 +1,87 @@
+{
+  "source": "tests/native/accumulation_queue_results.nim",
+  "build_name": "accumulation-queue-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-queue-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation queue default extraction guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "name": "accumulation-queue-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation queue refused extraction guard",
+      "identity": {
+        "origin": "refused"
+      }
+    },
+    {
+      "arguments": [
+        "count"
+      ],
+      "name": "accumulation-queue-count",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation queue count extraction guard",
+      "identity": {
+        "origin": "count"
+      }
+    },
+    {
+      "arguments": [
+        "report"
+      ],
+      "name": "accumulation-queue-report",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation queue report extraction guard",
+      "identity": {
+        "origin": "report"
+      }
+    },
+    {
+      "arguments": [
+        "dependency"
+      ],
+      "name": "accumulation-queue-dependency",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation queue dependency extraction guard",
+      "identity": {
+        "origin": "dependency"
+      }
+    },
+    {
+      "arguments": [
+        "bound"
+      ],
+      "name": "accumulation-queue-bound",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation queue bound extraction guard",
+      "identity": {
+        "origin": "bound"
+      }
+    },
+    {
+      "arguments": [
+        "admission"
+      ],
+      "name": "accumulation-queue-admission",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation queue admission extraction guard",
+      "identity": {
+        "origin": "admission"
+      }
+    }
+  ]
+}

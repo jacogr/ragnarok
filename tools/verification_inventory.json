@@ -98,9 +98,16 @@
     "report_packages",
     "report_assignments",
     "report_admission",
-    "report_transition"
+    "report_transition",
+    "accumulation_queue"
   ],
   "PRIVATE": {
+    "accumulation_queue_result_private": "completed",
+    "accumulation_queue_retag_private": "status",
+    "accumulation_queue_owner_private": "data",
+    "accumulation_queue_bound_private": "data",
+    "accumulation_queue_bound_result_private": "completed",
+
     "rpc_parameters_owner_private": "numbers",
     "rpc_parameters_result_private": "success",
     "pvm_gas_payload_private": "completed",
@@ -782,6 +789,9 @@
     "report_transition_publication_private": "publicationReason"
   },
   "NOMINAL": {
+    "accumulation_queue_slot_as_index": "[2] expected: AccumulationIndex but got: WorkQueueSlot",
+    "accumulation_queue_index_as_hash": "[3] expected: WorkQueueHashIndex but got: AccumulationIndex",
+
     "pvm_gas_raw_address": "[2] expected: CodeAddress but got: uint64",
     "pvm_gas_raw_limit": "[3] expected: GasCycleLimit but got: uint64",
     "pvm_register_raw_address": "[2] expected: CodeAddress but got: uint64",
@@ -989,6 +999,8 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
+    "accumulation_queue_slot_as_index": ["accumulationAt(", "[2] expected: AccumulationIndex but got: WorkQueueSlot"],
+    "accumulation_queue_index_as_hash": ["accumulationDependencyAt(", "[3] expected: WorkQueueHashIndex but got: AccumulationIndex"],
     "pvm_gas_raw_address": ["blockGas(", "[2] expected: CodeAddress but got: uint64"],
     "pvm_gas_raw_limit": ["blockGas(", "[3] expected: GasCycleLimit but got: uint64"],
     "pvm_register_raw_address": ["evaluateRegisters(", "[2] expected: CodeAddress but got: uint64"],
@@ -1096,7 +1108,8 @@
     "report_packages": 2,
     "report_assignments": 3,
     "report_admission": 10,
-    "report_transition": 6
+    "report_transition": 6,
+    "accumulation_queue": 7
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1195,7 +1208,8 @@
     "report_packages": "report_packages_arc_release",
     "report_assignments": "report_assignments_arc_release",
     "report_admission": "report_admission_arc_release",
-    "report_transition": "report_transition_arc_release"
+    "report_transition": "report_transition_arc_release",
+    "accumulation_queue": "accumulation_queue_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1269,6 +1283,7 @@
     "report_packages": "observer",
     "report_assignments": "observer",
     "report_admission": "observer",
-    "report_transition": "observer"
+    "report_transition": "observer",
+    "accumulation_queue": "observer"
   }
 }
