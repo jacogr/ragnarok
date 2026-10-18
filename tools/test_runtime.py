@@ -170,6 +170,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_execution')
     # Fetch local refusals must not expose a completed host response.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
+    # Optional fetch capture and dispatch failures expose no partial owner or response.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_context')
     # Host dispatch and shared instruction budgets never expose failed execution payloads.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_execution')
     # Fallible callbacks preserve their reasons without exposing partial execution payloads.

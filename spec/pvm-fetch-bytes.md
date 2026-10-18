@@ -30,10 +30,10 @@ full-length return, exact/insufficient gas, cross-page atomicity, readonly and a
 physical boundaries, empty ranges, source/input ownership, response application, result privacy
 and failed extraction, and 1,000 fresh ARC cycles through the native runner.
 
-Remaining: context selection, all other selectors and absent values.
-The table defines clipping using length(v) even when v is none; this increment does not assign a
-length to none. An absent-value witness is pending clarification of that notation before that
-branch is implemented. No upstream implementation or vector is copied, and these independent
-fixtures establish only the stated subset, not complete fetch or invocation parity.
-Next bounded chunk: resolve absence semantics and add context-owned selector families with their
-encoding and presence rules.
+[Optional context capture](pvm-fetch-context.md) now selects entropy/trace presence and implements
+unknown selectors. The pinned notation's Sets section explicitly defines none's cardinality as zero,
+resolving the earlier absence gate. A funded absent value returns NONE through an empty interval;
+a present empty trace returns zero. Both retain the original selector's requested-length charge.
+Other known selectors and complete service invocation assembly remain open. Independent fixtures
+establish only the stated subset, not complete fetch or invocation parity.
+Next bounded chunk: fetch the work-item payload family from validated work-package context.
