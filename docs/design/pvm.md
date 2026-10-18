@@ -14,6 +14,8 @@ see [the register semantics contract](../../spec/pvm-registers.md). `src/pvm/gas
 calculates whole-block pipeline costs with bounded storage and a local cycle limit;
 [the gas contract](../../spec/pvm-gas.md) records independent witnesses and the negative
 branch-target specification gate. `src/pvm/step.nim` now charges whole blocks and
-executes register-only steps into immutable machine snapshots, preserving the full
-state on out-of-gas; see [the stepping contract](../../spec/pvm-step.md). Control flow,
-terminal outcomes, memory-instruction integration and host calls remain open.
+executes register, control-flow and scalar memory steps into immutable machine snapshots, preserving
+the full state on out-of-gas and the specified single-step terminal PCs; see
+[the stepping contract](../../spec/pvm-step.md). Memory faults retain the paid block charge
+and permit repair/retry without double charging. Host calls and recursive execution
+remain open.

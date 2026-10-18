@@ -9,11 +9,17 @@ Transition). No specification or vector pins change.
 ## Scope and ownership
 
 `src/pvm/machine.nim` captures thirteen 64-bit registers, a validated program/entry
-address, unsigned 64-bit gas, the block-charged flag, and immutable memory. This is
+address through `captureMachine`, unsigned 64-bit gas, the block-charged flag, and immutable memory. This is
 an explicit machine-state constructor, not the standard JAM program initializer.
 CPU metadata and page images returned to callers are copies. The program owner
 comes from the first increment; memory/program handles retained by a machine stay
 valid after their original handles and input buffers leave scope.
+
+`captureTerminalMachine` separately captures a trusted terminal state with valid
+program/memory owners and any register-width PC. This preserves the single-step
+trap increment beyond code without relaxing executable-entry validation. It does
+not authenticate an exit reason; callers follow `StepOutcome.exit` when deciding
+whether to execute again. See [single-step terminal semantics](pvm-step.md).
 
 Memory is a sorted sparse sequence of immutable page references. Each page owns
 4096 bytes and inaccessible/read-only/read-write permission. A missing page has
@@ -124,8 +130,7 @@ protect owners, result state and nominal domains. Five isolated runtime misuse
 probes enforce value-versus-fault selection through the existing failure harness.
 
 No standalone official PVM execution corpus is claimed by these tests. The pinned
-execution-vector gap described in `pvm-program.md` remains. Next: instruction
-execution in bounded opcode groups, with gas charging and exact exceptional state
-semantics grounded in the pinned specification. This increment does not implement
-gas charging, halt/host-call outcomes, page-fault resumption, standard initialization,
-host functions or any complete JAM invocation.
+execution-vector gap described in `pvm-program.md` remains. The separate
+[single-step executor](pvm-step.md) now integrates memory instructions, gas charging
+and fault repair/retry while preserving the explicit wrapping-access gate.
+Standard initialization, host functions and complete JAM invocation remain open.

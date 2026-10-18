@@ -178,6 +178,14 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Force pushes are prohibited, including `--force`, `--force-with-lease` and equivalent
   refspecs or API operations. Never rewrite published branch history, even to correct a commit
   message. Preserve published commits and make corrections in new commits; merge updates normally.
+- Before merging master into a stacked PR whose parent was squash-merged, reconcile the
+  original parent tip with its landed squash first. After fetching and with a clean checkout,
+  run `python3 tools/sync_stack.py --parent <original-parent-tip> --landed <squash-commit>`.
+  The helper requires the parent to be in HEAD, the squash to be on origin/master, and exact
+  tree equality before recording ancestry without changing files. If it refuses, inspect and
+  resolve a normal merge; never bypass its checks with a blanket ours/theirs resolution.
+  Then merge current origin/master normally, test and propagate the updated parent through
+  each open child in order. Recheck this at every parent landing, not only at PR creation.
 - Before the final push to a PR, fetch `origin` and merge the latest `origin/master` into the PR
   branch. Resolve any conflicts and run the affected checks before pushing, so the final PR
   revision includes the latest master. This does not authorize merging the PR itself.
