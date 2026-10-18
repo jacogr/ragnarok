@@ -195,3 +195,14 @@ per-scenario telemetry logs alongside the report.
 Collector assertions count interleaved status frames in the event-ID sequence instead of assuming
 adjacent lifecycle frames or fixed IDs. A registration test deliberately waits past one status
 interval before dialing; duplicate lifecycle frames and loss markers still fail complete captures.
+
+
+Collector-failure isolation also runs eight real mesh exchange/retirement rounds with one IPv4
+and one IPv6 collector. Both collectors stop reading events during the first round, then reset
+the TCP streams and remove their listeners for the entire second round. The remaining six rounds
+run after fresh registration and a dropped prefix. Captures account for the prefix when checking
+attempt/outcome IDs, remote identities and exactly-once closures; further loss markers fail.
+The existing mesh assertions retain bidirectional CE exchanges, duplicate retirement, one dispatcher
+thread, descriptor/RSS/allocation bounds and clean process shutdown throughout the collector outage.
+A non-reading low-volume collector does not necessarily saturate the OS send buffer; deterministic
+socket-pair unit tests separately prove fixed-buffer saturation, partial writes and exact loss counts.

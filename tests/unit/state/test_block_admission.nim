@@ -1,9 +1,13 @@
 ## Real signed blocks bind exact parent headers and complete parent-state maps before atomic Safrole execution.
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/[block_admission, safrole_transition, safrole_authentication, store]
+import ../../../src/state/[block_admission, safrole_transition, safrole_authentication, store,
+    block_transition, disputes]
 import ../../../src/codec/[block_codec, header, bounded, composite, tickets, state_safrole,
   state_consensus,
-  state_disputes, state_trie, state_layout]
+  state_disputes, state_trie, state_layout, guarantees, state_availability]
+import ../../../src/crypto/[primitives, extrinsic_commitment]
+from ../../../src/codec/disputes import Disputes, DisputeHash, Culprit, DisputeSignature,
+    DisputeConfig, DisputeError, encodeDisputes
 from ../../../src/codec/disputes import OffenderKey
 import ../../support/[validator_rotation_fixture, arc_evidence]
 
@@ -223,6 +227,126 @@ proc stricterTickets(state: StateStore, candidate: OwnedBlock, parent: OwnedHead
   assert hashes() == 0 and verifications() == 0 and setups() == 0
   unchanged(working.snapshot.value, source, state.snapshot.value.commitment.root)
 
+## Match every finite disputes profile to this tiny chain without using a posterior offender input.
+proc disputesPolicy(): DisputesConfig =
+  DisputesConfig(rosters: rotationRosterConfig(2), epochSlots: EpochSlots(12),
+    state: DisputeStateConfig(perSet: ElementLimit(10000), totalItems: ElementLimit(40000),
+        maxBytes: ByteLimit(2000000)),
+    availability: AvailabilityConfig(guarantee: GuaranteeConfig(cores: CoreCount(2),
+        validators: ValidatorCount(6), maxBytes: ByteLimit(2000000)),
+      maxPresent: ElementLimit(2), maxBytes: ByteLimit(2000000)), maxExtrinsicBytes: ByteLimit(2000000))
+
+## Derive disputes and Safrole from the same signed block; changed marker and profile inputs fail before authentication.
+proc composed(source: seq[StateEntry], raw: seq[byte], candidate: OwnedBlock, parent: OwnedHeader,
+    expected: seq[byte]) =
+  reset(0)
+  failHash(0)
+  var state = newStateStore(source, limits()).value
+  let root = state.snapshot.value.commitment.root
+  let result = advanceBlockState(state, candidate, parent, policy(), disputesPolicy(), stagePolicy())
+  assert result.error == BlockTransitionError.None and verifications() == 2
+  assert state.snapshot.value.lookup(chapterKey(StateChapter(5))).value.bytes == expected
+  assert array[32, byte](result.value.admitted.admittedState.commitment.root) == array[32, byte](root)
+  for prefix in [0, 1]:
+    reset(0)
+    failHash(0)
+    var refused = newStateStore(source, limits()).value
+    refuseVerification(cint(prefix))
+    let rejected = advanceBlockState(refused, candidate, parent, policy(), disputesPolicy(),
+        stagePolicy())
+    assert rejected.error == BlockTransitionError.SafroleFailure
+    assert rejected.safroleError.error == SafroleTransitionError.AuthenticationFailure
+    unchanged(refused.snapshot.value, source, root) # Later authentication cannot publish any private disputes stage.
+  reset(0)
+  failHash(0)
+  var refused = newStateStore(source, limits()).value
+  var divergent = disputesPolicy()
+  divergent.epochSlots = EpochSlots(13)
+  let mismatch = advanceBlockState(refused, candidate, parent, policy(), divergent, stagePolicy())
+  assert mismatch.error == BlockTransitionError.AdmissionFailure
+  assert mismatch.admissionError == BlockAdmissionError.InvalidConfig
+  unchanged(refused.snapshot.value, source, root)
+
+## An authored block stages a real new offender before forced Safrole failure; no private C(5) write may leak.
+proc stagedDisputesRollback(source: seq[StateEntry], raw: seq[byte], candidate: OwnedBlock,
+    parent: OwnedHeader) =
+  reset(0)
+  failHash(0)
+  let config = disputesPolicy()
+  var seedBytes = default(array[32, byte])
+  seedBytes[0] = 93
+  let seed = importSeed(seedBytes).value
+  let public = array[32, byte](publicKey(seed).value)
+  let key = OffenderKey(public)
+  let target = DisputeHash(default(array[32, byte]))
+  let current = newStateStore(source, limits()).value
+  let active = decodeStateValidators(current.snapshot.value.lookup(chapterKey(StateChapter(
+      8))).value.bytes, config.rosters).value.value
+  var records = newSeq[StateValidator](validatorCount(active).value)
+  for i in 0..<records.len:
+    records[i] = validatorAt(active, StateValidatorIndex(uint64(
+        i))).value # Keep original Bandersnatch, BLS and metadata.
+  records[1].ed25519 = StateEdKey(public) # One authored evidence key; trusted parent context is explicitly synthetic.
+  var judged = DisputeState()
+  judged.reports[JudgmentSet.Bad] = @[target]
+  var working = current
+  assert working.apply(@[StateWrite(key: chapterKey(StateChapter(8)), kind: StateWriteKind.Put,
+    value: validatorEntry(ValidatorChapter.Active, records, config.rosters).value.value),
+    StateWrite(key: chapterKey(StateChapter(5)), kind: StateWriteKind.Put,
+    value: disputeStateEntry(judged, config.state).value.value)]).error == StateStoreError.None
+  let before = working.snapshot.value
+  var message: seq[byte] = @[]
+  for ch in "jam_guarantee": message.add(byte(ch)) # Full raw report hash, not a report or package encoding.
+  for b in array[32, byte](target): message.add(b)
+  let evidence = Disputes(culprits: @[Culprit(target: target, key: key,
+    signature: DisputeSignature(array[64, byte](sign(seed, message).value)))])
+  var disputeWire = newSeq[byte](1000)
+  let encoded = encodeDisputes(evidence, DisputeConfig(validators: ValidatorCount(6),
+      maxBytes: ByteLimit(1000)), disputeWire)
+  assert encoded.error == DisputeError.None
+  disputeWire.setLen(encoded.value)
+  var extrinsicWire = @[0'u8, 0, 0, 0] # Exact four empty preceding families.
+  for b in disputeWire: extrinsicWire.add(b) # Append the complete authored disputes section.
+  let extrinsic = decodeExtrinsic(extrinsicWire, policy().frame).value.owner
+  let digest = array[32, byte](extrinsicCommitment(extrinsic, policy().frame.maxBytes).value)
+  let hlen = headerInfo(readHeader(blockHeader(candidate).value).value.owner).value.consumed
+  assert raw[hlen-97] == 0 # This authored case starts from an empty literal offender marker.
+  var authored = raw[0..<hlen-97]
+  authored.add(1'u8) # Exact new marker count.
+  for b in public: authored.add(b) # New offender key precedes the preserved seal.
+  for b in raw[hlen-96..<hlen]: authored.add(b) # Preserve the deliberately stale seal for refusal only.
+  for b in extrinsicWire: authored.add(b) # Same-block commitment covers these exact bytes.
+  let root = array[32, byte](before.commitment.root)
+  for i in 0..<32:
+    authored[32+i] = root[i] # Match the complete synthetic parent map.
+    authored[64+i] = digest[i] # Match this exact authored extrinsic owner.
+  let captured = candidateBlock(authored)
+  let bound = validateBlockCommitments(captured, parent, before, policy())
+  assert bound.error == BlockAdmissionError.None
+  let plan = planDisputes(before, readDisputes(extrinsicDisputes(extrinsic).value).value.owner, config)
+  assert plan.error == DisputesError.None and plan.value.newOffenderCount == 1
+  assert checkDisputeMarker(plan.value, bound.value.admittedHeader) == DisputesError.None
+  var privateStore = working
+  assert publishDisputes(privateStore, plan.value).error == DisputesError.None
+  assert privateStore.snapshot.value.lookup(chapterKey(StateChapter(5))).value.bytes !=
+      before.lookup(chapterKey(StateChapter(5))).value.bytes
+  refuseVerification(0)
+  let refused = advanceBlockState(working, captured, parent, policy(), config, stagePolicy())
+  assert refused.error == BlockTransitionError.SafroleFailure # Staged C(5) is discarded even after actual successful evidence verification.
+  assert array[32, byte](working.snapshot.value.commitment.root) == root
+  for entry in source:
+    assert working.snapshot.value.lookup(entry.key).value.bytes == before.lookup(
+        entry.key).value.bytes # Complete canonical map rollback.
+  authored[hlen-96] = authored[hlen-96] xor 1 # Mutate the newly inserted marker key, preserving every commitment.
+  reset(0)
+  failHash(0)
+  let wrong = advanceBlockState(working, candidateBlock(authored), parent, policy(), config,
+      stagePolicy())
+  assert wrong.error == BlockTransitionError.DisputesFailure and wrong.disputesError ==
+      DisputesError.InvalidMarker
+  assert verifications() == 0 # Wrong literal marker cannot reach ordinary seal verification.
+  clearSeed(seed)
+
 ## Published parent linkage, complete-state roots, exact block commitments and actual Safrole outputs agree together.
 proc cases(text: string) =
   let lines = text.splitLines()
@@ -237,6 +361,9 @@ proc cases(text: string) =
     var parent = parentHeader(parentRaw)
     let source = entries(fields[3])
     let punished = offenders(unhex(fields[9]))
+    composed(source, raw, candidate, parent, unhex(fields[9]))
+    if index == 0: stagedDisputesRollback(source, raw, candidate,
+        parent) # One deliberately altered signed template verifies rollback, not acceptance.
     reset(0)
     failHash(0)
     var original = newStateStore(source, limits()).value
