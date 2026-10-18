@@ -75,8 +75,11 @@ wall-clock admission and whole-block execution remain open.
 rosters, entropy and offenders. See [the assignment contract](../spec/guarantor-assignments.md);
 `src/state/guarantee_credentials.nim` now verifies the exact report signatures, current-core/shard
 constraints and unique reporter keys against those assignments. See
-[the credential contract](../spec/guarantee-credentials.md); full report-context admission and C(10)
-publication remain subsequent slices.
+[the credential contract](../spec/guarantee-credentials.md).
+`src/state/report_policy.nim` consumes certified credentials and retains their exact parent map after
+checking C(1) authorizer membership, per-report gas and each service's code/minimum gas. See
+[the policy contract](../spec/report-policy.md); anchor/dependency context, post-assurance core capacity
+and C(10) publication remain subsequent slices.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See
