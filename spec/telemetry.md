@@ -7,7 +7,7 @@ This is a JIP-3 version-1 subset, not a claim of full telemetry or validator fun
 
 ## Run
 
-Append `--telemetry HOST:PORT` to an existing `server` or `client` invocation. Collector endpoints
+Append `--telemetry HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
 accept numeric IPv4, `localhost` (IPv4 loopback), and bracketed IPv6 literals such as
 `--telemetry '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
 unbracketed IPv6 endpoints remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
@@ -23,7 +23,7 @@ the usual proof-peer certificate/key/public-key fixtures:
 ```
 
 Keep the existing positional mode argument, if any, before the option pairs. The retained `mesh`
-command is not yet instrumented and rejects this option. No collector address or chain is
+command accepts the same trailing option pairs after its positional gate directory. No collector address or chain is
 assumed when telemetry is absent. An invalid explicit endpoint, certificate or chain file fails
 startup with a diagnostic. An unavailable collector never fails an otherwise valid peer session.
 
@@ -89,7 +89,12 @@ another peer's identity to a close.
 Disconnections are limited to closes observed while the transport is alive, including graceful
 closes and idle expiry. Destroying an otherwise live endpoint does not fabricate a close event.
 Incoming peers rejected by connection-capacity admission never enter the retained peer table.
-Mesh remains outside this integration.
+Mesh uses one exporter for both retained role engines and advertises its IPv6 listener address.
+Incoming callbacks share the same event-ID sequence as outgoing attempts. Each actual dial records
+fresh native authentication/close counter baselines, so reconnects cannot reuse an earlier outcome;
+a suppressed fallback direction emits no attempt. Duplicate arbitration emits a close for each
+connection actually retired, while status counts the single pinned remote peer once across both
+engines. Endpoint destruction settles pending attempts but never fabricates disconnections.
 
 Frames use E4 little-endian payload length, then canonical JAM encoding. Strings use the existing
 natural codec. Status's core array has no length prefix. Event timestamps are microseconds from
@@ -118,7 +123,7 @@ protocol constraints. All relevant input is copied into owned bounded metadata b
 Normative references:
 
 - [JIP-3](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-3.md):
-  connection option, message encoding, node information, timestamps and events 0/10.
+  connection option, message encoding, node information, timestamps and events 0/10/21–27.
 - [JIP-4](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-4.md):
   `protocol_parameters` and `genesis_header` chain-file fields.
 - The existing Gray Paper pin `07f041dabd073f9018b418e9ee72e79dd2185401`, GP 0.8.0:
@@ -159,7 +164,12 @@ spanning a collector reset. It also checks exactly one disconnect after a gracef
 no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete
 application exchange. Incoming cases check success identity/address/correlation, certificate
 rejection, graceful close, two distinct identities across expiry/slot reuse, and no close event
-when the server shuts down with a live peer. Python is only the
+when the server shuts down with a live peer. Mesh captures check one registration per node,
+listener-address advertisement, fallback without a spurious outgoing attempt, distinct correlation
+IDs across repeated duplicate races, exact closure counts, zero/one unique-peer status and wrong-pin
+rejection, using IPv4 and IPv6 collectors. Additional mesh timeout captures verify an unanswered
+dial settles once as failure and destruction of a retained authenticated connection adds no false
+close after duplicate arbitration. Python is only the
 independent collector/test orchestrator;
 production encoding, configuration, hashing and transport stay in Nim and the maintained ABIs.
 `make check-modules` and `make format-check` cover the new sources automatically.
