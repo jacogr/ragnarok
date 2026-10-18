@@ -89,7 +89,8 @@
     "availability_transition",
     "guarantor_assignments",
     "guarantee_credentials",
-    "report_policy"
+    "report_policy",
+    "report_anchors"
   ],
   "PRIVATE": {
     "pvm_result_private": "completed",
@@ -737,7 +738,11 @@
     "guarantee_credentials_owner_private": "data",
     "report_policy_result_private": "completed",
     "report_policy_retag_private": "status",
-    "report_policy_owner_private": "data"
+    "report_policy_owner_private": "data",
+    "report_anchors_result_private": "completed",
+    "report_anchors_retag_private": "status",
+    "report_anchors_recent_private": "data",
+    "report_anchors_owner_private": "data"
   },
   "NOMINAL": {
     "pvm_raw_address": "[2] expected: CodeAddress but got: uint64",
@@ -1031,7 +1036,8 @@
     "availability_transition": 8,
     "guarantor_assignments": 2,
     "guarantee_credentials": 4,
-    "report_policy": 2
+    "report_policy": 2,
+    "report_anchors": 2
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1124,7 +1130,8 @@
     "quic_integration": "integration_arc_release",
     "guarantor_assignments": "guarantor_assignments_arc_release",
     "guarantee_credentials": "guarantee_credentials_arc_release",
-    "report_policy": "report_policy_arc_release"
+    "report_policy": "report_policy_arc_release",
+    "report_anchors": "report_anchors_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1193,6 +1200,7 @@
     "block_admission": "observer",
     "guarantor_assignments": "observer",
     "guarantee_credentials": "observer",
-    "report_policy": "observer"
+    "report_policy": "observer",
+    "report_anchors": "observer"
   }
 }

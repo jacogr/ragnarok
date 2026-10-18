@@ -78,8 +78,11 @@ constraints and unique reporter keys against those assignments. See
 [the credential contract](../spec/guarantee-credentials.md).
 `src/state/report_policy.nim` consumes certified credentials and retains their exact parent map after
 checking C(1) authorizer membership, per-report gas and each service's code/minimum gas. See
-[the policy contract](../spec/report-policy.md); anchor/dependency context, post-assurance core capacity
-and C(10) publication remain subsequent slices.
+[the policy contract](../spec/report-policy.md).
+`src/state/report_anchors.nim` checks the complete recent-history tuple and lookup age, then verifies
+lookup hashes/slots and child-committed roots on a bounded chain of full sealed headers linked to
+caller-supplied trusted parent context. See [the anchor contract](../spec/report-anchors.md).
+Package/dependency context, post-assurance core capacity and C(10) publication remain subsequent slices.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See
