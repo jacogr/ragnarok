@@ -94,6 +94,15 @@ def unit_guarantee_credentials_fixture(folder):
     return {'guarantee_credentials': fixture}, evidence
 
 
+# Prepare original report-policy projections with native ownership of every verdict.
+def unit_report_policy_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from report_policy_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_REPORT_POLICY', path, ((path, evidence['fixture_sha256']),))
+    return {'report_policy': fixture}, evidence
+
+
 # Keep the historical preparation order and nested report schema for existing evidence consumers.
 def unit_sealer_fixture(folder):
     fixtures, evidence = unit_schedule_fixture(folder)
@@ -115,6 +124,9 @@ def unit_sealer_fixture(folder):
     fixtures.update(guarantors_fixtures)
     credential_fixtures, credential_evidence = unit_guarantee_credentials_fixture(folder)
     fixtures.update(credential_fixtures)
+    policy_fixtures, policy_evidence = unit_report_policy_fixture(folder)
+    fixtures.update(policy_fixtures)
+    evidence['report_policy'] = policy_evidence
     evidence['guarantee_credentials'] = credential_evidence
     evidence['guarantors'] = guarantors_evidence
     evidence['availability'] = availability_evidence

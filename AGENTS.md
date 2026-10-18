@@ -112,7 +112,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Keep upstream code/vectors in pinned submodules. Initialize with `python3 tools/setup_submodules.py`.
   Do not overwrite upstream edits, advance gitlinks or change locked versions without an authorized upgrade.
 - Put implementation unit/boundary/ownership/fuzz assertions in Nim and migrate coherent groups
-  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 88
+  to `tests/unit/` through the pinned Hastur native runner (`make unit`). All 89
   ordinary suites run through the native runner; preserve explicit output, linking and fixture contracts. Preserve
   independent Python references and process/tooling orchestration. Remove superseded standalone
   runners once the supported path preserves their coverage; do not keep duplicate build entry points.
@@ -134,7 +134,7 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   logs and summary. E2E owns peer-entry selftests and live peer/service/resilience/soak/offload work;
   unit checks own component suites and independent corpora;
   `check-failures` owns runtime assertion/contract probes and their positive controls;
-  compiler guards own all 750 contract/privacy/nominal/schema/ownership rejection checks.
+  compiler guards own all 753 contract/privacy/nominal/schema/ownership rejection checks.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,

@@ -83,6 +83,7 @@ pinned nightly, ARC and checked Clang LTO. Generated source evidence and fixture
 
 ## Next bounded work
 
-Add authorization-pool and service/code-hash/gas admission checks. Then cover history/lookup anchors,
+[Authorization-pool and service/code-hash/gas policy](report-policy.md) is implemented separately.
+Next cover history/lookup anchors,
 package/dependency/segment-root context and post-assurance capacity before atomic new C(10)
 assignment and integration into the block coordinator. Accumulation/PVM execution remains later work.
