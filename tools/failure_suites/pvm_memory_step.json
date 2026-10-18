@@ -1,0 +1,74 @@
+{
+  "source": "tests/native/pvm_memory_step_results.nim",
+  "build_name": "pvm-memory-step-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-memory-step-default",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "PVM memory-step result selection default"
+    },
+    {
+      "identity": {
+        "origin": "continued"
+      },
+      "arguments": [
+        "continued"
+      ],
+      "name": "pvm-memory-step-continued",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "PVM memory-step result selection continued"
+    },
+    {
+      "identity": {
+        "origin": "panic"
+      },
+      "arguments": [
+        "panic"
+      ],
+      "name": "pvm-memory-step-panic",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "PVM memory-step result selection panic"
+    },
+    {
+      "identity": {
+        "origin": "halt"
+      },
+      "arguments": [
+        "halt"
+      ],
+      "name": "pvm-memory-step-halt",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "PVM memory-step result selection halt"
+    },
+    {
+      "identity": {
+        "origin": "oog"
+      },
+      "arguments": [
+        "oog"
+      ],
+      "name": "pvm-memory-step-oog",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "PVM memory-step result selection oog"
+    },
+    {
+      "identity": {
+        "origin": "ambiguous"
+      },
+      "arguments": [
+        "ambiguous"
+      ],
+      "name": "pvm-memory-step-ambiguous",
+      "diagnostic": "r.status == None",
+      "description": "PVM memory-step result selection ambiguous"
+    }
+  ]
+}
