@@ -157,7 +157,7 @@ def unit_environment(compiler, name=None, base=None, fixtures=None):
         # Other suite observations may belong to another completed per-suite invocation.
         if case in ARC_SUITES:
             (directory/(case+'.json')).unlink(missing_ok=True)
-        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'extrinsic_commitment', 'block_admission') and case not in manifest:
+        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'extrinsic_commitment', 'block_admission', 'disputes_transition') and case not in manifest:
             # Inherited paths cannot replace newly prepared native transport/integration fixtures.
             raise ValueError('Missing prepared native unit fixtures: '+case)
         if case in manifest:
@@ -232,12 +232,16 @@ def unit_sealer_fixture(folder):
     from block_admission_fixtures import prepare_admission
     admission_path, admission_evidence = prepare_admission(folder)
     admission_fixture = ('RAGNAROK_BLOCK_ADMISSION', admission_path, ((admission_path, admission_evidence['fixture_sha256']),))
+    from disputes_transition_fixtures import prepare as prepare_disputes
+    disputes_path, disputes_evidence = prepare_disputes(folder)
+    disputes_fixture = ('RAGNAROK_DISPUTES_TRANSITION', disputes_path, ((disputes_path, disputes_evidence['fixture_sha256']),))
+    evidence['disputes'] = disputes_evidence
     evidence['admission'] = admission_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = stage_evidence
     evidence['authentication'] = auth_evidence
     evidence['markers'] = marker_evidence
-    return {'sealer_schedule': fixture, 'sealer_state': fixture, 'safrole_markers': marker_fixture, 'marker_state': marker_fixture, 'safrole_authentication': auth_fixture, 'safrole_auth_state': auth_fixture, 'safrole_transition': stage_fixture, 'extrinsic_commitment': commitment_fixture, 'block_admission': admission_fixture}, evidence
+    return {'sealer_schedule': fixture, 'sealer_state': fixture, 'safrole_markers': marker_fixture, 'marker_state': marker_fixture, 'safrole_authentication': auth_fixture, 'safrole_auth_state': auth_fixture, 'safrole_transition': stage_fixture, 'extrinsic_commitment': commitment_fixture, 'block_admission': admission_fixture, 'disputes_transition': disputes_fixture}, evidence
 
 
 # Prepare exact published roster projections for the bounded planner's native assertions.

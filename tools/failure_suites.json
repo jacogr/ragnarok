@@ -162,5 +162,23 @@
       {"arguments": ["parent", "default"], "name": "block-admission-parent", "diagnostic": "binding.data", "description": "Block admission parent runtime guard", "identity": {"origin": "parent"}},
       {"arguments": ["state", "default"], "name": "block-admission-state", "diagnostic": "binding.data", "description": "Block admission state runtime guard", "identity": {"origin": "state"}}
     ]
+  },
+  "disputes_transition": {
+    "source": "tests/native/disputes_transition_results.nim",
+    "build_name": "disputes-transition-results",
+    "crypto_library": "crypto",
+    "native_libraries": ["bandersnatch"],
+    "cases": [
+      {"arguments": ["plan-default"], "name": "disputes-transition-plan-default", "diagnostic": "outcome.status == None", "description": "Disputes transition plan-default runtime guard", "identity": {"origin": "plan-default"}},
+      {"arguments": ["plan-error"], "name": "disputes-transition-plan-error", "diagnostic": "outcome.status == None", "description": "Disputes transition plan-error runtime guard", "identity": {"origin": "plan-error"}},
+      {"arguments": ["judgments"], "name": "disputes-transition-judgments", "diagnostic": "plan.data", "description": "Disputes transition judgments runtime guard", "identity": {"origin": "judgments"}},
+      {"arguments": ["assignments"], "name": "disputes-transition-assignments", "diagnostic": "plan.data", "description": "Disputes transition assignments runtime guard", "identity": {"origin": "assignments"}},
+      {"arguments": ["count"], "name": "disputes-transition-count", "diagnostic": "plan.data", "description": "Disputes transition count runtime guard", "identity": {"origin": "count"}},
+      {"arguments": ["block-default"], "name": "disputes-transition-block-default", "diagnostic": "outcome.status == None", "description": "Disputes transition block-default runtime guard", "identity": {"origin": "block-default"}},
+      {"arguments": ["block-error"], "name": "disputes-transition-block-error", "diagnostic": "outcome.status == None", "description": "Disputes transition block-error runtime guard", "identity": {"origin": "block-error"}},
+      {"arguments": ["admission-reason"], "name": "disputes-transition-admission-reason", "diagnostic": "outcome.status == AdmissionFailure", "description": "Disputes transition admission-reason runtime guard", "identity": {"origin": "admission-reason"}},
+      {"arguments": ["disputes-reason"], "name": "disputes-transition-disputes-reason", "diagnostic": "outcome.status == DisputesFailure", "description": "Disputes transition disputes-reason runtime guard", "identity": {"origin": "disputes-reason"}},
+      {"arguments": ["safrole-reason"], "name": "disputes-transition-safrole-reason", "diagnostic": "outcome.status == SafroleFailure", "description": "Disputes transition safrole-reason runtime guard", "identity": {"origin": "safrole-reason"}}
+    ]
   }
 }
