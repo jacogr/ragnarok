@@ -282,3 +282,11 @@ def unit_pvm_gas_fixture(folder):
     from pvm_gas_reference import prepare
     path, evidence = prepare(folder)
     return {'pvm_gas': ('RAGNAROK_PVM_GAS', path, ((path, evidence['fixture_sha256']),))}, evidence
+
+
+# Generate composed stepping traces in build storage without adding checked-in binary copies.
+def unit_pvm_step_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from pvm_step_reference import prepare
+    path, evidence = prepare(folder)
+    return {'pvm_step': ('RAGNAROK_PVM_STEP', path, ((path, evidence['fixture_sha256']),))}, evidence

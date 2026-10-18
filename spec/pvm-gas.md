@@ -103,8 +103,8 @@ before replay. Standalone native launches require this freshly prepared manifest
 
 ## Remaining work
 
-Next bounded increment: compose block charging and register-only stepping with
-exact exceptional-state ordering, keeping unsupported instructions explicit.
-Control flow, memory instructions, standard initialization and host calls remain
+The [register-only stepper](pvm-step.md) now composes charging with immutable
+successor snapshots and unchanged out-of-gas state. Next: control flow and terminal
+outcomes. Memory instructions, standard initialization and host calls remain
 separate work. The negative branch-cost and wrapping-memory specification gates
 remain explicit; this is not a complete PVM or JAM invocation implementation.

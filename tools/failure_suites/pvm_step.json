@@ -1,0 +1,63 @@
+{
+  "source": "tests/native/pvm_step_results.nim",
+  "build_name": "pvm-step-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-step-default",
+      "diagnostic": "r.status == None",
+      "description": "PVM step result selection default"
+    },
+    {
+      "identity": {
+        "origin": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "pvm-step-invalid",
+      "diagnostic": "r.status == None",
+      "description": "PVM step result selection invalid"
+    },
+    {
+      "identity": {
+        "origin": "unsupported"
+      },
+      "arguments": [
+        "unsupported"
+      ],
+      "name": "pvm-step-unsupported",
+      "diagnostic": "r.status == None",
+      "description": "PVM step result selection unsupported"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-step-limit",
+      "diagnostic": "r.status == None",
+      "description": "PVM step result selection limit"
+    },
+    {
+      "identity": {
+        "origin": "negative"
+      },
+      "arguments": [
+        "negative"
+      ],
+      "name": "pvm-step-negative",
+      "diagnostic": "r.status == None",
+      "description": "PVM step result selection negative"
+    }
+  ]
+}

@@ -146,6 +146,13 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - Keep rolling suite/probe totals out of `README.md`, `AGENTS.md` and shared testing guides.
   Maintain coverage in the verification inventories and report observed totals in verification
   results; adding a feature should not require updating counts in shared prose.
+- Keep entries within every section of `tools/verification_inventory.json` in lexicographic
+  (Python `sorted`) order. Use consistent feature prefixes, such as `pvm_`, and insert beside
+  existing entries for that feature; never prepend or append an unrelated registration.
+  Keep one entry per line, including diagnostic pairs. Preserve positional values inside records
+  and the existing top-level section layout. The inventory loader rejects unordered sections;
+  run `make check-inventory` before committing. Any genuinely order-dependent future section
+  needs an explicit documented validator exception and a regression test, not silent reordering.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,
