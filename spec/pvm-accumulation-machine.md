@@ -35,7 +35,7 @@ boundary coverage. No upstream code or vectors are copied.
 This adapter accepts the pure bootstrap and does not create a block certificate.
 It preserves uint64 service gas without narrowing; the documented positive gas-domain
 gate remains unchanged. Accumulation host dispatch, mutable implications/checkpoints,
-execution-result normalization and atomic state publication remain open. Next bounded
-chunk: assemble the accumulation fetch context from this same prepared service,
-including its posterior entropy and configured parameters, without independent input
-or service selection.
+execution-result normalization and atomic state publication remain open. The
+[fetch assembly adapter](pvm-accumulation-fetch.md) now derives entropy and inputs
+from this same machine's bootstrap with explicit configured parameters. Complete
+accumulation host dispatch and normalized outcomes remain later work.

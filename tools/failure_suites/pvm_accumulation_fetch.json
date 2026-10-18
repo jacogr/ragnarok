@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/pvm_accumulation_fetch_results.nim",
+  "build_name": "pvm-accumulation-fetch-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "machine"
+      },
+      "arguments": [
+        "machine"
+      ],
+      "name": "pvm-accumulation-fetch-machine",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation fetch machine extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-accumulation-fetch-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation fetch parameters extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-accumulation-fetch-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation fetch limit extraction guard"
+    }
+  ]
+}
