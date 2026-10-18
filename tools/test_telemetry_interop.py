@@ -250,6 +250,13 @@ def main():
         case = report['scenarios']['collector-restart'] = dict(passed=False)
         run_restart(args.peer.resolve(), args.collector.resolve(), case, BUILD/'collector-restart')
         case['passed'] = True
+        from telemetry_interop_incoming import run_incoming
+        for rejected in (False, True):
+            # Each incoming outcome gets fresh collectors, then reuses only its own retained listener.
+            name = 'incoming-restart-' + ('rejection' if rejected else 'success')
+            case = report['scenarios'][name] = dict(passed=False)
+            run_incoming(args.peer.resolve(), args.collector.resolve(), case, BUILD/name, rejected)
+            case['passed'] = True
         report['passed'] = True
     except Exception as error:
         report['failure'] = repr(error) # Preserve the diagnostic and fail the optional target honestly.
