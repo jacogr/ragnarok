@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal known answers protect the independent Boolean/bitstring oracle."""
 import unittest
 from bits_oracle import boolean, packed, wire, decode, encode, MAX

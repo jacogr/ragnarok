@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Tagged shape/result guards, fixed scope copies and explicit request-namespace overlap evidence.
 import std/[assertions, syncio]
 import ../../../src/codec/[state_requests, state_service_values, state_trie, bounded]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Bounded trusted batch adapter for the tickets codec; no Python code runs in production.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/tickets

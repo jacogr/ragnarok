@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and refused anchor results cannot expose completed report batches.
 import std/[cmdline, syncio]
 import ../../src/state/report_anchors

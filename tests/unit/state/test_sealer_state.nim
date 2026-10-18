@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published schedule pipelines, bounded atomic C(4) publication and immutable parent/working owners.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[sealer_state, sealer_schedule, ticket_state, ticket_admission, entropy, store]

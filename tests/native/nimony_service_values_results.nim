@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated actual/default service-value reads require success; native refusals use a separate test-only bridge.
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_service_values

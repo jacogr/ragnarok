@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent GP T(14/15) fixed rings, ordered reports and canonical dependency/package sets."""
 import hashlib
 import json

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Supplementary whole-state ownership, type-separated fields, result/index and copied-value checks.
 import std/[assertions, syncio]
 import ../../../src/codec/[state_disputes, bounded]

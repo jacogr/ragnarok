@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## White-box project-owned private-wire aliases; external compilation probes enforce that storage remains inaccessible.
 import std/[assertions, syncio]
 include ../../../src/codec/c2_records

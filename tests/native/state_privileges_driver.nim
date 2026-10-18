@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted field transport for independently authored chapter-12 source and wire requests.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_privileges, state_trie, bounded]

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Apply pinned Nim and Rust formatters, or check both languages without writing."""
 import argparse
 import json

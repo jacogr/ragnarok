@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Run the preserved primitive equations against a caller-supplied Nimony binary; never compile on import."""
 import argparse
 import json

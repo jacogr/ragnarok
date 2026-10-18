@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Report ownership regressions supplement the full independent wire/semantic corpus.
 import std/[assertions, syncio]
 import ../../support/arc_evidence

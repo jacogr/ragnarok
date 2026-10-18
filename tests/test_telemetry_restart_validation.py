@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Negative controls for restart correlation, immutable registration and bounded byte forwarding."""
 import copy
 import hashlib

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent header.tex commitment answers and pinned full-block inputs; no native verification."""
 import copy
 import hashlib

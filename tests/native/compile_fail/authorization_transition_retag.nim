@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Callers cannot convert a default failure into success by changing a result discriminator.
 import ../../../src/state/authorization
 import ../../../src/codec/state_trie

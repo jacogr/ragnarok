@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Parser selftests use the real DER extractor and shared production frame boundary checks, without sockets.
 import std/[assertions, syncio]
 import ../../../src/quic/protocol

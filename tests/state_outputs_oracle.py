@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent T chapter-16 ordered E4-service/commitment sequence equations."""
 import hashlib
 import json

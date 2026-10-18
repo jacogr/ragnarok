@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Shared pristine source checks and logged native build commands, independent of test harnesses."""
 from pathlib import Path
 import subprocess

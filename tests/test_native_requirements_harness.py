@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Guard declarative native profiles and independent feature fixture preparation."""
 from contextlib import ExitStack
 from copy import deepcopy

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Test-only local account/solicit witnesses for pinned GP 0.8.0 namespace ambiguity; no PVM runtime."""
 from dataclasses import dataclass, replace
 import hashlib

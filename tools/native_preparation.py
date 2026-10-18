@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Shared native libraries and independent fixtures for both supported unit entry points."""
 import hashlib
 import sys

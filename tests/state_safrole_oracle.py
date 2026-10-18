@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent T(state) chapters 6/7/8/9/11; published fields are derived state-value cases."""
 import hashlib
 import json

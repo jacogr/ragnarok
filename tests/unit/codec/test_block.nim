@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Focused public composite ownership, child materialization, stricter-policy and atomicity regressions.
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]

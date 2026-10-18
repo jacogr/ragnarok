@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Freeze original independent early-codec request/expectation coverage before native agreement."""
 import hashlib
 import unittest

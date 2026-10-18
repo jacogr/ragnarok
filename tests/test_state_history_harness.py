@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal T-order, dictionary association and MMR optional encoding checks for the independent history reference."""
 import unittest
 from state_history_oracle import wire,encode,decode,MAX,BROAD

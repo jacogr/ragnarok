@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Original signed recent-anchor projections plus real full-header ancestry and lifecycle boundaries.
 import std/[assertions, envvars, strutils, syncio]
 import ../../../src/state/[report_anchors, report_policy, guarantee_credentials, store]

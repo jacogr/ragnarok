@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 header.tex extrinsic commitment: five family hashes over their prescribed projections.
 ## Inputs are immutable codec owners; all temporary bytes and returned digests are independently owned.
 import ../codec/[block_codec, header, owned, report_owned, guarantees, natural, bounded]

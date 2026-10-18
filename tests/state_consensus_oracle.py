@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent chapter-4 byte equations; all values are structural, with transition checks explicitly separate."""
 import hashlib
 import json

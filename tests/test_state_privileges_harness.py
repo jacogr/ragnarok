@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal chapter-12 wire and failure checks independent of production code."""
 import unittest
 from state_privileges_oracle import wire,encode,decode,MAX

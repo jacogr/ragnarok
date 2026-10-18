@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T chapter 10: fixed core sequence of optional (full guarantee, E4 registration slot).
 ## Structural serialization does not establish availability, credential validity or transition eligibility.
 import std/assertions

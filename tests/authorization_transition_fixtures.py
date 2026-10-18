@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport pinned authorization STF inputs/expected bytes to native assertions; no transition logic here."""
 import hashlib
 import json

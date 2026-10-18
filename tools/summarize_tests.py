@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Render measured test/audit results in GitHub summaries without turning missing or partial evidence green."""
 import argparse
 import json

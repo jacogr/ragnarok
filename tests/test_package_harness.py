@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal known answers and independent policy checks protect the package oracle itself."""
 import copy
 import unittest

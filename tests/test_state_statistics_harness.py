@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal chapter-13 framing anchors, independent of the production codec."""
 import unittest
 from state_statistics_oracle import wire,decode,encode,example,DEFAULT,MAX

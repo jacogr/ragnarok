@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Private CE stream owners and retained peer/mesh sessions over the bounded synchronous UDP dispatcher.
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
 import ./transport

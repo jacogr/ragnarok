@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 reporting_assurance.tex: parent authorizer membership, per-report gas and service code/minimum gas.
 ## This read-only stage consumes certified credentials; complete report context and C(10) publication follow later.
 import ../codec/[state_authorization, state_accounts, state_layout, state_safrole,

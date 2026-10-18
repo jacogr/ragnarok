@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Check every source module with the selected Nimony compiler; never accept an expected-failure allowlist."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor

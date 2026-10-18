@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent full work-digest oracle, pinned official vectors and shared native checks."""
 import json
 from pathlib import Path

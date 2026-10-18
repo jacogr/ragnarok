@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Project-only white-box alias checks; external compile probes separately enforce private snapshot storage.
 import std/[assertions, syncio]
 include ../../../src/codec/collections

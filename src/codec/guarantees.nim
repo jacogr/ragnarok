@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 C.2 guarantees: canonical reports, E4 slots and two/three E2-indexed credentials.
 ## Reports remain immutable owned snapshots; signatures are opaque and state eligibility is external.
 import std/assertions

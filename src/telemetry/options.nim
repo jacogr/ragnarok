@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Optional trailing CLI controls for the existing bounded proof-peer command shape.
 import std/[os, syncio, times, monotimes, strutils, base64]
 import ./[wire, client, chain]

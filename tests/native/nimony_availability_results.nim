@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated public/private result failures and runtime-selected absent fields need exact contracts.
 import std/[assertions, cmdline, syncio]
 import ../../src/codec/[report_owned, owned]

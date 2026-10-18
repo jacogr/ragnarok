@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ragnarök contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 #ifndef RAGNAROK_CRYPTO_PRIMITIVE_BRIDGE_H
 #define RAGNAROK_CRYPTO_PRIMITIVE_BRIDGE_H
 #include <stddef.h>
