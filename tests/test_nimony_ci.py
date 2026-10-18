@@ -50,7 +50,8 @@ class NimonyCISafeguards(unittest.TestCase):
         triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
         self.assertEqual(triggers.strip(),
                          'push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:')
-        for target in ('check-python', 'check-modules', 'check-unit', 'check-guards', 'check-e2e'):
+        for target in ('check-python', 'check-modules', 'check-unit', 'check-guards', 'check-e2e',
+                       'check-telemetry-interop-ci'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
         self.assertNotIn('needs:', text)
