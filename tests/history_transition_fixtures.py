@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport pinned history STF bytes and independent output-tree checks to native assertions."""
 import hashlib
 import json

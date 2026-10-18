@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated actual/default assurance transcript and verified-count reads require supported success contracts.
 import std/[assertions, cmdline, strutils, syncio]
 import ../../src/crypto/[primitives, assurance_context]

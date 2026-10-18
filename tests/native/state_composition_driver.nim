@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted fixture transport and supplementary ownership/default/association guards.
 import std/[assertions, cmdline, syncio, strutils, parseutils]
 import ../../src/codec/[state_composition, state_trie, state_layout, bounded, assurances,

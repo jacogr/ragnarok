@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## JSON-RPC 2.0 dispatch for the proof peer. No fabricated chain state or subscription success.
 ## Bounds: 16 KiB input, 16 levels, 2048 values and 16 requests per batch; no retained borrows.
 import std/[strutils, parsejson, streams, parseutils]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Concrete E1 framing and failure-precedence checks for the independent tickets oracle."""
 import unittest
 from tickets_oracle import record,wire,decode,published

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Verify real peer exchanges, retained services, resilience, soak and proof-offload lifecycles."""
 import argparse
 import hashlib

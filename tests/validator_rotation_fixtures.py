@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport pinned Safrole roster projections; expected rotation/filtering always comes from upstream."""
 import hashlib
 import json

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Owned snapshot regressions: mutation, original lifetime, detached copies, typed failures and nested records.
 import std/[assertions, syncio]
 import ../../support/arc_evidence

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published shuffle permutations plus rotation, posterior offender, resizing and owner boundaries.
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/guarantors

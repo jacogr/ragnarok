@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Supplementary ownership, copied-hash, index and guarded-result checks for authorization state.
 import std/[assertions, syncio]
 import ../../../src/codec/[state_authorization, bounded, assurances]

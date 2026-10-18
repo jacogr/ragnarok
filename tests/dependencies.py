@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Check exact Git submodule revisions and pristine source trees before native builds."""
 from pathlib import Path
 import sys

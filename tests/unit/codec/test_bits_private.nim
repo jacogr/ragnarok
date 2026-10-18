@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## White-box tests use only our own module to reach private-wire aliases; external probes enforce privacy.
 import std/[assertions, syncio]
 include ../../../src/codec/bitstrings

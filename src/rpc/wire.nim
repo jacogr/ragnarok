@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Bounded RFC 6455 framing and UTF-8 validation; owned strings never retain socket buffers.
 import std/[strutils, base64, sha1]
 

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent test-only OpenSSL Ed25519 fixtures over the pinned normative report signing message."""
 import hashlib
 import json

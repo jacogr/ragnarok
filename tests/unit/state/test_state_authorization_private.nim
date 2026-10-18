@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Project-only white-box arithmetic and public ownership cycles; no private compiler/runtime API is used.
 import std/[assertions, syncio]
 import ../../support/arc_evidence

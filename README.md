@@ -96,3 +96,12 @@ See [telemetry usage, scope and verification](spec/telemetry.md).
 The proof peer also supports an opt-in WebSocket JSON-RPC endpoint: append `--rpc-port 19800`
 and connect to `ws://127.0.0.1:19800/`. The first method is `ragnarok_clientInfo`; live-chain
 JIP-2 methods and subscriptions remain unavailable. See [RPC scope and usage](spec/rpc.md).
+
+## License
+
+Ragnarök is licensed under either of the following, at your option:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or [Apache license text](https://www.apache.org/licenses/LICENSE-2.0))
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or [MIT license text](https://opensource.org/licenses/MIT))
+
+Third-party dependencies and fixtures retain their respective licenses.

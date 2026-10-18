@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## White-box topology arithmetic and scratch-release tests use only project code and public allocator occupancy.
 import std/[assertions, syncio]
 import ../../support/arc_evidence

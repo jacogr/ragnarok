@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and genuinely failed chapter-5 payload reads require the exact supported success contract.
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_disputes

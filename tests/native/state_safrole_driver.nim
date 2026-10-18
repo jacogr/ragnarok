@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted independent state-component adapter; every observation is copied before caller storage is destroyed.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_safrole, state_layout, state_trie, bounded, assurances]

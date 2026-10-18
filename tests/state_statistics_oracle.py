@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent T chapter-13 equations with separate partial JSON and complete published-wire evidence."""
 import hashlib
 import json

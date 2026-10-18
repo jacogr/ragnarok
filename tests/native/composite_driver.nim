@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted local adapters for optional/work variants and complete nested preimages.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support

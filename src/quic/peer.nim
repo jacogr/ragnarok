@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Bounded CLI controls for private peer sessions; every run returns through native/ARC cleanup before exit.
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix

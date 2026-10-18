@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Guarantee result contracts reject default/failed values for every public operation family.
 import std/[cmdline, syncio]
 import ../../src/codec/[guarantees, bounded, assurances, work_report]

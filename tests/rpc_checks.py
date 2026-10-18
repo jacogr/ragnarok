@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent RFC 6455 socket checks against the actual peer executable, with no WebSocket dependency."""
 import base64
 import hashlib

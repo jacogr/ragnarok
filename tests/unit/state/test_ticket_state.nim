@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published admission projections after actual entropy/time staging; atomic C(4) rollback and lifetimes.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[ticket_state, ticket_admission, entropy, store]

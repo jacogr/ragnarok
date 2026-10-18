@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent GP 0.8.0 Boolean/bitstring wire equations and deterministic adversarial requests."""
 import random
 import hashlib

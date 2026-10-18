@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent trusted named-field construction for M2 assurance context tests.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support

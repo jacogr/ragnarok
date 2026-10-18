@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published Safrole entropy/time projections, fixed hash known answer and epoch/slot boundaries.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/entropy_transition_fixture

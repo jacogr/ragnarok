@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ragnarök contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 #include "transport_bridge.h"
 #include <lsquic.h>
 #include <openssl/ssl.h>

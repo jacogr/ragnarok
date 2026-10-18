@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ragnarök contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 #include "primitive_bridge.h"
 #include <openssl/blake2.h>
 #include <openssl/curve25519.h>

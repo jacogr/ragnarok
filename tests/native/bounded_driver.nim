@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted batch adapter: BE/BD for bytes, SE/SD for fixed-width sequences.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support

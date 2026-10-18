@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## JAM general natural-number codec. See spec/codec.md for the pinned definition.
 ## Allocation-free; input is borrowed only during decode and output is a value.
 type

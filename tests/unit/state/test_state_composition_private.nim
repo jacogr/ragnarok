@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import std/envvars
 import ../../support/arc_evidence
 ## Project-only whole-mapping ownership, preflight, arithmetic and backend cleanup checks.

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent fixture identity and fail-closed worker lifecycle orchestration checks."""
 from pathlib import Path
 import tempfile

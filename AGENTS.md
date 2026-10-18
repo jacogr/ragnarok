@@ -79,6 +79,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   light-mode functionality before its bounded implementation is authorized.
 
 ## Working style
+- Add `Copyright (c) 2026 Ragnarök contributors` and
+  `SPDX-License-Identifier: MIT OR Apache-2.0` as comments at the start of project-owned source
+  and build files, after any shebang. Preserve third-party attribution and do not insert comments
+  into formats that do not support them, such as JSON, or into generated files.
 - Use `make setup` for pinned tools/dependencies, `make` for the current proof-peer build and
   `make check` (alias `make test`) for complete verification. Make owns setup dependencies and
   command sequencing; `make clean` removes all of `build/`.
