@@ -10,7 +10,7 @@ import std/[os, syncio, times, monotimes, strutils, base64]
 import ./[wire, client, chain]
 import ../quic/transport
 import ../rpc/[server, protocol]
-import ../chain/parameters
+import ../chain/[parameters, genesis]
 export wire, client
 
 # Locate the first reserved option; all configuration pairs must follow positional peer arguments.
@@ -85,10 +85,13 @@ proc loadChainText*(): string {.raises.} = boundedFile(optionValue("--chain"), M
 # An explicit RPC chain must validate before opening the listener; missing configuration remains unavailable.
 proc setupRpc*(rpc: var Server, role: string, text: string): bool =
   var parameters = default(ParameterResult)
+  var genesis = unavailableGenesis()
   if rpcPort() != 0 and optionValue("--chain").len > 0:
     parameters = configuredParameters(text)
     if not parameters.ok: return false # Fail startup rather than advertise a partial/default parameter set.
-  rpc.start(rpcPort(), role, parameters)
+    genesis = configuredGenesis(text, parameters.value)
+    if genesis.error == GenesisError.Invalid: return false # Reject an incomplete or malformed explicit genesis.
+  rpc.start(rpcPort(), role, parameters, genesis)
 
 # Build registration from explicit JIP-4 configuration and the actual local certificate/socket.
 proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool,

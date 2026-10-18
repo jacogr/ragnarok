@@ -5,12 +5,14 @@
 ## Bounds: 16 KiB input, 16 levels, 2048 values and 16 requests per batch; no retained borrows.
 ##
 ## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
-## responses. configuredParameters validates bounded chainspec text into an owned snapshot;
+## responses. configuredParameters and configuredGenesis validate bounded chainspec text into
+## owned parameter and genesis snapshots;
 ## parameters() includes four documented zero placeholders pending live-state derivation.
 
-import std/[strutils, parsejson, streams]
+import std/[strutils, parsejson, streams, base64]
 import ./wire
-import ../chain/parameters
+import ../chain/[parameters, genesis]
+import ../codec/[state_trie, state_layout]
 
 const Platform = when defined(linux): "linux" elif defined(macosx): "macos" else: "unknown"
 const Architecture = when defined(arm64): "arm64" elif defined(amd64): "amd64" else: "unknown"
@@ -33,6 +35,7 @@ type
     role*: string
     port*: uint16
     occupiedBytes*, reservedBytes*: int
+    genesis*: GenesisResult # Immutable configured genesis; no block-import or finality claim.
     parameters*: ParameterResult # Optional immutable startup configuration; never read from disk per request.
 
 # JSON quoting preserves UTF-8 while escaping ASCII controls and delimiters.
@@ -138,6 +141,82 @@ proc parseValues(text: string, values: var seq[Value], maxValues = 2048, maxDept
       if parser.kind in {jsonObjectStart, jsonArrayStart}:
         containers.add(Container(index: values.len - 1, children: 0)) # Bounded open-container stack.
 
+# Decode bounded, unprefixed hex atomically; an empty value is valid only for state values.
+proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
+  if text.len mod 2 != 0 or text.len div 2 > maximum: return false # Bound before allocation.
+  var bytes = newSeq[byte](text.len div 2)
+  # Each pair has exactly two hexadecimal digits, excluding prefixes and separators.
+  for i in 0..<bytes.len:
+    var value = 0
+    # Accumulate exactly two nibbles so narrowing to a byte is proved safe.
+    for j in 0..<2:
+      let c = text[2 * i + j]
+      if c notin HexDigits: return false # Invalid input publishes no partial bytes.
+      value = value * 16 + (if c <= '9': ord(c) - ord('0') else: ord(c.toLowerAscii) - ord('a') + 10)
+    bytes[i] = byte(value)
+  output = move(bytes)
+  true
+
+# Import an optional complete genesis pair using the same strict bounded JSON policy as parameters.
+proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
+  # Reject absent, oversized or non-UTF-8 input before token allocation.
+  if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text): return invalidGenesis()
+  var values: seq[Value] = @[]
+  # Only a complete strict JSON object can describe a chainspec.
+  if not parseValues(text, values, 262144, 32) or values[0].kind !=
+      objectValue: return invalidGenesis()
+  var headerIndex = -1
+  var stateIndex = -1
+  var keys: seq[string] = @[]
+  var i = 1
+  # Root duplicates are ambiguous even when they name fields this slice does not consume.
+  while i < values[0].next:
+    let key = values[i].text
+    if keys.len >= 64 or key in keys: return invalidGenesis() # Bound metadata and reject ambiguous duplicates.
+    keys.add(key)
+    inc i
+    if key == "genesis_header": headerIndex = i # Record positions only after syntax validation.
+    elif key == "genesis_state": stateIndex = i # State entries are decoded below.
+    i = values[i].next
+  if headerIndex < 0 and stateIndex < 0: return unavailableGenesis() # Parameters-only configuration remains supported.
+  if headerIndex < 0 or stateIndex < 0: return invalidGenesis() # An explicit pair must be complete.
+  # The header is one encoded blob and state is a serialized key/value object.
+  if values[headerIndex].kind != stringValue or values[stateIndex].kind !=
+      objectValue: return invalidGenesis()
+  var wire: seq[byte] = @[]
+  if not decodeHex(values[headerIndex].text, 256 * 1024, wire): return invalidGenesis() # Bound the header before decoding.
+  var entries: seq[StateEntry] = @[]
+  var total = 0
+  i = stateIndex + 1
+  # Decode map keys and values under independent count and byte budgets before retaining them.
+  while i < values[stateIndex].next:
+    if entries.len >= 16384 or values[i].text.len != 62: return invalidGenesis() # Every serialized key has exactly 31 bytes.
+    var keyBytes, data: seq[byte] = @[]
+    if not decodeHex(values[i].text, 31, keyBytes): return invalidGenesis() # Reject non-hex key encodings.
+    inc i
+    if values[i].kind != stringValue or not decodeHex(values[i].text, 4 * 1024 * 1024 - total, data):
+      return invalidGenesis() # Nested and non-string state values are not serialized state.
+    total += data.len
+    var key = default(array[31, byte])
+    for j in 0..<31: key[j] = keyBytes[j] # Exact decoded key width was proved above.
+    entries.add(StateEntry(key: StateKey(key), value: move(data)))
+    i = values[i].next
+  captureGenesis(wire, entries, parameters)
+
+# JIP-2 hash strings are canonical padded Base64, preserving exactly 32 bytes.
+proc validHash(text: string): bool =
+  if text.len != 44 or text[43] != '=': return false # Exact shape bounds decoder work.
+  for i in 0..<43:
+    if text[i] notin {'A'..'Z', 'a'..'z', '0'..'9', '+',
+        '/'}: return false # No alternate alphabets or whitespace.
+  let decoded = base64.decode(text)
+  decoded.len == 32 and base64.encode(decoded) == text
+
+# Render a copied genesis descriptor using JIP-2's Base64 identity and numeric slot.
+proc descriptor(value: Genesis): string =
+  "{\"header_hash\":" & quote(base64.encode(array[32, byte](value.blockHash))) & ",\"slot\":" &
+      $value.slot & "}"
+
 # Extract one strict JIP-4 parameter field from a bounded startup file. Genesis data is not imported.
 # Unknown fields are parsed for syntax only; duplicate root members and missing parameters fail atomically.
 proc configuredParameters*(text: string): ParameterResult =
@@ -195,9 +274,10 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"connectedPeers\":" & $info.peers)
   result.add(",\"memory\":{\"occupiedBytes\":" & $info.occupiedBytes)
   result.add(",\"reservedBytes\":" & $info.reservedBytes & "}")
-  result.add(",\"chain\":null,\"bestBlock\":null,\"finalizedBlock\":null")
+  result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
+      GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -230,8 +310,27 @@ proc dispatch(values: seq[Value], start: int, info: ClientInfo): string =
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if not hasId: return "" # This read-only dispatch has no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
-  if methodName in ["ragnarok_clientInfo", "parameters"]:
+  if methodName in ["parent", "stateRoot"]:
+    if parameters < 0: return error(id, -32602, "Expected one header hash") # Hash lookup always needs an argument.
+    let argument = parameters + 1
+    if values[parameters].next != argument + 1 or values[argument].kind != stringValue:
+      return error(id, -32602, "Expected one header hash") # Exactly one scalar positional argument.
+    let hash = values[argument].text
+    if not validHash(hash): return error(id, -32602,
+        "Expected padded Base64 hash") # Reject malformed identities before lookup.
+    if methodName == "stateRoot" and info.genesis.error == GenesisError.None:
+      let view = info.genesis.value
+      if hash == base64.encode(array[32, byte](view.blockHash)):
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(array[32,
+            byte](view.stateRoot))) & "}"
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
+        quote(hash) & "}}" # No parent or unknown block data exists in this genesis-only view.
+  if methodName in ["ragnarok_clientInfo", "parameters", "bestBlock"]:
     if parameters >= 0 and values[parameters].next != parameters + 1: return error(id, -32602, "Expected no parameters")
+    if methodName == "bestBlock":
+      if info.genesis.error != GenesisError.None: return error(id, 0,
+          "Genesis chain view unavailable") # No configured head exists.
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(info.genesis.value) & "}"
     if methodName == "parameters":
       if not info.parameters.ok: return error(id, 0, "Chain parameters unavailable; configure --chain")
       return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & parameterObject(

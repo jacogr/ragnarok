@@ -27,7 +27,7 @@ assert "\"id\":7" in answer and "\"connectedPeers\":3" in answer and "\"uptimeMs
 assert "\"transport\":\"websocket\"" in answer and "\"bestBlock\":null" in answer
 assert respond("{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\"}", info) == ""
 assert respond("[{\"jsonrpc\":\"2.0\",\"method\":\"absent\"}]", info) == ""
-assert "-32601" in respond("{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":null}", info)
+assert "\"code\":0" in respond("{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":null}", info)
 assert "-32602" in respond(request.replace("\"id\":7", "\"id\":7,\"params\":{}"), info)
 assert "-32602" in respond(request.replace("\"id\":7", "\"id\":7,\"params\":[1]"), info)
 assert "\"result\"" in respond(request.replace("\"id\":7", "\"id\":7,\"params\":[]"), info)
@@ -125,6 +125,47 @@ parameterBytes[30] = 0
 assert not decodeParameters(parameterBytes).ok
 parameterBytes[30] = 10; parameterBytes[118] = 11
 assert not decodeParameters(parameterBytes).ok # Epoch tail cannot follow the epoch it belongs to.
+
+# A canonical synthetic genesis proves header identity and posterior-root selection independently.
+let genesisWire = repeat("00", 32) & repeat("11", 32) & repeat("00", 32) & "07000000" & repeat("00", 197)
+let rosterKey = "08" & repeat("00", 30)
+let timeKey = "0b" & repeat("00", 30)
+let genesisState = "{\"" & rosterKey & "\":\"06" & repeat("00", 2016) & "\",\"" & timeKey &
+    "\":\"07000000\"}"
+let genesisText = "{\"genesis_header\":\"" & genesisWire & "\",\"genesis_state\":" & genesisState & "}"
+let genesisParameters = configuredParameters(configText)
+assert genesisParameters.ok
+var genesisInput = genesisText
+let capturedGenesis = configuredGenesis(genesisInput, genesisParameters.value)
+assert capturedGenesis.error == GenesisError.None
+genesisInput = "{}" # Mutating source JSON cannot alter the retained owner.
+let withGenesis = ClientInfo(genesis: capturedGenesis)
+let bestRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":1}"
+let genesisHash = "5mOOsjxqUxhky5HYvxomxm/u7dg7VcwqcsnDWQBCjtQ="
+let rootRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"stateRoot\",\"params\":[\"" & genesisHash & "\"],\"id\":1}"
+assert respond(bestRequest, withGenesis) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"header_hash\":\"" &
+    genesisHash & "\",\"slot\":7}}"
+assert respond(rootRequest, withGenesis) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"63T8fX9zxm7i2b5I3Rx0CW41FSpcc9m2rVlS8AK2/Cw=\"}"
+assert "\"code\":1" in respond(rootRequest.replace("stateRoot", "parent"), withGenesis)
+assert "\"data\":\"" & genesisHash & "\"" in respond(rootRequest, info)
+assert "\"code\":1" in respond(rootRequest.replace(genesisHash, repeat("A", 43) & "="), withGenesis)
+assert "\"code\":-32602" in respond(rootRequest.replace(genesisHash, "bad"), withGenesis)
+assert "\"code\":-32602" in respond(rootRequest.replace("[\"" & genesisHash & "\"]", "[]"), withGenesis)
+assert "\"code\":-32602" in respond(bestRequest.replace("\"id\":1", "\"id\":1,\"params\":[0]"), withGenesis)
+assert respond(bestRequest.replace(",\"id\":1", ""), withGenesis) == ""
+assert "\"code\":-32601" in respond(bestRequest.replace("bestBlock", "finalizedBlock"), withGenesis)
+# An absent pair preserves parameter-only operation; every incomplete/malformed pair fails atomically.
+assert configuredGenesis("{}", genesisParameters.value).error == GenesisError.Unavailable
+for malformed in ["{\"genesis_header\":\"00\"}", "{\"genesis_state\":{}}",
+    genesisText.replace(genesisWire, genesisWire & "00"), genesisText.replace(genesisWire,
+        genesisWire[0..^3]),
+    genesisText.replace(genesisWire, genesisWire.replace("07000000", "08000000")),
+        genesisText.replace(genesisState, "{}"),
+    genesisText.replace(rosterKey, "bad"), genesisText.replace("\"07000000\"", "null"),
+    genesisText.replace("\"07000000\"", "\"0g000000\""),
+    genesisText.replace(genesisState, genesisState[0..^2] & ",\"" & timeKey.toUpperAscii &
+        "\":\"07000000\"}")]:
+  assert configuredGenesis(malformed, genesisParameters.value).error == GenesisError.Invalid
 
 let header = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(header) # RFC 6455 section 1.3 known answer.
