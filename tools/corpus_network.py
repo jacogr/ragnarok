@@ -38,4 +38,3 @@ def run_network(compiler, report, checks, libraries, quic_fixtures, integration_
                         defines=('integration',))
     report['integration_corpus'] = corpus
     announce('independent CE digest capture/hash-binding corpus', corpus['passed'])
-

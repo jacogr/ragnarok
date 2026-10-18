@@ -168,4 +168,3 @@ def run_state(compiler, report, checks, libraries):
     corpus['passed'] = corpus['passed'] and len(traces) == 8 and all(row['complete_component_match'] for row in traces)
     report['outputs_corpus'] = corpus
     announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
-

@@ -311,4 +311,3 @@ def run_codecs(compiler, report, checks, libraries):
                         metadata=dict(request_groups=groups))
     report['c2_corpus'] = corpus
     announce('independent availability/transfer/operand/accumulation corpus', corpus['passed'])
-

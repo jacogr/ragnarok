@@ -165,4 +165,3 @@ def run_services(compiler, report, checks, libraries):
             corpus['first_mismatch'] = next((i for i, (a, e) in enumerate(zip(actual, expected)) if a != e), min(len(actual), len(expected)))
         report[family+'_corpus'] = corpus
         announce('unchanged '+family+' regression corpus', passed)
-
