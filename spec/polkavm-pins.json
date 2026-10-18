@@ -1,0 +1,13 @@
+{
+  "repository": "paritytech/polkavm",
+  "path": "vendor/polkavm",
+  "commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
+  "role": "test-only cross-check; Gray Paper 0.8.0 remains normative",
+  "source_sha256": {
+    "crates/polkavm/src/tests.rs": "9ff58513983fea317d1d118980ebe69fa24d566457a214a8e3e387414cd307c6",
+    "fuzz/fuzz_targets/fuzz_polkavm.rs": "9d428027b1f57ba1c5ff1937051ff847368bb2b1dea16ac75eaa9cc0711e3ec0",
+    "fuzz/fuzz_targets/fuzz_page_set.rs": "3fd40c786b40f7522e93eeb8260a94b9834ce0a130b76e8008178349dcab42a9",
+    "fuzz/.gitignore": "a24ed50fc1f28dcafa5d4f9eac712faf4b1ffd7910177f5ce30289197a7a2484",
+    "ci/jobs/fuzz.sh": "cc7f73a0bb7e4c258db9d8514e8499b99e86e499dc36ad2c2825a3320d38b546"
+  }
+}
