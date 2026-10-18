@@ -2,21 +2,25 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded service reads from an immutable configured genesis map, using GP 0.8.0 state namespaces.
-## Exposes serviceData, serviceValue and servicePreimage with guarded read results. Missing entries
-## carry no value; successful StateValue views retain the snapshot and copy bytes only on extraction.
+## Exposes serviceData, serviceValue, servicePreimage and serviceRequest with guarded read results.
+## Missing entries carry no value; StateValue views retain the snapshot and copy bytes on extraction.
+## Successful request lookups return independent fixed histories with no retained borrows.
 
 import ./genesis
 import ../state/store
-import ../codec/[state_layout, state_accounts, state_service_values, bounded]
+import ../codec/[state_layout, state_accounts, state_service_values, state_requests, bounded]
 import ../crypto/primitives
 export ServiceIndex, ServicePreimageHash, StateValue, byteLength, bytes, ByteLimit
+
+export RequestHistory, RequestLength, RequestState, state, since, availableFrom, unavailableFrom,
+  originalFrom, removedAt, restoredAt
 
 const MaxServiceKeyBytes* = 4096 ## Bound raw storage-key hashing independently of JSON input limits.
 
 type
   ## Missing data is distinct from a malformed account, resource limit or native hash failure.
   ServiceReadError* {.pure.} = enum
-    Uninitialized, None, Missing, Malformed, LimitExceeded, BackendFailure
+    Uninitialized, None, Missing, Malformed, LimitExceeded, BackendFailure, AmbiguousNamespace
   ## Only complete success contains an owner-bound immutable value view.
   ServiceReadResult* = object
     case status: ServiceReadError
@@ -24,6 +28,20 @@ type
       completed: StateValue
     else:
       discard # A missing or failed lookup cannot masquerade as a present empty blob.
+
+  ## Request histories contain only fixed copied timestamps; absence is never a default empty history.
+  ServiceRequestResult* = object
+    case status: ServiceReadError
+    of None:
+      completed: RequestHistory
+    else:
+      discard # Failure/absence carries no history payload.
+
+## Inspect request lookup status without permitting result retagging.
+func error*(value: ServiceRequestResult): ServiceReadError = value.status
+## Return a fixed independent history only after successful lookup and complete decoding.
+func value*(value: ServiceRequestResult): RequestHistory {.requires: value.status ==
+    ServiceReadError.None.} = value.completed
 
 ## Inspect the read reason without granting mutation or access to a failed payload.
 func error*(value: ServiceReadResult): ServiceReadError = value.status
@@ -85,3 +103,31 @@ proc servicePreimage*(view: Genesis, service: ServiceIndex, hash: ServicePreimag
   if array[32, byte](hashed.value) != array[32, byte](hash):
     return ServiceReadResult(status: ServiceReadError.Malformed) # Imported opaque maps may contain inconsistent preimages.
   found
+
+## Read a fixed request history from the maintained full-E4 request namespace, without length-sized allocation.
+## GP 0.8.0 marker lengths remain valid inputs, but present colliding keys cannot be classified safely.
+proc serviceRequest*(view: Genesis, service: ServiceIndex, hash: ServicePreimageHash,
+    length: RequestLength): ServiceRequestResult =
+  let account = serviceData(view, service, ByteLimit(ServiceMetadataBytes))
+  if account.error != ServiceReadError.None:
+    return ServiceRequestResult(status: account.error) # An absent account cannot supply request state.
+  let derived = serviceRequestKey(service, hash, length, ByteLimit(32))
+  if derived.error != RequestError.None:
+    return ServiceRequestResult(status: ServiceReadError.BackendFailure) # Hashing failure is not absence.
+  let found = view.lookup(derived.value)
+  if found.error == StateStoreError.MissingKey:
+    return ServiceRequestResult(status: ServiceReadError.Missing) # Even colliding namespaces can prove a key absent.
+  if found.error != StateStoreError.None:
+    return ServiceRequestResult(status: ServiceReadError.BackendFailure) # Never publish an invalid owner.
+  if uint32(length) >= high(uint32) - 1:
+    return ServiceRequestResult(status: ServiceReadError.AmbiguousNamespace) # Present bytes may be storage/preimage data.
+  if found.value.byteLength > 13:
+    return ServiceRequestResult(status: ServiceReadError.Malformed) # At most a count plus three E4 slots, before copying.
+  let wire = found.value.bytes
+  let decoded = decodeRequestHistory(wire, RequestHistoryConfig(items: ElementLimit(3),
+      maxBytes: ByteLimit(13)))
+  if decoded.error != RequestError.None:
+    return ServiceRequestResult(status: ServiceReadError.Malformed) # Reject bad counts, truncated slots and noncanonical counts.
+  if decoded.value.consumed != wire.len:
+    return ServiceRequestResult(status: ServiceReadError.Malformed) # A valid prefix cannot hide trailing bytes.
+  ServiceRequestResult(status: ServiceReadError.None, completed: decoded.value.history)
