@@ -9,6 +9,8 @@
 
 import std/[assertions, syncio, base64]
 import ../../../src/chain/[services, statistics, beefy, reports]
+from ../../../src/codec/state_trie import StateEntry
+from ../../../src/codec/state_layout import chapterKey, StateChapter
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
 
@@ -986,5 +988,104 @@ assert respond(rootRequest, pinnedInfo) == pinnedAnswer
 assert "\"code\":1" in respond(rootRequest, changingInfo)
 assert respond("[" & rootRequest & "," & rootRequest & "]", pinnedInfo) ==
   "[" & pinnedAnswer & "," & pinnedAnswer & "]"
+
+## Capture a synthetic linked header and posterior roster/time map; signatures/execution are not asserted.
+proc childSnapshot(parent: BlockSnapshot, atSlot: uint32, settings: Parameters,
+    badParent = false, badRoot = false): BlockSnapshotResult =
+  var wire = newSeq[byte](297)
+  let identity = array[32, byte](parent.blockHash)
+  let root = array[32, byte](parent.stateRoot)
+  for index in 0..<32:
+    wire[index] = identity[index] # Full sealed-parent hash is part of the child header.
+    wire[32 + index] = root[index] # Header prior root is the parent's posterior commitment.
+  if badParent:
+    wire[0] = wire[0] xor 1 # A structurally valid but unlinked parent must be rejected by the provider.
+  if badRoot:
+    wire[32] = wire[32] xor 1 # Root mismatch is independent of parent identity.
+  var clock = newSeq[byte](4)
+  for index in 0..<4:
+    clock[index] = byte((atSlot shr (8 * index)) and 255) # Encode the same E4 slot in header and C(11).
+    wire[96 + index] = clock[index]
+  var roster = newSeq[byte](2017)
+  roster[0] = 6 # Six fixed 336-byte validator records, structurally valid for the configured cores.
+  let entries = [StateEntry(key: chapterKey(StateChapter(8)), value: roster),
+    StateEntry(key: chapterKey(StateChapter(11)), value: clock)]
+  captureBlockSnapshot(wire, entries, settings)
+
+let historySeed = genesisView(capturedGenesis)
+let historyChild = childSnapshot(capturedGenesis.value, 9, genesisParameters.value)
+assert historyChild.error == GenesisError.None
+let advanced = historySeed.advanceView(historyChild)
+assert advanced.error == ViewAdvanceError.None
+let twoBlocks = advanced.value
+assert twoBlocks.retainedCount == 2
+assert historySeed.retainedCount == 1
+assert twoBlocks.bestBlock.value.slot == 9 # Slot gaps are accepted.
+assert twoBlocks.parentOf(historyChild.value.blockHash).value.slot == 7
+assert twoBlocks.blockAt(selectedHash).value.slot == 7
+let historicalInfo = ClientInfo(parameters: genesisParameters, chain: twoBlocks)
+let childHashText = base64.encode(array[32, byte](historyChild.value.blockHash))
+let childRootText = base64.encode(array[32, byte](historyChild.value.stateRoot))
+assert respond(bestRequest, historicalInfo) == respond(bestRequest, withGenesis).replace(
+  genesisHash, childHashText).replace("\"slot\":7", "\"slot\":9")
+assert respond(rootRequest, historicalInfo) == respond(rootRequest, withGenesis)
+assert respond(rootRequest.replace(genesisHash, childHashText), historicalInfo) ==
+  "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"" & childRootText & "\"}"
+assert respond(rootRequest.replace("stateRoot", "parent").replace(genesisHash, childHashText),
+  historicalInfo) == respond(bestRequest, withGenesis)
+assert respond(headerCall, historicalInfo) == headerAnswer
+assert respond(rawCall, historicalInfo) == rawAnswer
+assert respond(rawCall.replace(genesisHash, childHashText), historicalInfo) ==
+  rawAnswer.replace("BwAAAA==", "CQAAAA==")
+assert respond(rootRequest.replace(genesisHash, childHashText).replace(
+  ",\"id\":1", ""), historicalInfo) == ""
+
+# Every rejected append leaves the source view intact and exposes only its failure reason.
+let noAdvance = default(ViewAdvanceResult)
+assert noAdvance.error == ViewAdvanceError.Uninitialized
+assert emptyChain.advanceView(historyChild).error == ViewAdvanceError.Uninitialized
+assert historySeed.advanceView(invalidGenesis()).error == ViewAdvanceError.InvalidSnapshot
+assert historySeed.advanceView(capturedGenesis).error == ViewAdvanceError.Duplicate
+assert historySeed.advanceView(childSnapshot(capturedGenesis.value, 9, genesisParameters.value,
+  badParent = true)).error == ViewAdvanceError.NotChild
+assert historySeed.advanceView(childSnapshot(capturedGenesis.value, 7,
+  genesisParameters.value)).error == ViewAdvanceError.SlotNotIncreasing
+assert historySeed.advanceView(childSnapshot(capturedGenesis.value, 6,
+  genesisParameters.value)).error == ViewAdvanceError.SlotNotIncreasing
+assert historySeed.advanceView(childSnapshot(capturedGenesis.value, 9, genesisParameters.value,
+  badRoot = true)).error == ViewAdvanceError.StateMismatch
+var changedTuple = ParameterHex
+changedTuple[0] = 'e' # Change a deposit field, proving validation checks more than cores and epoch.
+let changedSettings = decodeParametersHex(changedTuple)
+assert changedSettings.ok
+assert historySeed.advanceView(childSnapshot(capturedGenesis.value, 9,
+  changedSettings.value)).error == ViewAdvanceError.ParametersMismatch
+assert historySeed.retainedCount == 1
+
+# New views evict exactly the oldest snapshot; previous views and extracted results stay readable.
+var rolling = historySeed
+let heldGenesis = rolling.blockAt(selectedHash)
+var firstChild = unavailableGenesis()
+for atSlot in 8'u32..15'u32:
+  let child = childSnapshot(rolling.bestBlock.value, atSlot, genesisParameters.value)
+  assert child.error == GenesisError.None
+  if atSlot == 8:
+    firstChild = child # Keep the oldest retained child to test its now-evicted parent.
+  let update = rolling.advanceView(child)
+  assert update.error == ViewAdvanceError.None
+  rolling = update.value
+  assert rolling.retainedCount == min(int(atSlot) - 6, MaxRetainedBlocks)
+assert rolling.retainedCount == 8
+assert rolling.bestBlock.value.slot == 15
+assert rolling.blockAt(selectedHash).error == GenesisError.Unavailable
+assert rolling.parentOf(firstChild.value.blockHash).error == GenesisError.Unavailable
+assert rolling.parentOf(rolling.bestBlock.value.blockHash).value.slot == 14
+assert heldGenesis.value.slot == 7
+assert historySeed.bestBlock.value.slot == 7
+let rollingInfo = ClientInfo(parameters: genesisParameters, chain: rolling)
+assert "\"code\":1" in respond(rootRequest, rollingInfo)
+assert respond(rootRequest, historicalInfo) == respond(rootRequest, withGenesis)
+assert respond("[" & rootRequest & "," & rootRequest & "]", historicalInfo) ==
+  "[" & respond(rootRequest, withGenesis) & "," & respond(rootRequest, withGenesis) & "]"
 
 echo "rpc ok"

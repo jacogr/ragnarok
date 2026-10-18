@@ -22,10 +22,16 @@ also owns a bounded sorted serialized-key index for binary-search pagination; ke
 fixed copies without exporting state-map storage. It retains sorted IDs from exact valid account entries for bounded `listServices` responses. RPC and telemetry share the same startup file snapshot. See [RPC scope](../../spec/rpc.md).
 
 `src/chain/provider.nim` owns the immutable `ChainView` boundary for best-block selection,
-exact hash/parent lookup and bounded retained-report lookup. The current adapter wraps the
-existing validated genesis snapshot; result payloads retain their own ARC lifetime. RPC receives
+exact hash/parent lookup and bounded retained-report lookup. The startup adapter seeds the
+view with configured genesis; `advanceView` creates a new history of at most eight direct-child
+snapshots after parent-hash, slot, prior-root and full parameter-tuple checks. Result payloads
+retain their own ARC lifetime. RPC receives
 one copied view per dispatcher tick, shared by that tick’s request contexts and batch members.
 Replacing a separate view handle cannot alter an existing context. JSON/Base64 handling remains
 in RPC; typed hashes cross the provider boundary. Startup configuration and wire behavior are
-unchanged. Future block-import integration belongs behind this boundary; this adapter adds no
-history, mutable provider, finality, callbacks or update events.
+unchanged. `BlockSnapshot` generalizes the existing owner while preserving the `Genesis` aliases
+and startup capture wrapper. Each successful append uses a fresh private sequence and evicts the
+oldest snapshot when full; existing readers continue to own their previous snapshots. Retention
+is bounded per view, not across arbitrarily many caller-held views. Future validated block-import
+integration belongs behind this boundary; no live importer, fork choice, finality or update events
+are provided here. Retained-report lookup still searches only the selected head.
