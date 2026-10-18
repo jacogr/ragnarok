@@ -4,6 +4,9 @@
 [guarantor assignment foundation](guarantor-assignments.md). It consumes a stable borrowed batch
 of guarantees and completed posterior active/previous rosters, entropy, slot and canonical offender
 set. It creates an immutable `VerifiedGuaranteeCredentials` owner only after the whole batch passes.
+The certificate also retains candidate time and current active population, including empty batches,
+through its copied `verifiedGuaranteeContext` accessor. Assignment planning derives these values
+from that exact verification rather than accepting another loose clock/population projection.
 The existing block coordinator still ends after availability; this module does not publish C(10).
 
 ## Normative checks
@@ -85,5 +88,6 @@ pinned nightly, ARC and checked Clang LTO. Generated source evidence and fixture
 
 [Authorization-pool and service/code-hash/gas policy](report-policy.md) is implemented separately.
 [Recent/lookup anchors](report-anchors.md) are also implemented separately.
-Next cover package/dependency/segment-root context and post-assurance capacity before atomic new C(10)
-assignment and integration into the block coordinator. Accumulation/PVM execution remains later work.
+[Package/dependency checks](report-packages.md) are now separate stages.
+[Post-assurance capacity and assignment planning](report-assignments.md) are also implemented.
+Next bind the report stages, publish C(10) atomically and integrate into the block coordinator. Accumulation/PVM execution remains later work.

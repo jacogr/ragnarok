@@ -115,6 +115,24 @@ def unit_report_anchors_fixture(folder):
     return {'report_anchors': fixture}, evidence
 
 
+# Preserve the STF's summarized known set without manufacturing omitted pipeline chapters.
+def unit_report_packages_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from report_package_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_REPORT_PACKAGES', path, ((path, evidence['fixture_sha256']),))
+    return {'report_packages': fixture}, evidence
+
+
+# Transport exact original report STF C(10) inputs and expected assignment candidates.
+def unit_report_assignments_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from report_assignment_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_REPORT_ASSIGNMENTS', path, ((path, evidence['fixture_sha256']),))
+    return {'report_assignments': fixture}, evidence
+
+
 # Keep the historical preparation order and nested report schema for existing evidence consumers.
 def unit_sealer_fixture(folder):
     fixtures, evidence = unit_schedule_fixture(folder)
@@ -140,6 +158,12 @@ def unit_sealer_fixture(folder):
     fixtures.update(policy_fixtures)
     anchor_fixtures, anchor_evidence = unit_report_anchors_fixture(folder)
     fixtures.update(anchor_fixtures)
+    package_fixtures, package_evidence = unit_report_packages_fixture(folder)
+    fixtures.update(package_fixtures)
+    assignment_fixtures, assignment_evidence = unit_report_assignments_fixture(folder)
+    fixtures.update(assignment_fixtures)
+    evidence['report_assignments'] = assignment_evidence
+    evidence['report_packages'] = package_evidence
     evidence['report_anchors'] = anchor_evidence
     evidence['report_policy'] = policy_evidence
     evidence['guarantee_credentials'] = credential_evidence

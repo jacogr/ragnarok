@@ -55,5 +55,7 @@ pinned Nimony, ARC and checked Clang LTO. Fixture evidence and logs remain under
 ## Next bounded work
 
 [Recent-history and lookup-anchor validation](report-anchors.md) is implemented as separate
-read-only stages. Next validate package uniqueness/dependencies and segment-root mappings. Post-assurance core capacity and atomic C(10) assignment follow before
-integration into the block coordinator. Accumulation/PVM execution remains later work.
+read-only stages. [Package/dependency checks](report-packages.md) are also implemented separately.
+[Post-assurance core capacity and assignment planning](report-assignments.md) are also implemented.
+Binding and atomic C(10) publication through the block coordinator remain next. Accumulation/PVM
+execution remains later work.

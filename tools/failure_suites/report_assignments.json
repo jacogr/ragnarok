@@ -1,0 +1,11 @@
+{
+  "source": "tests/native/report_assignment_results.nim",
+  "build_name": "report-assignment-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "report-assignments-default", "diagnostic": "outcome.status == None", "description": "Assignment default extraction guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "report-assignments-error", "diagnostic": "outcome.status == None", "description": "Assignment refused extraction guard", "identity": {"origin": "error"}},
+    {"arguments": ["context"], "name": "report-assignments-context", "diagnostic": "outcome.status == None", "description": "Missing captured credential context guard", "identity": {"origin": "context"}}
+  ]
+}
