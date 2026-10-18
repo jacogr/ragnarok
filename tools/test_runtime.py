@@ -157,6 +157,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # PVM scalar success and page-fault reason access require their exact selected alternatives.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_machine')
     run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
+    run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.

@@ -75,6 +75,6 @@ ARC and checked Clang LTO. Generated source evidence, fixtures and logs stay und
 
 ## Next bounded work
 
-Check post-assurance core vacancy and plan new C(10) assignments with candidate registration time.
-Then bind the completed report stages to one admitted block and integrate atomic publication into
-the block coordinator. Accumulation/PVM execution remains later work.
+[Post-assurance vacancy and new C(10) planning](report-assignments.md) are implemented separately,
+using captured credential time/population. Next bind the completed report stages to one admitted
+block and integrate atomic publication into the block coordinator. Accumulation/PVM execution remains later work.
