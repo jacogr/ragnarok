@@ -8,12 +8,11 @@ import ../telemetry/options
 proc main(): int =
   try:
     if not validTelemetryOption(): return 2 # Malformed optional syntax must not become a fixture attack mode.
-    # Telemetry is currently supported only by the single-endpoint proof-peer commands.
-    if requested() and (peerParamCount() notin [7, 8] or paramStr(1) notin ["server",
-        "client"]): return 2
+    # Only network commands accept telemetry; each command validates its own positional shape.
+    if requested() and (peerParamCount() < 1 or paramStr(1) notin ["server", "client",
+        "mesh"]): return 2
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if peerParamCount() >= 1 and paramStr(1) == "mesh":
-      if requested(): return 2 # Retained dual-engine telemetry is a separate integration increment.
       let baseline = getOccupiedMem()
       if not runMesh(): return 2 # Both engines and their borrowed dispatcher registrations have already retired.
       let retained = getOccupiedMem()

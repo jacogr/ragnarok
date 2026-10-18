@@ -935,6 +935,16 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
             passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
             report['sealer_state'].append(dict(origin=origin, passed=passed, run=result))
             announce('sealer state '+origin+' runtime guard', passed)
+    # Default and actually refused schedule results must not expose candidate payloads.
+    compiled, binary = build(compiler, ROOT/'tests/native/safrole_markers_results.nim', 'safrole-markers-results', crypto_library)
+    report['safrole_markers_build'] = compiled
+    if compiled['exit_code'] == 0:
+        for origin in ('default', 'error'):
+            # Require the supported extraction contract, not a selector failure or unrelated crash.
+            result = command([binary, origin], 'safrole-markers-'+origin)
+            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
+            report['safrole_markers'].append(dict(origin=origin, passed=passed, run=result))
+            announce('Safrole markers '+origin+' runtime guard', passed)
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
     report['assurance_context_build'] = compiled
@@ -1556,7 +1566,7 @@ def main():
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
-    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/sealer_schedule_fixtures.py', ROOT/'tests/native/sealer_schedule_results.nim', ROOT/'tests/native/sealer_state_results.nim', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
+    sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/sealer_schedule_fixtures.py', ROOT/'tests/safrole_marker_fixtures.py', ROOT/'tests/native/safrole_markers_results.nim', ROOT/'tests/native/sealer_schedule_results.nim', ROOT/'tests/native/sealer_state_results.nim', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
     # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
     sys.path.insert(0, str(ROOT/'tests'))
     from test_bandersnatch import fixture_path

@@ -99,6 +99,7 @@ two isolated runtime extraction probes protect publication results.
 
 ## Next bounded work
 
-Schedule selection and atomic C(4) working-store publication complete this PR's scope. Next is
-header epoch/winner marker validation in a separate PR. Seal authentication and whole-block
-execution remain later increments; retain the parent contest for marker selection as well.
+Schedule selection and atomic C(4) working-store publication complete this PR's scope. The next
+[header epoch/winner marker increment](safrole-markers.md) now implements state-derived markers
+and read-only contextual validation. Seal authentication and whole-block execution remain later
+increments; retain the parent contest through all of these stages.

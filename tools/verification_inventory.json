@@ -41,6 +41,8 @@
     "ticket_state",
     "sealer_schedule",
     "sealer_state",
+    "safrole_markers",
+    "marker_state",
     "state_safrole",
     "state_authorization",
     "state_authorization_private",
@@ -79,6 +81,10 @@
     "quic_integration_disabled"
   ],
   "PRIVATE": {
+    "safrole_marker_private": "completed",
+    "safrole_marker_retag": "status",
+    "safrole_epoch_private": "epochValue",
+    "safrole_winners_private": "winnersValue",
     "sealer_state_private": "completed",
     "sealer_state_retag": "status",
     "sealer_schedule_private": "completed",
@@ -1563,6 +1569,7 @@
     "sequence-consumed"
   ],
   "FAILURE_COUNTS": {
+    "safrole_markers": 2,
     "sealer_schedule": 2,
     "sealer_state": 2,
     "ticket_state": 2,
@@ -1657,6 +1664,7 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "safrole_markers": "safrole_markers_arc_release",
     "sealer_state": "sealer_state_arc_release",
     "sealer_schedule": "sealer_schedule_arc_release",
     "ticket_state": "ticket_state_arc_release",
@@ -1698,6 +1706,8 @@
     "quic_integration": "integration_arc_release"
   },
   "UNIT_LINKS": {
+    "marker_state": "observer",
+    "safrole_markers": "crypto",
     "sealer_state": "observer",
     "sealer_schedule": "observer",
     "ticket_state": "observer",

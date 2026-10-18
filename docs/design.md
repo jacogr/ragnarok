@@ -46,7 +46,11 @@ from separate parent/staged C(4), posterior active keys and entropy, covering ou
 and fallback generation. `src/state/sealer_state.nim` retains the parent snapshot and atomically
 publishes only C(4) after checking staged C(4)/C(6)/C(8)/C(11). The
 [schedule contract](../spec/sealer-schedule.md) defines this substep's rollback boundary; header
-markers and complete block execution remain open.
+marker derivation/comparison now lives in `src/state/safrole_markers.nim`. It binds parent
+entropy/contest and posterior pending keys to immutable expected header fields. See
+[the marker contract](../spec/safrole-markers.md). `src/state/marker_state.nim` checks decoded
+unsigned headers against retained parent and staged snapshots without writes or hashing. Entropy-VRF,
+seal authentication and complete block execution remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
@@ -63,7 +67,8 @@ events, incoming handshake lifecycles and observed incoming/outgoing disconnecti
 borrow a fixed 64-slot correlation table and exporter through engine teardown; saturation only
 loses observations. A separate 16-slot admitted-peer table retains copied identities until an
 observed close; engine destruction does not fabricate disconnections. The exporter owns one nonblocking TCP socket
-and a fixed send buffer, with no additional threads.
+and a fixed send buffer, with no additional threads. Retained mesh role engines share one exporter
+and event-ID sequence; status counts their single pinned remote peer once across duplicate connections.
 An explicit JIP-4 file supplies network metadata; it does not initialize chain execution.
 See [telemetry scope and limits](../spec/telemetry.md).
 

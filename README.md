@@ -61,7 +61,7 @@ Generated builds, fixture keys and logs stay under ignored
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 
-For all 77 native application suites, use `make unit`. This prepares
+For all 79 native application suites, use `make unit`. This prepares
 the pinned crypto/QUIC libraries and generated fixtures. See
 [native test migration](docs/testing.md) for coverage and retained Python responsibilities.
 
@@ -87,7 +87,7 @@ ownership, reproduction commands and outstanding protocol/security gates.
 
 ## Telemetry
 
-The proof peer supports an opt-in JIP-3 telemetry subset: append `--telemetry HOST:PORT` and
+The proof peer (`server`, `client` and retained `mesh`) supports an opt-in JIP-3 telemetry subset: append `--telemetry HOST:PORT` and
 `--chain PATH` with an explicit JIP-4 chain file. It reports local node information and
 periodic peer/status observations, incoming/outgoing handshake outcomes and observed disconnections,
 with bounded nonblocking TCP delivery and reconnects.
