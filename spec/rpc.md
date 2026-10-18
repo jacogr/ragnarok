@@ -32,7 +32,7 @@ Send a WebSocket text message:
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
 unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
-remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics, service-data and service-value subscriptions
+remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics, service-data, service-value and service-preimage subscriptions
 are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -614,7 +614,7 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Best-block, best-chain statistics, service-data and service-value methods are enabled; finalized and other service
+Best-block, best-chain statistics, service-data, service-value and service-preimage methods are enabled; finalized and other service
 subscriptions remain unavailable.
 `ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
 The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
@@ -749,7 +749,7 @@ notification-form calls, sequential batches, terminal-error isolation and ARC re
 socket tests publish account creation, balance change, removal and malformed metadata while keeping
 the same connection alive. Live process tests check present and absent accounts, unavailable chains,
 finalized refusal and cancellation. Importer integration, finalized tracking and subscriptions for
-preimages and request histories remain separate bounded increments.
+request histories remain a separate bounded increment.
 
 
 ## Best-chain service-value subscriptions
@@ -792,5 +792,32 @@ refusal, malformed accounts, wrong-family cancellation, batches and notification
 checks retire eight maximum-sized keys. Connected socket tests publish binary value creation, empty
 value replacement, deletion, orphaned storage and an oversized value; only the latter terminates
 the subscription, and the connection survives. Live process tests check present/missing values,
-finalized refusal and cancellation. Importer integration, finalized tracking, service-preimage and
-service-request subscriptions remain outstanding.
+finalized refusal and cancellation. Importer integration, finalized tracking, service-request subscriptions remain outstanding.
+
+
+## Best-chain service-preimage subscriptions
+
+`subscribeServicePreimage(id, hash, false)` and `unsubscribeServicePreimage(subscription)` implement
+pinned JIP-2 Methods / subscribeServicePreimage. The three required arguments are an exact uint32
+service ID, a canonical padded Base64 hash of exactly 32 bytes, and a Boolean. Invalid argument
+shapes, hash widths/encodings and service IDs return `-32602` without consuming an ID. Finalized
+tracking (`true`) returns error 0; the stateless adapter remains query-only.
+
+Each selector retains a fixed nominal `ServicePreimageHash`, with no decoded key or snapshot owner.
+The initial notification and every published best head carry the usual Chain Subscription Update
+under method `subscribeServicePreimage`. A missing account or preimage produces `value: null`;
+a valid empty preimage produces `value: ""`. Reads reuse `servicePreimage` account validation,
+namespace derivation, the 32 KiB raw-value ceiling and Blake2b-256 verification. Corrupt bytes cannot
+be exposed as a successful preimage or misreported as absence. Oversized values are rejected before
+copying/hashing. A later read failure emits one terminal error and removes only its subscription.
+
+The existing eight subscription slots, sixteen pending updates, 65,535 pending serialized bytes,
+monotonic IDs and family-specific cancellation apply unchanged. At most eight bounded preimage
+reads/hashes occur per connection per publication. No old state owner survives in a selector.
+
+Native coverage checks valid/empty/missing values, canonical hash and ID rejection, wrong-family
+cancellation, independent selectors, 32 KiB value/queue boundaries, batches and notification-form calls. Connected socket coverage
+publishes a valid preimage, deletes it and supplies corrupt bytes; the connection survives the
+terminal error. Live process checks cover configured and unavailable chains and cancellation.
+Finality, live importer integration and service-request subscriptions remain outstanding; request
+subscriptions are the next bounded increment.
