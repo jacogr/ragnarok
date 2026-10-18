@@ -1,0 +1,19 @@
+{
+  "source": "tests/native/safrole_transition_results.nim",
+  "build_name": "safrole-transition-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {"arguments": ["default"], "name": "safrole-transition-default", "diagnostic": "outcome.status == None", "description": "Safrole transition default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "safrole-transition-error", "diagnostic": "outcome.status == None", "description": "Safrole transition error runtime guard", "identity": {"origin": "error"}},
+    {"arguments": ["rotation"], "name": "safrole-transition-rotation", "diagnostic": "outcome.status == RotationFailure", "description": "Safrole transition rotation runtime guard", "identity": {"origin": "rotation"}},
+    {"arguments": ["admission"], "name": "safrole-transition-admission", "diagnostic": "outcome.status == AdmissionFailure", "description": "Safrole transition admission runtime guard", "identity": {"origin": "admission"}},
+    {"arguments": ["schedule"], "name": "safrole-transition-schedule", "diagnostic": "outcome.status == ScheduleFailure", "description": "Safrole transition schedule runtime guard", "identity": {"origin": "schedule"}},
+    {"arguments": ["marker"], "name": "safrole-transition-marker", "diagnostic": "outcome.status == MarkerFailure", "description": "Safrole transition marker runtime guard", "identity": {"origin": "marker"}},
+    {"arguments": ["authentication"], "name": "safrole-transition-authentication", "diagnostic": "outcome.status == AuthenticationFailure", "description": "Safrole transition authentication runtime guard", "identity": {"origin": "authentication"}},
+    {"arguments": ["entropy"], "name": "safrole-transition-entropy", "diagnostic": "outcome.status == EntropyFailure", "description": "Safrole transition entropy runtime guard", "identity": {"origin": "entropy"}},
+    {"arguments": ["publication"], "name": "safrole-transition-publication", "diagnostic": "outcome.status == PublicationFailure", "description": "Safrole transition publication runtime guard", "identity": {"origin": "publication"}}
+  ]
+}

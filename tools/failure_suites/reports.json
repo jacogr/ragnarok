@@ -1,0 +1,29 @@
+{
+  "source": "tests/native/nimony_report_results.nim",
+  "build_name": "report-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "name_template": "report-{origin}-{member}",
+  "description_template": "{origin} {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "report-value"}},
+    {"identity": {"origin": "default", "member": "report-consumed"}},
+    {"identity": {"origin": "default", "member": "header-value"}},
+    {"identity": {"origin": "default", "member": "owner-value"}},
+    {"identity": {"origin": "default", "member": "info-value"}},
+    {"identity": {"origin": "default", "member": "prerequisite-value"}},
+    {"identity": {"origin": "default", "member": "lookup-value"}},
+    {"identity": {"origin": "error", "member": "report-value"}},
+    {"identity": {"origin": "error", "member": "report-consumed"}},
+    {"identity": {"origin": "error", "member": "header-value"}},
+    {"identity": {"origin": "error", "member": "owner-value"}},
+    {"identity": {"origin": "error", "member": "info-value"}},
+    {"identity": {"origin": "error", "member": "prerequisite-value"}},
+    {"identity": {"origin": "error", "member": "lookup-value"}}
+  ]
+}

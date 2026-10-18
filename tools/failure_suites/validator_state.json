@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/validator_state_results.nim",
+  "build_name": "validator-state-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {"arguments": ["default"], "name": "validator-state-default", "diagnostic": "outcome.status == None", "description": "validator state default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "validator-state-error", "diagnostic": "outcome.status == None", "description": "validator state error runtime guard", "identity": {"origin": "error"}}
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "source": "tests/native/nimony_assurance_results.nim",
+  "build_name": "assurance-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "name_template": "assurance-{origin}-{member}",
+  "description_template": "{origin} assurance {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "written"}},
+    {"identity": {"origin": "default", "member": "count"}},
+    {"identity": {"origin": "default", "member": "consumed"}},
+    {"identity": {"origin": "default", "member": "inspect-count"}},
+    {"identity": {"origin": "default", "member": "inspect-consumed"}},
+    {"identity": {"origin": "error", "member": "written"}},
+    {"identity": {"origin": "error", "member": "count"}},
+    {"identity": {"origin": "error", "member": "consumed"}},
+    {"identity": {"origin": "error", "member": "inspect-count"}},
+    {"identity": {"origin": "error", "member": "inspect-consumed"}}
+  ]
+}

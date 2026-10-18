@@ -1,0 +1,20 @@
+{
+  "source": "tests/native/block_admission_results.nim",
+  "build_name": "block-admission-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {"arguments": ["admission-default", "default"], "name": "block-admission-admission-default", "diagnostic": "outcome.status == None", "description": "Block admission admission-default runtime guard", "identity": {"origin": "admission-default"}},
+    {"arguments": ["admission-error", "default"], "name": "block-admission-admission-error", "diagnostic": "outcome.status == None", "description": "Block admission admission-error runtime guard", "identity": {"origin": "admission-error"}},
+    {"arguments": ["composed-default", "default"], "name": "block-admission-composed-default", "diagnostic": "outcome.status == None", "description": "Block admission composed-default runtime guard", "identity": {"origin": "composed-default"}},
+    {"arguments": ["composed-error", "default"], "name": "block-admission-composed-error", "diagnostic": "outcome.status == None", "description": "Block admission composed-error runtime guard", "identity": {"origin": "composed-error"}},
+    {"arguments": ["admission-reason", "default"], "name": "block-admission-admission-reason", "diagnostic": "outcome.status == AdmissionFailure", "description": "Block admission admission-reason runtime guard", "identity": {"origin": "admission-reason"}},
+    {"arguments": ["safrole-reason", "default"], "name": "block-admission-safrole-reason", "diagnostic": "outcome.status == SafroleFailure", "description": "Block admission safrole-reason runtime guard", "identity": {"origin": "safrole-reason"}},
+    {"arguments": ["block", "default"], "name": "block-admission-block", "diagnostic": "binding.data", "description": "Block admission block runtime guard", "identity": {"origin": "block"}},
+    {"arguments": ["header", "default"], "name": "block-admission-header", "diagnostic": "binding.data", "description": "Block admission header runtime guard", "identity": {"origin": "header"}},
+    {"arguments": ["parent", "default"], "name": "block-admission-parent", "diagnostic": "binding.data", "description": "Block admission parent runtime guard", "identity": {"origin": "parent"}},
+    {"arguments": ["state", "default"], "name": "block-admission-state", "diagnostic": "binding.data", "description": "Block admission state runtime guard", "identity": {"origin": "state"}}
+  ]
+}

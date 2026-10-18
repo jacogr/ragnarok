@@ -1,0 +1,31 @@
+{
+  "source": "tests/native/nimony_accounts_results.nim",
+  "build_name": "accounts-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "name_template": "accounts-{origin}-{member}",
+  "description_template": "{origin} accounts {member} runtime guard",
+  "diagnostic": "parsed.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "entry-bytes"}},
+    {"identity": {"origin": "default", "member": "metadata"}},
+    {"identity": {"origin": "default", "member": "consumed"}},
+    {"identity": {"origin": "default", "member": "decode-policy"}},
+    {"identity": {"origin": "default", "member": "decode-framing"}},
+    {"identity": {"origin": "default", "member": "decode-version"}},
+    {"identity": {"origin": "default", "member": "decode-version-truncated"}},
+    {"identity": {"origin": "default", "member": "decode-tail"}},
+    {"identity": {"origin": "error", "member": "entry-bytes"}},
+    {"identity": {"origin": "error", "member": "metadata"}},
+    {"identity": {"origin": "error", "member": "consumed"}},
+    {"identity": {"origin": "error", "member": "decode-policy"}},
+    {"identity": {"origin": "error", "member": "decode-framing"}},
+    {"identity": {"origin": "error", "member": "decode-version"}},
+    {"identity": {"origin": "error", "member": "decode-version-truncated"}},
+    {"identity": {"origin": "error", "member": "decode-tail"}}
+  ]
+}

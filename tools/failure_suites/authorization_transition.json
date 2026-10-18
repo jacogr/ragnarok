@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/authorization_transition_results.nim",
+  "build_name": "authorization-transition-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["entry", "default"], "name": "authorization-transition-entry-default", "diagnostic": "outcome.status == None", "description": "authorization transition entry default runtime guard", "identity": {"member": "entry", "origin": "default"}},
+    {"arguments": ["entry", "error"], "name": "authorization-transition-entry-error", "diagnostic": "outcome.status == None", "description": "authorization transition entry error runtime guard", "identity": {"member": "entry", "origin": "error"}},
+    {"arguments": ["state", "default"], "name": "authorization-transition-state-default", "diagnostic": "outcome.status == None", "description": "authorization transition state default runtime guard", "identity": {"member": "state", "origin": "default"}},
+    {"arguments": ["state", "error"], "name": "authorization-transition-state-error", "diagnostic": "outcome.status == None", "description": "authorization transition state error runtime guard", "identity": {"member": "state", "origin": "error"}}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/validator_rotation_results.nim",
+  "build_name": "validator-rotation-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "validator-rotation-default", "diagnostic": "outcome.status == None", "description": "validator rotation default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "validator-rotation-error", "diagnostic": "outcome.status == None", "description": "validator rotation error runtime guard", "identity": {"origin": "error"}}
+  ]
+}

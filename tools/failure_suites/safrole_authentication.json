@@ -1,0 +1,13 @@
+{
+  "source": "tests/native/safrole_authentication_results.nim",
+  "build_name": "safrole-authentication-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {"arguments": ["default", "none"], "name": "safrole-authentication-default", "diagnostic": "outcome.status == None", "description": "Safrole authentication default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error", "none"], "name": "safrole-authentication-error", "diagnostic": "outcome.status == None", "description": "Safrole authentication error runtime guard", "identity": {"origin": "error"}},
+    {"arguments": ["forge", "none"], "name": "safrole-authentication-forge", "diagnostic": "not reason == None", "description": "Safrole authentication forge runtime guard", "identity": {"origin": "forge"}}
+  ]
+}

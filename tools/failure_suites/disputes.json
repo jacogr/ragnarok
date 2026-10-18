@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/nimony_dispute_results.nim",
+  "build_name": "dispute-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "name_template": "dispute-{origin}-{member}",
+  "description_template": "{origin} dispute {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "owner"}},
+    {"identity": {"origin": "default", "member": "decoded-info"}},
+    {"identity": {"origin": "default", "member": "info"}},
+    {"identity": {"origin": "default", "member": "verdict"}},
+    {"identity": {"origin": "default", "member": "verdict-judgments"}},
+    {"identity": {"origin": "default", "member": "judgment"}},
+    {"identity": {"origin": "default", "member": "culprit"}},
+    {"identity": {"origin": "default", "member": "fault"}},
+    {"identity": {"origin": "default", "member": "written"}},
+    {"identity": {"origin": "default", "member": "owned-written"}},
+    {"identity": {"origin": "default", "member": "inspect-verdicts"}},
+    {"identity": {"origin": "default", "member": "inspect-consumed"}},
+    {"identity": {"origin": "error", "member": "owner"}},
+    {"identity": {"origin": "error", "member": "decoded-info"}},
+    {"identity": {"origin": "error", "member": "info"}},
+    {"identity": {"origin": "error", "member": "verdict"}},
+    {"identity": {"origin": "error", "member": "verdict-judgments"}},
+    {"identity": {"origin": "error", "member": "judgment"}},
+    {"identity": {"origin": "error", "member": "culprit"}},
+    {"identity": {"origin": "error", "member": "fault"}},
+    {"identity": {"origin": "error", "member": "written"}},
+    {"identity": {"origin": "error", "member": "owned-written"}},
+    {"identity": {"origin": "error", "member": "inspect-verdicts"}},
+    {"identity": {"origin": "error", "member": "inspect-consumed"}},
+    {"diagnostic": "not reason == None", "identity": {"origin": "none", "member": "factory"}}
+  ]
+}

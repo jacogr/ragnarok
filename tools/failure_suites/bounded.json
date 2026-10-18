@@ -1,0 +1,27 @@
+{
+  "source": "tests/native/nimony_wrong_variant.nim",
+  "build_name": "bounded-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "name_template": "bounded-{origin}-{member}",
+  "description_template": "{origin} {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "offset"}},
+    {"identity": {"origin": "default", "member": "length"}},
+    {"identity": {"origin": "default", "member": "blob-consumed"}},
+    {"identity": {"origin": "default", "member": "written"}},
+    {"identity": {"origin": "default", "member": "count"}},
+    {"identity": {"origin": "default", "member": "sequence-consumed"}},
+    {"identity": {"origin": "error", "member": "offset"}},
+    {"identity": {"origin": "error", "member": "length"}},
+    {"identity": {"origin": "error", "member": "blob-consumed"}},
+    {"identity": {"origin": "error", "member": "written"}},
+    {"identity": {"origin": "error", "member": "count"}},
+    {"identity": {"origin": "error", "member": "sequence-consumed"}}
+  ]
+}

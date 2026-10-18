@@ -1,0 +1,24 @@
+{
+  "source": "tests/native/nimony_quic_protocol_results.nim",
+  "build_name": "quic-protocol-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "quic_library": "quic",
+  "name_template": "quic-protocol-{member}-{origin}",
+  "description_template": "QUIC {origin} {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"member": "length", "origin": "default"}},
+    {"identity": {"member": "length", "origin": "error"}},
+    {"identity": {"member": "size", "origin": "default"}},
+    {"identity": {"member": "size", "origin": "error"}},
+    {"identity": {"member": "size", "origin": "pending"}},
+    {"identity": {"member": "extent", "origin": "default"}},
+    {"identity": {"member": "extent", "origin": "error"}},
+    {"identity": {"member": "extent", "origin": "pending"}}
+  ]
+}

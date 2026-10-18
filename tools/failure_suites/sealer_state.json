@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/sealer_state_results.nim",
+  "build_name": "sealer-state-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "sealer-state-default", "diagnostic": "outcome.status == None", "description": "sealer state default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "sealer-state-error", "diagnostic": "outcome.status == None", "description": "sealer state error runtime guard", "identity": {"origin": "error"}}
+  ]
+}

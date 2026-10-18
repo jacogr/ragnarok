@@ -13,14 +13,14 @@ export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(ope
 export COMPILE_CHECK_JOBS ?= 4
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
-.PHONY: build setup sources host-tools toolchain rust-tools clean check test check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
 	$(PYTHON) tools/build.py
 
 # Every native build/test target owns its source and pinned Rust/Cargo preparation.
-setup: toolchain sources rust-tools
+setup: check-inventory toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
 
 # Formatting needs pinned Rust/rustfmt, but no dependency downloads or native library builds.
@@ -60,7 +60,7 @@ test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
-check-modules: toolchain
+check-modules: check-inventory toolchain
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
 check-unit: setup format-check
@@ -74,8 +74,12 @@ check-failures: setup
 check-guards: setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_guards.py --compiler "$$NIMONY" 2>&1 | tee build/ci/guards.log
 
+# Inventory validation runs before provisioning and is independently usable on a fresh checkout.
+check-inventory:
+	$(PYTHON) tools/check_inventory.py
+
 # Independent Python discovery and long-running networking are selectable without the other workloads.
-check-python: sources
+check-python: check-inventory sources
 	$(PYTHON) tools/test_python.py 2>&1 | tee build/ci/python.log
 check-e2e: setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
@@ -122,6 +126,7 @@ help:
 	  'make check / test  Provision dependencies and run complete verification' \
 	  'make unit          Run Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
 	  'make check-modules Check every production module' \
+	  'make check-inventory  Validate local registries without native setup' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
 	  'make check-unit    Run native suites and independent corpora' \
 	  'make check-failures Run runtime contract/crash probes and positive controls' \

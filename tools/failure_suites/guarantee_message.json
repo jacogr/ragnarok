@@ -1,0 +1,19 @@
+{
+  "source": "tests/native/nimony_guarantee_message_results.nim",
+  "build_name": "guarantee-message-results",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "name_template": "guarantee-message-{origin}-{member}",
+  "description_template": "{origin} guarantee message {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "empty"}},
+    {"identity": {"origin": "default", "member": "bytes"}},
+    {"identity": {"origin": "error", "member": "empty"}},
+    {"identity": {"origin": "error", "member": "bytes"}}
+  ]
+}
