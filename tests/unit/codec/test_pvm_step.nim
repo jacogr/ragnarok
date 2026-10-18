@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native tests replay charged execution traces and check out-of-gas ordering and ARC lifetimes.
-## The executable reads RAGNAROK_PVM_STEP, tests stepRegisters/stepControl and records pvm_step ARC evidence.
+## The executable reads RAGNAROK_PVM_STEP, tests all stepping entry points and records pvm_step ARC evidence.
 
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, machine, registers, gas, step]
@@ -118,6 +118,12 @@ for row in 0..<count:
       let broad = stepControl(prior, GasCycleLimit(if index == 0 and mode != 2: cycles else: 0))
       assert broad.error == StepError.None and broad.value.exit == StepExit.Continued
       same(machineInfo(broad.value.machine).value, expected)
+      # Memory-capable stepping must preserve the same independent register-only expectations.
+      let memoryCapable = stepMemory(prior, GasCycleLimit(if index == 0 and mode !=
+          2: cycles else: 0))
+      assert memoryCapable.error == StepError.None and memoryCapable.value.exit ==
+          StepExit.Continued
+      same(machineInfo(memoryCapable.value.machine).value, expected)
       same(machineInfo(prior).value, priorInfo)
       assert uint64(load(memoryOf(current).value, MemoryAddress(65536), AccessWidth(1)).value) == 165
     # Trap is deliberately outside this bounded executor, never a fabricated terminal outcome.
@@ -230,6 +236,10 @@ proc controlCase(owner: Program, entry: uint64, registers: RegisterFile,
       # The existing independent gas suite owns exact pipeline pricing; this checks composition.
       expected.gas = MachineGas(10000 - uint64(price.value))
     same(machineInfo(answer.value.machine).value, expected)
+    # The broader memory capability preserves every existing control-flow outcome and snapshot.
+    let memoryCapable = stepMemory(source, GasCycleLimit(if prepaid: 0'u64 else: 1000'u64))
+    assert memoryCapable.error == StepError.None and memoryCapable.value.exit == expectedExit
+    same(machineInfo(memoryCapable.value.machine).value, expected)
     same(machineInfo(source).value, initial)
     assert uint64(load(memoryOf(answer.value.machine).value, MemoryAddress(65536),
         AccessWidth(1)).value) == 165
