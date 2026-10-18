@@ -168,6 +168,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_memory_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_execution')
+    # Initialization failures never expose a partially prepared machine.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_initialization')
     run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
     run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
     run_failure_suite(compiler, report, libraries, build, command, 'report_admission')
@@ -175,7 +177,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_queue')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_operands')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_inputs')
+    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_invocation')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_round')
+    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_service')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.

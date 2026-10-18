@@ -1,0 +1,96 @@
+{
+  "source": "tests/native/accumulation_invocation_results.nim",
+  "build_name": "accumulation-invocation-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-invocation-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "name": "accumulation-invocation-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "refused"
+      }
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "name": "accumulation-invocation-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "info"
+      }
+    },
+    {
+      "arguments": [
+        "service"
+      ],
+      "name": "accumulation-invocation-service",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "service"
+      }
+    },
+    {
+      "arguments": [
+        "arguments"
+      ],
+      "name": "accumulation-invocation-arguments",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "arguments"
+      }
+    },
+    {
+      "arguments": [
+        "projection"
+      ],
+      "name": "accumulation-invocation-projection",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "projection"
+      }
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "name": "accumulation-invocation-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "source"
+      }
+    },
+    {
+      "arguments": [
+        "index"
+      ],
+      "name": "accumulation-invocation-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation bootstrap selected-success guard",
+      "identity": {
+        "origin": "index"
+      }
+    }
+  ]
+}

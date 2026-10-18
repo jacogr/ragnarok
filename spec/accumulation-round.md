@@ -80,7 +80,8 @@ These tests verify planning and input preparation, not complete accumulation exe
 
 ## Next bounded work
 
-Bind prepared service invocations to the appropriate service-account execution context and implement
-the `accone` eligibility/lookup boundary. Coordinate actual execution with the PVM work separately.
-Later `accseq` rounds require genuine gas usage and newly deferred transfers; do not fabricate either
-from declared budgets. Execution-dependent C(12), C(14), C(15) and output publication remain open.
+[Service code contexts](accumulation-service.md) now bind one prepared service to account/code,
+retained inputs, admitted-parent state and the authenticated slot. The next bounded step constructs
+the initial execution context and invocation arguments with the PVM boundary. Later `accseq` rounds
+still require genuine gas usage and newly deferred transfers; execution-dependent publication remains
+open.
