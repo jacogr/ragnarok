@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "pvm_gas",
     "pvm_registers",
     "rpc",
     "pvm_machine",
@@ -107,6 +108,9 @@
     "accumulation_queue_bound_private": "data",
     "accumulation_queue_bound_result_private": "completed",
 
+    "pvm_gas_payload_private": "completed",
+    "pvm_gas_retag_private": "status",
+    "pvm_gas_error_readonly": "error",
     "pvm_register_payload_private": "completed",
     "pvm_register_retag_private": "status",
     "pvm_register_error_readonly": "error",
@@ -786,6 +790,8 @@
     "accumulation_queue_slot_as_index": "[2] expected: AccumulationIndex but got: WorkQueueSlot",
     "accumulation_queue_index_as_hash": "[3] expected: WorkQueueHashIndex but got: AccumulationIndex",
 
+    "pvm_gas_raw_address": "[2] expected: CodeAddress but got: uint64",
+    "pvm_gas_raw_limit": "[3] expected: GasCycleLimit but got: uint64",
     "pvm_register_raw_address": "[2] expected: CodeAddress but got: uint64",
     "pvm_memory_raw_address": "[2] expected: MemoryAddress but got: uint64",
     "pvm_page_as_address": "[2] expected: MemoryAddress but got: PageIndex",
@@ -992,6 +998,8 @@
   "EARLY_NOMINAL": {
     "accumulation_queue_slot_as_index": ["accumulationAt(", "[2] expected: AccumulationIndex but got: WorkQueueSlot"],
     "accumulation_queue_index_as_hash": ["accumulationDependencyAt(", "[3] expected: WorkQueueHashIndex but got: AccumulationIndex"],
+    "pvm_gas_raw_address": ["blockGas(", "[2] expected: CodeAddress but got: uint64"],
+    "pvm_gas_raw_limit": ["blockGas(", "[3] expected: GasCycleLimit but got: uint64"],
     "pvm_register_raw_address": ["evaluateRegisters(", "[2] expected: CodeAddress but got: uint64"],
     "pvm_memory_raw_address": ["load(", "[2] expected: MemoryAddress but got: uint64"],
     "pvm_page_as_address": ["load(", "[2] expected: MemoryAddress but got: PageIndex"],
@@ -1031,6 +1039,7 @@
     "normalize-short"
   ],
   "FAILURE_COUNTS": {
+    "pvm_gas": 4,
     "pvm_registers": 3,
     "pvm_machine": 5,
     "safrole_transition": 9,

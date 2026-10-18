@@ -316,5 +316,9 @@
   "tests/native/compile_fail/accumulation_queue_bound_result_private.nim",
   "tests/native/compile_fail/accumulation_queue_slot_as_index.nim",
   "tests/native/compile_fail/accumulation_queue_index_as_hash.nim",
-  "tests/test_accumulation_queue_harness.py"
+  "tests/test_accumulation_queue_harness.py",
+  "src/pvm/gas.nim",
+  "tests/pvm_gas_reference.py",
+  "tests/test_pvm_gas_reference.py",
+  "tests/native/pvm_gas_results.nim"
 ]

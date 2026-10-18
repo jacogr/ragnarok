@@ -1,0 +1,52 @@
+{
+  "source": "tests/native/pvm_gas_results.nim",
+  "build_name": "pvm-gas-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-gas-default",
+      "diagnostic": "r.status == None",
+      "description": "PVM gas result selection default"
+    },
+    {
+      "identity": {
+        "origin": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "pvm-gas-invalid",
+      "diagnostic": "r.status == None",
+      "description": "PVM gas result selection invalid"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-gas-limit",
+      "diagnostic": "r.status == None",
+      "description": "PVM gas result selection limit"
+    },
+    {
+      "identity": {
+        "origin": "negative"
+      },
+      "arguments": [
+        "negative"
+      ],
+      "name": "pvm-gas-negative",
+      "diagnostic": "r.status == None",
+      "description": "PVM gas result selection negative"
+    }
+  ]
+}

@@ -5,7 +5,7 @@
 ## during validation, then copied into private acyclic ARC storage.
 ##
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram,
-## instruction/jump lookup and basic-block queries.
+## instruction/jump lookup, raw instruction-byte lookup with zero padding and basic-block queries.
 
 import ../codec/natural
 
@@ -343,3 +343,11 @@ proc basicBlockStart*(program: Program, address: CodeAddress): ProgramResult[boo
         completed: terminatesBlock(data.bytes[data.codeOffset + previous]))
     dec previous
   ProgramResult[bool](status: ProgramError.None, completed: false)
+
+# Inspect the raw instruction byte sequence with its normative infinite zero suffix.
+# Unlike instruction(), this deliberately accepts unmarked operands and out-of-range addresses.
+proc instructionByte*(program: Program, address: CodeAddress): ProgramResult[byte] =
+  # A default owner has no byte sequence, even though valid programs have a zero suffix.
+  if program.data == nil: return ProgramResult[byte](status: ProgramError.InvalidOwner)
+  let data = program.data
+  ProgramResult[byte](status: ProgramError.None, completed: codeByte(data, uint64(address)))
