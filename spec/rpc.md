@@ -32,7 +32,7 @@ Send a WebSocket text message:
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
 unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
-remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics, service-data, service-value and service-preimage subscriptions
+remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request subscriptions
 are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -614,8 +614,7 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Best-block, best-chain statistics, service-data, service-value and service-preimage methods are enabled; finalized and other service
-subscriptions remain unavailable.
+Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request methods are enabled; finalized subscriptions remain unavailable.
 `ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
 The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
 `respond(text, info, session)` with its connection-owned `RpcSession`.
@@ -748,8 +747,7 @@ arguments and accounts, maximum uint32 service IDs, independent selectors, wrong
 notification-form calls, sequential batches, terminal-error isolation and ARC retirement. Connected
 socket tests publish account creation, balance change, removal and malformed metadata while keeping
 the same connection alive. Live process tests check present and absent accounts, unavailable chains,
-finalized refusal and cancellation. Importer integration, finalized tracking and subscriptions for
-request histories remain a separate bounded increment.
+finalized refusal and cancellation. Importer integration and finalized tracking remain outstanding.
 
 
 ## Best-chain service-value subscriptions
@@ -792,7 +790,7 @@ refusal, malformed accounts, wrong-family cancellation, batches and notification
 checks retire eight maximum-sized keys. Connected socket tests publish binary value creation, empty
 value replacement, deletion, orphaned storage and an oversized value; only the latter terminates
 the subscription, and the connection survives. Live process tests check present/missing values,
-finalized refusal and cancellation. Importer integration, finalized tracking, service-request subscriptions remain outstanding.
+finalized refusal and cancellation. Importer integration and finalized tracking remain outstanding.
 
 
 ## Best-chain service-preimage subscriptions
@@ -819,5 +817,33 @@ Native coverage checks valid/empty/missing values, canonical hash and ID rejecti
 cancellation, independent selectors, 32 KiB value/queue boundaries, batches and notification-form calls. Connected socket coverage
 publishes a valid preimage, deletes it and supplies corrupt bytes; the connection survives the
 terminal error. Live process checks cover configured and unavailable chains and cancellation.
-Finality, live importer integration and service-request subscriptions remain outstanding; request
-subscriptions are the next bounded increment.
+Finality and live importer integration remain outstanding.
+
+
+## Best-chain service-request subscriptions
+
+`subscribeServiceRequest(id, hash, len, false)` and `unsubscribeServiceRequest(subscription)`
+implement pinned JIP-2 Methods / subscribeServiceRequest. Required arguments are an exact uint32
+service ID, a canonical padded Base64 32-byte preimage hash, an exact uint32 length and a Boolean.
+Invalid shapes or selectors return `-32602` without consuming an ID. Finalized tracking (`true`)
+returns error 0; the stateless adapter remains query-only.
+
+Each selector owns a fixed nominal hash and `RequestLength`; the length never sizes an allocation.
+Initial and per-head updates reuse the existing account validation and request namespace/decoder.
+Missing accounts or entries yield `null`; requested-but-unprovided entries yield `[]`. Provided,
+forgotten and requested-again histories yield one, two or three full uint32 slot numbers. Query and
+subscription serialization share one validated-history formatter. No state owner is retained.
+
+The existing GP 0.8.0 namespace ambiguity policy applies: marker-length entries can prove absence,
+but present colliding entries fail instead of being interpreted as histories. Malformed, unreadable
+or ambiguous initial state returns error 0. Later failures emit a terminal error for only that
+subscription. Cancellation, monotonic IDs, eight shared selectors, sixteen queued messages and the
+65,535-byte serialized queue ceiling remain unchanged. Each read copies at most thirteen history
+bytes after checking size; no preimage bytes are copied or hashed for request subscriptions.
+
+Native tests cover all four history states, absent accounts/entries, full-width timestamps,
+independent lengths, invalid selectors, malformed and ambiguous state, batches and cancellation.
+Connected socket tests publish each history state, deletion and invalid count while preserving the
+connection. Live WebSocket tests cover configured/unavailable chains and cancellation.
+All four service subscription families now support best-chain updates. Finality and live importer
+integration remain gaps; finalized subscriptions need an actual finalized-chain provider first.

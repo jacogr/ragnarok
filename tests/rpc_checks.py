@@ -203,6 +203,18 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', method='subscribeServicePreimage', params=dict(subscription=preimage_id, result={**expected_head, 'value': expected_preimage}))
                     send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServicePreimage', params=[preimage_id], id=72)))
                     assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=72, result=True) # Cancellation releases the matching family only.
+                assert 'subscribeServiceRequest' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceRequest', params=[42, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0, False], id=73)))
+                request_subscription = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert request_subscription['error']['code'] == 0 # Unavailable chain cannot prove absence.
+                else:
+                    request_id = 6 if service_queries else 5
+                    assert request_subscription == dict(jsonrpc='2.0', id=73, result=request_id)
+                    expected_request = [] if service_queries else None
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', method='subscribeServiceRequest', params=dict(subscription=request_id, result={**expected_head, 'value': expected_request}))
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceRequest', params=[request_id], id=74)))
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=74, result=True) # Family-specific cancellation succeeds.
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])

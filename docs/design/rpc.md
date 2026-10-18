@@ -37,7 +37,7 @@ for same-dispatcher handoff between ticks; it installs a successful append witho
 integration must call this boundary; no live importer, fork choice or finality is provided here. Retained-report lookup still searches only the selected head.
 
 Each WS connection owns a private `RpcSession` with a fixed subscription table and bounded FIFO
-of serialized best-block, statistics, service-data, service-value and service-preimage notifications, limited by message count and bytes. Request dispatch commits subscription changes only when
+of serialized best-block, statistics, service-data, service-value, service-preimage and service-request notifications, limited by message count and bytes. Request dispatch commits subscription changes only when
 its reply fits the response budget. Publication queues descriptors and validated C(13) bytes without retaining snapshot owners;
 overflow closes only the affected connection. The dispatcher writes replies before notifications,
 one frame per turn, preserving partial-write offsets. Statistics are decoded once per connection
@@ -45,5 +45,6 @@ per publication when requested. Service-data subscribers retain a nominal servic
 one validated fixed account record per update. Service-value subscribers also own a bounded immutable
 key and read a bounded storage value; absence remains a successful null, distinct from present empty bytes. Invalid values
 terminate only affected subscriptions with an error. Preimage selectors retain fixed nominal hashes
-and reuse bounded reads plus content-hash verification.
+and reuse bounded reads plus content-hash verification. Request selectors add a nominal length
+and return fixed validated histories through the same slot-array serializer as queries.
 Disconnect releases the entire session.
