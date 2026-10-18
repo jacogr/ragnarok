@@ -126,6 +126,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 expected_head = None if expected_genesis is None else {k: expected_genesis[k] for k in ('header_hash', 'slot')}
                 assert result['result']['bestBlock'] == expected_head
                 assert 'parameters' in result['result']['rpc']['methods']
+                assert result['result']['rpc']['subscriptionState'] == dict(active=0, best=0, finalized=0, pendingUpdates=0, pendingBytes=0)
+                for name, limit in dict(maxReplyBytes=65535, maxBlobReplyBytes=32768, maxSubscriptions=8, maxPendingUpdates=16, maxPendingBytes=65535).items():
+                    assert result['result']['rpc'][name] == limit # Advertised limits match the enforced production constants.
                 assert result['result']['rpc']['subscriptions'] is True
                 assert 'subscribeBestBlock' in result['result']['rpc']['methods']
                 assert 'unsubscribeBestBlock' in result['result']['rpc']['methods']
@@ -221,6 +224,17 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 assert 'subscribeFinalizedBlock' in result['result']['rpc']['methods']
                 send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeFinalizedBlock', params=[], id=76)))
                 assert json.loads(receive(connection)[1])['error']['code'] == 0 # Startup has no finality source, so no subscription ID is allocated.
+                if expected_head is not None:
+                    send(connection, json.dumps([dict(jsonrpc='2.0', method='subscribeBestBlock', params=[], id=77), request]))
+                    diagnosed = json.loads(receive(connection)[1])
+                    diagnostic_id = diagnosed[0]['result']
+                    diagnostic_state = diagnosed[1]['result']['rpc']['subscriptionState']
+                    assert diagnostic_state['active'] == diagnostic_state['best'] == diagnostic_state['pendingUpdates'] == 1
+                    assert diagnostic_state['finalized'] == 0
+                    update_payload = receive(connection)[1]
+                    assert diagnostic_state['pendingBytes'] == len(update_payload) # Batch reply observes the FIFO before transport drains it.
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeBestBlock', params=[diagnostic_id], id=78)))
+                    assert json.loads(receive(connection)[1])['result'] is True
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])

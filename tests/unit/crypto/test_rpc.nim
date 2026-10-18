@@ -1657,6 +1657,53 @@ for index in 1..MaxSubscriptionUpdates:
   assert finalCapacity.nextUpdate().len > 0 # Overflow preserves all previously queued updates.
 assert finalCapacity.nextUpdate() == ""
 
+## Check exact public diagnostic counters independently of the private session representation.
+proc assertUsage(session: var RpcSession, context: ClientInfo, active, best, finalized, pending, bytes: int) =
+  let expected = "\"subscriptionState\":{\"active\":" & $active & ",\"best\":" & $best &
+      ",\"finalized\":" & $finalized & ",\"pendingUpdates\":" & $pending & ",\"pendingBytes\":" &
+      $bytes & "}"
+  assert expected in respond(request, context, session)
+var diagnosticSession = default(RpcSession)
+assert "\"subscriptionState\":null" in respond(request, finalizedInfo)
+assert "\"maxReplyBytes\":65535,\"maxBlobReplyBytes\":32768,\"maxSubscriptions\":8,\"maxPendingUpdates\":16,\"maxPendingBytes\":65535" in
+    respond(request, finalizedInfo, diagnosticSession)
+assertUsage(diagnosticSession, finalizedInfo, 0, 0, 0, 0, 0)
+assert respond(SubscribeBest, finalizedInfo, diagnosticSession) == SubscribedBest
+let diagnosticBest = initialBestUpdate.replace(genesisHash, childHashText).replace("\"slot\":7", "\"slot\":9")
+assertUsage(diagnosticSession, finalizedInfo, 1, 1, 0, 1, diagnosticBest.len)
+assert respond(subscribeFinalized, finalizedInfo, diagnosticSession) == SubscribedBest.replace(
+    "\"result\":1", "\"result\":2")
+let diagnosticFinalized = initialFinalizedUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assertUsage(diagnosticSession, finalizedInfo, 2, 1, 1, 2, diagnosticBest.len +
+    diagnosticFinalized.len)
+assertUsage(diagnosticSession, finalizedInfo, 2, 1, 1, 2, diagnosticBest.len +
+    diagnosticFinalized.len) # Reading diagnostics must not consume queued messages.
+assert diagnosticSession.nextUpdate() == diagnosticBest
+assertUsage(diagnosticSession, finalizedInfo, 2, 1, 1, 1, diagnosticFinalized.len)
+assert respond(unsubscribeFinalized.replace("[1]", "[2]"), finalizedInfo, diagnosticSession) == UnsubscribedBest
+assertUsage(diagnosticSession, finalizedInfo, 1, 1, 0, 0, 0)
+var otherDiagnostics = default(RpcSession)
+assertUsage(otherDiagnostics, finalizedInfo, 0, 0, 0, 0, 0) # Counts cannot leak across connections.
+let diagnosticBatch = respond("[" & SubscribeBest & "," & request & "," & UnsubscribeBest & "," &
+    request & "]", finalizedInfo, otherDiagnostics)
+assert "\"subscriptionState\":{\"active\":1,\"best\":1,\"finalized\":0,\"pendingUpdates\":1,\"pendingBytes\":" &
+    $diagnosticBest.len & "}" in diagnosticBatch
+assert "\"subscriptionState\":{\"active\":0,\"best\":0,\"finalized\":0,\"pendingUpdates\":0,\"pendingBytes\":0}" in
+    diagnosticBatch # Batch diagnostics observe prior committed calls in order.
+var terminalDiagnostics = default(RpcSession)
+discard respond(SubscribeStats, activityOwner, terminalDiagnostics)
+discard terminalDiagnostics.nextUpdate()
+assert terminalDiagnostics.queueChainUpdates(withGenesis.chain.bestBlock)
+assertUsage(terminalDiagnostics, finalizedInfo, 0, 0, 0, 1,
+    statsFailure.len) # Terminal errors remain queued after the active selector is removed.
+assert terminalDiagnostics.nextUpdate() == statsFailure
+assertUsage(terminalDiagnostics, finalizedInfo, 0, 0, 0, 0, 0)
+var closedDiagnostics = default(Connection)
+discard respond(SubscribeBest, finalizedInfo, closedDiagnostics.session)
+closedDiagnostics.close()
+assertUsage(closedDiagnostics.session, finalizedInfo, 0, 0, 0, 0,
+    0) # Connection retirement resets all reported usage.
+
 ## Repeated connection retirement must release queued notifications and copied tentative session storage.
 proc retireSubscriptions() =
   var retired = default(Connection)
