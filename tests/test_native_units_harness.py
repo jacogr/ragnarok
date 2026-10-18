@@ -189,7 +189,7 @@ class NativeUnitHarness(unittest.TestCase):
                              'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state',
                              'safrole_authentication', 'safrole_auth_state', 'safrole_transition',
                              'extrinsic_commitment', 'block_admission', 'disputes_transition',
-                             'availability_transition'):
+                             'availability_transition', 'guarantor_assignments'):
                     # An old environment path is insufficient without a newly supplied required-file manifest.
                     with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'prepared native unit fixtures'):
                         native_tests.unit_environment(Path('/fixture/nimony'), name, {'RAGNAROK_TEST_CERT': '/old'})
