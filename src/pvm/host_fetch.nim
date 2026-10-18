@@ -1,12 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Evaluate fetch for captured optional entropy and trace, or directly borrowed present values.
-## Exposes FetchContext capture, selector responses and direct present-value responses.
+## Evaluate fetch for optional entropy, trace and raw package blobs, or directly borrowed values.
+## Exposes FetchContext capture, bounded withFetchPackage attachment and selector responses.
 ## FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
 ## Capture owns bounded immutable context; responses own memory copies. See spec/pvm-fetch-context.md.
 
 import ./[machine, step]
+import ../codec/work_package
 
 type
   # Invocation entropy is one nominal 32-byte value, distinct from arbitrary trace bytes.
@@ -30,6 +31,15 @@ type
     Absent, Present
   # Local cap on variable trace snapshot bytes; the fixed entropy field is always constant-size.
   FetchTraceLimit* = distinct uint64
+  # Local cap on configuration, token and all item payload bytes captured together.
+  FetchPackageLimit* = distinct uint64
+  # Private package snapshot keeps only the raw blobs this fetch selector family needs.
+  # The fixed item table is bounded by the validated C.2 package limit of sixteen items.
+  FetchPackageData = ref object
+    configuration: seq[byte]
+    authorization: seq[byte]
+    payloads: array[16, seq[byte]]
+    itemCount: int
   # Private acyclic owner retains only selected input values and has no references to caller storage.
   FetchContextData = ref object
     entropyPresence: FetchPresence
@@ -39,6 +49,7 @@ type
   # Public immutable handle; default is invalid, while explicit all-absent capture is valid.
   FetchContext* = object
     data: nil FetchContextData
+    packageData: nil FetchPackageData
   # Capture failures carry only the local reason, never a partial owner or borrowed input span.
   FetchContextResult* = object
     case status: FetchError
@@ -75,7 +86,72 @@ proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
     else: FetchEntropy(default(array[32, byte])))
   let owner = FetchContextData(entropyPresence: entropyPresence, entropy: selectedEntropy,
     tracePresence: tracePresence, trace: copied)
-  FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner))
+  FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner,
+      packageData: nil))
+
+# Attach raw package blobs to a new context without changing the original entropy/trace snapshot.
+# Present input must be a validated codec owner. Preflight aggregate byte lengths before allocating;
+# copying happens once at capture, never once per guest fetch. Absence ignores the package argument.
+proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
+    package: OwnedWorkPackage, limit: FetchPackageLimit): FetchContextResult =
+  if context.data == nil:
+    # An invalid base must not be converted into a valid context by attaching package data.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  if presence == FetchPresence.Absent:
+    # Clearing only the package selection preserves the original immutable entropy/trace owner.
+    return FetchContextResult(status: FetchError.None,
+      completed: FetchContext(data: context.data, packageData: nil))
+  let described = workPackageInfo(package)
+  if described.error != PackageError.None:
+    # Default codec handles are local misuse, not an absent protocol package.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  let info = described.value
+  if info.items < 1 or info.items > 16:
+    # The codec guarantees this bound; retain a guard before indexing the fixed capture tables.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  var remaining = uint64(limit)
+  for length in [info.configurationBytes, info.authorizationBytes]:
+    # Subtract after comparison to bound the aggregate without overflowing a size sum.
+    if uint64(length) > remaining:
+      return FetchContextResult(status: FetchError.LimitExceeded)
+    remaining -= uint64(length)
+  var items = default(array[16, OwnedWorkItem])
+  var lengths = default(array[16, int])
+  for i in 0..<info.items:
+    # Owner-bound item metadata validates every selected extent before any payload allocation.
+    let selected = workItemAt(package, i)
+    if selected.error != PackageError.None:
+      # Retained item selection must succeed for every validated package index.
+      return FetchContextResult(status: FetchError.InvalidContext)
+    items[i] = selected.value
+    let item = workItemInfo(items[i])
+    if item.error != PackageError.None:
+      # Never allocate from metadata when the bound child lookup refused.
+      return FetchContextResult(status: FetchError.InvalidContext)
+    lengths[i] = item.value.payloadBytes
+    if uint64(lengths[i]) > remaining:
+      # A late item over budget refuses the entire capture, not just the final payload.
+      return FetchContextResult(status: FetchError.LimitExceeded)
+    remaining -= uint64(lengths[i])
+  let captured = FetchPackageData(configuration: newSeq[byte](info.configurationBytes),
+    authorization: newSeq[byte](info.authorizationBytes), payloads: default(array[16, seq[byte]]),
+    itemCount: info.items)
+  if copyPackageBlob(package, PackageBlob.Configuration, captured.configuration).error !=
+      PackageError.None:
+    # The codec checks the complete output span; no unfinished owner escapes an unexpected refusal.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  if copyPackageBlob(package, PackageBlob.Authorization, captured.authorization).error !=
+      PackageError.None:
+    # Token extraction is distinct from configuration despite both being byte sequences.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  for i in 0..<info.items:
+    # Each payload has independent storage; empty present payloads remain distinguishable from absence.
+    captured.payloads[i] = newSeq[byte](lengths[i])
+    if copyItemPayload(items[i], captured.payloads[i]).error != PackageError.None:
+      # The unpublished owner and all earlier copied bytes are released on refusal.
+      return FetchContextResult(status: FetchError.InvalidContext)
+  FetchContextResult(status: FetchError.None,
+    completed: FetchContext(data: context.data, packageData: captured))
 
 # Inspect a result without exposing mutable variant storage.
 func error*(r: FetchResult): FetchError = r.status
@@ -149,7 +225,7 @@ proc fetchTraceResponse*(gas: MachineGas, registers: RegisterFile, memory: Memor
     trace: openArray[byte], limit: MemoryByteLimit): FetchResult =
   fetchValue(gas, registers, memory, trace, true, 2, 80, 96, limit)
 
-# Select captured entropy/trace for host identifier 2; other known selectors remain local refusals.
+# Select entropy, trace or package blobs for host identifier 2; other known selectors remain local refusals.
 # Values >= 16 are protocol-unknown selectors (cost 80, NONE), not unknown host identifiers.
 # Invalid context/memory and local copy caps remain typed failures for fallible host dispatch.
 proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: RegisterFile,
@@ -168,6 +244,25 @@ proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: Re
     # Trace absence still charges the requested length at selector 2's rate.
     fetchValue(gas, registers, memory, owner.trace,
       owner.tracePresence == FetchPresence.Present, 2, 80, 96, limit)
+  of 8, 9, 13:
+    # All three raw-blob selectors share presence, bounds, charging and atomic-copy semantics.
+    let package = context.packageData
+    let base = (if selector == 8: 84'u64 elif selector == 9: 88'u64 else: 95'u64)
+    let rate = (if selector == 13: 96'u64 else: 0'u64)
+    if package == nil:
+      # Missing package retains the selected price, including payload's requested-length charge.
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    if selector == 8:
+      # Configuration bytes are returned raw, without their C.2 variable-length prefix.
+      return fetchValue(gas, registers, memory, package.configuration, true, selector, base, rate, limit)
+    if selector == 9:
+      # Authorization token is independent of the authorizer configuration and ignores item registers.
+      return fetchValue(gas, registers, memory, package.authorization, true, selector, base, rate, limit)
+    let index = uint64(registers[11])
+    if index >= uint64(package.itemCount):
+      # Compare the full register width before narrowing, so huge indices cannot wrap onto an item.
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    fetchValue(gas, registers, memory, package.payloads[int(index)], true, selector, base, rate, limit)
   else:
     # Known selectors need their own context and encoding implementation, never a fabricated NONE.
     if selector < 16:

@@ -36,4 +36,5 @@ resolving the earlier absence gate. A funded absent value returns NONE through a
 a present empty trace returns zero. Both retain the original selector's requested-length charge.
 Other known selectors and complete service invocation assembly remain open. Independent fixtures
 establish only the stated subset, not complete fetch or invocation parity.
-Next bounded chunk: fetch the work-item payload family from validated work-package context.
+[Package blob fetch](pvm-fetch-package.md) now supplies configuration, token and item payloads.
+Next bounded chunk: encoded refinement context and work-item summaries.
