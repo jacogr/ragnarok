@@ -1,5 +1,6 @@
 """Prepare the unchanged pinned LSQUIC/TLS library and ignored fixture identities for Nimony."""
-from test_quic import BUILD, PINS, dependencies, build_native, fixtures
+from test_quic import BUILD, PINS, fixtures
+from build_quic import dependencies, build_native
 
 
 # Build only the native bridge; this trial never invokes the historical Nim 2 peer entry point.

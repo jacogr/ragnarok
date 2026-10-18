@@ -17,7 +17,7 @@ from toolchain_archives import download, extract
 from setup_nimony import verify_identity, verify_version, host_pins, install, installed, cache_directory
 from summarize_tests import summarize
 import test_modules as modules
-import test_bandersnatch as bandersnatch
+import build_bandersnatch as bandersnatch
 
 
 # Build tiny inert tar fixtures; no test executes a downloaded or fabricated compiler.

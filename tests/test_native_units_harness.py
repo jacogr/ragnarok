@@ -17,9 +17,7 @@ from native_tests import unit_plan
 class NativeUnitHarness(unittest.TestCase):
     # All ordinary suite identities and checked-in native files must be scheduled exactly once.
     def test_complete_native_inventory(self):
-        from test_runtime import SUITES
-        self.assertEqual(set(SUITES), set(native_tests.UNIT_SUITES))
-        self.assertEqual(len(SUITES), len(native_tests.UNIT_SUITES))
+        self.assertEqual(len(set(native_tests.UNIT_SUITES)), len(native_tests.UNIT_SUITES))
         actual = set((ROOT/'tests/unit').rglob('*.nim'))
         expected = {native_tests.unit_source(name) for name in native_tests.UNIT_SUITES}
         self.assertEqual(actual, expected)

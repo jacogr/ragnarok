@@ -18,6 +18,30 @@ import setup_nimony
 
 # Tooling checks run no native code or download; executable validation is a separate smoke test.
 class MakeHarness(unittest.TestCase):
+    # Production dependency preparation must not load reference suites or test-process orchestration.
+    def test_build_imports_without_test_harnesses(self):
+        script = """
+import sys
+from pathlib import Path
+from unittest.mock import patch
+sys.path.insert(0, "tools")
+import build, build_crypto, build_bandersnatch, build_quic
+# Exercise dynamic imports and build sequencing without provisioning or executing native commands.
+with patch.object(build, 'installed', return_value=(Path('/fixture/nimony'), None)), \
+     patch.object(build_crypto, 'dependencies', return_value={}), \
+     patch.object(build_crypto, 'build_native', return_value=Path('/fixture/libcrypto')), \
+     patch.object(build_bandersnatch, 'sources'), \
+     patch.object(build_bandersnatch, 'build_native', return_value=Path('/fixture/libbandersnatch')), \
+     patch.object(build_quic, 'dependencies', return_value={}), \
+     patch.object(build_quic, 'build_native', return_value=Path('/fixture/libquic')), \
+     patch.object(build.subprocess, 'run') as compile_peer:
+    build.main()
+    compile_peer.assert_called_once()
+assert not any(name.startswith('test_') for name in sys.modules)
+"""
+        subprocess.run([sys.executable, '-c', script], cwd=ROOT, check=True,
+                       capture_output=True, text=True)
+
     # Healthy setup must reuse the installed pinned binaries without extracting archives or consulting the network.
     def test_ensure_reuses_verified_tools(self):
         with patch.object(sys, 'argv', ['setup_nimony.py', '--ensure']), patch.object(

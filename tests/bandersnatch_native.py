@@ -1,7 +1,8 @@
 """Prepare the pristine pinned Rust ABI and a separate owner-observation library for the Nimony trial."""
 import platform
 import subprocess
-from test_bandersnatch import ROOT, PINS, sources, build_native
+from test_bandersnatch import ROOT, PINS
+from build_bandersnatch import sources, build_native
 from nimony_crypto import command
 
 # Only trial C call sites are renamed; production Rust symbols and source trees remain unchanged.
