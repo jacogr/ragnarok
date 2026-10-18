@@ -78,8 +78,11 @@ constraints and unique reporter keys against those assignments. See
 [the credential contract](../spec/guarantee-credentials.md).
 `src/state/report_policy.nim` consumes certified credentials and retains their exact parent map after
 checking C(1) authorizer membership, per-report gas and each service's code/minimum gas. See
-[the policy contract](../spec/report-policy.md); anchor/dependency context, post-assurance core capacity
-and C(10) publication remain subsequent slices.
+[the policy contract](../spec/report-policy.md).
+`src/state/report_anchors.nim` checks the complete recent-history tuple and lookup age, then verifies
+lookup hashes/slots and child-committed roots on a bounded chain of full sealed headers linked to
+caller-supplied trusted parent context. See [the anchor contract](../spec/report-anchors.md).
+Package/dependency context, post-assurance core capacity and C(10) publication remain subsequent slices.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2

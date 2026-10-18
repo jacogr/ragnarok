@@ -84,6 +84,6 @@ pinned nightly, ARC and checked Clang LTO. Generated source evidence and fixture
 ## Next bounded work
 
 [Authorization-pool and service/code-hash/gas policy](report-policy.md) is implemented separately.
-Next cover history/lookup anchors,
-package/dependency/segment-root context and post-assurance capacity before atomic new C(10)
+[Recent/lookup anchors](report-anchors.md) are also implemented separately.
+Next cover package/dependency/segment-root context and post-assurance capacity before atomic new C(10)
 assignment and integration into the block coordinator. Accumulation/PVM execution remains later work.

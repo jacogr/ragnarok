@@ -8,6 +8,7 @@ from report_oracle import from_json, encode as report_wire
 from validator_rotation_fixtures import roster
 from state_authorization_oracle import wire as pool_wire
 from state_accounts_oracle import wire as account_wire
+from history_transition_fixtures import state_bytes
 
 CASES = ('report_curr_rotation-1', 'report_prev_rotation-1', 'multiple_reports-1',
          'not_authorized-1', 'not_authorized-2', 'bad_service_id-1', 'bad_code_hash-1',
@@ -15,12 +16,12 @@ CASES = ('report_curr_rotation-1', 'report_prev_rotation-1', 'multiple_reports-1
 
 
 # Project only fields consumed by this read-only stage; never alter signatures or expected outcomes.
-def prepare(folder):
+def prepare(folder, cases=CASES, filename="report-policy", include_history=False):
     pins = json.loads((ROOT/'spec/pins.json').read_text())['vectors']
     pools, indices, rows, sources = [], {}, [], []
     for profile in ('tiny', 'full'):
         # Both profiles run the exact same selected scenarios, retaining their distinct rosters and core counts.
-        for name in CASES:
+        for name in cases:
             path = f'stf/reports/{profile}/{name}.json'
             raw = subprocess.check_output(['git', '-C', str(ROOT/pins['path']), 'show', pins['commit']+':'+path])
             digest = hashlib.sha256(raw).hexdigest()
@@ -55,13 +56,13 @@ def prepare(folder):
             rows.append(' '.join(['case', path, '2' if profile == 'tiny' else '341', expected,
                 str(case['input']['slot']), *handles, ''.join(v[2:] for v in state['entropy']),
                 ''.join(v[2:] for v in state['offenders']) or '-', wire(records).hex(), auth.hex(),
-                ','.join(accounts) or '-']))
+                ','.join(accounts) or '-'] + ([state_bytes(state['recent_blocks'])] if include_history else [])))
             sources.append(dict(path=path, sha256=digest, expected=expected))
-    assert len(rows) == 20
+    assert len(rows) == 2*len(cases)
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder/'report-policy.txt'
+    path = folder/(filename+'.txt')
     path.write_text('\n'.join(['pool '+value for value in pools]+rows)+'\n')
-    evidence = dict(cases=20, sources=sources, vector_commit=pins['commit'],
+    evidence = dict(cases=len(rows), sources=sources, vector_commit=pins['commit'],
                     fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
-    (folder/'report-policy.json').write_text(json.dumps(evidence, indent=2)+'\n')
+    (folder/(filename+'.json')).write_text(json.dumps(evidence, indent=2)+'\n')
     return path, evidence
