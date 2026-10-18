@@ -93,6 +93,10 @@ periodic peer/status observations, incoming/outgoing handshake outcomes and obse
 with bounded nonblocking TCP delivery and reconnects.
 See [telemetry usage, scope and verification](spec/telemetry.md).
 
+The proof peer also supports an opt-in WebSocket JSON-RPC endpoint: append `--rpc-port 19800`
+and connect to `ws://127.0.0.1:19800/`. The first method is `ragnarok_clientInfo`; live-chain
+JIP-2 methods and subscriptions remain unavailable. See [RPC scope and usage](spec/rpc.md).
+
 ## License
 
 Ragnarök is licensed under either of the following, at your option:
