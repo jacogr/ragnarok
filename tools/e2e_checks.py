@@ -32,10 +32,13 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
     report['telemetry'] = dict(passed=False)
     telemetry_build, telemetry_binary = build(compiler, ROOT/'tests/native/telemetry_driver.nim', 'telemetry-driver')
     if compiled['exit_code'] == 0 and telemetry_build['exit_code'] == 0:
+        from telemetry_incoming import incoming_reconnect
         from telemetry_checks import reconnect, peer_registration, dial_failure, peer_loss, incoming_failure, incoming_lifetimes, mesh_lifetimes, mesh_shutdown, capacity_refusal, mesh_collector_isolation, pending_reconnect
         try:
             refusal = capacity_refusal(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-refusal')
             pending = pending_reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-pending-reconnect')
+            incoming_reset = incoming_reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-incoming-reconnect')
+            incoming_rejected = incoming_reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-incoming-rejected', rejected=True)
             observed = reconnect(telemetry_binary)
             observed6 = reconnect(telemetry_binary, ipv6=True)
             peer = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', startup_delay=2.1)
@@ -50,7 +53,7 @@ def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integ
             mesh_pending = mesh_shutdown(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh-pending', silent=True)
             mesh_teardown = mesh_shutdown(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-mesh-teardown')
             isolated = mesh_collector_isolation(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-collector-isolation')
-            report['telemetry'] = dict(passed=True, pending_reconnect=pending, collector_isolation=isolated, capacity_refusal=refusal, mesh=mesh, mesh_failed=mesh_failed, mesh_pending=mesh_pending, mesh_teardown=mesh_teardown, reconnect=observed, reconnect_ipv6=observed6, peer=peer, peer_ipv6=peer6, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
+            report['telemetry'] = dict(passed=True, incoming_reconnect=incoming_reset, incoming_rejected=incoming_rejected, pending_reconnect=pending, collector_isolation=isolated, capacity_refusal=refusal, mesh=mesh, mesh_failed=mesh_failed, mesh_pending=mesh_pending, mesh_teardown=mesh_teardown, reconnect=observed, reconnect_ipv6=observed6, peer=peer, peer_ipv6=peer6, failed_dial=failed, peer_loss=lost, incoming_failure=incoming, incoming_expiry=expiry, incoming_teardown=teardown)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # Collector failures remain visible while process finalizers retire every live child.
             report['telemetry'] = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
