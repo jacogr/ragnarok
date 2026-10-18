@@ -84,8 +84,8 @@ class NativePreparationHarness(unittest.TestCase):
 
     # Preserve feature order, independent evidence names and all consumers when combining shared fixtures.
     def test_fixture_assembly(self):
-        names = ('pvm_gas', 'store', 'authorization', 'history', 'signing', 'entropy', 'validator', 'ticket', 'sealer')
-        keys = ('pvm_gas_fixture', 'store_replay_fixture', 'authorization_stf_fixture', 'history_stf_fixture',
+        names = ('pvm_step', 'pvm_gas', 'store', 'authorization', 'history', 'signing', 'entropy', 'validator', 'ticket', 'sealer')
+        keys = ('pvm_step_fixture', 'pvm_gas_fixture', 'store_replay_fixture', 'authorization_stf_fixture', 'history_stf_fixture',
                 'signing_domain_fixture', 'entropy_stf_fixture', 'validator_stf_fixture',
                 'ticket_stf_fixture', 'sealer_stf_fixture')
         order = []

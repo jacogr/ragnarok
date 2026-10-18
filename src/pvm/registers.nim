@@ -4,8 +4,8 @@
 ## GP 0.8.0 register-only instruction mutations; see spec/pvm-registers.md. This evaluator does
 ## not advance PC, charge gas or publish a machine execution step.
 ##
-## Exposes evaluateRegisters and checked register-evaluation results for the implemented
-## arithmetic/logic instruction subset.
+## Exposes registerOnlyOpcode, evaluateRegisters and checked register-evaluation results
+## for the implemented arithmetic/logic instruction subset.
 
 import ./[program, machine]
 
@@ -28,6 +28,10 @@ func error*(r: RegisterResult): RegisterError = r.status
 # Select success before extracting the copied register file.
 func value*(r: RegisterResult): RegisterFile {.inline, requires: r.status == RegisterError.None.} =
   r.completed
+
+# Identify the complete register-only execution scope before gas charging or register evaluation.
+func registerOnlyOpcode*(opcode: byte): bool =
+  opcode in {20'u8, 51'u8, 100'u8..110'u8, 131'u8..161'u8, 190'u8..230'u8}
 
 # Sign-extend a low-width bit pattern without host signed overflow or implementation-defined shifts.
 func sext(value: uint64, bits: int): uint64 =
@@ -109,7 +113,7 @@ proc evaluateRegisters*(program: Program, pc: CodeAddress,
     return RegisterResult(status: RegisterError.InvalidInstruction)
   let item = decoded.value
   # The implemented set excludes control flow, host calls and all memory instructions.
-  if item.opcode notin {20'u8, 51'u8, 100'u8..110'u8, 131'u8..161'u8, 190'u8..230'u8}:
+  if not registerOnlyOpcode(item.opcode):
     return RegisterResult(status: RegisterError.UnsupportedInstruction)
   let a = uint64(registers[int(byte(item.a))])
   let b = uint64(registers[int(byte(item.b))])

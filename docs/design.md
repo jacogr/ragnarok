@@ -112,8 +112,10 @@ evaluates all 85 register-only instruction mutations against a copied register f
 see [the register semantics contract](../spec/pvm-registers.md). `src/pvm/gas.nim`
 calculates whole-block pipeline costs with bounded storage and a local cycle limit;
 [the gas contract](../spec/pvm-gas.md) records independent witnesses and the negative
-branch-target specification gate. Machine gas charging, instruction stepping, control
-flow, memory-instruction integration and host calls remain open.
+branch-target specification gate. `src/pvm/step.nim` now charges whole blocks and
+executes register-only steps into immutable machine snapshots, preserving the full
+state on out-of-gas; see [the stepping contract](../spec/pvm-step.md). Control flow,
+terminal outcomes, memory-instruction integration and host calls remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
@@ -143,7 +145,9 @@ remain unavailable until block import and update events exist. `parameters()` re
 GP 0.8.0 parameter snapshot from the explicit chainspec; four live-state fields are documented zero
 placeholders. `src/chain/genesis.nim` retains the configured serialized map through the existing
 state store, checks header/roster/time framing and computes its root at startup. It does not validate
-all state chapters or run consensus. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
+all state chapters or run consensus. `src/chain/services.nim` reads account metadata, storage
+values and verified preimages through immutable store views; RPC bounds raw values and aggregate
+batch responses before copying them. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.
