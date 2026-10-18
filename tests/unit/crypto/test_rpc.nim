@@ -400,6 +400,69 @@ let listBatch = "[" & repeat(largeCall & ",", 2) & listCall & "]"
 let listBatchReply = respond(listBatch, serviceInfo)
 assert listBatchReply.len <= 65535 and "\"result\":[42,4294967295]" in listBatchReply
 
+# Frozen request-key equations and histories are independent of production constructors.
+let requestState = serviceState[0..^2] &
+  ",\"2a9f000e0044004c69f77a49bd0be89db92c38fe713e0963165cca12faf571\":\"00\"" &
+  ",\"2a63002800c3003fb877a13c099c72e17345ca7456b1feef2a17cfe4bc5f67\":\"0100000000\"" &
+  ",\"2a2100bb000400dfa224311755a2d9967d43cdd45d586c662d29b555ac253f\":\"0201000000ffffffff\"" &
+  ",\"2a41000c008b00bb716d041a883bf3a1f5572a0510f7cd920057800f95d72b\":\"030000000000000080ffffffff\"" &
+  ",\"2a5900bd006e0009adaf509d783eea30aa1613a5ca20d67726fd8f22a37edc\":\"00\"" &
+  ",\"2a640073006b0036054365dbb54bd49c71e29ce67361fc2cc3ee93e43e9af8\":\"00\"" &
+  ",\"2a7300e3001200037a3b50d7edd8c745f2ecf8369e32e20f41345e23189128\":\"04\"" &
+  ",\"2a420004008a00a811572c33c69803a3ab3e8bae6796ff8e1304cbd807247e\":\"0000\"" &
+  ",\"2ab200540082004f0ab3061e517af2f904bb387ba8e3dccc0381f9a9de0f8f\":\"8000\"" & "}"
+let requestsText = genesisText.replace(genesisState, requestState)
+let requestsInfo = ClientInfo(genesis: configuredGenesis(requestsText, genesisParameters.value))
+# Build four-argument history queries without narrowing unsigned length literals.
+proc requestCall(length: string): string =
+  serviceCall("serviceRequest", "42", ",\"" & repeat("A", 43) & "=\"," & length)
+let histories = ["[]", "[0]", "[1,4294967295]", "[0,2147483648,4294967295]"]
+for index in 0..<4: # Empty requested state is distinct from an absent key; timestamps preserve full E4 values.
+  assert respond(requestCall($index), requestsInfo) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":" &
+      histories[index] & "}"
+assert "\"result\":null" in respond(requestCall("9"), requestsInfo)
+assert "\"result\":[]" in respond(requestCall("4294967293"), requestsInfo)
+for length in ["4", "5", "6"]: # Excess count, trailing bytes and overlong count must not become successful histories.
+  assert "\"code\":0" in respond(requestCall(length), requestsInfo)
+for length in ["4294967294", "4294967295"]: # Present marker keys are ambiguous even if their bytes look like a history.
+  assert "Request namespace ambiguous" in respond(requestCall(length), requestsInfo)
+  assert "\"result\":null" in respond(requestCall(length).replace(repeat("A", 43) & "=", "AQ" &
+      repeat("A", 41) & "="), requestsInfo)
+assert "\"result\":null" in respond(requestCall("0").replace(",42,", ",41,"), requestsInfo)
+assert "\"code\":0" in respond(requestCall("0").replace(",42,", ",43,"), requestsInfo)
+assert "\"code\":1" in respond(requestCall("0"), info)
+assert "\"code\":1" in respond(requestCall("0").replace(genesisHash, repeat("A", 43) & "="), requestsInfo)
+for length in ["-1", "4294967296", "18446744073709551615", "1.0", "1e0", "true", "null", "\"1\""]:
+  assert "\"code\":-32602" in respond(requestCall(length), requestsInfo) # Exact uint32 integer syntax only.
+assert "\"code\":-32602" in respond(requestCall("0").replace(repeat("A", 43) & "=", "bad"), requestsInfo)
+assert "\"code\":-32602" in respond(requestCall("0").replace("],", ",0],"), requestsInfo)
+assert respond(requestCall("0").replace(",\"id\":1", ""), requestsInfo) == ""
+let requestsBatch = respond("[" & requestCall("0") & "," & requestCall("1") & "]", requestsInfo)
+assert requestsBatch == "[{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[]},{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[0]}]"
+let threeSlots = "030000000000000080ffffffff"
+for size in 0..<13: # Every incomplete three-slot value fails, including the empty byte string.
+  let field = "\"2a41000c008b00bb716d041a883bf3a1f5572a0510f7cd920057800f95d72b\":\""
+  let shortened = requestsText.replace(field & threeSlots, field & threeSlots[0..<size*2])
+  let invalid = ClientInfo(genesis: configuredGenesis(shortened, genesisParameters.value))
+  assert "\"code\":0" in respond(requestCall("3"), invalid)
+let defaultRequest = services.serviceRequest(default(Genesis), ServiceIndex(42), default(
+    ServicePreimageHash), RequestLength(0))
+assert defaultRequest.error == ServiceReadError.Uninitialized
+let emptyRequestResult = default(ServiceRequestResult)
+assert emptyRequestResult.error == ServiceReadError.Uninitialized
+
+# Excess bytes and repeated extraction cannot expose a partial history or retain temporary request owners.
+let longHistoryText = requestsText.replace(threeSlots & "\"", threeSlots & "00\"")
+let longHistoryInfo = ClientInfo(genesis: configuredGenesis(longHistoryText,
+    genesisParameters.value))
+assert "\"code\":0" in respond(requestCall("3"), longHistoryInfo)
+proc retireRequestReply() =
+  assert "\"result\":[0,2147483648,4294967295]" in respond(requestCall("3"), requestsInfo)
+retireRequestReply()
+let requestBaseline = getOccupiedMem()
+for iteration in 0..<100: retireRequestReply() # Hashing, decoding and rendering release all temporary owners.
+assert getOccupiedMem() <= requestBaseline + 256
+
 # Disabled and default native owners are safe to tick, close repeatedly and destroy.
 var server = default(Server)
 assert server.start(0, "server")

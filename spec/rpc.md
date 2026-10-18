@@ -159,6 +159,35 @@ Python hashlib and the existing trie reference. Native tests also cover malforme
 orphan entries, inconsistent preimages and owner isolation. Live WebSocket tests check exact
 results and bounded batches with IDs whose escaping expands their encoded size.
 
+## Genesis-only preimage request histories
+
+`serviceRequest(header_hash, id, hash, len)` follows the pinned JIP-2 method, using the maintained
+GP 0.8.0 `C(service, E4(length) || hash)` key constructor and request-history decoder. Hashes use
+the same canonical 32-byte Base64 format; service ID and advertised length use unsigned JSON
+integer syntax across the full uint32 range. No allocation depends on the advertised length.
+
+A missing account or key returns `null`; a present requested-but-unprovided history returns `[]`.
+A provided history returns 1–3 exact unsigned slot numbers: supplied, forgotten, requested again.
+The entire value must be a canonical count plus up to three E4 slots (at most 13 bytes). Bad counts,
+truncated slots, suffixes and invalid account metadata return error `0`. Unknown blocks return
+error `1`; invalid arguments return `-32602`. Existing notification and shared batch-budget rules apply.
+These are structural reads of the retained snapshot, not checks of chronology, provision validity
+or cross-map account invariants. No subscription, submission or state update is added.
+
+**Pinned namespace limitation:** lengths `4294967294` and `4294967295` share serialized key
+namespaces with preimages and storage under GP 0.8.0. A missing key still returns `null`, but a
+present key returns error `0` with an explicit ambiguity message, even if its bytes decode as a
+history. The map alone cannot identify their logical origin. This is an RPC information limit,
+not a new invalid-length rule: the full E4 parser/codec domain, specification pins, duplicate-key
+policy and pending [request namespace](request-namespace.md) migration remain unchanged.
+
+Native tests freeze independently computed request keys and cover all four history shapes,
+zero/max slots, full length parsing, malformed histories, every truncated three-slot prefix,
+present/absent marker keys, missing accounts, batches, notifications and repeated ARC cleanup.
+The live WebSocket harness checks exact histories and errors after the chainspec file has changed.
+A `rpc_` compiler probe protects the result discriminator. See [request serialization](state-requests.md)
+for the pinned GP equations and codec ownership contract.
+
 ## Genesis-only activity statistics
 
 `statistics(header_hash)` follows the pinned JIP-2 method of that name and returns the exact
