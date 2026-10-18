@@ -6,5 +6,5 @@
 
 import ../../../src/state/accumulation_queue
 import ../../../src/codec/state_workqueues
-discard default(AccumulationQueuePlan).accumulationDependencyAt(AccumulationIndex(0),
-    AccumulationIndex(0))
+discard accumulationDependencyAt(default(AccumulationQueuePlan), AccumulationIndex(0),
+  AccumulationIndex(0))

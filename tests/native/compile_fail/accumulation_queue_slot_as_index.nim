@@ -6,4 +6,4 @@
 
 import ../../../src/state/accumulation_queue
 import ../../../src/codec/state_workqueues
-discard default(AccumulationQueuePlan).accumulationAt(WorkQueueSlot(0))
+discard accumulationAt(default(AccumulationQueuePlan), WorkQueueSlot(0))
