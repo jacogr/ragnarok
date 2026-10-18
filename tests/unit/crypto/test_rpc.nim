@@ -1573,6 +1573,90 @@ assert requestBatch.nextUpdate() == ""
 assert respond(subscribeRequest("9").replace(",\"id\":61", ""), requestsInfo, requestBatch) == ""
 assert requestBatch.nextUpdate() == absentRequestUpdate.replace("\"subscription\":1", "\"subscription\":2")
 
+# Finalized subscriptions use independent publication streams while sharing connection capacity.
+let subscribeFinalized = SubscribeBest.replace("subscribeBestBlock", "subscribeFinalizedBlock")
+let unsubscribeFinalized = UnsubscribeBest.replace("unsubscribeBestBlock",
+    "unsubscribeFinalizedBlock")
+let initialFinalizedUpdate = initialBestUpdate.replace("subscribeBestBlock",
+    "subscribeFinalizedBlock")
+var noFinalitySession = default(RpcSession)
+assert "Finalized chain view unavailable" in respond(subscribeFinalized, withGenesis, noFinalitySession)
+assert "-32601" in respond(subscribeFinalized, finalizedInfo)
+assert "-32602" in respond(subscribeFinalized.replace("[]", "[false]"), finalizedInfo, noFinalitySession)
+assert respond(subscribeFinalized, finalizedInfo, noFinalitySession) == SubscribedBest
+assert noFinalitySession.nextUpdate() == initialFinalizedUpdate
+assert noFinalitySession.queueChainUpdates(historyChild)
+assert noFinalitySession.nextUpdate() == "" # Best-head publication cannot leak into finalized subscriptions.
+assert noFinalitySession.queueChainUpdates(historyChild, finalized = true)
+assert noFinalitySession.nextUpdate() == initialFinalizedUpdate.replace(genesisHash,
+    childHashText).replace("\"slot\":7", "\"slot\":9")
+assert respond(UnsubscribeBest, finalizedInfo, noFinalitySession) == UnsubscribedBest.replace(
+    "true", "false")
+assert respond(unsubscribeFinalized, finalizedInfo, noFinalitySession) == UnsubscribedBest
+
+## Exercise each value-bearing family against a finalized snapshot distinct from the current best head.
+proc checkFinalizedFamily(call: string, source: ClientInfo, expected: string) =
+  let selected = source.chain.finalizeView(source.chain.bestBlock.value.blockHash)
+  assert selected.error == ViewFinalizeError.None
+  let advanced = selected.value.advanceView(childSnapshot(source.chain.bestBlock.value, 8,
+      genesisParameters.value))
+  assert advanced.error == ViewAdvanceError.None
+  let context = ClientInfo(chain: advanced.value)
+  var session = default(RpcSession)
+  assert respond(call.replace("false", "true"), context, session) == SubscribedBest
+  assert session.nextUpdate() == expected # Initial state comes from finality, not the newer best snapshot.
+  assert session.queueChainUpdates(context.chain.bestBlock)
+  assert session.nextUpdate() == ""
+  assert session.queueChainUpdates(context.chain.finalizedBlock, finalized = true)
+  assert session.nextUpdate() == expected # Every family routes only the explicitly selected stream.
+  assert respond(SubscribeBest, context, session) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+  discard session.nextUpdate() # Drain the best subscription's initial descriptor before testing isolation.
+  assert session.queueChainUpdates(context.chain.finalizedBlock, finalized = true)
+  assert session.nextUpdate() == expected
+  assert session.nextUpdate() == "" # Best subscription receives no finalized event.
+checkFinalizedFamily(SubscribeStats, activityOwner, initialStatsUpdate)
+checkFinalizedFamily(SubscribeAccount, serviceInfo, presentAccountUpdate)
+checkFinalizedFamily(SubscribeValue, serviceInfo, presentValueUpdate)
+checkFinalizedFamily(subscribePreimage, serviceInfo, presentPreimageUpdate)
+checkFinalizedFamily(subscribeRequest("0"), requestsInfo, absentRequestUpdate.replace(
+    "\"value\":null", "\"value\":[]"))
+let finalizedActivityView = activityOwner.chain.finalizeView(
+    activityOwner.chain.bestBlock.value.blockHash)
+assert finalizedActivityView.error == ViewFinalizeError.None
+let finalizedActivityInfo = ClientInfo(chain: finalizedActivityView.value)
+var isolatedStatistics = default(RpcSession)
+assert respond(SubscribeStats.replace("false", "true"), finalizedActivityInfo,
+    isolatedStatistics) == SubscribedBest
+discard isolatedStatistics.nextUpdate() # Drain initial finality statistics before adding the best selector.
+assert respond(SubscribeStats, finalizedActivityInfo, isolatedStatistics) == SubscribedBest.replace(
+    "\"result\":1", "\"result\":2")
+discard isolatedStatistics.nextUpdate()
+assert isolatedStatistics.queueChainUpdates(withGenesis.chain.bestBlock, finalized = true)
+assert isolatedStatistics.nextUpdate() == statsFailure # Missing finalized statistics terminates only that selector.
+assert isolatedStatistics.queueChainUpdates(activityOwner.chain.bestBlock)
+assert isolatedStatistics.nextUpdate() == initialStatsUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert respond(unsubscribeStats, finalizedActivityInfo, isolatedStatistics) ==
+    UnsubscribedBest.replace("true", "false")
+var finalizedBatch = default(RpcSession)
+assert respond("[" & subscribeFinalized & "," & unsubscribeFinalized & "]", finalizedInfo,
+    finalizedBatch) == "[" & SubscribedBest & "," & UnsubscribedBest & "]"
+assert finalizedBatch.nextUpdate() == ""
+assert respond(subscribeFinalized.replace(",\"id\":61", ""), finalizedInfo, finalizedBatch) == ""
+assert finalizedBatch.nextUpdate() == initialFinalizedUpdate.replace("\"subscription\":1",
+    "\"subscription\":2")
+var finalCapacity = default(RpcSession)
+for index in 1..MaxSubscriptions:
+  let call = if index <= 4: SubscribeBest else: subscribeFinalized
+  assert "\"result\":" & $index in respond(call, finalizedInfo,
+      finalCapacity) # Both sources consume the same eight slots.
+assert finalCapacity.queueChainUpdates(historyChild)
+assert finalCapacity.queueChainUpdates(historyChild,
+    finalized = true) # Eight initial plus four updates per source fill sixteen entries.
+assert not finalCapacity.queueChainUpdates(historyChild, finalized = true)
+for index in 1..MaxSubscriptionUpdates:
+  assert finalCapacity.nextUpdate().len > 0 # Overflow preserves all previously queued updates.
+assert finalCapacity.nextUpdate() == ""
+
 ## Repeated connection retirement must release queued notifications and copied tentative session storage.
 proc retireSubscriptions() =
   var retired = default(Connection)
@@ -1932,6 +2016,38 @@ proc publicationLifecycle() =
   let finalizedAnswer = respond(bestRequest, withGenesis).replace(genesisHash, base64.encode(array[
       32, byte](finalizedHead.value.blockHash))).replace("\"slot\":7", "\"slot\":49")
   assert publicationReply(survivor[1]) == frame(finalizedAnswer) # Dispatcher queries use the explicitly published finalized snapshot.
+  var subscribeFinalizedPacket = masked(subscribeFinalized)
+  assert sendBytes(survivor[1], subscribeFinalizedPacket.toCString(), csize_t(
+      subscribeFinalizedPacket.len), 0) == subscribeFinalizedPacket.len
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+      "\"result\":6"))
+  owner.tick(0)
+  let finalizedInitial = initialFinalizedUpdate.replace("\"subscription\":1",
+      "\"subscription\":6").replace(genesisHash, base64.encode(array[32, byte](
+      finalizedHead.value.blockHash))).replace("\"slot\":7", "\"slot\":49")
+  assert publicationReply(survivor[1]) == frame(finalizedInitial)
+  let nextFinalized = childSnapshot(finalizedHead.value, 50, genesisParameters.value)
+  assert owner.publishBlock(nextFinalized) == ViewAdvanceError.None
+  assert owner.connections[1].session.nextUpdate() ==
+      "" # Actual server best publication cannot queue a finalized event.
+  assert owner.publishFinalized(nextFinalized.value.blockHash) == ViewFinalizeError.None
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(finalizedInitial.replace(base64.encode(array[32,
+      byte](finalizedHead.value.blockHash)), base64.encode(array[32, byte](
+      nextFinalized.value.blockHash))).replace("\"slot\":49", "\"slot\":50"))
+  assert owner.publishFinalized(nextFinalized.value.blockHash) == ViewFinalizeError.None
+  assert owner.connections[1].session.nextUpdate() == "" # Repeated finality is silent.
+  for iteration in 0..<MaxSubscriptionUpdates:
+    discard respond(subscribeFinalized, ClientInfo(chain: owner.chain), owner.connections[
+        1].session) # Fill shared slots and pending initial updates.
+  for atSlot in 51'u32..53'u32:
+    let child = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value)
+    assert owner.publishBlock(child) == ViewAdvanceError.None
+    assert owner.publishFinalized(child.value.blockHash) ==
+        ViewFinalizeError.None # Slow subscribers cannot prevent finality advancement.
+  assert not owner.connections[1].opened
+  assert owner.chain.finalizedBlock.value.slot == 53
   owner.close()
   assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
   assert owner.publishFinalized(selectedHash) == ViewFinalizeError.Uninitialized
