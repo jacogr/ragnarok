@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 Psi_A code-unavailable/oversized alternative for transfer-free initial invocations.
-## Exposes immutable zero-gas/empty-effect outcomes and pure/block-bound source extraction; never executes or writes.
+## GP 0.8.0 Psi_A code-unavailable/oversized alternative after incoming transfer credit.
+## Exposes immutable zero-gas/empty-effect outcomes and pure/block-bound source extraction; never executes or republishes credit.
 
 import ../codec/[composite, header, work_digest]
 import ./[accumulation_service, store]
@@ -46,7 +46,7 @@ func error*[T](outcome: AccumulationSkipResult[T]): AccumulationSkipError = outc
 func value*[T](outcome: AccumulationSkipResult[T]): T {.inline,
     requires: outcome.status == AccumulationSkipError.None.} = outcome.completed
 
-## Copy the exact skip reason and protocol zero/empty effects, without changing account timestamps or balance.
+## Copy the exact skip reason and protocol zero/empty effects, without further changing the already credited account.
 proc skipInfo*(outcome: SkippedAccumulation): AccumulationSkipResult[AccumulationSkipInfo] =
   let data = outcome.data
   if data == nil: return AccumulationSkipResult[AccumulationSkipInfo](
@@ -56,7 +56,7 @@ proc skipInfo*(outcome: SkippedAccumulation): AccumulationSkipResult[Accumulatio
     completed: AccumulationSkipInfo(service: source.service, slot: source.slot, code: source.code,
       gasUsed: Gas(0), transfers: 0, provisions: 0, hasYield: false))
 
-## Retain the exact complete source map; with no incoming transfers, Psi_A's post-transfer state is unchanged.
+## Retain the complete post-transfer map, including credit even when no code executes.
 ## This neither filters account namespaces nor newly validates unrelated chapters or computes a partial root.
 proc skipState*(outcome: SkippedAccumulation): AccumulationSkipResult[StateStoreSnapshot] =
   let data = outcome.data
@@ -75,16 +75,13 @@ proc skipService*(outcome: SkippedAccumulation): AccumulationSkipResult[
     completed: data.service)
 
 ## Complete only Psi_A's non-executing alternative; Ready, including empty code, requires real PVM dispatch.
-## Service preparation already proved code identity/envelope/size and explicitly refused incoming transfers.
+## Service preparation already proved code identity/envelope/size and retained incoming transfer credit.
 proc finishUninvokedAccumulation*(service: PreparedAccumulationService): AccumulationSkipResult[
     SkippedAccumulation] =
   let info = service.serviceInfo
   if info.error != AccumulationServiceError.None:
     return AccumulationSkipResult[SkippedAccumulation](
       status: AccumulationSkipError.InvalidService) # Missing accounts, corrupt state and backend/resource failures cannot be passed as successful owners.
-  if info.value.transfers != 0:
-    return AccumulationSkipResult[SkippedAccumulation](
-      status: AccumulationSkipError.InvalidService) # Do not discard future transfer credit if upstream preparation expands.
   case info.value.code
   of AccumulationCodeStatus.Ready:
     AccumulationSkipResult[SkippedAccumulation](

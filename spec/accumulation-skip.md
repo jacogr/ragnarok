@@ -6,11 +6,11 @@ Implement the first `Psi_A` alternative in GP 0.8.0 `pvm_invocations.tex`, equat
 `accinvocation`, revision `07f041dabd073f9018b418e9ee72e79dd2185401` (SHA-256
 `67a4fa455d2c1e7979ed9eec8849cb2dcdda7386c2f4085f1d11e93e72f7d6cb`). Reuse the
 [service code resolution](accumulation-service.md) certificate. Missing code, an invalid envelope
-(which supplies no code), or code exceeding the protocol limit returns unchanged execution state,
+(which supplies no code), or code exceeding the protocol limit returns the post-transfer execution state,
 zero gas usage, no deferred transfers/provisions and absent yield.
 
-This initial-round slice accepts only the transfer-free contexts already certified by service
-preparation. Ready code, including a valid empty blob, requires execution and cannot become a
+This adapter accepts contexts already credited by [service preparation](accumulation-credit.md).
+Ready code, including a valid empty blob, requires execution and cannot become a
 successful skipped outcome. Missing/corrupt accounts, backend failure and local resource exhaustion
 remain preparation failures, not protocol skip outcomes. Do not initialize `I`, probe service IDs,
 read posterior entropy, invoke the PVM or publish state for this alternative.
@@ -44,12 +44,10 @@ source. The bound owner additionally retains its original `BlockAccumulationServ
 a pure projection without accepting replacement state, code or profile buffers.
 
 This alternative requires no bootstrap or `I`, posterior entropy lookup, service-ID probe, program
-validation, host call, hashing or state publication. Account balances, storage, timestamps,
-privilege roles and all other chapters remain unchanged. Complete source identity is preserved rather than newly
-validating unrelated account/chapter payloads. Incoming transfers remain explicitly unsupported by
-service preparation and independently refused by this adapter; unchanged state is correct for the
-transfer-free initial round. Future transfer-aware execution must retain actual credited state,
-not discard credit by reusing an unmodified parent.
+validation, host call, hashing or state publication. It preserves the already credited balance,
+all storage, timestamps, privilege roles and unrelated chapters. No credit is applied a second time.
+Transfer-free initial rounds still return the original map. Complete map identity is retained rather
+than newly validating unrelated account/chapter payloads.
 
 Code-size eligibility inherits the explicit `ServiceCodeLimit` chain parameter used by service
 preparation. The block certificate authenticates state/slot provenance, not that caller-supplied
@@ -93,4 +91,4 @@ is unchanged, and that group was not rerun locally for this isolated state slice
 ## Next bounded work
 
 Integrate standard accumulation machine entry once the PVM initializer lands. Actual execution,
-checkpoint/host effects, transfer credit, later rounds and atomic publication remain separate.
+checkpoint/host effects, later rounds and atomic publication remain separate.

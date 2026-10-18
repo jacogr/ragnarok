@@ -7,7 +7,8 @@
 import std/cmdline
 import ../../src/state/[accumulation_service, accumulation_inputs, accumulation_operands,
   accumulation_queue, accumulation_round, store]
-import ../../src/codec/[bounded, state_accounts, state_privileges, state_workqueues, header, state_trie]
+import ../../src/codec/[bounded, state_accounts, state_privileges, state_workqueues, header,
+    state_trie]
 
 ## Build an actual existing account with absent code; this successful context must refuse code extraction.
 proc unavailable(): PreparedAccumulationService =
@@ -35,6 +36,7 @@ else: default(AccumulationServiceResult[PreparedAccumulationService]) # Defaults
 let bound = default(BlockAccumulationService)
 case paramStr(1)
 of "info": discard owner.serviceInfo.value # No fabricated metadata.
+of "prior": discard owner.servicePriorState.value # No substituted pre-credit source.
 of "state": discard owner.serviceState.value # No substituted parent.
 of "input": discard owner.serviceInputAt(InvocationInputIndex(0)).value # No default input.
 of "code", "unavailable": discard owner.serviceCode.value # Missing code cannot fabricate a valid empty blob.

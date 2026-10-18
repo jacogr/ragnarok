@@ -7,7 +7,8 @@ Implement GP 0.8.0 `pvm_invocations.tex`, `accinvocation`/initializer `I` and
 `67a4fa455d2c1e7979ed9eec8849cb2dcdda7386c2f4085f1d11e93e72f7d6cb`). Build on
 [service-code contexts](accumulation-service.md) with immutable invocation arguments and the
 initial collision-checked service identifier. Full mutable implications/checkpoint contexts,
-PVM execution, transfer credit and state publication remain separate.
+PVM execution and state publication remain separate. [Service preparation](accumulation-credit.md)
+now retains incoming credit before this bootstrap; arguments count transfers plus operands.
 
 General serialization in `serialization.tex` applies compact naturals to `E(t, s, len(inputs))`
 and to the service/slot terms of `E(service, posterior_entropy, slot)`. Header-specific E4
@@ -78,5 +79,5 @@ Pinned Gray Paper/vector revisions and native dependencies are unchanged.
 
 Bind the complete initial partial-state components for regular and exceptional accumulation contexts
 (accounts, authorization queue, validator staging and privilege roles), retaining this bootstrap.
-Checkpoint mutation, actual PVM dispatch, transfer credit, later rounds and atomic publication remain
+Checkpoint mutation, actual PVM dispatch, later rounds and atomic publication remain
 separate work requiring genuine execution outcomes.
