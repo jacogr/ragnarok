@@ -154,6 +154,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'guarantee_credentials')
     run_failure_suite(compiler, report, libraries, build, command, 'report_policy')
     run_failure_suite(compiler, report, libraries, build, command, 'report_anchors')
+    # PVM scalar success and page-fault reason access require their exact selected alternatives.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_machine')
     run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
     run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
