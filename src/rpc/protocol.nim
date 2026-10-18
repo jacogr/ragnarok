@@ -312,7 +312,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
       GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -345,6 +345,52 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if not hasId: return "" # This read-only dispatch has no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
+  if methodName == "ragnarok_stateKeys":
+    if parameters < 0: return error(id, -32602, "Expected hash, cursor and count") # All pagination arguments are explicit.
+    let argument = parameters + 1
+    if values[parameters].next != argument + 3 or values[argument].kind != stringValue:
+      return error(id, -32602, "Expected hash, cursor and count") # Exactly three scalar arguments.
+    let hash = values[argument].text
+    if not validHash(hash): return error(id, -32602,
+        "Expected padded Base64 hash") # Resolve only canonical identities.
+    let cursor = values[argument + 1]
+    let fromStart = cursor.kind == literalValue and cursor.text == "null"
+    var keyBytes: seq[byte] = @[]
+    if not fromStart:
+      # Null begins enumeration; all other cursors must encode an exact serialized key.
+      if cursor.kind != stringValue or not decodeBlob(cursor.text, 31, keyBytes) or keyBytes.len != 31:
+        return error(id, -32602, "Expected null or padded Base64 31-byte cursor")
+    var count = 0'u32
+    if not serviceNumber(values[argument + 2], count) or count == 0 or count > 128:
+      return error(id, -32602, "Expected count from 1 to 128") # Bound work and JSON growth before lookup.
+    if info.genesis.error == GenesisError.None:
+      # Each page is bound to the requested immutable block, never a moving implicit head.
+      let view = info.genesis.value
+      if hash == base64.encode(array[32, byte](view.blockHash)):
+        var start = 0
+        if not fromStart:
+          # Exact cursor bytes locate an exclusive upper bound without scanning prior keys.
+          var key = default(array[31, byte])
+          for index in 0..<31: key[index] = keyBytes[index] # Decoding proved the complete extent.
+          start = int(view.keyAfter(StateKey(key)))
+        let finish = start + min(int(count), view.keyCount - start)
+        var keys = "["
+        var last = "null"
+        let budget = max(0, allowance - id.len - 256)
+        for index in start..<finish:
+          # Encode fixed key copies only; enumeration never reads or copies state values.
+          let encoded = quote(base64.encode(array[31, byte](view.keyAt(StateKeyIndex(index)))))
+          if keys.len + encoded.len + 2 > budget:
+            return error(id, 0, ReplyBudgetError) # No misleading partial page or skipped continuation.
+          if index > start: keys.add(',') # Separate keys after the first item.
+          keys.add(encoded)
+          last = encoded
+        keys.add(']')
+        if finish == view.keyCount: last = "null" # No continuation when the end was reached exactly.
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":{\"keys\":" & keys &
+            ",\"next\":" & last & "}}"
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
+        quote(hash) & "}}"
   if methodName == "ragnarok_stateValue":
     if parameters < 0: return error(id, -32602, "Expected header hash and state key") # Both identities are mandatory.
     let argument = parameters + 1

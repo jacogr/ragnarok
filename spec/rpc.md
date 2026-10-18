@@ -419,3 +419,38 @@ Native tests cover exact key length/canonical padding, invalid argument shapes, 
 missing versus empty entries, opaque binary data, the exact raw size ceiling and one byte beyond,
 aggregate batch refusal, notifications and repeated ARC retirement. Live WebSocket checks query
 a known chapter and missing key after source-file mutation alongside existing RPC/QUIC traffic.
+
+## Paginated state-key discovery extension
+
+`ragnarok_stateKeys(header_hash, start_after, count)` lists exact serialized keys from the
+same immutable configured block used by `ragnarok_stateValue`. This is a Ragnarok extension,
+not a JIP-2 method. `header_hash` is canonical Base64 for 32 bytes. `start_after` is either
+`null` to start or canonical Base64 for a 31-byte serialized key. `count` is an integer from
+1 through 128; no implicit defaults, fractions or exponent notation are accepted.
+
+The result is `{"keys":[...],"next":...}`. Keys use unsigned bytewise lexicographic order,
+not Base64 string order or numeric service-ID order. The cursor is exclusive and need not be
+present in the map: a subsequent page begins at the first greater key. `next` is the last
+returned key when more keys remain, otherwise null, including when the last page is exactly
+full or the cursor lies at/beyond the final key. Continue with the same header hash to stay
+bound to one state snapshot. An example initial request is:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"ragnarok_stateKeys","params":["5mOOsjxqUxhky5HYvxomxm/u7dg7VcwqcsnDWQBCjtQ=",null,128]}
+```
+
+Genesis capture retains a private sorted fixed-width key index only after complete-map
+validation, bounded by the existing 16384-entry limit (at most 507904 key bytes plus sequence
+metadata). Guarded ordinal access returns copies, never mutable backing storage. Pagination
+uses binary search plus at most 128 key copies; it reads no state values and includes keys
+whose values are empty or structurally invalid. This is discovery, not schema validation,
+proof generation or a historical state archive. Key width/order follow the pinned GP
+serialized-state namespace described above; pagination semantics are Ragnarok-specific.
+
+Unknown blocks return error 1 with the requested hash; invalid arguments return -32602.
+Aggregate reply-budget refusal returns error 0 and no partial page or continuation cursor.
+Native checks cover exclusive and absent cursors, final/empty pages, strict arguments,
+opaque entries, copied-key isolation, maximum page/batch limits and ARC retirement. A private
+field rejection protects the index. Live WS checks traverse every fixture key over multiple
+pages and compare the result with independently sorted serialized fixture keys after the
+source chainspec changes. Live block publication and proof/archival queries remain future work.

@@ -15,6 +15,8 @@ import ../crypto/primitives
 type
   ## An ordinal in the retained service list, distinct from a service ID or state key.
   ServiceListIndex* = distinct int
+  ## Ordinal in the retained sorted serialized-key index, bound to its genesis owner.
+  StateKeyIndex* = distinct int
   ## Genesis identity is a full sealed-header hash, never a state root.
   BlockHash* = distinct array[32, byte]
   ## Private immutable retained state with copied descriptor fields; no mutable store escapes.
@@ -25,6 +27,7 @@ type
     timeslot: uint32
     epochLength: EpochSlots     # Captured with the same parameters as header validation.
     corePopulation: CoreCount
+    keys: seq[StateKey]         # Private fixed-width copies; at most 16384 entries.
     services: seq[ServiceIndex] # Private sorted IDs captured with the same immutable state.
   ## Absent configuration differs from a supplied but invalid genesis pair.
   GenesisError* {.pure.} = enum
@@ -59,6 +62,43 @@ func serviceCount*(value: Genesis): int {.requires: value.ready.} = value.servic
 ## Return a copied ID by owner-bound ordinal; no mutable sequence or detached view escapes.
 func serviceAt*(value: Genesis, index: ServiceListIndex): ServiceIndex {.requires: value.ready and
     int(index) >= 0 and int(index) < value.services.len.} = value.services[int(index)]
+
+## Return the number of exact serialized keys retained with this snapshot.
+func keyCount*(value: Genesis): int {.requires: value.ready.} = value.keys.len
+## Copy one key without exporting mutable index storage.
+func keyAt*(value: Genesis, index: StateKeyIndex): StateKey {.requires: value.ready and
+    int(index) >= 0 and int(index) < value.keys.len.} = value.keys[int(index)]
+
+## Compare full serialized keys by unsigned octet order, independent of Base64 spelling.
+func compareStateKey(left, right: StateKey): int =
+  let a = array[31, byte](left)
+  let b = array[31, byte](right)
+  for index in 0..<31:
+    # The first differing octet determines dictionary order.
+    if a[index] < b[index]: return -1 # Smaller octets precede larger ones.
+    if a[index] > b[index]: return 1 # Distinct keys never compare equal.
+  0
+
+## Locate the first strictly greater key; keyCount is the valid end sentinel.
+proc keyAfter*(value: Genesis, key: StateKey): StateKeyIndex {.requires: value.ready.} =
+  var low = 0
+  var high = value.keys.len
+  while low < high:
+    # Upper-bound search also accepts a cursor absent from this immutable snapshot.
+    let middle = low + (high - low) div 2
+    if compareStateKey(value.keys[middle], key) <= 0:
+      low = middle + 1 # The cursor itself must not repeat on the next page.
+    else:
+      high = middle # Preserve the first possible strictly greater key.
+  StateKeyIndex(low)
+
+## Capture a bounded sorted key index only after the complete map has validated.
+proc captureKeys(entries: openArray[StateEntry]): seq[StateKey] =
+  result = newSeq[StateKey](entries.len)
+  for index in 0..<entries.len:
+    # Copy fixed keys; no value bytes or caller-owned arrays are retained here.
+    result[index] = entries[index].key
+  result.sort(compareStateKey) # Store validation has already rejected duplicates.
 
 ## Sort numeric IDs rather than the little-endian interleaved serialized account keys.
 proc compareService(left, right: ServiceIndex): int =
@@ -137,4 +177,4 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   GenesisResult(status: GenesisError.None, completed: Genesis(ready: true, state: saved.value,
     identity: BlockHash(array[32, byte](hashed.value)), epochLength: EpochSlots(parameters.get(
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
-            services: discoverServices(entries)))
+            keys: captureKeys(entries), services: discoverServices(entries)))

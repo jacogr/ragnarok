@@ -674,6 +674,7 @@
     "rpc_request_result_private": "status",
     "rpc_service_list_private": "services",
     "rpc_service_result_private": "status",
+    "rpc_state_keys_private": "keys",
     "rpc_statistics_result_private": "status",
     "safrole_auth_private": "completed",
     "safrole_auth_retag": "status",
