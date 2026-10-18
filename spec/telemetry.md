@@ -226,7 +226,8 @@ Ragnarök peer, creates isolated fixture identities, and launches the explicitly
 with `--no-database` on ephemeral loopback TCP/HTTP ports. It requires no PostgreSQL instance.
 A separate Linux CI job runs `make check-telemetry-interop-ci` on every PR and master push,
 building the pinned collector before running this check. It adds no production runtime dependency.
-The six existing verification groups retain their scope; `make check` runs those six groups. Its hash-pinned WebSocket client lives in an ignored build-local Python venv.
+The six existing verification groups retain their scope; `make check` runs those six groups.
+Its hash-pinned WebSocket client lives in an ignored build-local Python venv.
 
 The harness waits for a subscription acknowledgement, then requires a decoded two-core status
 before starting a real authenticated CE 143 exchange. Both peers must finish eight requests.
@@ -235,8 +236,18 @@ authentication outcomes, identities, addresses and exactly one close per peer, w
 failure events. Correlation is checked against each node's implicit event position: WebSocket
 envelope IDs are collector-global and are not JIP-3 attempt IDs.
 
+Two additional cases use fresh collectors and fixture identities: an incoming certificate rejected
+against the server's pin, and an outgoing dial to a held, non-responding UDP endpoint. Each requires
+exactly one attempt and its matching failure (JIP-3 events 21/22 or 24/25), with an empty reason,
+zero authenticated peers, and no authenticated success or disconnect. The rejecting server's
+first decoded status gates client startup. Negative peer operations must exit with failure and
+must not complete the application exchange. Full retained history is checked after exporter exit;
+seeing the expected failure once is not sufficient if an extra terminal event follows it.
+These cases run in the same required interoperability CI job, with separate scenario logs and
+verdicts under `build/tests/telemetry-interop/`.
+
 The collector remains an independent compatibility check, not the protocol authority. This
-scenario covers registration acceptance and the implemented status/connection subset; it does
+suite covers registration acceptance and successful/failed status/connection observations; it does
 not establish database persistence, dashboard rendering, reconnect behavior in JAM Tart, or
 support for unimplemented validator events. The normal tests retain their deterministic loss,
 backpressure and reconnect coverage.

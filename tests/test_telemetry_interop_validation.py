@@ -68,6 +68,63 @@ class InteropOutputTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             verify(rows, identities, 9000)
 
+    def failure_fixture(self, incoming):
+        """Place a status before either failed attempt so its correlation ID cannot default to zero."""
+        rows, identities = self.fixture()
+        role = 'server' if incoming else 'client'
+        status = copy.deepcopy(rows[0])
+        status['node_id'] = identities[role]
+        attempt = copy.deepcopy(rows[1 if incoming else 2])
+        variant = 'ConnectInFailed' if incoming else 'ConnectOutFailed'
+        failed = dict(id=999, node_id=identities[role], event_type=22 if incoming else 25,
+                      event={variant: dict(timestamp=2, connecting_id=1, reason='')})
+        return [status, attempt, failed], identities, ('incoming-rejection' if incoming else 'outgoing-timeout')
+
+    def test_failed_lifetimes(self):
+        """Both failure directions retain local correlation across an interleaved status."""
+        for incoming in (False, True):
+            # Each direction has one exporter and must include all three observations.
+            rows, identities, scenario = self.failure_fixture(incoming)
+            with self.subTest(scenario=scenario):
+                self.assertEqual(verify(rows, identities, 9000, scenario),
+                                 {'server' if incoming else 'client': 3})
+
+    def test_failure_wrong_reference(self):
+        """A terminal event cannot refer to the preceding status or a collector-global ID."""
+        for incoming in (False, True):
+            # Exercise each decoder variant with both plausible wrong ID namespaces.
+            for reference in (0, 701):
+                rows, identities, scenario = self.failure_fixture(incoming)
+                next(iter(rows[-1]['event'].values()))['connecting_id'] = reference
+                with self.subTest(scenario=scenario, reference=reference), self.assertRaises(AssertionError):
+                    verify(rows, identities, 9000, scenario)
+
+    def test_failure_has_no_authenticated_close(self):
+        """Failed handshakes cannot acquire an authenticated disconnect from a successful lifetime."""
+        for incoming in (False, True):
+            # A well-formed extra close must fail even when its remote identity matches.
+            rows, identities, scenario = self.failure_fixture(incoming)
+            success, _ = self.fixture()
+            rows.append(success[-2 if incoming else -1])
+            with self.subTest(scenario=scenario), self.assertRaises(AssertionError):
+                verify(rows, identities, 9000, scenario)
+
+    def test_failure_reason_stays_unknown(self):
+        """Collector decoding cannot replace the empty native diagnosis with an invented reason."""
+        for incoming in (False, True):
+            # Both failure tags carry the same empty-reason contract.
+            rows, identities, scenario = self.failure_fixture(incoming)
+            next(iter(rows[-1]['event'].values()))['reason'] = 'invented'
+            with self.subTest(scenario=scenario), self.assertRaises(AssertionError):
+                verify(rows, identities, 9000, scenario)
+
+    def test_failed_peer_count_stays_zero(self):
+        """Periodic status must not count an unauthenticated peer as admitted."""
+        rows, identities, scenario = self.failure_fixture(True)
+        rows[0]['event']['Status']['num_peers'] = 1
+        with self.assertRaises(AssertionError):
+            verify(rows, identities, 9000, scenario)
+
 
 class CollectorBatchTests(unittest.TestCase):
     """The collector's scheduling-dependent batching must not lose otherwise valid observations."""
