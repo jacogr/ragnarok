@@ -7,8 +7,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/chain/[services, statistics, beefy]
+import std/[assertions, syncio, base64]
+import ../../../src/chain/[services, statistics, beefy, reports]
 include ../../../src/rpc/server
 
 # Construct independently masked client frames; test payloads stay within the medium-length format.
@@ -535,4 +535,74 @@ for iteration in 0..<100:
   # Fresh decoder owners must all release their arrays and package/peak storage.
   retireBeefyReply()
 assert getOccupiedMem() <= beefyBaseline + 256
+
+# Independent Python report/guarantee oracle fixes exact canonical report bytes and identity.
+proc reportInfo(wire: string): ClientInfo =
+  ## Capture an immutable chapter-10 fixture without borrowing the source JSON.
+  let state = genesisState[0..^2] & ",\"0a" & repeat("00", 30) & "\":\"" & wire & "\"}"
+  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value))
+let reportWire = "000130466e0ae1b05dde5249872475f6beeac368fd014b5a3413ceb32d38721432842a0000007af11fdaa717c398e223211842b41392f18df4bbc4ea0f4cfb972f19c7a649490600e8e52949f6e4fb1d943248df48c3f2b538200fddfea22388e5e061be8ebf21a74500c0564c5e0de0942589df4343ad1956da66797240e2a2f2d6f8116b50477689860b000000f6967658df626fa39cbfb6014b50196d23bc2cfbfa71a7591ca7715472dd2b489329de635d4bbb8c47cdccbbc1285e48bf9dbad365af44b205343e99dea298f360751ab5b251361fbfd3ad5b0e84f051ccece6b00830aed31a5354e00b20b9ed210000008f665c40573f1288749767417430f62360e37865ef773c24186527aa24b5a4930001022e5e165cc8bd586404257f5cd6f5a31177b5c951eb076c7c10174f90006eef000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffffffff02000011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111010012121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212070000000000"
+let reportOwner = reportInfo(reportWire)
+let reportHashText = "TPewtqai8WQjWIo74eXNrAyVpYAPROxl7JGzk+ASWA0="
+let reportCall = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"workReport\",\"params\":[\"" &
+    reportHashText & "\"]}"
+let reportAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"MEZuCuGwXd5SSYckdfa+6sNo/QFLWjQTzrMtOHIUMoQqAAAAevEf2qcXw5jiIyEYQrQTkvGN9LvE6g9M+5cvGcemSUkGAOjlKUn25PsdlDJI30jD8rU4IA/d/qIjiOXgYb6OvyGnRQDAVkxeDeCUJYnfQ0OtGVbaZnlyQOKi8tb4EWtQR3aJhgsAAAD2lnZY32Jvo5y/tgFLUBltI7ws+/pxp1kcp3FUct0rSJMp3mNdS7uMR83Mu8EoXki/nbrTZa9EsgU0PpneopjzYHUatbJRNh+/061bDoTwUczs5rAIMK7TGlNU4Asgue0hAAAAj2ZcQFc/Eoh0l2dBdDD2I2DjeGXvdzwkGGUnqiS1pJMAAQIuXhZcyL1YZAQlf1zW9aMRd7XJUesHbHwQF0+QAG7vAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+assert respond(reportCall, reportOwner) == reportAnswer
+assert respond("[" & reportCall & "," & reportCall & "]", reportOwner) == "[" & reportAnswer & "," &
+    reportAnswer & "]"
+assert respond(reportCall.replace(",\"id\":1", ""), reportOwner) == ""
+assert "\"workReport\"" in respond(request, reportOwner)
+# Absent configuration, chapter and empty assignments all report unavailability with the requested identity.
+for owner in [info, withGenesis, reportInfo("00000000")]:
+  assert respond(reportCall, owner) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":2,\"message\":\"Work-report unavailable\",\"data\":\"" &
+      reportHashText & "\"}}"
+assert "\"code\":2" in respond(reportCall.replace(reportHashText, repeat("A", 43) & "="), reportOwner)
+assert "\"code\":-32602" in respond(reportCall.replace(reportHashText, "bad"), reportOwner)
+# Complete parent validation rejects truncation, invalid tags and suffixes even after a matching report.
+for wire in ["", "02", reportWire[0..^3], reportWire & "00"]:
+  assert "\"code\":0" in respond(reportCall, reportInfo(wire))
+# Repeated lookup must retire parent snapshots, report copies and cryptographic temporary buffers.
+proc retireReportReply() =
+  ## Assert lookup while retaining only the original configured state across calls.
+  assert respond(reportCall, reportOwner) == reportAnswer
+retireReportReply()
+let reportBaseline = getOccupiedMem()
+for iteration in 0..<100:
+  # Every decoder owner must be retired after the response's copied bytes are released.
+  retireReportReply()
+assert getOccupiedMem() <= reportBaseline + 256
+
+# The matching report obeys its exact reply allowance; unrelated misses do not consume it.
+let reportIdentity = WorkReportHash([76'u8, 247'u8, 176'u8, 182'u8, 166'u8, 162'u8, 241'u8, 100'u8,
+    35'u8, 88'u8, 138'u8, 59'u8, 225'u8, 229'u8, 205'u8, 172'u8, 12'u8, 149'u8, 165'u8, 128'u8,
+    15'u8, 68'u8, 236'u8, 101'u8, 236'u8, 145'u8, 179'u8, 147'u8, 224'u8, 18'u8, 88'u8, 13'u8])
+assert workReport(default(Genesis), reportIdentity, ByteLimit(393)).error ==
+    ReportReadError.Uninitialized
+assert workReport(reportOwner.genesis.value, reportIdentity, ByteLimit(392)).error ==
+    ReportReadError.LimitExceeded
+assert workReport(reportOwner.genesis.value, reportIdentity, ByteLimit(393)).error ==
+    ReportReadError.None
+assert workReport(reportOwner.genesis.value, default(WorkReportHash), ByteLimit(0)).error ==
+    ReportReadError.Missing
+# A returned report owns its bytes even after the configured map and parent decoder retire.
+proc retainedReport(): OwnedReport =
+  ## Return just the validated report owner from a short-lived configured state.
+  let transient = reportInfo(reportWire)
+  let found = workReport(transient.genesis.value, reportIdentity, ByteLimit(393))
+  assert found.error == ReportReadError.None
+  found.value
+let reportRetained = retainedReport()
+var reportCopy = newSeq[byte](393)
+assert encodeOwnedReport(reportRetained, reportCopy).error == OwnershipError.None
+reportCopy[0] = reportCopy[0] xor 255 # Mutating a copied wire buffer cannot alter the owner.
+assert encodeOwnedReport(reportRetained, reportCopy).error == OwnershipError.None
+assert base64.encode(reportCopy) in reportAnswer
+# Parent policy rejects large chapters before allocating decoder owners.
+assert "\"code\":0" in respond(reportCall, reportInfo(repeat("00", 1048577)))
+# Extra, absent and non-string arguments fail before lookup.
+for call in [reportCall.replace("[\"" & reportHashText & "\"]", "[]"),
+    reportCall.replace("[\"" & reportHashText & "\"]", "[0]"),
+    reportCall.replace("[\"" & reportHashText & "\"]", "[\"" & reportHashText & "\",0]")]:
+  assert "\"code\":-32602" in respond(call, reportOwner)
 echo "rpc ok"

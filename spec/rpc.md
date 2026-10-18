@@ -31,7 +31,7 @@ Send a WebSocket text message:
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)` and the service queries below are implemented; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
 and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -327,3 +327,36 @@ checks read a fixed expected root after the source chainspec has been changed, p
 startup snapshot isolation. No live block import, BEEFY signing/finality, or subscriptions
 are added. The next RPC increment should follow the available block-import/update pipeline;
 subscriptions and live head/finality views still require those state sources.
+
+## Retained work-report lookup
+
+`workReport(hash)` returns the canonical report bytes as padded Base64 when its Blake2b-256
+identity matches a report retained in configured genesis C(10) availability assignments. It
+excludes guarantee credentials, guarantee slot and registration slot from the returned bytes
+and their hash. References: JIP-2 at the revision above; GP 0.8.0 revision
+`07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix C.2 work-report serialization,
+`text/merklization.tex` chapter 10 and `text/reporting_assurance.tex` guarantee report hashing.
+
+`src/chain/reports.nim` validates the entire C(10) chapter with the existing codec, using the
+actual C(8) validator population. Both chapter copies and each nested guarantee are bounded
+to 1 MiB, with at most 341 assignments. These are RPC resource policies. A matching report
+must fit the existing 32 KiB raw response limit and remaining aggregate JSON budget; rejection
+returns error 0, never a truncated blob. Whole-chapter validation precedes lookup, so malformed
+later assignments or trailing bytes cannot authorize an earlier match. Native hash failures
+also return error 0. Returned report handles are immutable, acyclic ARC owners and outlive the
+parent decoder; serialization copies bytes without exposing mutable backing storage.
+
+Unknown hashes, missing C(10), empty assignments and unconfigured nodes return JIP-2 error 2
+with the requested report hash in `error.data`. This is local retention, not a historical report
+archive or a network fetch: C(14) ready-queue reports and reports no longer present in C(10)
+are not searched yet. Structural decoding does not verify guarantee signatures or consensus
+eligibility. Ready-queue lookup is the next bounded extension; live import, archive retention,
+submission and subscriptions still need their corresponding state/event sources.
+
+Native tests use the independent Python report/guarantee oracle and Blake2b implementation
+for a fixed canonical report and its expected identity. They cover empty/missing state,
+malformed/truncated/suffixed/oversized assignments, unknown hashes, exact reply budgets,
+parameter validation, batches, notifications, independent copied bytes, retained report lifetime
+and repeated ARC retirement. A compiler rejection protects the result discriminator. Live WS
+checks retrieve the report after the source chainspec changes, alongside existing service and
+concurrent QUIC traffic checks. These authored fixtures do not claim official conformance.
