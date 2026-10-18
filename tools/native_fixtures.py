@@ -78,6 +78,15 @@ def unit_preimage_transition_fixture(folder):
     return {'preimage_transition': fixture}, evidence
 
 
+# Prepare independent incoming-credit balances, metadata and complete embedding-map root witnesses.
+def unit_accumulation_credit_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from accumulation_credit_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_ACCUMULATION_CREDIT', path, ((path, evidence['fixture_sha256']),))
+    return {'accumulation_credit': fixture}, evidence
+
+
 # Supply the pinned signed-block template to native initial-context assertions without a new oracle.
 def unit_accumulation_context_fixture(folder):
     template = ROOT/'tests/fixtures/state-report.bin'
@@ -240,6 +249,8 @@ def unit_sealer_fixture(folder):
     fixtures.update(commitment_fixtures)
     preimage_fixtures, preimage_evidence = unit_preimage_transition_fixture(folder)
     fixtures.update(preimage_fixtures)
+    credit_fixtures, credit_evidence = unit_accumulation_credit_fixture(folder)
+    fixtures.update(credit_fixtures)
     context_fixtures, context_evidence = unit_accumulation_context_fixture(folder)
     fixtures.update(context_fixtures)
     invocation_fixtures, invocation_evidence = unit_accumulation_invocation_fixture(folder)
@@ -288,6 +299,7 @@ def unit_sealer_fixture(folder):
     evidence['accumulation_service'] = service_evidence
     evidence['accumulation_invocation'] = invocation_evidence
     evidence['accumulation_context'] = context_evidence
+    evidence['accumulation_credit'] = credit_evidence
     evidence['preimage_transition'] = preimage_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence

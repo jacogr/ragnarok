@@ -25,7 +25,7 @@ class VerificationFailures(unittest.TestCase):
             self.assertEqual(len(suite['cases']), test_runtime.FAILURE_COUNTS[name], name)
         self.assertEqual({name: count for name, count in test_runtime.FAILURE_COUNTS.items()
                           if name not in FAILURE_SUITES},
-                         {'store': 9, 'runtime': 3, 'bandersnatch': 32, 'offload': 4,
+                         {'store': 10, 'runtime': 3, 'bandersnatch': 32, 'offload': 4,
                           'composition': 36, 'workqueues': 86, 'availability': 52})
         report = {key: [dict(name=str(index), passed=True) for index in range(count)]
                   for key, count in test_runtime.FAILURE_COUNTS.items()}

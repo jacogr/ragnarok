@@ -47,6 +47,10 @@ proc main() =
     let rejected = storeFailure(origin)
     assert rejected.error == (if origin == "default": StateStoreError.Uninitialized else: StateStoreError.LimitExceeded)
     discard rejected.value.snapshot
+  of "fork":
+    # A default complete-map source cannot authorize an initialized branch through failed-result extraction.
+    let selected = default(StateStoreSnapshot)
+    discard selected.forkStateStore.value
   of "snapshot":
     # A failed atomic batch cannot authorize reading a default-looking root/count snapshot.
     let rejected = snapshotFailure(origin)
