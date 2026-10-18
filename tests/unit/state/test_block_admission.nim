@@ -1,7 +1,7 @@
 ## Real signed blocks bind exact parent headers and complete parent-state maps before atomic Safrole execution.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[block_admission, safrole_transition, safrole_authentication, store,
-    block_transition, disputes]
+    block_transition, disputes, availability]
 import ../../../src/codec/[block_codec, header, bounded, composite, tickets, state_safrole,
   state_consensus,
   state_disputes, state_trie, state_layout, guarantees, state_availability]
@@ -236,6 +236,11 @@ proc disputesPolicy(): DisputesConfig =
         validators: ValidatorCount(6), maxBytes: ByteLimit(2000000)),
       maxPresent: ElementLimit(2), maxBytes: ByteLimit(2000000)), maxExtrinsicBytes: ByteLimit(2000000))
 
+## Assurance verification shares this chain's domain and complete assignment policy.
+proc availabilityPolicy(): AvailabilityTransitionConfig =
+  AvailabilityTransitionConfig(rosters: rotationRosterConfig(2),
+    assignments: disputesPolicy().availability, availableReports: ElementLimit(2))
+
 ## Derive disputes and Safrole from the same signed block; changed marker and profile inputs fail before authentication.
 proc composed(source: seq[StateEntry], raw: seq[byte], candidate: OwnedBlock, parent: OwnedHeader,
     expected: seq[byte]) =
@@ -243,17 +248,31 @@ proc composed(source: seq[StateEntry], raw: seq[byte], candidate: OwnedBlock, pa
   failHash(0)
   var state = newStateStore(source, limits()).value
   let root = state.snapshot.value.commitment.root
-  let result = advanceBlockState(state, candidate, parent, policy(), disputesPolicy(), stagePolicy())
+  let result = advanceBlockState(state, candidate, parent, policy(), disputesPolicy(), stagePolicy(
+    ), availabilityPolicy())
   assert result.error == BlockTransitionError.None and verifications() == 2
   assert state.snapshot.value.lookup(chapterKey(StateChapter(5))).value.bytes == expected
   assert array[32, byte](result.value.admitted.admittedState.commitment.root) == array[32, byte](root)
+  assert array[32, byte](result.value.snapshot.commitment.root) == array[32, byte](
+      state.snapshot.value.commitment.root)
+  reset(0)
+  failHash(0)
+  var rejectedState = newStateStore(source, limits()).value
+  var tightAvailability = availabilityPolicy()
+  tightAvailability.assignments.maxBytes = ByteLimit(0)
+  let late = advanceBlockState(rejectedState, candidate, parent, policy(), disputesPolicy(),
+      stagePolicy(), tightAvailability)
+  assert late.error == BlockTransitionError.AvailabilityFailure
+  assert late.availabilityError.error == AvailabilityTransitionError.LimitExceeded
+  assert verifications() == 2 # Authenticated Safrole succeeded privately before the assurance-stage refusal.
+  unchanged(rejectedState.snapshot.value, source, root) # No earlier C(5)/Safrole changes can leak.
   for prefix in [0, 1]:
     reset(0)
     failHash(0)
     var refused = newStateStore(source, limits()).value
     refuseVerification(cint(prefix))
     let rejected = advanceBlockState(refused, candidate, parent, policy(), disputesPolicy(),
-        stagePolicy())
+        stagePolicy(), availabilityPolicy())
     assert rejected.error == BlockTransitionError.SafroleFailure
     assert rejected.safroleError.error == SafroleTransitionError.AuthenticationFailure
     unchanged(refused.snapshot.value, source, root) # Later authentication cannot publish any private disputes stage.
@@ -262,7 +281,8 @@ proc composed(source: seq[StateEntry], raw: seq[byte], candidate: OwnedBlock, pa
   var refused = newStateStore(source, limits()).value
   var divergent = disputesPolicy()
   divergent.epochSlots = EpochSlots(13)
-  let mismatch = advanceBlockState(refused, candidate, parent, policy(), divergent, stagePolicy())
+  let mismatch = advanceBlockState(refused, candidate, parent, policy(), divergent, stagePolicy(),
+      availabilityPolicy())
   assert mismatch.error == BlockTransitionError.AdmissionFailure
   assert mismatch.admissionError == BlockAdmissionError.InvalidConfig
   unchanged(refused.snapshot.value, source, root)
@@ -331,7 +351,8 @@ proc stagedDisputesRollback(source: seq[StateEntry], raw: seq[byte], candidate: 
   assert privateStore.snapshot.value.lookup(chapterKey(StateChapter(5))).value.bytes !=
       before.lookup(chapterKey(StateChapter(5))).value.bytes
   refuseVerification(0)
-  let refused = advanceBlockState(working, captured, parent, policy(), config, stagePolicy())
+  let refused = advanceBlockState(working, captured, parent, policy(), config, stagePolicy(),
+      availabilityPolicy())
   assert refused.error == BlockTransitionError.SafroleFailure # Staged C(5) is discarded even after actual successful evidence verification.
   assert array[32, byte](working.snapshot.value.commitment.root) == root
   for entry in source:
@@ -341,7 +362,7 @@ proc stagedDisputesRollback(source: seq[StateEntry], raw: seq[byte], candidate: 
   reset(0)
   failHash(0)
   let wrong = advanceBlockState(working, candidateBlock(authored), parent, policy(), config,
-      stagePolicy())
+      stagePolicy(), availabilityPolicy())
   assert wrong.error == BlockTransitionError.DisputesFailure and wrong.disputesError ==
       DisputesError.InvalidMarker
   assert verifications() == 0 # Wrong literal marker cannot reach ordinary seal verification.

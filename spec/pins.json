@@ -309,7 +309,25 @@
       "stf/disputes/tiny/progress_with_verdicts-1.json": "9e15a042f94c765e989ffc342e08de1d7d2dad11db1841680a5058698a47f8f5",
       "stf/disputes/tiny/progress_with_verdicts-2.json": "045ac34bcc513e008e383c5655d241d4d5bcdbf198e1cbdbc9ece50ee03e0dac",
       "stf/disputes/tiny/progress_with_verdicts-3.json": "09f21d51b6c41f59df743a690ab84e118deb11fe975993026283b06b82b320ed",
-      "stf/disputes/tiny/progress_with_verdicts-5.json": "2c60489719541e159a25625407380e9dcb1660a69593bc14bfaff791621adff5"
+      "stf/disputes/tiny/progress_with_verdicts-5.json": "2c60489719541e159a25625407380e9dcb1660a69593bc14bfaff791621adff5",
+      "stf/assurances/full/assurance_for_not_engaged_core-1.json": "91ff8937bcb0383b76f92db8082c6668bcc409a75b71e434e727e9ebfaece36c",
+      "stf/assurances/full/assurance_with_bad_attestation_parent-1.json": "1fea6f6265e8d54a727a2d0764ad6c86fe518cd2e6e9c5527d08c0a88680f53b",
+      "stf/assurances/full/assurances_for_stale_report-1.json": "e95b887b2ead4b17ff55ccea5844c08a82918a02c9fce315794529d43ff15912",
+      "stf/assurances/full/assurances_with_bad_signature-1.json": "3b29a9ba5ea8854f1567417e561628e6360d8bd0e6210e56445b17fe0cd14cc3",
+      "stf/assurances/full/assurances_with_bad_validator_index-1.json": "c33c4f2bf2b74032fc324a5928a155adbaad98f9bb201d2bf16a83449e59e054",
+      "stf/assurances/full/assurers_not_sorted_or_unique-1.json": "08ead3437196e48ec4b011f30e0bcef516ec40e5bb521d05e026ad43ebc91a54",
+      "stf/assurances/full/assurers_not_sorted_or_unique-2.json": "ef282021db8a99c8aa1ef4b848dfe44a1435d03bc61122a1365838378dbc82ec",
+      "stf/assurances/full/no_assurances_with_stale_report-1.json": "0f12a23acb9f88395ec4a72cba8d600855a58e619452649cbf9345cecdf1b869",
+      "stf/assurances/full/val_set_size_change_clears_pending_reports-1.json": "65917eeeea8e036a31f5cffbfb67e6f21f37a347d8d4bcca4297eca2d8db6288",
+      "stf/assurances/tiny/assurance_for_not_engaged_core-1.json": "2089f3936367704bddfea4a150b7c59585f2268f0a1295231b93418f1148b7b6",
+      "stf/assurances/tiny/assurance_with_bad_attestation_parent-1.json": "d55cf40af89d2ff76ad7428e16c7caa6303c7e7a07e571b12d96fb0957d9fe42",
+      "stf/assurances/tiny/assurances_for_stale_report-1.json": "13f1d0d4ec1053e3339e404d67c56592840d6b8ffe78bec4bea7a92ab60522ed",
+      "stf/assurances/tiny/assurances_with_bad_signature-1.json": "dbf2733808ae4a897af19d0f68468969dc73f48514c8e3cf957682d3daa913b4",
+      "stf/assurances/tiny/assurances_with_bad_validator_index-1.json": "0b6e5266f926e151fcb9f433bcc59998fa5c5ecac87c7aaf4658407276edb1a7",
+      "stf/assurances/tiny/assurers_not_sorted_or_unique-1.json": "a59f8c0aeced224c4ff32ac09ba88e08f46c6a63810450b9549d880e82db020a",
+      "stf/assurances/tiny/assurers_not_sorted_or_unique-2.json": "46cacac35a251a8c14cfea44ef11bafa04a448ede6427f09c6a5d6ffdd342966",
+      "stf/assurances/tiny/no_assurances_with_stale_report-1.json": "39d66bde3a681c997b68a9de8730fd5b18fd2030654b77d84f0b45e3eb27b3f5",
+      "stf/assurances/tiny/val_set_size_change_clears_pending_reports-1.json": "fe2d7b3b0b2c2f23a13a0667db3de131b5818a808d311e568a18a630e7030d31"
     }
   },
   "toolchains": {

@@ -807,6 +807,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'block_admission')
     # Disputes plans, derived-owner access and composed failure causes require their exact selected contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'disputes_transition')
+    # Availability plans, reports and typed context causes require their own successful/failed alternative.
+    run_failure_suite(compiler, report, libraries, build, command, 'availability_transition')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
