@@ -71,6 +71,9 @@ reports, and advances post-disputes C(10) for strict supermajority, timeout and 
 changes. The block coordinator includes this stage before its final publication; see
 [the availability contract](../spec/availability-transition.md). New guarantee assignment, accumulation,
 wall-clock admission and whole-block execution remain open.
+`src/state/guarantors.nim` supplies immutable current/previous rotation assignments from posterior
+rosters, entropy and offenders. See [the assignment contract](../spec/guarantor-assignments.md);
+credential verification and complete report admission remain separate subsequent slices.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2

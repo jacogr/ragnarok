@@ -1863,5 +1863,35 @@
       {"arguments": ["context-reason"], "name": "availability-transition-context-reason", "diagnostic": "outcome.status == ContextFailure", "description": "Availability transition context-reason runtime guard", "identity": {"origin": "context-reason"}},
       {"arguments": ["block-availability-reason"], "name": "availability-transition-block-availability-reason", "diagnostic": "outcome.status == AvailabilityFailure", "description": "Availability transition block-availability-reason runtime guard", "identity": {"origin": "block-availability-reason"}}
     ]
+  },
+  "guarantor_assignments": {
+    "source": "tests/native/guarantor_results.nim",
+    "build_name": "guarantor-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {
+        "arguments": [
+          "default"
+        ],
+        "name": "guarantor-default",
+        "diagnostic": "outcome.status == None",
+        "description": "Guarantor result extraction guard",
+        "identity": {
+          "origin": "default"
+        }
+      },
+      {
+        "arguments": [
+          "error"
+        ],
+        "name": "guarantor-error",
+        "diagnostic": "outcome.status == None",
+        "description": "Guarantor result extraction guard",
+        "identity": {
+          "origin": "error"
+        }
+      }
+    ]
   }
 }

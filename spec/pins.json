@@ -24,7 +24,8 @@
       "text/accounts.tex": "badaf09677a420ec6d47ae439f8d7641173e8fd460ed8f2305e336d999073d7a",
       "text/overview.tex": "ae8623ac404549e6c23ef27e5145e8f21e5d60be4e14c48dd3230cd2a6a6417e",
       "text/statistics.tex": "a8bee7c99853ed116fb7ed5e45e9977c7c323ad386e5a7e6c8cefba509f2d2a9",
-      "text/pvm_invocations.tex": "67a4fa455d2c1e7979ed9eec8849cb2dcdda7386c2f4085f1d11e93e72f7d6cb"
+      "text/pvm_invocations.tex": "67a4fa455d2c1e7979ed9eec8849cb2dcdda7386c2f4085f1d11e93e72f7d6cb",
+      "text/utilities.tex": "66f096f97269d4152316ebb68a18d67f15b8052ecfe3034f29299cff7f36ff60"
     }
   },
   "vectors": {
@@ -327,7 +328,8 @@
       "stf/assurances/tiny/assurers_not_sorted_or_unique-1.json": "a59f8c0aeced224c4ff32ac09ba88e08f46c6a63810450b9549d880e82db020a",
       "stf/assurances/tiny/assurers_not_sorted_or_unique-2.json": "46cacac35a251a8c14cfea44ef11bafa04a448ede6427f09c6a5d6ffdd342966",
       "stf/assurances/tiny/no_assurances_with_stale_report-1.json": "39d66bde3a681c997b68a9de8730fd5b18fd2030654b77d84f0b45e3eb27b3f5",
-      "stf/assurances/tiny/val_set_size_change_clears_pending_reports-1.json": "fe2d7b3b0b2c2f23a13a0667db3de131b5818a808d311e568a18a630e7030d31"
+      "stf/assurances/tiny/val_set_size_change_clears_pending_reports-1.json": "fe2d7b3b0b2c2f23a13a0667db3de131b5818a808d311e568a18a630e7030d31",
+      "shuffle/shuffle_tests.json": "7116667e64fd901a8fa120906cec08bb7c1df1dca5830ef2510ef001087eb7b8"
     }
   },
   "toolchains": {
