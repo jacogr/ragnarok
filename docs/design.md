@@ -50,7 +50,15 @@ marker derivation/comparison now lives in `src/state/safrole_markers.nim`. It bi
 entropy/contest and posterior pending keys to immutable expected header fields. See
 [the marker contract](../spec/safrole-markers.md). `src/state/marker_state.nim` checks decoded
 unsigned headers against retained parent and staged snapshots without writes or hashing. Entropy-VRF,
-seal authentication and complete block execution remain open.
+seal authentication now lives in `src/state/safrole_authentication.nim`. It binds the indexed
+posterior active author and cyclic schedule entry to both ordinary VRF proofs, retaining the exact
+header and verified entropy. See [the authentication contract](../spec/safrole-authentication.md);
+`src/state/authentication_state.nim` supplies parent history/time and posterior schedule/active
+keys without requiring the new entropy accumulator to exist. Authenticated output feeds the existing
+atomic entropy/time updater. `src/state/safrole_transition.nim` now coordinates validator rotation,
+ticket admission, schedules, markers and authenticated entropy on private candidates, then publishes
+changed C(4)/C(6)/C(8)/C(9)/C(11) in one atomic batch. See [the stage contract](../spec/safrole-transition.md).
+Disputes execution, header/block commitment checks, wall-clock admission and whole-block execution remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
