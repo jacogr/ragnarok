@@ -21,18 +21,19 @@ borrowed trace bytes must remain stable only during the call, and copied bytes o
 The trusted dispatcher selects the invocation's present value; wrappers reject mismatched r10.
 Invalid memory and local copy-budget refusals are typed errors without a HostResponse payload.
 Local policy is checked by `writeBytes` before page permissions, and does not claim a protocol exit.
-Callers must propagate that refusal or establish sufficient policy in advance. The existing
-`executeWithHost` response-only callback cannot propagate it; a fallible dispatcher remains open.
+Callers must propagate that refusal or establish sufficient policy in advance. The
+[fallible executeWithHost overload](pvm-host-failures.md) now preserves the exact FetchError
+through hostFailure; response-only callbacks still cannot carry local refusals.
 
 Completion tests: independent rounding oracle and hard-coded maximal-length price, clipping,
 full-length return, exact/insufficient gas, cross-page atomicity, readonly and absent pages,
 physical boundaries, empty ranges, source/input ownership, response application, result privacy
 and failed extraction, and 1,000 fresh ARC cycles through the native runner.
 
-Remaining: context selection, all other selectors, absent values and a fallible host-loop boundary.
+Remaining: context selection, all other selectors and absent values.
 The table defines clipping using length(v) even when v is none; this increment does not assign a
 length to none. An absent-value witness is pending clarification of that notation before that
 branch is implemented. No upstream implementation or vector is copied, and these independent
 fixtures establish only the stated subset, not complete fetch or invocation parity.
-Next bounded chunk: propagate typed local host failures through bounded execution, then add
-context-owned selector families with their encoding and presence rules.
+Next bounded chunk: resolve absence semantics and add context-owned selector families with their
+encoding and presence rules.

@@ -84,7 +84,7 @@ proc fetchEntropyResponse*(gas: MachineGas, registers: RegisterFile, memory: Mem
 
 # Fetch selector 2 with a present trace (including empty): cost 80 + ceil(96*r9/1024).
 # This does not select invocation context. A local failure must be propagated by the dispatcher,
-# never converted to HostAction.Panic; executeWithHost's response-only callback cannot carry it.
+# never converted to HostAction.Panic. Fallible executeWithHost callbacks can return hostFailure(error).
 proc fetchTraceResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory,
     trace: openArray[byte], limit: MemoryByteLimit): FetchResult =
   fetchPresent(gas, registers, memory, trace, 2, 80, 96, limit)

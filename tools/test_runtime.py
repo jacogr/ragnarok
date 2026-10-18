@@ -172,6 +172,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
     # Host dispatch and shared instruction budgets never expose failed execution payloads.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_execution')
+    # Fallible callbacks preserve their reasons without exposing partial execution payloads.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_failures')
     # Terminal gas deficits cannot bypass canonical state or success selection.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_gas')
     # Failed host range copies never expose partial buffers or memory owners.

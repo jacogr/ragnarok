@@ -4,6 +4,7 @@
 ## GP 0.8.0 charged single steps and bounded execution; see spec/pvm-step.md.
 ## Exposes scoped stepRegisters/stepControl/stepMemory, complete stepOnce, bounded execute,
 ## applyHostResponse and executeWithHost for bounded trusted host transitions including terminal gas deficits.
+## HostResult/HostExecutionResult preserve enum-valued callback refusals separately from engine errors.
 ## Guarded StepResult snapshots expose read-only exit and selected faultPage/hostCall metadata.
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
 
@@ -60,6 +61,67 @@ type
     else:
       # Callers cannot inspect a fabricated zero/default execution state on failure.
       discard
+
+type
+  # Callback selection is independent of the caller's enum: no numeric reason implies success.
+  HostResultKind* {.pure.} = enum
+    Uninitialized, Response, Failure
+  # A fallible callback returns either posterior state or its own typed local refusal, never both.
+  HostResult*[Reason: enum] = object
+    case selection: HostResultKind
+    of Response:
+      # Only this alternative retains a memory owner through the host response.
+      response: HostResponse
+    of Failure:
+      # Enum-only reasons cannot smuggle partial machine state or owned resources into a failure.
+      reason: Reason
+    else:
+      # A default callback result is malformed, not an implicit continuation.
+      discard
+  # Guest completion, engine refusal and callback refusal have separate guarded alternatives.
+  HostExecutionError* {.pure.} = enum
+    Uninitialized, None, ExecutionFailure, HostFailure
+  # Fallible execution preserves the callback's enum while exposing no machine on either failure.
+  HostExecutionResult*[Reason: enum] = object
+    case status: HostExecutionError
+    of None:
+      # Completed guest outcomes retain the same immutable snapshot as ordinary StepResult.
+      completed: StepOutcome
+    of ExecutionFailure:
+      # Scheduling, malformed replies and machine errors retain their existing StepError reason.
+      executionReason: StepError
+    of HostFailure:
+      # Callback reasons are copied verbatim; their ordinal values have no engine-level meaning.
+      hostReason: Reason
+    else:
+      # Default results have no outcome or selected error detail.
+      discard
+
+# Construct a selected response; applyHostResponse still validates its fields before publication.
+func hostSuccess*[Reason: enum](response: HostResponse): HostResult[Reason] =
+  HostResult[Reason](selection: HostResultKind.Response, response: response)
+# Construct a local callback refusal, preserving even the zero ordinal of the supplied enum.
+func hostFailure*[Reason: enum](reason: Reason): HostResult[Reason] =
+  HostResult[Reason](selection: HostResultKind.Failure, reason: reason)
+# Read callback selection without allowing discriminator mutation.
+func kind*[Reason: enum](r: HostResult[Reason]): HostResultKind = r.selection
+# Select a callback response only after checking its kind.
+func value*[Reason: enum](r: HostResult[Reason]): HostResponse
+    {.requires: r.selection == HostResultKind.Response.} = r.response
+# Select the local reason only after choosing the callback failure branch.
+func failure*[Reason: enum](r: HostResult[Reason]): Reason
+    {.requires: r.selection == HostResultKind.Failure.} = r.reason
+# Inspect fallible execution status without permitting result forgery.
+func error*[Reason: enum](r: HostExecutionResult[Reason]): HostExecutionError = r.status
+# Extract completed guest state only after successful execution.
+func value*[Reason: enum](r: HostExecutionResult[Reason]): StepOutcome
+    {.requires: r.status == HostExecutionError.None.} = r.completed
+# Extract an engine reason only from the selected execution-failure alternative.
+func executionError*[Reason: enum](r: HostExecutionResult[Reason]): StepError
+    {.requires: r.status == HostExecutionError.ExecutionFailure.} = r.executionReason
+# Extract the original callback enum only from a selected host failure.
+func hostError*[Reason: enum](r: HostExecutionResult[Reason]): Reason
+    {.requires: r.status == HostExecutionError.HostFailure.} = r.hostReason
 
 # Inspect status without permitting success forgery or retagging.
 func error*(r: StepResult): StepError = r.status
@@ -502,9 +564,72 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
   var remaining = uint64(stepLimit)
   executeBudget(source, remaining, gasLimit)
 
-# Run Psi_H* with a synchronous trusted handler and caller-owned context borrowed for this call only.
-# One instruction budget spans every continuation. Callback effects persist on later local errors;
-# callers requiring atomic external effects must supply their own staged context. No callback is retained.
+# Lift guest/engine results without confusing guest terminal exits with local host errors.
+func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[Reason] =
+  if evaluated.error != StepError.None:
+    # Preserve the original engine refusal, without accessing a failed StepResult payload.
+    return HostExecutionResult[Reason](status: HostExecutionError.ExecutionFailure,
+      executionReason: evaluated.error)
+  HostExecutionResult[Reason](status: HostExecutionError.None, completed: evaluated.value)
+
+# Advance a shared invocation budget to the next dispatch or terminal result.
+# Dispatch credit is consumed before callbacks, identically for both public callback forms.
+proc nextHost(current: Machine, remaining, calls: var uint64, gasLimit: GasCycleLimit): StepResult =
+  let evaluated = executeBudget(current, remaining, gasLimit)
+  if evaluated.error != StepError.None:
+    # Engine refusals carry no partial machine state.
+    return evaluated
+  if evaluated.value.exit == StepExit.Host:
+    # A host suspension can invoke external code only after reserving one dispatch allowance.
+    if calls == 0:
+      # Local dispatch limits do not consume guest gas or become guest OutOfGas exits.
+      return StepResult(status: StepError.HostCallLimitExceeded)
+    dec calls
+  evaluated
+
+# Run Psi_H* with typed local callback refusals and one instruction budget across continuations.
+# Context is exclusively borrowed for this synchronous call. Callback effects persist on local errors;
+# callers requiring atomic external effects must stage their context. Neither callback nor context is retained.
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
+        raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
+        gasLimit: GasCycleLimit): HostExecutionResult[Reason] =
+  var remaining = uint64(stepLimit)
+  var calls = uint64(hostLimit)
+  var current = source
+  while true:
+    # Iteration retains one current snapshot; the shared helper owns all guest/dispatch budget rules.
+    let evaluated = nextHost(current, remaining, calls, gasLimit)
+    if evaluated.error != StepError.None:
+      # Local refusal exposes no machine progress; already-completed context mutations remain visible.
+      return executionResult[Reason](evaluated)
+    let stopped = evaluated.value
+    if stopped.exit != StepExit.Host:
+      # Guest terminal and fault exits pass through unchanged and never invoke the handler.
+      return executionResult[Reason](evaluated)
+    let reply = handler(context, stopped)
+    case reply.kind
+    of HostResultKind.Uninitialized:
+      # A missing selection is malformed callback output, not a caller-chosen local refusal.
+      return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
+    of HostResultKind.Failure:
+      # Stop before applying a response or executing another instruction; return only the reason.
+      return HostExecutionResult[Reason](status: HostExecutionError.HostFailure,
+          hostReason: reply.failure)
+    of HostResultKind.Response:
+      # The existing application boundary validates all supplied posterior state.
+      let applied = applyHostResponse(stopped, reply.value)
+      if applied.error != StepError.None:
+        # Malformed host replies are local failures, not fabricated guest panics or rollbacks.
+        return executionResult[Reason](applied)
+      if applied.value.exit != StepExit.Continued:
+        # Host terminal replies retain posterior state at the causing PC, without another guest attempt.
+        return executionResult[Reason](applied)
+      current = applied.value.machine
+
+# Preserve the response-only API with the same guest/dispatch scheduler and response application boundary.
+# Context is borrowed synchronously; already-performed callback effects survive later local errors.
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
@@ -512,25 +637,20 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   var calls = uint64(hostLimit)
   var current = source
   while true:
-    # This is iterative; neither guest continuations nor callbacks build an invocation history.
-    let evaluated = executeBudget(current, remaining, gasLimit)
+    # All scheduling and charging happens in the same helper used by fallible callbacks.
+    let evaluated = nextHost(current, remaining, calls, gasLimit)
     if evaluated.error != StepError.None:
-      # Local refusal exposes no machine progress; already-completed context mutations remain visible.
+      # Preserve the legacy local engine refusal without reading a failed payload.
       return evaluated
     let stopped = evaluated.value
     if stopped.exit != StepExit.Host:
-      # Guest terminal and fault exits pass through unchanged and never invoke the handler.
+      # Guest exits never invoke host callbacks.
       return evaluated
-    if calls == 0:
-      # Refuse before invoking external code; this is local policy, never guest OutOfGas.
-      return StepResult(status: StepError.HostCallLimitExceeded)
-    dec calls
-    let response = handler(context, stopped)
-    let applied = applyHostResponse(stopped, response)
+    let applied = applyHostResponse(stopped, handler(context, stopped))
     if applied.error != StepError.None:
-      # Malformed host replies are local failures, not fabricated guest panics or rollbacks.
+      # Explicit posterior state must satisfy the existing host-response invariants.
       return applied
     if applied.value.exit != StepExit.Continued:
-      # Host terminal responses retain posterior state at the causing PC, without another guest attempt.
+      # Terminal host replies finish immediately without another instruction attempt.
       return applied
     current = applied.value.machine
