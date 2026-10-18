@@ -1,6 +1,7 @@
 {
   "UNIT_SUITES": [
     "accumulation_inputs",
+    "accumulation_invocation",
     "accumulation_operands",
     "accumulation_queue",
     "accumulation_round",
@@ -121,6 +122,10 @@
     "accumulation_input_result_private": "completed",
     "accumulation_input_retag_private": "status",
     "accumulation_input_transfer_private": "transferValue",
+    "accumulation_invocation_bound_private": "data",
+    "accumulation_invocation_owner_private": "data",
+    "accumulation_invocation_result_private": "completed",
+    "accumulation_invocation_retag_private": "status",
     "accumulation_operand_bound_private": "data",
     "accumulation_operand_bound_result_private": "completed",
     "accumulation_operand_owner_private": "data",
@@ -831,6 +836,8 @@
     "account_slot_as_parent": "got: AccountSlot but wanted: ServiceIndex",
     "accumulation_input_group_as_input": "[3] expected: InvocationInputIndex but got: OperandServiceIndex",
     "accumulation_input_service_as_group": "[2] expected: InvocationServiceIndex but got: ServiceIndex",
+    "accumulation_invocation_bytes_as_probes": "ServiceProbeLimit",
+    "accumulation_invocation_service_as_count": "AccumulationArgumentCount",
     "accumulation_operand_group_as_operand": "[3] expected: ServiceOperandIndex but got: OperandServiceIndex",
     "accumulation_operand_raw_prefix": "[2] expected: AccumulationReportPrefix but got: uint64",
     "accumulation_operand_service_as_group": "[2] expected: OperandServiceIndex but got: ServiceIndex",
@@ -1049,6 +1056,8 @@
   "EARLY_NOMINAL": {
     "accumulation_input_group_as_input": ["invocationInputAt(", "[3] expected: InvocationInputIndex but got: OperandServiceIndex"],
     "accumulation_input_service_as_group": ["invocationServiceAt(", "[2] expected: InvocationServiceIndex but got: ServiceIndex"],
+    "accumulation_invocation_bytes_as_probes": ["findUnusedAccumulationService(", "[3] expected: ServiceProbeLimit but got: ByteLimit"],
+    "accumulation_invocation_service_as_count": ["accumulationArguments(", "[3] expected: AccumulationArgumentCount but got: ServiceIndex"],
     "accumulation_operand_group_as_operand": ["serviceOperandAt(", "[3] expected: ServiceOperandIndex but got: OperandServiceIndex"],
     "accumulation_operand_raw_prefix": ["prepareAccumulationOperands(", "[2] expected: AccumulationReportPrefix but got: uint64"],
     "accumulation_operand_service_as_group": ["operandServiceAt(", "[2] expected: OperandServiceIndex but got: ServiceIndex"],
@@ -1102,6 +1111,7 @@
   "FAILURE_COUNTS": {
     "accounts": 16,
     "accumulation_inputs": 8,
+    "accumulation_invocation": 8,
     "accumulation_operands": 9,
     "accumulation_queue": 7,
     "accumulation_round": 7,
@@ -1221,6 +1231,7 @@
   ],
   "ARC_SUITES": {
     "accumulation_inputs": "accumulation_inputs_arc_release",
+    "accumulation_invocation": "accumulation_invocation_arc_release",
     "accumulation_operands": "accumulation_operands_arc_release",
     "accumulation_queue": "accumulation_queue_arc_release",
     "accumulation_round": "accumulation_round_arc_release",
@@ -1285,6 +1296,7 @@
   },
   "UNIT_LINKS": {
     "accumulation_inputs": "observer",
+    "accumulation_invocation": "observer",
     "accumulation_operands": "observer",
     "accumulation_queue": "observer",
     "accumulation_round": "observer",
