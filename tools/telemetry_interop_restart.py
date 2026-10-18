@@ -144,9 +144,67 @@ def verify_replay(before, after, identities, port):
     return dict(attempt=attempt, skipped_prefix=prefix, recovered_events=len(after))
 
 
+# Shared child/socket ownership for the incoming and outgoing real-collector restart scenarios.
+class RestartSession:
+    def __init__(self, owners, folder, collector, telemetry_port, api_port):
+        """Borrow the scenario ExitStack and keep all generated diagnostics in its private directory."""
+        self.owners, self.folder, self.collector = owners, folder, collector
+        self.telemetry_port, self.api_port = telemetry_port, api_port
+
+    # All logs survive failure; ExitStack reaps every child before closing its output file.
+    def launch(self, name, arguments, env=None):
+        output = self.owners.enter_context((self.folder/f'{name}.log').open('wb'))
+        child = subprocess.Popen([str(arg) for arg in arguments], stdout=output, stderr=subprocess.STDOUT, env=env)
+        self.owners.callback(stop, child)
+        return child
+
+    # Readiness is the collector's HTTP response, not a startup delay.
+    def backend(self, name):
+        child = self.launch(name, [self.collector, '--no-database', '--telemetry-bind', f'127.0.0.1:{self.telemetry_port}',
+                             '--api-bind', f'127.0.0.1:{self.api_port}', '--ingestion-threads', '0'])
+        deadline = time.monotonic() + 15
+        while True:
+            assert child.poll() is None, name
+            try:
+                with urlopen(f'http://127.0.0.1:{self.api_port}/api/health', timeout=1) as response:
+                    assert response.status == 200
+                return child
+            except (URLError, TimeoutError):
+                assert time.monotonic() < deadline, name
+                time.sleep(0.05)
+
+    # Observe subscription acknowledgement before relying on live events; history also covers earlier reconnects.
+    def subscribe(self, messages):
+        import websocket
+        stream = websocket.create_connection(f'ws://127.0.0.1:{self.api_port}/api/ws', timeout=8,
+                                             http_no_proxy=['127.0.0.1'])
+        self.owners.callback(stream.close)
+        stream.send(json.dumps({'type': 'Subscribe', 'filter': {'type': 'All'}}))
+        deadline = time.monotonic() + 15
+        while receive(stream, messages, deadline)['type'] != 'subscribed':
+            pass
+        return stream
+
+    # Collector-global history is bounded and returned in event order, including events before subscription.
+    def history(self, stream, messages, deadline):
+        stream.send(json.dumps({'type': 'GetRecentEvents', 'limit': 64}))
+        while True:
+            value = receive(stream, messages, deadline)
+            if value['type'] == 'recent_events':
+                rows = value['data']['events']
+                assert value['data']['count'] == len(rows) < 64
+                return rows
+
+    # READY proves the UDP listener exists without touching its handshake deadline.
+    def ready(self, child, name):
+        deadline = time.monotonic() + 10
+        while 'READY' not in (self.folder/f'{name}.log').read_text().splitlines():
+            assert child.poll() is None and time.monotonic() < deadline, name
+            time.sleep(0.02)
+
+
 # Complete a pending dial after restarting the real collector; prove separate peer work during its absence.
 def run_restart(binary, collector, report, folder):
-    import websocket
     from test_quic import fixtures
     folder.mkdir(parents=True, exist_ok=True)
     certificates = folder/'certificates'
@@ -155,55 +213,9 @@ def run_restart(binary, collector, report, folder):
                   for role, key in (('server', 'a'), ('client', 'b'))}
     telemetry_port, api_port, udp_port = ports()
     with ExitStack() as owners:
-        # All logs survive failure; ExitStack reaps every child before closing its output file.
-        def launch(name, arguments):
-            output = owners.enter_context((folder/f'{name}.log').open('wb'))
-            child = subprocess.Popen([str(arg) for arg in arguments], stdout=output, stderr=subprocess.STDOUT)
-            owners.callback(stop, child)
-            return child
-
-        # Readiness is the collector's HTTP response, not a startup delay.
-        def backend(name):
-            child = launch(name, [collector, '--no-database', '--telemetry-bind', f'127.0.0.1:{telemetry_port}',
-                                 '--api-bind', f'127.0.0.1:{api_port}', '--ingestion-threads', '0'])
-            deadline = time.monotonic() + 15
-            while True:
-                assert child.poll() is None, name
-                try:
-                    with urlopen(f'http://127.0.0.1:{api_port}/api/health', timeout=1) as response:
-                        assert response.status == 200
-                    return child
-                except (URLError, TimeoutError):
-                    assert time.monotonic() < deadline, name
-                    time.sleep(0.05)
-
-        # Observe subscription acknowledgement before relying on live events; history also covers earlier reconnects.
-        def subscribe(messages):
-            stream = websocket.create_connection(f'ws://127.0.0.1:{api_port}/api/ws', timeout=8,
-                                                 http_no_proxy=['127.0.0.1'])
-            owners.callback(stream.close)
-            stream.send(json.dumps({'type': 'Subscribe', 'filter': {'type': 'All'}}))
-            deadline = time.monotonic() + 15
-            while receive(stream, messages, deadline)['type'] != 'subscribed':
-                pass
-            return stream
-
-        # Collector-global history is bounded and returned in event order, including events before subscription.
-        def history(stream, messages, deadline):
-            stream.send(json.dumps({'type': 'GetRecentEvents', 'limit': 64}))
-            while True:
-                value = receive(stream, messages, deadline)
-                if value['type'] == 'recent_events':
-                    rows = value['data']['events']
-                    assert value['data']['count'] == len(rows) < 64
-                    return rows
-
-        # READY proves the UDP listener exists without touching its handshake deadline.
-        def ready(child, name):
-            deadline = time.monotonic() + 10
-            while 'READY' not in (folder/f'{name}.log').read_text().splitlines():
-                assert child.poll() is None and time.monotonic() < deadline, name
-                time.sleep(0.02)
+        session = RestartSession(owners, folder, collector, telemetry_port, api_port)
+        launch, backend = session.launch, session.backend
+        subscribe, history, ready = session.subscribe, session.history, session.ready
 
         first = backend('collector-before')
         messages = report['before_messages'] = []
