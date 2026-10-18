@@ -81,5 +81,6 @@ Prepared byte transports, hash identities and reports remain under ignored `buil
 
 ## Next bounded work
 
-Availability assurance validation and assignment updates, consuming post-disputes C(10), before
-new guarantee assignment and the remaining non-PVM execution pipeline.
+The stacked [availability transition](availability-transition.md) verifies assurances and updates
+post-disputes C(10). Next: guarantor assignments and guarantee validation/new assignment, followed
+by the remaining non-PVM execution pipeline.

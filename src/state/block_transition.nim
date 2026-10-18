@@ -1,17 +1,20 @@
-## GP 0.8.0 header.tex/judgments.tex/safrole.tex: admit, derive disputes and authenticate Safrole atomically.
+## GP 0.8.0 header/judgments/safrole/reporting_assurance: atomic admission, disputes, Safrole and assurances.
 ## Other extrinsics, wall-clock admission and complete block execution remain separate stages.
-import ../codec/[block_codec, header, tickets, state_disputes]
-import ./[store, block_admission, disputes, safrole_transition]
+import ../codec/[block_codec, header, tickets, state_disputes, state_safrole, state_layout, assurances]
+from ../crypto/assurance_context import AssuranceParent
+import ./[store, block_admission, disputes, safrole_transition, availability]
 
 type
   ## Failures select their precise stage cause without carrying staged state or a usable block.
   BlockTransitionError* {.pure.} = enum
-    Uninitialized, None, AdmissionFailure, DisputesFailure, SafroleFailure
+    Uninitialized, None, AdmissionFailure, DisputesFailure, SafroleFailure, AvailabilityFailure
   ## Success retains the original block binding, complete disputes plan and authenticated posterior state.
   BlockTransition* = object
     admitted*: BoundBlock
     disputes*: DisputesPlan
-    safrole*: SafroleTransition
+    safrole*: SafroleTransition   # Intermediate state before assurance-driven C(10) changes.
+    availability*: AvailabilityPlan
+    snapshot*: StateStoreSnapshot # Final accepted state after every implemented stage.
   ## Stage-specific reasons and success are mutually exclusive and private.
   BlockTransitionResult* = object
     case status: BlockTransitionError
@@ -23,6 +26,8 @@ type
       disputesReason: DisputesError
     of SafroleFailure:
       safroleReason: SafroleTransitionResult
+    of AvailabilityFailure:
+      availabilityReason: AvailabilityTransitionResult[AvailabilityUpdate]
     else:
       discard # Default carries no candidate, snapshot or reason payload.
 
@@ -41,12 +46,22 @@ func disputesError*(outcome: BlockTransitionResult): DisputesError {.inline,
 func safroleError*(outcome: BlockTransitionResult): SafroleTransitionResult {.inline,
     requires: outcome.status == BlockTransitionError.SafroleFailure.} = outcome.safroleReason
 
+## Inspect only the selected availability failure; its nested refusal contains no update or available reports.
+func availabilityError*(outcome: BlockTransitionResult): AvailabilityTransitionResult[
+    AvailabilityUpdate] {.inline,
+
+requires: outcome.status == BlockTransitionError.AvailabilityFailure.} = outcome.availabilityReason
+
 ## Derive all offenders from this block and the parent C(5), never from a separately supplied projection.
 ## Work on a private store handle and replace the caller's handle once, after complete success.
 proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     admission: BlockAdmissionConfig, policy: DisputesConfig,
-    safrole: SafroleTransitionConfig): BlockTransitionResult =
-  if uint64(policy.epochSlots) != uint64(safrole.state.epochSlots) or
+    safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig): BlockTransitionResult =
+  if uint64(availability.assignments.guarantee.cores) != uint64(policy.rosters.cores) or
+      uint64(availability.assignments.guarantee.validators) != uint64(policy.rosters.validators) or
+      uint64(availability.rosters.cores) != uint64(policy.rosters.cores) or
+      uint64(availability.rosters.validators) != uint64(policy.rosters.validators) or
+      uint64(policy.epochSlots) != uint64(safrole.state.epochSlots) or
       uint64(policy.rosters.cores) != uint64(safrole.state.validators.cores) or
       uint64(policy.rosters.validators) != uint64(safrole.state.validators.validators) or
       uint64(admission.frame.cores) != uint64(policy.rosters.cores) or
@@ -78,6 +93,20 @@ proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: Ow
   var offenders = newSeq[OffenderKey](disputeStateInfo(judged).value.offenders)
   for i in 0..<offenders.len:
     offenders[i] = stateOffenderAt(judged, DisputeStateIndex(uint64(i))).value # Complete derived cumulative set.
+  let originalActive = retained.value.lookup(chapterKey(StateChapter(8)))
+  if originalActive.error != StateStoreError.None:
+    return BlockTransitionResult(status: BlockTransitionError.AdmissionFailure,
+      admissionReason: BlockAdmissionError.MissingState) # Parent signing context is mandatory.
+  if uint64(originalActive.value.byteLength) > uint64(availability.rosters.maxBytes):
+    return BlockTransitionResult(status: BlockTransitionError.AdmissionFailure,
+      admissionReason: BlockAdmissionError.LimitExceeded) # Bound the parent roster copy under assurance policy.
+  let parentActive = decodeStateValidators(originalActive.value.bytes, availability.rosters)
+  if parentActive.error != StateComponentError.None:
+    return BlockTransitionResult(status: BlockTransitionError.AdmissionFailure,
+      admissionReason: BlockAdmissionError.InvalidState) # No invalid parent signing roster reaches any staged writes.
+  if parentActive.value.consumed != originalActive.value.byteLength:
+    return BlockTransitionResult(status: BlockTransitionError.AdmissionFailure,
+      admissionReason: BlockAdmissionError.InvalidState) # The exact retained chapter cannot carry a suffix.
   var working = state
   let published = publishDisputes(working, plan.value)
   if published.error != DisputesError.None:
@@ -89,6 +118,15 @@ proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: Ow
   if advanced.error != SafroleTransitionError.None:
     return BlockTransitionResult(status: BlockTransitionError.SafroleFailure,
       safroleReason: advanced) # Includes late refusal after privately staged disputes writes.
+  let assurances = readAssurances(extrinsicAssurances(blockExtrinsic(
+      exact.admittedBlock).value).value).value
+  let fields = headerInfo(exact.admittedHeader).value.unsigned
+  let available = advanceAvailabilityState(working, parentActive.value.value, assurances,
+    AssuranceParent(array[32, byte](fields.parent)), StateTime(uint32(fields.slot)), availability)
+  if available.error != AvailabilityTransitionError.None:
+    return BlockTransitionResult(status: BlockTransitionError.AvailabilityFailure,
+      availabilityReason: available) # Even fully authenticated Safrole changes remain private on this refusal.
   state = working # One canonical handle replacement publishes every accepted stage together.
   BlockTransitionResult(status: BlockTransitionError.None,
-    completed: BlockTransition(admitted: exact, disputes: plan.value, safrole: advanced.value))
+    completed: BlockTransition(admitted: exact, disputes: plan.value, safrole: advanced.value,
+      availability: available.value.plan, snapshot: available.value.snapshot))

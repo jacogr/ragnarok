@@ -1,6 +1,6 @@
 ## Default/refused plans and nonselected block-stage reasons cannot expose successful payloads.
 import std/[cmdline, syncio]
-import ../../src/state/[disputes, block_transition, block_admission, safrole_transition, store]
+import ../../src/state/[disputes, block_transition, block_admission, safrole_transition, store, availability]
 import ../../src/codec/[disputes, block_codec, header]
 var state = default(StateStore)
 case paramStr(1)
@@ -21,7 +21,7 @@ of "block-default", "block-error":
   let outcome = if paramStr(1) == "block-default": default(BlockTransitionResult) else:
     advanceBlockState(state, default(OwnedBlock), default(OwnedHeader), default(
         BlockAdmissionConfig),
-      default(DisputesConfig), default(SafroleTransitionConfig))
+      default(DisputesConfig), default(SafroleTransitionConfig), default(AvailabilityTransitionConfig))
   discard outcome.value
 of "admission-reason", "disputes-reason", "safrole-reason":
   # Each reason accessor requires its own selected failure, even though all failures omit state.

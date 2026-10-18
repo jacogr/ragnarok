@@ -869,6 +869,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'block_admission')
     # Disputes plans, derived-owner access and composed failure causes require their exact selected contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'disputes_transition')
+    # Availability plans, reports and typed context causes require their own successful/failed alternative.
+    run_failure_suite(compiler, report, libraries, build, command, 'availability_transition')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
     report['assurance_context_build'] = compiled
@@ -1452,7 +1454,7 @@ def main():
                 'tests/test_state_trie_harness.py', 'tests/native/state_layout_driver.nim', 'tests/state_layout_oracle.py',
                 'tests/test_state_layout_harness.py', 'vectors/official/crypto/rfc8032.json', 'vendor/wycheproof/LICENSE',
                 'vendor/wycheproof/testvectors_v1/ed25519_test.json')]
-    sources += [ROOT/'src/crypto/extrinsic_commitment.nim', ROOT/'tests/block_admission_fixtures.py', ROOT/'tests/disputes_transition_fixtures.py', ROOT/'tests/native/disputes_transition_results.nim', ROOT/'tests/native/block_admission_results.nim', ROOT/'tests/native/extrinsic_commitment_results.nim']
+    sources += [ROOT/'src/crypto/extrinsic_commitment.nim', ROOT/'tests/block_admission_fixtures.py', ROOT/'tests/disputes_transition_fixtures.py', ROOT/'tests/availability_transition_fixtures.py', ROOT/'tests/native/availability_transition_results.nim', ROOT/'tests/native/disputes_transition_results.nim', ROOT/'tests/native/block_admission_results.nim', ROOT/'tests/native/extrinsic_commitment_results.nim']
     sources += list((ROOT/'src/state').glob('*.nim')) + [ROOT/'tests/state_store_fixtures.py', ROOT/'tests/validator_rotation_fixtures.py', ROOT/'tests/support/validator_rotation_fixture.nim', ROOT/'tests/native/validator_rotation_results.nim', ROOT/'tests/native/validator_state_results.nim', ROOT/'tests/ticket_admission_fixtures.py', ROOT/'tests/sealer_schedule_fixtures.py', ROOT/'tests/safrole_marker_fixtures.py', ROOT/'tests/safrole_authentication_fixtures.py', ROOT/'tests/safrole_transition_fixtures.py', ROOT/'tests/native/safrole_transition_results.nim', ROOT/'tests/native/safrole_authentication_results.nim', ROOT/'tests/native/safrole_markers_results.nim', ROOT/'tests/native/sealer_schedule_results.nim', ROOT/'tests/native/sealer_state_results.nim', ROOT/'tests/native/ticket_admission_results.nim', ROOT/'tests/native/ticket_state_results.nim', ROOT/'tests/entropy_transition_fixtures.py', ROOT/'tests/support/entropy_transition_fixture.nim', ROOT/'tests/native/entropy_transition_results.nim', ROOT/'tests/signing_domain_fixtures.py', ROOT/'tests/history_transition_fixtures.py', ROOT/'tests/support/history_transition_fixture.nim', ROOT/'tests/native/history_transition_results.nim', ROOT/'tests/authorization_transition_fixtures.py', ROOT/'tests/support/authorization_transition_fixture.nim', ROOT/'tests/native/authorization_transition_results.nim', ROOT/'tests/native/state_store_results.nim']
     # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
     sys.path.insert(0, str(ROOT/'tests'))
