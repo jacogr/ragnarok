@@ -657,6 +657,8 @@
     "rpc_genesis_result_private": "status",
     "rpc_parameters_owner_private": "numbers",
     "rpc_parameters_result_private": "success",
+    "rpc_request_result_private": "status",
+    "rpc_service_list_private": "services",
     "rpc_service_result_private": "status",
     "rpc_statistics_result_private": "status",
     "safrole_auth_private": "completed",
