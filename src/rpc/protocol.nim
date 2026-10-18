@@ -11,7 +11,7 @@
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
-import ../chain/[parameters, genesis, services, statistics, beefy]
+import ../chain/[parameters, genesis, services, statistics, beefy, reports]
 import ../codec/[state_trie, state_layout]
 
 const MaxReplyBytes = 65535 # One canonical medium-length WS frame, including batch punctuation.
@@ -311,7 +311,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
       GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -344,6 +344,35 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if not hasId: return "" # This read-only dispatch has no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
+  if methodName == "workReport":
+    if parameters < 0: return error(id, -32602, "Expected one report hash") # Hash is mandatory.
+    let argument = parameters + 1
+    if values[parameters].next != argument + 1 or values[argument].kind != stringValue:
+      return error(id, -32602, "Expected one report hash") # Only one positional scalar is accepted.
+    let hash = values[argument].text
+    if not validHash(hash): return error(id, -32602, "Expected padded Base64 hash") # Check before decoding.
+    if info.genesis.error == GenesisError.None:
+      # Search the immutable configured assignments under the shared response budget.
+      let raw = base64.decode(hash)
+      var identity = default(array[32, byte])
+      for index in 0..<32: identity[index] = byte(raw[index]) # Canonical hash validation proved the extent.
+      let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
+      let found = reports.workReport(info.genesis.value, WorkReportHash(identity), budget)
+      if found.error == ReportReadError.None:
+        # Retain the report owner while copying its complete canonical bytes for Base64.
+        let metadata = ownedReportInfo(found.value)
+        if metadata.error != OwnershipError.None: return error(id, 0,
+            "Invalid report owner") # No default payload access.
+        var bytes = newSeq[byte](metadata.value.consumed)
+        if encodeOwnedReport(found.value, bytes).error != OwnershipError.None:
+          return error(id, 0, "Invalid report owner") # Never publish a partial re-encoding.
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(bytes)) & "}"
+      if found.error == ReportReadError.LimitExceeded:
+        return error(id, 0, ReplyBudgetError) # Bounded lookup or reply refused; no truncation.
+      if found.error != ReportReadError.Missing:
+        return error(id, 0, "Invalid or unreadable work reports") # Malformed state is not ordinary absence.
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":2,\"message\":\"Work-report unavailable\",\"data\":" &
+        quote(hash) & "}}"
   if methodName in ["serviceData", "serviceValue", "servicePreimage", "serviceRequest"]:
     let count = if methodName == "serviceData": 2 elif methodName == "serviceRequest": 4 else: 3
     if parameters < 0: return error(id, -32602, "Expected service query arguments") # Hash and service are mandatory.
