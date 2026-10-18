@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 machine snapshots and sparse memory; see spec/pvm-machine.md.
 ## Published owners are immutable, acyclic ARC graphs. Updates return independent snapshots.
 import ./program
