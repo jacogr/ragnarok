@@ -54,13 +54,17 @@ Requests take no arguments (`params: []` or omitted). The result is `{"V1": {...
 64-bit values above JSON clients' floating-point precision. Clients must use lossless JSON number
 handling when needed. Invalid arguments use `-32602`; notifications remain silent.
 
-**Temporary zero placeholders:** `tickets_attempts_number`, `val_count`, `basic_piece_len`, and
+`val_count` reports the active validator population from the exactly decoded C(8) roster in the
+configured genesis snapshot. It is captured once with the same roster used for header validation,
+not inferred from `3 * core_count` or a test profile. Without a genesis pair, it remains **0 to
+mean “not yet derived.”** This genesis-only value does not track future epoch rotations.
+
+**Remaining zero placeholders:** `tickets_attempts_number`, `basic_piece_len`, and
 `segment_piece_count` return **0 to mean “not yet derived.” These are not actual chain values.**
 This is an explicitly documented incomplete implementation of their JIP-2 meanings, selected by
-the maintainer; zero must not be used to size validator sets, produce tickets or encode data.
-These values require live state, which this proof peer does not yet maintain:
+the maintainer; placeholders must not be used to size validator sets, produce tickets or encode data.
+The remaining derivations require additional state interpretation:
 
-- `val_count` must come from the relevant validator roster, not `3 * core_count` or a test profile.
 - `tickets_attempts_number` must follow GP 0.8.0 Safrole's `ceil(2 * epoch_period / pending_validator_count)`.
 - Erasure-coding sizes must follow GP 0.8.0's validator-dependent original-shard count and fixed
   4,104-byte segment, with the JIP-2 mapping specified when live-state support is added.
@@ -99,7 +103,7 @@ its existing metadata extraction contract.
 Both hash methods require exactly one canonical padded Base64 string decoding to 32 bytes.
 Malformed hashes or argument lists return `-32602`. `bestBlock` takes no arguments. Existing
 batch and notification behavior applies. Finalized queries and all subscriptions remain unsupported.
-The four parameter placeholders remain unchanged in this increment; deriving them is separate work.
+The active validator count also uses this retained state; other parameter gaps are described above.
 
 The genesis loader checks strict bounded JSON, exact 31-byte hex keys, hex values, duplicate decoded
 keys (including case aliases), header framing/complete consumption, active roster C(8), and timeslot
@@ -296,7 +300,10 @@ HTTP POST rejection, saturated handshake expiry, three concurrent QUIC clients a
 not substitute for the Linux CI groups.
 
 Parameter coverage uses independently specified fixture bytes and the complete expected V1 object,
-including 64-bit maxima and all four zero placeholders. Native tests cover truncation, malformed hex,
+including 64-bit maxima and the four zeros in parameters-only operation. Genesis-backed tests
+check actual active populations of 6, 9 and 12 with four configured cores, retained source isolation,
+batches and notifications. Live genesis fixtures independently expect six active validators.
+Native tests cover truncation, malformed hex,
 configuration syntax/duplicates, invalid basic settings, snapshot isolation, unavailable configuration,
 argument validation and batches. Compiler probes protect private configuration/result fields and
 reject extraction from known failure. Live WS checks exercise configured and unconfigured nodes,

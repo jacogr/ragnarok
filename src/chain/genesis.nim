@@ -23,13 +23,14 @@ type
   Genesis* = object
     ready: bool
     state: StateStoreSnapshot
-    sealedHeader: OwnedHeader   # Retain the codec owner of the exact hashed wire bytes.
+    sealedHeader: OwnedHeader        # Retain the codec owner of the exact hashed wire bytes.
     identity: BlockHash
     timeslot: uint32
-    epochLength: EpochSlots     # Captured with the same parameters as header validation.
+    epochLength: EpochSlots          # Captured with the same parameters as header validation.
     corePopulation: CoreCount
-    keys: seq[StateKey]         # Private fixed-width copies; at most 16384 entries.
-    services: seq[ServiceIndex] # Private sorted IDs captured with the same immutable state.
+    activePopulation: ValidatorCount # Actual C(8) population used for header validation.
+    keys: seq[StateKey]              # Private fixed-width copies; at most 16384 entries.
+    services: seq[ServiceIndex]      # Private sorted IDs captured with the same immutable state.
   ## Absent configuration differs from a supplied but invalid genesis pair.
   GenesisError* {.pure.} = enum
     Unavailable, None, Invalid
@@ -56,6 +57,8 @@ func blockHash*(value: Genesis): BlockHash {.requires: value.ready.} = value.ide
 func header*(value: Genesis): OwnedHeader {.requires: value.ready.} = value.sealedHeader
 ## Return the retained core configuration used to decode this snapshot.
 func cores*(value: Genesis): CoreCount {.requires: value.ready.} = value.corePopulation
+## Return the copied active validator population from the exactly decoded C(8) roster.
+func activeValidators*(value: Genesis): ValidatorCount {.requires: value.ready.} = value.activePopulation
 ## Return the captured epoch-ring length used to decode retained ready state.
 func epochSlots*(value: Genesis): EpochSlots {.requires: value.ready.} = value.epochLength
 ## Return the copied genesis timeslot.
@@ -178,7 +181,7 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   let hashed = blake2b256(wire)
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
   GenesisResult(status: GenesisError.None, completed: Genesis(ready: true, state: saved.value,
-    sealedHeader: decoded.value.owner,
+    sealedHeader: decoded.value.owner, activePopulation: ValidatorCount(count.value),
     identity: BlockHash(array[32, byte](hashed.value)), epochLength: EpochSlots(parameters.get(
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
             keys: captureKeys(entries), services: discoverServices(entries)))

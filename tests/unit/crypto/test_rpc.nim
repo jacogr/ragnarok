@@ -836,4 +836,24 @@ for iteration in 0..<100:
   # The retained codec snapshot is the only header owner intentionally kept across calls.
   retireHeaderReply()
 assert getOccupiedMem() <= headerBaseline + 256
+# Parameters use the retained active roster, not the maximum implied by four cores.
+for population in [6, 9, 12]:
+  # Exercise the smallest, intermediate and maximum valid active populations for this profile.
+  let roster = toHex(population, 2) & repeat("00", population * 336)
+  var source = genesisText.replace("06" & repeat("00", 2016), roster)
+  let context = configuredGenesis(source, genesisParameters.value)
+  assert context.error == GenesisError.None
+  assert int(context.value.activeValidators) == population
+  source = "{}" # Captured counts survive replacement of the caller's JSON storage.
+  let owner = ClientInfo(parameters: genesisParameters, genesis: context)
+  let expected = parameterAnswer.replace("\"val_count\":0", "\"val_count\":" & $population)
+  assert respond(parameterRequest, owner) == expected
+  assert respond("[" & parameterRequest & "," & parameterRequest & "]", owner) ==
+    "[" & expected & "," & expected & "]"
+  assert respond(parameterRequest.replace(",\"id\":7", ""), owner) == ""
+# An invalid/default genesis result must never be extracted for a parameter-only query.
+assert respond(parameterRequest, ClientInfo(parameters: configured,
+  genesis: invalidGenesis())) == parameterAnswer
+assert respond(parameterRequest, configuredInfo) == parameterAnswer
+
 echo "rpc ok"
