@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ragnarök contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 //! Synchronous maintained primitive ABI for the GP 0.8.0 release-designated ark-vrf 0.2.2 profile.
 //! No protocol domain/codec logic or dependency source patches. All outputs commit only on success.
 use ark_vrf::{

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Verify complete report bytes and independently supplied guarantee credentials without timing code.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support

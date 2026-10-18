@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Diagnostic width alternatives over unchanged pinned STF binaries and serialized state values."""
 import hashlib
 import json

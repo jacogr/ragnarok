@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Fixed two-worker proof queue. Only copied values cross threads; no stream/TLS/ARC owner does.
 const OffloadEnabled* = defined(offload)
 # Nominal generations cannot be confused with native stream handles or fixture indices.

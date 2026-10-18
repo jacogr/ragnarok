@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Native success/default tests complement independent field/byte, fuzz and overlap comparisons.
 import std/[assertions, syncio]
 import ../../../src/codec/assurances

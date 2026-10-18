@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal deposit, invariant, branch and tiny-payload anchors for the namespace review."""
 import unittest
 from dataclasses import replace

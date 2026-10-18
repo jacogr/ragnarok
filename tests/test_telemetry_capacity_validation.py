@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent collector JSON verdict tests for capacity refusal and slot recovery."""
 import copy
 import unittest

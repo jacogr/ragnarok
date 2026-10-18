@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import ../../support/arc_evidence
 ## Project-only request shape, fixed-copy, backend and scoped entry-release checks.
 import std/[assertions, syncio]

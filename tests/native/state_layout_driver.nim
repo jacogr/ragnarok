@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted field adapter for independent GP state-key/node wire equations and fixed-value lifetime checks.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_layout, bounded, composite]

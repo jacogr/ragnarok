@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 authorization STF vectors plus literal oldest-removal, queue-cycle and atomic-store tests.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/authorization_transition_fixture

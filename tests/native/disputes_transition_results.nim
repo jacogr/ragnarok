@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default/refused plans and nonselected block-stage reasons cannot expose successful payloads.
 import std/[cmdline, syncio]
 import ../../src/state/[disputes, block_transition, block_admission, safrole_transition, store, availability]

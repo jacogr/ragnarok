@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated default/failed component value, owner, copied record and progress reads require success contracts.
 import std/[assertions, cmdline, syncio]
 import ../../src/codec/[state_safrole, state_trie, bounded, assurances, natural]

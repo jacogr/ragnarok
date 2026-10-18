@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T chapter 16 and recent_history lastaccoutspec: ordered last accumulation outputs.
 ## This codec preserves supplied sequence order; accumulation and output-log commitment derivation are separate.
 import std/assertions

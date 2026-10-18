@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Verify protocol source identity, published migration provenance and explicit unresolved parity gates."""
 import hashlib
 import json

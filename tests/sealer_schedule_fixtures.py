@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport pinned parent/posterior Safrole fields; selection and fallback hashing remain native."""
 import hashlib
 import json

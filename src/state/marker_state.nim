@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Read-only GP 0.8.0 header marker validation against retained parent and staged full-state snapshots.
 import ../codec/[state_safrole, state_consensus, state_layout, header]
 import ./[safrole_markers, store]

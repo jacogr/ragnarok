@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent T chapter-12 fixed roles and E4 service/E8 gas dictionary equations."""
 import hashlib
 import json

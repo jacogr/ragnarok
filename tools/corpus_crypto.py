@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Feature-owned corpus orchestration; expected results remain in independent test oracles."""
 from pathlib import Path
 import json

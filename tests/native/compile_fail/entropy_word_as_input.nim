@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Stored entropy and newly supplied VRF output belong to distinct nominal domains.
 import ../../../src/state/entropy
 import ../../../src/codec/state_safrole

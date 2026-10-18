@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ragnarök contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 #include "cert_fields.h"
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>

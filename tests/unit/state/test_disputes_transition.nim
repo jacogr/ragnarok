@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Execute every pinned tiny/full disputes STF case natively; Python only transports source bytes/answers.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[disputes, store]

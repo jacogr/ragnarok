@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Every unsuccessful/default/pending parser result must reject payload selection at its contract.
 import std/[assertions, cmdline, syncio]
 import ../../src/quic/protocol

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Run compiler contract, privacy, nominal, schema and ownership rejection checks independently."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor

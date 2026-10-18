@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and actual invalid-policy authentication cannot publish entropy or a retained authenticated header.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/safrole_authentication

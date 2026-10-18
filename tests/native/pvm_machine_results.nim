@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Each process must fail at its intended public result-access precondition.
 import std/cmdline
 import ../../src/pvm/machine

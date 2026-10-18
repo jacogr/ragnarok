@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## White-box project-owned alias regression; public probes separately prove these fields are inaccessible.
 import std/syncio
 include ../../../src/codec/block_codec

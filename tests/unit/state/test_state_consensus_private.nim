@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Project-only ownership, source-alternative and arithmetic checks; no private compiler/runtime interface is used.
 import std/[assertions, syncio]
 import ../../support/arc_evidence

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal extent, domain and complete-map anchors for the independent composition reference."""
 import unittest
 from state_composition_oracle import chapters, capture, entries, composed, PROFILE, POLICY

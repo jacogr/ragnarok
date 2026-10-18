@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport pinned Safrole output markers verbatim; marker eligibility and construction run in Nim."""
 import hashlib
 import json

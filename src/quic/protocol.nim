@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Pinned JAMNP-S identity and CE framing checks, independent of peer scheduling and test workloads.
 import ./transport
 

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T(state), chapters 6/7/8/9/11 and Safrole key/entropy definitions.
 ## This serializes state values; it does not execute Safrole or establish key validity.
 import std/assertions

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent test-only assurance transcripts and ordinary OpenSSL credential fixtures."""
 import hashlib
 from functools import lru_cache

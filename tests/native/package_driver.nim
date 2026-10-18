@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted independent field adapter for context/import/commitment/item/package codecs.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[work_package, work_report, work_digest, composite, bounded]

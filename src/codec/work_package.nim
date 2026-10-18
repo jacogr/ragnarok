@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 C.2 work-package inputs; see spec/work-package.md for policy and ownership.
 import std/assertions
 import ./[natural, bounded, composite, work_digest, work_report]

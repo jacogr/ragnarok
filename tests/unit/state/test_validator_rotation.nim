@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Pinned roster projections plus authored nulling, epoch, budget and immutable lifetime contracts.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/[validator_rotation_fixture, arc_evidence]

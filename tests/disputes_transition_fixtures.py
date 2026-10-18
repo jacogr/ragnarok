@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport unchanged pinned disputes STF inputs/answers; no reference transition or signature shortcut."""
 import copy
 import hashlib

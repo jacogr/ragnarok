@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Runtime-selected report result probes must fail on their intended success contract.
 import std/[cmdline, syncio]
 import ../../src/codec/[composite, work_report, report_owned, owned]

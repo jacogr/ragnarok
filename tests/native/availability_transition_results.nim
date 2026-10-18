@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Refused/default availability results and opaque owners cannot expose reports, updates or nonselected causes.
 import std/[cmdline, syncio]
 import ../../src/state/[availability, block_transition, store]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP v0.8.0 C.1/C.2 bounded complete work-report codec; see spec/work-report.md.
 import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_digest]

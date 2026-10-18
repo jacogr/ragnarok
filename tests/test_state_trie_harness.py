@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal topology and boundary checks protect the independent trie reference itself."""
 import unittest
 from state_trie_oracle import tree,reference,MAX

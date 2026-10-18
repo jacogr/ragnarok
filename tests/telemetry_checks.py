@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Bounded real TCP collector tests, including actual proof-peer CLI registration."""
 from contextlib import ExitStack
 import hashlib
