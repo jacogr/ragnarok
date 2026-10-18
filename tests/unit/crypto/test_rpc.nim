@@ -605,4 +605,70 @@ for call in [reportCall.replace("[\"" & reportHashText & "\"]", "[]"),
     reportCall.replace("[\"" & reportHashText & "\"]", "[0]"),
     reportCall.replace("[\"" & reportHashText & "\"]", "[\"" & reportHashText & "\",0]")]:
   assert "\"code\":-32602" in respond(call, reportOwner)
+
+# Independent ready-queue framing has exactly 600 row counts and no outer length prefix.
+let readyReportHex = "30466e0ae1b05dde5249872475f6beeac368fd014b5a3413ceb32d38721432842a0000007af11fdaa717c398e223211842b41392f18df4bbc4ea0f4cfb972f19c7a649490600e8e52949f6e4fb1d943248df48c3f2b538200fddfea22388e5e061be8ebf21a74500c0564c5e0de0942589df4343ad1956da66797240e2a2f2d6f8116b50477689860b000000f6967658df626fa39cbfb6014b50196d23bc2cfbfa71a7591ca7715472dd2b489329de635d4bbb8c47cdccbbc1285e48bf9dbad365af44b205343e99dea298f360751ab5b251361fbfd3ad5b0e84f051ccece6b00830aed31a5354e00b20b9ed210000008f665c40573f1288749767417430f62360e37865ef773c24186527aa24b5a4930002022e5e165cc8bd586404257f5cd6f5a31177b5c951eb076c7c10174f90006eef000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+let readyReportHash = "xFVJ93pjaMduU8oqsAhx/ts/IQl3aFgxetYf8dWPqcw="
+let readyCall = reportCall.replace(reportHashText, readyReportHash)
+let readyAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"MEZuCuGwXd5SSYckdfa+6sNo/QFLWjQTzrMtOHIUMoQqAAAAevEf2qcXw5jiIyEYQrQTkvGN9LvE6g9M+5cvGcemSUkGAOjlKUn25PsdlDJI30jD8rU4IA/d/qIjiOXgYb6OvyGnRQDAVkxeDeCUJYnfQ0OtGVbaZnlyQOKi8tb4EWtQR3aJhgsAAAD2lnZY32Jvo5y/tgFLUBltI7ws+/pxp1kcp3FUct0rSJMp3mNdS7uMR83Mu8EoXki/nbrTZa9EsgU0PpneopjzYHUatbJRNh+/061bDoTwUczs5rAIMK7TGlNU4Asgue0hAAAAj2ZcQFc/Eoh0l2dBdDD2I2DjeGXvdzwkGGUnqiS1pJMAAgIuXhZcyL1YZAQlf1zW9aMRd7XJUesHbHwQF0+QAG7vAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+proc readyReportInfo(wire: string, assignments = "", largeEpoch = false): ClientInfo =
+  ## Retain supplied ready bytes and optional availability under one captured parameter context.
+  var state = genesisState[0..^2] & ",\"0e" & repeat("00", 30) & "\":\"" & wire & "\""
+  if assignments.len > 0:
+    # Optional availability lets tests distinguish a clean miss from a refused first source.
+    state.add(",\"0a" & repeat("00", 30) & "\":\"" & assignments & "\"")
+  state.add("}")
+  let parameters = if largeEpoch: configuredParameters(configText.replace("58020000",
+      "01100000")) else: genesisParameters
+  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state), parameters.value))
+let readyWire = repeat("00", 599) & "01" & readyReportHex & "01" & repeat("12", 32)
+let readyOwner = readyReportInfo(readyWire, reportWire)
+assert respond(readyCall, readyOwner) == readyAnswer
+assert respond(reportCall, readyOwner) == reportAnswer # Availability success still takes priority.
+assert respond(readyCall, readyReportInfo(readyWire)) == readyAnswer # Missing C(10) also falls back.
+assert respond(readyCall, readyReportInfo(readyWire, "00000000")) == readyAnswer
+assert "\"code\":2" in respond(reportCall, readyReportInfo(readyWire))
+assert "\"code\":2" in respond(readyCall, readyReportInfo(repeat("00", 600)))
+assert "\"code\":0" in respond(readyCall, readyReportInfo(readyWire, "02")) # Malformed C(10) cannot be masked.
+# A C(10) hit need not decode an unrelated malformed C(14) chapter.
+assert respond(reportCall, readyReportInfo("ff", reportWire)) == reportAnswer
+# All dependency sets and later rows validate before returning an earlier matching report.
+for wire in ["", repeat("00", 599), readyWire & "00", readyWire[0..^3],
+    "01" & readyReportHex & "00" & repeat("00", 598) & "ff",
+    repeat("00", 599) & "01" & readyReportHex & "02" & repeat("12", 64)]:
+  assert "\"code\":0" in respond(readyCall, readyReportInfo(wire))
+# Multiple rows/items, including duplicates, preserve lookup identity without hashing dependency bytes.
+assert respond(readyCall, readyReportInfo("02" & readyReportHex & "00" & readyReportHex & "00" &
+    repeat("00", 599))) == readyAnswer
+assert respond("[" & reportCall & "," & readyCall & "]", readyOwner) == "[" & reportAnswer & "," &
+    readyAnswer & "]"
+assert respond(readyCall.replace(",\"id\":1", ""), readyOwner) == ""
+let readyIdentity = WorkReportHash([196'u8, 85'u8, 73'u8, 247'u8, 122'u8, 99'u8, 104'u8, 199'u8,
+    110'u8, 83'u8, 202'u8, 42'u8, 176'u8, 8'u8, 113'u8, 254'u8, 219'u8, 63'u8, 33'u8, 9'u8, 119'u8,
+    104'u8, 88'u8, 49'u8, 122'u8, 214'u8, 31'u8, 241'u8, 213'u8, 143'u8, 169'u8, 204'u8])
+assert workReport(readyOwner.genesis.value, readyIdentity, ByteLimit(392)).error ==
+    ReportReadError.LimitExceeded
+assert workReport(readyOwner.genesis.value, readyIdentity, ByteLimit(393)).error ==
+    ReportReadError.None
+assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 1048577)))
+assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 4097), largeEpoch = true))
+proc retainReadyReport(): OwnedReport =
+  ## Return a child owner beyond both genesis and ready-ring decoder lifetimes.
+  let transient = readyReportInfo(readyWire)
+  let found = workReport(transient.genesis.value, readyIdentity, ByteLimit(393))
+  assert found.error == ReportReadError.None
+  found.value
+let readyRetained = retainReadyReport()
+var readyCopy = newSeq[byte](393)
+assert encodeOwnedReport(readyRetained, readyCopy).error == OwnershipError.None
+assert base64.encode(readyCopy) in readyAnswer
+proc retireReadyReply() =
+  ## Decode and release ring rows, dependency storage and report owners on every call.
+  assert respond(readyCall, readyOwner) == readyAnswer
+retireReadyReply()
+let readyBaseline = getOccupiedMem()
+for iteration in 0..<100:
+  # Only the original configured snapshot remains live between calls.
+  retireReadyReply()
+assert getOccupiedMem() <= readyBaseline + 256
 echo "rpc ok"
