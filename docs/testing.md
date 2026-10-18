@@ -885,7 +885,9 @@ Run `make check-inventory` for a fast, Python-only preflight before opening a ve
 It validates per-family fields, build profiles, source paths, case counts, diagnostics and global
 build/probe log uniqueness, then checks that every family file has exactly one explicit runner
 call. It also checks native source/output coverage, compiler-rejection inputs and project-owned
-provenance paths. It runs before setup in the normal verification targets. Vendor input bytes
+provenance paths. It runs before setup in the normal verification targets. Every Linux CI job, including E2E,
+also exposes it as a separate required step before its workload. A failed inventory check stops
+that job before native setup. Vendor input bytes
 remain the responsibility of the existing pinned-submodule setup and runtime provenance checks.
 
 Add a failure family as `tools/failure_suites/<family>.json`, retaining one case per line, its
