@@ -35,6 +35,11 @@ UNIT_FIXTURES = {
     )),
 }
 
+# Freeze the independent register oracle and upstream witnesses before native replay.
+PVM_REGISTERS = ROOT/'tests/fixtures/pvm-registers.bin'
+UNIT_FIXTURES['pvm_registers'] = ('RAGNAROK_PVM_REGISTERS', PVM_REGISTERS,
+    ((PVM_REGISTERS, '1abf6f399808dad7ed612200443342717de0e6b75c66eb232ecb4b8c3a2c5d2b'),))
+
 # Shared independent report bytes retain availability and queued-report fixture identity.
 STATE_REPORT = ROOT/'tests/fixtures/state-report.bin'
 for case in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private'):

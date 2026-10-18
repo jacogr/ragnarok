@@ -1,0 +1,41 @@
+{
+  "source": "tests/native/pvm_register_results.nim",
+  "build_name": "pvm-register-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default-value"
+      },
+      "arguments": [
+        "default-value"
+      ],
+      "name": "pvm-register-default-value",
+      "diagnostic": "r.status == None",
+      "description": "PVM register result selection default-value"
+    },
+    {
+      "identity": {
+        "origin": "invalid-value"
+      },
+      "arguments": [
+        "invalid-value"
+      ],
+      "name": "pvm-register-invalid-value",
+      "diagnostic": "r.status == None",
+      "description": "PVM register result selection invalid-value"
+    },
+    {
+      "identity": {
+        "origin": "unsupported-value"
+      },
+      "arguments": [
+        "unsupported-value"
+      ],
+      "name": "pvm-register-unsupported-value",
+      "diagnostic": "r.status == None",
+      "description": "PVM register result selection unsupported-value"
+    }
+  ]
+}
