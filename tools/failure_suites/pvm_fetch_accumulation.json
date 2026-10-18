@@ -1,0 +1,50 @@
+{
+  "source": "tests/native/pvm_fetch_accumulation_results.nim",
+  "build_name": "pvm-fetch-accumulation-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-fetch-accumulation-context",
+      "diagnostic": "r.status == None",
+      "description": "Accumulation fetch refusal context"
+    },
+    {
+      "identity": {
+        "reason": "count"
+      },
+      "arguments": [
+        "count"
+      ],
+      "name": "pvm-fetch-accumulation-count",
+      "diagnostic": "r.status == None",
+      "description": "Accumulation fetch refusal count"
+    },
+    {
+      "identity": {
+        "reason": "operand"
+      },
+      "arguments": [
+        "operand"
+      ],
+      "name": "pvm-fetch-accumulation-operand",
+      "diagnostic": "r.status == None",
+      "description": "Accumulation fetch refusal operand"
+    },
+    {
+      "identity": {
+        "reason": "bytes"
+      },
+      "arguments": [
+        "bytes"
+      ],
+      "name": "pvm-fetch-accumulation-bytes",
+      "diagnostic": "r.status == None",
+      "description": "Accumulation fetch refusal bytes"
+    }
+  ]
+}

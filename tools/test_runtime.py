@@ -171,6 +171,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # Fetch local refusals must not expose a completed host response.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
     # Optional fetch capture and dispatch failures expose no partial owner or response.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_accumulation')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_context')
     # Package blob capture refuses invalid owners and aggregate limits without partial snapshots.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_inputs')

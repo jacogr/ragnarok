@@ -1,14 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Evaluate fetch for configured parameters and optional entropy, trace, package and external inputs.
-## Exposes FetchContext capture, parameter/package/input attachment and selector responses.
+## Evaluate all fetch selectors for configured parameters and explicitly captured invocation inputs.
+## Exposes FetchContext capture, bounded accumulation/package/input attachment and selector responses.
 ## FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
 ## Capture owns bounded immutable context; responses own memory copies. See spec/pvm-fetch-context.md.
 
 import ./[machine, step]
 import ../chain/parameters
-import ../codec/[work_package, fixed_unsigned]
+import ../codec/[work_package, fixed_unsigned, c2_records, bounded, natural]
 
 type
   # Invocation entropy is one nominal 32-byte value, distinct from arbitrary trace bytes.
@@ -71,6 +71,18 @@ type
     entropy: FetchEntropy
     tracePresence: FetchPresence
     trace: seq[byte]
+  # Independent local limits bound descriptors, complete list bytes and each C.2 input record.
+  FetchAccumulationLimits* = object
+    items*: ElementLimit
+    bytes*: ByteLimit
+    operand*: OperandLimits
+  # One immutable slice selects a record in the single canonical list buffer.
+  FetchAccumulationSpan = object
+    start, length: int
+  # Private acyclic owner stores list framing once, without duplicating each record's bytes.
+  FetchAccumulationData = ref object
+    bytes: seq[byte]
+    spans: seq[FetchAccumulationSpan]
   # Fixed parameter encoding is captured once from the configured chain snapshot.
   FetchParameterData = ref object
     bytes: array[ParameterBytes, byte]
@@ -80,6 +92,7 @@ type
     packageData: nil FetchPackageData
     inputData: nil FetchInputData
     parameterData: nil FetchParameterData
+    accumulationData: nil FetchAccumulationData
   # Capture failures carry only the local reason, never a partial owner or borrowed input span.
   FetchContextResult* = object
     case status: FetchError
@@ -117,7 +130,64 @@ proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
   let owner = FetchContextData(entropyPresence: entropyPresence, entropy: selectedEntropy,
     tracePresence: tracePresence, trace: copied)
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner,
-      packageData: nil, inputData: nil, parameterData: nil))
+      packageData: nil, inputData: nil, parameterData: nil, accumulationData: nil))
+
+# Capture the caller's ordered accumulation inputs using the existing C.2 encoder.
+# Caller sources must remain stable until return. Invocation assembly supplies the correct ordering;
+# this operation neither sorts inputs nor authenticates their provenance. Absence ignores sources/caps.
+proc withFetchAccumulation*(context: FetchContext, presence: FetchPresence,
+    inputs: openArray[AccumulationSource], limits: FetchAccumulationLimits): FetchContextResult =
+  if context.data == nil:
+    # Missing base context cannot become valid through an absent or present attachment.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  if presence == FetchPresence.Absent:
+    # Clearing this family preserves all unrelated immutable invocation selections.
+    var cleared = context
+    cleared.accumulationData = nil
+    return FetchContextResult(status: FetchError.None, completed: cleared)
+  if uint64(inputs.len) > uint64(limits.items):
+    # Bound metadata traversal and allocation even when many records have small payloads.
+    return FetchContextResult(status: FetchError.LimitExceeded)
+  let prefix = natural.encode(JamNatural(uint64(inputs.len)))
+  let maximum = min(uint64(limits.bytes), uint64(high(int)))
+  var total = uint64(prefix.len)
+  if total > maximum:
+    # Even the present empty list needs its one-byte compact zero count.
+    return FetchContextResult(status: FetchError.LimitExceeded)
+  for input in inputs:
+    # Reuse the codec's allocation-free preflight for both tagged record alternatives.
+    let measured = accumulationInputSize(input, limits.operand)
+    if measured.error != RecordError.None:
+      # Local record policy refusal must not masquerade as protocol absence or a partial capture.
+      let reason = (if measured.error == RecordError.LimitExceeded or
+        measured.error == RecordError.LengthOverflow: FetchError.LimitExceeded else: FetchError.InvalidContext)
+      return FetchContextResult(status: reason)
+    if uint64(measured.value) > maximum - total:
+      # Subtraction after the initial bound prevents overflow before the final host-int conversion.
+      return FetchContextResult(status: FetchError.LimitExceeded)
+    total += uint64(measured.value)
+  # Each record occupies at least 132 bytes, so the byte bound also bounds span-storage arithmetic.
+  let owner = FetchAccumulationData(bytes: newSeq[byte](int(total)),
+    spans: newSeq[FetchAccumulationSpan](inputs.len))
+  for i in 0..<prefix.len:
+    # The list prefix counts inputs, not encoded bytes, and is never repeated per member.
+    owner.bytes[i] = prefix.bytes[i]
+  var cursor = int(prefix.len)
+  for i in 0..<inputs.len:
+    # Encode into the remaining buffer only after the entire source passed preflight.
+    let encoded = encodeAccumulationInput(inputs[i], limits.operand,
+      owner.bytes.toOpenArray(cursor, owner.bytes.len - 1))
+    if encoded.error != RecordError.None:
+      # A failed codec commit cannot publish the private partial owner.
+      return FetchContextResult(status: FetchError.InvalidContext)
+    owner.spans[i] = FetchAccumulationSpan(start: cursor, length: encoded.value)
+    cursor += encoded.value
+  if cursor != owner.bytes.len:
+    # Preflight and encoder must agree exactly; no trailing padding or incomplete list is exposed.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  var captured = context
+  captured.accumulationData = owner
+  FetchContextResult(status: FetchError.None, completed: captured)
 
 # Attach the configured chain parameters while preserving all invocation-specific selections.
 # Missing/default parameters are local configuration errors, never an absent protocol value.
@@ -127,7 +197,8 @@ proc withFetchParameters*(context: FetchContext, parameters: Parameters): FetchC
     return FetchContextResult(status: FetchError.InvalidContext)
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: context.data,
     packageData: context.packageData, inputData: context.inputData,
-    parameterData: FetchParameterData(bytes: encodeParameters(parameters))))
+    parameterData: FetchParameterData(bytes: encodeParameters(parameters)),
+    accumulationData: context.accumulationData))
 
 # Replace both external-input selections while retaining package, entropy and trace snapshots.
 # Preflight all counts, current-item indices and aggregate bytes before any variable allocation.
@@ -201,7 +272,7 @@ proc withFetchInputs*(context: FetchContext, source: FetchInputs,
         copied.imports[i][j] = source.imports[i][j]
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: context.data,
     packageData: context.packageData, inputData: FetchInputData(values: copied),
-        parameterData: context.parameterData))
+        parameterData: context.parameterData, accumulationData: context.accumulationData))
 
 # Write one bounded fixed-width summary field using the canonical scalar codec.
 # Private callers pass disjoint fields inside a fixed 62-byte summary; failure publishes no owner.
@@ -250,7 +321,7 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
     # Clearing only the package selection preserves the original immutable entropy/trace owner.
     return FetchContextResult(status: FetchError.None,
       completed: FetchContext(data: context.data, packageData: nil, inputData: context.inputData,
-          parameterData: context.parameterData))
+          parameterData: context.parameterData, accumulationData: context.accumulationData))
   let described = workPackageInfo(package)
   if described.error != PackageError.None:
     # Default codec handles are local misuse, not an absent protocol package.
@@ -328,7 +399,8 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
       return FetchContextResult(status: FetchError.InvalidContext)
   FetchContextResult(status: FetchError.None,
     completed: FetchContext(data: context.data, packageData: captured,
-        inputData: context.inputData, parameterData: context.parameterData))
+        inputData: context.inputData, parameterData: context.parameterData,
+        accumulationData: context.accumulationData))
 
 # Inspect a result without exposing mutable variant storage.
 func error*(r: FetchResult): FetchError = r.status
@@ -348,7 +420,7 @@ proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
     return FetchResult(status: FetchError.InvalidMemory)
   let requested = uint64(registers[9])
   # Splitting before multiplication computes ceil(rate*z/1024) for all uint64 z without overflow.
-  # Private callers use rate <= 96 and base <= 390, so the total and any deficit fit signed 64 bits.
+  # Private callers use rate <= 400 and base <= 390, so the total and any deficit fit signed 64 bits.
   let cost = base + (requested div 1024) * rate + ((requested mod 1024) * rate + 1023) div 1024
   if uint64(gas) < cost:
     # General-host underfunding takes precedence over guest memory and local copy-size checks.
@@ -508,9 +580,25 @@ proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: Re
       # Compare the full register width before narrowing, so huge indices cannot wrap onto an item.
       return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
     fetchValue(gas, registers, memory, package.payloads[int(index)], true, selector, base, rate, limit)
+  of 14, 15:
+    # List and individual records share one encoding but retain distinct requested-length prices.
+    let accumulation = context.accumulationData
+    let base = (if selector == 14: 287'u64 else: 355'u64)
+    let rate = (if selector == 14: 400'u64 else: 344'u64)
+    if accumulation == nil:
+      # Absence is charged even with invalid indices or pointers, using an empty natural interval.
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    if selector == 14:
+      # The complete compact-count-prefixed list ignores both item registers.
+      return fetchValue(gas, registers, memory, accumulation.bytes, true, selector, base, rate, limit)
+    let index = uint64(registers[11])
+    if index >= uint64(accumulation.spans.len):
+      # Full-width comparison precedes narrowing and slicing; r12 is unused.
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    let span = accumulation.spans[int(index)]
+    fetchValue(gas, registers, memory,
+      accumulation.bytes.toOpenArray(span.start, span.start + span.length - 1),
+      true, selector, base, rate, limit)
   else:
-    # Known selectors need their own context and encoding implementation, never a fabricated NONE.
-    if selector < 16:
-      return FetchResult(status: FetchError.UnsupportedSelector)
-    # The table's otherwise branch uses c = none and a zero-sized absent value.
+    # All sixteen defined selectors are handled; remaining values use protocol-unknown absence.
     fetchValue(gas, registers, memory, [], false, selector, 80, 0, limit)
