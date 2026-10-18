@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "pvm_registers",
     "pvm_machine",
     "pvm_program",
     "telemetry",
@@ -94,6 +95,9 @@
     "report_anchors"
   ],
   "PRIVATE": {
+    "pvm_register_payload_private": "completed",
+    "pvm_register_retag_private": "status",
+    "pvm_register_error_readonly": "error",
     "pvm_memory_owner_private": "data",
     "pvm_machine_owner_private": "data",
     "pvm_machine_payload_private": "completed",
@@ -752,6 +756,7 @@
     "report_anchors_owner_private": "data"
   },
   "NOMINAL": {
+    "pvm_register_raw_address": "[2] expected: CodeAddress but got: uint64",
     "pvm_memory_raw_address": "[2] expected: MemoryAddress but got: uint64",
     "pvm_page_as_address": "[2] expected: MemoryAddress but got: PageIndex",
     "pvm_raw_page_limit": "[2] expected: PageLimit but got: uint32",
@@ -955,6 +960,7 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
+    "pvm_register_raw_address": ["evaluateRegisters(", "[2] expected: CodeAddress but got: uint64"],
     "pvm_memory_raw_address": ["load(", "[2] expected: MemoryAddress but got: uint64"],
     "pvm_page_as_address": ["load(", "[2] expected: MemoryAddress but got: PageIndex"],
     "pvm_raw_page_limit": ["captureMemory(", "[2] expected: PageLimit but got: uint32"],
@@ -993,6 +999,7 @@
     "normalize-short"
   ],
   "FAILURE_COUNTS": {
+    "pvm_registers": 3,
     "pvm_machine": 5,
     "safrole_transition": 9,
     "safrole_authentication": 3,
