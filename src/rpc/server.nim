@@ -111,11 +111,16 @@ proc start*(server: var Server, port: uint16, role: string): bool =
     # Darwin includes the sockaddr extent.
     address.sin_len = uint8(sizeof(Sockaddr_in))
   var loopback = "127.0.0.1"
-  if not nonblocking(server.fd) or parseAddress(cint(ord(nativesocket.AF_INET)), loopback.toCString(
-      ), addr address.sin_addr) != 1 or bindSocket(server.fd, addr address, SockLen(sizeof(
-          address))) != 0 or
-      listenSocket(server.fd, cint(MaxConnections)) != 0:
-    server.close() # Atomic startup failure retires every acquired resource.
+  let host = loopback.toCString()
+  let family = cint(ord(nativesocket.AF_INET))
+  if not nonblocking(server.fd) or parseAddress(family, host, addr address.sin_addr) != 1:
+    server.close() # Atomic flag/address failure retires the listener before binding.
+    return false
+  if bindSocket(server.fd, addr address, SockLen(sizeof(address))) != 0:
+    server.close() # A requested occupied port cannot silently disable RPC.
+    return false
+  if listenSocket(server.fd, cint(MaxConnections)) != 0:
+    server.close() # Failed admission setup cannot leave an unusable bound socket.
     return false
   server.started = getMonoTime().ticks div 1_000_000
   server.port = port

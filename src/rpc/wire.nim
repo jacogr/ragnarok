@@ -60,6 +60,11 @@ proc upgrade*(header: string): string =
     let colon = line.find(':')
     if colon < 1 or line[0] in {' ', '\t'}: return
     let name = line[0..<colon].toLowerAscii()
+    for c in name: # HTTP field names are tokens; whitespace cannot disguise Origin or framing headers.
+      if c notin {'a'..'z', '0'..'9', '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_',
+          '`', '|', '~'}: return
+    for c in line[colon + 1..^1]: # Bare CR/LF, NUL and other controls are not HTTP field values.
+      if (ord(c) < 32 and c != '\t') or ord(c) == 127: return
     if name in seen: return
     seen.add(name)
     let value = line[colon + 1..^1].strip()

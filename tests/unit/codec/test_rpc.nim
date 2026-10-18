@@ -46,6 +46,8 @@ for bad in ["\xc0\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\x80", "\xe2\x82"]:
 let header = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(header) # RFC 6455 section 1.3 known answer.
 assert upgrade(header.replace("GET /", "POST /")).len == 0
+assert upgrade(header.replace("Host: localhost", "Origin : http://example.com")).len == 0
+assert upgrade(header.replace("Host: localhost", "Host: local\x00host")).len == 0
 assert upgrade(header.replace("13\r\n", "12\r\n")).len == 0
 assert upgrade(header.replace("Host: localhost", "Origin: http://example.com")).len == 0
 assert upgrade(header.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0

@@ -84,7 +84,7 @@ proc stringToken(p: var Parser, decoded: var string): bool =
 # Parse exactly one subtree with bounded recursion; failure discards the entire private parse owner.
 proc value(p: var Parser, depth: int): bool =
   p.whitespace()
-  if depth > 16 or p.values.len >= 2048 or p.position >= p.text.len: return false
+  if depth >= 16 or p.values.len >= 2048 or p.position >= p.text.len: return false
   let index = p.values.len
   p.values.add(Value(kind: literalValue, text: "", next: 0))
   let first = p.text[p.position]
@@ -153,14 +153,17 @@ proc error(id: string, code: int, message: string): string =
 
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
 proc clientInfo(info: ClientInfo): string =
-  "{\"name\":\"Ragnarok\",\"version\":\"development\",\"implementation\":\"Nimony\",\"compilerVersion\":\"0.6.3\",\"grayPaperVersion\":\"0.8.0\",\"os\":" &
-      quote(Platform) &
-    ",\"architecture\":" & quote(Architecture) & ",\"role\":" & quote(info.role) &
-    ",\"uptimeMs\":" & $info.uptimeMs & ",\"connectedPeers\":" & $info.peers &
-    ",\"memory\":{\"occupiedBytes\":" & $info.occupiedBytes & ",\"reservedBytes\":" &
-        $info.reservedBytes &
-        "},\"chain\":null,\"bestBlock\":null,\"finalizedBlock\":null,\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\",\"port\":" &$info.port &
-    ",\"methods\":[\"ragnarok_clientInfo\"],\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}"
+  result = "{\"name\":\"Ragnarok\",\"version\":\"development\",\"implementation\":\"Nimony\""
+  result.add(",\"compilerVersion\":\"0.6.3\",\"grayPaperVersion\":\"0.8.0\"")
+  result.add(",\"os\":" & quote(Platform) & ",\"architecture\":" & quote(Architecture))
+  result.add(",\"role\":" & quote(info.role) & ",\"uptimeMs\":" & $info.uptimeMs)
+  result.add(",\"connectedPeers\":" & $info.peers)
+  result.add(",\"memory\":{\"occupiedBytes\":" & $info.occupiedBytes)
+  result.add(",\"reservedBytes\":" & $info.reservedBytes & "}")
+  result.add(",\"chain\":null,\"bestBlock\":null,\"finalizedBlock\":null")
+  result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\"]")
+  result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
 proc dispatch(values: seq[Value], start: int, info: ClientInfo): string =
