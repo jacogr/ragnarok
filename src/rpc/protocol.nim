@@ -1,16 +1,22 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JSON-RPC 2.0 dispatch for the proof peer, including configured chain parameters.
-## Bounds: 16 KiB input, 16 levels, 2048 values and 16 requests per batch; no retained borrows.
+## JSON-RPC 2.0 dispatch for configured chain parameters and immutable genesis/service queries.
+## Bounds: 16 KiB input, 16 levels, 2048 values, 16 requests and 65,535 output bytes; no retained borrows.
 ##
 ## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
-## responses. configuredParameters validates bounded chainspec text into an owned snapshot;
+## responses. configuredParameters and configuredGenesis validate bounded chainspec text into
+## owned parameter and genesis snapshots;
 ## parameters() includes four documented zero placeholders pending live-state derivation.
 
-import std/[strutils, parsejson, streams]
+import std/[strutils, parsejson, streams, base64]
 import ./wire
-import ../chain/parameters
+import ../chain/[parameters, genesis, services]
+import ../codec/[state_trie, state_layout]
+
+const MaxReplyBytes = 65535 # One canonical medium-length WS frame, including batch punctuation.
+const MaxServiceReplyBytes = 32768 # Bound each raw value copy/hash before Base64 encoding.
+const ReplyBudgetError = "RPC response exceeds configured output budget"
 
 const Platform = when defined(linux): "linux" elif defined(macosx): "macos" else: "unknown"
 const Architecture = when defined(arm64): "arm64" elif defined(amd64): "amd64" else: "unknown"
@@ -33,6 +39,7 @@ type
     role*: string
     port*: uint16
     occupiedBytes*, reservedBytes*: int
+    genesis*: GenesisResult # Immutable configured genesis; no block-import or finality claim.
     parameters*: ParameterResult # Optional immutable startup configuration; never read from disk per request.
 
 # JSON quoting preserves UTF-8 while escaping ASCII controls and delimiters.
@@ -138,6 +145,112 @@ proc parseValues(text: string, values: var seq[Value], maxValues = 2048, maxDept
       if parser.kind in {jsonObjectStart, jsonArrayStart}:
         containers.add(Container(index: values.len - 1, children: 0)) # Bounded open-container stack.
 
+# Decode bounded, unprefixed hex atomically; an empty value is valid only for state values.
+proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
+  if text.len mod 2 != 0 or text.len div 2 > maximum: return false # Bound before allocation.
+  var bytes = newSeq[byte](text.len div 2)
+  # Each pair has exactly two hexadecimal digits, excluding prefixes and separators.
+  for i in 0..<bytes.len:
+    var value = 0
+    # Accumulate exactly two nibbles so narrowing to a byte is proved safe.
+    for j in 0..<2:
+      let c = text[2 * i + j]
+      if c notin HexDigits: return false # Invalid input publishes no partial bytes.
+      value = value * 16 + (if c <= '9': ord(c) - ord('0') else: ord(c.toLowerAscii) - ord('a') + 10)
+    bytes[i] = byte(value)
+  output = move(bytes)
+  true
+
+# Import an optional complete genesis pair using the same strict bounded JSON policy as parameters.
+proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
+  # Reject absent, oversized or non-UTF-8 input before token allocation.
+  if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text): return invalidGenesis()
+  var values: seq[Value] = @[]
+  # Only a complete strict JSON object can describe a chainspec.
+  if not parseValues(text, values, 262144, 32) or values[0].kind !=
+      objectValue: return invalidGenesis()
+  var headerIndex = -1
+  var stateIndex = -1
+  var keys: seq[string] = @[]
+  var i = 1
+  # Root duplicates are ambiguous even when they name fields this slice does not consume.
+  while i < values[0].next:
+    let key = values[i].text
+    if keys.len >= 64 or key in keys: return invalidGenesis() # Bound metadata and reject ambiguous duplicates.
+    keys.add(key)
+    inc i
+    if key == "genesis_header": headerIndex = i # Record positions only after syntax validation.
+    elif key == "genesis_state": stateIndex = i # State entries are decoded below.
+    i = values[i].next
+  if headerIndex < 0 and stateIndex < 0: return unavailableGenesis() # Parameters-only configuration remains supported.
+  if headerIndex < 0 or stateIndex < 0: return invalidGenesis() # An explicit pair must be complete.
+  # The header is one encoded blob and state is a serialized key/value object.
+  if values[headerIndex].kind != stringValue or values[stateIndex].kind !=
+      objectValue: return invalidGenesis()
+  var wire: seq[byte] = @[]
+  if not decodeHex(values[headerIndex].text, 256 * 1024, wire): return invalidGenesis() # Bound the header before decoding.
+  var entries: seq[StateEntry] = @[]
+  var total = 0
+  i = stateIndex + 1
+  # Decode map keys and values under independent count and byte budgets before retaining them.
+  while i < values[stateIndex].next:
+    if entries.len >= 16384 or values[i].text.len != 62: return invalidGenesis() # Every serialized key has exactly 31 bytes.
+    var keyBytes, data: seq[byte] = @[]
+    if not decodeHex(values[i].text, 31, keyBytes): return invalidGenesis() # Reject non-hex key encodings.
+    inc i
+    if values[i].kind != stringValue or not decodeHex(values[i].text, 4 * 1024 * 1024 - total, data):
+      return invalidGenesis() # Nested and non-string state values are not serialized state.
+    total += data.len
+    var key = default(array[31, byte])
+    for j in 0..<31: key[j] = keyBytes[j] # Exact decoded key width was proved above.
+    entries.add(StateEntry(key: StateKey(key), value: move(data)))
+    i = values[i].next
+  captureGenesis(wire, entries, parameters)
+
+# JIP-2 hash strings are canonical padded Base64, preserving exactly 32 bytes.
+proc validHash(text: string): bool =
+  if text.len != 44 or text[43] != '=': return false # Exact shape bounds decoder work.
+  for i in 0..<43:
+    if text[i] notin {'A'..'Z', 'a'..'z', '0'..'9', '+',
+        '/'}: return false # No alternate alphabets or whitespace.
+  let decoded = base64.decode(text)
+  decoded.len == 32 and base64.encode(decoded) == text
+
+# Decode canonical padded Base64, including the empty blob, with a pre-allocation byte ceiling.
+proc decodeBlob(text: string, maximum: int, output: var seq[byte]): bool =
+  if text.len mod 4 != 0 or text.len > ((maximum + 2) div 3) * 4:
+    return false # Bound work before calling the standard decoder.
+  var padding = 0
+  if text.len > 0 and text[^1] == '=': inc padding # A single trailing pad may complete two bytes.
+  if text.len > 1 and text[^2] == '=': inc padding # Two pads may complete one byte.
+  # Every non-padding byte must use the RFC 4648 alphabet, with no whitespace or URL-safe variant.
+  for i in 0..<text.len - padding:
+    if text[i] notin {'A'..'Z', 'a'..'z', '0'..'9', '+', '/'}: return false
+  let decoded = base64.decode(text)
+  if decoded.len > maximum or base64.encode(decoded) != text:
+    return false # Re-encoding rejects nonzero pad bits and incomplete/noncanonical spellings.
+  output = newSeq[byte](decoded.len)
+  for i in 0..<decoded.len: output[i] = byte(decoded[i]) # Publish only complete, validated bytes.
+  true
+
+# Parse a JSON integer token without signed conversion, floating point or overflow.
+proc serviceNumber(token: Value, output: var uint32): bool =
+  if token.kind != numberValue or token.text.len == 0: return false # IDs require an integer token.
+  var number = 0'u32
+  # Before each multiply/add, prove the next unsigned-32-bit result remains representable.
+  for c in token.text:
+    if c notin {'0'..'9'}: return false # Negative, fractional and exponent spellings are not service IDs.
+    let digit = uint32(ord(c) - ord('0'))
+    if number > (high(uint32) - digit) div 10: return false # No wrapping or narrowing of oversized IDs.
+    number = number * 10 + digit
+  output = number
+  true
+
+# Render a copied genesis descriptor using JIP-2's Base64 identity and numeric slot.
+proc descriptor(value: Genesis): string =
+  "{\"header_hash\":" & quote(base64.encode(array[32, byte](value.blockHash))) & ",\"slot\":" &
+      $value.slot & "}"
+
 # Extract one strict JIP-4 parameter field from a bounded startup file. Genesis data is not imported.
 # Unknown fields are parsed for syntax only; duplicate root members and missing parameters fail atomically.
 proc configuredParameters*(text: string): ParameterResult =
@@ -195,13 +308,14 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"connectedPeers\":" & $info.peers)
   result.add(",\"memory\":{\"occupiedBytes\":" & $info.occupiedBytes)
   result.add(",\"reservedBytes\":" & $info.reservedBytes & "}")
-  result.add(",\"chain\":null,\"bestBlock\":null,\"finalizedBlock\":null")
+  result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
+      GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
-proc dispatch(values: seq[Value], start: int, info: ClientInfo): string =
+proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: int): string =
   if values[start].kind != objectValue: return error("null", -32600, "Invalid Request")
   var id = "null"
   var hasId, version, methodFound, invalid = false
@@ -230,8 +344,73 @@ proc dispatch(values: seq[Value], start: int, info: ClientInfo): string =
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if not hasId: return "" # This read-only dispatch has no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
-  if methodName in ["ragnarok_clientInfo", "parameters"]:
+  if methodName in ["serviceData", "serviceValue", "servicePreimage"]:
+    let count = if methodName == "serviceData": 2 else: 3
+    if parameters < 0: return error(id, -32602, "Expected service query arguments") # Hash and service are mandatory.
+    let first = parameters + 1
+    if values[parameters].next != first + count: return error(id, -32602,
+        "Expected scalar service query arguments") # No extra or nested arguments.
+    if values[first].kind != stringValue or not validHash(values[first].text):
+      return error(id, -32602, "Expected padded Base64 header hash") # Validate identities before lookup.
+    var service = 0'u32
+    if not serviceNumber(values[first + 1], service): return error(id, -32602, "Expected uint32 service ID")
+    var key: seq[byte] = @[]
+    if count == 3:
+      # Storage keys are bounded arbitrary blobs; preimage identities have exactly 32 bytes.
+      if values[first + 2].kind != stringValue: return error(id, -32602, "Expected Base64 key or hash")
+      if methodName == "servicePreimage":
+        if not validHash(values[first + 2].text): return error(id, -32602, "Expected padded Base64 preimage hash")
+      if not decodeBlob(values[first + 2].text, MaxServiceKeyBytes, key):
+        return error(id, -32602, "Invalid or oversized Base64 key") # Bound hashing and decoder scratch.
+    let hash = values[first].text
+    if info.genesis.error != GenesisError.None or hash != base64.encode(array[32, byte](
+        info.genesis.value.blockHash)):
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
+          ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" & quote(hash) &
+          "}}" # Unknown blocks cannot yield a false absence verdict.
+    let view = info.genesis.value
+    # Reserve the envelope and exact quoted ID before converting the remaining budget to raw bytes.
+    let budget = ByteLimit(min(MaxServiceReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
+    var found = default(ServiceReadResult)
+    if methodName == "serviceData":
+      found = services.serviceData(view, ServiceIndex(service), budget) # Metadata uses C(255, service).
+    elif methodName == "serviceValue":
+      found = services.serviceValue(view, ServiceIndex(service), key, budget) # Empty raw keys remain valid.
+    else:
+      # Exact hash width was established before selecting the known block snapshot.
+      var identity = default(array[32, byte])
+      for j in 0..<32: identity[j] = key[j]
+      found = services.servicePreimage(view, ServiceIndex(service), ServicePreimageHash(identity), budget)
+    if found.error == ServiceReadError.Missing:
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
+          ",\"result\":null}" # Absence differs from a present empty blob.
+    if found.error == ServiceReadError.LimitExceeded: return error(id, 0,
+        ReplyBudgetError) # Never truncate a stored value.
+    if found.error != ServiceReadError.None: return error(id, 0,
+        "Invalid or unreadable service state") # Do not publish malformed imported state.
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+        found.value.bytes)) & "}"
+  if methodName in ["parent", "stateRoot"]:
+    if parameters < 0: return error(id, -32602, "Expected one header hash") # Hash lookup always needs an argument.
+    let argument = parameters + 1
+    if values[parameters].next != argument + 1 or values[argument].kind != stringValue:
+      return error(id, -32602, "Expected one header hash") # Exactly one scalar positional argument.
+    let hash = values[argument].text
+    if not validHash(hash): return error(id, -32602,
+        "Expected padded Base64 hash") # Reject malformed identities before lookup.
+    if methodName == "stateRoot" and info.genesis.error == GenesisError.None:
+      let view = info.genesis.value
+      if hash == base64.encode(array[32, byte](view.blockHash)):
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(array[32,
+            byte](view.stateRoot))) & "}"
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
+        quote(hash) & "}}" # No parent or unknown block data exists in this genesis-only view.
+  if methodName in ["ragnarok_clientInfo", "parameters", "bestBlock"]:
     if parameters >= 0 and values[parameters].next != parameters + 1: return error(id, -32602, "Expected no parameters")
+    if methodName == "bestBlock":
+      if info.genesis.error != GenesisError.None: return error(id, 0,
+          "Genesis chain view unavailable") # No configured head exists.
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(info.genesis.value) & "}"
     if methodName == "parameters":
       if not info.parameters.ok: return error(id, 0, "Chain parameters unavailable; configure --chain")
       return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & parameterObject(
@@ -239,24 +418,54 @@ proc dispatch(values: seq[Value], start: int, info: ClientInfo): string =
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info) & "}"
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 
+# Determine the exact encoded ID length for output reservation; invalid envelopes may reserve excess.
+proc requestId(values: seq[Value], start: int): string =
+  result = "null"
+  if values[start].kind != objectValue: return # Invalid nonobjects have a small null-ID error.
+  var i = start + 1
+  # Mirror only ID rendering; dispatchImpl remains responsible for all envelope validity checks.
+  while i < values[start].next:
+    let name = values[i].text
+    inc i
+    if name == "id":
+      if values[i].kind == stringValue: result = quote(values[i].text) # Account for escaping expansion.
+      elif values[i].kind == numberValue: result = values[i].text # Preserve arbitrary numeric lexemes.
+      else: result = "null" # Null and invalid ID types cannot require a longer reservation.
+    i = values[i].next
+
+# Bound every method's final response, including fixed methods appearing after large blob results.
+proc dispatch(values: seq[Value], start: int, info: ClientInfo, allowance = MaxReplyBytes): string =
+  result = dispatchImpl(values, start, info, allowance)
+  if result.len > allowance:
+    result = error(requestId(values, start), 0, ReplyBudgetError) # Preserve the request ID in a bounded fallback.
+
 # Parse and execute one whole message atomically; empty output means a notification-only message.
 proc respond*(text: string, info: ClientInfo): string =
   if text.len == 0 or text.len > MaxMessage or not validUtf8(text): return error("null", -32700, "Parse error")
   var values: seq[Value] = @[]
   if not parseValues(text, values): return error("null", -32700, "Parse error")
   if values[0].kind != arrayValue: return dispatch(values, 0, info)
-  var count = 0
+  var starts: seq[int] = @[]
+  var reserves: seq[int] = @[]
+  var available = MaxReplyBytes - 2
   var i = 1
-  while i < values.len: # Count before executing any member of an oversized batch.
-    inc count
+  # Reserve each reply's exact ID and fallback envelope before allowing any blob to consume capacity.
+  while i < values.len:
+    if starts.len == 16: return error("null", -32600, "Invalid batch size") # Bound metadata before insertion.
+    starts.add(i)
+    let reserved = error(requestId(values, i), 0, ReplyBudgetError).len + 128
+    reserves.add(reserved)
+    available -= reserved + 1 # One conservative comma reservation per member.
     i = values[i].next
-  if count == 0 or count > 16: return error("null", -32600, "Invalid batch size")
+  if starts.len == 0: return error("null", -32600, "Invalid batch size") # Empty arrays are invalid requests.
+  if available < 0: return error("null", 0, ReplyBudgetError) # Defensive guard if input/ID policies change.
   result = ""
-  i = 1
-  while i < values.len: # At most 16 bounded responses fit the server output policy.
-    let response = dispatch(values, i, info)
+  # Each reply can spend only free space plus its own reservation; later request IDs stay representable.
+  for index, start in starts:
+    let allowance = available + reserves[index]
+    let response = dispatch(values, start, info, allowance)
+    available = allowance - response.len
     if response.len > 0:
-      if result.len > 0: result.add(',') # Notifications contribute no array entry.
+      if result.len > 0: result.add(',') # Notifications contribute neither a reply nor a separator.
       result.add(response)
-    i = values[i].next
   if result.len > 0: result = "[" & result & "]" # Notification-only batches produce no frame.
