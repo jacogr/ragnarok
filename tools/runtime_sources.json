@@ -1,4 +1,9 @@
 [
+  "tests/native/compile_fail/rpc_genesis_owner_private.nim",
+  "tests/native/compile_fail/rpc_genesis_result_private.nim",
+  "tests/fixtures/rpc-genesis.json",
+  "tests/fixtures/rpc-genesis-result.json",
+  "src/chain/genesis.nim",
   "tests/native/compile_fail/parameters_owner_private.nim",
   "tests/native/compile_fail/parameters_result_private.nim",
   "tests/native/compile_fail/parameters_known_failure.nim",

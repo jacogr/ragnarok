@@ -100,6 +100,8 @@
     "report_transition"
   ],
   "PRIVATE": {
+    "rpc_genesis_owner_private": "state",
+    "rpc_genesis_result_private": "status",
     "parameters_owner_private": "numbers",
     "parameters_result_private": "success",
     "pvm_register_payload_private": "completed",
@@ -1189,6 +1191,7 @@
     "report_transition": "report_transition_arc_release"
   },
   "UNIT_LINKS": {
+    "rpc": "crypto",
     "safrole_transition": "observer",
     "safrole_auth_state": "observer",
     "safrole_authentication": "crypto",
