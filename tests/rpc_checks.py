@@ -44,10 +44,11 @@ def receive(connection):
     first, second = exact(connection, 2)
     assert first & 0x80 and not second & 0x80 and not first & 0x70
     size = second & 127
+    assert size != 127 # Reject the 64-bit length discriminator, not a decoded 127-byte payload.
     if size == 126:
         size, = struct.unpack('!H', exact(connection, 2))
         assert size >= 126
-    assert size < 65536 and size != 127
+    assert size < 65536
     return first & 15, exact(connection, size)
 
 
