@@ -151,6 +151,41 @@ for leftAccess in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.Read
                 else:
                   assert updated.bytes[j] == inputs[i].bytes[j]
 
+# PolkaVM cross-page regression witnesses; source pin and adaptation are recorded in spec/pvm-machine.md.
+# A failing store must not partially publish the first half before the missing page is supplied.
+let zeroPage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+  bytes: default(array[4096, byte]))
+let firstOnly = checked(captureMemory([zeroPage], PageLimit(2)))
+let partialStore = store(firstOnly, MemoryAddress(0x10ffe), AccessWidth(4),
+    RegisterValue(0x12345678))
+assert partialStore.error == MachineError.Fault and uint32(
+    partialStore.faultPage) == 0x11000
+assert uint64(checked(load(firstOnly, MemoryAddress(0x10ffe), AccessWidth(2)))) == 0
+let bothPages = checked(withPage(firstOnly, PageImage(index: PageIndex(17),
+  access: PageAccess.ReadWrite, bytes: default(array[4096, byte]))))
+let retried = checked(store(bothPages, MemoryAddress(0x10ffe), AccessWidth(4),
+  RegisterValue(0x12345678)))
+assert uint64(checked(load(retried, MemoryAddress(0x10ffe), AccessWidth(2)))) == 0x5678
+assert uint64(checked(load(retried, MemoryAddress(0x11000), AccessWidth(2)))) == 0x1234
+assert uint64(checked(load(bothPages, MemoryAddress(0x10ffe), AccessWidth(4)))) == 0
+
+# The upstream load witness reads aa/bb across the page edge, including after write protection.
+let missingRead = load(empty, MemoryAddress(0x10ffe), AccessWidth(4))
+assert missingRead.error == MachineError.Fault and uint32(
+    missingRead.faultPage) == 0x10000
+var readLeft = zeroPage
+var readRight = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite,
+  bytes: default(array[4096, byte]))
+readLeft.bytes[4095] = 0xaa
+readRight.bytes[0] = 0xbb
+# Both permission modes must produce the same byte order and value.
+for access in [PageAccess.ReadWrite, PageAccess.ReadOnly]:
+  readLeft.access = access
+  readRight.access = access
+  let readable = checked(captureMemory([readLeft, readRight], PageLimit(2)))
+  assert uint64(checked(load(readable, MemoryAddress(0x10ffe), AccessWidth(
+      4)))) == 0x00bbaa00
+
 # Low memory remains protected even when explicitly mapped readable/writable by the environment.
 let lowMapped = checked(captureMemory([page(0, PageAccess.ReadWrite), page(15,
     PageAccess.ReadWrite)], PageLimit(2)))

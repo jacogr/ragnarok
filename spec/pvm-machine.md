@@ -78,6 +78,41 @@ must not silently convert the gate to a consensus exit. If the high page is acce
 wrapping into protected memory unambiguously panics. Non-wrapping faults and panics
 are implemented and tested normally.
 
+## PolkaVM cross-checks and fuzz material
+
+PolkaVM is pinned as a test-only upstream in `vendor/polkavm` at
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`; `spec/polkavm-pins.json`
+records source hashes. No Rust engine or upstream scripts are built or run.
+The native suite adapts two witnesses from `crates/polkavm/src/tests.rs`:
+
+- `dynamic_paging_write_at_page_boundary_with_first_page`: store `0x12345678`
+  at `0x10ffe`, fault at `0x11000` without a partial write, supply the missing
+  page and retry; verify the literal bytes on both sides and the old snapshot.
+- `dynamic_paging_read_at_page_boundary`: fault at `0x10000` with no pages,
+  then read `0x00bbaa00` from bytes `aa bb` straddling `0x11000`, with both
+  read-write and read-only permissions.
+
+These are scalar memory cross-checks, not instruction execution vectors. We fix
+pages to GP's 4096 bytes, manually retry the memory API, and do not claim PolkaVM's
+host mapping, instruction resumption, signed extension or gas behavior. The values
+and failure atomicity agree with the GP definitions cited above. Upstream's
+`memory_access_with_upper_address_bits_set` expects an engine trap with unmapped
+memory; it is not imported as a JAM panic/fault oracle.
+
+The pinned tree also has RISC-V assembly tests and fuzz targets for program blobs,
+instruction decoding, page sets and VM execution. `fuzz_polkavm.rs` constructs
+`Latest64` programs; with `CORRECTNESS_FUZZER` it compares interpreter/compiler
+interrupts, PCs and all registers. This is a useful future differential harness,
+but requires an explicit GP opcode/encoding/gas compatibility adapter. It does not
+currently compare memory contents. `fuzz_page_set.rs` compares operation sequences
+against a naive bitset, a useful model for later stateful memory fuzzing.
+
+`fuzz/.gitignore` excludes `corpus`, `artifacts` and `coverage`; no saved crash corpus
+was located in this pinned tree. `ci/jobs/fuzz.sh` runs bounded fuzz campaigns.
+These harnesses and their CI execution are not claimed as replayed fuzz results.
+When importing minimized crash inputs, pin their provenance and preserve the
+original witness separately from any GP-compatible adaptation.
+
 ## Verification and next increment
 
 The native `pvm_machine` suite covers all 256 public width/register-index values,
