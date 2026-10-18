@@ -165,7 +165,19 @@ losses during destruction.
 `make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
 `make check-e2e` includes IPv4 and IPv6 reset/reconnect collectors and a real certificate-backed proof-peer
 exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome
-spanning a collector reset. It also checks exactly one disconnect after a graceful outgoing close,
+spanning a collector reset. A real outgoing peer also starts behind a bound UDP gate: only after
+a TCP reset, identical registration and dropped-prefix replay does the harness forward its opaque
+datagrams. Authentication must reference the original, now-covered attempt ID; both peers must
+complete eight CE 143 requests, while the client reports exactly one close without further loss.
+The test-only relay has one joined worker and no user-space packet queue. Incoming reconnect
+cases instead hold the server's reply flight in a bounded test-only relay (64 datagrams, 128 KiB),
+release it after registration and dropped-prefix replay, and require the original incoming ID on
+success or certificate rejection. The retained listener then accepts a fresh generation with a new
+ID; successful generations complete the mixed eight-request CE workload and close exactly once.
+The rejection callback runs at SSL destruction, freeing the first handshake slot before its next
+use. Rejection produces no admitted-peer close. The normal service profile avoids the idle client's
+two-second expiry while waiting for the exporter's five-second retry. It also checks exactly
+one disconnect after a graceful outgoing close,
 no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete
 application exchange. Incoming cases check success identity/address/correlation, certificate
 rejection, graceful close, two distinct identities across expiry/slot reuse, and no close event

@@ -8,6 +8,7 @@ import socket
 import select
 import struct
 import subprocess
+import threading
 
 
 # Read an exact frame even when TCP splits prefixes/payloads; reject oversized test input.
@@ -113,6 +114,105 @@ def reconnect(binary, ipv6=False):
             # Keep cleanup independent of success, decode errors and socket timeouts.
             stop(process)
     return dict(passed=True, registrations=2, statuses=2)
+
+
+# Hold one real dial behind a bound UDP socket until the collector has replayed its lost prefix.
+def pending_reconnect(binary, certificates, chain, folder):
+    from test_quic_resilience import watch
+    folder.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as owners:
+        # A bound gate avoids ICMP rejection; its kernel receive queue is the only pre-release buffer.
+        gate = owners.enter_context(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+        gate.bind(('127.0.0.1', 0))
+        gate.settimeout(0.1)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
+            reservation.bind(('127.0.0.1', 0))
+            port = reservation.getsockname()[1]
+        collector = owners.enter_context(listener())
+        endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
+        logs = [owners.enter_context((folder/f'{role}.log').open('wb')) for role in ('server', 'client')]
+        server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
+            str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '30000'],
+            stdout=logs[0], stderr=subprocess.STDOUT)
+        owners.callback(stop, server)
+        # Establish listener readiness before consuming any of the client handshake deadline.
+        watch({'server': server}, {'server': folder/'server.log'},
+              {'server': lambda text: 'READY' in text.splitlines()}, {'server': {}},
+              seconds=5, thread_limits={'server': 1})
+        client = subprocess.Popen([str(binary), 'client', str(gate.getsockname()[1]),
+            str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'), str(certificates/'a.pub'),
+            'jamnp-s/1/245becfe', '30000', 'clean', '--chain', str(chain), '--telemetry', endpoint],
+            stdout=logs[1], stderr=subprocess.STDOUT)
+        owners.callback(stop, client)
+        first, _ = collector.accept()
+        with first:
+            first.settimeout(5)
+            hello = frame(first)
+            assert hello[0] == 1 and hello[155:187] == (certificates/'b.pub').read_bytes()
+            capture = EventCapture(first)
+            attempt_id, attempt = capture.lifecycle(24)
+            assert attempt[9:41] == (certificates/'a.pub').read_bytes()
+            assert int.from_bytes(attempt[57:59], 'little') == gate.getsockname()[1]
+            # No UDP has reached the server, so this reset necessarily precedes authentication.
+            first.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+        second, _ = collector.accept()
+        with second:
+            second.settimeout(12)
+            assert frame(second) == hello
+            skipped = frame(second)
+            assert len(skipped) == 25 and skipped[8] == 0, skipped.hex()
+            prefix = int.from_bytes(skipped[17:25], 'little')
+            assert attempt_id < prefix < 128, (attempt_id, prefix)
+            capture = EventCapture(second)
+            capture.position = prefix
+            finished = threading.Event()
+            errors = []
+
+            # Forward opaque datagrams for one client only; no TLS or JAM behavior is implemented here.
+            def relay():
+                remote = ('127.0.0.1', port)
+                source = None
+                try:
+                    # One bounded receive per iteration, with a short timeout for joined cancellation.
+                    while not finished.is_set():
+                        try:
+                            packet, address = gate.recvfrom(65535)
+                        except socket.timeout:
+                            continue # Recheck cancellation without retaining a packet queue.
+                        if address == remote:
+                            assert source is not None
+                            gate.sendto(packet, source)
+                        else:
+                            # The first outgoing packet pins the sole client endpoint for this relay lifetime.
+                            if source is None:
+                                source = address
+                            assert address == source, address
+                            gate.sendto(packet, remote)
+                except (AssertionError, OSError) as error:
+                    errors.append(repr(error)) # Surface worker failure on the orchestration thread.
+
+            worker = threading.Thread(target=relay, name='telemetry-udp-gate')
+            worker.start()
+            try:
+                outcome_id, outcome = capture.lifecycle(26)
+                assert outcome_id >= prefix and int.from_bytes(outcome[9:17], 'little') == attempt_id
+                _, closed = capture.lifecycle(27)
+                assert closed[9:41] == (certificates/'a.pub').read_bytes() and closed[41:] == b'\0\0'
+                capture.end() # No second outcome, new attempt, additional loss or duplicate close is allowed.
+                assert client.wait(timeout=5) == server.wait(timeout=5) == 0
+            finally:
+                # Join before ExitStack closes the borrowed gate, including every assertion-failure path.
+                finished.set()
+                worker.join(timeout=2)
+                assert not worker.is_alive(), 'UDP gate failed to stop'
+            assert not errors, errors
+        # Logs survive assertion failures; success additionally requires actual application work at both ends.
+        for role in ('server', 'client'):
+            assert b'EXCHANGE_OK 8' in (folder/f'{role}.log').read_bytes(), role
+    result = dict(passed=True, registrations=2, attempt=attempt_id, skipped_prefix=prefix,
+                  outcome=outcome_id, authenticated_closes=1, exchanged_requests=8)
+    (folder/'reconnect.json').write_text(json.dumps(result, indent=2) + '\n')
+    return result
 
 
 # Start a real proof peer, observe its local identity and empty status, then complete normal CE traffic.
