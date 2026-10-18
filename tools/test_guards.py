@@ -19,7 +19,7 @@ BUILD = ROOT/'build/tests/guards'
 checks = NativeChecks(BUILD)
 command, build = checks.command, checks.build
 COUNTS = dict(privacy=len(PRIVATE), nominal=len(NOMINAL), contracts=len(CONTRACTS),
-              schemas=5, ownership_compile=3)
+              schemas=5, ownership_compile=4)
 
 
 # Missing, duplicated or failed checks cannot be replaced by a successful sibling group.
@@ -74,6 +74,11 @@ def run(compiler, bs_library, report):
     rejected = compiled['exit_code'] != 0 and "'=dup' is not available for type <Client>" in compiled['output']
     report['ownership_compile'].append(dict(name='telemetry_client_copy', passed=rejected, check=compiled))
     announce('unique telemetry client copy rejection', rejected)
+    # The RPC listener owns an array of accepted sockets and needs its own lowering contract.
+    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/rpc_server_copy.nim', 'rpc-server-copy')
+    rejected = compiled['exit_code'] != 0 and "'=dup' is not available for type <Server>" in compiled['output']
+    report['ownership_compile'].append(dict(name='rpc_server_copy', passed=rejected, check=compiled))
+    announce('unique RPC server copy rejection', rejected)
     # RawThread membership alone did not reject pool copies; the exported pool-level contract must reject during lowering.
     compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/offload_pool_copy.nim', 'offload-pool-copy',
                         native_libraries=(bs_library,), defines=('offload',))

@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "rpc",
     "telemetry",
     "telemetry_chain",
     "natural",

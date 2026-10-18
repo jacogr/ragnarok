@@ -1,0 +1,103 @@
+import std/[assertions, syncio]
+include ../../../src/rpc/server
+
+# Construct independently masked client frames; test payloads stay within the medium-length format.
+proc masked(payload: string, opcode = 1, final = true): string =
+  result = $char((if final: 128 else: 0) or opcode)
+  if payload.len < 126: result.add(char(128 or payload.len)) # Canonical short format.
+  else:
+    result.add(char(254)); result.add(char(payload.len shr 8)); result.add(char(payload.len and 255))
+  result.add("abcd")
+  for i in 0..<payload.len: result.add(char(ord(payload[i]) xor ord("abcd"[
+      i mod 4]))) # Independent mask application.
+
+let info = ClientInfo(uptimeMs: 12, peers: 3, role: "server", port: 19800)
+let request = "{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\",\"id\":7}"
+let answer = respond(request, info)
+assert "\"id\":7" in answer and "\"connectedPeers\":3" in answer and "\"uptimeMs\":12" in answer
+assert "\"transport\":\"websocket\"" in answer and "\"bestBlock\":null" in answer
+assert respond("{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\"}", info) == ""
+assert respond("[{\"jsonrpc\":\"2.0\",\"method\":\"absent\"}]", info) == ""
+assert "-32601" in respond("{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":null}", info)
+assert "-32602" in respond(request.replace("\"id\":7", "\"id\":7,\"params\":{}"), info)
+assert "-32602" in respond(request.replace("\"id\":7", "\"id\":7,\"params\":[1]"), info)
+assert "\"result\"" in respond(request.replace("\"id\":7", "\"id\":7,\"params\":[]"), info)
+assert "-32600" in respond(request.replace("\"id\":7", "\"id\":true"), info)
+assert "-32600" in respond(request.replace("\"id\":7", "\"id\":7,\"id\":8"), info)
+assert "-32600" in respond("[]", info)
+assert "-32600" in respond("true", info)
+assert respond("[" & request & ",false]", info).startsWith("[{\"jsonrpc\":")
+# Numeric IDs retain their complete lexeme without conversion through a machine integer or float.
+for id in ["184467440737095516160", "-0", "1.5", "1e300", "null", "\"a\\\"b\"",
+    "\"\\ud83d\\ude00\""]:
+  let response = respond(request.replace("7}", id & "}"), info)
+  assert "\"result\"" in response and "\"error\"" notin response
+# Malformed syntax must fail atomically instead of partially dispatching a request or batch.
+for bad in ["", "[1,]", "{1:2}", "{\"x\":1,}", "01", "1.", "+1", "NaN", "1e", "-", "{}{}",
+    "\"\\x41\"", "\"\\ud800\"", "\"\\udc00\"", "\"\x01\"", "\"unterminated", request & " trailing"]:
+  assert "-32700" in respond(bad, info)
+assert "-32700" in respond(repeat("[", 18) & "0" & repeat("]", 18), info)
+assert "-32700" in respond(repeat(" ", MaxMessage + 1), info)
+assert "-32600" in respond("[" & repeat(request & ",", 16) & request & "]", info)
+assert validUtf8("\xf0\x9f\x98\x80")
+for bad in ["\xc0\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\x80", "\xe2\x82"]:
+  assert not validUtf8(bad) # Reject overlong, surrogate, out-of-range and truncated scalars.
+
+let header = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(header) # RFC 6455 section 1.3 known answer.
+assert upgrade(header.replace("GET /", "POST /")).len == 0
+assert upgrade(header.replace("13\r\n", "12\r\n")).len == 0
+assert upgrade(header.replace("Host: localhost", "Origin: http://example.com")).len == 0
+assert upgrade(header.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0
+assert upgrade(header.replace("dGhlIHNhbXBsZSBub25jZQ==", "!!!!!!!!!!!!!!!!!!!!!!!!")).len == 0
+let encoded = masked(request)
+# Every proper prefix is incomplete and has no success-only payload or consumption fields.
+for n in 0..<encoded.len: assert decodeFrame(encoded[0..<n]).status == incomplete
+let decoded = decodeFrame(encoded)
+assert decoded.status == complete
+assert decoded.payload == request and decoded.consumed == encoded.len and decoded.final
+assert decodeFrame(frame(request)).status == invalid # Clients must mask, servers must not.
+assert decodeFrame(masked("x", 3)).status == invalid
+assert decodeFrame(masked("x", 9, false)).status == invalid
+assert decodeFrame(masked(repeat("x", 126), 9)).status == invalid
+assert decodeFrame("\x81\xfe\x00\x01abcdx").status == invalid
+assert decodeFrame("\x81\xff").status == invalid
+let large = decodeFrame(masked(repeat("x", MaxMessage)))
+assert large.status == complete and large.payload.len == MaxMessage
+assert decodeFrame(masked(repeat("x", MaxMessage + 1))).status == invalid
+
+# Direct session processing exercises fragmentation and control interleaving without nondeterministic timing.
+var slot = default(Connection)
+slot.upgraded = true
+slot.input = masked(request[0..<20], 1, false)
+slot.process(info, 0)
+assert slot.fragmented and slot.output.len == 0
+slot.input = masked("hello", 9)
+slot.process(info, 1)
+assert slot.output == frame("hello", 10)
+slot.output = ""
+slot.input = masked(request[20..^1], 0)
+slot.process(info, 2)
+assert not slot.fragmented and slot.output == frame(answer)
+slot.output = ""
+slot.input = masked("", 0)
+slot.process(info, 3)
+assert slot.closing and slot.output == frame("\x03\xea", 8)
+# Disabled and default native owners are safe to tick, close repeatedly and destroy.
+var server = default(Server)
+assert server.start(0, "server")
+server.tick(0)
+server.close(); server.close()
+# Probe custom-destructor lowering with owned strings even when explicit close is never called.
+proc retireBuffers() =
+  var owner = default(Server)
+  owner.role = repeat("r", 128)
+  for slot in mitems(owner.connections): # No sockets are opened; only ARC storage needs retirement.
+    slot.input = repeat("i", 1024)
+    slot.output = repeat("o", 1024)
+    slot.message = repeat("m", 1024)
+retireBuffers() # Warm fixed allocator bookkeeping before measuring retained application bytes.
+let baseline = getOccupiedMem()
+for iteration in 0..<100: retireBuffers() # Repeated custom destruction must not retain nested slot strings.
+assert getOccupiedMem() <= baseline + 256
+echo "rpc ok"

@@ -5,6 +5,7 @@ import ./protocol
 import ./integration
 import ./offload
 import ../telemetry/options
+import ../rpc/server
 
 # Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.
 # Harness readiness and cancellation gates must observe progress while this process still owns live sockets.
@@ -36,6 +37,7 @@ type
   # This stack owner outlives every synchronous native callback and its dispatcher/engine teardown.
   Peer = object
     transport: Transport
+    rpc: nil ptr Server
     telemetry: nil ptr Client
     incoming: IncomingAttempts
     incomingPeers: IncomingPeers
@@ -511,6 +513,9 @@ proc runPeer*(): bool {.raises.} =
     peer.expected = newSeq[byte](32)
     for i in 0..<32: peer.expected[i] = byte(text[i]) # Copy public identity bytes, not PEM strings.
   if not server and peer.expected.len != 32: return false # Every dialer pins the server identity.
+  var rpc = default(Server)
+  defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
+  if not rpc.start(rpcPort(), paramStr(1)): return false # An explicitly requested listener must bind successfully.
   var telemetry = default(Client)
   defer: telemetry.close() # Best-effort telemetry never delays peer shutdown.
   # Cleanup must also run after poll/setup failures; both stack owners remain alive until final native callbacks finish.
@@ -574,6 +579,7 @@ proc runPeer*(): bool {.raises.} =
     let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
         peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
     telemetry.observe(telemetryPeers)
+    rpc.tick(telemetryPeers) # Each turn performs bounded, nonblocking RPC work.
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
     if peer.service:
@@ -806,6 +812,11 @@ proc dialMesh(outgoing: var Peer, port: uint16): bool =
 proc meshPoll(incoming, outgoing: var Peer): bool =
   result = pollPair(incoming.transport, outgoing.transport) and not incoming.failed and
       not outgoing.failed
+  if incoming.rpc != nil: # One RPC owner samples the retained pair as one logical peer.
+    let peers = if peerMetric(incoming.transport, 0) > 0 or peerMetric(outgoing.transport, 0) >
+        0: 1'u32 else: 0'u32
+    let rpcServer = incoming.rpc
+    if rpcServer != nil: rpcServer[].tick(peers) # Re-establish the borrow after mutable transport queries.
   observeMesh(incoming, outgoing) # Final counter changes remain observable even if polling reports failure.
 
 # Retain two IPv6 engines through sixteen externally gated reconnects and simultaneous CE queries.
@@ -832,6 +843,9 @@ proc runMesh*(): bool {.raises.} =
   defer: dispatcher.close() # Both borrowed endpoint registrations retire first, in reverse defer order.
   var incoming = Peer(server: true, mesh: true, expected: expected, attack: "valid")
   var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
+  var rpc = default(Server)
+  defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
+  if not rpc.start(rpcPort(), paramStr(1)): return false # An explicitly requested listener must bind successfully.
   var telemetry = default(Client)
   defer: telemetry.close() # The single exporter outlives both engines and their final synchronous callbacks.
   defer:
@@ -862,6 +876,7 @@ proc runMesh*(): bool {.raises.} =
     if not observeHandshakes(incoming.transport, onHandshake) or
         not observePeers(incoming.transport, onPeer): return false # Defer retires partial observer setup.
     telemetry.observe(0) # Registration precedes queued lifecycle events from either engine.
+  incoming.rpc = addr rpc # Borrow ends with the local mesh dispatcher; no callback retains it.
   progress "MESH_READY ", int(initiator)
   var authenticatedIn, authenticatedOut = 0'u64
   # All rounds retain these exact stack/socket/dispatcher/TLS/engine owners.

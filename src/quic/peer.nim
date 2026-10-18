@@ -9,8 +9,8 @@ proc main(): int =
   try:
     if not validTelemetryOption(): return 2 # Malformed optional syntax must not become a fixture attack mode.
     # Only network commands accept telemetry; each command validates its own positional shape.
-    if requested() and (peerParamCount() < 1 or paramStr(1) notin ["server", "client",
-        "mesh"]): return 2
+    if (requested() or rpcPort() != 0) and (peerParamCount() < 1 or paramStr(1) notin ["server",
+        "client", "mesh"]): return 2
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if peerParamCount() >= 1 and paramStr(1) == "mesh":
       let baseline = getOccupiedMem()
