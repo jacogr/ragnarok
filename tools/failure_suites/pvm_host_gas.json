@@ -1,0 +1,50 @@
+{
+  "source": "tests/native/pvm_host_gas_results.nim",
+  "build_name": "pvm-host-gas-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "balance"
+      },
+      "arguments": [
+        "balance"
+      ],
+      "name": "pvm-host-gas-balance",
+      "diagnostic": "r.status == None",
+      "description": "Host gas failure payload balance"
+    },
+    {
+      "identity": {
+        "reason": "capture"
+      },
+      "arguments": [
+        "capture"
+      ],
+      "name": "pvm-host-gas-capture",
+      "diagnostic": "r.status == None",
+      "description": "Host gas failure payload capture"
+    },
+    {
+      "identity": {
+        "reason": "response"
+      },
+      "arguments": [
+        "response"
+      ],
+      "name": "pvm-host-gas-response",
+      "diagnostic": "r.status == None",
+      "description": "Host gas failure payload response"
+    },
+    {
+      "identity": {
+        "reason": "resume"
+      },
+      "arguments": [
+        "resume"
+      ],
+      "name": "pvm-host-gas-resume",
+      "diagnostic": "r.status == None",
+      "description": "Host gas failure payload resume"
+    }
+  ]
+}

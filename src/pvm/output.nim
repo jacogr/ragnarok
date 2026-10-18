@@ -38,6 +38,9 @@ proc captureOutput*(outcome: StepOutcome, limit: OutputByteLimit): OutputResult 
   # A caller may replace the public machine handle on a copied outcome; validate both owned children.
   if info.error != MachineError.None or memory.error != MachineError.None:
     return OutputResult(status: OutputError.InvalidMachine)
+  if uint64(info.value.gasDeficit) != 0:
+    # Replacing a Halt handle with a negative-gas terminal owner cannot fabricate successful output.
+    return OutputResult(status: OutputError.InvalidMachine)
   let start = uint64(info.value.registers[7])
   let length = uint64(info.value.registers[8])
   # The empty natural interval is readable for every pointer, including UINT64_MAX.

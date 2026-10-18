@@ -8,8 +8,8 @@ Appendix A, **Host Call Definition**, `Psi_H*`, from
 `07f041dabd073f9018b418e9ee72e79dd2185401`. It accepts an already captured machine,
 caller-owned context and a synchronous, non-raising handler. Like the underlying
 `execute`, it preserves the supplied charged flag; initialization of a fresh invocation
-remains the caller's responsibility. This is the nonnegative-gas execution subset,
-not complete JAM invocation or signed gas parity.
+remains the caller's responsibility. Active execution requires nonnegative gas; [host gas accounting](pvm-host-gas.md)
+now preserves negative terminal responses. This is not complete JAM invocation.
 
 ## Dispatch and budgets
 
@@ -60,8 +60,8 @@ reject failed-result extraction after instruction, dispatch and response errors;
 a compiler probe rejects raw integers as host-call limits.
 
 Standard initialization, execution with trusted host dispatch and output capture now
-compose. Concrete JAM host functions, staged service context, signed gas accounting
-and complete invocation policy remain open; the existing execution specification
+compose. The gas host function and unknown-call fallback are implemented separately. Other JAM
+host functions, staged service context, gas-used accounting and complete invocation policy remain open; the existing execution specification
 gates remain unchanged. The next bounded chunk is a concrete host-context operation
 with independent normative witnesses. [Host byte-range memory access](pvm-host-memory.md)
 provides its bounded, atomic memory-copy boundary; it does not yet supply host selectors or charging.
