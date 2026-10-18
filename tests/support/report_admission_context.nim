@@ -13,7 +13,7 @@ import ../../src/state/[report_admission, report_assignments, report_policy, rep
   safrole_transition, disputes, availability, report_transition]
 import ../../src/codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
   state_consensus, state_disputes, state_layout, state_trie, state_history, state_availability,
-  state_workqueues, state_authorization, tickets, report_owned, owned, work_report, composite]
+  state_workqueues, state_authorization, tickets, report_owned, owned, work_report, composite, work_digest]
 import ../../src/crypto/[primitives, extrinsic_commitment, assurance_context]
 import ../../src/bandersnatch/bandersnatch
 import ./report_context
@@ -119,6 +119,16 @@ proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash
   assert encoded.error == CompositeError.None
   decodeOwnedReport(output.toOpenArray(0, encoded.written-1), 2).value
 
+## Override only the authored service code identity before recomputing reports, parent roots and signatures.
+proc withCode(base: OwnedReport, code: seq[byte]): OwnedReport =
+  let raw = reportBytes(base)
+  var value = decodeReportBorrowed(raw, 2).value
+  value.digests[0].codeHash = CodeHash(array[32, byte](blake2b256(code).value))
+  var output = newSeq[byte](raw.len+1024)
+  let encoded = encodeReportBorrowed(value, raw, 2, output)
+  assert encoded.error == CompositeError.None
+  decodeOwnedReport(output.toOpenArray(0, encoded.written-1), 2).value
+
 ## Scoped fixture retains a genuine coordinator result and original signed inputs for independent publication.
 type Context* = object
   staged*: BlockTransitionResult
@@ -131,7 +141,8 @@ type Context* = object
 ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
 ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
-    withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[]): Context =
+    withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
+        byte] = @[]): Context =
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()
@@ -157,7 +168,10 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
     roster[i].bandersnatch = StateBsKey(public)
   var schedule = newSeq[StateBsKey](12)
   for i in 0..<12: schedule[i] = StateBsKey(public) # Every authored fallback slot has the real seal key.
-  let sample = reportFor(base, 0, [10'u64])
+  # Preserve existing fixtures by default; optional code rebinding happens before any root or signature.
+  let selectedBase = if accountCode.len == 0: base
+    else: withCode(base, accountCode) # Bind optional authored code to every signed report and account.
+  let sample = reportFor(selectedBase, 0, [10'u64])
   var entries = entriesFor([sample])
   var pools = newSeq[AuthorizerRow](2)
   for i in 0..<2: pools[i] = @[ownedReportInfo(sample).value.authorizer] # Both cores admit this authorizer.
@@ -192,8 +206,8 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   entries.add(disputeStateEntry(judgments, cfg.judgments).value)
   var assignments = newSeq[AvailabilityAssignment](2)
   if mode in [7, 11, 12] or withAvailable:
-    let oldReport = if mode == 12: report(base, 0, default(state_trie.StateRoot), parentHash,
-        lookupHash, 0)
+    let oldReport = if mode == 12: report(selectedBase, 0, default(state_trie.StateRoot),
+        parentHash, lookupHash, 0)
       else: sample # Only mode 12 reuses the incoming package identity in the parent table.
     let prior = certify([oldReport], 1).verifiedGuaranteeAt(0).value
     assignments[0] = presentAssignment(prior, AssignmentSlot(
@@ -219,7 +233,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   let root = state.snapshot.value.commitment.root
   let target = if mode in [11, 12]: 6'u32 else: 2'u32
   var children = newSeq[OwnedReport](reports)
-  for i in 0..<reports: children[i] = report(base, i, root, parentHash, lookupHash,
+  for i in 0..<reports: children[i] = report(selectedBase, i, root, parentHash, lookupHash,
       mode) # Signed metadata includes corrected parent root.
   var guarantees = newSeq[Guarantee](reports)
   let signed = certify(children, target, punished)
