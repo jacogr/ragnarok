@@ -249,6 +249,23 @@ def check_service_queries(connection, expected):
         # Compare the complete decoded JSON envelope, keeping null distinct from an empty Base64 string.
         send(connection, json.dumps(dict(jsonrpc='2.0', method=method, params=params, id=index)))
         assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=index, result=result)
+    # Traverse exact independent fixture keys across small pages after startup source mutation.
+    collected = []
+    cursor = None
+    for page in range(len(expected['state_keys']) + 1):
+        # This fixed upper bound prevents a broken continuation cursor from hanging the harness.
+        query = dict(jsonrpc='2.0', method='ragnarok_stateKeys', params=[header, cursor, 5], id=900)
+        send(connection, json.dumps(query))
+        response = json.loads(receive(connection)[1])
+        assert response['id'] == 900 and 'result' in response
+        result = response['result']
+        assert len(result['keys']) <= 5
+        collected.extend(result['keys'])
+        cursor = result['next']
+        if cursor is None:
+            break # Complete traversal has an explicit terminal cursor even on an exact final page.
+        assert result['keys'] and cursor == result['keys'][-1]
+    assert cursor is None and collected == expected['state_keys']
     for length in (4, 5, 6, 4294967294, 4294967295):
         # Malformed histories and present colliding namespaces are explicit errors on the live transport too.
         send(connection, json.dumps(dict(jsonrpc='2.0', method='serviceRequest', params=[header, 42, 'A'*43+'=', length], id=90)))

@@ -722,4 +722,57 @@ for iteration in 0..<100:
   # Retain only the original immutable map between calls.
   retireRawReply()
 assert getOccupiedMem() <= rawBaseline + 256
+
+# Fixed independent C(8)/C(11) keys establish bytewise order and exclusive pagination.
+let keysRoster = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+let keysBetween = "CQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+let keysRequest = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ragnarok_stateKeys\",\"params\":[\"" &
+    genesisHash & "\",null,1]}"
+let keysFirst = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"keys\":[\"" & keysRoster &
+    "\"],\"next\":\"" & keysRoster & "\"}}"
+let keysLast = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"keys\":[\"" & rawTimeKey &
+    "\"],\"next\":null}}"
+let keysEmpty = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"keys\":[],\"next\":null}}"
+assert respond(keysRequest, withGenesis) == keysFirst
+assert respond(keysRequest.replace("null,1", "\"" & keysRoster & "\",1"), withGenesis) == keysLast
+assert respond(keysRequest.replace("null,1", "\"" & keysBetween & "\",1"), withGenesis) == keysLast
+assert respond(keysRequest.replace("null,1", "\"" & rawTimeKey & "\",1"), withGenesis) == keysEmpty
+assert respond(keysRequest.replace("null,1", "\"" & rawMissingKey & "\",1"), withGenesis) == keysEmpty
+assert respond(keysRequest.replace("null,1", "null,2"), withGenesis) ==
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"keys\":[\"" & keysRoster & "\",\"" & rawTimeKey & "\"],\"next\":null}}"
+assert "\"ragnarok_stateKeys\"" in respond(request, withGenesis)
+assert "\"code\":1" in respond(keysRequest, info)
+assert "\"code\":1" in respond(keysRequest.replace(genesisHash, repeat("A", 43) & "="), withGenesis)
+assert respond(keysRequest.replace(",\"id\":1", ""), withGenesis) == ""
+assert respond("[" & keysRequest & "," & keysRequest & "]", withGenesis) == "[" & keysFirst & "," &
+    keysFirst & "]"
+# Counts are strict bounded integers; cursors must be null or exact canonical key encodings.
+for args in ["null,0", "null,129", "null,-1", "null,1.0", "null,1e0", "null,true", "null,null",
+    "null,4294967296", "\"\",1", "false,1", "[],1", "\"AA==\",1",
+    "\"" & keysRoster.replace("AA==", "AB==") & "\",1", "null,1,0"]:
+  assert "\"code\":-32602" in respond(keysRequest.replace("null,1", args), withGenesis)
+# Enumeration includes malformed/empty values; it lists serialized keys without classifying their contents.
+assert respond(keysRequest.replace("null,1", "\"" & rawTimeKey & "\",1"), rawValueInfo("")) ==
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"keys\":[\"" & rawMissingKey & "\"],\"next\":null}}"
+assert withGenesis.genesis.value.keyCount == 2
+var keyCopy = array[31, byte](withGenesis.genesis.value.keyAt(StateKeyIndex(0)))
+keyCopy[0] = 0 # Copies cannot mutate the index or its future pagination order.
+assert respond(keysRequest, withGenesis) == keysFirst
+assert discovered.genesis.value.keyCount == 9 # Malformed account metadata still has a serialized key.
+# A maximum page stays bounded; an oversized batch refuses later pages without partial results.
+let keysMaximum = keysRequest.replace("null,1", "null,128")
+let keysMaximumReply = respond(keysMaximum, manyServices)
+assert keysMaximumReply.split("==").len == 130
+let keysBatch = respond("[" & repeat(keysMaximum & ",", 15) & keysMaximum & "]", manyServices)
+assert keysBatch.len <= 65535 and "\"code\":0" in keysBatch
+assert keysMaximumReply in keysBatch
+proc retireKeysReply() =
+  ## Retain the immutable index while temporary key copies and JSON responses retire.
+  assert respond(keysRequest, withGenesis) == keysFirst
+retireKeysReply()
+let keysBaseline = getOccupiedMem()
+for iteration in 0..<100:
+  # Pagination performs no state-value copies or retained request allocations.
+  retireKeysReply()
+assert getOccupiedMem() <= keysBaseline + 256
 echo "rpc ok"
