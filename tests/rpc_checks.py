@@ -126,6 +126,23 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 expected_head = None if expected_genesis is None else {k: expected_genesis[k] for k in ('header_hash', 'slot')}
                 assert result['result']['bestBlock'] == expected_head
                 assert 'parameters' in result['result']['rpc']['methods']
+                assert result['result']['rpc']['subscriptions'] is True
+                assert 'subscribeBestBlock' in result['result']['rpc']['methods']
+                assert 'unsubscribeBestBlock' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeBestBlock', params=[], id=60)))
+                subscribed = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert subscribed['error']['code'] == 0 # No chain source means no successful subscription.
+                else:
+                    # Initial snapshot follows the numeric-ID response on the same live connection.
+                    assert subscribed == dict(jsonrpc='2.0', id=60, result=1)
+                    update = json.loads(receive(connection)[1])
+                    assert update == dict(jsonrpc='2.0', method='subscribeBestBlock',
+                                          params=dict(subscription=1, result=expected_head))
+                    for expected in (True, False):
+                        # First cancellation owns the subscription; a repeated cancellation reports absence.
+                        send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeBestBlock', params=[1], id=61)))
+                        assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=61, result=expected)
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])

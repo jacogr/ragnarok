@@ -6,8 +6,8 @@ update their feature contract rather than appending progress here.
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
 at most eight nonblocking loopback connections and bounded input/output buffers. The first
 method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Other chain queries
-start with a genesis-only immutable view when an explicit genesis pair is supplied; subscriptions
-remain unavailable until block import and update events exist. `parameters()` reads an immutable
+start with a genesis-only immutable view when an explicit genesis pair is supplied. Best-block
+subscriptions receive that initial descriptor and subsequent dispatcher publications. `parameters()` reads an immutable
 GP 0.8.0 parameter snapshot from the explicit chainspec and the retained active validator count
 when genesis is present. Optional complete C(4) decoding at capture supplies a cached ticket-attempt
 limit from the pending roster; queries do no Safrole decoding. Active C(8) also supplies cached
@@ -34,5 +34,10 @@ and startup capture wrapper. Each successful append uses a fresh private sequenc
 oldest snapshot when full; existing readers continue to own their previous snapshots. Retention
 is bounded per view, not across arbitrarily many caller-held views. The server exposes `publishBlock`
 for same-dispatcher handoff between ticks; it installs a successful append without changing queued replies or transport ownership. Future validated block-import
-integration must call this boundary; no live importer, fork choice, finality or update events
-are provided here. Retained-report lookup still searches only the selected head.
+integration must call this boundary; no live importer, fork choice or finality is provided here. Retained-report lookup still searches only the selected head.
+
+Each WS connection owns a private `RpcSession` with a fixed subscription table and bounded FIFO
+of serialized best-block notifications. Request dispatch commits subscription changes only when
+its reply fits the response budget. Publication queues descriptors without retaining snapshot owners;
+overflow closes only the affected connection. The dispatcher writes replies before notifications,
+one frame per turn, preserving partial-write offsets. Disconnect releases the entire session.

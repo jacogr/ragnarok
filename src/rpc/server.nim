@@ -4,7 +4,7 @@
 ## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
 ##
 ## Exposes the Server owner, publishBlock handoff and start/tick/close lifecycle.
-## The caller services a bounded number of connection slots.
+## The caller services bounded connection slots and per-connection best-block subscription queues.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -20,6 +20,7 @@ type
     fd: cint
     input, output, message: string
     offset: int
+    session: RpcSession # Per-connection IDs and bounded notifications, released on disconnect.
     deadline, messageDeadline: int64
   Server* = object
     opened: bool
@@ -78,6 +79,7 @@ proc close(slot: var Connection) =
   if slot.opened:
     discard posix.close(slot.fd)
   slot.opened = false
+  slot.session = default(RpcSession) # Reused connection slots cannot inherit subscriptions or pending updates.
   slot.input = ""; slot.output = ""; slot.message = ""
   slot.messageDeadline = 0
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
@@ -143,8 +145,9 @@ proc start*(server: var Server, port: uint16, role: string,
 
 ## Publish a caller-validated direct child between ticks on the same dispatcher thread.
 ## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
-## current view and forward advanceView's reason. Success replaces only the chain handle, leaving
-## sockets, queued replies and startup parameters intact. This is not a thread-safe import/validation API.
+## current view and forward advanceView's reason. Success replaces the chain and queues descriptors,
+## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
+## This is not a thread-safe import/validation API.
 proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceError =
   if not server.opened:
     return ViewAdvanceError.Uninitialized # Shutdown cannot be bypassed by publishing another snapshot.
@@ -152,6 +155,10 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
   if update.error != ViewAdvanceError.None:
     return update.error # Never install a partial or rejected history.
   server.chain = update.value
+  for slot in mitems(server.connections):
+    if slot.opened and slot.upgraded and not slot.closing: # Only usable WS connections receive events.
+      if not slot.session.queueBestBlock(child):
+        slot.close() # Disconnect only the overflowing consumer; never drop updates or reject the chain head.
   ViewAdvanceError.None
 
 # Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
@@ -229,7 +236,7 @@ proc process(slot: var Connection, info: ClientInfo, now: int64) =
       if not validUtf8(slot.message):
         slot.reject(1007, now)
         return
-      let response = respond(slot.message, info)
+      let response = respond(slot.message, info, slot.session)
       slot.message = ""
       slot.messageDeadline = 0
       if response.len > 0:
@@ -300,6 +307,12 @@ proc tick*(server: var Server, peers: uint32) =
             slot.input.add(bytes[i])
       if slot.opened and slot.output.len == 0:
         slot.process(info, now)
+    if slot.opened and not slot.closing and slot.output.len == 0:
+      let update = slot.session.nextBestUpdate()
+      if update.len > 0:
+        slot.output = frame(update) # Request replies precede queued notifications on this connection.
+        slot.offset = 0
+        slot.deadline = min(slot.deadline, now + 5000) # Notifications cannot extend a partial input deadline.
     if not slot.opened or slot.output.len == 0:
       continue
     var flags = 0.cint

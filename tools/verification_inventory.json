@@ -691,6 +691,7 @@
     "rpc_request_result_private": "status",
     "rpc_service_list_private": "services",
     "rpc_service_result_private": "status",
+    "rpc_session_private": "active",
     "rpc_state_keys_private": "keys",
     "rpc_statistics_result_private": "status",
     "rpc_ticket_attempts_private": "ticketLimit",
