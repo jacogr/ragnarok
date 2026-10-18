@@ -303,23 +303,31 @@ def incoming_failure(binary, certificates, chain, folder):
 
 # A retained IPv6 listener reports each expired peer's own identity, and never fabricates a teardown close.
 def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup_delay=0):
+    from test_quic_resilience import watch, states
     folder.mkdir(parents=True, exist_ok=True)
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('::1', 0))
         port = reservation.getsockname()[1]
-    children = []
+    children, handles = [], []
+    scenario = "incoming-expiry" if remote_loss else "incoming-teardown"
+    server_log = folder/f"{scenario}.log"
+    client_logs = []
     stop_gate = folder/f'incoming-stop-{time.time_ns()}'
     # Each child owns a distinct authenticated identity; the second reuses the first peer's retired slot.
     def launch(identity):
+        path = folder/f'{scenario}-{identity}.log'
+        output = path.open('w'); handles.append(output)
+        client_logs.append(path)
         child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/f'{identity}.cert.pem'),
             str(certificates/f'{identity}.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-            '30000', 'idle'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            '30000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
         children.append(child)
     with listener() as collector:
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
+        output = server_log.open('w'); handles.append(output)
         server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
             str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000',
-            'overload', '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            'overload', '--chain', str(chain), '--telemetry', endpoint], stdout=output, stderr=subprocess.STDOUT,
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop_gate)})
         try:
             connection, _ = collector.accept()
@@ -345,8 +353,18 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup
                         expected = 'b' if not successes else 'c'
                         assert event[17:] == (certificates/f'{expected}.pub').read_bytes()
                         successes.append(event[17:])
+                        # TLS telemetry can precede QUIC admission. Wait for this generation's retained slot
+                        # and the remote's authentication before killing it or destroying the listener.
+                        generation = len(successes)
+                        watch({'server': server, 'client': children[-1]},
+                              {'server': server_log, 'client': client_logs[-1]},
+                              {'server': lambda text: text.splitlines().count('PEERS 1') == generation
+                               and bool(states(text)) and states(text)[-1][0] == 1,
+                               'client': lambda text: 'AUTH_OK' in text.splitlines()},
+                              {'server': {}, 'client': {}}, seconds=5,
+                              thread_limits={'server': 1, 'client': 1})
                         if remote_loss:
-                            # Kill only after authenticated identity is observed; startup speed cannot consume the lifetime.
+                            # Kill an admitted connection whose actual expiry must produce a close observation.
                             children[-1].kill()
                             assert children[-1].wait(timeout=5) == -9
                         else:
@@ -360,21 +378,23 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup
                         else:
                             stop_gate.touch() # Both expiry observations arrived before shutting down the listener.
                     else:
-                        assert event[8] == 10 # No failure/drop event can substitute for an authenticated close.
+                        # No failure/drop event can substitute for an authenticated close.
+                        assert event[8] == 10, dict(event_id=event_id, tag=event[8], payload=event.hex(),
+                                                   starts=starts, successes=len(successes), closes=len(closes))
                 else:
                     raise AssertionError('unbounded incoming telemetry stream')
                 assert len(successes) == (2 if remote_loss else 1)
                 assert len(closes) == (2 if remote_loss else 0)
                 if not remote_loss:
                     assert children[0].poll() is None # The remote is still alive when the server retires.
-            stdout, stderr = server.communicate(timeout=3)
-            (folder/('incoming-expiry.log' if remote_loss else 'incoming-teardown.log')).write_bytes(stdout + stderr)
-            assert server.returncode == 2 and b'AUTH_OK' in stdout, (stdout, stderr) # Idle peers never complete application work.
+            assert server.wait(timeout=3) == 2 and 'AUTH_OK' in server_log.read_text(), server_log.read_text() # Idle peers never complete application work.
         finally:
             # Cleanup remains bounded even if a telemetry identity or lifecycle assertion fails.
             stop(server)
             for child in children:
                 stop(child)
+            for handle in handles:
+                handle.close() # File-backed evidence survives failed assertions as well as successful captures.
     return dict(passed=True, closes=len(closes), identities=len(successes), remote_loss=remote_loss)
 
 

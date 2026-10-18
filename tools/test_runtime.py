@@ -11,6 +11,7 @@ import subprocess
 import sys
 from native_checks import NativeChecks, announce
 from corpus_checks import compare_corpus
+from failure_checks import probe_failure, run_failure_suite
 from verification_inventory import (
     ACCOUNTS_MEMBERS, ASSURANCE_CONTEXT_MEMBERS, ASSURANCE_MEMBERS, AUTHORIZATION_MEMBERS,
     AVAILABILITY_MEMBERS, BITS_MEMBERS, BLOCK_MEMBERS, BLOCK_WRONG,
@@ -830,165 +831,42 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
                   ('bytes', 'default', 'not view.owner.data == nil')]
         for member, origin, sentinel in cases:
             # Match the supported precondition and exit status, never an unrelated crash or fixture error.
-            result = command([binary, member, origin], 'store-'+member+'-'+origin)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['store'].append(dict(member=member, origin=origin, passed=passed, run=result))
-            announce('store '+member+' '+origin+' runtime guard', passed)
+            probe_failure(command, report['store'], [binary, member, origin],
+                          'store-' + member + '-' + origin, sentinel,
+                          'store ' + member + ' ' + origin + ' runtime guard', member=member, origin=origin)
         controls = {member: command([binary, member, 'valid'], 'store-'+member+'-valid')
                     for member in ('metadata', 'length', 'bytes')}
         report['store_controls'] = dict(checks=controls,
             passed=all(row['exit_code'] == 0 and row['output'].strip() == ('1' if member == 'metadata' else '0')
                        for member, row in controls.items()))
     # Proposed entry and committed-snapshot payloads are independently guarded on default and real failures.
-    compiled, binary = build(compiler, ROOT/'tests/native/authorization_transition_results.nim', 'authorization-transition-results', crypto_library)
-    report['authorization_transition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for member in ('entry', 'state'):
-            for origin in ('default', 'error'):
-                # Require the intended payload precondition, not a bad selector or unrelated native crash.
-                result = command([binary, member, origin], 'authorization-transition-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['authorization_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('authorization transition '+member+' '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'authorization_transition')
     # Root, proposed entry and committed snapshot payload families require independent checked guards.
-    compiled, binary = build(compiler, ROOT/'tests/native/history_transition_results.nim', 'history-transition-results', crypto_library)
-    report['history_transition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for member in ('root', 'entry', 'state'):
-            for origin in ('default', 'error'):
-                # Require the intended precondition and status, not an unrelated crash or selector error.
-                result = command([binary, member, origin], 'history-transition-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['history_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('history transition '+member+' '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'history_transition')
     # Updated fixed words/time and committed snapshots each require default and actual failure guards.
-    compiled, binary = build(compiler, ROOT/'tests/native/entropy_transition_results.nim', 'entropy-transition-results', crypto_library)
-    report['entropy_transition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for member in ('update', 'state'):
-            for origin in ('default', 'error'):
-                # Require the exact result-access precondition, not an unrelated crash or harness selector failure.
-                result = command([binary, member, origin], 'entropy-transition-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['entropy_transition'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('entropy transition '+member+' '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'entropy_transition')
     # Both default and actual failed plans reject payload extraction through the intended checked contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/validator_rotation_results.nim', 'validator-rotation-results', crypto_library)
-    report['validator_rotation_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # A selector failure, unrelated assertion or native crash cannot stand in for payload protection.
-            result = command([binary, origin], 'validator-rotation-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['validator_rotation'].append(dict(origin=origin, passed=passed, run=result))
-            announce('validator rotation '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'validator_rotation')
     # Isolate default and actual failed publication results; require the intended access contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/validator_state_results.nim', 'validator-state-results',
-                             crypto_library, native_libraries=(bs_library,))
-    report['validator_state_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # No unrelated crash or selector error can satisfy snapshot payload protection.
-            result = command([binary, origin], 'validator-state-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['validator_state'].append(dict(origin=origin, passed=passed, run=result))
-            announce('validator state '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'validator_state')
     # Default and real failed admission candidates reject owner extraction through the intended contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/ticket_admission_results.nim', 'ticket-admission-results',
-                             crypto_library, native_libraries=(bs_library,))
-    report['ticket_admission_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Selector failures and unrelated assertions cannot stand in for guarded candidate access.
-            result = command([binary, origin], 'ticket-admission-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['ticket_admission'].append(dict(origin=origin, passed=passed, run=result))
-            announce('ticket admission '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'ticket_admission')
     # Publication snapshots require successful selection for both default and actually refused results.
-    compiled, binary = build(compiler, ROOT/'tests/native/ticket_state_results.nim', 'ticket-state-results',
-                             crypto_library, native_libraries=(bs_library,))
-    report['ticket_state_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Require the intended snapshot extraction precondition rather than an unrelated failure.
-            result = command([binary, origin], 'ticket-state-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['ticket_state'].append(dict(origin=origin, passed=passed, run=result))
-            announce('ticket state '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'ticket_state')
     # Default and actually refused schedule results must not expose candidate payloads.
-    compiled, binary = build(compiler, ROOT/'tests/native/sealer_schedule_results.nim', 'sealer-schedule-results', crypto_library)
-    report['sealer_schedule_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Require the supported extraction contract, not a selector failure or unrelated crash.
-            result = command([binary, origin], 'sealer-schedule-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['sealer_schedule'].append(dict(origin=origin, passed=passed, run=result))
-            announce('sealer schedule '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'sealer_schedule')
     # Default and actually refused schedule results must not expose candidate payloads.
-    compiled, binary = build(compiler, ROOT/'tests/native/sealer_state_results.nim', 'sealer-state-results', crypto_library)
-    report['sealer_state_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Require the supported extraction contract, not a selector failure or unrelated crash.
-            result = command([binary, origin], 'sealer-state-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['sealer_state'].append(dict(origin=origin, passed=passed, run=result))
-            announce('sealer state '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'sealer_state')
     # Default and actually refused schedule results must not expose candidate payloads.
-    compiled, binary = build(compiler, ROOT/'tests/native/safrole_markers_results.nim', 'safrole-markers-results', crypto_library)
-    report['safrole_markers_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Require the supported extraction contract, not a selector failure or unrelated crash.
-            result = command([binary, origin], 'safrole-markers-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['safrole_markers'].append(dict(origin=origin, passed=passed, run=result))
-            announce('Safrole markers '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'safrole_markers')
     # Default and actually refused schedule results must not expose candidate payloads.
-    compiled, binary = build(compiler, ROOT/'tests/native/safrole_authentication_results.nim', 'safrole-authentication-results', crypto_library, native_libraries=(bs_library,))
-    report['safrole_authentication_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error', 'forge'):
-            # Require the supported extraction contract, not a selector failure or unrelated crash.
-            result = command([binary, origin, 'none'], 'safrole-authentication-'+origin)
-            passed = result['exit_code'] == 1 and ('not reason == None' if origin == 'forge' else 'outcome.status == None') in result['output'] and '[AssertionDefect]' in result['output']
-            report['safrole_authentication'].append(dict(origin=origin, passed=passed, run=result))
-            announce('Safrole authentication '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'safrole_authentication')
     # Coordinator success and each typed failure reason require their own selected result alternative.
-    compiled, binary = build(compiler, ROOT/'tests/native/safrole_transition_results.nim', 'safrole-transition-results', crypto_library, native_libraries=(bs_library,))
-    report['safrole_transition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error', 'rotation', 'admission', 'schedule', 'marker', 'authentication', 'entropy', 'publication'):
-            # A wrong branch must fail at its exact contract, not through an incidental crash or selector error.
-            result = command([binary, origin], 'safrole-transition-'+origin)
-            expected = 'outcome.status == '+('None' if origin in ('default', 'error') else origin.capitalize()+'Failure')
-            passed = result['exit_code'] == 1 and expected in result['output'] and '[AssertionDefect]' in result['output']
-            report['safrole_transition'].append(dict(origin=origin, passed=passed, run=result))
-            announce('Safrole transition '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'safrole_transition')
     # A refused commitment must never expose a default digest as a successful application value.
-    compiled, binary = build(compiler, ROOT/'tests/native/extrinsic_commitment_results.nim', 'extrinsic-commitment-results', crypto_observer)
-    report['extrinsic_commitment_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('default', 'error'):
-            # Require the exact supported extraction contract and intended assertion exit.
-            result = command([binary, origin], 'extrinsic-commitment-'+origin)
-            passed = result['exit_code'] == 1 and 'outcome.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['extrinsic_commitment'].append(dict(origin=origin, passed=passed, run=result))
-            announce('Extrinsic commitment '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'extrinsic_commitment')
     # Isolate bound-owner, composed success and each stage-reason accessor from all other guards.
-    compiled, binary = build(compiler, ROOT/'tests/native/block_admission_results.nim', 'block-admission-results', crypto_library, native_libraries=(bs_library,))
-    report['block_admission_build'] = compiled
-    if compiled['exit_code'] == 0:
-        for origin in ('admission-default', 'admission-error', 'composed-default', 'composed-error', 'admission-reason', 'safrole-reason', 'block', 'header', 'parent', 'state'):
-            # Private owner access has its own nil precondition; unrelated assertion text cannot pass.
-            result = command([binary, origin, 'default'], 'block-admission-'+origin)
-            expected = ('binding.data' if origin in ('block', 'header', 'parent', 'state') else
-                        'outcome.status == AdmissionFailure' if origin == 'admission-reason' else
-                        'outcome.status == SafroleFailure' if origin == 'safrole-reason' else 'outcome.status == None')
-            passed = result['exit_code'] == 1 and expected in result['output'] and '[AssertionDefect]' in result['output']
-            report['block_admission'].append(dict(origin=origin, passed=passed, run=result))
-            announce('Block admission '+origin+' runtime guard', passed)
+    run_failure_suite(compiler, report, libraries, build, command, 'block_admission')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_context_results.nim', 'assurance-context-results', crypto_observer)
     report['assurance_context_build'] = compiled
@@ -996,10 +874,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Isolate every read so an earlier contract failure cannot conceal a later unguarded payload.
         for origin in ('default', 'error'):
             for member in ASSURANCE_CONTEXT_MEMBERS:
-                result = command([binary, member, origin], 'assurance-context-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['assurance_context'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' assurance context '+member+' runtime guard', passed)
+                probe_failure(command, report['assurance_context'], [binary, member, origin],
+                              'assurance-context-' + origin + '-' + member, 'value.status == None',
+                              origin + ' assurance context ' + member + ' runtime guard', origin=origin, member=member)
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_guarantee_message_results.nim', 'guarantee-message-results', crypto_observer)
     report['guarantee_message_build'] = compiled
@@ -1007,10 +884,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Empty/nonempty raw inputs are isolated, and each default is separate from the actual provider refusal.
         for origin in ('default', 'error'):
             for member in GUARANTEE_MESSAGE_MEMBERS:
-                result = command([binary, member, origin], 'guarantee-message-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['guarantee_message'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' guarantee message '+member+' runtime guard', passed)
+                probe_failure(command, report['guarantee_message'], [binary, member, origin],
+                              'guarantee-message-' + origin + '-' + member, 'value.status == None',
+                              origin + ' guarantee message ' + member + ' runtime guard', origin=origin, member=member)
     # Actual/default result access must reject for every fixed proof/output, sequence and opaque native owner.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_bandersnatch_results.nim', 'bandersnatch-results',
                              native_libraries=bs_libraries, cflags=OWNER_DEFINES)
@@ -1019,10 +895,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Separate processes prevent prior contract failures or test-observer flags from concealing later checks.
         for origin in ('default', 'error'):
             for member in BS_MEMBERS:
-                result = command([binary, member, origin], 'bs-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['bandersnatch'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' Bandersnatch '+member+' runtime guard', passed)
+                probe_failure(command, report['bandersnatch'], [binary, member, origin],
+                              'bs-' + origin + '-' + member, 'value.status == None',
+                              origin + ' Bandersnatch ' + member + ' runtime guard', origin=origin, member=member)
     # Default/failed/pending frame metadata and default/failed E4 lengths cannot bypass result access contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_quic_protocol_results.nim', 'quic-protocol-results', quic_library=quic_library)
     report['quic_protocol_build'] = compiled
@@ -1030,10 +905,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # One rejected read per child process prevents a preceding contract trap from hiding another accessor.
         for member in ('length', 'size', 'extent'):
             for origin in (('default', 'error') if member == 'length' else ('default', 'error', 'pending')):
-                result = command([binary, member, origin], 'quic-protocol-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['quic_protocol'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('QUIC '+origin+' '+member+' runtime guard', passed)
+                probe_failure(command, report['quic_protocol'], [binary, member, origin],
+                              'quic-protocol-' + member + '-' + origin, 'value.status == None',
+                              'QUIC ' + origin + ' ' + member + ' runtime guard', member=member, origin=origin)
     # Completion guards need only their public fixture, not the E2E network/soak workloads.
     from test_quic_offload import corpus as offload_fixture
     offload_wire, _ = offload_fixture(BUILD/'offload-fixture')
@@ -1048,10 +922,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
             for origin in ('default', 'empty'):
                 environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(offload_wire),
                                'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': ''}
-                result = command([binary, origin], 'offload-result-'+str(enabled)+'-'+origin, environment)
-                passed = result['exit_code'] == 1 and 'value.hasCompletion' in result['output'] and '[AssertionDefect]' in result['output']
-                report['offload'].append(dict(enabled=enabled, origin=origin, passed=passed, run=result))
-                announce('offload '+str(enabled)+' '+origin+' completion runtime guard', passed)
+                probe_failure(command, report['offload'], [binary, origin],
+                              'offload-result-' + str(enabled) + '-' + origin, 'value.hasCompletion',
+                              'offload ' + str(enabled) + ' ' + origin + ' completion runtime guard', environment=environment, enabled=enabled, origin=origin)
     # Every default/actual integration result family must reject value access before use.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_integration_results.nim', 'integration-results', crypto_observer, defines=('integration',))
     report['integration_build'] = compiled
@@ -1059,10 +932,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for member in INTEGRATION_MEMBERS:
             # Child processes isolate failure reads across keys, snapshots, codec owners, counts and copied bytes.
             for origin in ('default', 'error'):
-                result = command([binary, member, origin], 'integration-'+member+'-'+origin)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['integration'].append(dict(member=member, origin=origin, passed=passed, run=result))
-                announce('integration '+origin+' '+member+' runtime guard', passed)
+                probe_failure(command, report['integration'], [binary, member, origin],
+                              'integration-' + member + '-' + origin, 'value.status == None',
+                              'integration ' + origin + ' ' + member + ' runtime guard', member=member, origin=origin)
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
@@ -1083,11 +955,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for origin in ('default', 'error'):
             # Each member has its own subprocess and exact contract-failure diagnostic.
             for member in MEMBERS:
-                result = command([binary, member, origin], 'bounded-'+origin+'-'+member)
-                passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
-                          and '[AssertionDefect]' in result['output'])
-                report['bounded'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' '+member+' runtime guard', passed)
+                probe_failure(command, report['bounded'], [binary, member, origin],
+                              'bounded-' + origin + '-' + member, 'value.status == None',
+                              origin + ' ' + member + ' runtime guard', origin=origin, member=member)
     # Primitive success payloads are guarded on defaults/errors; error reasons are guarded on success.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_primitive_results.nim', 'primitive-results')
     report['primitive_build'] = compiled
@@ -1096,11 +966,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases = [(member, origin) for origin in ('default', 'error') for member in PRIMITIVE_MEMBERS]
         cases += [(member, 'success') for member in PRIMITIVE_ERRORS]
         for member, origin in cases:
-            result = command([binary, member, origin], 'primitive-'+origin+'-'+member)
-            passed = (result['exit_code'] == 1 and 'value.success' in result['output']
-                      and '[AssertionDefect]' in result['output'])
-            report['primitive'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' '+member+' runtime guard', passed)
+            probe_failure(command, report['primitive'], [binary, member, origin],
+                          'primitive-' + origin + '-' + member, 'value.success',
+                          origin + ' ' + member + ' runtime guard', origin=origin, member=member)
     # Composite results, nested variants and explicit constructor preconditions are independently guarded.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_composite_results.nim', 'composite-results')
     report['composite_build'] = compiled
@@ -1163,11 +1031,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for origin in ('default', 'error'):
             # Do not let one rejected accessor conceal another unguarded payload.
             for member in REPORT_MEMBERS:
-                result = command([binary, member, origin], 'report-'+origin+'-'+member)
-                passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
-                          and '[AssertionDefect]' in result['output'])
-                report['reports'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' '+member+' runtime guard', passed)
+                probe_failure(command, report['reports'], [binary, member, origin],
+                              'report-' + origin + '-' + member, 'value.status == None',
+                              origin + ' ' + member + ' runtime guard', origin=origin, member=member)
     # Decoder and inspection progress share the same result type but must reject each failing operation independently.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_assurance_results.nim', 'assurance-results')
     report['assurances_build'] = compiled
@@ -1176,11 +1042,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for origin in ('default', 'error'):
             # Read-only success metadata must not silently return zeros from a failed variant.
             for member in ASSURANCE_MEMBERS:
-                result = command([binary, member, origin], 'assurance-'+origin+'-'+member)
-                passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
-                          and '[AssertionDefect]' in result['output'])
-                report['assurances'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' assurance '+member+' runtime guard', passed)
+                probe_failure(command, report['assurances'], [binary, member, origin],
+                              'assurance-' + origin + '-' + member, 'value.status == None',
+                              origin + ' assurance ' + member + ' runtime guard', origin=origin, member=member)
     # Every public guarantee result instantiation must protect failed/default values, including inspection tuples.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_guarantee_results.nim', 'guarantee-results')
     report['guarantees_build'] = compiled
@@ -1202,11 +1066,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for origin in ('default', 'error'):
             # Decode and inspection share a result type but both operation paths must be exercised.
             for member in TICKET_MEMBERS:
-                result = command([binary, member, origin], 'ticket-'+origin+'-'+member)
-                passed = (result['exit_code'] == 1 and 'value.status == None' in result['output']
-                          and '[AssertionDefect]' in result['output'])
-                report['tickets'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' ticket '+member+' runtime guard', passed)
+                probe_failure(command, report['tickets'], [binary, member, origin],
+                              'ticket-' + origin + '-' + member, 'value.status == None',
+                              origin + ' ticket ' + member + ' runtime guard', origin=origin, member=member)
     # Every public dispute result type and explicit failure construction retain success contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_dispute_results.nim', 'dispute-results')
     report['disputes_build'] = compiled
@@ -1259,10 +1121,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
                   for member in ('cause-default', 'cause-parent', 'cause-success')]
         cases += [(member, 'error', 'value.schema == '+kind) for member, kind in BLOCK_WRONG]
         for member, origin, sentinel in cases:
-            result = command([binary, member, origin], 'block-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['blocks'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' block '+member+' runtime guard', passed)
+            probe_failure(command, report['blocks'], [binary, member, origin],
+                          'block-' + origin + '-' + member, sentinel,
+                          origin + ' block ' + member + ' runtime guard', origin=origin, member=member)
     # All Boolean/bitstring result types and public operations retain success-only value access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_bits_results.nim', 'bits-results')
     report['bits_build'] = compiled
@@ -1271,10 +1132,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for origin in ('default', 'error'):
             # Isolate each field/operation so one failed access cannot conceal another unchecked result.
             for member in BITS_MEMBERS:
-                result = command([binary, member, origin], 'bits-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['bits'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' bits '+member+' runtime guard', passed)
+                probe_failure(command, report['bits'], [binary, member, origin],
+                              'bits-' + origin + '-' + member, 'value.status == None',
+                              origin + ' bits ' + member + ' runtime guard', origin=origin, member=member)
     # Every collection/scalar result shape keeps failure/default application access guarded.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_collection_results.nim', 'collection-results')
     report['collections_build'] = compiled
@@ -1282,10 +1142,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Isolate all application reads and both unsupported direct scalar width contracts.
         cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in COLLECTION_MEMBERS]
         for member, origin, sentinel in cases:
-            result = command([binary, member, origin], 'collection-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['collections'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' collection '+member+' runtime guard', passed)
+            probe_failure(command, report['collections'], [binary, member, origin],
+                          'collection-' + origin + '-' + member, sentinel,
+                          origin + ' collection ' + member + ' runtime guard', origin=origin, member=member)
     # Guard every C.2 result and selected work/source/metadata/decoded union alternative independently.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_c2_results.nim', 'c2-results')
     report['c2_build'] = compiled
@@ -1294,10 +1153,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in C2_MEMBERS]
         cases += list(C2_VARIANTS)
         for member, origin, sentinel in cases:
-            result = command([binary, member, origin], 'c2-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['c2'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' c2 '+member+' runtime guard', passed)
+            probe_failure(command, report['c2'], [binary, member, origin],
+                          'c2-' + origin + '-' + member, sentinel,
+                          origin + ' c2 ' + member + ' runtime guard', origin=origin, member=member)
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_crypto_results.nim', 'crypto-results', crypto_observer)
     report['crypto_build'] = compiled
     if compiled['exit_code'] == 0:
@@ -1305,10 +1163,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for origin in ('default', 'error'):
             for member in CRYPTO_MEMBERS:
                 # Distinguish the success contract from a crash, missing library or unrelated assertion.
-                result = command([binary, member, origin], 'crypto-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['crypto'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' crypto '+member+' runtime guard', passed)
+                probe_failure(command, report['crypto'], [binary, member, origin],
+                              'crypto-' + origin + '-' + member, 'value.status == None',
+                              origin + ' crypto ' + member + ' runtime guard', origin=origin, member=member)
     # Guard every default/failed layout result and both wrong alternatives for every metadata field.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_layout_results.nim', 'layout-results', crypto_observer)
     report['layout_build'] = compiled
@@ -1318,10 +1175,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases += LAYOUT_VARIANTS
         for member, origin, sentinel in cases:
             # Require the exact result/field contract, never a crash or missing library.
-            result = command([binary, member, origin], 'layout-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['layout'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' layout '+member+' runtime guard', passed)
+            probe_failure(command, report['layout'], [binary, member, origin],
+                          'layout-' + origin + '-' + member, sentinel,
+                          origin + ' layout ' + member + ' runtime guard', origin=origin, member=member)
     # Public commitment and private recursive child-hash results must reject failed/default payload reads.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_trie_results.nim', 'trie-results', crypto_observer)
     report['trie_build'] = compiled
@@ -1331,10 +1187,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases += [('child-hash', origin) for origin in ('default', 'error')]
         for member, origin in cases:
             # Require the exact success contract rather than an unrelated process failure.
-            result = command([binary, member, origin], 'trie-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['trie'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' trie '+member+' runtime guard', passed)
+            probe_failure(command, report['trie'], [binary, member, origin],
+                          'trie-' + origin + '-' + member, 'value.status == None',
+                          origin + ' trie ' + member + ' runtime guard', origin=origin, member=member)
     # Every default/failed component result must reject values, owners, copied records and consumed progress.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_safrole_results.nim', 'safrole-results', crypto_library)
     report['safrole_build'] = compiled
@@ -1344,10 +1199,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases += [('direct-time', 'default')]
         for member, origin in cases:
             # Require the intended success contract rather than a crash or unrelated assertion.
-            result = command([binary, member, origin], 'safrole-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-            report['safrole'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' safrole '+member+' runtime guard', passed)
+            probe_failure(command, report['safrole'], [binary, member, origin],
+                          'safrole-' + origin + '-' + member, 'value.status == None',
+                          origin + ' safrole ' + member + ' runtime guard', origin=origin, member=member)
     # Public authorization fields and internal framing tuples must reject every default/failed payload read.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_authorization_results.nim', 'authorization-results', crypto_library)
     report['authorization_build'] = compiled
@@ -1356,10 +1210,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         for origin in ('default', 'error'):
             for member in AUTHORIZATION_MEMBERS:
                 # A crash, transport problem or unrelated assertion cannot count as success protection.
-                result = command([binary, member, origin], 'authorization-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['authorization'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' authorization '+member+' runtime guard', passed)
+                probe_failure(command, report['authorization'], [binary, member, origin],
+                              'authorization-' + origin + '-' + member, 'value.status == None',
+                              origin + ' authorization ' + member + ' runtime guard', origin=origin, member=member)
     # Chapter-local results and closed source alternatives guard every inactive/default observation.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_consensus_results.nim', 'consensus-results', crypto_library)
     report['consensus_build'] = compiled
@@ -1369,10 +1222,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases += [('source-tickets', 'Keys', 'source.mode == Tickets'), ('source-keys', 'Tickets', 'source.mode == Keys')]
         for member, origin, sentinel in cases:
             # Require the exact success or branch contract rather than a crash or unrelated assertion.
-            result = command([binary, member, origin], 'consensus-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['consensus'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' consensus '+member+' runtime guard', passed)
+            probe_failure(command, report['consensus'], [binary, member, origin],
+                          'consensus-' + origin + '-' + member, sentinel,
+                          origin + ' consensus ' + member + ' runtime guard', origin=origin, member=member)
     # All public result shapes and private scan layouts require success before payload access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_state_disputes_results.nim', 'state-disputes-results', crypto_library)
     report['state_disputes_build'] = compiled
@@ -1380,10 +1232,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Isolate default and actual failed operations so one failed precondition cannot conceal another.
         for origin in ('default', 'error'):
             for member in STATE_DISPUTES_MEMBERS:
-                result = command([binary, member, origin], 'state-disputes-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['state_disputes'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' chapter-5 '+member+' runtime guard', passed)
+                probe_failure(command, report['state_disputes'], [binary, member, origin],
+                              'state-disputes-' + origin + '-' + member, 'value.status == None',
+                              origin + ' chapter-5 ' + member + ' runtime guard', origin=origin, member=member)
     # Public/private results and runtime-selected absent peak copies require exact supported contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_history_results.nim', 'history-results', crypto_library)
     report['history_build'] = compiled
@@ -1392,10 +1243,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in HISTORY_MEMBERS]
         cases += [('absent-hash', origin, 'peak.isPresent') for origin in ('default', 'source', 'decoded')]
         for member, origin, sentinel in cases:
-            result = command([binary, member, origin], 'history-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['history'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' history '+member+' runtime guard', passed)
+            probe_failure(command, report['history'], [binary, member, origin],
+                          'history-' + origin + '-' + member, sentinel,
+                          origin + ' history ' + member + ' runtime guard', origin=origin, member=member)
     # Every public/private result and each inactive assignment field must retain its exact contract.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_availability_results.nim', 'availability-results', crypto_library)
     report['availability_build'] = compiled
@@ -1404,10 +1254,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in AVAILABILITY_MEMBERS]
         cases += [('absent-'+field, origin, 'assignment.isPresent') for origin in ('default', 'source', 'decoded') for field in ('guarantee', 'registered')]
         for member, origin, sentinel in cases:
-            result = command([binary, member, origin, availability_fixture], 'availability-'+origin+'-'+member)
-            passed = result['exit_code'] == 1 and sentinel in result['output'] and '[AssertionDefect]' in result['output']
-            report['availability'].append(dict(origin=origin, member=member, passed=passed, run=result))
-            announce(origin+' availability '+member+' runtime guard', passed)
+            probe_failure(command, report['availability'], [binary, member, origin, availability_fixture],
+                          'availability-' + origin + '-' + member, sentinel,
+                          origin + ' availability ' + member + ' runtime guard', origin=origin, member=member)
     # Every public result shape and private natural/layout proof requires success before payload access.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_privileges_results.nim', 'privileges-results', crypto_library)
     report['privileges_build'] = compiled
@@ -1415,10 +1264,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Isolate actual failures and defaults so one rejected access never conceals another.
         for origin in ('default', 'error'):
             for member in PRIVILEGES_MEMBERS:
-                result = command([binary, member, origin], 'privileges-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['privileges'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' privileges '+member+' runtime guard', passed)
+                probe_failure(command, report['privileges'], [binary, member, origin],
+                              'privileges-' + origin + '-' + member, 'value.status == None',
+                              origin + ' privileges ' + member + ' runtime guard', origin=origin, member=member)
     # All public and internal tuple/natural/layout payloads require exact successful selection.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_statistics_results.nim', 'statistics-results', crypto_library)
     report['statistics_build'] = compiled
@@ -1426,10 +1274,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Keep each actual/default failure independent so one rejected read cannot hide another.
         for origin in ('default', 'error'):
             for member in STATISTICS_MEMBERS:
-                result = command([binary, member, origin], 'statistics-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['statistics'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' statistics '+member+' runtime guard', passed)
+                probe_failure(command, report['statistics'], [binary, member, origin],
+                              'statistics-' + origin + '-' + member, 'value.status == None',
+                              origin + ' statistics ' + member + ' runtime guard', origin=origin, member=member)
     # Both queue domains and internal count/layout proofs require successful payload selection.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_workqueues_results.nim', 'workqueues-results', crypto_library)
     report['workqueues_build'] = compiled
@@ -1437,10 +1284,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Actual/default failures execute separately so one rejected access cannot conceal another.
         for origin in ('default', 'error'):
             for member in WORKQUEUES_MEMBERS:
-                result = command([binary, member, origin, availability_fixture], 'workqueues-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['workqueues'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' workqueues '+member+' runtime guard', passed)
+                probe_failure(command, report['workqueues'], [binary, member, origin, availability_fixture],
+                              'workqueues-' + origin + '-' + member, 'value.status == None',
+                              origin + ' workqueues ' + member + ' runtime guard', origin=origin, member=member)
     # Public entry/read/count/pair payloads and internal extent proofs retain exact success contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_outputs_results.nim', 'outputs-results', crypto_library)
     report['outputs_build'] = compiled
@@ -1448,10 +1294,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Actual and default failures execute independently so no rejected access conceals another.
         for origin in ('default', 'error'):
             for member in OUTPUTS_MEMBERS:
-                result = command([binary, member, origin], 'outputs-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['outputs'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' outputs '+member+' runtime guard', passed)
+                probe_failure(command, report['outputs'], [binary, member, origin],
+                              'outputs-' + origin + '-' + member, 'value.status == None',
+                              origin + ' outputs ' + member + ' runtime guard', origin=origin, member=member)
     # Fixed metadata and encoded entries require exact success, even though records need no retained heap owner.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_accounts_results.nim', 'accounts-results', crypto_library)
     report['accounts_build'] = compiled
@@ -1459,10 +1304,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Default and actual failures execute independently so no payload/progress bypass is concealed.
         for origin in ('default', 'error'):
             for member in ACCOUNTS_MEMBERS:
-                result = command([binary, member, origin], 'accounts-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'parsed.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['accounts'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' accounts '+member+' runtime guard', passed)
+                probe_failure(command, report['accounts'], [binary, member, origin],
+                              'accounts-' + origin + '-' + member, 'parsed.status == None',
+                              origin + ' accounts ' + member + ' runtime guard', origin=origin, member=member)
     # Backend refusals and private alias misuse execute through a test-only observer, never production binaries.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_service_values_results.nim', 'service-values-results', crypto_observer)
     report['service_values_build'] = compiled
@@ -1470,10 +1314,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Actual/default failures require their exact payload contract, including internal extent proofs.
         for origin in ('default', 'error'):
             for member in SERVICE_VALUES_MEMBERS:
-                result = command([binary, member, origin], 'service-values-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['service_values'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' service values '+member+' runtime guard', passed)
+                probe_failure(command, report['service_values'], [binary, member, origin],
+                              'service-values-' + origin + '-' + member, 'value.status == None',
+                              origin + ' service values ' + member + ' runtime guard', origin=origin, member=member)
     # Result payloads and every inactive timestamp require supported success/shape contracts.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_requests_results.nim', 'requests-results', crypto_observer)
     report['requests_build'] = compiled
@@ -1481,18 +1324,16 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Actual/default failures cannot fabricate valid Requested histories, keys or completed progress.
         for origin in ('default', 'error'):
             for member in REQUESTS_MEMBERS:
-                result = command([binary, member, origin], 'requests-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['requests'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' requests '+member+' runtime guard', passed)
+                probe_failure(command, report['requests'], [binary, member, origin],
+                              'requests-' + origin + '-' + member, 'value.status == None',
+                              origin + ' requests ' + member + ' runtime guard', origin=origin, member=member)
         cases = [(field, origin, mode, tag) for origin in ('source', 'decoded') for field, mode, tag in REQUESTS_FIELDS]
         cases += [(field, 'default', 0, tag) for field, mode, tag in REQUESTS_FIELDS if mode == 0]
         # All six fields reject every inactive source/decoded mode and the empty default shape independently.
         for field, origin, mode, tag in cases:
-            result = command([binary, 'field-'+field, origin, mode], f'requests-{origin}-{mode}-{field}')
-            passed = result['exit_code'] == 1 and 'history.mode == '+tag in result['output'] and '[AssertionDefect]' in result['output']
-            report['requests'].append(dict(origin=origin, member=field, inactive_mode=mode, passed=passed, run=result))
-            announce(f'{origin} requests {mode}/{field} shape runtime guard', passed)
+            probe_failure(command, report['requests'], [binary, 'field-' + field, origin, mode],
+                          f'requests-{origin}-{mode}-{field}', 'history.mode == ' + tag,
+                          f'{origin} requests {mode}/{field} shape runtime guard', origin=origin, member=field, inactive_mode=mode)
     # Complete composition payloads require exact success, including backend and association failures.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_composition_results.nim', 'composition-results', crypto_observer)
     report['composition_build'] = compiled
@@ -1500,10 +1341,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         # Actual and default failures execute separately so one protected read never conceals another.
         for origin in ('default', 'error'):
             for member in COMPOSITION_MEMBERS:
-                result = command([binary, member, origin, composition_fixture], 'composition-'+origin+'-'+member)
-                passed = result['exit_code'] == 1 and 'value.status == None' in result['output'] and '[AssertionDefect]' in result['output']
-                report['composition'].append(dict(origin=origin, member=member, passed=passed, run=result))
-                announce(origin+' composition '+member+' runtime guard', passed)
+                probe_failure(command, report['composition'], [binary, member, origin, composition_fixture],
+                              'composition-' + origin + '-' + member, 'value.status == None',
+                              origin + ' composition ' + member + ' runtime guard', origin=origin, member=member)
 
 
 # Select one independent workload and invalidate stale evidence before any setup or compilation.
@@ -1564,7 +1404,7 @@ def main():
                    'scalar_collection_negative_width', 'scalar_collection_wide_width')]
                + [Path(__file__).resolve()])
     sources += [ROOT/path for path in ('src/bandersnatch/bandersnatch.nim', 'tests/bandersnatch_native.py',
-                'Makefile', 'tools/native_checks.py', 'tools/native_dependencies.py', 'tools/build_crypto.py', 'tools/build_bandersnatch.py', 'tools/build_quic.py', 'tools/corpus_checks.py', 'tools/verification_inventory.py', 'tools/verification_inventory.json', 'tools/test_python.py', 'tools/test_e2e.py',
+                'Makefile', 'tools/native_checks.py', 'tools/native_dependencies.py', 'tools/build_crypto.py', 'tools/build_bandersnatch.py', 'tools/build_quic.py', 'tools/corpus_checks.py', 'tools/failure_checks.py', 'tools/failure_suites.json', 'tools/verification_inventory.py', 'tools/verification_inventory.json', 'tools/test_python.py', 'tools/test_e2e.py',
                 'tools/e2e_checks.py', 'tools/test_modules.py', 'tools/setup_nimony.py', 'tools/toolchain_archives.py', 'tools/format.py',
                 'spec/toolchain.json', 'src/quic/session.nim', 'src/quic/offload.nim', 'tests/test_quic_offload.py',
                 'tests/test_quic_offload_harness.py',
