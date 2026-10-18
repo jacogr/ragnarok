@@ -101,6 +101,8 @@
     "report_transition"
   ],
   "PRIVATE": {
+    "rpc_parameters_owner_private": "numbers",
+    "rpc_parameters_result_private": "success",
     "pvm_gas_payload_private": "completed",
     "pvm_gas_retag_private": "status",
     "pvm_gas_error_readonly": "error",
@@ -889,6 +891,7 @@
     "history_accumulation_as_parent": "AccumulationRoot"
   },
   "CONTRACTS": {
+    "rpc_parameters_known_failure": "decoded.success",
     "safrole_auth_success_forge": "not reason == None",
     "history_known_absent_hash": "peak.isPresent",
     "assignment_known_absent_guarantee": "assignment.isPresent",

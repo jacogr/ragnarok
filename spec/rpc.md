@@ -18,7 +18,7 @@ Send a WebSocket text message:
 {"jsonrpc":"2.0","method":"ragnarok_clientInfo","params":[],"id":1}
 ```
 
-`ragnarok_clientInfo()` is currently the only available method. The result includes:
+`ragnarok_clientInfo()` reports client diagnostics. The result includes:
 
 - Implementation name, development version, pinned compiler version, Gray Paper version,
   target OS and architecture, and peer command role (`server`, `client`, or `mesh`).
@@ -30,14 +30,54 @@ Send a WebSocket text message:
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names when implemented. Currently **all JIP-2 chain methods, including `parameters`,
-and subscriptions are unavailable** and return JSON-RPC `-32601` for identified requests.
-This is the transport/diagnostics increment, not complete JIP-2 support. In particular an
+unprefixed names. `parameters()` is implemented as described below; other JIP-2 chain methods
+and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
+This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
 
-The next bounded increment should connect `parameters()` to validated chain configuration.
 Best/finalized queries and subscriptions require an actual chain source with immutable
 block/state snapshots and update events; they must not reuse telemetry's genesis metadata as live state.
+
+## `parameters()` and startup configuration
+
+Append `--chain /path/to/chain.json` alongside `--rpc-port 19800`. `--chain` may serve RPC
+without telemetry; telemetry still requires it. Startup reads one bounded file snapshot for both
+services. RPC requires one `protocol_parameters` string with exactly 244 unprefixed hexadecimal
+characters, decoding the 122-byte GP 0.8.0 `fetch(0)` tuple. Both hex letter cases are accepted.
+Missing, malformed, duplicate, truncated or extended explicit configuration fails startup before
+opening the RPC listener. With no `--chain`, diagnostics remain available and `parameters()`
+returns JIP-2 error `0` (“Chain parameters unavailable; configure --chain”). No defaults are inferred.
+
+Requests take no arguments (`params: []` or omitted). The result is `{"V1": {...}}` with all
+33 JIP-2 field names. The 29 encoded fields retain their exact unsigned integer values, including
+64-bit values above JSON clients' floating-point precision. Clients must use lossless JSON number
+handling when needed. Invalid arguments use `-32602`; notifications remain silent.
+
+**Temporary zero placeholders:** `tickets_attempts_number`, `val_count`, `basic_piece_len`, and
+`segment_piece_count` return **0 to mean “not yet derived.” These are not actual chain values.**
+This is an explicitly documented incomplete implementation of their JIP-2 meanings, selected by
+the maintainer; zero must not be used to size validator sets, produce tickets or encode data.
+These values require live state, which this proof peer does not yet maintain:
+
+- `val_count` must come from the relevant validator roster, not `3 * core_count` or a test profile.
+- `tickets_attempts_number` must follow GP 0.8.0 Safrole's `ceil(2 * epoch_period / pending_validator_count)`.
+- Erasure-coding sizes must follow GP 0.8.0's validator-dependent original-shard count and fixed
+  4,104-byte segment, with the JIP-2 mapping specified when live-state support is added.
+
+References: JIP-2 `parameters()`/Errors at the revision above; [JIP-4](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-4.md)
+`protocol_parameters`; GP 0.8.0 at `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix B
+`fetch(0)` (`text/pvm_invocations.tex`), Safrole `valcount`/`ticketsextrinsic`, and erasure coding
+`ecoriginalshards`. The GP fetch tuple has 29 fields; it does not encode these four state-dependent
+values. JIP-4's linked historical fetch encoding is not accepted as an alternate byte layout.
+
+Configuration validation here covers strict JSON, the exact GP tuple, and basic usability:
+core count at least two, nonzero epoch/slot/rotation periods, and epoch tail no later than the epoch
+end. It does **not** import or validate genesis state, initialize a live chain, or establish all
+cross-field consensus constraints. Unknown chainspec fields are syntax-checked but not interpreted.
+Parsing is bounded to 8 MiB, 32 nesting levels, 262,144 values and 64 root members. The immutable
+parameter owner retains only fixed-size integers; file edits after startup require restarting the node.
+The existing proof-peer codecs still receive their own explicit configurations; this increment does
+not silently reconfigure consensus execution or replace those contracts.
 
 ## Protocol and bounds
 
@@ -70,7 +110,7 @@ frame lengths are rejected because their canonical minimum exceeds the configure
 Resource limits are eight connections, 4 KiB upgrade headers, 16 KiB messages, 16 nesting levels,
 2048 JSON values and 16 requests per batch. Input/output is owned per connection. Each dispatcher
 turn performs at most one accept and one read (4 KiB), frame dispatch and write per slot. Responses
-are bounded by the aggregate request-ID bytes plus sixteen fixed-size diagnostic results.
+are bounded by the aggregate request-ID bytes plus sixteen bounded diagnostics or parameter results (below the 64 KiB frame limit).
 Backpressure pauses reads until the outstanding response is delivered. Handshakes, partial
 messages, fragmented messages and queued writes have five-second budgets; idle upgraded
 connections expire after thirty seconds. Ping/pong cannot extend a fragmented message's budget.
@@ -94,3 +134,10 @@ batches, malformed JSON, fragmented text with ping/pong, close handling, unmaske
 HTTP POST rejection, saturated handshake expiry, three concurrent QUIC clients and clean shutdown.
 `make check-python` verifies the updated inventories and orchestration. Local macOS results do
 not substitute for the Linux CI groups.
+
+Parameter coverage uses independently specified fixture bytes and the complete expected V1 object,
+including 64-bit maxima and all four zero placeholders. Native tests cover truncation, malformed hex,
+configuration syntax/duplicates, invalid basic settings, snapshot isolation, unavailable configuration,
+argument validation and batches. Compiler probes protect private configuration/result fields and
+reject extraction from known failure. Live WS checks exercise configured and unconfigured nodes,
+file mutation after startup, maximum-size batches, and invalid/missing configuration startup.

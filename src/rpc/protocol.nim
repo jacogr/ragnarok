@@ -1,14 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JSON-RPC 2.0 dispatch for the proof peer. No fabricated chain state or subscription success.
+## JSON-RPC 2.0 dispatch for the proof peer, including configured chain parameters.
 ## Bounds: 16 KiB input, 16 levels, 2048 values and 16 requests per batch; no retained borrows.
 ##
 ## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
-## responses.
+## responses. configuredParameters validates bounded chainspec text into an owned snapshot;
+## parameters() includes four documented zero placeholders pending live-state derivation.
 
 import std/[strutils, parsejson, streams]
 import ./wire
+import ../chain/parameters
 
 const Platform = when defined(linux): "linux" elif defined(macosx): "macos" else: "unknown"
 const Architecture = when defined(arm64): "arm64" elif defined(amd64): "amd64" else: "unknown"
@@ -31,6 +33,7 @@ type
     role*: string
     port*: uint16
     occupiedBytes*, reservedBytes*: int
+    parameters*: ParameterResult # Optional immutable startup configuration; never read from disk per request.
 
 # JSON quoting preserves UTF-8 while escaping ASCII controls and delimiters.
 proc quote*(text: string): string =
@@ -90,7 +93,7 @@ proc strictNumber(token: string): bool =
 # Adapt standard streaming events to owned dispatch values; failure discards all partial output.
 # The stdlib handles delimiters, separators, decoding and syntax errors. We cap its stack growth
 # between events, enforce string object keys and preserve numeric text rather than using getInt/getFloat.
-proc parseValues(text: string, values: var seq[Value]): bool =
+proc parseValues(text: string, values: var seq[Value], maxValues = 2048, maxDepth = 16): bool =
   if not strictLexemes(text): return false
   var parser = default(JsonParser)
   parser.open(newStringStream(text), "RPC request")
@@ -106,7 +109,7 @@ proc parseValues(text: string, values: var seq[Value]): bool =
       let parent = containers.pop()
       values[parent.index].next = values.len
     else:
-      if values.len >= 2048 or containers.len >= 16: return false
+      if values.len >= maxValues or containers.len >= maxDepth: return false
       if containers.len == 0:
         if values.len > 0: return false # Stdlib permits another root after a closed container.
       else:
@@ -135,6 +138,49 @@ proc parseValues(text: string, values: var seq[Value]): bool =
       if parser.kind in {jsonObjectStart, jsonArrayStart}:
         containers.add(Container(index: values.len - 1, children: 0)) # Bounded open-container stack.
 
+# Extract one strict JIP-4 parameter field from a bounded startup file. Genesis data is not imported.
+# Unknown fields are parsed for syntax only; duplicate root members and missing parameters fail atomically.
+proc configuredParameters*(text: string): ParameterResult =
+  if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text):
+    return default(ParameterResult) # Missing, oversized or invalid text cannot imply a default chain.
+  var values: seq[Value] = @[]
+  if not parseValues(text, values, 262144, 32) or values[0].kind != objectValue:
+    return default(ParameterResult)
+  var found = false
+  var encoded = ""
+  var keys: seq[string] = @[]
+  var i = 1
+  while i < values[0].next: # Object events alternate decoded string keys and complete value subtrees.
+    let key = values[i].text
+    if keys.len >= 64 or key in keys: return default(ParameterResult) # Duplicate configuration is ambiguous.
+    keys.add(key)
+    inc i
+    if key == "protocol_parameters":
+      if values[i].kind != stringValue: return default(ParameterResult)
+      found = true
+      encoded = values[i].text
+    i = values[i].next
+  if not found: return default(ParameterResult)
+  decodeParametersHex(encoded)
+
+# Map the immutable GP fetch tuple to JIP-2 V1 without machine signed/float conversions.
+# The four live-state fields remain explicit zero placeholders until their derivation is implemented.
+proc parameterObject(parameters: Parameters): string =
+  const Names: array[Parameter, string] = [
+    "deposit_per_item", "deposit_per_byte", "deposit_per_account", "core_count",
+    "min_turnaround_period", "epoch_period", "max_accumulate_gas", "max_is_authorized_gas",
+    "max_refine_gas", "block_gas_limit", "recent_block_count", "max_work_items",
+    "max_dependencies", "max_tickets_per_block", "max_lookup_anchor_age", "auth_window",
+    "slot_period_sec", "auth_queue_len", "rotation_period", "max_extrinsics",
+    "availability_timeout", "max_authorizer_code_size", "max_input", "max_service_code_size",
+    "max_imports", "max_report_elective_data", "transfer_memo_size", "max_exports", "epoch_tail_start"]
+  result = "{\"V1\":{"
+  for field in low(Parameter)..high(Parameter): # Width-limited uint64 values serialize as exact decimal Numbers.
+    if field != low(Parameter): result.add(',')
+    result.add(quote(Names[field]) & ":" & $parameters.get(field))
+  result.add(",\"tickets_attempts_number\":0,\"val_count\":0")
+  result.add(",\"basic_piece_len\":0,\"segment_piece_count\":0}}")
+
 # Construct a JSON-RPC error; id is already a validated JSON scalar, never arbitrary caller text.
 proc error(id: string, code: int, message: string): string =
   "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":" & $code & ",\"message\":" & quote(
@@ -151,7 +197,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"reservedBytes\":" & $info.reservedBytes & "}")
   result.add(",\"chain\":null,\"bestBlock\":null,\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -184,8 +230,12 @@ proc dispatch(values: seq[Value], start: int, info: ClientInfo): string =
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if not hasId: return "" # This read-only dispatch has no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
-  if methodName == "ragnarok_clientInfo":
+  if methodName in ["ragnarok_clientInfo", "parameters"]:
     if parameters >= 0 and values[parameters].next != parameters + 1: return error(id, -32602, "Expected no parameters")
+    if methodName == "parameters":
+      if not info.parameters.ok: return error(id, 0, "Chain parameters unavailable; configure --chain")
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & parameterObject(
+          info.parameters.value) & "}"
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info) & "}"
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 
