@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated default/actual composition failures cannot expose chapters, maps, roots or extracted entries.
+## Isolated default/actual composition failures cannot expose chapters, maps, roots or extracted
+## entries.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 include ../../src/codec/state_composition
 include ./composition_fixture
 let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),

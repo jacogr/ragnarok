@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal canonical set boundaries, independent framing and state-transition scope checks."""
+"""Literal canonical set boundaries, independent framing and state-transition scope checks.
+
+Exposes DisputeStateHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from state_disputes_oracle import wire,encode,decode,MAX
 

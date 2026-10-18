@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Real signed block publication and complete parent rollback after report, budget and final-hash refusals.
+## Real signed block publication and complete parent rollback after report, budget and
+## final-hash refusals.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/state/[report_transition, report_admission, report_assignments,
   block_transition,

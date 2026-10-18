@@ -2,7 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 T chapters 14/15 and accumulation readyspec/accumulatedspec: fixed epoch rings.
-## Serialization preserves report order and canonical hash sets; it does not execute accumulation.
+## Serialization preserves report order and canonical hash sets; it does not execute
+## accumulation.
+##
+## Exposes ready/accumulated ring profiles and snapshots, state-entry codecs and bounded
+## slot/item/dependency/hash access.
+
 import std/assertions
 import ./[natural, bounded, assurances, composite, work_report, report_owned, owned, state_layout, state_trie]
 from ./header import EpochSlots

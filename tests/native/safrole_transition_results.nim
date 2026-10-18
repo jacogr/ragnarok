@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused coordinator payloads and nonselected stage reasons must never be readable.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[safrole_transition, store]
 import ../../src/codec/header

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Default and actual invalid-policy authentication cannot publish entropy or a retained authenticated header.
+## Default and actual invalid-policy authentication cannot publish entropy or a retained
+## authenticated header.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/safrole_authentication
 import ../../src/codec/[header, state_safrole]

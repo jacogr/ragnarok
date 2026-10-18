@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Maintained LSQUIC adapter. One bounded POSIX dispatcher services nonblocking UDP and deadlines.
-## Native callbacks borrow this stack owner synchronously; no futures, callback closures or dependency patches are used.
+## Maintained LSQUIC adapter. One bounded POSIX dispatcher services nonblocking UDP and
+## deadlines. Native callbacks borrow this stack owner synchronously; no futures, callback
+## closures or dependency patches are used.
+##
+## Exposes certificate observations, transport/stream lifecycle operations, polling, peer
+## metrics and handshake observations over the C bridge.
+
 import std/assertions
 import ./io
 export io.newDispatcher, io.close

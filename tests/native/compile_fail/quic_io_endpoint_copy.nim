@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Two mutable endpoint owners cannot close the same descriptor after an implicit copy.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/quic/io
 var original = default(UdpEndpoint)
 var duplicate = original

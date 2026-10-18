@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Project-only ownership, source-alternative and arithmetic checks; no private compiler/runtime interface is used.
+## Project-only ownership, source-alternative and arithmetic checks; no private compiler/runtime
+## interface is used.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 include ../../../src/codec/state_consensus

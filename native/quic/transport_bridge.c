@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Implements the LSQUIC/BoringSSL transport adapter. Exposes transport, connection and stream
+// operations declared in transport_bridge.h; the Nim caller drives network progress.
+
 #include "transport_bridge.h"
 #include <lsquic.h>
 #include <openssl/ssl.h>

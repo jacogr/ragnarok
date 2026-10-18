@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A caller cannot manufacture transition success by changing its discriminator.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/state/entropy
 var hidden = default(EntropyTransitionResult[EntropyTimeUpdate])
 hidden.status = EntropyTransitionError.None

@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 reporting_assurance.tex: atomically publish implemented block stages and new C(10) assignments.
-## Accumulation, PVM, other extrinsics and complete block execution remain separate stages.
+## GP 0.8.0 reporting_assurance.tex: atomically publish implemented block stages and new C(10)
+## assignments. Accumulation, PVM, other extrinsics and complete block execution remain separate
+## stages.
+##
+## Exposes advanceBlockReports with typed block-stage, report-planning and publication errors.
+
 import ../codec/[block_codec, header, state_layout]
 import ./[store, block_admission, block_transition, disputes, safrole_transition, availability,
   report_admission, report_assignments]

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated misuse probes exercise only public store accessors, with runtime-selected invalid origins.
+## Isolated misuse probes exercise only public store accessors, with runtime-selected invalid
+## origins.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/store
 import ../../src/codec/[state_trie, state_layout, bounded]

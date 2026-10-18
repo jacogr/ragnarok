@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Focused public composite ownership, child materialization, stricter-policy and atomicity regressions.
+## Focused public composite ownership, child materialization, stricter-policy and atomicity
+## regressions.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,

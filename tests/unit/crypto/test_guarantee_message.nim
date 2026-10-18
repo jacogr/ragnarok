@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Guarantee transcript fixed copies, exact known answers and observer-only backend
+## refusal/recovery.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
-## Guarantee transcript fixed copies, exact known answers and observer-only backend refusal/recovery.
 import std/[assertions, syncio]
 import ../../native/batch_support
 import ../../../src/crypto/[primitives, guarantee]

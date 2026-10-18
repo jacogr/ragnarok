@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check exact Git submodule revisions and pristine source trees before native builds."""
+"""Check exact Git submodule revisions and pristine source trees before native builds.
+
+Exposes codec_sources for the verification harness.
+"""
 from pathlib import Path
 import sys
 

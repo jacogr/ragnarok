@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated chapter failure/default reads and inactive source-schedule reads require supported contracts.
+## Isolated chapter failure/default reads and inactive source-schedule reads require supported
+## contracts.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_consensus
 let useDefault = paramStr(2) == "default"

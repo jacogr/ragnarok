@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Retained two-peer IPv6 engines, duplicate arbitration, fallback dial and bidirectional CE 143 regression."""
+"""Retained two-peer IPv6 engines, duplicate arbitration, fallback dial and bidirectional CE 143 regression.
+
+Exposes ports, preferred, observe, pairing for the verification harness.
+"""
 import json
 import os
 import socket

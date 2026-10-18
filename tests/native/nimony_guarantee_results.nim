@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guarantee result contracts reject default/failed values for every public operation family.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/codec/[guarantees, bounded, assurances, work_report]
 

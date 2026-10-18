@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated public/private result failures and runtime-selected absent fields need exact contracts.
+## Isolated public/private result failures and runtime-selected absent fields need exact
+## contracts.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/codec/[report_owned, owned]
 include ../../src/codec/state_availability

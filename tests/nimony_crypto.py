@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build pristine native crypto and test-only observation without changing production or upstream sources."""
+"""Build pristine native crypto and test-only observation without changing production or upstream sources.
+
+Exposes command, prepare, corpus for the verification harness.
+"""
 import platform
 import subprocess
 from test_crypto import ROOT, BUILD, bridge_checks, test, generated_signatures, PINS

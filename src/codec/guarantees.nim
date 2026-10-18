@@ -2,7 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 C.2 guarantees: canonical reports, E4 slots and two/three E2-indexed credentials.
-## Reports remain immutable owned snapshots; signatures are opaque and state eligibility is external.
+## Reports remain immutable owned snapshots; signatures are opaque and state eligibility is
+## external.
+##
+## Exposes guarantee credentials, immutable guarantee collections, single/collection codecs and
+## checked report access.
+
 import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_report, report_owned, owned, assurances]
 

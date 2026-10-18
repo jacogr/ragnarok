@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Execute every pinned tiny/full disputes STF case natively; Python only transports source bytes/answers.
+## Execute every pinned tiny/full disputes STF case natively; Python only transports source
+## bytes/answers.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[disputes, store]
 import ../../../src/codec/[disputes, state_disputes, state_availability, state_safrole,

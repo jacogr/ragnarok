@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent full composition equations over exact chapter extents and typed service fields."""
+"""Independent full composition equations over exact chapter extents and typed service fields.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import random
 from test_codec import reference_encode as natural

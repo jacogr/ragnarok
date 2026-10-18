@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal optional assignment composition and independent guarantee/registration time checks."""
+"""Literal optional assignment composition and independent guarantee/registration time checks.
+
+Exposes AvailabilityHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from state_availability_oracle import wire,encode,decode,record,frame_wire,MAX
 

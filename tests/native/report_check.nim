@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Verify complete report bytes and independently supplied guarantee credentials without timing code.
+## Verify complete report bytes and independently supplied guarantee credentials without timing
+## code.
+##
+## Provides a command-line probe for report decoding and guarantee credential verification,
+## emitting observations for independent fixture checks.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
 import ../../src/codec/[composite, work_report]

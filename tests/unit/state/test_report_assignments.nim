@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published exact C(10) projections plus post-assurance ordering, captured time, budgets and ownership boundaries.
+## Published exact C(10) projections plus post-assurance ordering, captured time, budgets and
+## ownership boundaries.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../../src/state/[report_assignments, guarantee_credentials, availability]
 import ../../../src/codec/[bounded, guarantees, assurances, state_safrole, disputes, header,

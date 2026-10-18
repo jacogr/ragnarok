@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Storage semantics and ownership tests; published transition-map replay is a separate increment.
+## Storage semantics and ownership tests; published transition-map replay is a separate
+## increment.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/state/store
 import ../../../src/codec/[state_trie, state_layout, bounded]

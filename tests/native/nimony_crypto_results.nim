@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated default/failed crypto payload reads must stop at the success contract before using bytes or owners.
+## Isolated default/failed crypto payload reads must stop at the success contract before using
+## bytes or owners.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/crypto/primitives
 # Fault injection exists only in the separately linked test observer.

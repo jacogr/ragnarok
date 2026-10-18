@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal deposit, invariant, branch and tiny-payload anchors for the namespace review."""
+"""Literal deposit, invariant, branch and tiny-payload anchors for the namespace review.
+
+Exposes RequestNamespaceHarness for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import unittest
 from dataclasses import replace
 from request_namespace_oracle import Account, footprint, threshold, local_checks, fresh_solicit, witnesses, U32, U64, SOLICIT_GAS

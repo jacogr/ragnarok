@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Execute every Safrole substep from actual pinned parent chapters and signed headers, with atomic rollback.
+## Execute every Safrole substep from actual pinned parent chapters and signed headers, with
+## atomic rollback.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[safrole_transition, store, validator_state, ticket_admission,
   sealer_schedule, safrole_markers, safrole_authentication, entropy]

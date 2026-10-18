@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Isolated actual/default account result reads require the exact success precondition.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_accounts
 let useDefault = paramStr(2) == "default"

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## No default/refused admission or nonselected reason can expose block/state/progress.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[block_admission, safrole_transition, store]
 import ../../src/codec/[block_codec, header]

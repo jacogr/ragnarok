@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 C.2 header/marker codecs; signatures and state-dependent marker eligibility remain external.
+## GP 0.8.0 C.2 header/marker codecs; signatures and state-dependent marker eligibility remain
+## external.
+##
+## Exposes header and marker source types, explicit optional markers, owned codecs and copied
+## validator/ticket/offender access.
+
 import std/assertions
 import ./[natural, bounded, assurances, tickets]
 

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Signed authored block composition plus unchanged empty-report traces; every verdict belongs to native tests.
+## Signed authored block composition plus unchanged empty-report traces; every verdict belongs
+## to native tests.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, strutils, syncio, sequtils]
 import ../../../src/state/[report_admission, report_assignments, report_policy, report_anchors,
   report_packages, guarantee_credentials, block_transition, block_admission, store,

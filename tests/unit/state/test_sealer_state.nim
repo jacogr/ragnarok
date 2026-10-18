@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published schedule pipelines, bounded atomic C(4) publication and immutable parent/working owners.
+## Published schedule pipelines, bounded atomic C(4) publication and immutable parent/working
+## owners.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[sealer_state, sealer_schedule, ticket_state, ticket_admission, entropy, store]
 import ../../../src/codec/[state_safrole, state_consensus, state_layout, state_trie, tickets, bounded]

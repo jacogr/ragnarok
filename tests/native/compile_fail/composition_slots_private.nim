@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Chapter slots remain private behind nominal chapter accessors.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/state_composition
 let chapters = default(StateChapters)
 discard chapters.slots

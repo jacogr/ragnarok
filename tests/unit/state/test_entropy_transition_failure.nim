@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed-size entropy/time failures preserve both chapters and all retained historical owners.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/[entropy_transition_fixture, arc_evidence]
 import ../../../src/state/[entropy, store]

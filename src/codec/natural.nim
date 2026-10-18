@@ -3,6 +3,9 @@
 
 ## JAM general natural-number codec. See spec/codec.md for the pinned definition.
 ## Allocation-free; input is borrowed only during decode and output is a value.
+##
+## Exposes JamNatural, encode/decode and checked value, consumption and error accessors.
+
 type
   # A protocol natural, kept separate from ordinary integers to require an explicit conversion.
   JamNatural* = distinct uint64

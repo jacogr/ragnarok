@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build the pinned bandersnatch ABI for production and verification with identical source checks."""
+"""Build the pinned bandersnatch ABI for production and verification with identical source checks.
+
+Exposes sources and build_native for pinned Rust bridge preparation shared by development and
+verification.
+"""
 import hashlib
 import json
 import platform

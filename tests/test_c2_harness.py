@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal independent wire/field checks protect the C.2 reference equations."""
+"""Literal independent wire/field checks protect the C.2 reference equations.
+
+Exposes C2Harness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from c2_oracle import BROAD,MAX,example,wire,decode,encode
 

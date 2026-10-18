@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authorization/store publication failures use only the existing test-owned crypto observer.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../support/[authorization_transition_fixture, arc_evidence]
 import ../../../src/state/[authorization, store]

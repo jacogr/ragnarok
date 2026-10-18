@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Failed/default header results and absent marker alternatives reject invalid application access.
+## Failed/default header results and absent marker alternatives reject invalid application
+## access.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[cmdline, syncio]
 import ../../src/codec/[header, bounded, assurances]
 let useDefault = paramStr(2) == "default"

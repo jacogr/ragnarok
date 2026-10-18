@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted fixed entropy/time fixtures use separate nominal state and VRF-output domains.
+##
+## Exposes entropyWords and re-exports state entropy/time domains and EpochSlots for test callers.
+
 import ../../src/codec/state_safrole
 from ../../src/codec/header import EpochSlots
 export state_safrole, EpochSlots

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Tagged shape/result guards, fixed scope copies and explicit request-namespace overlap evidence.
+## Tagged shape/result guards, fixed scope copies and explicit request-namespace overlap
+## evidence.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[state_requests, state_service_values, state_trie, bounded]
 

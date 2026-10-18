@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted batch adapter compares independent logical bits, exact wire prefixes and immutable owner behavior.
+## Trusted batch adapter compares independent logical bits, exact wire prefixes and immutable
+## owner behavior.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/bitstrings
 

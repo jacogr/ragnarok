@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Declares owned X.509 field observations and the certificate parser ABI. Exposes
+// rq_cert_fields for the Nim certificate-policy layer.
+
 #ifndef RQ_CERT_FIELDS_H
 #define RQ_CERT_FIELDS_H
 #include <stddef.h>

@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check compiler rejection registration and report completeness."""
+"""Check compiler rejection registration and report completeness.
+
+Exposes VerificationGuards for unittest discovery; test methods exercise the stated contracts.
+"""
 import ast
 from pathlib import Path
 import sys

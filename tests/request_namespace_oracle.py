@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Test-only local account/solicit witnesses for pinned GP 0.8.0 namespace ambiguity; no PVM runtime."""
+"""Test-only local account/solicit witnesses for pinned GP 0.8.0 namespace ambiguity; no PVM runtime.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 from dataclasses import dataclass, replace
 import hashlib
 from state_requests_oracle import key as request_key

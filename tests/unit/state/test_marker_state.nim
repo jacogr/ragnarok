@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Structurally decoded header markers bind retained parent and staged state without writes or hashing.
+## Structurally decoded header markers bind retained parent and staged state without writes or
+## hashing.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[safrole_markers, marker_state, store]
 import ../../../src/codec/[state_safrole, state_consensus, state_layout, state_trie, header, bounded]

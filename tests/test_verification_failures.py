@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check runtime family budgets, rejection verdicts and summary scope."""
+"""Check runtime family budgets, rejection verdicts and summary scope.
+
+Exposes VerificationFailures for unittest discovery; test methods exercise the stated contracts.
+"""
 from pathlib import Path
 import sys
 import unittest

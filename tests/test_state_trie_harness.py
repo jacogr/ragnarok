@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal topology and boundary checks protect the independent trie reference itself."""
+"""Literal topology and boundary checks protect the independent trie reference itself.
+
+Exposes StateTrieHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from state_trie_oracle import tree,reference,MAX
 from state_layout_oracle import digest,leaf,branch

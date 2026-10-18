@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Declares the raw-byte Blake2b-256, Keccak-256 and Ed25519 C ABI. Exposes bounded
+// hash/sign/verify operations and explicit seed wiping for the Nim primitive layer.
+
 #ifndef RAGNAROK_CRYPTO_PRIMITIVE_BRIDGE_H
 #define RAGNAROK_CRYPTO_PRIMITIVE_BRIDGE_H
 #include <stddef.h>

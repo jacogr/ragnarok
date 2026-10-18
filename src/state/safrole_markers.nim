@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 safrole.tex epochmarker and winningticketsmarker: state-derived immutable header markers.
+## GP 0.8.0 safrole.tex epochmarker and winningticketsmarker: state-derived immutable header
+## markers.
+##
+## Exposes deriveSafroleMarkers/validateSafroleMarkers and checked epoch/winners marker access.
+
 import ../codec/[state_safrole, state_consensus, header, bounded, natural, assurances]
 
 type

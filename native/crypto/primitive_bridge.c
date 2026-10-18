@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Implements the synchronous raw-byte crypto bridge using BoringSSL and XKCP. Exposes the
+// declared hash, Ed25519 and secret-wipe entry points; caller buffers are borrowed only for a
+// call.
+
 #include "primitive_bridge.h"
 #include <openssl/blake2.h>
 #include <openssl/curve25519.h>

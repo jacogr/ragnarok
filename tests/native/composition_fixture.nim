@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-only literal chapter fixture transport shared by independent ownership/guard binaries.
+##
+## Provides shared fixture-loading helpers to test binaries via include; expected chapter bytes
+## come from external fixtures.
+
 import std/[assertions, strutils, syncio, parseutils, cmdline]
 
 ## Read sixteen externally authored hex lines; setup failures cannot count as result contract rejections.

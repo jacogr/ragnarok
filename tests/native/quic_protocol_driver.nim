@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted batch transport for the independent identity/framing oracle; all validation remains production Nim.
+## Trusted batch transport for the independent identity/framing oracle; all validation remains
+## production Nim.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
 import ../../src/quic/protocol

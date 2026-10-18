@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 safrole.tex, The Extrinsic and Tickets: authenticate and admit a complete ticket batch.
-## Input C(4) already has posterior pending/root; entropy2 is posterior entropy[2]. No store writes or schedules.
+## GP 0.8.0 safrole.tex, The Extrinsic and Tickets: authenticate and admit a complete ticket
+## batch. Input C(4) already has posterior pending/root; entropy2 is posterior entropy[2]. No
+## store writes or schedules.
+##
+## Exposes admitSafroleTickets and checked immutable admission results.
+
 import ../codec/[state_safrole, state_consensus, tickets, bounded, assurances]
 import ../bandersnatch/bandersnatch
 

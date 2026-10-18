@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-import ../../support/arc_evidence
 ## Exercise the production UDP/readiness adapter without a TLS engine or compiler/runtime hooks.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
+import ../../support/arc_evidence
 import std/[assertions, syncio, monotimes, times, oserrors]
 import std/posix/posix
 import ../../../src/quic/io
