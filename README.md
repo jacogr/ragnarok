@@ -61,7 +61,7 @@ Generated builds, fixture keys and logs stay under ignored
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 
-For all 95 native application suites, use `make unit`. This prepares
+For all 96 native application suites, use `make unit`. This prepares
 the pinned crypto/QUIC libraries and generated fixtures. See
 [native test migration](docs/testing.md) for coverage and retained Python responsibilities.
 
@@ -92,6 +92,10 @@ The proof peer (`server`, `client` and retained `mesh`) supports an opt-in JIP-3
 periodic peer/status observations, incoming/outgoing handshake outcomes and observed disconnections,
 with bounded nonblocking TCP delivery and reconnects.
 See [telemetry usage, scope and verification](spec/telemetry.md).
+
+The proof peer also supports an opt-in WebSocket JSON-RPC endpoint: append `--rpc-port 19800`
+and connect to `ws://127.0.0.1:19800/`. The first method is `ragnarok_clientInfo`; live-chain
+JIP-2 methods and subscriptions remain unavailable. See [RPC scope and usage](spec/rpc.md).
 
 ## License
 

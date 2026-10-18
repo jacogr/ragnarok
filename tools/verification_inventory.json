@@ -1,6 +1,7 @@
 {
   "UNIT_SUITES": [
     "pvm_registers",
+    "rpc",
     "pvm_machine",
     "pvm_program",
     "telemetry",

@@ -1,5 +1,6 @@
 {
   "pvm_registers": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
+  "rpc": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "pvm_machine": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "pvm_program": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "telemetry": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},

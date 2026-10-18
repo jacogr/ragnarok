@@ -23,7 +23,7 @@ class VerificationGuards(unittest.TestCase):
             'schemas': ('unsupported_collection_scalar', 'negative_collection_width',
                         'wide_collection_width', 'scalar_collection_negative_width',
                         'scalar_collection_wide_width'),
-            'ownership_compile': ('quic_io_endpoint_copy', 'telemetry_client_copy', 'offload_pool_copy'),
+            'ownership_compile': ('quic_io_endpoint_copy', 'telemetry_client_copy', 'rpc_server_copy', 'offload_pool_copy'),
         }
         registered = [name for cases in (*registries.values(), *specialized.values()) for name in cases]
         actual = [path.stem for path in (ROOT/'tests/native/compile_fail').glob('*.nim')]

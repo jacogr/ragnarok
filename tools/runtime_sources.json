@@ -1,4 +1,9 @@
 [
+  "tests/rpc_checks.py",
+  "tests/native/compile_fail/rpc_server_copy.nim",
+  "src/rpc/wire.nim",
+  "src/rpc/protocol.nim",
+  "src/rpc/server.nim",
   ".github/workflows/linux.yml",
   "Makefile",
   "native/bandersnatch/Cargo.lock",
