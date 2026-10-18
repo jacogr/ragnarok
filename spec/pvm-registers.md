@@ -84,8 +84,9 @@ must fail at the exact success-access contract.
 
 ## Remaining execution work
 
-Next bounded increment: the pinned basic-block gas cost model, with independent
-pipeline/dependency witnesses. Only then compose instruction stepping, control flow
-and memory operations with exact exceptional-state ordering. The wrapping memory
+The [basic-block gas cost model](pvm-gas.md) now has independent pipeline/dependency
+witnesses and an explicit negative-target specification gate. Next, compose block
+charging and register-only stepping with exact exceptional-state ordering; control
+flow and memory-instruction integration follow separately. The wrapping memory
 ambiguity in `pvm-machine.md` remains an explicit gate. Standard initialization,
 host calls and complete JAM invocation remain unimplemented.

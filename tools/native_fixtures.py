@@ -258,3 +258,11 @@ def unit_runtime_fixtures(certificates, original, reload):
     wires = tuple((folder/(str(index)+'.bin'), hashlib.sha256((folder/(str(index)+'.bin')).read_bytes()).hexdigest())
                   for folder in (original, reload) for index in range(8))
     return {'quic_transport': (None, transport, cert_files), 'quic_integration': (None, integration, wires)}
+
+
+# Generate gas inputs under the caller's ignored build directory from pinned submodule witnesses.
+def unit_pvm_gas_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from pvm_gas_reference import prepare
+    path, evidence = prepare(folder)
+    return {'pvm_gas': ('RAGNAROK_PVM_GAS', path, ((path, evidence['fixture_sha256']),))}, evidence
