@@ -340,6 +340,66 @@ let activityBaseline = getOccupiedMem()
 for iteration in 0..<100: retireActivityReply() # Warm repeated calls must not retain decoder snapshots.
 assert getOccupiedMem() <= activityBaseline + 256
 
+# Service discovery excludes malformed accounts and orphan keys already present in the frozen map.
+let listCall = "{\"jsonrpc\":\"2.0\",\"method\":\"listServices\",\"params\":[\"" & genesisHash &
+    "\"],\"id\":1}"
+let listAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[42,4294967295]}"
+assert respond(listCall, serviceInfo) == listAnswer
+assert respond(listCall, withGenesis) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[]}"
+assert "\"code\":1" in respond(listCall, info)
+assert "\"code\":1" in respond(listCall.replace(genesisHash, repeat("A", 43) & "="), serviceInfo)
+assert respond(listCall.replace(",\"id\":1", ""), serviceInfo) == ""
+assert "\"listServices\"" in respond(request, serviceInfo)
+assert respond("[" & listCall & "," & listCall & "]", serviceInfo) == "[" & listAnswer & "," &
+    listAnswer & "]"
+for invalid in [listCall.replace(genesisHash, "bad"), listCall.replace("],", ",0],"),
+    listCall.replace("[\"" & genesisHash & "\"]", "[]"), listCall.replace("[\"" & genesisHash &
+        "\"]", "{}")]:
+  assert "\"code\":-32602" in respond(invalid, serviceInfo) # Exactly one canonical hash is mandatory.
+# Independently construct literal C(255, service) keys without the production constructor.
+proc accountHex(service: uint32): string =
+  result = "ff"
+  for shift in 0..<4: result.add(toHex(int64((service shr (shift * 8)) and 255), 2) & "00") # E4 interleaving.
+  result.add(repeat("00", 22)) # Complete all fixed zero positions of the 31-byte key.
+# Capture one map from supplied account JSON; source buffers may be edited/dropped afterward.
+proc discoveryInfo(accounts: string): ClientInfo =
+  let state = genesisState[0..^2] & accounts & "}"
+  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value))
+var accounts = ""
+for service in [256'u32, 255'u32, 0'u32, 1'u32]: # Deliberately neither numeric nor serialized-key order.
+  accounts.add(",\"" & accountHex(service) & "\":\"" & repeat("00", 89) & "\"")
+# Exact key matching rejects near-account keys; exact metadata matching rejects unsupported/extended values.
+accounts.add(",\"" & accountHex(2)[0..^3] & "01\":\"" & repeat("00", 89) & "\"")
+accounts.add(",\"" & accountHex(3) & "\":\"01" & repeat("00", 88) & "\"")
+accounts.add(",\"" & accountHex(4) & "\":\"" & repeat("00", 90) & "\"")
+let discovered = discoveryInfo(accounts)
+accounts = "" # The retained scalar list cannot alias mutable source text.
+assert respond(listCall, discovered) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[0,1,255,256]}"
+assert discovered.genesis.value.serviceCount == 4
+var copiedService = discovered.genesis.value.serviceAt(ServiceListIndex(0))
+copiedService = ServiceIndex(123)
+assert uint32(discovered.genesis.value.serviceAt(ServiceListIndex(0))) == 0
+# A large valid map proves list output is bounded without silently returning an arbitrary prefix.
+var manyAccounts = ""
+var mediumServices = default(ClientInfo)
+for index in 0..<6000:
+  manyAccounts.add(",\"" & accountHex(4_000_000_000'u32 + uint32(index)) & "\":\"" & repeat("00",
+      89) & "\"")
+  if index == 3999: mediumServices = discoveryInfo(
+      manyAccounts) # Retain a list that fits alone but not twice.
+let mediumBatch = respond("[" & listCall & "," & listCall & "]", mediumServices)
+assert mediumBatch.len <= 65535 and "\"result\":[4000000000," in mediumBatch
+assert "\"code\":0" in mediumBatch and mediumBatch.split("\"id\":").len == 3
+let manyServices = discoveryInfo(manyAccounts)
+assert manyServices.genesis.error == GenesisError.None
+assert manyServices.genesis.value.serviceCount == 6000
+assert "\"code\":0" in respond(listCall, manyServices) # 66,001 result bytes exceed the whole frame budget.
+# Mixed blobs and discovery share one aggregate response budget.
+let listBatch = "[" & repeat(largeCall & ",", 2) & listCall & "]"
+let listBatchReply = respond(listBatch, serviceInfo)
+assert listBatchReply.len <= 65535 and "\"result\":[42,4294967295]" in listBatchReply
+
 # Disabled and default native owners are safe to tick, close repeatedly and destroy.
 var server = default(Server)
 assert server.start(0, "server")

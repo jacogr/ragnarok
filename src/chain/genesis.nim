@@ -2,15 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable configured genesis view, rooted with the existing complete-map store.
-## Exposes GenesisResult, guarded snapshot accessors, read-only lookup and captureGenesis. The configured map is
-## trusted as complete; structural validation does not establish consensus or validate every chapter.
+## Exposes GenesisResult, guarded snapshot accessors, read-only lookup, serviceCount/serviceAt
+## and captureGenesis. The configured map is trusted as complete; structural validation does not
+## establish consensus or validate every chapter.
 
+import std/algorithm
 import ./parameters
-import ../codec/[header, assurances, bounded, state_layout, state_trie, state_safrole]
+import ../codec/[header, assurances, bounded, state_layout, state_trie, state_safrole, state_accounts]
 import ../state/store
 import ../crypto/primitives
 
 type
+  ## An ordinal in the retained service list, distinct from a service ID or state key.
+  ServiceListIndex* = distinct int
   ## Genesis identity is a full sealed-header hash, never a state root.
   BlockHash* = distinct array[32, byte]
   ## Private immutable retained state with copied descriptor fields; no mutable store escapes.
@@ -20,6 +24,7 @@ type
     identity: BlockHash
     timeslot: uint32
     corePopulation: CoreCount
+    services: seq[ServiceIndex] # Private sorted IDs captured with the same immutable state.
   ## Absent configuration differs from a supplied but invalid genesis pair.
   GenesisError* {.pure.} = enum
     Unavailable, None, Invalid
@@ -46,6 +51,37 @@ func blockHash*(value: Genesis): BlockHash {.requires: value.ready.} = value.ide
 func cores*(value: Genesis): CoreCount {.requires: value.ready.} = value.corePopulation
 ## Return the copied genesis timeslot.
 func slot*(value: Genesis): uint32 {.requires: value.ready.} = value.timeslot
+## Return the bounded number of structurally valid service accounts discovered at capture.
+func serviceCount*(value: Genesis): int {.requires: value.ready.} = value.services.len
+## Return a copied ID by owner-bound ordinal; no mutable sequence or detached view escapes.
+func serviceAt*(value: Genesis, index: ServiceListIndex): ServiceIndex {.requires: value.ready and
+    int(index) >= 0 and int(index) < value.services.len.} = value.services[int(index)]
+
+## Sort numeric IDs rather than the little-endian interleaved serialized account keys.
+proc compareService(left, right: ServiceIndex): int =
+  if uint32(left) < uint32(right): return -1 # Smaller numeric IDs precede larger IDs.
+  if uint32(left) > uint32(right): return 1 # Preserve the complete unsigned domain.
+  0
+
+## Discover only exact C(255, service) keys with complete supported metadata in a validated bounded map.
+## Borrow input solely during capture; the returned scalar sequence owns no caller aliases.
+proc discoverServices(entries: openArray[StateEntry]): seq[ServiceIndex] =
+  result = @[]
+  for entry in entries:
+    # Hash-derived storage keys cannot be classified as accounts from one prefix byte alone.
+    let key = array[31, byte](entry.key)
+    if key[0] != 255 or entry.value.len != ServiceMetadataBytes: continue
+    var service = 0'u32
+    for i in 0..<4: # C(255, service) interleaves four little-endian ID octets at odd offsets.
+      service = service or (uint32(key[1 + i * 2]) shl (8 * i))
+    if key != array[31, byte](chapterServiceKey(StateChapter(255), ServiceIndex(service))):
+      continue # Every fixed zero octet must match the maintained key constructor too.
+    let metadata = decodeServiceMetadata(entry.value, ByteLimit(ServiceMetadataBytes))
+    if metadata.error != ServiceMetadataError.None:
+      continue # Best-effort discovery excludes malformed or unsupported records.
+    result.add(ServiceIndex(service))
+  result.sort(compareService) # The validated map already rejects duplicate keys and therefore IDs.
+
 ## Read the computed posterior root of the supplied genesis map, not the header's prior-state field.
 proc stateRoot*(value: Genesis): StateRoot {.requires: value.ready.} = value.state.commitment.root
 
@@ -97,4 +133,4 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
   GenesisResult(status: GenesisError.None, completed: Genesis(ready: true, state: saved.value,
     identity: BlockHash(array[32, byte](hashed.value)), corePopulation: CoreCount(cores),
-        timeslot: uint32(info.value.unsigned.slot)))
+        timeslot: uint32(info.value.unsigned.slot), services: discoverServices(entries)))
