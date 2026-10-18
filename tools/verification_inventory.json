@@ -100,7 +100,8 @@
     "report_admission",
     "report_transition",
     "accumulation_queue",
-    "accumulation_operands"
+    "accumulation_operands",
+    "accumulation_inputs"
   ],
   "PRIVATE": {
     "accumulation_operand_result_private": "completed",
@@ -793,7 +794,13 @@
     "report_transition_retag_private": "status",
     "report_transition_stage_private": "stageReason",
     "report_transition_report_private": "reportReason",
-    "report_transition_publication_private": "publicationReason"
+    "report_transition_publication_private": "publicationReason",
+    "accumulation_input_result_private": "completed",
+    "accumulation_input_retag_private": "status",
+    "accumulation_input_owner_private": "data",
+    "accumulation_input_kind_private": "inputKind",
+    "accumulation_input_operand_private": "operandValue",
+    "accumulation_input_transfer_private": "transferValue"
   },
   "NOMINAL": {
     "accumulation_operand_raw_prefix": "[2] expected: AccumulationReportPrefix but got: uint64",
@@ -909,7 +916,9 @@
     "bs_output_as_public": "got: BsOutput but wanted: BsPublicKey",
     "entropy_word_as_input": "StateEntropyWord",
     "authorization_core_as_slot": "AuthorizationCoreIndex",
-    "history_accumulation_as_parent": "AccumulationRoot"
+    "history_accumulation_as_parent": "AccumulationRoot",
+    "accumulation_input_service_as_group": "[2] expected: InvocationServiceIndex but got: ServiceIndex",
+    "accumulation_input_group_as_input": "[3] expected: InvocationInputIndex but got: OperandServiceIndex"
   },
   "CONTRACTS": {
     "rpc_parameters_known_failure": "decoded.success",
@@ -1036,7 +1045,9 @@
     "raw_work_variant": ["encodeWorkBorrowed(", "[1] expected: WorkOutput but got: uint8"],
     "entropy_word_as_input": ["advanceEntropyTime(", "[4] expected: EntropyInput but got: StateEntropyWord"],
     "history_accumulation_as_parent": ["correctHistoryParent(", "[2] expected: HistoryStateRoot but got: AccumulationRoot"],
-    "authorization_core_as_slot": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"]
+    "authorization_core_as_slot": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"],
+    "accumulation_input_service_as_group": ["invocationServiceAt(", "[2] expected: InvocationServiceIndex but got: ServiceIndex"],
+    "accumulation_input_group_as_input": ["invocationInputAt(", "[3] expected: InvocationInputIndex but got: OperandServiceIndex"]
   },
   "BS_MEMBERS": [
     "key-short",
@@ -1125,7 +1136,8 @@
     "report_admission": 10,
     "report_transition": 6,
     "accumulation_queue": 7,
-    "accumulation_operands": 9
+    "accumulation_operands": 9,
+    "accumulation_inputs": 8
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1226,7 +1238,8 @@
     "report_admission": "report_admission_arc_release",
     "report_transition": "report_transition_arc_release",
     "accumulation_queue": "accumulation_queue_arc_release",
-    "accumulation_operands": "accumulation_operands_arc_release"
+    "accumulation_operands": "accumulation_operands_arc_release",
+    "accumulation_inputs": "accumulation_inputs_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1302,6 +1315,7 @@
     "report_admission": "observer",
     "report_transition": "observer",
     "accumulation_queue": "observer",
-    "accumulation_operands": "observer"
+    "accumulation_operands": "observer",
+    "accumulation_inputs": "observer"
   }
 }

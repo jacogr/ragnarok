@@ -99,8 +99,11 @@ parent C(14)/C(15) from completed report admission, then computes dependency rem
 ready waves without writes. See [the queue contract](../spec/accumulation-queue.md).
 `src/state/accumulation_operands.nim` now prepares report-derived per-service C.2 operands from
 an explicit priority prefix, preserving inner order and bound source provenance. See
-[the operand preparation contract](../spec/accumulation-operands.md). Transfer/privilege invocation
-context is next; PVM execution and full block execution remain later work.
+[the operand preparation contract](../spec/accumulation-operands.md).
+`src/state/accumulation_inputs.nim` adds explicit round transfers and free allowances, preserving
+transfer-before-operand order and checked service gas sums; see
+[the invocation-input contract](../spec/accumulation-inputs.md). Initial gas-bounded round planning
+and parent privilege binding come next; PVM execution and full block execution remain later work.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See

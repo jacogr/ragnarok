@@ -1,0 +1,96 @@
+{
+  "source": "tests/native/accumulation_input_results.nim",
+  "build_name": "accumulation-input-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-inputs-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation default extraction guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "name": "accumulation-inputs-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation refused extraction guard",
+      "identity": {
+        "origin": "refused"
+      }
+    },
+    {
+      "arguments": [
+        "count"
+      ],
+      "name": "accumulation-inputs-count",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation count extraction guard",
+      "identity": {
+        "origin": "count"
+      }
+    },
+    {
+      "arguments": [
+        "service"
+      ],
+      "name": "accumulation-inputs-service",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation service extraction guard",
+      "identity": {
+        "origin": "service"
+      }
+    },
+    {
+      "arguments": [
+        "input"
+      ],
+      "name": "accumulation-inputs-input",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation input extraction guard",
+      "identity": {
+        "origin": "input"
+      }
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "name": "accumulation-inputs-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation invocation source extraction guard",
+      "identity": {
+        "origin": "source"
+      }
+    },
+    {
+      "arguments": [
+        "transfer"
+      ],
+      "name": "accumulation-inputs-transfer",
+      "diagnostic": "input.inputKind == Transfer",
+      "description": "Accumulation invocation transfer extraction guard",
+      "identity": {
+        "origin": "transfer"
+      }
+    },
+    {
+      "arguments": [
+        "operand"
+      ],
+      "name": "accumulation-inputs-operand",
+      "diagnostic": "input.inputKind == Operand",
+      "description": "Accumulation invocation operand extraction guard",
+      "identity": {
+        "origin": "operand"
+      }
+    }
+  ]
+}

@@ -91,9 +91,9 @@ Five privacy, three nominal-domain compiler probes and nine strict runtime resul
 protect the new boundaries. Prepared child payload extraction remains under the existing C.2
 owner contracts.
 
-## Next bounded work
+## Invocation context and next bounded work
 
-Complete per-service invocation-input preparation: retain/filter deferred transfers before report
-operands, include always-accumulate-only services, and derive the corresponding gas allowances
-from explicit transfer and privilege context. Keep PVM execution, gas-dependent sequential rounds
-and posterior state integration separate until actual outcomes are available.
+[Invocation-input preparation](accumulation-inputs.md) now adds explicit deferred transfers before
+report operands, always-accumulate-only services and checked per-service gas sums. That layer retains
+this projection and its selected prefix. Initial gas-bounded round planning and parent privilege
+binding come next; PVM execution and posterior state integration remain separate.

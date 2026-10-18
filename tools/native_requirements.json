@@ -99,5 +99,6 @@
   "report_admission": {"directory": "state", "libraries": ["bandersnatch_observer", "bandersnatch", "observer"], "includes": ["crypto", "bandersnatch"], "observers": ["verify", "setup_new", "setup_free", "commit", "ring_verify"], "defines": [], "prepared": true},
   "report_transition": {"directory": "state", "libraries": ["bandersnatch_observer", "bandersnatch", "observer"], "includes": ["crypto", "bandersnatch"], "observers": ["verify", "setup_new", "setup_free", "commit", "ring_verify"], "defines": [], "prepared": true},
   "accumulation_queue": {"directory": "state", "libraries": ["bandersnatch_observer", "bandersnatch", "observer"], "includes": ["crypto", "bandersnatch"], "observers": ["verify", "setup_new", "setup_free", "commit", "ring_verify"], "defines": [], "prepared": true},
-  "accumulation_operands": {"directory": "state", "libraries": ["bandersnatch_observer", "bandersnatch", "observer"], "includes": ["crypto", "bandersnatch"], "observers": ["verify", "setup_new", "setup_free", "commit", "ring_verify"], "defines": [], "prepared": true}
+  "accumulation_operands": {"directory": "state", "libraries": ["bandersnatch_observer", "bandersnatch", "observer"], "includes": ["crypto", "bandersnatch"], "observers": ["verify", "setup_new", "setup_free", "commit", "ring_verify"], "defines": [], "prepared": true},
+  "accumulation_inputs": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true}
 }

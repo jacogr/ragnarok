@@ -93,6 +93,15 @@ def unit_accumulation_operands_fixture(folder):
     return {'accumulation_operands': fixture}, evidence
 
 
+# Prepare independent invocation contexts while retaining the original report/prefix fixture identities.
+def unit_accumulation_inputs_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from accumulation_input_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_ACCUMULATION_INPUTS', path, ((path, evidence['fixture_sha256']),))
+    return {'accumulation_inputs': fixture}, evidence
+
+
 # Prepare independent disputes inputs and expose their hashes to the consuming native suites.
 def unit_disputes_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
@@ -176,6 +185,8 @@ def unit_sealer_fixture(folder):
     fixtures.update(transition_fixtures)
     commitment_fixtures, commitment_evidence = unit_commitment_fixture(folder)
     fixtures.update(commitment_fixtures)
+    input_fixtures, input_evidence = unit_accumulation_inputs_fixture(folder)
+    fixtures.update(input_fixtures)
     operand_fixtures, operand_evidence = unit_accumulation_operands_fixture(folder)
     fixtures.update(operand_fixtures)
     queue_fixtures, queue_evidence = unit_accumulation_queue_fixture(folder)
@@ -209,6 +220,7 @@ def unit_sealer_fixture(folder):
     evidence['admission'] = admission_evidence
     evidence['accumulation_queue'] = queue_evidence
     evidence['accumulation_operands'] = operand_evidence
+    evidence['accumulation_inputs'] = input_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence
     evidence['authentication'] = authentication_evidence

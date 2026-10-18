@@ -338,5 +338,17 @@
   "src/pvm/gas.nim",
   "tests/pvm_gas_reference.py",
   "tests/test_pvm_gas_reference.py",
-  "tests/native/pvm_gas_results.nim"
+  "tests/native/pvm_gas_results.nim",
+  "src/state/accumulation_inputs.nim",
+  "tests/accumulation_input_fixtures.py",
+  "tests/test_accumulation_input_harness.py",
+  "tests/native/accumulation_input_results.nim",
+  "tests/native/compile_fail/accumulation_input_group_as_input.nim",
+  "tests/native/compile_fail/accumulation_input_kind_private.nim",
+  "tests/native/compile_fail/accumulation_input_operand_private.nim",
+  "tests/native/compile_fail/accumulation_input_owner_private.nim",
+  "tests/native/compile_fail/accumulation_input_result_private.nim",
+  "tests/native/compile_fail/accumulation_input_retag_private.nim",
+  "tests/native/compile_fail/accumulation_input_service_as_group.nim",
+  "tests/native/compile_fail/accumulation_input_transfer_private.nim"
 ]
