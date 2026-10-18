@@ -311,7 +311,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
       GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"statistics\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -344,8 +344,8 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if not hasId: return "" # This read-only dispatch has no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
-  if methodName in ["serviceData", "serviceValue", "servicePreimage"]:
-    let count = if methodName == "serviceData": 2 else: 3
+  if methodName in ["serviceData", "serviceValue", "servicePreimage", "serviceRequest"]:
+    let count = if methodName == "serviceData": 2 elif methodName == "serviceRequest": 4 else: 3
     if parameters < 0: return error(id, -32602, "Expected service query arguments") # Hash and service are mandatory.
     let first = parameters + 1
     if values[parameters].next != first + count: return error(id, -32602,
@@ -355,13 +355,17 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     var service = 0'u32
     if not serviceNumber(values[first + 1], service): return error(id, -32602, "Expected uint32 service ID")
     var key: seq[byte] = @[]
-    if count == 3:
+    if count >= 3:
       # Storage keys are bounded arbitrary blobs; preimage identities have exactly 32 bytes.
       if values[first + 2].kind != stringValue: return error(id, -32602, "Expected Base64 key or hash")
-      if methodName == "servicePreimage":
+      if methodName in ["servicePreimage", "serviceRequest"]:
         if not validHash(values[first + 2].text): return error(id, -32602, "Expected padded Base64 preimage hash")
       if not decodeBlob(values[first + 2].text, MaxServiceKeyBytes, key):
         return error(id, -32602, "Invalid or oversized Base64 key") # Bound hashing and decoder scratch.
+    var length = 0'u32
+    if methodName == "serviceRequest":
+      if not serviceNumber(values[first + 3], length):
+        return error(id, -32602, "Expected uint32 preimage length") # Parse without narrowing or allocation based on length.
     let hash = values[first].text
     if info.genesis.error != GenesisError.None or hash != base64.encode(array[32, byte](
         info.genesis.value.blockHash)):
@@ -369,6 +373,29 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
           ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" & quote(hash) &
           "}}" # Unknown blocks cannot yield a false absence verdict.
     let view = info.genesis.value
+    if methodName == "serviceRequest":
+      var identity = default(array[32, byte])
+      for j in 0..<32: identity[j] = key[j] # Canonical hash width was validated above.
+      let request = services.serviceRequest(view, ServiceIndex(service), ServicePreimageHash(
+          identity), RequestLength(length))
+      if request.error == ServiceReadError.Missing:
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
+            ",\"result\":null}" # Absence differs from an outstanding empty history.
+      if request.error == ServiceReadError.AmbiguousNamespace:
+        return error(id, 0, "Request namespace ambiguous under pinned GP 0.8.0") # Do not interpret storage/preimage bytes as slots.
+      if request.error != ServiceReadError.None:
+        return error(id, 0, "Invalid or unreadable service request") # Malformed state never becomes null or [].
+      let history = request.value
+      var slots = ""
+      case history.state
+      of RequestState.Requested: discard # A requested but unprovided preimage has no timestamps.
+      of RequestState.Available: slots = $uint32(history.since) # Supplied-at slot.
+      of RequestState.Unavailable:
+        slots = $uint32(history.availableFrom) & "," & $uint32(history.unavailableFrom) # Supplied then forgotten.
+      of RequestState.Reavailable:
+        slots = $uint32(history.originalFrom) & "," & $uint32(history.removedAt) & "," & $uint32(
+            history.restoredAt) # Requested again.
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":[" & slots & "]}"
     # Reserve the envelope and exact quoted ID before converting the remaining budget to raw bytes.
     let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
     var found = default(ServiceReadResult)
@@ -390,7 +417,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         "Invalid or unreadable service state") # Do not publish malformed imported state.
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
         found.value.bytes)) & "}"
-  if methodName in ["parent", "stateRoot", "statistics"]:
+  if methodName in ["parent", "stateRoot", "statistics", "listServices"]:
     if parameters < 0: return error(id, -32602, "Expected one header hash") # Hash lookup always needs an argument.
     let argument = parameters + 1
     if values[parameters].next != argument + 1 or values[argument].kind != stringValue:
@@ -401,6 +428,18 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     if methodName != "parent" and info.genesis.error == GenesisError.None:
       let view = info.genesis.value
       if hash == base64.encode(array[32, byte](view.blockHash)):
+        if methodName == "listServices":
+          # Retained scalar IDs are already sorted; never rescan or decode the map per request.
+          var ids = "["
+          let budget = max(0, allowance - id.len - 256)
+          for index in 0..<view.serviceCount:
+            let item = $uint32(view.serviceAt(ServiceListIndex(index)))
+            if ids.len + item.len + 2 > budget:
+              return error(id, 0, ReplyBudgetError) # Reserve comma/closing bracket; never return a partial list.
+            if index > 0: ids.add(',') # The first member needs no separator.
+            ids.add(item)
+          ids.add(']')
+          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & ids & "}"
         if methodName == "statistics":
           # Use the same raw-value and aggregate reply ceilings as service blobs.
           let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))

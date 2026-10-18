@@ -225,6 +225,13 @@ def check_service_queries(connection, expected):
     header = expected['header_hash']
     cases = [
         ('statistics', [header], expected['statistics']),
+        ('listServices', [header], [42, 4294967295]),
+        ('serviceRequest', [header, 42, 'A'*43+'=', 0], []),
+        ('serviceRequest', [header, 42, 'A'*43+'=', 1], [0]),
+        ('serviceRequest', [header, 42, 'A'*43+'=', 2], [1, 4294967295]),
+        ('serviceRequest', [header, 42, 'A'*43+'=', 3], [0, 2147483648, 4294967295]),
+        ('serviceRequest', [header, 42, 'A'*43+'=', 9], None),
+        ('serviceRequest', [header, 42, 'A'*43+'=', 4294967293], []),
         ('serviceData', [header, 42], expected['metadata']),
         ('serviceValue', [header, 42, 'a2V5'], expected['value']),
         ('serviceValue', [header, 42, ''], ''),
@@ -237,6 +244,10 @@ def check_service_queries(connection, expected):
         # Compare the complete decoded JSON envelope, keeping null distinct from an empty Base64 string.
         send(connection, json.dumps(dict(jsonrpc='2.0', method=method, params=params, id=index)))
         assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=index, result=result)
+    for length in (4, 5, 6, 4294967294, 4294967295):
+        # Malformed histories and present colliding namespaces are explicit errors on the live transport too.
+        send(connection, json.dumps(dict(jsonrpc='2.0', method='serviceRequest', params=[header, 42, 'A'*43+'=', length], id=90)))
+        assert json.loads(receive(connection)[1])['error']['code'] == 0
     large = dict(jsonrpc='2.0', method='serviceValue', params=[header, 42, 'bGFyZ2U='], id=100)
     send(connection, json.dumps(large))
     assert base64.b64decode(json.loads(receive(connection)[1])['result']) == b'x' * 32768
