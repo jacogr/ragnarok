@@ -31,6 +31,74 @@ post-accumulation deletion/cancellation, retained ownership, repeated ARC releas
 privacy. Verify exact/one-below resource limits, hash refusal, late batch/root failure rollback and
 preservation of unrelated data. Add native misuse and compiler rejection probes.
 
+## Implementation and phase contract
+
+`src/state/preimages.nim` exposes `admitPreimages(prior, source, limits)` and
+`integratePreimages(state, admitted, slot)`. Admission requires an initialized full-map snapshot and
+a genuine preimage-schema `OwnedFrame`. It reapplies item/per-blob/aggregate payload ceilings even
+when capture used broader limits, proves descriptor extents and E4 request lengths before copying,
+and rejects rather than reorders hostile input. Ordering is numeric service ID followed by raw
+lexicographic blob bytes, including proper-prefix and empty-blob ordering. Neither little-endian
+service wire bytes, compact blob-length framing nor Blake2b digests determine this order.
+
+For each supplied blob, admission derives its Blake2b-256 identity and exact existing E4-length/hash
+request key. Account metadata must be an exact supported record; requests must be exact canonical
+histories. Only an existing account with a present empty history is outstanding. Missing accounts,
+absent requests and valid nonempty histories are `NotRequested`; malformed present records are
+`MalformedState`. Provider refusal is `BackendFailure`, distinct from both protocol rejection and
+local `LimitExceeded`. Whole-chapter/state validation outside the touched accounts is not claimed.
+No new reserved request-length restriction or alternate representation is introduced.
+
+The immutable acyclic `AdmittedPreimages` retains the exact input owner and prior map. It exposes
+copied cardinalities and per-service `ProvisionCount`/`ProvisionBytes` through a nominal
+`ProvisionIndex`, plus retained prior/source handles. Returned counters and copied source bytes
+cannot alter admission. Per-service provided contributions describe the admitted extrinsic, even
+when post-accumulation cancellation makes a blob unnecessary. Existing C(13) is not updated by
+this module: report, accumulation and validator statistics still need their own block-level inputs.
+
+Integration snapshots its explicit working store once and rechecks each admitted request against
+that post-accumulation map. Deleted accounts, missing requests and valid nonempty histories are
+ignored. Still-requested data receives a single Available timestamp at the supplied candidate slot
+and the exact raw preimage value. No account metadata, balances, storage items or unrelated chapters
+change. A malformed later post-state record refuses the whole operation, including earlier staged
+writes. All request/preimage keys, copies and final Merklization complete before the store publishes
+the single batch. Empty or entirely disregarded batches retain the same root without hashing.
+
+The input/prior certificate is not an authenticated whole-block outcome. The caller must supply
+the correct prior state, actual post-accumulation store and candidate slot in the correct pipeline
+phase; distinct snapshots are intentionally permitted. No genuine accumulation/post-state
+certificate is invented while execution remains incomplete. Full-map storage semantics remain
+separate from future light-node partial maps/proofs.
+
+## Verification evidence
+
+`tests/preimage_transition_fixtures.py` hash-checks the sixteen JSON vectors at the unchanged pinned
+revision, serializes their exact raw lookup/request mappings with existing independent test codecs,
+and transports upstream verdicts and provided counters to the native suite. Eight previously unused
+ordering-vector hashes were added within the existing `stf/preimages` pin group. No gitlink, upstream
+revision or dependency source changed, and no upstream generator was executed.
+
+The subsystem schema omits account metadata and other JAM chapters. Test embedding supplies
+synthetic zero metadata solely to establish each published account's presence, plus an unrelated
+opaque entry. Native tests compare every embedded pre/post entry and independently computed
+embedding roots. Those roots are not presented as published complete JAM state roots, and these
+account/provision projections do not claim full C(13) publication or complete block execution.
+
+`tests/unit/state/test_preimage_transition.nim` replays all sixteen cases and adds literal raw-byte
+versus hash/length-prefix ordering, numeric versus little-endian service ordering, duplicate/prefix
+and empty-blob cases, full-width slots/services, exact/one-below local limits and copied-value
+isolation. Missing/nonempty/malformed account/request cases remain distinct. Explicit separate
+post-state maps test account deletion, request cancellation and fulfilled requests; disregarded
+input still contributes to the admitted provision counters. Repeated integration does not overwrite
+an already supplied timestamp.
+
+Hash refusal during content/namespace derivation, request/preimage write preparation and final root
+construction preserves the original store. Write-count, byte and node ceilings and a later malformed
+post-state request also prove all-or-neither publication. Three privacy and two nominal compiler
+probes protect owners/results, statistics ordinals and candidate slots; seven strict runtime probes
+protect default/refused result extraction. A 1,000-cycle native ARC test covers admission,
+publication and duplicate refusal without retaining discarded owners or candidates.
+
 ## Next bounded work
 
 Incoming transfer credit before invocation. Full C(13) assembly and block-level preimage publication

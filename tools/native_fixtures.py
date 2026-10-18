@@ -69,6 +69,15 @@ def unit_admission_fixture(folder):
     return {'block_admission': fixture, 'report_admission': report_fixture, 'report_transition': report_fixture}, evidence
 
 
+# Prepare pin-checked preimage STF account/statistics projections for the native transition suite.
+def unit_preimage_transition_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from preimage_transition_fixtures import prepare
+    path, evidence = prepare(folder)
+    fixture = ('RAGNAROK_PREIMAGE_TRANSITION', path, ((path, evidence['fixture_sha256']),))
+    return {'preimage_transition': fixture}, evidence
+
+
 # Supply the pinned signed-block template to native initial-context assertions without a new oracle.
 def unit_accumulation_context_fixture(folder):
     template = ROOT/'tests/fixtures/state-report.bin'
@@ -229,6 +238,8 @@ def unit_sealer_fixture(folder):
     fixtures.update(transition_fixtures)
     commitment_fixtures, commitment_evidence = unit_commitment_fixture(folder)
     fixtures.update(commitment_fixtures)
+    preimage_fixtures, preimage_evidence = unit_preimage_transition_fixture(folder)
+    fixtures.update(preimage_fixtures)
     context_fixtures, context_evidence = unit_accumulation_context_fixture(folder)
     fixtures.update(context_fixtures)
     invocation_fixtures, invocation_evidence = unit_accumulation_invocation_fixture(folder)
@@ -277,6 +288,7 @@ def unit_sealer_fixture(folder):
     evidence['accumulation_service'] = service_evidence
     evidence['accumulation_invocation'] = invocation_evidence
     evidence['accumulation_context'] = context_evidence
+    evidence['preimage_transition'] = preimage_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence
     evidence['authentication'] = authentication_evidence
