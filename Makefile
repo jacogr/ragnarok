@@ -13,7 +13,7 @@ export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(ope
 export COMPILE_CHECK_JOBS ?= 4
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
-.PHONY: build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -84,6 +84,24 @@ check-python: check-inventory sources
 check-e2e: setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
 
+# CI builds the pristine gitlink with the shared Rust pin and keeps Cargo output under build/.
+telemetry-interop-collector: host-tools rust-tools
+	mkdir -p build/ci
+	$(PYTHON) tools/setup_submodules.py vendor/jamtart 2>&1 | tee build/ci/telemetry-interop-sources.log
+	cargo build --locked --no-default-features --bin tart-backend --manifest-path vendor/jamtart/Cargo.toml --target-dir build/jamtart-reference-target 2>&1 | tee build/ci/telemetry-interop-collector.log
+
+# The same reproducible collector gate is available locally and on every PR/master CI run.
+check-telemetry-interop-ci: check-inventory telemetry-interop-collector
+	$(MAKE) check-telemetry-interop JAMTART="$(CURDIR)/build/jamtart-reference-target/debug/tart-backend" 2>&1 | tee build/ci/telemetry-interop.log
+
+# An explicit external collector is an optional interoperability gate, outside the six self-contained CI groups.
+telemetry-interop-python:
+	@test -n "$(JAMTART)" || { echo 'Set JAMTART to an explicitly built tart-backend binary'; exit 1; }
+	$(PYTHON) -m venv build/telemetry-interop-python
+	build/telemetry-interop-python/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/telemetry-interop-requirements.txt
+check-telemetry-interop: check-inventory telemetry-interop-python build
+	build/telemetry-interop-python/bin/python tools/test_telemetry_interop.py --collector "$(JAMTART)"
+
 # Fixture preparation, exact linking profiles and ARC observations belong to the native runner.
 unit: setup
 	$(PYTHON) tools/native_tests.py
@@ -132,6 +150,8 @@ help:
 	  'make check-failures Run runtime contract/crash probes and positive controls' \
 	  'make check-guards  Run compiler rejection guards' \
 	  'make check-e2e     Run peer/service/resilience/soak/offload scenarios' \
+	  'make check-telemetry-interop-ci  Build the pinned collector and check interoperability' \
+	  'make check-telemetry-interop JAMTART=/path/to/tart-backend  Check an actual collector' \
 	  'make runtime       Alias for make check-unit' \
 	  'make format        Apply pinned Nim and Rust formatters' \
 	  'make format-check  Verify Nim and Rust formatting'

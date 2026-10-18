@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/guarantor_results.nim",
+  "build_name": "guarantor-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "guarantor-default", "diagnostic": "outcome.status == None", "description": "Guarantor result extraction guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "guarantor-error", "diagnostic": "outcome.status == None", "description": "Guarantor result extraction guard", "identity": {"origin": "error"}}
+  ]
+}
