@@ -9,6 +9,7 @@
 
 import std/[assertions, syncio, base64]
 import ../../../src/chain/[services, statistics, beefy, reports]
+from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
 
 # Construct independently masked client frames; test payloads stay within the medium-length format.
@@ -238,15 +239,15 @@ var extracted = readMetadata.value.bytes
 extracted[0] = 99
 assert readMetadata.value.bytes[0] == 0
 
-let header = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
-assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(header) # RFC 6455 section 1.3 known answer.
-assert upgrade(header.replace("GET /", "POST /")).len == 0
-assert upgrade(header.replace("Host: localhost", "Origin : http://example.com")).len == 0
-assert upgrade(header.replace("Host: localhost", "Host: local\x00host")).len == 0
-assert upgrade(header.replace("13\r\n", "12\r\n")).len == 0
-assert upgrade(header.replace("Host: localhost", "Origin: http://example.com")).len == 0
-assert upgrade(header.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0
-assert upgrade(header.replace("dGhlIHNhbXBsZSBub25jZQ==", "!!!!!!!!!!!!!!!!!!!!!!!!")).len == 0
+let upgradeHeader = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(upgradeHeader) # RFC 6455 section 1.3 known answer.
+assert upgrade(upgradeHeader.replace("GET /", "POST /")).len == 0
+assert upgrade(upgradeHeader.replace("Host: localhost", "Origin : http://example.com")).len == 0
+assert upgrade(upgradeHeader.replace("Host: localhost", "Host: local\x00host")).len == 0
+assert upgrade(upgradeHeader.replace("13\r\n", "12\r\n")).len == 0
+assert upgrade(upgradeHeader.replace("Host: localhost", "Origin: http://example.com")).len == 0
+assert upgrade(upgradeHeader.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0
+assert upgrade(upgradeHeader.replace("dGhlIHNhbXBsZSBub25jZQ==", "!!!!!!!!!!!!!!!!!!!!!!!!")).len == 0
 let encoded = masked(request)
 # Every proper prefix is incomplete and has no success-only payload or consumption fields.
 for n in 0..<encoded.len: assert decodeFrame(encoded[0..<n]).status == incomplete
@@ -775,4 +776,64 @@ for iteration in 0..<100:
   # Pagination performs no state-value copies or retained request allocations.
   retireKeysReply()
 assert getOccupiedMem() <= keysBaseline + 256
+
+# Canonical sealed header bytes are independently fixed, including the prior-state root and seal.
+let headerCall = rootRequest.replace("stateRoot", "ragnarok_header")
+let headerAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAREREREREREREREREREREREREREREREREREREREREREQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+assert respond(headerCall, withGenesis) == headerAnswer
+assert "\"ragnarok_header\"" in respond(request, withGenesis)
+assert respond(headerCall.replace(",\"id\":1", ""), withGenesis) == ""
+assert respond("[" & headerCall & "," & headerCall & "]", withGenesis) == "[" & headerAnswer & "," &
+    headerAnswer & "]"
+assert "\"code\":1" in respond(headerCall, info)
+assert "\"code\":1" in respond(headerCall.replace(genesisHash, repeat("A", 43) & "="), withGenesis)
+for args in ["[]", "[0]", "[\"bad\"]", "[\"" & genesisHash & "\",0]"]:
+  assert "\"code\":-32602" in respond(headerCall.replace("[\"" & genesisHash & "\"]", args), withGenesis)
+proc retainedHeader(): OwnedHeader =
+  ## Retain the sealed owner after the chainspec text and temporary genesis handle retire.
+  var source = genesisText
+  let transient = configuredGenesis(source, genesisParameters.value)
+  assert transient.error == GenesisError.None
+  source = "{}"
+  transient.value.header
+let headerRetained = retainedHeader()
+var headerCopy = newSeq[byte](297)
+assert encodeOwnedHeader(headerRetained, headerCopy).error == HeaderError.None
+headerCopy[0] = 255 # Caller-owned copies cannot mutate the retained wire or its identity.
+assert encodeOwnedHeader(headerRetained, headerCopy).error == HeaderError.None
+assert base64.encode(headerCopy) in headerAnswer
+# Independently framed winner/offender fields produce exact 32 KiB and one-byte-over valid headers.
+proc headerBoundary(epoch: int, offender: bool): tuple[info: ClientInfo, raw: string] =
+  ## Author canonical C.2 fields directly; no production header encoder constructs this fixture.
+  let tail = if offender: "\x01" & repeat("\x22", 32) else: "\x00"
+  let raw = repeat("\x00", 32) & repeat("\x11", 32) & repeat("\x00", 32) & "\x07\x00\x00\x00" &
+    "\x00\x01" & repeat("\x00", 33 * epoch) & repeat("\x00", 98) & tail & repeat("\x00", 96)
+  var hex = ""
+  for octet in raw:
+    # Encode fixture bytes for chainspec transport, without interpreting their header fields.
+    hex.add(toHex(ord(octet), 2))
+  let epochHex = if epoch == 983: "d7030000" else: "d8030000"
+  let parameters = configuredParameters(configText.replace("58020000", epochHex))
+  let captured = configuredGenesis(genesisText.replace(genesisWire, hex), parameters.value)
+  assert captured.error == GenesisError.None
+  (ClientInfo(genesis: captured), raw)
+let headerAtLimit = headerBoundary(983, true)
+let headerOverLimit = headerBoundary(984, false)
+assert headerAtLimit.raw.len == 32768 and headerOverLimit.raw.len == 32769
+let headerAtCall = headerCall.replace(genesisHash, "mySq+OaXLMWcwsUgqYC9hHko1ZeTOAqdIXolSxhXnuc=")
+let headerOverCall = headerCall.replace(genesisHash, "fz39QzIBzV5fdNWXzdW++HdOWDHdhjmNGZhI4w8ZR/g=")
+let headerLargeAnswer = respond(headerAtCall, headerAtLimit.info)
+assert base64.encode(headerAtLimit.raw) in headerLargeAnswer
+assert "\"code\":0" in respond(headerOverCall, headerOverLimit.info)
+let headerBatch = respond("[" & headerAtCall & "," & headerAtCall & "]", headerAtLimit.info)
+assert headerBatch.len <= 65535 and "\"code\":0" in headerBatch and headerLargeAnswer in headerBatch
+proc retireHeaderReply() =
+  ## Header response construction must release byte copies and Base64 buffers on each call.
+  assert respond(headerCall, withGenesis) == headerAnswer
+retireHeaderReply()
+let headerBaseline = getOccupiedMem()
+for iteration in 0..<100:
+  # The retained codec snapshot is the only header owner intentionally kept across calls.
+  retireHeaderReply()
+assert getOccupiedMem() <= headerBaseline + 256
 echo "rpc ok"
