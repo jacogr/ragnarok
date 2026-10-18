@@ -1,4 +1,10 @@
 [
+  "tests/native/compile_fail/rpc_parameters_owner_private.nim",
+  "tests/native/compile_fail/rpc_parameters_result_private.nim",
+  "tests/native/compile_fail/rpc_parameters_known_failure.nim",
+  "src/chain/parameters.nim",
+  "tests/fixtures/rpc-parameters.json",
+  "tests/fixtures/rpc-parameters-result.json",
   "tests/rpc_checks.py",
   "tests/native/compile_fail/rpc_server_copy.nim",
   "src/rpc/wire.nim",
