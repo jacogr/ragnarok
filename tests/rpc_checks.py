@@ -227,6 +227,7 @@ def check_service_queries(connection, expected):
         ('statistics', [header], expected['statistics']),
         ('beefyRoot', [header], expected['beefy_root']),
         ('workReport', [expected['work_report_hash']], expected['work_report']),
+        ('workReport', [expected['ready_report_hash']], expected['ready_report']),
         ('listServices', [header], [42, 4294967295]),
         ('serviceRequest', [header, 42, 'A'*43+'=', 0], []),
         ('serviceRequest', [header, 42, 'A'*43+'=', 1], [0]),
