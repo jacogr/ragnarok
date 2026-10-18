@@ -51,7 +51,7 @@ def unit_source(name):
         # Transport lifecycle and disabled integration retain their own native suite directory.
         return QUIC_ROOT/('test_'+name+'.nim')
     # Crypto ownership cases share the runner without being mistaken for state serialization tests.
-    if name in ('crypto_seeds', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners'):
+    if name in ('crypto_seeds', 'assurance_context', 'guarantee_message', 'signing_domains', 'bandersnatch_owners', 'extrinsic_commitment'):
         return CRYPTO_ROOT/('test_'+name+'.nim')
     return (STATE_ROOT if name in UNIT_LINKS else UNIT_ROOT)/('test_'+name+'.nim')
 
@@ -89,7 +89,7 @@ def unit_command(compiler, name=None, libraries=None):
         if libraries is None or profile not in libraries:
             # Linked application tests require an explicit result from pinned native preparation.
             raise ValueError('Missing native unit library profile: '+profile)
-        profiles = ('bandersnatch_observer', 'bandersnatch', profile) if name in ('validator_state', 'ticket_admission', 'ticket_state', 'sealer_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition') else ('bandersnatch_observer', profile) if name == 'bandersnatch_owners' else (profile,)
+        profiles = ('bandersnatch_observer', 'bandersnatch', profile) if name in ('validator_state', 'ticket_admission', 'ticket_state', 'sealer_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'block_admission') else ('bandersnatch_observer', profile) if name == 'bandersnatch_owners' else (profile,)
         for key in profiles:
             # The Rust owner observer and production primitive remain separate unchanged libraries.
             if key not in libraries:
@@ -110,10 +110,10 @@ def unit_command(compiler, name=None, libraries=None):
             for function in ('setup_new', 'setup_free', 'ring_verify' if name in ('ticket_admission', 'ticket_state', 'sealer_state') else 'commit'):
                 # Only this refusal profile observes setup/commit calls; real native release still runs.
                 flags.append('--passC:-Dbs_'+function+'=bo_'+function)
-        if name in ('safrole_authentication', 'safrole_auth_state', 'safrole_transition'):
+        if name in ('safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'block_admission'):
             # Observe only ordinary verification call sites; production Rust remains pristine.
             flags += ['--passC:-I'+str(ROOT/'native/bandersnatch'), '--passC:-Dbs_verify=bo_verify']
-        if name == 'safrole_transition':
+        if name in ('safrole_transition', 'block_admission'):
             # Observe every native stage while preserving the unchanged production ABI and output.
             for function in ('setup_new', 'setup_free', 'commit', 'ring_verify'):
                 flags.append('--passC:-Dbs_'+function+'=bo_'+function)
@@ -157,7 +157,7 @@ def unit_environment(compiler, name=None, base=None, fixtures=None):
         # Other suite observations may belong to another completed per-suite invocation.
         if case in ARC_SUITES:
             (directory/(case+'.json')).unlink(missing_ok=True)
-        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition') and case not in manifest:
+        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition', 'extrinsic_commitment', 'block_admission') and case not in manifest:
             # Inherited paths cannot replace newly prepared native transport/integration fixtures.
             raise ValueError('Missing prepared native unit fixtures: '+case)
         if case in manifest:
@@ -226,10 +226,18 @@ def unit_sealer_fixture(folder):
     from safrole_transition_fixtures import prepare as prepare_transition
     stage_path, stage_evidence = prepare_transition(folder)
     stage_fixture = ('RAGNAROK_SAFROLE_TRANSITION', stage_path, ((stage_path, stage_evidence['fixture_sha256']),))
+    from block_admission_fixtures import prepare as prepare_commitment
+    commitment_path, commitment_evidence = prepare_commitment(folder)
+    commitment_fixture = ('RAGNAROK_EXTRINSIC_COMMITMENT', commitment_path, ((commitment_path, commitment_evidence['fixture_sha256']),))
+    from block_admission_fixtures import prepare_admission
+    admission_path, admission_evidence = prepare_admission(folder)
+    admission_fixture = ('RAGNAROK_BLOCK_ADMISSION', admission_path, ((admission_path, admission_evidence['fixture_sha256']),))
+    evidence['admission'] = admission_evidence
+    evidence['commitment'] = commitment_evidence
     evidence['transition'] = stage_evidence
     evidence['authentication'] = auth_evidence
     evidence['markers'] = marker_evidence
-    return {'sealer_schedule': fixture, 'sealer_state': fixture, 'safrole_markers': marker_fixture, 'marker_state': marker_fixture, 'safrole_authentication': auth_fixture, 'safrole_auth_state': auth_fixture, 'safrole_transition': stage_fixture}, evidence
+    return {'sealer_schedule': fixture, 'sealer_state': fixture, 'safrole_markers': marker_fixture, 'marker_state': marker_fixture, 'safrole_authentication': auth_fixture, 'safrole_auth_state': auth_fixture, 'safrole_transition': stage_fixture, 'extrinsic_commitment': commitment_fixture, 'block_admission': admission_fixture}, evidence
 
 
 # Prepare exact published roster projections for the bounded planner's native assertions.

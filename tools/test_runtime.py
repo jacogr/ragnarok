@@ -801,6 +801,10 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'safrole_authentication')
     # Coordinator success and each typed failure reason require their own selected result alternative.
     run_failure_suite(compiler, report, libraries, build, command, 'safrole_transition')
+    # A refused commitment must never expose a default digest as a successful application value.
+    run_failure_suite(compiler, report, libraries, build, command, 'extrinsic_commitment')
+    # Isolate bound-owner, composed success and each stage-reason accessor from all other guards.
+    run_failure_suite(compiler, report, libraries, build, command, 'block_admission')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
