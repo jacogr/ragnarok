@@ -869,3 +869,14 @@ runtime and all-source compilation jobs on 2026-10-17:
 [push run](https://github.com/jacogr/ragnarok/actions/runs/39017971723).
 This verifies the completed native-suite migration on Linux. Subsequent Makefile additions
 are separately verified locally and are not part of those run revisions.
+
+Runtime failure suites keep ordinary case identities in `tools/failure_suites.json`, one case per
+line. Suite defaults specify argument fields, labels and diagnostics; exceptional cases override
+those values explicitly. The loader expands and validates the exact counts, distinct identities
+and log names before running any probes. Fixture-dependent probes, offload completion checks,
+language-policy observations and store positive controls remain explicit in the runner.
+
+`tools/runtime_sources.json` lists literal runtime provenance inputs, one path per line. Native
+suite sources, fixture manifests, source globs and pinned vector expansions remain explicit Python
+rules. The runtime hashes the inventory itself alongside every resolved input; a missing input
+still fails verification.
