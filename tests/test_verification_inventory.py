@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from verification_inventory import cases, unique_object, load_sources
+from verification_inventory import cases, unique_object, load_sources, validate_order
 
 
 # JSON's default last-key-wins policy must never remove a compiler rejection case.
@@ -52,3 +52,25 @@ class VerificationInventory(unittest.TestCase):
                 with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                     path.write_text(json.dumps(invalid))
                     load_sources(path)
+
+    # Prefix grouping gives unrelated features separate insertion points in every named registry.
+    def test_alphabetical_sections(self):
+        ordered = {'UNIT_SUITES': ['accumulation_queue', 'pvm_gas', 'pvm_step', 'rpc'],
+                   'EARLY_NOMINAL': {'pvm_raw': ['zCall(', 'a diagnostic'],
+                                     'rpc_raw': ['bCall(', 'another diagnostic']}}
+        before = json.dumps(ordered)
+        validate_order(ordered)
+        self.assertEqual(json.dumps(ordered), before)
+
+    # Both prepended suites and prepended guard/profile keys must fail before native setup.
+    def test_prepended_entries_rejected(self):
+        for section in ('UNIT_SUITES', 'PRIVATE', 'NOMINAL', 'CONTRACTS', 'EARLY_NOMINAL',
+                        'ARC_SUITES', 'UNIT_LINKS', 'FAILURE_COUNTS', 'CORPUS_NAMES',
+                        'AVAILABILITY_MEMBERS', 'WORKQUEUES_MEMBERS', 'COMPOSITION_MEMBERS',
+                        'BS_MEMBERS'):
+            # Exercise lists and mappings independently so newly added sections inherit the rule.
+            for entries in (['pvm_step', 'accumulation_queue', 'pvm_gas'],
+                            {'pvm_step': 'status', 'accumulation_queue': 'data', 'pvm_gas': 'error'}):
+                with self.subTest(section=section, entries=entries):
+                    with self.assertRaisesRegex(ValueError, section+' must be alphabetical'):
+                        validate_order({section: entries})
