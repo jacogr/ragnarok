@@ -61,7 +61,7 @@ Generated builds, fixture keys and logs stay under ignored
 `build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
 normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
 
-For all 79 native application suites, use `make unit`. This prepares
+For all 82 native application suites, use `make unit`. This prepares
 the pinned crypto/QUIC libraries and generated fixtures. See
 [native test migration](docs/testing.md) for coverage and retained Python responsibilities.
 

@@ -43,6 +43,9 @@
     "sealer_state",
     "safrole_markers",
     "marker_state",
+    "safrole_authentication",
+    "safrole_auth_state",
+    "safrole_transition",
     "state_safrole",
     "state_authorization",
     "state_authorization_private",
@@ -81,6 +84,17 @@
     "quic_integration_disabled"
   ],
   "PRIVATE": {
+    "safrole_transition_payload_private": "completed",
+    "safrole_transition_retag_private": "status",
+    "safrole_transition_rotation_private": "rotationReason",
+    "safrole_transition_admission_private": "admissionReason",
+    "safrole_transition_schedule_private": "scheduleReason",
+    "safrole_transition_marker_private": "markerReason",
+    "safrole_transition_authentication_private": "authenticationReason",
+    "safrole_transition_entropy_private": "entropyReason",
+    "safrole_transition_publication_private": "publicationReason",
+    "safrole_auth_private": "completed",
+    "safrole_auth_retag": "status",
     "safrole_marker_private": "completed",
     "safrole_marker_retag": "status",
     "safrole_epoch_private": "epochValue",
@@ -1195,6 +1209,7 @@
     "layout"
   ],
   "CONTRACTS": {
+    "safrole_auth_success_forge": "not reason == None",
     "history_known_absent_hash": "peak.isPresent",
     "assignment_known_absent_guarantee": "assignment.isPresent",
     "assignment_known_absent_registered": "assignment.isPresent",
@@ -1569,6 +1584,8 @@
     "sequence-consumed"
   ],
   "FAILURE_COUNTS": {
+    "safrole_transition": 9,
+    "safrole_authentication": 3,
     "safrole_markers": 2,
     "sealer_schedule": 2,
     "sealer_state": 2,
@@ -1664,6 +1681,8 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "safrole_transition": "safrole_transition_arc_release",
+    "safrole_authentication": "safrole_authentication_arc_release",
     "safrole_markers": "safrole_markers_arc_release",
     "sealer_state": "sealer_state_arc_release",
     "sealer_schedule": "sealer_schedule_arc_release",
@@ -1706,6 +1725,9 @@
     "quic_integration": "integration_arc_release"
   },
   "UNIT_LINKS": {
+    "safrole_transition": "observer",
+    "safrole_auth_state": "observer",
+    "safrole_authentication": "crypto",
     "marker_state": "observer",
     "safrole_markers": "crypto",
     "sealer_state": "observer",

@@ -89,7 +89,7 @@ def unit_command(compiler, name=None, libraries=None):
         if libraries is None or profile not in libraries:
             # Linked application tests require an explicit result from pinned native preparation.
             raise ValueError('Missing native unit library profile: '+profile)
-        profiles = ('bandersnatch_observer', 'bandersnatch', profile) if name in ('validator_state', 'ticket_admission', 'ticket_state', 'sealer_state') else ('bandersnatch_observer', profile) if name == 'bandersnatch_owners' else (profile,)
+        profiles = ('bandersnatch_observer', 'bandersnatch', profile) if name in ('validator_state', 'ticket_admission', 'ticket_state', 'sealer_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition') else ('bandersnatch_observer', profile) if name == 'bandersnatch_owners' else (profile,)
         for key in profiles:
             # The Rust owner observer and production primitive remain separate unchanged libraries.
             if key not in libraries:
@@ -109,6 +109,13 @@ def unit_command(compiler, name=None, libraries=None):
             flags.append('--passC:-I'+str(ROOT/'native/bandersnatch'))
             for function in ('setup_new', 'setup_free', 'ring_verify' if name in ('ticket_admission', 'ticket_state', 'sealer_state') else 'commit'):
                 # Only this refusal profile observes setup/commit calls; real native release still runs.
+                flags.append('--passC:-Dbs_'+function+'=bo_'+function)
+        if name in ('safrole_authentication', 'safrole_auth_state', 'safrole_transition'):
+            # Observe only ordinary verification call sites; production Rust remains pristine.
+            flags += ['--passC:-I'+str(ROOT/'native/bandersnatch'), '--passC:-Dbs_verify=bo_verify']
+        if name == 'safrole_transition':
+            # Observe every native stage while preserving the unchanged production ABI and output.
+            for function in ('setup_new', 'setup_free', 'commit', 'ring_verify'):
                 flags.append('--passC:-Dbs_'+function+'=bo_'+function)
         if name == 'bandersnatch_owners':
             # Rename only these test call sites, exactly as in the existing owner-observation profile.
@@ -150,7 +157,7 @@ def unit_environment(compiler, name=None, base=None, fixtures=None):
         # Other suite observations may belong to another completed per-suite invocation.
         if case in ARC_SUITES:
             (directory/(case+'.json')).unlink(missing_ok=True)
-        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state') and case not in manifest:
+        if case in ('quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state', 'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state', 'safrole_authentication', 'safrole_auth_state', 'safrole_transition') and case not in manifest:
             # Inherited paths cannot replace newly prepared native transport/integration fixtures.
             raise ValueError('Missing prepared native unit fixtures: '+case)
         if case in manifest:
@@ -213,8 +220,16 @@ def unit_sealer_fixture(folder):
     from safrole_marker_fixtures import prepare as prepare_markers
     marker_path, marker_evidence = prepare_markers(folder)
     marker_fixture = ('RAGNAROK_SAFROLE_MARKERS', marker_path, ((marker_path, marker_evidence['fixture_sha256']),))
+    from safrole_authentication_fixtures import prepare as prepare_authentication
+    auth_path, auth_evidence = prepare_authentication(folder)
+    auth_fixture = ('RAGNAROK_SAFROLE_AUTHENTICATION', auth_path, ((auth_path, auth_evidence['fixture_sha256']),))
+    from safrole_transition_fixtures import prepare as prepare_transition
+    stage_path, stage_evidence = prepare_transition(folder)
+    stage_fixture = ('RAGNAROK_SAFROLE_TRANSITION', stage_path, ((stage_path, stage_evidence['fixture_sha256']),))
+    evidence['transition'] = stage_evidence
+    evidence['authentication'] = auth_evidence
     evidence['markers'] = marker_evidence
-    return {'sealer_schedule': fixture, 'sealer_state': fixture, 'safrole_markers': marker_fixture, 'marker_state': marker_fixture}, evidence
+    return {'sealer_schedule': fixture, 'sealer_state': fixture, 'safrole_markers': marker_fixture, 'marker_state': marker_fixture, 'safrole_authentication': auth_fixture, 'safrole_auth_state': auth_fixture, 'safrole_transition': stage_fixture}, evidence
 
 
 # Prepare exact published roster projections for the bounded planner's native assertions.
