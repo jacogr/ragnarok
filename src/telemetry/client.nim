@@ -343,3 +343,9 @@ proc acceptOutcome*(client: var Client, now: int64, timestamp: Timestamp, attemp
     discard client.event(connectedIn(timestamp, attempt, identity), now, timestamp, true)
   else:
     discard client.event(connectInFailed(timestamp, attempt), now, timestamp, true)
+
+# Queue a real admission refusal in the same bounded event-ID and loss sequence as other observations.
+proc refusing*(client: var Client, now: int64, timestamp: Timestamp,
+    address: array[16, byte], port: uint16) =
+  if not client.enabled: return # Disabled telemetry performs no encoding work.
+  discard client.event(connectionRefused(timestamp, address, port), now, timestamp, true)
