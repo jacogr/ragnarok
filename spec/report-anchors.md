@@ -64,7 +64,7 @@ ARC and checked Clang LTO. Generated fixtures, raw source evidence and logs rema
 
 ## Next bounded work
 
-Check package uniqueness against the incoming batch and existing pipeline, prerequisite membership
-and segment-root mappings. Then check post-assurance core capacity, plan atomic new C(10)
-assignments and integrate completed report admission into the block coordinator. Accumulation/PVM
+[Package uniqueness, prerequisite membership and segment-root mappings](report-packages.md) are
+implemented separately. Next check post-assurance core capacity and plan atomic new C(10)
+assignments, then integrate completed report admission into the block coordinator. Accumulation/PVM
 execution remains later work.

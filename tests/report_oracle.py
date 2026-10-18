@@ -45,7 +45,9 @@ def from_json(item):
                         [entry['refine_load'][k] for k in ('gas_used', 'imports', 'extrinsic_count', 'extrinsic_size', 'exports')]))
     return dict(header=header, prerequisites=b''.join(blob(x) for x in ctx['prerequisites']),
                 core=item['core_index'], authorizer=blob(item['authorizer_hash']), gas=item['auth_gas_used'],
-                auth=blob(item['auth_output']), lookup=b'', digests=digests)
+                auth=blob(item['auth_output']),
+                lookup=b''.join(blob(pair['work_package_hash'])+blob(pair['segment_tree_root'])
+                                for pair in item['segment_root_lookup']), digests=digests)
 
 
 # Serialize the complete C.2 layout directly, without calling any production peer implementation.

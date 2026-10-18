@@ -45,7 +45,7 @@ class NativeRequirementsHarness(unittest.TestCase):
     def test_aggregate_evidence(self):
         order = []
         names = ('schedule', 'markers', 'authentication', 'transition', 'commitment',
-                 'admission', 'disputes', 'availability', 'guarantors', 'guarantee_credentials', 'report_policy', 'report_anchors')
+                 'admission', 'disputes', 'availability', 'guarantors', 'guarantee_credentials', 'report_policy', 'report_anchors', 'report_packages')
         with ExitStack() as stack:
             for name in names:
                 # Fresh evidence dictionaries catch accidental cross-feature mutation or lost fields.
