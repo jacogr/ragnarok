@@ -86,6 +86,7 @@ source identities and reports remain under ignored `build/`. Networking code is 
 
 ## Next bounded work
 
-Validate disputes and derive posterior offender identities/markers from the block's own disputes
-and prior C(5), replacing the supplied offender projection. Wall-clock policy and complete
+The stacked [disputes transition](disputes-transition.md) derives posterior offender identities/markers
+from the block's own disputes and prior C(5), replacing supplied offenders in its composed entry point.
+Next: availability assurance validation and assignment updates. Wall-clock policy and complete
 non-PVM/PVM execution and block import remain separately scoped work.
