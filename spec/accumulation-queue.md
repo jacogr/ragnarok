@@ -103,8 +103,9 @@ it is not presented as an upstream full-block accumulation fixture.
 
 ## Remaining work and next bounded slice
 
-Accumulation execution, gas-dependent prefix selection, deferred transfers, service mutations and
-execution-dependent C(14)/C(15) publication remain open. Report-derived owned per-service operands now have a separate
-[preparation contract](accumulation-operands.md), following the paper's Execution operand tuple
-and existing codecs. Transfer/privilege invocation context is next. Keep actual PVM invocation
-and posterior state publication separate until their required execution outcomes exist.
+Report-derived owned per-service operands have a separate [preparation contract](accumulation-operands.md).
+[Invocation inputs](accumulation-inputs.md) add explicit transfer/privilege context, and
+[initial round planning](accumulation-round.md) now selects the gas-bounded prefix using admitted-parent
+C(12). Service-account execution-context binding comes next. Actual accumulation execution, later
+rounds, service mutations and execution-dependent C(14)/C(15) publication remain open; keep those
+separate until genuine execution outcomes exist.

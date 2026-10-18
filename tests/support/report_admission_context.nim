@@ -5,7 +5,7 @@
 ##
 ## Exposes authored Context inputs, config/frame/safrole/transitionConfig policies and stage helpers.
 ## Optional genuine assurance votes make one old report available; these are test fixtures, not APIs
-## for constructing production admission certificates.
+## for constructing production admission certificates. Extra test chapters are committed before signing.
 
 import std/[assertions, envvars, strutils, syncio, sequtils]
 import ../../src/state/[report_admission, report_assignments, report_policy, report_anchors,
@@ -131,7 +131,7 @@ type Context* = object
 ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
 ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
-    withDispute = false, withAvailable = false): Context =
+    withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[]): Context =
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()
@@ -209,6 +209,8 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   if mode == 13: entries.delete(entries.len-2) # Parent ready chapter is mandatory even on an empty batch.
   entries.add(StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4,
       2])) # Opaque state must survive publication and rollback.
+  # Extra chapters enter the parent root committed by the signed candidate and report guarantees.
+  for entry in extra: entries.add(entry)
   var bounds = limits()
   bounds.writeValueBytes = ByteLimit(maxWriteBytes)
   let created = newStateStore(entries, bounds)

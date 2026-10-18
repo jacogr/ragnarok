@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/accumulation_round_results.nim",
+  "build_name": "accumulation-round-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-round-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Initial accumulation selected-success guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "name": "accumulation-round-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Initial accumulation selected-success guard",
+      "identity": {
+        "origin": "refused"
+      }
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "name": "accumulation-round-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Initial accumulation selected-success guard",
+      "identity": {
+        "origin": "info"
+      }
+    },
+    {
+      "arguments": [
+        "inputs"
+      ],
+      "name": "accumulation-round-inputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Initial accumulation selected-success guard",
+      "identity": {
+        "origin": "inputs"
+      }
+    },
+    {
+      "arguments": [
+        "privileges"
+      ],
+      "name": "accumulation-round-privileges",
+      "diagnostic": "outcome.status == None",
+      "description": "Initial accumulation selected-success guard",
+      "identity": {
+        "origin": "privileges"
+      }
+    },
+    {
+      "arguments": [
+        "queue"
+      ],
+      "name": "accumulation-round-queue",
+      "diagnostic": "outcome.status == None",
+      "description": "Initial accumulation selected-success guard",
+      "identity": {
+        "origin": "queue"
+      }
+    },
+    {
+      "arguments": [
+        "projection"
+      ],
+      "name": "accumulation-round-projection",
+      "diagnostic": "outcome.status == None",
+      "description": "Initial accumulation selected-success guard",
+      "identity": {
+        "origin": "projection"
+      }
+    }
+  ]
+}

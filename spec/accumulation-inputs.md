@@ -76,7 +76,6 @@ These checks establish input preparation only; they do not execute the complete 
 
 ## Next bounded work
 
-Plan the first gas-bounded `accseq` report prefix using explicit round context and the initial
-accumulation gas allowance. Preserve the distinction between declared gas and actual execution
-usage: later rounds require genuine PVM outcomes and newly deferred transfers, never fabricated
-consumption. Parent C(12) binding and initial-round context validation should accompany that planner.
+[Initial round planning](accumulation-round.md) now selects the gas-bounded prefix and binds
+initial allowances to admitted-parent C(12). Later rounds still require genuine execution outcomes
+and newly deferred transfers. Service-account execution-context binding is the next bounded step.

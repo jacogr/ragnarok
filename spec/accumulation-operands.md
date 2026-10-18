@@ -95,5 +95,6 @@ owner contracts.
 
 [Invocation-input preparation](accumulation-inputs.md) now adds explicit deferred transfers before
 report operands, always-accumulate-only services and checked per-service gas sums. That layer retains
-this projection and its selected prefix. Initial gas-bounded round planning and parent privilege
-binding come next; PVM execution and posterior state integration remain separate.
+this projection and its selected prefix. [Initial round planning](accumulation-round.md) now selects
+the gas-bounded prefix and binds parent privileges. Service-account execution-context binding comes
+next; PVM execution and posterior state integration remain separate.
