@@ -84,7 +84,8 @@
     "quic_integration_disabled",
     "extrinsic_commitment",
     "block_admission",
-    "disputes_transition"
+    "disputes_transition",
+    "availability_transition"
   ],
   "PRIVATE": {
     "safrole_transition_payload_private": "completed",
@@ -712,7 +713,12 @@
     "block_transition_retag": "status",
     "block_transition_admission_private": "admissionReason",
     "block_transition_disputes_private": "disputesReason",
-    "block_transition_safrole_private": "safroleReason"
+    "block_transition_safrole_private": "safroleReason",
+    "availability_transition_result_private": "completed",
+    "availability_transition_context_private": "contextReason",
+    "availability_transition_plan_private": "data",
+    "availability_transition_result_retag": "status",
+    "block_availability_private": "availabilityReason"
   },
   "NOMINAL": {
     "swapped_report_root": "got: ReportHash but wanted: ReportHash",
@@ -1658,7 +1664,8 @@
     "reports": 14,
     "extrinsic_commitment": 2,
     "block_admission": 10,
-    "disputes_transition": 10
+    "disputes_transition": 10,
+    "availability_transition": 8
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1704,6 +1711,7 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "availability_transition": "availability_transition_arc_release",
     "disputes_transition": "disputes_transition_arc_release",
     "block_admission": "block_admission_arc_release",
     "safrole_transition": "safrole_transition_arc_release",
@@ -1811,6 +1819,7 @@
     "quic_integration": "observer",
     "quic_integration_disabled": null,
     "extrinsic_commitment": "observer",
+    "availability_transition": "observer",
     "disputes_transition": "observer",
     "block_admission": "observer"
   }
