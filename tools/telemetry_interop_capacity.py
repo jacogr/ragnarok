@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Real collector decoding of connection-capacity refusal and recovery on one retained listener."""
+"""Real collector decoding of connection-capacity refusal and recovery on one retained listener.
+
+Exposes verify_capacity and run_capacity for collector-observed capacity refusal and slot
+recovery.
+"""
 from contextlib import ExitStack
 import os
 import time

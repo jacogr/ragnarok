@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Verify real peer exchanges, retained services, resilience, soak and proof-offload lifecycles."""
+"""Verify real peer exchanges, retained services, resilience, soak and proof-offload lifecycles.
+
+Exposes passed and an E2E CLI that runs owned workloads and writes a fresh completeness verdict.
+"""
 import argparse
 import hashlib
 import json

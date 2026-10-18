@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 judgments.tex: contextual verdict/evidence validation and immutable C(5)/C(10) planning.
-## Parent rosters/time are read before Safrole rotation; no incomplete plan or cryptographic bypass escapes.
+## GP 0.8.0 judgments.tex: contextual verdict/evidence validation and immutable C(5)/C(10)
+## planning. Parent rosters/time are read before Safrole rotation; no incomplete plan or
+## cryptographic bypass escapes.
+##
+## Exposes planDisputes, checkDisputeMarker and publishDisputes with retained judgments,
+## assignments and new-offender access.
+
 import std/[algorithm, assertions]
 import ../codec/[disputes, state_disputes, state_safrole, state_availability,
   state_layout, state_trie, bounded, assurances, guarantees, report_owned, owned, header]

@@ -1,6 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Exercise loopback RPC server internals, HTTP upgrade, masked WebSocket frames and JSON-RPC
+## response handling.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 include ../../../src/rpc/server
 

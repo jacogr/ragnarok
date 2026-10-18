@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native disputes default/variant, owner lifetime, atomicity and nested-alias regressions.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
 import std/[assertions, syncio]
 import ../../../src/codec/[disputes, bounded, assurances]

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated public/internal result failures and absent optional hashes require their exact contracts.
+## Isolated public/internal result failures and absent optional hashes require their exact
+## contracts.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_history
 let useDefault = paramStr(2) == "default"

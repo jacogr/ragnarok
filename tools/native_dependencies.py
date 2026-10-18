@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Shared pristine source checks and logged native build commands, independent of test harnesses."""
+"""Shared pristine source checks and logged native build commands, independent of test harnesses.
+
+Exposes require_submodule and run for pinned source validation and logged native build commands.
+"""
 from pathlib import Path
 import subprocess
 import sys

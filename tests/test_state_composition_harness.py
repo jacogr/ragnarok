@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal extent, domain and complete-map anchors for the independent composition reference."""
+"""Literal extent, domain and complete-map anchors for the independent composition reference.
+
+Exposes StateCompositionHarness for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import unittest
 from state_composition_oracle import chapters, capture, entries, composed, PROFILE, POLICY
 from state_layout_oracle import chapter_key, chapter_service, MAX

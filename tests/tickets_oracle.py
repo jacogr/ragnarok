@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent GP 0.8.0 tickets wire oracle and deterministic boundary/malformed corpus."""
+"""Independent GP 0.8.0 tickets wire oracle and deterministic boundary/malformed corpus.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import json
 import random

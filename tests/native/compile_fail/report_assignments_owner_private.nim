@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## External callers cannot forge assignment candidates or retag failed planning results.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/state/report_assignments
 let owner = default(ReportAssignmentPlan)
 discard owner.data # Must fail before lowering.

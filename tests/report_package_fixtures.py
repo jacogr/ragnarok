@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Original signed report/history/known-set projections; no invented parent queue/accumulated chapters."""
+"""Original signed report/history/known-set projections; no invented parent queue/accumulated chapters.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 from report_policy_fixtures import prepare as policy_prepare
 
 CASES = ('report_curr_rotation-1', 'multiple_reports-1', 'dependency_missing-1',

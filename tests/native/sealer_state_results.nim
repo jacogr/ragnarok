@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Failed/default publication results cannot expose an immutable working-map payload.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[sealer_state, sealer_schedule, store]
 import ../../src/codec/[state_safrole, state_trie, bounded]

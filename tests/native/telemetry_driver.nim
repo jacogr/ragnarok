@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Process-level collector harness driver; all production wire/network logic remains in Nim.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[os, strutils, assertions, syncio, times, monotimes]
 import std/posix/posix
 import ../../src/telemetry/[wire, client]

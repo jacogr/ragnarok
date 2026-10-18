@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent complete-report oracle regression tests."""
+"""Independent complete-report oracle regression tests.
+
+Exposes OracleTests for unittest discovery; test methods exercise the stated contracts.
+"""
 import copy
 import unittest
 from report_oracle import corpus, encode, decode, fields, requests

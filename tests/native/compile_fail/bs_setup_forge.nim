@@ -2,5 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Setup owner storage cannot be replaced or forged.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/bandersnatch/bandersnatch
 discard BsSetup(state: nil)

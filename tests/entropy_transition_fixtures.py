@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Transport published Safrole entropy/time projections and independent fixed-hash boundary expectations."""
+"""Transport published Safrole entropy/time projections and independent fixed-hash boundary expectations.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 import hashlib
 import json
 import subprocess

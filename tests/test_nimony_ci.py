@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""CI safeguards for trusted archives, complete source inventories and honest partial-coverage reporting."""
+"""CI safeguards for trusted archives, complete source inventories and honest partial-coverage reporting.
+
+Exposes NimonyCISafeguards for unittest discovery; test methods exercise the stated contracts.
+"""
 import io
 import hashlib
 import json

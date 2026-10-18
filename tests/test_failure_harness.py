@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Protect runtime probe verdicts, fixed-suite ordering and failed-build refusal."""
+"""Protect runtime probe verdicts, fixed-suite ordering and failed-build refusal.
+
+Exposes FailureHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import copy
 import json
 from pathlib import Path

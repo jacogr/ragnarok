@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 safrole.tex key rotation and blacklistfilter; this module plans rosters without publishing state.
-## Posterior offenders come from the completed disputes stage; ring-root computation is a subsequent step.
+## GP 0.8.0 safrole.tex key rotation and blacklistfilter; this module plans rosters without
+## publishing state. Posterior offenders come from the completed disputes stage; ring-root
+## computation is a subsequent step.
+##
+## Exposes planValidatorRotation and checked immutable roster-rotation results.
+
 import ../codec/[state_safrole, assurances, bounded]
 from ../codec/disputes import OffenderKey
 from ../codec/header import EpochSlots

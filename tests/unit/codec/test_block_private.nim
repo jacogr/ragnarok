@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## White-box project-owned alias regression; public probes separately prove these fields are inaccessible.
+## White-box project-owned alias regression; public probes separately prove these fields are
+## inaccessible.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/syncio
 include ../../../src/codec/block_codec
 

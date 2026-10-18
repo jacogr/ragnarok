@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted independent assurances adapter, including deliberate overlap and lifetime probes.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/assurances
 

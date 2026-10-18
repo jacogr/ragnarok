@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Diagnostic width alternatives over unchanged pinned STF binaries and serialized state values."""
+"""Diagnostic width alternatives over unchanged pinned STF binaries and serialized state values.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import json
 import subprocess

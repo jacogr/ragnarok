@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Run compiler contract, privacy, nominal, schema and ownership rejection checks independently."""
+"""Run compiler contract, privacy, nominal, schema and ownership rejection checks independently.
+
+Exposes compile_rejections, run and passed plus a CLI that writes compiler-rejection evidence.
+"""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib

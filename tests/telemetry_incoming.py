@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Real incoming TLS callbacks across collector resets, with opaque UDP reply gating."""
+"""Real incoming TLS callbacks across collector resets, with opaque UDP reply gating.
+
+Exposes reply_gate, incoming_reconnect for the verification harness.
+"""
 from contextlib import ExitStack, contextmanager
 import json
 import os

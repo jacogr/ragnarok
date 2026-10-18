@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Bounded same-process QUIC lifecycle soak; share fixtures/builds, never native protocol code."""
+"""Bounded same-process QUIC lifecycle soak; share fixtures/builds, never native protocol code.
+
+Exposes resources, wait_marker, check_growth, pairing for the verification harness.
+"""
 import json
 import os
 from pathlib import Path

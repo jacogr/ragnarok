@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Shared fixtures and process checks for owned C.2 codecs, Blake2b-256 and persistent CE 143."""
+"""Shared fixtures and process checks for owned C.2 codecs, Blake2b-256 and persistent CE 143.
+
+Exposes corpus, service, rounds_total for the verification harness.
+"""
 from functools import partial
 import hashlib
 import json

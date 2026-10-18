@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted independent source/field adapter for chapter-4 serialization and immutable parent ownership.
+## Trusted independent source/field adapter for chapter-4 serialization and immutable parent
+## ownership.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_consensus, state_safrole, state_trie, bounded, assurances]
 

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Generic owned-result payloads and copied optional/work metadata reject invalid safe-code reads.
+## Generic owned-result payloads and copied optional/work metadata reject invalid safe-code
+## reads.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import ../../src/codec/[owned, bounded, composite]
 import std/[cmdline, syncio]
 

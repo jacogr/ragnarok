@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Bounded real TCP collector tests, including actual proof-peer CLI registration."""
+"""Bounded real TCP collector tests, including actual proof-peer CLI registration.
+
+Exposes EventCapture and real collector scenarios for registration, reconnect, peer lifetime and
+capacity behavior.
+"""
 from contextlib import ExitStack
 import hashlib
 import os

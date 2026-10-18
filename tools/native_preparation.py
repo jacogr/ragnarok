@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Shared native libraries and independent fixtures for both supported unit entry points."""
+"""Shared native libraries and independent fixtures for both supported unit entry points.
+
+Exposes prepare_libraries, prepare_integration, prepare_unit_fixtures and record_evidence for
+shared native setup.
+"""
 import hashlib
 import sys
 from setup_nimony import ROOT

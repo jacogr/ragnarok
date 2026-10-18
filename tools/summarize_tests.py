@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Render measured test/audit results in GitHub summaries without turning missing or partial evidence green."""
+"""Render measured test/audit results in GitHub summaries without turning missing or partial evidence green.
+
+Exposes summarize and a CLI that renders retained verification evidence into Markdown summaries.
+"""
 import argparse
 import json
 from pathlib import Path

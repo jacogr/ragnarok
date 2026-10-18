@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent arbitrary-precision GP register oracle and pinned PolkaVM witness extraction."""
+"""Independent arbitrary-precision GP register oracle and pinned PolkaVM witness extraction.
+
+Exposes oracle and fixture-generation helpers for arbitrary-precision register arithmetic and
+pinned upstream witnesses.
+"""
 from pathlib import Path
 import re
 import struct

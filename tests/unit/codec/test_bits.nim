@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Focused lifetime, immutable-copy, atomicity, alias and runtime result-guard tests.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import ../../support/arc_evidence
 import std/[assertions, syncio]
 import ../../../src/codec/bitstrings

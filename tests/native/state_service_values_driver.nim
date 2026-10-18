@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted source fields and immutable raw-value observations for service storage/preimage entries.
+## Trusted source fields and immutable raw-value observations for service storage/preimage
+## entries.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, syncio, strutils, parseutils]
 import ../../src/codec/[state_service_values, state_trie, bounded]
 

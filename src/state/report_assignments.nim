@@ -1,8 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 reportcoresareunused and availassignmentspostguarantees: pure post-assurance C(10) planning.
-## This does not publish state or replace full report-policy, package, anchor or admitted-block context checks.
+## GP 0.8.0 reportcoresareunused and availassignmentspostguarantees: pure post-assurance C(10)
+## planning. This does not publish state or replace full report-policy, package, anchor or
+## admitted-block context checks.
+##
+## Exposes planReportAssignments and access to the retained source, resulting availability state
+## and serialized entry.
+
 import ../codec/[bounded, assurances, guarantees, state_safrole, state_availability,
   state_layout, state_trie, report_owned]
 import ./guarantee_credentials

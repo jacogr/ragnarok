@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent chapter-4 byte equations; all values are structural, with transition checks explicitly separate."""
+"""Independent chapter-4 byte equations; all values are structural, with transition checks explicitly separate.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import json
 import random

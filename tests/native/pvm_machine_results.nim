@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Each process must fail at its intended public result-access precondition.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/cmdline
 import ../../src/pvm/machine
 let selection = paramStr(1)

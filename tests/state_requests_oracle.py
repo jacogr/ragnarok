@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent E4-length/hash request keys and fixed tagged 0..3 timeslot history equations."""
+"""Independent E4-length/hash request keys and fixed tagged 0..3 timeslot history equations.
+
+Exposes requests to produce independent native-driver inputs and expected observations, with
+reference encoding/decoding helpers.
+"""
 import hashlib
 import random
 from test_codec import reference_encode as natural,reference_decode

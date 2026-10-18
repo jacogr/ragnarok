@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted independent state-component adapter; every observation is copied before caller storage is destroyed.
+## Trusted independent state-component adapter; every observation is copied before caller
+## storage is destroyed.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_safrole, state_layout, state_trie, bounded, assurances]
 

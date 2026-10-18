@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal known answers for current 31-byte state keys, MSB trie flags and independent Blake2b node commitments."""
+"""Literal known answers for current 31-byte state keys, MSB trie flags and independent Blake2b node commitments.
+
+Exposes StateLayoutHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from state_layout_oracle import chapter_key,chapter_service,service_key,branch,leaf,decode,hash_node,embedded_source,digest
 

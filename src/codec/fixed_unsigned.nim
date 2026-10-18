@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JAM fixed-width unsigned integers, Gray Paper v0.8.0 C.1.7.
-## See spec/fixed-unsigned.md for domain, error and ownership details.
+## JAM fixed-width unsigned integers, Gray Paper v0.8.0 C.1.7. See spec/fixed-unsigned.md for
+## domain, error and ownership details.
+##
+## Exposes FixedUnsigned and ByteWidth domains, encodeFixed/decodeFixed and checked
+## value/consumption results.
+
 type
   # An unsigned wire value, distinct from both ordinary uint64 and general JAM naturals.
   FixedUnsigned* = distinct uint64

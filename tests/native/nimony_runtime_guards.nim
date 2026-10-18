@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trial-only subprocess probes distinguish runtime guards from intentional wrapping arithmetic.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 # Runtime argument values prevent folding either invalid operation into a compile-time diagnostic.
 case paramStr(1)

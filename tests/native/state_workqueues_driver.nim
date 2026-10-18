@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted independent source and immutable observation adapter for state chapters 14/15.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_workqueues, report_owned, owned, state_trie, bounded]
 

@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## White-box tests use only our own module to reach private-wire aliases; external probes enforce privacy.
+## White-box tests use only our own module to reach private-wire aliases; external probes
+## enforce privacy.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 include ../../../src/codec/bitstrings
 

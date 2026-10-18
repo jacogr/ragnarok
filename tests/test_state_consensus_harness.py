@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal chapter-4 offsets, fixed schedule framing and resource checks for the independent reference."""
+"""Literal chapter-4 offsets, fixed schedule framing and resource checks for the independent reference.
+
+Exposes ConsensusHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from state_consensus_oracle import wire,encode,decode,MAX
 

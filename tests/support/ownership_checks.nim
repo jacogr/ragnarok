@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Shared adapter assertions: owned snapshots must match every successful borrowed conformance decode.
+## Shared adapter assertions: owned snapshots must match every successful borrowed conformance
+## decode.
+##
+## Exposes snapshot comparison helpers for borrowed/owned codec adapters; assertions remain
+## test-only.
+
 import std/[assertions, syncio]
 import ../../src/codec/[bounded, composite, work_digest, owned]
 

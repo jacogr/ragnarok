@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Validate project-owned verification inputs without provisioning or executing native dependencies."""
+"""Validate project-owned verification inputs without provisioning or executing native dependencies.
+
+Exposes validate_registration, validate_inventory and a CLI that fails on missing or
+inconsistent verification registrations.
+"""
 import ast
 from pathlib import Path
 import sys

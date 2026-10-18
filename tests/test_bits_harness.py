@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal known answers protect the independent Boolean/bitstring oracle."""
+"""Literal known answers protect the independent Boolean/bitstring oracle.
+
+Exposes BitsHarness for unittest discovery; test methods exercise the stated contracts.
+"""
 import unittest
 from bits_oracle import boolean, packed, wire, decode, encode, MAX
 

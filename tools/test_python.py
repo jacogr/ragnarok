@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Run Python reference, tooling and provenance unittests once as an independent verification group."""
+"""Run Python reference, tooling and provenance unittests once as an independent verification group.
+
+Exposes python_tests and a CLI that discovers Python tests once and writes fresh results.
+"""
 import json
 from pathlib import Path
 import re

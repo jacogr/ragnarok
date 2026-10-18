@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Initialize recorded upstream gitlinks, using a focused checkout for the large JAM vector repository."""
+"""Initialize recorded upstream gitlinks, using a focused checkout for the large JAM vector repository.
+
+Exposes initialize_vectors and a setup CLI that restores pinned submodules, including a focused
+vector checkout.
+"""
 from pathlib import Path
 import subprocess
 import sys

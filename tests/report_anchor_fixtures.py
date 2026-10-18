@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Unchanged report STF recent-anchor projections; upstream supplies no retained ancestor headers."""
+"""Unchanged report STF recent-anchor projections; upstream supplies no retained ancestor headers.
+
+Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
+"""
 from report_policy_fixtures import prepare as policy_prepare
 
 CASES = ('report_curr_rotation-1', 'report_prev_rotation-1', 'multiple_reports-1',

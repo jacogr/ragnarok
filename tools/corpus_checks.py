@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Compare native corpus observations without sharing protocol logic with independent references."""
+"""Compare native corpus observations without sharing protocol logic with independent references.
+
+Exposes compare_corpus and run_corpus for strict expected/observed comparison, process handling
+and report updates.
+"""
 import hashlib
 
 

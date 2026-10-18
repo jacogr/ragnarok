@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional trailing CLI controls for the existing bounded proof-peer command shape.
+##
+## Exposes peer CLI option parsing, telemetry/RPC setup controls and connection/peer observation
+## helpers.
+
 import std/[os, syncio, times, monotimes, strutils, base64]
 import ./[wire, client, chain]
 import ../quic/transport

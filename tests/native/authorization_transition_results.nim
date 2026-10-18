@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Dynamic public-access misuse probes require supported contract failures, not unrelated process crashes.
+## Dynamic public-access misuse probes require supported contract failures, not unrelated
+## process crashes.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 import ../support/authorization_transition_fixture
 import ../../src/state/[authorization, store]

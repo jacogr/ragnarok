@@ -1,6 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+## Exercise complete work-digest encoding/decoding, typed fields and default/failure result
+## contracts.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[work_digest, composite, bounded]
 

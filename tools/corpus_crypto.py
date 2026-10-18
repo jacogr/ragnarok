@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Feature-owned corpus orchestration; expected results remain in independent test oracles."""
+"""Feature-owned corpus orchestration; expected results remain in independent test oracles.
+
+Exposes run_bandersnatch and run_crypto to execute primitive corpora and ABI checks.
+"""
 from pathlib import Path
 import json
 import subprocess

@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent safeguard for the original full-report credential bindings, before native execution."""
+"""Independent safeguard for the original full-report credential bindings, before native execution.
+
+Exposes ReportSignatureHarness for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import hashlib
 import json
 import unittest

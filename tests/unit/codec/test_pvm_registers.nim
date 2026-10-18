@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native replay of independent integer arithmetic and pinned upstream scalar witnesses.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, machine, registers]
 

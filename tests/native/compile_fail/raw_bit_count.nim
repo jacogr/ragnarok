@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Byte extents cannot implicitly become schema bit counts.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/bitstrings
 var input: array[1, byte] = default(array[1, byte])
 discard decodeFixedBits(input, 8'u64, BitLimit(8))

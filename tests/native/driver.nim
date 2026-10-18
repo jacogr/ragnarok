@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Batch natural adapter; malformed decimal/hex transport is distinct from codec failure.
+##
+## Provides a test-process entry point that accepts trusted fixture requests and emits native
+## observations for the independent Python harness.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
 import ../../src/codec/natural

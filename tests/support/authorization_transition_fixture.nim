@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Trusted native fixture constructors; expected transition rows are authored separately or pinned upstream.
+## Trusted native fixture constructors; expected transition rows are authored separately or
+## pinned upstream.
+##
+## Exposes deterministic authorization hashes, profiles and source constructors, and re-exports
+## their codec domains.
+
 import std/assertions
 import ../../src/codec/[state_authorization, assurances, bounded]
 export state_authorization, assurances, bounded

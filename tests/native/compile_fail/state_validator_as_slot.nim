@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Pending validator ordinals cannot silently become sealer schedule positions.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/codec/[state_consensus, state_safrole]
 let owner = default(SafroleStateSnapshot)
 let index = default(StateValidatorIndex)

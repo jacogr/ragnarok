@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent RFC 6455 socket checks against the actual peer executable, with no WebSocket dependency."""
+"""Independent RFC 6455 socket checks against the actual peer executable, with no WebSocket dependency.
+
+Exposes exact, send, receive, connect, ready, run for the verification harness.
+"""
 import base64
 import hashlib
 import json

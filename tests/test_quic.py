@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build pinned isolated QUIC dependencies and verify authenticated JAMNP-S CE 143 peers."""
+"""Build pinned isolated QUIC dependencies and verify authenticated JAMNP-S CE 143 peers.
+
+Exposes peer_name, fixtures, thread_count, wait_server_ready, attempt for the verification
+harness.
+"""
 import json
 from pathlib import Path
 import platform

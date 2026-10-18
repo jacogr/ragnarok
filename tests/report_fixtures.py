@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Independent test-only OpenSSL Ed25519 fixtures over the pinned normative report signing message."""
+"""Independent test-only OpenSSL Ed25519 fixtures over the pinned normative report signing message.
+
+Exposes openssl_sign, validate_provider, fixtures, check, composition_cases, verify_composition
+for the verification harness.
+"""
 import hashlib
 import json
 import subprocess

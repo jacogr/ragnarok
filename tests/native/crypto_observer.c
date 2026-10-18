@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+// Instruments the maintained crypto ABI for native tests. Exposes call/wipe observations and
+// controlled backend refusals to ownership and failure tests.
+
 /* Test-only observation/fault layer; production links the unmodified maintained primitive bridge. */
 #include "primitive_bridge.h"
 

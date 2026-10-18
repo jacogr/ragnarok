@@ -2,7 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Verify and safely extract official pinned tool archives; never run upstream installers."""
+"""Verify and safely extract official pinned tool archives; never run upstream installers.
+
+Exposes download and extract for hash-verified archives and bounded, path-safe extraction.
+"""
 import hashlib
 import io
 from pathlib import Path

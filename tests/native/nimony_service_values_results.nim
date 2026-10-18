@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Isolated actual/default service-value reads require success; native refusals use a separate test-only bridge.
+## Isolated actual/default service-value reads require success; native refusals use a separate
+## test-only bridge.
+##
+## Provides a command-line-selected runtime misuse probe; the failure harness checks its
+## rejection diagnostic and exit status.
+
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_service_values
 # Native fault injection is linked only in this isolated test adapter, never production binaries.

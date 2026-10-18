@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 T C(255, service): fixed version-zero service-account metadata, not nested service maps.
+## GP 0.8.0 T C(255, service): fixed version-zero service-account metadata, not nested service
+## maps.
+##
+## Exposes ServiceMetadata, nominal account resource fields, decodeServiceMetadata and
+## serviceMetadataEntry.
+
 import ./[natural, bounded, composite, work_digest, state_layout, state_trie]
 export ServiceIndex, CodeHash, Gas
 

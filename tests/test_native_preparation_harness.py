@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Check shared preparation boundaries without invoking native builds or using stale fixtures."""
+"""Check shared preparation boundaries without invoking native builds or using stale fixtures.
+
+Exposes NativePreparationHarness for unittest discovery; test methods exercise the stated
+contracts.
+"""
 from contextlib import ExitStack
 import hashlib
 from pathlib import Path

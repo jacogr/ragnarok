@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Inert filesystem fixtures for launcher and CI harness tests; no native tools execute here."""
+"""Inert filesystem fixtures for launcher and CI harness tests; no native tools execute here.
+
+Exposes temporary_folder, native_libraries for the verification harness.
+"""
 from contextlib import contextmanager
 from pathlib import Path
 import tempfile

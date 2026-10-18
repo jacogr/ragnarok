@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Literal service-account metadata key/payload and error anchors, independent of native code."""
+"""Literal service-account metadata key/payload and error anchors, independent of native code.
+
+Exposes ServiceAccountsHarness for unittest discovery; test methods exercise the stated
+contracts.
+"""
 import unittest
 from state_accounts_oracle import key,wire,encode,decode,MAX
 

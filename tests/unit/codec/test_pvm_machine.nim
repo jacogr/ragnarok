@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Memory permissions, cyclic addressing, snapshot isolation and copied CPU state.
+##
+## Provides a standalone Hastur test executable; assertions and expected output form its harness
+## interface.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine]
 import ../../support/arc_evidence

@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Verified output hashes cannot masquerade as public keys.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
 import ../../../src/bandersnatch/bandersnatch
 let value: BsPublicKey = default(BsOutput)
 discard value

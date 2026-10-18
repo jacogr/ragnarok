@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Immutable report snapshots retain private wire bytes and bounded metadata through acyclic ARC ownership.
+## Immutable report snapshots retain private wire bytes and bounded metadata through acyclic ARC
+## ownership.
+##
+## Exposes decodeOwnedReport, report metadata/child access, bounded blob copies and re-encoding
+## from retained report snapshots.
+
 import ./[composite, work_digest, work_report, owned]
 
 type

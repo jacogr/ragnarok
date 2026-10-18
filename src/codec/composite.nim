@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Composite codecs, pinned Gray Paper v0.8.0 C.1.3/C.2. No heap allocation.
+##
+## Exposes explicit optional/work variants and borrowed optional, work-result and preimage
+## codecs with measured write/decode results.
+
 import ./natural
 import ./fixed_unsigned
 import ./bounded

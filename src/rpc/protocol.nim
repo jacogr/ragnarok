@@ -3,6 +3,10 @@
 
 ## JSON-RPC 2.0 dispatch for the proof peer. No fabricated chain state or subscription success.
 ## Bounds: 16 KiB input, 16 levels, 2048 values and 16 requests per batch; no retained borrows.
+##
+## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
+## responses.
+
 import std/[strutils, parsejson, streams]
 import ./wire
 import ../chain/parameters
