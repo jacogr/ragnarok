@@ -16,7 +16,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from check_inventory import validate_registration
-from runtime_provenance import validate_coverage
+from runtime_provenance import validate_coverage, validate_source_order, runtime_sources
 from failure_checks import FAILURE_SUITES, load_suites
 
 
@@ -123,3 +123,12 @@ class InventoryPreflight(unittest.TestCase):
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('PASS verification inventory:', result.stdout)
+
+    # Alphabetical grouping is enforced, and feature-owned profiles all enter provenance automatically.
+    def test_source_order_and_profile_discovery(self):
+        validate_source_order(('src/pvm/gas.nim', 'src/state/store.nim', 'tools/build.py'))
+        with self.assertRaisesRegex(ValueError, 'alphabetical'):
+            validate_source_order(('tools/build.py', 'src/pvm/gas.nim'))
+        expected = set((ROOT/'tools/native_requirements').glob('*/*.json'))
+        self.assertTrue(expected)
+        self.assertTrue(expected <= set(runtime_sources()))

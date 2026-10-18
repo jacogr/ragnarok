@@ -1,0 +1,18 @@
+{
+  "defines": [],
+  "directory": "crypto",
+  "includes": [
+    "bandersnatch"
+  ],
+  "libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "observers": [
+    "key_new",
+    "key_free",
+    "setup_new",
+    "setup_free"
+  ],
+  "prepared": false
+}

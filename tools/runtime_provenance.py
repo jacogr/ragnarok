@@ -15,10 +15,19 @@ EXCLUSIONS = {'tools/compare_nimony.py': 'Historical Nim 2 measurement control, 
 COVERAGE_PATTERNS = ('tools/**/*.py', 'tools/**/*.json', 'tests/**/*.py')
 
 
+# Enforce feature/path insertion points in the remaining shared literal list rather than sorting silently.
+def validate_source_order(values):
+    if list(values) != sorted(values):
+        # Prefix grouping follows repository-relative module paths; appending unrelated paths fails preflight.
+        raise ValueError('Runtime sources must be alphabetical; insert beside the matching module/feature prefix')
+
+
 # Keep explicit and discovered inputs identical between preflight and runtime evidence generation.
 def runtime_sources():
     from native_tests import unit_source, unit_fixture_sources
+    validate_source_order(RUNTIME_SOURCES)
     sources = [ROOT/path for path in RUNTIME_SOURCES]
+    sources += sorted((ROOT/'tools/native_requirements').glob('*/*.json'))
     sources += sorted((ROOT/'tools/failure_suites').glob('*.json'))
     sources += list((ROOT/'src/codec').glob('*.nim')) + list((ROOT/'src/state').glob('*.nim'))
     sources += [unit_source(name) for name in UNIT_SUITES]
