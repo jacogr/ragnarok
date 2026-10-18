@@ -15,4 +15,5 @@ all state chapters or run consensus. `src/chain/services.nim` reads account meta
 values, verified preimages and fixed request histories through immutable store views; RPC bounds raw values and aggregate
 batch responses before copying them. `src/chain/statistics.nim` validates C(13) against retained
 core configuration and current/previous rosters before returning its exact bytes. Genesis capture
-also retains sorted IDs from exact valid account entries for bounded `listServices` responses. RPC and telemetry share the same startup file snapshot. See [RPC scope](../../spec/rpc.md).
+also owns a bounded sorted serialized-key index for binary-search pagination; key access returns
+fixed copies without exporting state-map storage. It retains sorted IDs from exact valid account entries for bounded `listServices` responses. RPC and telemetry share the same startup file snapshot. See [RPC scope](../../spec/rpc.md).
