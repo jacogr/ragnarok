@@ -696,6 +696,7 @@
     "rpc_statistics_result_private": "status",
     "rpc_ticket_attempts_private": "ticketLimit",
     "rpc_view_advance_private": "status",
+    "rpc_view_finalize_private": "status",
     "safrole_auth_private": "completed",
     "safrole_auth_retag": "status",
     "safrole_epoch_private": "epochValue",
@@ -976,6 +977,7 @@
     "request_known_requested_since": "history.mode == Available",
     "rpc_parameters_known_failure": "decoded.success",
     "rpc_view_advance_known_failure": "outcome.status",
+    "rpc_view_finalize_known_failure": "outcome.status",
     "safrole_auth_success_forge": "not reason == None"
   },
   "AVAILABILITY_MEMBERS": [

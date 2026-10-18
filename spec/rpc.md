@@ -25,13 +25,14 @@ Send a WebSocket text message:
 - Milliseconds since RPC startup, observed connected peer count, and occupied/reserved ARC
   allocator bytes (not process RSS). Mesh counts its logical remote once across two role engines.
 - `bestBlock`: the selected head descriptor when available, initially configured genesis; otherwise null.
-- `chain` and `finalizedBlock`: null; no network identity or finalization view is published yet.
+- `chain`: null; no network identity is published. `finalizedBlock` is null until explicitly published
+  by a trusted finality source, then contains its block descriptor.
 - RPC transport, loopback address, port, available method names, subscription availability,
   maximum message bytes and batch size.
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `finalizedBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
 remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request subscriptions
 are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
@@ -847,3 +848,33 @@ Connected socket tests publish each history state, deletion and invalid count wh
 connection. Live WebSocket tests cover configured/unavailable chains and cancellation.
 All four service subscription families now support best-chain updates. Finality and live importer
 integration remain gaps; finalized subscriptions need an actual finalized-chain provider first.
+
+
+## Explicit finalized-head publication
+
+Pinned JIP-2 Methods / finalizedBlock returns a Block Descriptor for the latest finalized block.
+`finalizedBlock()` now reads an explicitly selected finalized snapshot; absent finality returns
+error 0. It never substitutes genesis or the best head. `ragnarok_clientInfo.finalizedBlock`
+reports the same descriptor, or `null` while unavailable. Positional arguments must be empty.
+
+`ChainView.finalizeView(hash)` and `Server.publishFinalized(hash)` are internal trusted-caller
+boundaries, not network mutation methods or consensus finality verification. The caller must
+certify finality before handing off on the dispatcher thread between ticks. Selection accepts only
+an exact known block on the retained linear chain, refuses decreasing slots and unknown/evicted
+hashes, and is idempotent for the current finalized hash. Closed listeners refuse publication.
+Failures preserve both best and finalized views. Genesis capture and best-head publication never
+implicitly establish or advance finality.
+
+A view retains at most eight rolling history snapshots plus one finalized snapshot. The additional
+owner keeps finalized state queries available after the rolling history evicts that block; selecting
+a newer finalized block releases the previous extra owner when no older reader retains it.
+`retainedCount` continues to count the rolling history only. Exact hash lookup can additionally
+resolve the finalized snapshot; this does not create an archive or make evicted intermediate
+ancestors available. No snapshot bytes are copied during finality selection.
+
+Native tests cover independent best/finalized heads, immutable previous readers, repeated selection,
+unknown hashes, regressions, window eviction, replacement and query batches/notifications. Socket
+coverage verifies dispatcher publication and the returned descriptor; compiler probes protect the
+new tagged result. Live startup checks confirm finality remains unavailable with and without genesis.
+No consensus engine calls this handoff yet. Finalized subscriptions and finality-source integration
+remain outstanding; the next bounded RPC increment can route subscriptions to explicit finality events.

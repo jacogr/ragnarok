@@ -3,7 +3,8 @@
 
 ## Immutable bounded linear RPC history: best block, exact block/parent lookup and retained reports.
 ## advanceView appends a structurally captured direct child after linkage checks. It does not verify
-## execution, signatures, wall-clock validity, fork choice or finality. Old readers retain their view.
+## execution, signatures, wall-clock validity, fork choice or finality. finalizeView records caller-certified
+## finality only; old readers retain their view. At most eight history owners plus one finalized owner.
 
 import ./[genesis, reports]
 import ../codec/bounded
@@ -11,9 +12,10 @@ import ../codec/bounded
 const MaxRetainedBlocks* = 8 # Local retention policy; no protocol history or finality guarantee.
 
 type
-  ## Private oldest-to-newest snapshots; every construction allocates a separate sequence container.
+  ## Private immutable oldest-to-newest snapshots; append allocates a separate sequence container.
   ChainView* = object
     snapshot: seq[BlockSnapshotResult]
+    finalized: BlockSnapshotResult # Separate bounded owner; absent until a trusted caller reports finality.
   ## Default/failure outcomes never contain a replacement view.
   ViewAdvanceError* {.pure.} = enum
     Uninitialized, None, InvalidSnapshot, Duplicate, NotChild, SlotNotIncreasing,
@@ -25,6 +27,25 @@ type
       completed: ChainView
     else:
       discard # No partial history escapes a failed append.
+
+  ## Finality selection failures carry no replacement view or guessed finalized head.
+  ViewFinalizeError* {.pure.} = enum Uninitialized, None, UnknownBlock, Regression
+  ## Successful selection retains immutable history plus one finalized snapshot.
+  ViewFinalizeResult* = object
+    case status: ViewFinalizeError
+    of None:
+      completed: ChainView
+    else:
+      discard # No partial finality update is observable.
+
+## Inspect finality selection without allowing discriminator mutation.
+func error*(outcome: ViewFinalizeResult): ViewFinalizeError = outcome.status
+## Extract a successful immutable replacement only after checking the result.
+func value*(outcome: ViewFinalizeResult): ChainView {.requires: outcome.status ==
+    ViewFinalizeError.None.} = outcome.completed
+
+## Return only explicitly supplied finality; genesis and best-head advances imply none.
+func finalizedBlock*(view: ChainView): BlockSnapshotResult = view.finalized
 
 ## Read the outcome without exposing a mutable discriminator.
 func error*(outcome: ViewAdvanceResult): ViewAdvanceError {.inline.} = outcome.status
@@ -38,7 +59,7 @@ proc genesisView*(source: GenesisResult): ChainView =
     return ChainView(snapshot: @[source]) # Private container retains the structurally checked owner.
   default(ChainView) # Failed inputs expose no payload.
 
-## Return the bounded number of snapshots owned by this specific view.
+## Return the rolling history count, excluding the separately retained finalized owner.
 func retainedCount*(view: ChainView): int = view.snapshot.len
 
 ## Select the newest retained block; the caller, not this store, decides which chain is selected.
@@ -47,12 +68,15 @@ func bestBlock*(view: ChainView): BlockSnapshotResult =
     return unavailableGenesis() # Default views have no implicit head.
   view.snapshot[^1]
 
-## Resolve the exact full-header identity in at most eight comparisons, never falling back to the head.
+## Resolve an exact full-header identity in at most nine comparisons, including the finalized owner.
 func blockAt*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
   for saved in view.snapshot:
     if array[32, byte](saved.value.blockHash) == array[32, byte](hash):
       return saved # Successful results retain their own immutable snapshot lifetime.
-  unavailableGenesis() # Empty views, unknown hashes and evicted blocks have no snapshot here.
+  if view.finalized.error == GenesisError.None:
+    if array[32, byte](view.finalized.value.blockHash) == array[32, byte](hash):
+      return view.finalized # Keep finalized-state queries available after history-window eviction.
+  unavailableGenesis() # Other evicted blocks are unavailable.
 
 ## Return a parent only when both child and its exact parent are retained in this view.
 func parentOf*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
@@ -85,7 +109,8 @@ proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResul
   for index in first..<view.snapshot.len:
     saved[index - first] = view.snapshot[index] # Copy owner handles into a fresh private container.
   saved[saved.len - 1] = child
-  ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(snapshot: saved))
+  ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(snapshot: saved,
+      finalized: view.finalized))
 
 ## Search only the selected head's retained reports under the existing byte budget.
 ## Block history does not widen report searches into an archive or multiply decoder work per request.
@@ -94,3 +119,18 @@ proc reportAt*(view: ChainView, hash: WorkReportHash, limit: ByteLimit): ReportR
   if head.error != GenesisError.None:
     return default(ReportReadResult) # The existing result marks default owners uninitialized.
   reports.workReport(head.value, hash, limit)
+
+
+## Select a caller-certified finalized block on this retained linear chain; no consensus proof is checked.
+## Reject unknown hashes and regressions; repeated selection is idempotent. Immutable old views survive.
+proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
+  if view.bestBlock.error != GenesisError.None:
+    return ViewFinalizeResult(status: ViewFinalizeError.Uninitialized) # Explicit chain seeding is required.
+  let selected = view.blockAt(hash)
+  if selected.error != GenesisError.None:
+    return ViewFinalizeResult(status: ViewFinalizeError.UnknownBlock) # Never infer finality for an unknown or evicted ancestor.
+  if view.finalized.error == GenesisError.None:
+    if selected.value.slot < view.finalized.value.slot:
+      return ViewFinalizeResult(status: ViewFinalizeError.Regression) # The linear history already proves increasing slots.
+  ViewFinalizeResult(status: ViewFinalizeError.None,
+    completed: ChainView(snapshot: view.snapshot, finalized: selected))

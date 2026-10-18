@@ -160,7 +160,7 @@ assert "\"code\":-32602" in respond(rootRequest.replace(genesisHash, "bad"), wit
 assert "\"code\":-32602" in respond(rootRequest.replace("[\"" & genesisHash & "\"]", "[]"), withGenesis)
 assert "\"code\":-32602" in respond(bestRequest.replace("\"id\":1", "\"id\":1,\"params\":[0]"), withGenesis)
 assert respond(bestRequest.replace(",\"id\":1", ""), withGenesis) == ""
-assert "\"code\":-32601" in respond(bestRequest.replace("bestBlock", "finalizedBlock"), withGenesis)
+assert "\"code\":0" in respond(bestRequest.replace("bestBlock", "finalizedBlock"), withGenesis)
 # An absent pair preserves parameter-only operation; every incomplete/malformed pair fails atomically.
 assert configuredGenesis("{}", genesisParameters.value).error == GenesisError.Unavailable
 for malformed in ["{\"genesis_header\":\"00\"}", "{\"genesis_state\":{}}",
@@ -1051,6 +1051,49 @@ assert respond(rawCall.replace(genesisHash, childHashText), historicalInfo) ==
 assert respond(rootRequest.replace(genesisHash, childHashText).replace(
   ",\"id\":1", ""), historicalInfo) == ""
 
+# Finality is an explicit trusted selection, independent from best-head publication.
+let finalizedRequest = bestRequest.replace("bestBlock", "finalizedBlock")
+assert twoBlocks.finalizedBlock.error != GenesisError.None
+assert emptyChain.finalizeView(selectedHash).error == ViewFinalizeError.Uninitialized
+assert twoBlocks.finalizeView(default(BlockHash)).error == ViewFinalizeError.UnknownBlock
+let selectedFinality = twoBlocks.finalizeView(selectedHash)
+assert selectedFinality.error == ViewFinalizeError.None
+let finalizedInfo = ClientInfo(parameters: genesisParameters, chain: selectedFinality.value)
+assert respond(finalizedRequest, finalizedInfo) == respond(bestRequest, withGenesis)
+assert respond(bestRequest, finalizedInfo) == respond(bestRequest, historicalInfo)
+assert "\"finalizedBlock\":{\"header_hash\":\"" & genesisHash & "\",\"slot\":7}" in respond(
+    "{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\",\"id\":1}", finalizedInfo)
+assert respond("[" & finalizedRequest & "," & finalizedRequest & "]", finalizedInfo) == "[" &
+    respond(bestRequest, withGenesis) & "," & respond(bestRequest, withGenesis) & "]"
+assert respond(finalizedRequest.replace(",\"id\":1", ""), finalizedInfo) == ""
+assert "-32602" in respond(finalizedRequest.replace("\"method\":", "\"params\":[0],\"method\":"), finalizedInfo)
+let repeatedFinality = selectedFinality.value.finalizeView(selectedHash)
+assert repeatedFinality.error == ViewFinalizeError.None
+let newerFinality = selectedFinality.value.finalizeView(historyChild.value.blockHash)
+assert newerFinality.error == ViewFinalizeError.None
+assert newerFinality.value.finalizeView(selectedHash).error == ViewFinalizeError.Regression
+assert selectedFinality.value.finalizedBlock.value.slot ==
+    7 # Older readers retain their independently selected finality.
+assert twoBlocks.finalizedBlock.error != GenesisError.None
+var finalizedRolling = selectedFinality.value
+for atSlot in 10'u32..19'u32:
+  let appended = finalizedRolling.advanceView(childSnapshot(finalizedRolling.bestBlock.value,
+      atSlot, genesisParameters.value))
+  assert appended.error == ViewAdvanceError.None
+  finalizedRolling = appended.value # Best-head appends cannot silently advance finality.
+assert finalizedRolling.retainedCount == MaxRetainedBlocks
+assert finalizedRolling.finalizedBlock.value.slot == 7
+assert finalizedRolling.blockAt(selectedHash).error ==
+    GenesisError.None # One separate owner keeps finalized state queryable after eviction.
+assert finalizedRolling.blockAt(historyChild.value.blockHash).error != GenesisError.None
+assert finalizedRolling.finalizeView(historyChild.value.blockHash).error ==
+    ViewFinalizeError.UnknownBlock
+let movedFinality = finalizedRolling.finalizeView(finalizedRolling.bestBlock.value.blockHash)
+assert movedFinality.error == ViewFinalizeError.None
+assert movedFinality.value.blockAt(selectedHash).error !=
+    GenesisError.None # Replacing finality releases the old out-of-window owner.
+assert finalizedRolling.blockAt(selectedHash).error == GenesisError.None # Existing readers still own their view.
+
 # Every rejected append leaves the source view intact and exposes only its failure reason.
 let noAdvance = default(ViewAdvanceResult)
 assert noAdvance.error == ViewAdvanceError.Uninitialized
@@ -1877,8 +1920,21 @@ proc publicationLifecycle() =
           "\"value\":null", "\"value\":" & value)
       assert publicationReply(survivor[1]) == frame(expected) # Updates include a successful null on deletion.
   assert owner.connections[1].opened
+  let finalizedHead = owner.chain.bestBlock
+  assert finalizedHead.error == GenesisError.None
+  assert owner.publishFinalized(default(BlockHash)) == ViewFinalizeError.UnknownBlock
+  assert owner.publishFinalized(finalizedHead.value.blockHash) == ViewFinalizeError.None
+  assert owner.publishFinalized(finalizedHead.value.blockHash) == ViewFinalizeError.None
+  var finalizedPacket = masked(finalizedRequest)
+  assert sendBytes(survivor[1], finalizedPacket.toCString(), csize_t(finalizedPacket.len), 0) ==
+      finalizedPacket.len
+  owner.tick(0)
+  let finalizedAnswer = respond(bestRequest, withGenesis).replace(genesisHash, base64.encode(array[
+      32, byte](finalizedHead.value.blockHash))).replace("\"slot\":7", "\"slot\":49")
+  assert publicationReply(survivor[1]) == frame(finalizedAnswer) # Dispatcher queries use the explicitly published finalized snapshot.
   owner.close()
   assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
+  assert owner.publishFinalized(selectedHash) == ViewFinalizeError.Uninitialized
   owner.tick(0)
   owner.close() # Shutdown remains idempotent after successful publications.
 

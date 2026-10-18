@@ -599,9 +599,11 @@ proc clientInfo(info: ClientInfo, stateful: bool): string =
   result.add(",\"memory\":{\"occupiedBytes\":" & $info.occupiedBytes)
   result.add(",\"reservedBytes\":" & $info.reservedBytes & "}")
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.chain.bestBlock.error ==
-      GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") & ",\"finalizedBlock\":null")
+      GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") &
+          ",\"finalizedBlock\":" & (if info.chain.finalizedBlock.error == GenesisError.None:
+    descriptor(info.chain.finalizedBlock.value) else: "null"))
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"finalizedBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
       (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\",\"subscribeServiceValue\",\"unsubscribeServiceValue\",\"subscribeServicePreimage\",\"unsubscribeServicePreimage\",\"subscribeServiceRequest\",\"unsubscribeServiceRequest\"" else: "") & "]")
   result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
@@ -874,8 +876,13 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
           byte](view.stateRoot))) & "}"
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
         quote(hash) & "}}" # No parent or unknown block data exists in this genesis-only view.
-  if methodName in ["ragnarok_clientInfo", "parameters", "bestBlock"]:
+  if methodName in ["ragnarok_clientInfo", "parameters", "bestBlock", "finalizedBlock"]:
     if parameters >= 0 and values[parameters].next != parameters + 1: return error(id, -32602, "Expected no parameters")
+    if methodName == "finalizedBlock":
+      let selected = info.chain.finalizedBlock
+      if selected.error != GenesisError.None:
+        return error(id, 0, "Finalized chain view unavailable") # Never substitute genesis or the current best head.
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(selected.value) & "}"
     if methodName == "bestBlock":
       if info.chain.bestBlock.error != GenesisError.None: return error(id, 0,
           "Genesis chain view unavailable") # No configured head exists.

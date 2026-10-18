@@ -215,6 +215,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', method='subscribeServiceRequest', params=dict(subscription=request_id, result={**expected_head, 'value': expected_request}))
                     send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceRequest', params=[request_id], id=74)))
                     assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=74, result=True) # Family-specific cancellation succeeds.
+                assert 'finalizedBlock' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='finalizedBlock', params=[], id=75)))
+                assert json.loads(receive(connection)[1])['error']['code'] == 0 # Startup has no certified finality, even with configured genesis.
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])
