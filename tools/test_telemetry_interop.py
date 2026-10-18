@@ -23,14 +23,16 @@ LIFECYCLES = {'exchange': {'server': [21, 23, 27], 'client': [24, 26, 27]},
               'outgoing-timeout': {'client': [24, 25]}}
 
 
-# Hold reservations together so the two collector endpoints cannot accidentally select the same port.
-def ports():
+# Reserve telemetry TCP, observation TCP and peer UDP endpoints together; only telemetry changes family.
+def ports(ipv6=False):
     with ExitStack() as reservations:
         selected = []
-        for kind in (socket.SOCK_STREAM, socket.SOCK_STREAM, socket.SOCK_DGRAM):
+        for index, kind in enumerate((socket.SOCK_STREAM, socket.SOCK_STREAM, socket.SOCK_DGRAM)):
             # Readiness still exposes a competing process binding after these reservations are released.
-            reservation = reservations.enter_context(socket.socket(socket.AF_INET, kind))
-            reservation.bind(('127.0.0.1', 0))
+            family = socket.AF_INET6 if ipv6 and index == 0 else socket.AF_INET
+            host = '::1' if family == socket.AF_INET6 else '127.0.0.1'
+            reservation = reservations.enter_context(socket.socket(family, kind))
+            reservation.bind((host, 0))
             selected.append(reservation.getsockname()[1])
         return selected
 
@@ -247,9 +249,12 @@ def main():
             run(args.peer.resolve(), args.collector.resolve(), case, scenario, BUILD/scenario)
             case['passed'] = True
         from telemetry_interop_restart import run_restart
-        case = report['scenarios']['collector-restart'] = dict(passed=False)
-        run_restart(args.peer.resolve(), args.collector.resolve(), case, BUILD/'collector-restart')
-        case['passed'] = True
+        for ipv6 in (False, True):
+            # Require real IPv6 ingestion and reconnect without fallback; HTTP observation stays IPv4.
+            name = 'collector-restart-ipv6' if ipv6 else 'collector-restart'
+            case = report['scenarios'][name] = dict(passed=False)
+            run_restart(args.peer.resolve(), args.collector.resolve(), case, BUILD/name, ipv6=ipv6)
+            case['passed'] = True
         from telemetry_interop_incoming import run_incoming
         for rejected in (False, True):
             # Each incoming outcome gets fresh collectors, then reuses only its own retained listener.
@@ -257,6 +262,10 @@ def main():
             case = report['scenarios'][name] = dict(passed=False)
             run_incoming(args.peer.resolve(), args.collector.resolve(), case, BUILD/name, rejected)
             case['passed'] = True
+        from telemetry_interop_capacity import run_capacity
+        case = report['scenarios']['capacity-refusal'] = dict(passed=False)
+        run_capacity(args.peer.resolve(), args.collector.resolve(), case, BUILD/'capacity-refusal')
+        case['passed'] = True
         report['passed'] = True
     except Exception as error:
         report['failure'] = repr(error) # Preserve the diagnostic and fail the optional target honestly.

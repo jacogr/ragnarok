@@ -318,3 +318,41 @@ not met by this sequential scenario: exit code 2 plus the exact `SERVICE_DONE` c
 while each successful client must exit zero. This is the same service profile used by the existing
 incoming capture tests. The CI artifact retains per-case histories and collector/client/server
 logs without fixture keys. The original outgoing restart and failure/success scenarios still run.
+
+### Real collector capacity refusal and recovery
+
+The collector CI job fills all 16 admitted slots of one retained IPv6 listener and waits for both
+native admission counters and a decoded 16-peer status. A seventeenth client uses a distinct
+certificate identity. Its TLS success precedes native capacity admission, so JAM Tart must decode
+21/23 followed by event 20 with that attempt's actual IPv6 source address and port. The refused
+client must fail its request and must not produce an admitted-peer disconnect.
+
+The harness kills one held client, waits for native retirement and its decoded close, and sends
+a fresh one-request probe using a third client identity. The probe must succeed and close normally
+while the other 15 clients remain alive. Full collector history must contain exactly 18 attempts,
+18 TLS successes, one refusal, and only the two observed admitted-peer closes. Status must stay
+within 0–16 admitted connections and finish at 15. The explicit stop gate then ends the listener
+with those holders still alive: exit code 2 and `SERVICE_DONE 17 2 16` are required, and endpoint
+destruction must add no synthetic closes. All generated children are reaped by the harness.
+
+This checks the implemented post-TLS capacity refusal against the actual collector. It does not
+claim pre-TLS refusal detection, and it adds no new production event or admission policy.
+
+### IPv6 collector transport
+
+The same CI target requires a separate outgoing restart scenario with
+`--telemetry '[::1]:PORT'`. Both the registration relay and real JAM Tart ingestion socket
+bind IPv6 loopback. The report records the actual accepted and upstream socket addresses
+for both connections and requires `::1`, so an IPv4 fallback cannot satisfy this case.
+The collector's HTTP/WebSocket observation API and the QUIC peer exchange remain IPv4;
+this scenario specifically verifies the telemetry TCP transport family.
+
+The IPv6 case retains the same byte-identical chain/node registration checks, decoded status,
+pending-attempt correlation, dropped-prefix replay and authenticated close checks as IPv4.
+A separate telemetry-enabled exchange must also finish during the IPv6 collector outage.
+Missing IPv6 support, failed reconnect or decoding errors fail the CI job without skipping;
+its existing artifact includes the additional scenario's logs and evidence.
+
+This completes the planned real-collector checks for the currently implemented telemetry
+subset. Further event coverage depends on new node functionality; validator, block and
+work-package reporting and database-backed collector recovery remain outside this scope.
