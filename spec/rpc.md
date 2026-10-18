@@ -331,7 +331,7 @@ subscriptions and live head/finality views still require those state sources.
 ## Retained work-report lookup
 
 `workReport(hash)` returns the canonical report bytes as padded Base64 when its Blake2b-256
-identity matches a report retained in configured genesis C(10) availability assignments. It
+identity matches a report retained in configured genesis C(10) availability assignments or C(14) ready queues. It
 excludes guarantee credentials, guarantee slot and registration slot from the returned bytes
 and their hash. References: JIP-2 at the revision above; GP 0.8.0 revision
 `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix C.2 work-report serialization,
@@ -346,12 +346,11 @@ later assignments or trailing bytes cannot authorize an earlier match. Native ha
 also return error 0. Returned report handles are immutable, acyclic ARC owners and outlive the
 parent decoder; serialization copies bytes without exposing mutable backing storage.
 
-Unknown hashes, missing C(10), empty assignments and unconfigured nodes return JIP-2 error 2
+Unknown hashes, missing/empty retained report sources and unconfigured nodes return JIP-2 error 2
 with the requested report hash in `error.data`. This is local retention, not a historical report
-archive or a network fetch: C(14) ready-queue reports and reports no longer present in C(10)
-are not searched yet. Structural decoding does not verify guarantee signatures or consensus
-eligibility. Ready-queue lookup is the next bounded extension; live import, archive retention,
-submission and subscriptions still need their corresponding state/event sources.
+archive or a network fetch: reports no longer present in either retained chapter are not searched. Structural decoding does not verify guarantee signatures or consensus
+eligibility. Live import, archive retention, submission and subscriptions still need their
+corresponding state/event sources.
 
 Native tests use the independent Python report/guarantee oracle and Blake2b implementation
 for a fixed canonical report and its expected identity. They cover empty/missing state,
@@ -360,3 +359,31 @@ parameter validation, batches, notifications, independent copied bytes, retained
 and repeated ARC retirement. A compiler rejection protects the result discriminator. Live WS
 checks retrieve the report after the source chainspec changes, alongside existing service and
 concurrent QUIC traffic checks. These authored fixtures do not claim official conformance.
+
+### Ready-queue fallback
+
+After an ordinary C(10) miss, lookup exactly decodes C(14) and searches every row/item.
+A C(10) match or failure is returned immediately; malformed C(10) cannot be masked by a
+ready match, and a C(10) match does not require reading unrelated C(14). Within each searched
+chapter, complete structural validation precedes matching. A malformed later ready row or
+dependency set rejects an earlier potential match. Missing C(14) or a clean miss retains error 2.
+
+References are the same pinned GP revision, `text/merklization.tex` C(14),
+`text/accumulation.tex` `readyspec`, and [the ready-state schema](state-workqueues.md).
+The fixed ring has no outer count: its epoch length is now captured privately in `Genesis`
+from the same parameters used for header validation, exposed through a guarded nominal accessor.
+RPC does not infer it from bytes or use mutable request-time parameters. Report hashing excludes
+dependency sets. Returned report owners survive retirement of both the queue and configured map.
+
+Ready lookup policies are 1 MiB total chapter/report bytes, 4096 epoch rows, 4096 reports
+per row and in total, 64 dependencies per report and 16384 dependencies in total. Bounds
+precede input-derived allocation, including empty ring descriptors. They are resource policy,
+not new consensus limits. Existing raw/aggregate response budgets apply to matching reports.
+
+Native tests cover absent/empty/nonempty C(10) fallback, multiple rows/items and duplicate
+identities, final-row lookup, dependency ordering/uniqueness, late malformed data, exact response
+budgets, oversized chapters/epochs, retained report lifetime and repeated ARC retirement.
+A distinct independently encoded ready report is also queried over live WS after chainspec
+mutation, alongside the existing availability report and concurrent QUIC clients. The next
+substantive extension needs a live block/state publication boundary and a bounded report
+retention policy; this increment does not fabricate those sources.
