@@ -103,6 +103,7 @@
   "tests/native/accumulation_input_results.nim",
   "tests/native/accumulation_invocation_results.nim",
   "tests/native/accumulation_operand_results.nim",
+  "tests/native/accumulation_provision_results.nim",
   "tests/native/accumulation_queue_results.nim",
   "tests/native/accumulation_round_results.nim",
   "tests/native/accumulation_service_results.nim",

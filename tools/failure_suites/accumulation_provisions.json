@@ -1,0 +1,118 @@
+{
+  "build_name": "accumulation-provision-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "accumulation-provision-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "refused"
+      },
+      "name": "accumulation-provision-refused"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "info"
+      },
+      "name": "accumulation-provision-info"
+    },
+    {
+      "arguments": [
+        "bytes"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "bytes"
+      },
+      "name": "accumulation-provision-bytes"
+    },
+    {
+      "arguments": [
+        "index"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "index"
+      },
+      "name": "accumulation-provision-index"
+    },
+    {
+      "arguments": [
+        "record"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "record"
+      },
+      "name": "accumulation-provision-record"
+    },
+    {
+      "arguments": [
+        "unknown"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "unknown"
+      },
+      "name": "accumulation-provision-unknown"
+    },
+    {
+      "arguments": [
+        "duplicate"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "duplicate"
+      },
+      "name": "accumulation-provision-duplicate"
+    },
+    {
+      "arguments": [
+        "limit"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "limit"
+      },
+      "name": "accumulation-provision-limit"
+    },
+    {
+      "arguments": [
+        "query"
+      ],
+      "description": "Accumulation provision selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "query"
+      },
+      "name": "accumulation-provision-query"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "source": "tests/native/accumulation_provision_results.nim"
+}

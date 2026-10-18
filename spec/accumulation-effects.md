@@ -43,17 +43,19 @@ current regular child in both positions. Neither operation changes the caller's 
 retained context. There are no back-references to parent pairs, so histories remain acyclic.
 
 `effectContext` validates the dimension before extraction. `effectInfo` reports current yield
-presence and copied service/next-ID/empty outgoing-effect facts. `effectYield` returns a copied
+presence, copied service/next-ID facts and the current provision count (outgoing transfers remain empty). `effectYield` returns a copied
 `OutputCommitment` only when present; missing yield is a typed `YieldAbsent` reason with no hash
 payload. An all-zero commitment remains present. Private variant storage also omits the hash when
 absent. `effectsSource` retains original preparation; `effectInitialContext` explicitly exposes
 initial account/chapter/bootstrap backing, whose initial yield facts are not the current effect
 version's yield. Callers read current yield through `effectInfo`/`effectYield`.
 
-All operations use constant-sized metadata and retained immutable owners. They perform no hashes,
-state writes, input traversal, new identifier search or additional transfer credit. The retained
+Yield/checkpoint/extraction use retained immutable owners, without hashing, state writes,
+input traversal, new identifier search or additional transfer credit.
+[Requested provisions](accumulation-provisions.md) now add bounded hash/validation/capture work;
+yield/checkpoint share their immutable set owner. The retained
 source accounts include pre-invocation credit even in the exceptional dimension. Current state
-mutations are deliberately limited to yield/checkpoint; future account/queue/provision/transfer
+mutations support yield, checkpoint and requested provision capture. Future account/queue/transfer
 operations must extend this private current-context representation before claiming those effects.
 
 Native `test_accumulation_effects.nim` uses real public-API service/input/bootstrap/context
