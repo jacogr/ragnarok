@@ -49,7 +49,8 @@ proc capture(count, prerequisites: int): FetchContext =
   let package = decodeWorkPackage(wire.toOpenArray(0, size - 1), config).value.owner
   let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
     FetchPresence.Absent, [], FetchTraceLimit(0)).value
-  result = withFetchPackage(base, FetchPresence.Present, package, FetchPackageLimit(259)).value
+  result = withFetchPackage(base, FetchPresence.Present, package, FetchPackageLimit(259),
+      FetchEncodingLimit(32768)).value
   value.items[0].service = ServiceIndex(0)
   for i in 0..<wire.len:
     # Captured metadata cannot depend on the encoder output's lifetime or subsequent mutation.
@@ -160,7 +161,7 @@ for count in [1, 16]:
                 # Check all selected bytes and an untouched trailing sentinel.
                 assert page.bytes[i] == (if uint64(i) < copied: wanted[int(start) + i] else: 0'u8)
       let absent = withFetchPackage(captured, FetchPresence.Absent, default(OwnedWorkPackage),
-        FetchPackageLimit(0)).value
+        FetchPackageLimit(0), FetchEncodingLimit(32768)).value
       let none = fetchContextResponse(absent, MachineGas(price), arguments(selector, high(uint64),
         0, high(uint64), high(uint64)), memory, MemoryByteLimit(0)).value
       assert none.action == HostAction.Continue and uint64(none.registers[7]) == high(uint64)

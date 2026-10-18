@@ -38,4 +38,5 @@ Other known selectors and complete service invocation assembly remain open. Inde
 establish only the stated subset, not complete fetch or invocation parity.
 [Package blob fetch](pvm-fetch-package.md) now supplies configuration, token and item payloads.
 Encoded refinement context and summaries are covered by [selectors 10–12](pvm-fetch-summaries.md).
-Next bounded chunk: full encoded package fetch.
+Full encoded package fetch is covered by [selector 7](pvm-fetch-encoded.md).
+Next bounded chunk: external-input capture and fetch.

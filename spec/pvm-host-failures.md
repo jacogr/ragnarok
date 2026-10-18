@@ -44,4 +44,5 @@ resolves fetch absence using pinned notation. Remaining: complete invocation con
 additional selectors, staged service state, gas-used accounting and end-to-end invocation policy.
 [Package blob capture](pvm-fetch-package.md) now provides validated package selectors.
 Encoded refinement context and summaries are covered by [selectors 10–12](pvm-fetch-summaries.md).
-Next bounded chunk: full encoded package fetch.
+Full encoded package fetch is covered by [selector 7](pvm-fetch-encoded.md).
+Next bounded chunk: external-input capture and fetch.

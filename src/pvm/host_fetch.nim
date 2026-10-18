@@ -33,9 +33,12 @@ type
   FetchTraceLimit* = distinct uint64
   # Local cap on configuration, token and all item payload bytes captured together.
   FetchPackageLimit* = distinct uint64
+  # Separate local cap on the complete canonical package encoding, including framing and manifests.
+  FetchEncodingLimit* = distinct uint64
   # Private package snapshot owns raw blobs and fixed bounded encoded metadata.
   # The fixed item table is bounded by the validated C.2 package limit of sixteen items.
   FetchPackageData = ref object
+    encoded: seq[byte]
     configuration: seq[byte]
     authorization: seq[byte]
     payloads: array[16, seq[byte]]
@@ -127,9 +130,11 @@ proc encodeSummary(item: ItemInfo, output: var openArray[byte]): bool =
 
 # Attach package blobs and encoded metadata while preserving the original entropy/trace snapshot.
 # Present input must be a validated codec owner. Preflight aggregate byte lengths before allocating;
-# copying happens once at capture, never once per guest fetch. Absence ignores the package argument.
+# The raw-blob cap and complete-encoding cap are independent and both checked before allocation.
+# Copying happens once at capture, never once per guest fetch. Absence ignores package and both caps.
 proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
-    package: OwnedWorkPackage, limit: FetchPackageLimit): FetchContextResult =
+    package: OwnedWorkPackage, limit: FetchPackageLimit,
+    encodingLimit: FetchEncodingLimit): FetchContextResult =
   if context.data == nil:
     # An invalid base must not be converted into a valid context by attaching package data.
     return FetchContextResult(status: FetchError.InvalidContext)
@@ -145,6 +150,12 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
   if info.items < 1 or info.items > 16:
     # The codec guarantees this bound; retain a guard before indexing the fixed capture tables.
     return FetchContextResult(status: FetchError.InvalidContext)
+  if info.consumed < 1:
+    # A validated package always has a nonempty canonical prefix; reject invalid internal metadata.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  if uint64(info.consumed) > uint64(encodingLimit):
+    # Bound the extra complete encoding before allocating any capture storage.
+    return FetchContextResult(status: FetchError.LimitExceeded)
   var remaining = uint64(limit)
   for length in [info.configurationBytes, info.authorizationBytes]:
     # Subtract after comparison to bound the aggregate without overflowing a size sum.
@@ -180,10 +191,18 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
       # A late item over budget refuses the entire capture, not just the final payload.
       return FetchContextResult(status: FetchError.LimitExceeded)
     remaining -= uint64(lengths[i])
-  let captured = FetchPackageData(configuration: newSeq[byte](info.configurationBytes),
+  let captured = FetchPackageData(encoded: newSeq[byte](info.consumed), configuration: newSeq[byte](
+      info.configurationBytes),
     authorization: newSeq[byte](info.authorizationBytes), payloads: default(array[16, seq[byte]]),
     itemCount: info.items, context: contextBytes, contextLength: contextEncoded.value,
     summaries: summaries)
+  let encoded = encodeOwnedWorkPackage(package, captured.encoded)
+  if encoded.error != PackageError.None:
+    # Copy only the validated canonical package prefix, never unrelated trailing decoder input.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  if encoded.value != info.consumed:
+    # The captured owner must contain the entire measured encoding with no truncation or padding.
+    return FetchContextResult(status: FetchError.InvalidContext)
   if copyPackageBlob(package, PackageBlob.Configuration, captured.configuration).error !=
       PackageError.None:
     # The codec checks the complete output span; no unfinished owner escapes an unexpected refusal.
@@ -292,6 +311,13 @@ proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: Re
     # Trace absence still charges the requested length at selector 2's rate.
     fetchValue(gas, registers, memory, owner.trace,
       owner.tracePresence == FetchPresence.Present, 2, 80, 96, limit)
+  of 7:
+    # The package is encoded once during capture; item registers do not select or alter it.
+    let package = context.packageData
+    if package == nil:
+      # Absence retains the requested-length price even though no memory bytes will be copied.
+      return fetchValue(gas, registers, memory, [], false, 7, 85, 96, limit)
+    fetchValue(gas, registers, memory, package.encoded, true, 7, 85, 96, limit)
   of 10, 11, 12:
     # Metadata is encoded once at capture; requests borrow only the selected fixed-buffer extent.
     let package = context.packageData
