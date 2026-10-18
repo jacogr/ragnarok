@@ -9,7 +9,9 @@ coverage details and reproduction commands in the feature's `spec/` document ins
 Add native application assertions under the appropriate `tests/unit/` directory with an explicit
 `.output` contract. Register the suite in `tools/verification_inventory.json` and declare its
 source directory, library order, observer flags and fixture requirements in
-`tools/native_requirements.json`. Keep existing execution order. Fixtures use the feature
+`tools/native_requirements/<source-family>/<suite>.json`. Keep independent inventory identities
+and profile fields alphabetical, using the existing feature prefix; retain ordered link options.
+Fixtures use the feature
 adapters and shared preparation described in [infrastructure](infrastructure.md).
 
 Register compiler rejection sources under `tests/native/compile_fail/` in the appropriate

@@ -7,6 +7,7 @@ Exposes NATIVE_REQUIREMENTS and validate_requirements for declarative linking, A
 profiles.
 """
 import json
+import re
 from pathlib import Path
 from verification_inventory import UNIT_SUITES, UNIT_LINKS, unique_object
 
@@ -47,6 +48,29 @@ def validate_requirements(records):
     return records
 
 
-# Duplicate JSON keys are fatal at every level, just as in the main verification inventory.
-NATIVE_REQUIREMENTS = validate_requirements(json.loads(
-    Path(__file__).with_suffix('.json').read_text(), object_pairs_hook=unique_object))
+# Discover one feature-owned profile per source family; paths provide grouping without shared append sites.
+def load_requirements(folder):
+    records = {}
+    # Deterministic lexical paths group module families and suite prefixes independently of execution order.
+    for path in sorted(Path(folder).rglob('*.json')):
+        relative = path.relative_to(folder)
+        if len(relative.parts) != 2 or relative.parts[0] not in ('codec', 'state', 'crypto', 'quic'):
+            # Extra nesting and root-level files cannot silently escape the documented ownership layout.
+            raise ValueError('Invalid native requirement path: '+str(relative))
+        name = path.stem
+        if re.fullmatch(r'[a-z][a-z0-9_]*', name) is None or name in records:
+            # Filenames are suite identities; duplicate identities across module families are still fatal.
+            raise ValueError('Invalid or duplicate native requirement suite: '+name)
+        record = json.loads(path.read_text(), object_pairs_hook=unique_object)
+        if not isinstance(record, dict) or record.get('directory') != relative.parts[0]:
+            # Moving a test family requires moving its declaration rather than leaving misleading metadata.
+            raise ValueError('Native requirement directory mismatch: '+name)
+        if list(record) != sorted(record):
+            # Keep independent fields alphabetical; positional library/include/observer arrays retain their order.
+            raise ValueError('Native requirement fields must be alphabetical: '+name)
+        records[name] = record
+    return validate_requirements(records)
+
+
+# Exact inventory coverage, schema and primary-library checks still run before setup or execution.
+NATIVE_REQUIREMENTS = load_requirements(Path(__file__).with_suffix(''))

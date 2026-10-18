@@ -1,0 +1,14 @@
+{
+  "defines": [
+    "integration"
+  ],
+  "directory": "quic",
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": true
+}
