@@ -218,3 +218,42 @@ The existing mesh assertions retain bidirectional CE exchanges, duplicate retire
 thread, descriptor/RSS/allocation bounds and clean process shutdown throughout the collector outage.
 A non-reading low-volume collector does not necessarily saturate the OS send buffer; deterministic
 socket-pair unit tests separately prove fixed-buffer saturation, partial writes and exact loss counts.
+
+## Optional JAM Tart interoperability check
+
+`make check-telemetry-interop JAMTART=/absolute/path/to/tart-backend` builds the current
+Ragnarök peer, creates isolated fixture identities, and launches the explicitly selected collector
+with `--no-database` on ephemeral loopback TCP/HTTP ports. It requires no PostgreSQL instance.
+This optional check is separate from the six self-contained CI groups and adds no production
+runtime dependency. Its hash-pinned WebSocket client lives in an ignored build-local Python venv.
+
+The harness waits for a subscription acknowledgement, then requires a decoded two-core status
+before starting a real authenticated CE 143 exchange. Both peers must finish eight requests.
+JAM Tart's public WebSocket history must contain the expected incoming/outgoing attempts,
+authentication outcomes, identities, addresses and exactly one close per peer, without loss or
+failure events. Correlation is checked against each node's implicit event position: WebSocket
+envelope IDs are collector-global and are not JIP-3 attempt IDs.
+
+The collector remains an independent compatibility check, not the protocol authority. This
+scenario covers registration acceptance and the implemented status/connection subset; it does
+not establish database persistence, dashboard rendering, reconnect behavior in JAM Tart, or
+support for unimplemented validator events. The normal tests retain their deterministic loss,
+backpressure and reconnect coverage.
+
+The reference collector for this check is
+[JAM Tart](https://github.com/paritytech/jamtart/tree/76debc1b1b90889749d0129ca18ffdb5d96d17a4),
+revision `76debc1b1b90889749d0129ca18ffdb5d96d17a4` (GP 0.8.0 update). To build that unmodified
+reference locally after `make setup`:
+
+```sh
+git clone https://github.com/paritytech/jamtart.git build/jamtart-reference
+git -C build/jamtart-reference checkout 76debc1b1b90889749d0129ca18ffdb5d96d17a4
+cargo +1.99.0 build --locked --no-default-features --bin tart-backend \
+  --manifest-path build/jamtart-reference/Cargo.toml
+make check-telemetry-interop JAMTART="$PWD/build/jamtart-reference/target/debug/tart-backend"
+```
+
+No upstream sources or lockfile are patched. The caller controls the external binary; the harness
+records its actual SHA-256 alongside the peer binary hash, decoded messages and verdict in
+`build/tests/telemetry-interop/results.json`. Collector and peer logs are retained in that directory.
+A failed build, startup, decode or assertion must remain a failure, not a skipped interoperability pass.
