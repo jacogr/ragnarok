@@ -5,7 +5,8 @@
 ## during validation, then copied into private acyclic ARC storage.
 ##
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram,
-## instruction/jump lookup, raw instruction-byte lookup with zero padding and basic-block queries.
+## instruction/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
+## and containing-block queries.
 
 import ../codec/natural
 
@@ -351,3 +352,26 @@ proc instructionByte*(program: Program, address: CodeAddress): ProgramResult[byt
   if program.data == nil: return ProgramResult[byte](status: ProgramError.InvalidOwner)
   let data = program.data
   ProgramResult[byte](status: ProgramError.None, completed: codeByte(data, uint64(address)))
+
+# Find GP startofbasicblock for a valid instruction, including entry in the middle of a block.
+# The backward byte scan is bounded by the validated program size and retains no storage.
+proc containingBlockStart*(program: Program, address: CodeAddress): ProgramResult[CodeAddress] =
+  let current = instruction(program, address)
+  # Reject default owners and invalid addresses before narrowing or scanning bytes.
+  if current.error != ProgramError.None:
+    return ProgramResult[CodeAddress](status: current.error)
+  if program.data == nil:
+    # Reestablish the non-nil owner for the pinned compiler's local analysis.
+    return ProgramResult[CodeAddress](status: ProgramError.InvalidOwner)
+  let data = program.data
+  var previous = int(uint64(address)) - 1
+  # Only marked terminators create boundaries; operand bytes with the same value do not.
+  while previous >= 0:
+    if marked(data.bytes, data.maskOffset, previous) and
+        terminatesBlock(data.bytes[data.codeOffset + previous]):
+      # The next marked instruction is the start of the current block, even for interior entry.
+      return ProgramResult[CodeAddress](status: ProgramError.None, completed:
+        CodeAddress(uint64(previous + 1 + int(distance(data.bytes, data.maskOffset,
+        data.codeLength, previous)))))
+    dec previous
+  ProgramResult[CodeAddress](status: ProgramError.None, completed: CodeAddress(0))

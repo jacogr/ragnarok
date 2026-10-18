@@ -4,7 +4,7 @@
 """Load merge-friendly verification data while retaining the harness's public value types.
 
 Exposes validated suite/guard/corpus identities, per-family budgets and RUNTIME_SOURCES loaded
-from JSON inventories.
+from JSON inventories. validate_order enforces alphabetical entries within each section.
 """
 import json
 from pathlib import Path
@@ -30,7 +30,21 @@ def cases(values):
     return result
 
 
+# Require stable insertion points per prefix without changing positional diagnostic records.
+def validate_order(data):
+    for section, entries in data.items():
+        # Sections contain named mappings or independent case identities, never ordered steps.
+        names = list(entries)
+        if names != sorted(names):
+            # Fail rather than silently sorting: source order is what avoids shared merge hotspots.
+            expected = next(want for have, want in zip(names, sorted(names)) if have != want)
+            raise ValueError('Verification inventory section '+section+
+                             ' must be alphabetical; expected '+str(expected)+
+                             ' earlier. Insert entries beside their feature prefix.')
+
+
 _DATA = json.loads(Path(__file__).with_suffix('.json').read_text(), object_pairs_hook=unique_object)
+validate_order(_DATA)
 
 # Explicit exports keep missing sections fatal and preserve existing consumer interfaces.
 UNIT_SUITES = cases(_DATA['UNIT_SUITES'])

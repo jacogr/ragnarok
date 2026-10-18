@@ -71,6 +71,7 @@ proc `=destroy`*(server: Server) =
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
   `=destroy`(server.connections)
   `=destroy`(server.role)
+  `=destroy`(server.genesis) # The retained state map is an ARC owner too.
 
 # Retire one slot exactly once and release queued data; close is not retried after EINTR.
 proc close(slot: var Connection) =
