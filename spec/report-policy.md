@@ -57,5 +57,9 @@ pinned Nimony, ARC and checked Clang LTO. Fixture evidence and logs remain under
 [Recent-history and lookup-anchor validation](report-anchors.md) is implemented as separate
 read-only stages. [Package/dependency checks](report-packages.md) are also implemented separately.
 [Post-assurance core capacity and assignment planning](report-assignments.md) are also implemented.
-Binding and atomic C(10) publication through the block coordinator remain next. Accumulation/PVM
+Atomic C(10) publication through the block coordinator remains next. Accumulation/PVM
 execution remains later work.
+
+The [block-bound report planner](report-admission.md) now composes these checks over the real
+coordinator result and its retained parent/staged context. Atomic C(10) publication and complete
+block-coordinator rollback remain the next bounded increment.

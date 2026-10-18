@@ -1,0 +1,118 @@
+{
+  "source": "tests/native/report_admission_results.nim",
+  "build_name": "report-admission-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "name": "report-admission-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Report admission default extraction guard",
+      "identity": {
+        "origin": "default"
+      }
+    },
+    {
+      "arguments": [
+        "error"
+      ],
+      "name": "report-admission-error",
+      "diagnostic": "outcome.status == None",
+      "description": "Report admission error extraction guard",
+      "identity": {
+        "origin": "error"
+      }
+    },
+    {
+      "arguments": [
+        "owner"
+      ],
+      "name": "report-admission-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Report admission owner extraction guard",
+      "identity": {
+        "origin": "owner"
+      }
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "name": "report-admission-profile",
+      "diagnostic": "outcome.status == None",
+      "description": "Report admission profile extraction guard",
+      "identity": {
+        "origin": "profile"
+      }
+    },
+    {
+      "arguments": [
+        "credential"
+      ],
+      "name": "report-admission-credential",
+      "diagnostic": "outcome.status == CredentialFailure",
+      "description": "Report admission credential extraction guard",
+      "identity": {
+        "origin": "credential"
+      }
+    },
+    {
+      "arguments": [
+        "policy"
+      ],
+      "name": "report-admission-policy",
+      "diagnostic": "outcome.status == PolicyFailure",
+      "description": "Report admission policy extraction guard",
+      "identity": {
+        "origin": "policy"
+      }
+    },
+    {
+      "arguments": [
+        "history"
+      ],
+      "name": "report-admission-history",
+      "diagnostic": "outcome.status == HistoryFailure",
+      "description": "Report admission history extraction guard",
+      "identity": {
+        "origin": "history"
+      }
+    },
+    {
+      "arguments": [
+        "anchor"
+      ],
+      "name": "report-admission-anchor",
+      "diagnostic": "outcome.status == AnchorFailure",
+      "description": "Report admission anchor extraction guard",
+      "identity": {
+        "origin": "anchor"
+      }
+    },
+    {
+      "arguments": [
+        "package"
+      ],
+      "name": "report-admission-package",
+      "diagnostic": "outcome.status == PackageFailure",
+      "description": "Report admission package extraction guard",
+      "identity": {
+        "origin": "package"
+      }
+    },
+    {
+      "arguments": [
+        "assignment"
+      ],
+      "name": "report-admission-assignment",
+      "diagnostic": "outcome.status == AssignmentFailure",
+      "description": "Report admission assignment extraction guard",
+      "identity": {
+        "origin": "assignment"
+      }
+    }
+  ]
+}

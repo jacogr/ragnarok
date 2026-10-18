@@ -66,5 +66,9 @@ ARC and checked Clang LTO. Generated fixtures, raw source evidence and logs rema
 
 [Package uniqueness, prerequisite membership and segment-root mappings](report-packages.md) are
 implemented separately. [Post-assurance core capacity and assignment planning](report-assignments.md)
-are also implemented. Next bind and publish completed report admission through the block coordinator.
+are also implemented. Atomic publication through the block coordinator remains next.
 Accumulation/PVM execution remains later work.
+
+The [block-bound report planner](report-admission.md) now composes these checks over the real
+coordinator result and its retained parent/staged context. Atomic C(10) publication and complete
+block-coordinator rollback remain the next bounded increment.
