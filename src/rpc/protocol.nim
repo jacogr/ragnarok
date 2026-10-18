@@ -3,7 +3,7 @@
 
 ## JSON-RPC 2.0 dispatch for the proof peer. No fabricated chain state or subscription success.
 ## Bounds: 16 KiB input, 16 levels, 2048 values and 16 requests per batch; no retained borrows.
-import std/[strutils, parsejson, streams, parseutils]
+import std/[strutils, parsejson, streams]
 import ./wire
 
 const Platform = when defined(linux): "linux" elif defined(macosx): "macos" else: "unknown"
@@ -16,10 +16,10 @@ type
     kind: Kind
     text: string
     next: int
-  Parser = object
-    text: string
-    position: int
-    values: seq[Value]
+  # Open containers retain only their token index and child count; depth is capped before growth.
+  Container = object
+    index: int
+    children: int
   # Caller supplies only observed public runtime information, copied synchronously during dispatch.
   ClientInfo* = object
     uptimeMs*: int64
@@ -37,117 +37,99 @@ proc quote*(text: string): string =
     else: result.add(c) # Valid UTF-8 is preserved byte-for-byte.
   result.add('"')
 
-# Skip only the four whitespace bytes admitted by JSON.
-proc whitespace(p: var Parser) =
-  while p.position < p.text.len and p.text[p.position] in {' ', '\t', '\r', '\n'}:
-    inc p.position # The length check precedes each byte read.
-
-# Consume a bounded string with strict escape/surrogate syntax, then use the standard string decoder.
-proc stringToken(p: var Parser, decoded: var string): bool =
-  let start = p.position
-  inc p.position
-  while p.position < p.text.len: # Scan raw syntax before the standard decoder can normalize escapes.
-    let c = p.text[p.position]
-    inc p.position
-    if c == '"': # The complete validated token is decoded in a short-lived owned stream.
-      var parser = default(JsonParser)
-      parser.open(newStringStream(p.text[start..<p.position]), "RPC string")
-      defer: parser.close()
-      parser.next()
-      if parser.kind != jsonString: return false
-      decoded = parser.str
-      return validUtf8(decoded)
-    if ord(c) < 32: return false # Literal controls are invalid even inside strings.
-    if c == '\\': # Escapes require their complete spelling before any conversion.
-      if p.position >= p.text.len: return false
-      let escape = p.text[p.position]
-      inc p.position
-      if escape == 'u':
-        if p.text.len - p.position < 4: return false
-        let hex = p.text[p.position..<p.position + 4]
-        for digit in hex: # Hex decoding only follows exact digit validation.
-          if digit notin HexDigits: return false
-        var code = 0
-        discard parseHex(hex, code)
-        p.position += 4
-        if code in 0xdc00..0xdfff: return false # A low surrogate needs a preceding high surrogate.
-        if code in 0xd800..0xdbff: # A high surrogate requires one escaped low surrogate.
-          if p.text.len - p.position < 6 or p.text[p.position..<p.position + 2] !=
-              "\\u": return false
-          let low = p.text[p.position + 2..<p.position + 6]
-          for digit in low:
-            if digit notin HexDigits: return false # Never parse unvalidated digits.
-          var lowCode = 0
-          discard parseHex(low, lowCode)
-          if lowCode notin 0xdc00..0xdfff: return false
-          p.position += 6
-      elif escape notin {'"', '\\', '/', 'b', 'f', 'n', 'r', 't'}: return false # No non-JSON escape aliases.
-  false
-
-# Parse exactly one subtree with bounded recursion; failure discards the entire private parse owner.
-proc value(p: var Parser, depth: int): bool =
-  p.whitespace()
-  if depth >= 16 or p.values.len >= 2048 or p.position >= p.text.len: return false
-  let index = p.values.len
-  p.values.add(Value(kind: literalValue, text: "", next: 0))
-  let first = p.text[p.position]
-  if first in {'{', '['}: # Containers preserve key/value order, including duplicate keys for dispatch rejection.
-    let isObject = first == '{'
-    let closing = if isObject: '}' else: ']'
-    p.values[index].kind = if isObject: objectValue else: arrayValue
-    inc p.position
-    p.whitespace()
-    if p.position < p.text.len and p.text[p.position] ==
-        closing: inc p.position # Empty containers are valid JSON.
+# Reject lexical extensions accepted by the pinned stdlib; structure and decoding belong to JsonParser.
+# This allocation-free pass does not parse values. Its input is already size-limited and valid UTF-8.
+proc strictLexemes(text: string): bool =
+  var quoted = false
+  var escaped = false
+  var previous = ' '
+  for c in text: # Inspect raw bytes before the stdlib can normalize permissive spellings.
+    if quoted:
+      if ord(c) < 32: return false # JSON strings cannot contain literal controls.
+      if escaped:
+        if c notin {'"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'}: return false
+        escaped = false # Hex digits and surrogate pairs are checked by the standard decoder.
+      elif c == '\\': escaped = true
+      elif c == '"': quoted = false
+      else: discard # Ordinary UTF-8 string bytes need no additional lexical policy.
     else:
-      while true: # Every child consumes input; size/depth bounds cap total parsing work.
-        if isObject:
-          if p.position >= p.text.len or p.text[p.position] != '"': return false # Object keys must be strings.
-          if not p.value(depth + 1): return false
-          p.whitespace()
-          if p.position >= p.text.len or p.text[p.position] != ':': return false
-          inc p.position
-        if not p.value(depth + 1): return false
-        p.whitespace()
-        if p.position >= p.text.len: return false
-        if p.text[p.position] == closing: inc p.position; break # Complete container.
-        if p.text[p.position] != ',': return false
-        inc p.position
-        p.whitespace() # A trailing comma reaches value/key parsing and is rejected.
-  elif first == '"': # Decode keys and string IDs without retaining source spans.
-    p.values[index].kind = stringValue
-    var decoded = ""
-    if not p.stringToken(decoded): return false
-    p.values[index].text = move(decoded)
-  else: # Validate numeric grammar explicitly and preserve IDs without float/int narrowing.
-    let start = p.position
-    while p.position < p.text.len and p.text[p.position] notin {' ', '\t', '\r', '\n', ',', ']', '}'}:
-      inc p.position # Token extent is bounded by the original input limit.
-    let token = p.text[start..<p.position]
-    if token notin ["true", "false", "null"]:
-      var i = 0
-      if token.len > 0 and token[0] == '-': inc i # Optional leading minus only.
-      if i >= token.len: return false
-      if token[i] == '0': inc i # Leading zero cannot absorb further integer digits.
-      elif token[i] in {'1'..'9'}:
-        while i < token.len and token[i] in {'0'..'9'}: inc i # Nonzero integer part.
-      else: return false
-      if i < token.len and token[i] == '.': # Fraction requires at least one digit.
-        inc i
-        let begin = i
-        while i < token.len and token[i] in {'0'..'9'}: inc i
-        if i == begin: return false
-      if i < token.len and token[i] in {'e', 'E'}: # Exponent requires digits after its optional sign.
-        inc i
-        if i < token.len and token[i] in {'+', '-'}: inc i
-        let begin = i
-        while i < token.len and token[i] in {'0'..'9'}: inc i
-        if i == begin: return false
-      if i != token.len: return false
-      p.values[index].kind = numberValue
-    p.values[index].text = token
-  p.values[index].next = p.values.len
-  true
+      if c in {' ', '\t', '\r', '\n'}: continue # Only JSON whitespace may separate tokens.
+      if ord(c) < 32 or c in {'/', '\'', '\\'}: return false # Exclude comments and non-JSON quotes.
+      if c in {']', '}'} and previous == ',': return false # Stdlib accepts trailing commas.
+      if c == '.' and previous notin {'0'..'9'}: return false # Stdlib normalizes .1 to 0.1.
+      if c == '"': quoted = true
+      previous = c
+  not quoted and not escaped
+
+# Validate a stdlib numeric lexeme without converting or narrowing the request ID.
+proc strictNumber(token: string): bool =
+  var i = 0
+  if token.len > 0 and token[0] == '-': inc i # JSON permits only a leading minus.
+  if i >= token.len: return false
+  if token[i] == '0': inc i # A zero integer part cannot have more digits.
+  elif token[i] in {'1'..'9'}:
+    while i < token.len and token[i] in {'0'..'9'}: inc i # Consume the integer part.
+  else: return false
+  if i < token.len and token[i] == '.': # Fractions need at least one digit.
+    inc i
+    let begin = i
+    while i < token.len and token[i] in {'0'..'9'}: inc i
+    if i == begin: return false
+  if i < token.len and token[i] in {'e', 'E'}: # Exponents need digits after any sign.
+    inc i
+    if i < token.len and token[i] in {'+', '-'}: inc i
+    let begin = i
+    while i < token.len and token[i] in {'0'..'9'}: inc i
+    if i == begin: return false
+  i == token.len
+
+# Adapt standard streaming events to owned dispatch values; failure discards all partial output.
+# The stdlib handles delimiters, separators, decoding and syntax errors. We cap its stack growth
+# between events, enforce string object keys and preserve numeric text rather than using getInt/getFloat.
+proc parseValues(text: string, values: var seq[Value]): bool =
+  if not strictLexemes(text): return false
+  var parser = default(JsonParser)
+  parser.open(newStringStream(text), "RPC request")
+  defer: parser.close()
+  var containers: seq[Container] = @[]
+  while true: # One event at a time bounds allocations before the next stdlib parser step.
+    parser.next()
+    if parser.hasError or parser.kind == jsonError: return false
+    case parser.kind
+    of jsonEof: return values.len > 0 and containers.len == 0
+    of jsonObjectEnd, jsonArrayEnd:
+      if containers.len == 0: return false # Never access an absent open container.
+      let parent = containers.pop()
+      values[parent.index].next = values.len
+    else:
+      if values.len >= 2048 or containers.len >= 16: return false
+      if containers.len == 0:
+        if values.len > 0: return false # Stdlib permits another root after a closed container.
+      else:
+        let parent = containers.len - 1
+        if values[containers[parent].index].kind == objectValue and
+            containers[parent].children mod 2 == 0 and parser.kind != jsonString:
+          return false # The streaming parser also accepts non-string object keys.
+        inc containers[parent].children
+      var token = Value(kind: literalValue, text: "", next: values.len + 1)
+      case parser.kind
+      of jsonString:
+        token.kind = stringValue
+        token.text = parser.str
+        if not validUtf8(token.text): return false # Reject lone low surrogates from the decoder.
+      of jsonInt, jsonFloat:
+        token.kind = numberValue
+        token.text = parser.str
+        if not strictNumber(token.text): return false
+      of jsonObjectStart: token.kind = objectValue
+      of jsonArrayStart: token.kind = arrayValue
+      of jsonTrue: token.text = "true"
+      of jsonFalse: token.text = "false"
+      of jsonNull: token.text = "null"
+      else: return false # Error, EOF and closing events have already been handled.
+      values.add(move(token))
+      if parser.kind in {jsonObjectStart, jsonArrayStart}:
+        containers.add(Container(index: values.len - 1, children: 0)) # Bounded open-container stack.
 
 # Construct a JSON-RPC error; id is already a validated JSON scalar, never arbitrary caller text.
 proc error(id: string, code: int, message: string): string =
@@ -206,23 +188,21 @@ proc dispatch(values: seq[Value], start: int, info: ClientInfo): string =
 # Parse and execute one whole message atomically; empty output means a notification-only message.
 proc respond*(text: string, info: ClientInfo): string =
   if text.len == 0 or text.len > MaxMessage or not validUtf8(text): return error("null", -32700, "Parse error")
-  var parser = Parser(text: text, position: 0, values: @[])
-  if not parser.value(0): return error("null", -32700, "Parse error")
-  parser.whitespace()
-  if parser.position != text.len: return error("null", -32700, "Parse error")
-  if parser.values[0].kind != arrayValue: return dispatch(parser.values, 0, info)
+  var values: seq[Value] = @[]
+  if not parseValues(text, values): return error("null", -32700, "Parse error")
+  if values[0].kind != arrayValue: return dispatch(values, 0, info)
   var count = 0
   var i = 1
-  while i < parser.values.len: # Count before executing any member of an oversized batch.
+  while i < values.len: # Count before executing any member of an oversized batch.
     inc count
-    i = parser.values[i].next
+    i = values[i].next
   if count == 0 or count > 16: return error("null", -32600, "Invalid batch size")
   result = ""
   i = 1
-  while i < parser.values.len: # At most 16 bounded responses fit the server output policy.
-    let response = dispatch(parser.values, i, info)
+  while i < values.len: # At most 16 bounded responses fit the server output policy.
+    let response = dispatch(values, i, info)
     if response.len > 0:
       if result.len > 0: result.add(',') # Notifications contribute no array entry.
       result.add(response)
-    i = parser.values[i].next
+    i = values[i].next
   if result.len > 0: result = "[" & result & "]" # Notification-only batches produce no frame.

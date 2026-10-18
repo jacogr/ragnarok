@@ -53,6 +53,14 @@ integer/float narrowing. Parse errors use `-32700`, invalid envelopes/batches `-
 methods `-32601`, and invalid parameters `-32602`. Valid notifications never receive replies,
 including errors and notification-only batches.
 
+Parsing uses the pinned Nimony `std/parsejson` streaming API, which also underlies `std/json`.
+The tree API converts numbers to integers/floats (including a lossy float fallback for large
+integers), so RPC uses streaming numeric lexemes to preserve IDs. The stdlib owns structural
+parsing and string decoding; a lexical policy rejects its non-JSON extensions (comments,
+trailing commas, permissive escapes/numbers). The event adapter enforces string object keys,
+a single root and resource limits before retaining each event. Decoded strings are checked
+for valid UTF-8, and stdlib error state is checked even when it emits a string event.
+
 The server accepts masked client frames, fragmented text with interleaved ping/pong, and valid
 close handshakes. UTF-8 validation covers the complete reassembled text, so a fragment may split
 one Unicode scalar. Server frames are unmasked. Framing violations close with 1002, binary data

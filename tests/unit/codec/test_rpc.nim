@@ -39,6 +39,27 @@ for id in ["184467440737095516160", "-0", "1.5", "1e300", "null", "\"a\\\"b\"",
 for bad in ["", "[1,]", "{1:2}", "{\"x\":1,}", "01", "1.", "+1", "NaN", "1e", "-", "{}{}",
     "\"\\x41\"", "\"\\ud800\"", "\"\\udc00\"", "\"\x01\"", "\"unterminated", request & " trailing"]:
   assert "-32700" in respond(bad, info)
+# The pinned stdlib deliberately accepts extensions; RPC keeps strict JSON at this boundary.
+for bad in ["/* comment */" & request, request & "// comment", "[1, \n]", "{\"x\":1, \t}",
+    "{true:2}", "{null:2}", "{[]:2}", "{{}:2}", ".1", "-.1", "1.e2", "1e+", "00", "-01",
+    "'single quotes'", "\"\\v\"", "\"\\'\"", "\"\\uZZZZ\"", "\"\\ud800\\u0041\"",
+    "\"\\ud800\\ud800\"", "\"\\u12\"", "\x00" & request, request & "\x00",
+    "\v" & request, "\f" & request, "[]{}", "{}true", "[1 2]", "{\"x\" 1}",
+    "{\"x\":}", "[", "{", "{\"x\":1", "[1"]:
+  assert "-32700" in respond(bad, info) # Each extension/error must fail before dispatch.
+# Valid escapes, JSON whitespace and nested extension fields remain accepted by standard decoding.
+for id in ["184467440737095516160", "-0", "1.50e+003", "1e9999"]:
+  assert "\"id\":" & id & "," in respond(request.replace("7}", id & "}"), info)
+for id in ["\"\\u0000\"", "\"\\u0022\"", "\"\\u005c\"", "\"\\/\\b\\f\\n\\r\\t\"",
+    "\"/* literal comment */ ,] .1\""]:
+  assert "\"result\"" in respond(request.replace("7}", id & "}"), info)
+assert "\"result\"" in respond(" \t\r\n" & request & " \r\n", info)
+assert "\"result\"" in respond(request.replace("7}", "7,\"extra\":{\"a\":[{},[],1]}}"), info)
+# Empty containers at depth 15 fit; a scalar at depth 16 and the 2049th value exceed policy.
+assert "-32600" in respond(repeat("[", 16) & repeat("]", 16), info)
+assert "-32700" in respond(repeat("[", 16) & "0" & repeat("]", 16), info)
+assert "-32600" in respond("[" & repeat("0,", 2046) & "0]", info)
+assert "-32700" in respond("[" & repeat("0,", 2047) & "0]", info)
 assert "-32700" in respond(repeat("[", 18) & "0" & repeat("]", 18), info)
 assert "-32700" in respond(repeat(" ", MaxMessage + 1), info)
 assert "-32600" in respond("[" & repeat(request & ",", 16) & request & "]", info)
