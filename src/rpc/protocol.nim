@@ -1,11 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JSON-RPC 2.0 dispatch for the proof peer. No fabricated chain state or subscription success.
+## JSON-RPC 2.0 dispatch for the proof peer, including configured chain parameters.
 ## Bounds: 16 KiB input, 16 levels, 2048 values and 16 requests per batch; no retained borrows.
 ##
 ## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
-## responses.
+## responses. configuredParameters validates bounded chainspec text into an owned snapshot;
+## parameters() includes four documented zero placeholders pending live-state derivation.
 
 import std/[strutils, parsejson, streams]
 import ./wire

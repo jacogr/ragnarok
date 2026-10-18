@@ -3,7 +3,8 @@
 
 """Independent RFC 6455 socket checks against the actual peer executable, with no WebSocket dependency.
 
-Exposes exact, send, receive, connect, ready, run for the verification harness.
+Exposes socket helpers and run for live protocol checks; parameter_checks verifies configured
+parameters, shared telemetry startup, immutable configuration and rejected invalid inputs.
 """
 import base64
 import hashlib

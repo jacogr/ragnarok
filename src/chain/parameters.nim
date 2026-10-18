@@ -3,6 +3,9 @@
 
 ## Immutable GP 0.8.0 fetch-parameter snapshots. Fixed-width decoding owns every value;
 ## it does not initialize genesis state or infer validator-dependent settings.
+##
+## Exposes Parameter field identifiers, immutable Parameters and guarded ParameterResult accessors,
+## plus fixed-width byte/hex decoders and an explicit unavailable-result constructor.
 
 # Field order and widths follow Appendix B's fetch(0) tuple exactly.
 type

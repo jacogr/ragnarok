@@ -4,7 +4,7 @@
 ## Optional trailing CLI controls for the existing bounded proof-peer command shape.
 ##
 ## Exposes peer CLI option parsing, telemetry/RPC setup controls and connection/peer observation
-## helpers.
+## helpers. loadChainText reads one bounded startup snapshot shared by RPC and telemetry.
 
 import std/[os, syncio, times, monotimes, strutils, base64]
 import ./[wire, client, chain]
