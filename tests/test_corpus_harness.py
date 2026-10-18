@@ -6,13 +6,39 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import Mock
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from corpus_checks import compare_corpus, run_corpus
+from corpus_crypto import run_crypto
 
 
 # Exercise the shared process boundary independently of any protocol oracle or native compiler.
 class CorpusHarness(unittest.TestCase):
+    # Feature runners use the supplied process boundary and never run a stale binary after failed compilation.
+    def test_feature_process_boundary(self):
+        for build_code, run_code in ((1, 0), (0, 1), (0, 0)):
+            # Exercise both failure stages and a successful structured report through the extracted entry point.
+            with self.subTest(build=build_code, run=run_code):
+                checks = SimpleNamespace(folder=Path('/fixture'),
+                    build=Mock(return_value=({'exit_code': build_code}, Path('/fixture/driver'))),
+                    command=Mock(return_value={'exit_code': run_code, 'output': '{"vectors": 12}'}))
+                report = {}
+                run_crypto('compiler', report, checks, {'crypto': 'production-library'})
+                self.assertEqual(checks.build.call_args.args[-1], 'production-library')
+                corpus = report['crypto_corpus']
+                self.assertEqual(corpus['passed'], build_code == run_code == 0)
+                if build_code:
+                    # A previous executable at the requested path cannot satisfy a new failed build.
+                    checks.command.assert_not_called()
+                    self.assertNotIn('run', corpus)
+                elif run_code:
+                    # Failed execution retains diagnostics without promoting them into success counts.
+                    self.assertNotIn('counts', corpus)
+                else:
+                    # Counts remain parsed evidence from the independent subprocess, not hard-coded values.
+                    self.assertEqual(corpus['counts'], {'vectors': 12})
+
     # Exact complete rows and zero exit status are both mandatory, including suffix/empty-output cases.
     def test_verdicts_and_evidence(self):
         for output, code, complete, passed, mismatch in (

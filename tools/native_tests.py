@@ -4,15 +4,14 @@ import json
 import hashlib
 import os
 import subprocess
-import sys
 import platform
 from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
 from verification_inventory import UNIT_SUITES, ARC_SUITES, UNIT_LINKS
 from native_requirements import NATIVE_REQUIREMENTS
-# Preserve the public entry point and historical evidence shape while features prepare independently.
-from native_fixtures import unit_sealer_fixture
+# Keep the runtime-fixture helper available to existing launcher consumers.
+from native_fixtures import unit_runtime_fixtures
 UNIT_ROOT = ROOT/'tests/unit/codec'
 STATE_ROOT = ROOT/'tests/unit/state'
 CRYPTO_ROOT = ROOT/'tests/unit/crypto'
@@ -179,81 +178,6 @@ def unit_fixture_sources():
     return [path for _, _, required in UNIT_FIXTURES.values() for path, _ in required]
 
 
-# Prepare published storage bytes once per invocation; native assertions own all store verdicts.
-def unit_store_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from state_store_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_STORE_REPLAY', path, ((path, evidence['fixture_sha256']),))
-    return {'state_store_replay': fixture}, evidence
-
-
-# Admission fixtures contain upstream proof/accumulator values, not a Python implementation of selection.
-def unit_ticket_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from ticket_admission_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_TICKET_ADMISSION', path, ((path, evidence['fixture_sha256']),))
-    return {'ticket_admission': fixture, 'ticket_state': fixture}, evidence
-
-
-# Prepare exact published roster projections for the bounded planner's native assertions.
-def unit_validator_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from validator_rotation_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_VALIDATOR_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'validator_rotation': fixture, 'validator_state': fixture}, evidence
-
-
-# Prepare only the published entropy/time projections, keeping full Safrole execution outside this suite.
-def unit_entropy_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from entropy_transition_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_ENTROPY_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'entropy_transition': fixture}, evidence
-
-
-# Prepare public upstream credentials with independent OpenSSL positive/old-domain verdicts.
-def unit_signing_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from signing_domain_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_SIGNING_DOMAINS', path, ((path, evidence['fixture_sha256']),))
-    return {'signing_domains': fixture}, evidence
-
-
-# Prepare published history cases and independent output-tree commitments for native assertions.
-def unit_history_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from history_transition_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_HISTORY_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'history_transition': fixture}, evidence
-
-
-# Prepare complete pinned authorization STF cases; the native suite executes and asserts the subsystem.
-def unit_authorization_fixture(folder):
-    sys.path.insert(0, str(ROOT/'tests'))
-    from authorization_transition_fixtures import prepare
-    path, evidence = prepare(folder)
-    fixture = ('RAGNAROK_AUTHORIZATION_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'authorization_transition': fixture}, evidence
-
-
-# Describe freshly generated certificates and independent CE fixtures without committing private keys.
-def unit_runtime_fixtures(certificates, original, reload):
-    transport = {'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
-                 'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
-    integration = {'RAGNAROK_TEST_WIRES': original, 'RAGNAROK_TEST_RELOAD': reload}
-    # Every referenced input is hashed and rechecked before the native process, including later siblings.
-    cert_files = tuple((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in transport.values())
-    wires = tuple((folder/(str(index)+'.bin'), hashlib.sha256((folder/(str(index)+'.bin')).read_bytes()).hexdigest())
-                  for folder in (original, reload) for index in range(8))
-    return {'quic_transport': (None, transport, cert_files), 'quic_integration': (None, integration, wires)}
-
-
 # Group only dependency-free codecs; linked, networking and resource profiles remain separate.
 def unit_batches():
     pure = tuple(name for name in UNIT_SUITES if name not in UNIT_LINKS)
@@ -274,57 +198,29 @@ def main():
     from setup_nimony import installed
     compiler, _ = installed()
     selected = dict(os.environ)
-    # Reuse the same pristine pinned crypto, Rust and QUIC preparations as CI.
-    sys.path.insert(0, str(ROOT/'tests'))
-    from nimony_crypto import prepare
+    from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures
     folder = ROOT/'build/tests/native/preparation'
     folder.mkdir(parents=True, exist_ok=True)
-    crypto, observer, evidence = prepare(folder)
-    (folder/'preparation.json').write_text(json.dumps(evidence, indent=2)+'\n')
-    libraries = dict(crypto=crypto, observer=observer)
-    from bandersnatch_native import prepare as prepare_bandersnatch
-    bs, bs_observer, bs_evidence = prepare_bandersnatch(folder)
-    libraries.update(bandersnatch=bs, bandersnatch_observer=bs_observer)
-    (folder/'bandersnatch-preparation.json').write_text(json.dumps(bs_evidence, indent=2)+'\n')
-    from nimony_quic import prepare as prepare_quic
-    quic, certificates, quic_evidence = prepare_quic()
-    libraries['quic'] = quic
-    (folder/'quic-preparation.json').write_text(json.dumps(quic_evidence, indent=2)+'\n')
-    import test_integration as integration_fixture
-    integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
-    wires, _ = integration_fixture.corpus()
-    reload = folder/'integration-reload'
-    reload.mkdir(exist_ok=True)
-    for index in range(8):
-        # Different candidate bytes expose a refused bank reload that accidentally publishes partial data.
-        wire = bytearray((wires/(str(index)+'.bin')).read_bytes())
-        wire[0] ^= 128
-        (reload/(str(index)+'.bin')).write_bytes(wire)
-    fixtures = unit_runtime_fixtures(certificates, wires, reload)
-    store_fixtures, store_evidence = unit_store_fixture(folder)
-    fixtures.update(store_fixtures)
-    (folder/'store-preparation.json').write_text(json.dumps(store_evidence, indent=2)+'\n')
-    authorization_fixtures, authorization_evidence = unit_authorization_fixture(folder)
-    fixtures.update(authorization_fixtures)
-    (folder/'authorization-preparation.json').write_text(json.dumps(authorization_evidence, indent=2)+'\n')
-    history_fixtures, history_evidence = unit_history_fixture(folder)
-    fixtures.update(history_fixtures)
-    (folder/'history-preparation.json').write_text(json.dumps(history_evidence, indent=2)+'\n')
-    signing_fixtures, signing_evidence = unit_signing_fixture(folder)
-    fixtures.update(signing_fixtures)
-    (folder/'signing-preparation.json').write_text(json.dumps(signing_evidence, indent=2)+'\n')
-    entropy_fixtures, entropy_evidence = unit_entropy_fixture(folder)
-    fixtures.update(entropy_fixtures)
-    (folder/'entropy-preparation.json').write_text(json.dumps(entropy_evidence, indent=2)+'\n')
-    validator_fixtures, validator_evidence = unit_validator_fixture(folder)
-    ticket_fixtures, ticket_evidence = unit_ticket_fixture(folder)
-    (folder/'ticket-preparation.json').write_text(json.dumps(ticket_evidence, indent=2)+'\n')
-    fixtures.update(validator_fixtures)
-    fixtures.update(ticket_fixtures)
-    sealer_fixtures, sealer_evidence = unit_sealer_fixture(folder)
-    fixtures.update(sealer_fixtures)
-    (folder/'sealer-preparation.json').write_text(json.dumps(sealer_evidence, indent=2)+'\n')
-    (folder/'validator-preparation.json').write_text(json.dumps(validator_evidence, indent=2)+'\n')
+    # Preserve filenames and immediate progress logs when a later preparation stage fails.
+    evidence_files = {
+        'crypto_native': 'preparation',
+        'bandersnatch_native': 'bandersnatch-preparation',
+        'quic_native': 'quic-preparation',
+        'store_replay_fixture': 'store-preparation',
+        'authorization_stf_fixture': 'authorization-preparation',
+        'history_stf_fixture': 'history-preparation',
+        'signing_domain_fixture': 'signing-preparation',
+        'entropy_stf_fixture': 'entropy-preparation',
+        'ticket_stf_fixture': 'ticket-preparation',
+        'sealer_stf_fixture': 'sealer-preparation',
+        'validator_stf_fixture': 'validator-preparation',
+    }
+    # Write each completed stage before shared preparation starts the next potentially failing one.
+    def record(name, evidence):
+        (folder/(evidence_files[name]+'.json')).write_text(json.dumps(evidence, indent=2)+'\n')
+    libraries, certificates, _ = prepare_libraries(folder, record)
+    wires, reload, _ = prepare_integration(folder)
+    fixtures, _ = prepare_unit_fixtures(folder, certificates, wires, reload, record)
     # All fixture hashes are verified and old observations retired before any native suite runs.
     selected = unit_environment(compiler, base=selected, fixtures=fixtures)
     for arguments in unit_plan(compiler, libraries):
