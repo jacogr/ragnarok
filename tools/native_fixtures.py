@@ -126,6 +126,18 @@ def unit_accumulation_service_fixture(folder):
     return {'accumulation_service': fixture}, evidence
 
 
+# Prepare independent compact invocation bytes, ID witnesses and the signed-report template identity.
+def unit_accumulation_invocation_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from accumulation_invocation_fixtures import prepare
+    path, evidence = prepare(folder)
+    template = ROOT/'tests/fixtures/state-report.bin'
+    fixture = (None, {'RAGNAROK_ACCUMULATION_INVOCATION': path, 'RAGNAROK_STATE_REPORT': template},
+               ((path, evidence['fixture_sha256']),
+                (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
+    return {'accumulation_invocation': fixture}, evidence
+
+
 # Prepare independent disputes inputs and expose their hashes to the consuming native suites.
 def unit_disputes_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
@@ -209,6 +221,8 @@ def unit_sealer_fixture(folder):
     fixtures.update(transition_fixtures)
     commitment_fixtures, commitment_evidence = unit_commitment_fixture(folder)
     fixtures.update(commitment_fixtures)
+    invocation_fixtures, invocation_evidence = unit_accumulation_invocation_fixture(folder)
+    fixtures.update(invocation_fixtures)
     service_fixtures, service_evidence = unit_accumulation_service_fixture(folder)
     fixtures.update(service_fixtures)
     round_fixtures, round_evidence = unit_accumulation_round_fixture(folder)
@@ -251,6 +265,7 @@ def unit_sealer_fixture(folder):
     evidence['accumulation_inputs'] = input_evidence
     evidence['accumulation_round'] = round_evidence
     evidence['accumulation_service'] = service_evidence
+    evidence['accumulation_invocation'] = invocation_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence
     evidence['authentication'] = authentication_evidence

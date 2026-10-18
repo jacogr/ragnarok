@@ -89,7 +89,7 @@ sources change.
 
 ## Next bounded work
 
-Construct the initial regular/exceptional accumulation context and invocation arguments from the
-retained state, authenticated slot and prepared inputs, coordinating the execution boundary with
-the PVM work. Actual execution, transfer credit, checkpoint outcomes, later rounds and atomic
-execution-dependent state publication remain separate.
+[Invocation bootstrap](accumulation-invocation.md) now prepares compact arguments and the
+collision-checked initial service ID, with authenticated slot and posterior entropy. Complete initial
+partial-state binding for regular/exceptional contexts is next; actual execution, transfer credit,
+checkpoint outcomes, later rounds and publication remain separate.
