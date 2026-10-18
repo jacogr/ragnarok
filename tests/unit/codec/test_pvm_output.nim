@@ -142,11 +142,11 @@ assert captureOutput(execute(starved, ExecutionStepLimit(1), GasCycleLimit(100))
   OutputByteLimit(0)).error == OutputError.NotHalted
 
 let before = getOccupiedMem()
-for iteration in 0..<100:
+for iteration in 0..<1000:
   # Repeated copied outputs and complete machine lifetimes retain no cycle or mutable alias.
   cycle()
 let after = getOccupiedMem()
 assert before == after
-recordArcRelease("pvm_output", 100, before, after)
+recordArcRelease("pvm_output", 1000, before, after)
 echo "PVM output passed"
-echo "ARC_RELEASE cycles=100 unchanged"
+echo "ARC_RELEASE cycles=1000 unchanged"
