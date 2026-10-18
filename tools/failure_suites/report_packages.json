@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/report_package_results.nim",
+  "build_name": "report-package-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "report-packages-default", "diagnostic": "outcome.status == None", "description": "Package default extraction guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "report-packages-error", "diagnostic": "outcome.status == None", "description": "Package refused extraction guard", "identity": {"origin": "error"}}
+  ]
+}
