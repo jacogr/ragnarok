@@ -2,7 +2,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Verify checked native suites, independent corpora, runtime misuse contracts."""
+"""Verify checked native suites, independent corpora and runtime misuse contracts.
+
+The CLI selects unit or runtime-failure verification. Exposes inventory verdict helpers and
+run_failures; checked native compilation, fixtures and evidence remain group-owned.
+"""
 import argparse
 import os
 import hashlib
@@ -162,6 +166,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
     run_failure_suite(compiler, report, libraries, build, command, 'report_admission')
     run_failure_suite(compiler, report, libraries, build, command, 'report_transition')
+    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_queue')
     # Transcript and count access on every actual/default context failure must terminate at the success contract.
     run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.

@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Feature-owned native fixture preparation; independent oracles retain their byte contracts."""
+"""Feature-owned native fixture preparation; independent oracles retain their byte contracts.
+
+Exposes unit_*_fixture adapters that return native-suite environment manifests and hashed
+evidence, plus unit_sealer_fixture aggregation and QUIC runtime-fixture transport.
+"""
 import sys
 import hashlib
 from setup_nimony import ROOT
@@ -63,6 +67,18 @@ def unit_admission_fixture(folder):
                       ((path, evidence['fixture_sha256']),
                        (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
     return {'block_admission': fixture, 'report_admission': report_fixture, 'report_transition': report_fixture}, evidence
+
+
+# Pair independent queue expectations with the existing original report/block fixture contracts.
+def unit_accumulation_queue_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from accumulation_queue_fixtures import prepare
+    path, evidence = prepare(folder)
+    template = ROOT/'tests/fixtures/state-report.bin'
+    fixture = (None, {'RAGNAROK_ACCUMULATION_QUEUE': path, 'RAGNAROK_STATE_REPORT': template},
+               ((path, evidence['fixture_sha256']),
+                (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
+    return {'accumulation_queue': fixture}, evidence
 
 
 # Prepare independent disputes inputs and expose their hashes to the consuming native suites.
@@ -148,6 +164,8 @@ def unit_sealer_fixture(folder):
     fixtures.update(transition_fixtures)
     commitment_fixtures, commitment_evidence = unit_commitment_fixture(folder)
     fixtures.update(commitment_fixtures)
+    queue_fixtures, queue_evidence = unit_accumulation_queue_fixture(folder)
+    fixtures.update(queue_fixtures)
     admission_fixtures, admission_evidence = unit_admission_fixture(folder)
     fixtures.update(admission_fixtures)
     disputes_fixtures, disputes_evidence = unit_disputes_fixture(folder)
@@ -174,6 +192,7 @@ def unit_sealer_fixture(folder):
     evidence['guarantors'] = guarantors_evidence
     evidence['availability'] = availability_evidence
     evidence['disputes'] = disputes_evidence
+    evidence['accumulation_queue'] = queue_evidence
     evidence['admission'] = admission_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence

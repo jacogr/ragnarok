@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Shared genuinely signed block fixtures for report planning and atomic publication tests.
+## Shared genuinely signed block fixtures for report planning, atomic publication and queue binding.
+##
+## Exposes authored Context inputs, config/frame/safrole/transitionConfig policies and stage helpers.
+## Optional genuine assurance votes make one old report available; these are test fixtures, not APIs
+## for constructing production admission certificates.
+
 import std/[assertions, envvars, strutils, syncio, sequtils]
 import ../../src/state/[report_admission, report_assignments, report_policy, report_anchors,
   report_packages, guarantee_credentials, block_transition, block_admission, store,
@@ -9,7 +14,7 @@ import ../../src/state/[report_admission, report_assignments, report_policy, rep
 import ../../src/codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
   state_consensus, state_disputes, state_layout, state_trie, state_history, state_availability,
   state_workqueues, state_authorization, tickets, report_owned, owned, work_report, composite]
-import ../../src/crypto/[primitives, extrinsic_commitment]
+import ../../src/crypto/[primitives, extrinsic_commitment, assurance_context]
 import ../../src/bandersnatch/bandersnatch
 import ./report_context
 from ../../src/codec/disputes import Disputes, Culprit, DisputeSignature, DisputeConfig,
@@ -126,7 +131,7 @@ type Context* = object
 ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
 ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
-    withDispute = false): Context =
+    withDispute = false, withAvailable = false): Context =
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()
@@ -186,7 +191,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
       signature: DisputeSignature(array[64, byte](sign(seed, message).value)))] # Real new-offender evidence.
   entries.add(disputeStateEntry(judgments, cfg.judgments).value)
   var assignments = newSeq[AvailabilityAssignment](2)
-  if mode in [7, 11, 12]:
+  if mode in [7, 11, 12] or withAvailable:
     let oldReport = if mode == 12: report(base, 0, default(state_trie.StateRoot), parentHash,
         lookupHash, 0)
       else: sample # Only mode 12 reuses the incoming package identity in the parent table.
@@ -225,7 +230,25 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   encoded.setLen(written.value)
   var body = @[0'u8, 0]
   for octet in encoded: body.add(octet) # Copy complete guarantee encoding.
-  body.add(0'u8) # Empty assurances preserve the independently controlled timeout path.
+  if withAvailable:
+    var votes = newSeq[Assurance](5)
+    # Five genuine parent-validator signatures assure the old core-zero report before new assignments.
+    for i in 0..<5:
+      var seedBytes = default(array[32, byte])
+      seedBytes[0] = byte(i+11)
+      var bits = default(AssuranceBits)
+      bits.bytes[0] = 1
+      let message = array[45, byte](assuranceMessage(AssuranceParent(parentHash), bits, CoreCount(2)).value)
+      votes[i] = Assurance(anchor: AssuranceAnchor(bytes: parentHash), bits: bits,
+        validator: ValidatorIndex(i), signature: AssuranceSignature(bytes: array[64, byte](
+          sign(importSeed(seedBytes).value, message).value)))
+    var assuranceBytes = newSeq[byte](1000)
+    let assuranceSize = encodeAssurances(votes, AssuranceConfig(cores: CoreCount(2),
+      validators: ValidatorCount(6)), assuranceBytes)
+    assert assuranceSize.error == AssuranceError.None
+    for i in 0..<assuranceSize.written: body.add(assuranceBytes[i]) # Exact canonical voted payload.
+  else:
+    body.add(0'u8) # Empty assurances preserve the independently controlled timeout path.
   var disputeBytes = newSeq[byte](1000)
   let disputeSize = encodeDisputes(evidence, DisputeConfig(validators: ValidatorCount(6),
       maxBytes: ByteLimit(1000)), disputeBytes)
