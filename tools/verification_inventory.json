@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "pvm_program",
     "telemetry",
     "telemetry_chain",
     "natural",
@@ -90,6 +91,9 @@
     "guarantee_credentials"
   ],
   "PRIVATE": {
+    "pvm_result_private": "completed",
+    "pvm_result_retag": "status",
+    "pvm_owner_private": "data",
     "safrole_transition_payload_private": "completed",
     "safrole_transition_retag_private": "status",
     "safrole_transition_rotation_private": "rotationReason",
@@ -732,6 +736,9 @@
     "guarantee_credentials_owner_private": "data"
   },
   "NOMINAL": {
+    "pvm_raw_address": "[2] expected: CodeAddress but got: uint64",
+    "pvm_jump_as_address": "[2] expected: CodeAddress but got: JumpIndex",
+    "pvm_swapped_limit": "[3] expected: ProgramByteLimit but got: JumpCountLimit",
     "swapped_report_root": "got: ReportHash but wanted: ReportHash",
     "swapped_report_slot": "got: LookupSlot but wanted: AnchorSlot",
     "swapped_lookup_state": "got: ReportHash but wanted: ReportHash",
