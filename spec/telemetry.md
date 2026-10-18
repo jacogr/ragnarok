@@ -184,7 +184,9 @@ separate handshake-observation table does not report a refusal. The pinned publi
 `lsquic_engine_packet_in` return values also cover version negotiation, resets and ignored packets;
 they cannot establish a pre-TLS admission refusal and are not translated into event 20.
 
-Expiry/teardown collectors use observed authentication and explicit stop gates: a child cannot
+Expiry/teardown collectors wait for both remote authentication and the current connection’s
+retained server slot before killing a peer or releasing an explicit stop gate. TLS-success
+telemetry alone is not an admission barrier: a child cannot
 expire merely because startup or the CI scheduler took longer than a subsecond fixture lifetime.
 Telemetry failures retain their traceback in the E2E console and JSON report, and CI archives
 per-scenario telemetry logs alongside the report.
