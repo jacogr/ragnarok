@@ -1,17 +1,21 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 charged register, control-flow and memory single steps; see spec/pvm-step.md.
-## Exposes stepRegisters/stepControl/stepMemory and guarded StepResult snapshots with guest exits.
-## faultPage selects physical-page metadata only on Fault; exit is read-only.
+## GP 0.8.0 charged single steps and bounded execution; see spec/pvm-step.md.
+## Exposes scoped stepRegisters/stepControl/stepMemory, complete stepOnce and bounded execute.
+## Guarded StepResult snapshots expose read-only exit and selected faultPage/hostCall metadata.
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
 
 import ./[program, machine, registers, gas]
 
 type
-  # Guest outcomes for this bounded subset of single-step execution.
+  # Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
+  HostCallId* = distinct uint64
+  # Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
+  ExecutionStepLimit* = distinct uint64
+  # Guest outcomes shared by single-step and bounded recursive execution.
   StepExit* {.pure.} = enum
-    Continued, OutOfGas, Panic, Halt, Fault
+    Continued, OutOfGas, Panic, Halt, Fault, Host
   # Normal and terminal guest outcomes are completed evaluations with an inspectable snapshot.
   StepOutcome* = object
     machine*: Machine
@@ -19,13 +23,16 @@ type
     of Fault:
       # Only a fault carries a physical aligned page address; no default page is fabricated.
       failedPage: PageAddress
+    of Host:
+      # The sign-extended instruction immediate retains its complete register-width bit pattern.
+      callNumber: HostCallId
     else:
       # Normal, terminal and gas outcomes have no fault metadata.
       discard
   # Local scope/resource/specification failures are distinct from guest execution outcomes.
   StepError* {.pure.} = enum
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
-    NegativeBranchTarget, AmbiguousAccessOrder
+    NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded
   # Failed/default alternatives carry only their reason; no partial machine or charge escapes.
   StepResult* = object
     case status: StepError
@@ -46,6 +53,10 @@ func exit*(outcome: StepOutcome): StepExit = outcome.kind
 # A page address is available only after selecting the fault alternative.
 func faultPage*(outcome: StepOutcome): PageAddress {.requires: outcome.kind == StepExit.Fault.} =
   outcome.failedPage
+
+# Host-call metadata is meaningful only after selecting the Host alternative.
+func hostCall*(outcome: StepOutcome): HostCallId {.requires: outcome.kind == StepExit.Host.} =
+  outcome.callNumber
 
 # Exact load/store instruction set; host calls remain outside this increment.
 func memoryOpcode(opcode: byte): bool =
@@ -232,7 +243,8 @@ proc controlMutation(program: Program, item: Instruction,
 
 # Evaluate exactly one supported instruction with GP whole-block gas precedence.
 # limit bounds gas simulation only; finding the containing block is bounded by program byte size.
-proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess: bool): StepResult =
+proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
+    hostCalls: bool): StepResult =
   let captured = machineInfo(source)
   # A default machine must not become an all-zero executable state.
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
@@ -249,7 +261,7 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess: bool
   let item = decoded.value
   if not registerOnlyOpcode(item.opcode) and
       not (control and (terminatesBlock(item.opcode) or item.opcode == 2)) and
-      not (memoryAccess and memoryOpcode(item.opcode)):
+      not (memoryAccess and memoryOpcode(item.opcode)) and not (hostCalls and item.opcode == 10):
     # Capability rejection precedes evaluation and never fabricates a guest trap or gas debit.
     return StepResult(status: StepError.UnsupportedInstruction)
   if not info.blockCharged:
@@ -304,6 +316,10 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess: bool
     else:
       # Decoded widths and captured owners make other scalar API failures unreachable.
       return StepResult(status: StepError.InvalidMachine)
+  elif item.opcode == 10:
+    # Psi_1 ecalli inherits the default PC increment and leaves the current block prepaid.
+    outcome = StepExit.Host
+    info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   else:
     # This path is reachable only for explicitly supported control/no-op instructions.
     outcome = controlMutation(program, item, info)
@@ -317,19 +333,87 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess: bool
     # Construct the sole guest alternative with fault metadata only after the snapshot is complete.
     return StepResult(status: StepError.None,
       completed: StepOutcome(kind: StepExit.Fault, machine: updated.value, failedPage: failedPage))
+  if outcome == StepExit.Host:
+    # Keep the full decoded immediate, including negative compact encodings, in its nominal domain.
+    return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.Host,
+      machine: updated.value, callNumber: HostCallId(uint64(item.x))))
   StepResult(status: StepError.None,
     completed: StepOutcome(kind: outcome, machine: updated.value))
 
 # Preserve the register-only capability boundary for existing callers; no control opcode is accepted.
 proc stepRegisters*(source: Machine, limit: GasCycleLimit): StepResult =
-  stepImpl(source, limit, false, false)
+  stepImpl(source, limit, false, false, false)
 
 # Execute one register/control instruction under Psi_1, including trap, unlikely and dynamic halt.
 # Memory/host instructions remain local UnsupportedInstruction failures with no state progress.
 proc stepControl*(source: Machine, limit: GasCycleLimit): StepResult =
-  stepImpl(source, limit, true, false)
+  stepImpl(source, limit, true, false, false)
 
 # Execute one register/control/load/store instruction; host calls remain outside this capability.
 # Memory fault/panic retains charged gas and original PC/registers/memory; local gates have no snapshot.
 proc stepMemory*(source: Machine, limit: GasCycleLimit): StepResult =
-  stepImpl(source, limit, true, true)
+  stepImpl(source, limit, true, true, false)
+
+# Evaluate Psi_1 for every valid opcode, including host suspension; no host function is invoked here.
+# Existing specification gates remain local failures and expose no partially updated machine.
+proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
+  stepImpl(source, limit, true, true, true)
+
+# Evaluate recursive Psi iteratively over an already validated program and captured machine.
+# stepLimit counts attempted instructions, including the exiting instruction; zero performs no work.
+# Each gas simulation is independently bounded by gasLimit. Local failures expose no partial progress.
+proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =
+  let original = machineInfo(source)
+  let owner = programOf(source)
+  let originalMemory = memoryOf(source)
+  if original.error != MachineError.None or owner.error != MachineError.None or
+      originalMemory.error != MachineError.None:
+    # Absent owners are local API misuse, not a guest program failing deblob.
+    return StepResult(status: StepError.InvalidMachine)
+  let program = owner.value
+  var current = source
+  var attempted = 0'u64
+  # Retain only the current immutable root; no host recursion or growing state history is required.
+  while attempted < uint64(stepLimit):
+    # Increment only after the strict bound proves the counter cannot overflow, even at UINT64_MAX.
+    inc attempted
+    let prior = machineInfo(current).value
+    let priorMemory = memoryOf(current).value
+    if instruction(program, prior.pc).error != ProgramError.None:
+      # A trusted terminal/import snapshot may have an invalid PC: Psi's deblob branch panics uncharged.
+      var stopped = prior
+      stopped.pc = CodeAddress(0)
+      let captured = captureTerminalMachine(program, priorMemory, stopped)
+      if captured.error != MachineError.None:
+        # Never expose a fabricated normalized state if ownership validation fails.
+        return StepResult(status: StepError.InvalidMachine)
+      return StepResult(status: StepError.None,
+        completed: StepOutcome(kind: StepExit.Panic, machine: captured.value))
+    let evaluated = stepOnce(current, gasLimit)
+    if evaluated.error != StepError.None:
+      # Tentative earlier steps are private snapshots; local gates/limits discard all accumulated progress.
+      return evaluated
+    var outcome = evaluated.value
+    if outcome.exit == StepExit.Continued:
+      # The next iteration observes precisely the completed instruction's immutable successor.
+      current = outcome.machine
+    else:
+      # Psi distinguishes terminal normalization from resumable exits at the causing instruction.
+      var stopped = machineInfo(outcome.machine).value
+      var stoppedMemory = memoryOf(outcome.machine).value
+      if outcome.exit in {StepExit.Panic, StepExit.Halt}:
+        # Final panic/halt retains posterior registers and memory, including load-and-jump mutations.
+        stopped.pc = CodeAddress(0)
+      else:
+        # Fault, out-of-gas and host retain prior PC/registers/memory but posterior gas and charged flag.
+        stopped.pc = prior.pc
+        stopped.registers = prior.registers
+        stoppedMemory = priorMemory
+      let captured = captureTerminalMachine(program, stoppedMemory, stopped)
+      if captured.error != MachineError.None:
+        # Only a complete normalized snapshot may accompany the copied exit metadata.
+        return StepResult(status: StepError.InvalidMachine)
+      outcome.machine = captured.value
+      return StepResult(status: StepError.None, completed: outcome)
+  # Exhaustion is a local policy refusal, never OutOfGas, a host call, or a resumable guest outcome.
+  StepResult(status: StepError.StepLimitExceeded)

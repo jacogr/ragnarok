@@ -15,7 +15,9 @@ dynamic halt. Both entry points implement subsets of `Psi_1`, not the recursive
 `Psi` executor. `stepRegisters` preserves its existing capability boundary.
 `stepMemory(machine, limit)` adds all 30 scalar load/store instructions to the
 register/control subset; only host `ecalli` remains outside its opcode capability.
-The inherited specification gates still prevent a full execution-conformance claim.
+`stepOnce` adds host suspension, and `execute` provides bounded recursive exit
+semantics; see [the execution contract](pvm-execution.md). The inherited specification
+gates still prevent a full execution-conformance claim.
 Each API first validates its owner and supported opcode. Instructions outside its
 capability boundary (host calls and memory accesses for `stepControl`) return a
 local `UnsupportedInstruction` with no outcome, even when guest gas is zero.
@@ -40,11 +42,13 @@ with zero remaining gas and a zero local simulation limit.
 
 `StepResult` has private status/payload fields and a success-only `value` accessor.
 Successful evaluation carries a copied `StepOutcome` with `Continued`, `OutOfGas`,
-`Panic`, `Halt` or `Fault` and its immutable `Machine`. Outcome `exit` is read-only;
+`Panic`, `Halt`, `Fault` or `Host` and its immutable `Machine`. Outcome `exit` is read-only;
 only the private `Fault` alternative stores a physical page, exposed by a guarded
-`faultPage` accessor. Local errors carry no machine or tentative gas debit:
+`faultPage` accessor. Only `Host` carries a nominal identifier, exposed by guarded
+`hostCall`. Local errors carry no machine or tentative gas debit:
 `InvalidMachine`, `UnsupportedInstruction`, `GasCycleLimitExceeded` and the inherited
-`NegativeBranchTarget` and `AmbiguousAccessOrder` specification gates. Default
+`NegativeBranchTarget` and `AmbiguousAccessOrder` specification gates. Bounded
+`execute` also returns local `StepLimitExceeded`. Default
 results are `Uninitialized`.
 Guest out-of-gas is a completed evaluation, not one of those local errors.
 
@@ -94,7 +98,7 @@ equation, and instruction-table mutations (opcodes 0–2, 40, 50, 80–90, 170�
 sentinel halt retain the current PC as specified by the jump helpers. Trap only
 overrides the exit reason in its instruction row, so it retains the default PC
 increment, potentially beyond the end of code. The separate recursive `Psi`
-wrapper resets panic/halt PCs to zero; it is not implemented here.
+wrapper `execute` resets panic/halt PCs to zero; see [its contract](pvm-execution.md).
 
 `captureTerminalMachine` is a trusted snapshot boundary that validates program and
 memory ownership but permits a non-executable PC. It exists to represent these
@@ -201,8 +205,8 @@ licence or binary fixture is copied into the project.
 
 ## Remaining execution work
 
-Next bounded increment: host-call suspension and bounded recursive execution.
-Host calls, recursive `Psi`, standard initialization and complete JAM invocation
-remain unimplemented. The
-negative branch-price and wrapping-memory specification gates remain unresolved.
-This bounded subset is not a complete runnable PVM or a claim of full JAM parity.
+Host suspension and bounded recursive `Psi` are implemented in the
+[execution contract](pvm-execution.md). Next: standard program/memory initialization.
+Host functions and complete JAM invocation remain unimplemented. The negative
+branch-price and wrapping-memory specification gates remain unresolved.
+These APIs do not establish full JAM parity or unrestricted PVM conformance.

@@ -343,5 +343,6 @@
   "tests/pvm_step_reference.py",
   "tests/test_pvm_step_reference.py",
   "tests/native/pvm_step_results.nim",
-  "tests/native/pvm_memory_step_results.nim"
+  "tests/native/pvm_memory_step_results.nim",
+  "tests/native/pvm_execution_results.nim"
 ]

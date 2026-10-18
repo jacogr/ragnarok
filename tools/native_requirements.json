@@ -1,4 +1,5 @@
 {
+  "pvm_execution": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "pvm_memory_step": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "pvm_step": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": true},
   "pvm_gas": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": true},
