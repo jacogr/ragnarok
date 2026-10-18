@@ -73,9 +73,10 @@ Existing vector revision: `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
 Run `make check-modules check-unit check-failures check-guards check-python` with pinned Nimony,
 ARC and checked Clang LTO. Fixtures, logs and allocation evidence remain under ignored `build/`.
 
-## Next bounded work
+## Subsequent bounded work
 
-Implement accumulation history/queue **planning** from newly available reports and parent
-C(14)/C(15): dependency removal and the deterministic ready-report priority sequence described
-by `text/accumulation.tex`, History and Queuing (`E` and `Q`). Keep PVM execution and publication
-of execution-dependent posterior queues separate until their actual outcomes are available.
+Accumulation history/queue planning now has a separate read-only
+[contract](accumulation-queue.md): it derives newly available reports, parent C(14)/C(15) and candidate
+slot from completed report admission, then computes dependency removal and deterministic priority
+(`E` and `Q`). Execution-dependent posterior queue publication remains deferred until actual
+execution outcomes are available. Per-service operand preparation is the next planned bounded slice.

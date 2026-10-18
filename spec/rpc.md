@@ -10,7 +10,7 @@ Append `--rpc-port 19800` to an existing `build/ragnarok server`, `client`, or `
 The endpoint is `ws://127.0.0.1:19800/`. RPC is disabled when the flag is absent; an invalid port,
 duplicate flag, or failed listener bind fails startup. It is independent of `--telemetry` / `--chain`.
 The endpoint lives for the lifetime of the existing proof-peer session. It adds no standalone
-node daemon or chain initialization.
+node daemon or chain execution. An explicit genesis pair initializes the read-only view below.
 
 Send a WebSocket text message:
 
@@ -24,19 +24,20 @@ Send a WebSocket text message:
   target OS and architecture, and peer command role (`server`, `client`, or `mesh`).
 - Milliseconds since RPC startup, observed connected peer count, and occupied/reserved ARC
   allocator bytes (not process RSS). Mesh counts its logical remote once across two role engines.
-- `chain`, `bestBlock`, and `finalizedBlock`: null, because no live chain backend exists.
+- `bestBlock`: the configured genesis descriptor when imported, otherwise null.
+- `chain` and `finalizedBlock`: null; no network identity or finalization view is published yet.
 - RPC transport, loopback address, port, available method names, subscription availability,
   maximum message bytes and batch size.
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()` is implemented as described below; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)` and the service queries below are implemented; other JIP-2 chain methods
 and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
 
-Best/finalized queries and subscriptions require an actual chain source with immutable
-block/state snapshots and update events; they must not reuse telemetry's genesis metadata as live state.
+Queries use an immutable genesis snapshot imported independently of telemetry metadata.
+Advancing heads, finalized queries and subscriptions still require block import and update events.
 
 ## `parameters()` and startup configuration
 
@@ -72,17 +73,96 @@ values. JIP-4's linked historical fetch encoding is not accepted as an alternate
 
 Configuration validation here covers strict JSON, the exact GP tuple, and basic usability:
 core count at least two, nonzero epoch/slot/rotation periods, and epoch tail no later than the epoch
-end. It does **not** import or validate genesis state, initialize a live chain, or establish all
+end. Parameter validation alone does **not** import or validate genesis state, initialize a live chain, or establish all
 cross-field consensus constraints. Unknown chainspec fields are syntax-checked but not interpreted.
 Parsing is bounded to 8 MiB, 32 nesting levels, 262,144 values and 64 root members. The immutable
 parameter owner retains only fixed-size integers; file edits after startup require restarting the node.
 The existing proof-peer codecs still receive their own explicit configurations; this increment does
 not silently reconfigure consensus execution or replace those contracts.
 
+## Genesis-only chain queries
+
+When both JIP-4 `genesis_header` and `genesis_state` are supplied, startup imports one immutable
+configured genesis view. Omitting both preserves parameters-only operation. Supplying only one,
+or an invalid pair, fails RPC startup before opening the listener. Telemetry-only operation retains
+its existing metadata extraction contract.
+
+- `bestBlock()` returns the configured genesis header's Blake2b-256 hash and slot. This is the only
+  known head; it does not advance or imply synchronization or finalization.
+- `stateRoot(header_hash)` returns the computed root of the supplied genesis state map when the
+  hash matches genesis. It is the posterior root, **not** the header's prior-state-root field.
+- `parent(header_hash)` returns JIP-2 error `1`: no parent block descriptor is available, including
+  for genesis. The genesis header's parent bytes do not provide a parent's slot or prove a block exists.
+- Unknown block hashes return error `1`, with the requested padded Base64 hash in `error.data`.
+  With no genesis view, `bestBlock()` returns error `0`; hash queries return error `1`.
+
+Both hash methods require exactly one canonical padded Base64 string decoding to 32 bytes.
+Malformed hashes or argument lists return `-32602`. `bestBlock` takes no arguments. Existing
+batch and notification behavior applies. Finalized queries and all subscriptions remain unsupported.
+The four parameter placeholders remain unchanged in this increment; deriving them is separate work.
+
+The genesis loader checks strict bounded JSON, exact 31-byte hex keys, hex values, duplicate decoded
+keys (including case aliases), header framing/complete consumption, active roster C(8), and timeslot
+C(11). Header author range uses that roster, and the header slot must equal C(11). The existing
+complete-map state store owns a copied immutable mapping and computes its Merkle root. The header
+hash includes the complete sealed header. Input files are never reread by a query.
+
+**Trust and validation limits:** the operator-supplied genesis header and map are the trust anchor.
+The map is treated as the complete configured serialized mapping. Import does not establish
+that all required chapters exist or are semantically valid, verify genesis signatures/key material,
+execute a block, check consensus invariants, or compare against an independently trusted posterior
+root. C(8)/C(11) checks supply structural decoding context, not whole-genesis consensus validation.
+No light-state proof or partial-map import is supported; this is a complete-map in-memory view.
+
+Resource ceilings supplement the existing 8 MiB chainspec policy: 256 KiB header, 16,384 entries,
+4 MiB per value and aggregate decoded values, and 1,048,576 trie nodes. Merklization happens once
+at startup, before serving, not in the dispatcher. Ownership is acyclic; dropping the server releases
+its retained snapshot. There is no persistent database, block import, fork choice or finality tracking.
+
+References: pinned JIP-2 Common types, Errors, `bestBlock`, `parent` and `stateRoot`; pinned JIP-4
+`genesis_header`/`genesis_state`; GP 0.8.0 Header (agreed genesis header/state), Appendix C header
+serialization and state Merklization. The synthetic test fixture is deliberately structural test data,
+not a deployable network genesis; expected hash/root values come from Python hashlib and the existing
+independent trie reference. Native and live WS tests cover exact results, absent/unknown data,
+malformed pairs and hashes, shared telemetry startup, and file mutation after capture.
+
+## Genesis-only service queries
+
+The pinned JIP-2 `serviceData(header_hash, service_id)`,
+`serviceValue(header_hash, service_id, key)` and
+`servicePreimage(header_hash, service_id, hash)` read the same retained genesis map.
+The block and preimage hashes are canonical padded Base64 encoding exactly 32 bytes.
+Service IDs use unsigned JSON integer syntax in the uint32 range; storage keys are canonical
+padded Base64, including the empty string, with at most 4,096 decoded bytes.
+
+`serviceData` returns the serialized C(255, service) record: the existing GP 0.8.0
+version-zero 89-byte metadata layout. Storage and preimage queries use the maintained
+state-key constructors and require an existing, structurally valid account record.
+Preimages are checked against their Blake2b-256 hash before returning them. These local
+checks do not establish whole-genesis consensus validity. See [service state serialization](state-service-values.md)
+and the pinned GP 0.8.0 state Merklization/account definitions referenced there.
+
+Results are Base64 byte strings. Missing accounts or entries return `null`; a present empty
+value returns `""`. Unknown blocks return JIP-2 error `1` with the requested hash in
+`error.data`. Malformed arguments return `-32602`; malformed metadata, inconsistent preimages,
+backend failures and output-budget exhaustion return error `0`. Notifications remain silent.
+
+Each returned raw value is limited to 32 KiB. A batch shares a 65,535-byte encoded response
+budget, reserving space for every request's exact escaped ID and error envelope before reading
+values. A value that fits alone may receive error `0` in a batch; callers can retry it alone.
+Values are never truncated. Snapshot-owned views are immutable, and copying/hashing follows
+size checks. No persistent service database, post-genesis state or subscription is added.
+
+Synthetic service fixtures cover metadata, absent and empty values, preimages, uint32 boundaries,
+and output limits. Expected namespace keys, hashes and roots were independently generated with
+Python hashlib and the existing trie reference. Native tests also cover malformed arguments,
+orphan entries, inconsistent preimages and owner isolation. Live WebSocket tests check exact
+results and bounded batches with IDs whose escaping expands their encoded size.
+
 ## Protocol and bounds
 
 Only WebSocket version 13 is supported; HTTP is used solely for the RFC 6455 upgrade handshake.
-POST bodies are never dispatched as RPC. This increment accepts local non-browser tooling:
+POST bodies are never dispatched as RPC. The endpoint accepts local non-browser tooling:
 Origin-bearing requests are rejected. TLS, remote binding, browser Origin configuration,
 compression, binary messages and subprotocol negotiation are outside this increment.
 
@@ -110,7 +190,8 @@ frame lengths are rejected because their canonical minimum exceeds the configure
 Resource limits are eight connections, 4 KiB upgrade headers, 16 KiB messages, 16 nesting levels,
 2048 JSON values and 16 requests per batch. Input/output is owned per connection. Each dispatcher
 turn performs at most one accept and one read (4 KiB), frame dispatch and write per slot. Responses
-are bounded by the aggregate request-ID bytes plus sixteen bounded diagnostics or parameter results (below the 64 KiB frame limit).
+share a 65,535-byte budget, including escaped request IDs, envelopes and batch punctuation.
+Responses that exceed their remaining allowance return a reserved error envelope.
 Backpressure pauses reads until the outstanding response is delivered. Handshakes, partial
 messages, fragmented messages and queued writes have five-second budgets; idle upgraded
 connections expire after thirty seconds. Ping/pong cannot extend a fragmented message's budget.
@@ -122,7 +203,7 @@ and close-on-exec, and SIGPIPE is suppressed per socket/send.
 
 ## Verification
 
-`tests/unit/codec/test_rpc.nim` covers JSON-RPC envelopes, batches, notifications, strict malformed
+`tests/unit/crypto/test_rpc.nim` covers JSON-RPC envelopes, batches, notifications, strict malformed
 JSON, numeric/string IDs, Unicode boundaries, RFC 6455's published handshake example, every
 truncated frame prefix, masking/length/control errors, fragmentation and repeated ARC destruction.
 It is registered in `make check-unit`. `make check-guards` includes a lowering-level server-copy
