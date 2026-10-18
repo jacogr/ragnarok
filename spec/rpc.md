@@ -454,3 +454,31 @@ opaque entries, copied-key isolation, maximum page/batch limits and ARC retireme
 field rejection protects the index. Live WS checks traverse every fixture key over multiple
 pages and compare the result with independently sorted serialized fixture keys after the
 source chainspec changes. Live block publication and proof/archival queries remain future work.
+
+## Sealed-header inspection extension
+
+`ragnarok_header(header_hash)` returns the complete canonical sealed header as a padded
+Base64 blob. This is a Ragnarok extension, not a JIP-2 method. It includes all GP C.2 header
+fields and the seal, and its Blake2b-256 identity is exactly the queried header hash. The
+input uses the existing canonical 32-byte Base64 hash contract. Unknown/unconfigured blocks
+return error 1 with the requested hash; invalid arguments return -32602.
+
+Reference: Gray Paper 0.8.0 revision `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Appendix C.2 header serialization, through the existing [header codec](header.md).
+Genesis retains the already validated `OwnedHeader` rather than reconstructing fields or
+capturing a second byte buffer. Its guarded accessor shares an immutable acyclic owner;
+serialization returns independent copies. The owner survives the original chainspec buffer
+and genesis handle. Existing 256 KiB capture validation remains unchanged.
+
+RPC checks the 32 KiB raw response ceiling and remaining aggregate budget before allocating
+or copying header bytes. A valid captured header too large to return produces error 0,
+without truncation. This reports configured bytes, not proof of seal validity, finality or
+successful block execution. Live imports, block-body retrieval and state proofs remain gaps.
+
+Native tests compare the entire independently specified header, validate lookup arguments,
+exercise notifications/batches, retain owners after source retirement, and mutate copied
+bytes without changing the owner. Independently framed headers at exactly 32768 and 32769
+bytes exercise size and aggregate-batch refusal; their hashes were computed independently
+with Python Blake2b. Private-field rejection protects the retained header. Existing server
+retirement checks now also cover its header owner. Live WS checks retrieve the sealed header
+after chainspec mutation and independently hash its bytes to the advertised block identity.

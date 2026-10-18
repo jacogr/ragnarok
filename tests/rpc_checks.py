@@ -155,6 +155,12 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     query = dict(jsonrpc='2.0', method='stateRoot', params=[expected_head['header_hash']], id=3)
                     send(connection, json.dumps(query))
                     assert json.loads(receive(connection)[1])['result'] == expected_genesis['state_root']
+                    # Exact retained header bytes still hash to the advertised identity after source mutation.
+                    send(connection, json.dumps(dict(query, method='ragnarok_header')))
+                    header_reply = json.loads(receive(connection)[1])
+                    raw_header = base64.b64decode(header_reply['result'], validate=True)
+                    assert header_reply['id'] == 3 and len(raw_header) == 297
+                    assert base64.b64encode(hashlib.blake2b(raw_header, digest_size=32).digest()).decode() == expected_head['header_hash']
                     send(connection, json.dumps(dict(query, method='parent')))
                     assert json.loads(receive(connection)[1])['error'] == dict(code=1, message='Block unavailable', data=expected_head['header_hash'])
                     send(connection, json.dumps(dict(query, params=['not a hash'])))
