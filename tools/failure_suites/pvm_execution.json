@@ -1,0 +1,107 @@
+{
+  "source": "tests/native/pvm_execution_results.nim",
+  "build_name": "pvm-execution-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-execution-default",
+      "diagnostic": "outcome.kind == Host",
+      "description": "PVM execution result selection default"
+    },
+    {
+      "identity": {
+        "origin": "continued"
+      },
+      "arguments": [
+        "continued"
+      ],
+      "name": "pvm-execution-continued",
+      "diagnostic": "outcome.kind == Host",
+      "description": "PVM execution result selection continued"
+    },
+    {
+      "identity": {
+        "origin": "panic"
+      },
+      "arguments": [
+        "panic"
+      ],
+      "name": "pvm-execution-panic",
+      "diagnostic": "outcome.kind == Host",
+      "description": "PVM execution result selection panic"
+    },
+    {
+      "identity": {
+        "origin": "halt"
+      },
+      "arguments": [
+        "halt"
+      ],
+      "name": "pvm-execution-halt",
+      "diagnostic": "outcome.kind == Host",
+      "description": "PVM execution result selection halt"
+    },
+    {
+      "identity": {
+        "origin": "oog"
+      },
+      "arguments": [
+        "oog"
+      ],
+      "name": "pvm-execution-oog",
+      "diagnostic": "outcome.kind == Host",
+      "description": "PVM execution result selection oog"
+    },
+    {
+      "identity": {
+        "origin": "fault"
+      },
+      "arguments": [
+        "fault"
+      ],
+      "name": "pvm-execution-fault",
+      "diagnostic": "outcome.kind == Host",
+      "description": "PVM execution result selection fault"
+    },
+    {
+      "identity": {
+        "origin": "host-page"
+      },
+      "arguments": [
+        "host-page"
+      ],
+      "name": "pvm-execution-host-page",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "PVM execution result selection host-page"
+    },
+    {
+      "identity": {
+        "origin": "step-limit"
+      },
+      "arguments": [
+        "step-limit"
+      ],
+      "name": "pvm-execution-step-limit",
+      "diagnostic": "r.status == None",
+      "description": "PVM execution result selection step-limit"
+    },
+    {
+      "identity": {
+        "origin": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "pvm-execution-invalid",
+      "diagnostic": "r.status == None",
+      "description": "PVM execution result selection invalid"
+    }
+  ]
+}
