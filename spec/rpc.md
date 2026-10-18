@@ -387,3 +387,35 @@ A distinct independently encoded ready report is also queried over live WS after
 mutation, alongside the existing availability report and concurrent QUIC clients. The next
 substantive extension needs a live block/state publication boundary and a bounded report
 retention policy; this increment does not fabricate those sources.
+
+## Raw state inspection extension
+
+`ragnarok_stateValue(header_hash, key)` reads one exact serialized state-map entry from the
+retained configured block. This is a Ragnarok extension, not a JIP-2 method. The header hash
+uses canonical padded Base64 for 32 bytes; `key` uses canonical padded Base64 for exactly
+31 bytes, following GP 0.8.0 revision `07f041dabd073f9018b418e9ee72e79dd2185401`,
+`text/merklization.tex` serialized state keys. Service storage preimage keys are not accepted
+as a substitute; callers must supply the complete serialized map key.
+
+The result is a Base64 blob for a present value (including `""` for a present empty value),
+or `null` for a missing key. Unknown/unconfigured blocks return error 1 with the requested
+header hash in `error.data`. Invalid arguments return -32602. Reads check the 32 KiB raw
+value ceiling and remaining aggregate response budget before copying or Base64 allocation;
+oversized values return error 0 without truncation. Lookup uses the existing immutable state
+owner and does not mutate, enumerate or expose a writable map.
+
+Example: C(11), the retained timeslot, uses key byte 0x0b followed by thirty zero bytes:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"ragnarok_stateValue","params":["5mOOsjxqUxhky5HYvxomxm/u7dg7VcwqcsnDWQBCjtQ=","CwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="]}
+```
+
+The example fixture returns `"BwAAAA=="` (E4 slot 7). Raw reads intentionally perform no
+chapter-specific structural or consensus validation: they may return bytes rejected by typed
+queries. They provide no state proof, live-state subscription or historical-state archive.
+This supports inspection of retained chapters while those larger state sources remain absent.
+
+Native tests cover exact key length/canonical padding, invalid argument shapes, unknown blocks,
+missing versus empty entries, opaque binary data, the exact raw size ceiling and one byte beyond,
+aggregate batch refusal, notifications and repeated ARC retirement. Live WebSocket checks query
+a known chapter and missing key after source-file mutation alongside existing RPC/QUIC traffic.

@@ -13,6 +13,7 @@ import std/[strutils, parsejson, streams, base64]
 import ./wire
 import ../chain/[parameters, genesis, services, statistics, beefy, reports]
 import ../codec/[state_trie, state_layout]
+import ../state/store
 
 const MaxReplyBytes = 65535 # One canonical medium-length WS frame, including batch punctuation.
 const MaxBlobReplyBytes = 32768 # Bound each raw value copy/hash before Base64 encoding.
@@ -311,7 +312,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
       GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -344,6 +345,37 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if not hasId: return "" # This read-only dispatch has no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
+  if methodName == "ragnarok_stateValue":
+    if parameters < 0: return error(id, -32602, "Expected header hash and state key") # Both identities are mandatory.
+    let argument = parameters + 1
+    if values[parameters].next != argument + 2 or values[argument].kind != stringValue or
+        values[argument + 1].kind != stringValue:
+      return error(id, -32602, "Expected header hash and state key") # No nested or extra arguments.
+    let hash = values[argument].text
+    if not validHash(hash): return error(id, -32602,
+        "Expected padded Base64 hash") # Validate before state lookup.
+    var keyBytes: seq[byte] = @[]
+    if not decodeBlob(values[argument + 1].text, 31, keyBytes) or keyBytes.len != 31:
+      return error(id, -32602, "Expected padded Base64 31-byte state key") # Full serialized state keys, not service storage keys.
+    if info.genesis.error == GenesisError.None:
+      # Resolve the block before distinguishing missing and present entries.
+      let view = info.genesis.value
+      if hash == base64.encode(array[32, byte](view.blockHash)):
+        var key = default(array[31, byte])
+        for index in 0..<31: key[index] = keyBytes[index] # Exact key width was proved above.
+        let found = view.lookup(StateKey(key))
+        if found.error == StateStoreError.MissingKey:
+          return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
+              ",\"result\":null}" # Missing differs from a present empty blob.
+        if found.error != StateStoreError.None:
+          return error(id, 0, "Unreadable state value") # Failed owners never expose bytes.
+        let budget = min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3))
+        if found.value.byteLength > budget:
+          return error(id, 0, ReplyBudgetError) # Reject before copying or Base64 allocation.
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+            found.value.bytes)) & "}"
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
+        quote(hash) & "}}"
   if methodName == "workReport":
     if parameters < 0: return error(id, -32602, "Expected one report hash") # Hash is mandatory.
     let argument = parameters + 1
