@@ -1,0 +1,39 @@
+{
+  "source": "tests/native/pvm_host_execution_results.nim",
+  "build_name": "pvm-host-execution-results",
+  "cases": [
+    {
+      "identity": {
+        "origin": "calls"
+      },
+      "arguments": [
+        "calls"
+      ],
+      "name": "pvm-host-execution-calls",
+      "diagnostic": "r.status == None",
+      "description": "Host execution failure payload calls"
+    },
+    {
+      "identity": {
+        "origin": "response"
+      },
+      "arguments": [
+        "response"
+      ],
+      "name": "pvm-host-execution-response",
+      "diagnostic": "r.status == None",
+      "description": "Host execution failure payload response"
+    },
+    {
+      "identity": {
+        "origin": "steps"
+      },
+      "arguments": [
+        "steps"
+      ],
+      "name": "pvm-host-execution-steps",
+      "diagnostic": "r.status == None",
+      "description": "Host execution failure payload steps"
+    }
+  ]
+}
