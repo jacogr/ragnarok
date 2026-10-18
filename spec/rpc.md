@@ -32,7 +32,7 @@ Send a WebSocket text message:
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
 unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
-remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block and best-chain statistics subscriptions
+remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics and service-data subscriptions
 are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -614,7 +614,8 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Best-block and best-chain statistics methods are enabled; finalized and service subscriptions remain unavailable.
+Best-block, best-chain statistics and service-data methods are enabled; finalized and other service
+subscriptions remain unavailable.
 `ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
 The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
 `respond(text, info, session)` with its connection-owned `RpcSession`.
@@ -708,4 +709,44 @@ fixture exercises byte overflow, atomic refusal, ID preservation and byte reclam
 cover decoder and notification lifetime. Connected socket tests publish changed statistics and a
 missing-statistics child, checking the resulting update/error while preserving the connection.
 Live process checks exercise configured statistics, absent chapters, finalized refusal and
-cancellation. Importer integration, finalized views and service subscriptions remain separate work.
+cancellation. Importer integration, finalized views and the other subscription families remain separate work.
+
+
+## Best-chain service-data subscriptions
+
+`subscribeServiceData(id, false)` and `unsubscribeServiceData(subscription)` implement the best-chain
+part of pinned JIP-2 Methods / subscribeServiceData. Subscribe requires a uint32 service ID followed
+by exactly one Boolean. Invalid IDs/arguments return `-32602`; `true` returns error 0 because a
+finalized view is unavailable. An absent chain returns error 0, independently of service absence.
+Both methods are advertised on stateful WS connections and use the existing connection-local
+subscription IDs, table, FIFO, cancellation, notification-form call and batch rules.
+
+Each subscription retains one nominal `ServiceIndex`, not a map or account view. The initial and
+each published-head notification use method `subscribeServiceData` and a Chain Subscription Update
+in `params.result`: `{"header_hash": "…", "slot": n, "value": null-or-Blob}`. The value is exactly
+what `serviceData(hash, id)` returns: `null` for an absent C(255, id) account, or padded Base64 of the
+complete validated version-zero 89-byte metadata record. Validation and encoding remain those of
+the existing GP 0.8.0 account reader. No storage values, preimages or request histories are included.
+
+Absence is a successful update and keeps the subscription active, so clients can observe service
+creation, metadata changes, removal and later reappearance. Every published head yields an update,
+even if the value is unchanged. Malformed/unsupported/unreadable initial metadata returns error 0
+without consuming an ID. If a later head has such metadata, that subscription receives one terminal
+`params.error` string and is removed; subscriptions for other service IDs, best blocks or statistics
+continue. A malformed account is never reported as `null`.
+
+The subscriber's method family determines cancellation, so the best-block/statistics unsubscribe
+methods cannot remove a service-data subscription. Normal cancellation removes only that ID's
+pending updates. Terminal errors retain the documented delivery/removal policy. Publication
+preflights all messages and removals before committing, preserving the shared eight-subscription,
+sixteen-update and 65,535-byte FIFO ceilings. Each account subscription reads at most one fixed
+record per publication: at most eight account reads per connection and 64 across the server.
+No subscriber-controlled allocation follows from the service ID.
+
+Native coverage includes exact present/null envelopes, unavailable/finalized refusal, malformed
+arguments and accounts, maximum uint32 service IDs, independent selectors, wrong-family cancellation,
+notification-form calls, sequential batches, terminal-error isolation and ARC retirement. Connected
+socket tests publish account creation, balance change, removal and malformed metadata while keeping
+the same connection alive. Live process tests check present and absent accounts, unavailable chains,
+finalized refusal and cancellation. Importer integration, finalized tracking and subscriptions for
+service values, preimages and request histories remain separate bounded increments.
