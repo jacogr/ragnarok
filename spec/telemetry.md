@@ -293,5 +293,28 @@ JIP-3 references. This checks correlation across a lost prefix, not delivery of 
 Both collector logs, peer logs, observed histories and registration bytes are retained in the
 interoperability evidence. Relays have bounded buffers, cancellation and joined workers; they
 implement no TLS or JAM behavior. This scenario covers an outgoing pending handshake and a fresh
-no-database collector process. Incoming pending-handshake replay and database-backed recovery
-remain separate coverage gaps.
+no-database collector process. Database-backed recovery remains a separate coverage gap.
+
+### Incoming restart outcomes and listener reuse
+
+The same interoperability job now holds an incoming TLS handshake pending while restarting the
+real collector. The existing bounded UDP reply gate withholds the server's first flight until the
+new collector accepts registration, a dropped prefix and a two-core status. The old collector must
+have decoded event 21 before shutdown. Success (23) or rejection (22) must reference that original
+incoming attempt ID, even though the new collector's envelope IDs start independently.
+
+Each case retains the same server process and listener for a second connection from a different
+certificate identity. After a successful first handshake, its close and native idle observation
+must arrive before the fresh connection starts. After rejection, there must be no authenticated
+identity, completed exchange or close for the rejected generation. The fresh allowed connection
+must receive its own incoming attempt ID, complete eight mixed CE requests, and close once with
+its own authenticated identity. Status frames advance the local event position; the dropped
+marker advances it by the skipped count, not by one frame.
+
+Both cases require byte-identical registrations matching the server certificate and configured
+chain, complete bounded collector history, and joined relay cleanup. A deliberate stop gate ends
+the retained service after both generations. Its existing separate three-peer peak assertion is
+not met by this sequential scenario: exit code 2 plus the exact `SERVICE_DONE` counts is required,
+while each successful client must exit zero. This is the same service profile used by the existing
+incoming capture tests. The CI artifact retains per-case histories and collector/client/server
+logs without fixture keys. The original outgoing restart and failure/success scenarios still run.
