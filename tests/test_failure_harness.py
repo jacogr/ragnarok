@@ -86,15 +86,15 @@ class FailureHarness(unittest.TestCase):
             invalid['validator_rotation']['cases'][1][field] = value
             variants.append(invalid)
         with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder)/'suites.json'
+            path = Path(folder)/'validator_rotation.json'
             for invalid in variants:
                 # The loader must fail before executing probes, even when the JSON itself is valid.
-                path.write_text(json.dumps(invalid))
+                path.write_text(json.dumps(invalid['validator_rotation']))
                 with self.assertRaises(ValueError):
-                    load_suites(path)
-            path.write_text('{"validator_rotation": {}, "validator_rotation": {}}')
+                    load_suites(Path(folder))
+            path.write_text('{"source": "first", "source": "second"}')
             with self.assertRaisesRegex(ValueError, 'Duplicate'):
-                load_suites(path)
+                load_suites(Path(folder))
 
     # Shared defaults and explicit exceptional cases must retain typed arguments and exact diagnostics.
     def test_case_defaults_and_overrides(self):

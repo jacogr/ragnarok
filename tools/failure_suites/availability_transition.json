@@ -1,0 +1,18 @@
+{
+  "source": "tests/native/availability_transition_results.nim",
+  "build_name": "availability-transition-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {"arguments": ["plan-default"], "name": "availability-transition-plan-default", "diagnostic": "outcome.status == None", "description": "Availability transition plan-default runtime guard", "identity": {"origin": "plan-default"}},
+    {"arguments": ["plan-error"], "name": "availability-transition-plan-error", "diagnostic": "outcome.status == None", "description": "Availability transition plan-error runtime guard", "identity": {"origin": "plan-error"}},
+    {"arguments": ["assignments"], "name": "availability-transition-assignments", "diagnostic": "plan.data", "description": "Availability transition assignments runtime guard", "identity": {"origin": "assignments"}},
+    {"arguments": ["count"], "name": "availability-transition-count", "diagnostic": "plan.data", "description": "Availability transition count runtime guard", "identity": {"origin": "count"}},
+    {"arguments": ["update-default"], "name": "availability-transition-update-default", "diagnostic": "outcome.status == None", "description": "Availability transition update-default runtime guard", "identity": {"origin": "update-default"}},
+    {"arguments": ["update-error"], "name": "availability-transition-update-error", "diagnostic": "outcome.status == None", "description": "Availability transition update-error runtime guard", "identity": {"origin": "update-error"}},
+    {"arguments": ["context-reason"], "name": "availability-transition-context-reason", "diagnostic": "outcome.status == ContextFailure", "description": "Availability transition context-reason runtime guard", "identity": {"origin": "context-reason"}},
+    {"arguments": ["block-availability-reason"], "name": "availability-transition-block-availability-reason", "diagnostic": "outcome.status == AvailabilityFailure", "description": "Availability transition block-availability-reason runtime guard", "identity": {"origin": "block-availability-reason"}}
+  ]
+}

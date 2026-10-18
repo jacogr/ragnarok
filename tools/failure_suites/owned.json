@@ -1,0 +1,42 @@
+{
+  "source": "tests/native/nimony_owned_results.nim",
+  "build_name": "owned-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "name_template": "owned-{origin}-{member}",
+  "description_template": "{origin} {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "frame"}},
+    {"identity": {"origin": "default", "member": "info"}},
+    {"identity": {"origin": "default", "member": "optional"}},
+    {"identity": {"origin": "default", "member": "work"}},
+    {"identity": {"origin": "default", "member": "digest"}},
+    {"identity": {"origin": "default", "member": "service"}},
+    {"identity": {"origin": "default", "member": "integer"}},
+    {"identity": {"origin": "default", "member": "boolean"}},
+    {"identity": {"origin": "error", "member": "frame"}},
+    {"identity": {"origin": "error", "member": "info"}},
+    {"identity": {"origin": "error", "member": "optional"}},
+    {"identity": {"origin": "error", "member": "work"}},
+    {"identity": {"origin": "error", "member": "digest"}},
+    {"identity": {"origin": "error", "member": "service"}},
+    {"identity": {"origin": "error", "member": "integer"}},
+    {"identity": {"origin": "error", "member": "boolean"}},
+    {"diagnostic": "value.isPresent", "identity": {"origin": "default", "member": "absent-length"}},
+    {"diagnostic": "value.isPresent", "identity": {"origin": "absent", "member": "absent-length"}},
+    {"diagnostic": "value.outputKind == Success", "identity": {"origin": "1", "member": "work-error-length"}},
+    {"diagnostic": "value.outputKind == Success", "identity": {"origin": "2", "member": "work-error-length"}},
+    {"diagnostic": "value.outputKind == Success", "identity": {"origin": "3", "member": "work-error-length"}},
+    {"diagnostic": "value.outputKind == Success", "identity": {"origin": "4", "member": "work-error-length"}},
+    {"diagnostic": "value.outputKind == Success", "identity": {"origin": "5", "member": "work-error-length"}},
+    {"diagnostic": "value.outputKind == Success", "identity": {"origin": "6", "member": "work-error-length"}},
+    {"diagnostic": "not reason == None", "identity": {"origin": "none", "member": "factory-failure"}},
+    {"diagnostic": "0 <= length", "identity": {"origin": "negative", "member": "factory-length"}},
+    {"diagnostic": "not kind == Success", "identity": {"origin": "success", "member": "factory-work"}}
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/ticket_admission_results.nim",
+  "build_name": "ticket-admission-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {"arguments": ["default"], "name": "ticket-admission-default", "diagnostic": "outcome.status == None", "description": "ticket admission default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "ticket-admission-error", "diagnostic": "outcome.status == None", "description": "ticket admission error runtime guard", "identity": {"origin": "error"}}
+  ]
+}

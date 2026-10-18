@@ -1,0 +1,37 @@
+{
+  "source": "tests/native/nimony_crypto_results.nim",
+  "build_name": "crypto-results",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "name_template": "crypto-{origin}-{member}",
+  "description_template": "{origin} crypto {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "blake"}},
+    {"identity": {"origin": "default", "member": "keccak"}},
+    {"identity": {"origin": "default", "member": "seed-width"}},
+    {"identity": {"origin": "default", "member": "key-width"}},
+    {"identity": {"origin": "default", "member": "signature-width"}},
+    {"identity": {"origin": "default", "member": "key-missing"}},
+    {"identity": {"origin": "default", "member": "key-cleared"}},
+    {"identity": {"origin": "default", "member": "key-backend"}},
+    {"identity": {"origin": "default", "member": "sign-missing"}},
+    {"identity": {"origin": "default", "member": "sign-cleared"}},
+    {"identity": {"origin": "default", "member": "sign-backend"}},
+    {"identity": {"origin": "error", "member": "blake"}},
+    {"identity": {"origin": "error", "member": "keccak"}},
+    {"identity": {"origin": "error", "member": "seed-width"}},
+    {"identity": {"origin": "error", "member": "key-width"}},
+    {"identity": {"origin": "error", "member": "signature-width"}},
+    {"identity": {"origin": "error", "member": "key-missing"}},
+    {"identity": {"origin": "error", "member": "key-cleared"}},
+    {"identity": {"origin": "error", "member": "key-backend"}},
+    {"identity": {"origin": "error", "member": "sign-missing"}},
+    {"identity": {"origin": "error", "member": "sign-cleared"}},
+    {"identity": {"origin": "error", "member": "sign-backend"}}
+  ]
+}

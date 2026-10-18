@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/entropy_transition_results.nim",
+  "build_name": "entropy-transition-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["update", "default"], "name": "entropy-transition-update-default", "diagnostic": "outcome.status == None", "description": "entropy transition update default runtime guard", "identity": {"member": "update", "origin": "default"}},
+    {"arguments": ["update", "error"], "name": "entropy-transition-update-error", "diagnostic": "outcome.status == None", "description": "entropy transition update error runtime guard", "identity": {"member": "update", "origin": "error"}},
+    {"arguments": ["state", "default"], "name": "entropy-transition-state-default", "diagnostic": "outcome.status == None", "description": "entropy transition state default runtime guard", "identity": {"member": "state", "origin": "default"}},
+    {"arguments": ["state", "error"], "name": "entropy-transition-state-error", "diagnostic": "outcome.status == None", "description": "entropy transition state error runtime guard", "identity": {"member": "state", "origin": "error"}}
+  ]
+}

@@ -41,6 +41,10 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      # Fail missing or inconsistent verification inputs before any native setup.
+      - &inventory
+        name: Validate verification inventory
+        run: make check-inventory
       - name: Source compilation
         run: make check-modules
       - &summary
@@ -67,6 +71,7 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *inventory
       - name: Python reference and tooling tests
         run: make check-python
       - *summary
@@ -90,6 +95,7 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *inventory
       - name: Compiler rejection guards
         run: make check-guards
       - *summary
@@ -115,6 +121,7 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *inventory
       - name: Native unit and codec tests
         run: make check-unit
       - *summary
@@ -142,6 +149,7 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *inventory
       - name: Runtime failure and contract tests
         run: make check-failures
       - *summary
@@ -169,6 +177,7 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *inventory
       - name: End-to-end networking tests
         run: make check-e2e
       - *summary
@@ -214,6 +223,7 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *inventory
       - name: Build pinned collector and verify real peer events
         run: make check-telemetry-interop-ci
       # Keep diagnostics on setup/build/test failures; exclude fixture keys and dependency trees.

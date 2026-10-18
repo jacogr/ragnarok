@@ -1,0 +1,32 @@
+{
+  "source": "tests/native/nimony_integration_results.nim",
+  "build_name": "integration-results",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "defines": [
+    "integration"
+  ],
+  "name_template": "integration-{member}-{origin}",
+  "description_template": "integration {origin} {member} runtime guard",
+  "diagnostic": "value.status == None",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"member": "key", "origin": "default"}},
+    {"identity": {"member": "key", "origin": "error"}},
+    {"identity": {"member": "capture", "origin": "default"}},
+    {"identity": {"member": "capture", "origin": "error"}},
+    {"identity": {"member": "child", "origin": "default"}},
+    {"identity": {"member": "child", "origin": "error"}},
+    {"identity": {"member": "length", "origin": "default"}},
+    {"identity": {"member": "length", "origin": "error"}},
+    {"identity": {"member": "copy", "origin": "default"}},
+    {"identity": {"member": "copy", "origin": "error"}},
+    {"identity": {"member": "fixture-key", "origin": "default"}},
+    {"identity": {"member": "fixture-key", "origin": "error"}},
+    {"identity": {"member": "fixture-bytes", "origin": "default"}},
+    {"identity": {"member": "fixture-bytes", "origin": "error"}}
+  ]
+}

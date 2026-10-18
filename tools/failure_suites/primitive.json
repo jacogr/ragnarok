@@ -1,0 +1,28 @@
+{
+  "source": "tests/native/nimony_primitive_results.nim",
+  "build_name": "primitive-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "name_template": "primitive-{origin}-{member}",
+  "description_template": "{origin} {member} runtime guard",
+  "diagnostic": "value.success",
+  "argument_fields": [
+    "member",
+    "origin"
+  ],
+  "cases": [
+    {"identity": {"origin": "default", "member": "natural-value"}},
+    {"identity": {"origin": "default", "member": "natural-consumed"}},
+    {"identity": {"origin": "default", "member": "fixed-value"}},
+    {"identity": {"origin": "default", "member": "fixed-consumed"}},
+    {"identity": {"origin": "default", "member": "fixed-encoded"}},
+    {"identity": {"origin": "error", "member": "natural-value"}},
+    {"identity": {"origin": "error", "member": "natural-consumed"}},
+    {"identity": {"origin": "error", "member": "fixed-value"}},
+    {"identity": {"origin": "error", "member": "fixed-consumed"}},
+    {"identity": {"origin": "error", "member": "fixed-encoded"}},
+    {"identity": {"origin": "success", "member": "natural-error"}},
+    {"identity": {"origin": "success", "member": "fixed-decode-error"}},
+    {"identity": {"origin": "success", "member": "fixed-encode-error"}}
+  ]
+}

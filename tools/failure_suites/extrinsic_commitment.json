@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/extrinsic_commitment_results.nim",
+  "build_name": "extrinsic-commitment-results",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "cases": [
+    {"arguments": ["default"], "name": "extrinsic-commitment-default", "diagnostic": "outcome.status == None", "description": "Extrinsic commitment default runtime guard", "identity": {"origin": "default"}},
+    {"arguments": ["error"], "name": "extrinsic-commitment-error", "diagnostic": "outcome.status == None", "description": "Extrinsic commitment error runtime guard", "identity": {"origin": "error"}}
+  ]
+}
