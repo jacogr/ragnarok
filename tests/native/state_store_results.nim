@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated misuse probes exercise only public store accessors, with runtime-selected invalid origins.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/store

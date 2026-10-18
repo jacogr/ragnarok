@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal fixed-ring framing and inherited child-policy checks independent of native code."""
 import unittest
 from state_workqueues_oracle import wire,encode,decode,DEFAULT,MAX,record

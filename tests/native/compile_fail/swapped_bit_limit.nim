@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## A bit-count resource ceiling cannot be supplied as a byte budget.
 import ../../../src/codec/[bitstrings, bounded]
 var input: array[1, byte] = default(array[1, byte])

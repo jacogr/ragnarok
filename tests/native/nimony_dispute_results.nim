@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Every public dispute result instantiation guards failed/default application access.
 import std/[cmdline, syncio]
 import ../../src/codec/[disputes, bounded, assurances]

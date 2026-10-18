@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Native disputes default/variant, owner lifetime, atomicity and nested-alias regressions.
 import ../../support/arc_evidence
 import std/[assertions, syncio]

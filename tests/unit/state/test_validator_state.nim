@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Exact upstream roster/root projections, untouched C(4) fields and atomic primitive/store refusals.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/validator_rotation_fixture

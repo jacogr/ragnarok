@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Each subprocess deliberately reads one success-only bounded result member after failure/default.
 import ../../src/codec/[bounded, fixed_unsigned]
 import std/[cmdline, syncio]

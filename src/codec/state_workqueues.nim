@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T chapters 14/15 and accumulation readyspec/accumulatedspec: fixed epoch rings.
 ## Serialization preserves report order and canonical hash sets; it does not execute accumulation.
 import std/assertions

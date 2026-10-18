@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted independent source/field adapter for history dictionaries and optional MMR peaks.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_history, state_trie, bounded, assurances]

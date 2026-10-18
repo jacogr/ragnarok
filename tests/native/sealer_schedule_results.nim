@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default and actually refused schedule selections cannot expose an immutable candidate payload.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/sealer_schedule

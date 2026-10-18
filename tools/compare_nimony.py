@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Bounded checked-LTO migration comparison; isolated Nim 2 history is a control, never a supported target."""
 import argparse
 import hashlib

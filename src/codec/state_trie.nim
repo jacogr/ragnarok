@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 merklization: bounded roots over already serialized state entries.
 ## Inputs are borrowed synchronously and must remain stable for the call. Nothing is retained.
 import std/algorithm

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent fixed source fields and retained logical observations for T chapter 16.
 import std/[assertions, cmdline, syncio, strutils, parseutils]
 import ../../src/codec/[state_outputs, state_trie, bounded]

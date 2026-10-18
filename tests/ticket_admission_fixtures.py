@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Transport pinned Safrole admission projections, without implementing proof verification or selection."""
 import hashlib
 import json

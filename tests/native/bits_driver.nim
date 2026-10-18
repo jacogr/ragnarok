@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted batch adapter compares independent logical bits, exact wire prefixes and immutable owner behavior.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/bitstrings

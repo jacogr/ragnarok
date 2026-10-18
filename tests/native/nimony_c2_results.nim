@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated failed/default result and selected source/metadata/decoded-union accesses require their exact contracts.
 import std/[cmdline, syncio]
 import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]

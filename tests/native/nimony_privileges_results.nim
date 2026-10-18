@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated public/private result reads must reach the exact success contract for defaults and actual failures.
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_privileges

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 import ../../support/arc_evidence
 ## Project-only lifetime, numeric-order, copied-value and host-arithmetic tests; no private runtime hooks.
 import std/[assertions, syncio]

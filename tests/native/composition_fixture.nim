@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Test-only literal chapter fixture transport shared by independent ownership/guard binaries.
 import std/[assertions, strutils, syncio, parseutils, cmdline]
 

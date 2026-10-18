@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Literal shape/framing/order checks protect the independent authorization state reference."""
 import unittest
 from state_authorization_oracle import encode,decode,wire,MAX

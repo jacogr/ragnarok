@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent source construction and copied-field observations for the remaining C.2 records.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]

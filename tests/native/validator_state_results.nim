@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Default/failed publication outcomes reject snapshot extraction through the intended checked contract.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[validator_state, store]

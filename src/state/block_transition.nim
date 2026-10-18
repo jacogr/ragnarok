@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 header/judgments/safrole/reporting_assurance: atomic admission, disputes, Safrole and assurances.
 ## Other extrinsics, wall-clock admission and complete block execution remain separate stages.
 import ../codec/[block_codec, header, tickets, state_disputes, state_safrole, state_layout, assurances]

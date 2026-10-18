@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Runtime-selected result, nested-variant and explicit-constructor misuse must reject before reading data.
 import ../../src/codec/[composite, bounded, work_digest]
 import std/[cmdline, syncio]

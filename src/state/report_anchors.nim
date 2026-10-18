@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 reporting_assurance.tex contextual validity: recent tuple and retained ancestor/child proof.
 ## These immutable read-only stages do not prove consensus ancestry or publish C(10).
 import ../codec/[bounded, state_history, state_safrole, header, report_owned]

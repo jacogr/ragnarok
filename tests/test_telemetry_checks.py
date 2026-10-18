@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Collector-harness regressions: statuses consume IDs without hiding duplicate or dropped events."""
 import socket
 import struct
