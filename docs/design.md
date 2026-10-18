@@ -69,7 +69,7 @@ for pinned STF coverage and two dummy-assignment fixture incompatibilities.
 `src/state/availability.nim` now verifies assurances using parent keys, retains newly available
 reports, and advances post-disputes C(10) for strict supermajority, timeout and population-size
 changes. The block coordinator includes this stage before its final publication; see
-[the availability contract](../spec/availability-transition.md). New guarantee assignment, accumulation,
+[the availability contract](../spec/availability-transition.md). New guarantee assignment is now integrated below; accumulation,
 wall-clock admission and whole-block execution remain open.
 `src/state/guarantors.nim` supplies immutable current/previous rotation assignments from posterior
 rosters, entropy and offenders. See [the assignment contract](../spec/guarantor-assignments.md);
@@ -88,7 +88,13 @@ from parent C(10)/C(14)/C(15). See [the package contract](../spec/report-package
 `src/state/report_assignments.nim` plans new C(10) assignments only on vacant post-assurance cores,
 using candidate time and active population retained in the credential certificate. It preserves
 untouched guarantees and registration times; see [the assignment contract](../spec/report-assignments.md).
-Complete report-stage binding, C(10) publication and coordinator integration remain subsequent slices.
+`src/state/report_admission.nim` now binds all those checks to one private successful coordinator
+result, deriving the actual block/parent, corrected history, posterior credentials and post-assurance
+capacity. See [the binding contract](../spec/report-admission.md).
+`src/state/report_transition.nim` now composes that planner with the earlier coordinator on one
+private working store and publishes the final C(10) only on complete success. See
+[the atomic publication contract](../spec/report-transition.md). Accumulation history/queue
+planning is next; PVM execution and full block execution remain later work.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See
@@ -102,6 +108,16 @@ increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged m
 with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine.md),
 including its explicit wrapping-access specification gate. Gas charging, instruction
 execution and host calls remain open.
+
+`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
+formats into copied values backed by an immutable program owner. See
+[the program decoding contract](../spec/pvm-program.md). This is the first PVM
+increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
+with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine.md),
+including its explicit wrapping-access specification gate. `src/pvm/registers.nim`
+evaluates all 85 register-only instruction mutations against a copied register file;
+see [the register semantics contract](../spec/pvm-registers.md). Gas charging, complete
+instruction stepping, control flow, memory-instruction integration and host calls remain open.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2

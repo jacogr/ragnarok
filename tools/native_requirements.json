@@ -1,4 +1,5 @@
 {
+  "pvm_registers": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "rpc": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "pvm_machine": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
   "pvm_program": {"directory": "codec", "libraries": [], "includes": [], "observers": [], "defines": [], "prepared": false},
@@ -93,5 +94,7 @@
   "report_policy": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
   "report_anchors": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
   "report_packages": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
-  "report_assignments": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true}
+  "report_assignments": {"directory": "state", "libraries": ["observer"], "includes": ["crypto"], "observers": [], "defines": [], "prepared": true},
+  "report_admission": {"directory": "state", "libraries": ["bandersnatch_observer", "bandersnatch", "observer"], "includes": ["crypto", "bandersnatch"], "observers": ["verify", "setup_new", "setup_free", "commit", "ring_verify"], "defines": [], "prepared": true},
+  "report_transition": {"directory": "state", "libraries": ["bandersnatch_observer", "bandersnatch", "observer"], "includes": ["crypto", "bandersnatch"], "observers": ["verify", "setup_new", "setup_free", "commit", "ring_verify"], "defines": [], "prepared": true}
 }

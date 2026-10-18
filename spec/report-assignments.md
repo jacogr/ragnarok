@@ -64,9 +64,10 @@ The credential suite also checks captured time/population on original vectors an
 Run `make check-modules check-unit check-failures check-guards check-python` with pinned Nimony,
 ARC and checked Clang LTO. Generated source evidence, fixtures and logs remain under `build/`.
 
-## Next bounded work
+## Integration and next bounded work
 
-Bind all report checks to one admitted block, its actual parent, corrected history, retained
-ancestors and post-assurance stage. Publish the completed C(10) candidate atomically through the
-block coordinator, preserving whole-block rollback on any later refusal. Accumulation/PVM
-execution remains later work.
+The [block-bound planner](report-admission.md) composes these checks over the real block and
+retained parent/post-assurance context. [Atomic report publication](report-transition.md) now
+runs that planner inside the private block transaction, preserving whole-parent rollback.
+Next plan accumulation history/queues from newly available reports. PVM execution and complete
+block execution remain later work.

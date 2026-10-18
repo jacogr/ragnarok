@@ -80,10 +80,10 @@ New privacy/compiler and default/refused access probes protect every new result/
 Reproduce with `make check-modules check-unit check-failures check-guards check-python`.
 Fixtures, source hashes and native reports remain under ignored `build/`.
 
-## Next bounded work
+## Integration and next bounded work
 
-The [guarantor assignment foundation](guarantor-assignments.md) is implemented separately.
-The [credential verifier](guarantee-credentials.md) is also implemented separately.
-Complete contextual report validation and new C(10) assignment will consume post-assurances
-capacity. Accumulation/PVM execution, wall-clock admission and full block execution/import remain
-separate later slices; returning an available report does not execute it.
+[Atomic report publication](report-transition.md) now consumes this actual post-assurance
+capacity, checking every report before new C(10) assignments or any preceding block stage becomes
+canonical. Newly available reports remain retained in that result for accumulation. Next plan
+accumulation history/queues; PVM execution and full block execution/import remain separate later
+slices. Returning an available report does not execute it.

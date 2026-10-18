@@ -73,8 +73,10 @@ compiler privacy probes and two isolated runtime extraction probes protect the r
 Run `make check-modules check-unit check-failures check-guards check-python` using pinned Nimony,
 ARC and checked Clang LTO. Generated source evidence, fixtures and logs stay under ignored `build/`.
 
-## Next bounded work
+## Integration and next bounded work
 
-[Post-assurance vacancy and new C(10) planning](report-assignments.md) are implemented separately,
-using captured credential time/population. Next bind the completed report stages to one admitted
-block and integrate atomic publication into the block coordinator. Accumulation/PVM execution remains later work.
+The [block-bound planner](report-admission.md) composes these checks over the real block and
+retained parent/post-assurance context. [Atomic report publication](report-transition.md) now
+runs that planner inside the private block transaction, preserving whole-parent rollback.
+Next plan accumulation history/queues from newly available reports. PVM execution and complete
+block execution remain later work.

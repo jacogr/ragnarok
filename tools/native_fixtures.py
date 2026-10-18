@@ -58,7 +58,11 @@ def unit_admission_fixture(folder):
     from block_admission_fixtures import prepare_admission
     path, evidence = prepare_admission(folder)
     fixture = ('RAGNAROK_BLOCK_ADMISSION', path, ((path, evidence['fixture_sha256']),))
-    return {'block_admission': fixture}, evidence
+    template = ROOT/'tests/fixtures/state-report.bin'
+    report_fixture = (None, {'RAGNAROK_BLOCK_ADMISSION': path, 'RAGNAROK_STATE_REPORT': template},
+                      ((path, evidence['fixture_sha256']),
+                       (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
+    return {'block_admission': fixture, 'report_admission': report_fixture, 'report_transition': report_fixture}, evidence
 
 
 # Prepare independent disputes inputs and expose their hashes to the consuming native suites.

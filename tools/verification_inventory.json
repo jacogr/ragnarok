@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "pvm_registers",
     "rpc",
     "pvm_machine",
     "pvm_program",
@@ -94,11 +95,16 @@
     "report_policy",
     "report_anchors",
     "report_packages",
-    "report_assignments"
+    "report_assignments",
+    "report_admission",
+    "report_transition"
   ],
   "PRIVATE": {
     "parameters_owner_private": "numbers",
     "parameters_result_private": "success",
+    "pvm_register_payload_private": "completed",
+    "pvm_register_retag_private": "status",
+    "pvm_register_error_readonly": "error",
     "pvm_memory_owner_private": "data",
     "pvm_machine_owner_private": "data",
     "pvm_machine_payload_private": "completed",
@@ -760,9 +766,19 @@
     "report_packages_owner_private": "data",
     "report_assignments_result_private": "completed",
     "report_assignments_retag_private": "status",
-    "report_assignments_owner_private": "data"
+    "report_assignments_owner_private": "data",
+    "report_admission_result_private": "completed",
+    "report_admission_retag_private": "status",
+    "report_admission_owner_private": "data",
+    "block_transition_profile_private": "profile",
+    "report_transition_result_private": "completed",
+    "report_transition_retag_private": "status",
+    "report_transition_stage_private": "stageReason",
+    "report_transition_report_private": "reportReason",
+    "report_transition_publication_private": "publicationReason"
   },
   "NOMINAL": {
+    "pvm_register_raw_address": "[2] expected: CodeAddress but got: uint64",
     "pvm_memory_raw_address": "[2] expected: MemoryAddress but got: uint64",
     "pvm_page_as_address": "[2] expected: MemoryAddress but got: PageIndex",
     "pvm_raw_page_limit": "[2] expected: PageLimit but got: uint32",
@@ -967,6 +983,7 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
+    "pvm_register_raw_address": ["evaluateRegisters(", "[2] expected: CodeAddress but got: uint64"],
     "pvm_memory_raw_address": ["load(", "[2] expected: MemoryAddress but got: uint64"],
     "pvm_page_as_address": ["load(", "[2] expected: MemoryAddress but got: PageIndex"],
     "pvm_raw_page_limit": ["captureMemory(", "[2] expected: PageLimit but got: uint32"],
@@ -1005,6 +1022,7 @@
     "normalize-short"
   ],
   "FAILURE_COUNTS": {
+    "pvm_registers": 3,
     "pvm_machine": 5,
     "safrole_transition": 9,
     "safrole_authentication": 3,
@@ -1067,7 +1085,9 @@
     "report_policy": 2,
     "report_anchors": 2,
     "report_packages": 2,
-    "report_assignments": 3
+    "report_assignments": 3,
+    "report_admission": 10,
+    "report_transition": 6
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1164,7 +1184,9 @@
     "report_policy": "report_policy_arc_release",
     "report_anchors": "report_anchors_arc_release",
     "report_packages": "report_packages_arc_release",
-    "report_assignments": "report_assignments_arc_release"
+    "report_assignments": "report_assignments_arc_release",
+    "report_admission": "report_admission_arc_release",
+    "report_transition": "report_transition_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1236,6 +1258,8 @@
     "report_policy": "observer",
     "report_anchors": "observer",
     "report_packages": "observer",
-    "report_assignments": "observer"
+    "report_assignments": "observer",
+    "report_admission": "observer",
+    "report_transition": "observer"
   }
 }

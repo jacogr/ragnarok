@@ -8,6 +8,7 @@ import ../../src/codec/[guarantees, assurances, bounded, state_safrole, header,
   report_owned, owned, work_report, work_digest, composite, state_accounts,
   state_authorization, state_layout, state_trie]
 import ../../src/crypto/[primitives, guarantee]
+from ../../src/codec/disputes import OffenderKey
 
 ## Decode trusted fixture transport exactly; a dash denotes an empty sequence only.
 proc unhex*(text: string): seq[byte] =
@@ -77,8 +78,8 @@ proc reportFor*(base: OwnedReport, core: int, gases: openArray[uint64], service 
   decodeOwnedReport(output.toOpenArray(0, encoded.written-1), 2).value
 
 
-## Sign authored reports with deterministic public test keys and the real assignment/transcript machinery.
-proc certify*(reports: openArray[OwnedReport], slot = 12'u32): VerifiedGuaranteeCredentials =
+## Sign authored reports with deterministic test keys and real assignments/transcripts, excluding supplied offenders.
+proc certify*(reports: openArray[OwnedReport], slot = 12'u32, offenders: openArray[OffenderKey] = []): VerifiedGuaranteeCredentials =
   let config = credentialConfig(2)
   var keys = newSeq[EdSeed](6)
   var values = newSeq[StateValidator](6)
@@ -89,7 +90,7 @@ proc certify*(reports: openArray[OwnedReport], slot = 12'u32): VerifiedGuarantee
     values[i].ed25519 = StateEdKey(array[32, byte](publicKey(keys[i]).value)) # Test-only identities.
   let bytes = validatorEntry(ValidatorChapter.Active, values, config.assignments.roster).value.value
   let roster = decodeStateValidators(bytes, config.assignments.roster).value.value
-  let plan = planGuarantors(roster, roster, default(StateEntropy), StateTime(slot), [],
+  let plan = planGuarantors(roster, roster, default(StateEntropy), StateTime(slot), offenders,
       config.assignments).value
   var records: seq[Guarantee] = @[]
   # Each report retains independent core identity and complete owned bytes.
@@ -99,15 +100,18 @@ proc certify*(reports: openArray[OwnedReport], slot = 12'u32): VerifiedGuarantee
     let message = array[45, byte](guaranteeMessage(reportBytes(report)).value)
     var found = 0
     for i in 0..<6:
-      if uint64(plan.guarantorAt(record.slot, GuarantorIndex(i)).value.core) == uint64(
-          ownedReportInfo(report).value.core) and found < 2:
+      let assigned = plan.guarantorAt(record.slot, GuarantorIndex(i)).value
+      let eligible = array[32, byte](assigned.validator.ed25519) == array[32, byte](values[i].ed25519)
+      if uint64(assigned.core) == uint64(ownedReportInfo(report).value.core) and eligible and
+          found < 2:
         record.credentials[found] = GuaranteeCredential(validator: GuarantorIndex(i),
           signature: GuaranteeSignature(array[64, byte](sign(keys[i],
               message).value))) # Ascending signer ordinals.
         inc found
     assert found == 2
     records.add(record)
-  verifyGuaranteeCredentials(records, roster, roster, default(StateEntropy), StateTime(slot), [], config).value
+  verifyGuaranteeCredentials(records, roster, roster, default(StateEntropy), StateTime(slot),
+      offenders, config).value
 
 
 ## Construct exact parent pool and independently keyed service metadata for authored reports.

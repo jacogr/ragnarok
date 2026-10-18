@@ -62,9 +62,10 @@ the result/owner boundary. Shared deterministic test contexts preserve the exist
 Run `make check-modules check-unit check-failures check-guards check-python` with pinned Nimony,
 ARC and checked Clang LTO. Generated fixtures, raw source evidence and logs remain under `build/`.
 
-## Next bounded work
+## Integration and next bounded work
 
-[Package uniqueness, prerequisite membership and segment-root mappings](report-packages.md) are
-implemented separately. [Post-assurance core capacity and assignment planning](report-assignments.md)
-are also implemented. Next bind and publish completed report admission through the block coordinator.
-Accumulation/PVM execution remains later work.
+The [block-bound planner](report-admission.md) composes these checks over the real block and
+retained parent/post-assurance context. [Atomic report publication](report-transition.md) now
+runs that planner inside the private block transaction, preserving whole-parent rollback.
+Next plan accumulation history/queues from newly available reports. PVM execution and complete
+block execution remain later work.
