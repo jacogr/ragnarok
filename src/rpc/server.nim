@@ -9,6 +9,7 @@
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol]
+import ../chain/parameters
 
 const MaxConnections* = 8
 
@@ -27,6 +28,7 @@ type
     started: int64
     port: uint16
     role: string
+    parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
 
 # POSIX APIs borrow bounded stack values only for their synchronous nonblocking syscall.
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
@@ -100,7 +102,8 @@ proc nonblocking(fd: cint): bool =
   true
 
 # Bind loopback only; port zero disables RPC. Startup failure is reported to the peer CLI.
-proc start*(server: var Server, port: uint16, role: string): bool =
+proc start*(server: var Server, port: uint16, role: string,
+    parameters = unavailableParameters()): bool =
   if server.opened:
     # A second start cannot leak or replace a live listener.
     return false
@@ -132,6 +135,7 @@ proc start*(server: var Server, port: uint16, role: string): bool =
   server.started = getMonoTime().ticks div 1_000_000
   server.port = port
   server.role = role
+  server.parameters = parameters
   true
 
 # Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
@@ -248,7 +252,8 @@ proc tick*(server: var Server, peers: uint32) =
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
-      port: server.port, occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
+      port: server.port, parameters: server.parameters, occupiedBytes: getOccupiedMem(),
+          reservedBytes: getTotalMem())
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.
     if not slot.opened:
       continue
