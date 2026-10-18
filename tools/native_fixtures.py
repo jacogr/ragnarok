@@ -102,6 +102,18 @@ def unit_accumulation_inputs_fixture(folder):
     return {'accumulation_inputs': fixture}, evidence
 
 
+# Prepare independent initial-accseq gas prefixes, preserving signed-fixture template identity.
+def unit_accumulation_round_fixture(folder):
+    sys.path.insert(0, str(ROOT/'tests'))
+    from accumulation_round_fixtures import prepare
+    path, evidence = prepare(folder)
+    template = ROOT/'tests/fixtures/state-report.bin'
+    fixture = (None, {'RAGNAROK_ACCUMULATION_ROUND': path, 'RAGNAROK_STATE_REPORT': template},
+               ((path, evidence['fixture_sha256']),
+                (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
+    return {'accumulation_round': fixture}, evidence
+
+
 # Prepare independent disputes inputs and expose their hashes to the consuming native suites.
 def unit_disputes_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
@@ -185,6 +197,8 @@ def unit_sealer_fixture(folder):
     fixtures.update(transition_fixtures)
     commitment_fixtures, commitment_evidence = unit_commitment_fixture(folder)
     fixtures.update(commitment_fixtures)
+    round_fixtures, round_evidence = unit_accumulation_round_fixture(folder)
+    fixtures.update(round_fixtures)
     input_fixtures, input_evidence = unit_accumulation_inputs_fixture(folder)
     fixtures.update(input_fixtures)
     operand_fixtures, operand_evidence = unit_accumulation_operands_fixture(folder)
@@ -221,6 +235,7 @@ def unit_sealer_fixture(folder):
     evidence['accumulation_queue'] = queue_evidence
     evidence['accumulation_operands'] = operand_evidence
     evidence['accumulation_inputs'] = input_evidence
+    evidence['accumulation_round'] = round_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence
     evidence['authentication'] = authentication_evidence
