@@ -1694,6 +1694,7 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "block_admission": "block_admission_arc_release",
     "safrole_transition": "safrole_transition_arc_release",
     "safrole_authentication": "safrole_authentication_arc_release",
     "safrole_markers": "safrole_markers_arc_release",

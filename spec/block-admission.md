@@ -67,7 +67,11 @@ unchanged. No full-block post-state-root claim is made before other JAM transiti
 
 Negative cases alter each header commitment, the parent seal and a block's extrinsic owner; they
 exercise independent byte ceilings, admission hash refusal, both ordinary verification refusals,
-late publication refusal and retained owner lifetimes. Published trace headers/credentials are
+late publication refusal and retained owner lifetimes. Additional boundaries reject missing/short/long
+C(11), a different parent slot, a wrong complete-map root, backward slots, divergent chain profiles
+and a previously captured owner that exceeds a stricter ticket policy. Exact byte ceilings succeed;
+source-buffer mutation cannot change a binding. A scoped 1,000-call success/first-hash-refusal
+workload requires identical before/after live Nim allocation occupancy, not a general memory audit. Published trace headers/credentials are
 never regenerated to accept changed inputs.
 
 A separate native commitment profile compares independent Python/hashlib answers for empty data,

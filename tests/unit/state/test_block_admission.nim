@@ -110,6 +110,119 @@ proc reject(state: StateStore, candidate: OwnedBlock, parent: OwnedHeader, sourc
   assert verifications() == 0 and setups() == 0 and liveSetups() == 0
   unchanged(working.snapshot.value, source, root)
 
+## Reject disconnected parent-state context and caller-profile substitutions before primitive or Safrole work.
+proc contextBoundaries(state: StateStore, source: seq[StateEntry], raw, parentRaw: seq[byte],
+    punished: seq[OffenderKey]) =
+  let candidate = candidateBlock(raw)
+  let parent = parentHeader(parentRaw)
+  let retained = state.snapshot.value
+  let root = retained.commitment.root
+  reset(0)
+  failHash(0)
+  assert validateBlockCommitments(default(OwnedBlock), parent, retained, policy()).error ==
+      BlockAdmissionError.InvalidBlock
+  assert validateBlockCommitments(candidate, default(OwnedHeader), retained, policy()).error ==
+      BlockAdmissionError.InvalidParent
+  assert validateBlockCommitments(candidate, parent, default(StateStoreSnapshot), policy()).error ==
+      BlockAdmissionError.Uninitialized
+  assert hashes() == 0 and verifications() == 0 and setups() == 0
+  let timeKey = array[31, byte](chapterKey(StateChapter(11)))
+  for mode in 0..<5:
+    var broken: seq[StateEntry] = @[]
+    var rootChanged = false
+    for entry in source:
+      let isTime = array[31, byte](entry.key) == timeKey
+      if isTime and mode == 0:
+        discard # Remove exactly C(11), preserving all service and other chapter values.
+      elif isTime and mode in [1, 2, 3]:
+        let size = entry.value.len+(if mode == 1: -1 elif mode == 2: 1 else: 0)
+        var value = newSeq[byte](size)
+        for i in 0..<min(size, entry.value.len): value[i] = entry.value[
+            i] # Copy before exact one-byte shape damage.
+        if mode == 3: value[0] = value[0] xor 1 # Structurally valid time belongs to another parent slot.
+        broken.add(StateEntry(key: entry.key, value: value))
+      elif not isTime and mode == 4 and not rootChanged:
+        var value = newSeq[byte](entry.value.len+1)
+        for i in 0..<entry.value.len: value[i] = entry.value[
+            i] # Change one unrelated opaque state value so only its root differs.
+        broken.add(StateEntry(key: entry.key, value: value))
+        rootChanged = true
+      else:
+        broken.add(entry) # Every unrelated original byte remains retained and immutable.
+    failHash(0)
+    var wrong = newStateStore(broken, limits()).value
+    let wrongRoot = wrong.snapshot.value.commitment.root
+    failHash(0)
+    let rejected = validateBlockCommitments(candidate, parent, wrong.snapshot.value, policy())
+    let expected = if mode == 0: BlockAdmissionError.MissingState elif mode == 4:
+      BlockAdmissionError.InvalidStateRoot else: BlockAdmissionError.InvalidState
+    assert rejected.error == expected and hashes() == 0
+    unchanged(wrong.snapshot.value, broken, wrongRoot)
+    unchanged(retained, source, root)
+  # Header timeslots are fixed E4 fields; a syntactically valid zero slot cannot wrap past this parent.
+  var backward = newSeq[byte](raw.len)
+  for i in 0..<raw.len: backward[i] = raw[i] # Preserve the signed header and body except the isolated time field.
+  for i in 96..<100: backward[i] = 0
+  reject(state, candidateBlock(backward), parent, source, punished, policy(),
+      BlockAdmissionError.InvalidSlot)
+  reject(state, candidate, parentHeader(changed(parentRaw, 96)), source, punished, policy(),
+      BlockAdmissionError.InvalidState)
+  for mode in 0..<4:
+    var conflicting = policy()
+    case mode
+    of 0: conflicting.frame.cores = CoreCount(3) # State rotation and decoding must share one chain core domain.
+    of 1: conflicting.frame.validators = ValidatorCount(
+        9) # Structural author ceiling cannot silently diverge from roster policy.
+    of 2: conflicting.frame.epochSlots = EpochSlots(
+        13) # Schedule/marker epochs cannot use an independently selected length.
+    else: conflicting.frame.ticketLimit = TicketLimit(
+        2) # One block cannot use different admission/decoding ticket maxima.
+    reject(state, candidate, parent, source, punished, conflicting,
+        BlockAdmissionError.InvalidConfig)
+    assert hashes() == 0
+  var exact = policy()
+  exact.frame.maxBytes = ByteLimit(uint64(raw.len))
+  exact.maxParentHeaderBytes = ByteLimit(uint64(parentRaw.len))
+  failHash(0)
+  assert validateBlockCommitments(candidate, parent, retained, exact).error ==
+      BlockAdmissionError.None
+  # Public handles capture immutable bytes, not aliases into this mutable source copy.
+  var mutable = newSeq[byte](raw.len)
+  for i in 0..<raw.len: mutable[i] = raw[i]
+  let captured = candidateBlock(mutable)
+  mutable[0] = mutable[0] xor 1
+  assert validateBlockCommitments(captured, parent, retained, policy()).error ==
+      BlockAdmissionError.None
+  # Whole binding success and first-hash refusal must retire all temporary captures within each iteration.
+  for warm in 0..<25:
+    discard validateBlockCommitments(candidate, parent, retained, policy()) # Exclude one-time runtime caches from occupancy evidence.
+  let before = getOccupiedMem()
+  for cycle in 0..<1000:
+    failHash(cint(if cycle mod 2 == 0: 0 else: 1))
+    let outcome = validateBlockCommitments(candidate, parent, retained, policy())
+    assert outcome.error == (if cycle mod 2 == 0: BlockAdmissionError.None else: BlockAdmissionError.BackendFailure)
+  let after = getOccupiedMem()
+  assert before == after
+  recordArcRelease("block_admission", 1000, before, after)
+  failHash(0)
+  unchanged(retained, source, root)
+
+## Owners captured with an unrestricted ticket ceiling must be checked again under application policy.
+proc stricterTickets(state: StateStore, candidate: OwnedBlock, parent: OwnedHeader,
+    source: seq[StateEntry], punished: seq[OffenderKey]) =
+  var strict = policy()
+  strict.frame.ticketLimit = TicketLimit(0)
+  var noTickets = stagePolicy()
+  noTickets.blockTickets = TicketLimit(0)
+  reset(0)
+  failHash(0)
+  var working = state
+  let refused = advanceBlockSafrole(working, candidate, parent, punished, strict, noTickets)
+  assert refused.error == BlockSafroleError.AdmissionFailure
+  assert refused.admissionError == BlockAdmissionError.InvalidBlock # Exact recapture rejects the captured ticket count before any hashes.
+  assert hashes() == 0 and verifications() == 0 and setups() == 0
+  unchanged(working.snapshot.value, source, state.snapshot.value.commitment.root)
+
 ## Published parent linkage, complete-state roots, exact block commitments and actual Safrole outputs agree together.
 proc cases(text: string) =
   let lines = text.splitLines()
@@ -145,6 +258,13 @@ proc cases(text: string) =
           BlockAdmissionError.BackendFailure
       assert hashes() == cint(prefix+1) and verifications() == 0 and setups() == 0
       unchanged(before, source, root)
+    if index == 0:
+      contextBoundaries(original, source, raw, parentRaw,
+          punished) # One full mapping exercises independent context and ownership boundaries.
+    elif index == 5:
+      stricterTickets(original, candidate, parent, source,
+          punished) # The first Safrole trace carries real submitted proofs.
+    reset(0)
     failHash(0)
     let result = advanceBlockSafrole(original, candidate, parent, punished, policy(), stagePolicy())
     assert result.error == BlockSafroleError.None and verifications() == 2 and liveSetups() == 0

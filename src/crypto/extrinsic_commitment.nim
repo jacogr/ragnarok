@@ -74,6 +74,7 @@ proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
   let tickets = wire(extrinsicTickets(owner).value, maxBytes)
   let assurances = wire(extrinsicAssurances(owner).value, maxBytes)
   let disputes = wire(extrinsicDisputes(owner).value, maxBytes)
+  # Named predicates keep boolean tokens intact under the pinned formatter.
   let invalidTickets = tickets.error != ExtrinsicCommitmentError.None
   let invalidAssurances = assurances.error != ExtrinsicCommitmentError.None
   let invalidDisputes = disputes.error != ExtrinsicCommitmentError.None
@@ -101,7 +102,8 @@ proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
   if reason == ExtrinsicCommitmentError.None:
     reason = charge(imageSize, preimageCount, 36, maxBytes) # Fixed E4 service plus 32-byte blob hash.
   if reason != ExtrinsicCommitmentError.None:
-    return ExtrinsicCommitmentResult[ExtrinsicRoot](status: reason)
+    return ExtrinsicCommitmentResult[ExtrinsicRoot](
+        status: reason) # Preserve the classified projection extent/budget refusal.
   reason = charge(total, imageSize, 1, maxBytes)
   if reason != ExtrinsicCommitmentError.None:
     return ExtrinsicCommitmentResult[ExtrinsicRoot](
@@ -120,7 +122,8 @@ proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
       return ExtrinsicCommitmentResult[ExtrinsicRoot](status: reason) # No partial projection reaches hashing.
   reason = charge(total, guaranteeSize, 1, maxBytes)
   if reason != ExtrinsicCommitmentError.None:
-    return ExtrinsicCommitmentResult[ExtrinsicRoot](status: reason)
+    return ExtrinsicCommitmentResult[ExtrinsicRoot](
+        status: reason) # Preserve the classified projection extent/budget refusal.
   parts[1] = newSeq[byte](imageSize)
   parts[2] = newSeq[byte](guaranteeSize)
   var cursor = 0
@@ -147,7 +150,7 @@ proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
     let digest = blake2b256(bytes)
     if digest.error != CryptoError.None:
       return ExtrinsicCommitmentResult[ExtrinsicRoot](
-          status: ExtrinsicCommitmentError.BackendFailure)
+          status: ExtrinsicCommitmentError.BackendFailure) # Refused report hashes never become successful zero identifiers.
     put(array[32, byte](digest.value), parts[2], cursor)
     for j in 0..<4:
       parts[2][cursor] = byte((uint32(record.slot) shr (8*j)) and
@@ -171,6 +174,7 @@ proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
     for j in 0..<32: families[i*32+j] = octets[j] # Fixed five hashes carry no natural outer count.
   let digest = blake2b256(families)
   if digest.error != CryptoError.None:
-    return ExtrinsicCommitmentResult[ExtrinsicRoot](status: ExtrinsicCommitmentError.BackendFailure)
+    return ExtrinsicCommitmentResult[ExtrinsicRoot](
+        status: ExtrinsicCommitmentError.BackendFailure) # Final refusal exposes no family prefix or root.
   ExtrinsicCommitmentResult[ExtrinsicRoot](status: ExtrinsicCommitmentError.None,
     completed: ExtrinsicRoot(array[32, byte](digest.value)))
