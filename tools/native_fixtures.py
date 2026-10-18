@@ -69,6 +69,14 @@ def unit_admission_fixture(folder):
     return {'block_admission': fixture, 'report_admission': report_fixture, 'report_transition': report_fixture}, evidence
 
 
+# Supply the pinned signed-block template to native initial-context assertions without a new oracle.
+def unit_accumulation_context_fixture(folder):
+    template = ROOT/'tests/fixtures/state-report.bin'
+    digest = '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'
+    fixture = ('RAGNAROK_STATE_REPORT', template, ((template, digest),))
+    return {'accumulation_context': fixture}, {'fixture_sha256': digest}
+
+
 # Pair independent queue expectations with the existing original report/block fixture contracts.
 def unit_accumulation_queue_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
@@ -221,6 +229,8 @@ def unit_sealer_fixture(folder):
     fixtures.update(transition_fixtures)
     commitment_fixtures, commitment_evidence = unit_commitment_fixture(folder)
     fixtures.update(commitment_fixtures)
+    context_fixtures, context_evidence = unit_accumulation_context_fixture(folder)
+    fixtures.update(context_fixtures)
     invocation_fixtures, invocation_evidence = unit_accumulation_invocation_fixture(folder)
     fixtures.update(invocation_fixtures)
     service_fixtures, service_evidence = unit_accumulation_service_fixture(folder)
@@ -266,6 +276,7 @@ def unit_sealer_fixture(folder):
     evidence['accumulation_round'] = round_evidence
     evidence['accumulation_service'] = service_evidence
     evidence['accumulation_invocation'] = invocation_evidence
+    evidence['accumulation_context'] = context_evidence
     evidence['commitment'] = commitment_evidence
     evidence['transition'] = transition_evidence
     evidence['authentication'] = authentication_evidence

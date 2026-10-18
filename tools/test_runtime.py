@@ -176,6 +176,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'report_transition')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_queue')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_operands')
+    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_context')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_inputs')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_invocation')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_round')

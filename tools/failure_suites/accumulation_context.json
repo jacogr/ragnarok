@@ -1,0 +1,140 @@
+{
+  "build_name": "accumulation-context-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "accumulation-context-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "refused"
+      },
+      "name": "accumulation-context-refused"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "info"
+      },
+      "name": "accumulation-context-info"
+    },
+    {
+      "arguments": [
+        "self"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "self"
+      },
+      "name": "accumulation-context-self"
+    },
+    {
+      "arguments": [
+        "invocation"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "invocation"
+      },
+      "name": "accumulation-context-invocation"
+    },
+    {
+      "arguments": [
+        "accounts"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "accounts"
+      },
+      "name": "accumulation-context-accounts"
+    },
+    {
+      "arguments": [
+        "queues"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "queues"
+      },
+      "name": "accumulation-context-queues"
+    },
+    {
+      "arguments": [
+        "staging"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "staging"
+      },
+      "name": "accumulation-context-staging"
+    },
+    {
+      "arguments": [
+        "privileges"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "privileges"
+      },
+      "name": "accumulation-context-privileges"
+    },
+    {
+      "arguments": [
+        "dimension"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "dimension"
+      },
+      "name": "accumulation-context-dimension"
+    },
+    {
+      "arguments": [
+        "projection"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "projection"
+      },
+      "name": "accumulation-context-projection"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Initial accumulation context selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "source"
+      },
+      "name": "accumulation-context-source"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "source": "tests/native/accumulation_context_results.nim"
+}
