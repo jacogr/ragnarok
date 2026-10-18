@@ -112,6 +112,9 @@ proc official(): OwnedReport {.raises.} =
     if f[3] == "ok":
       assert decoded.error == GuaranteeError.None, f[1]
       assert checked.error == GuaranteeCredentialError.None, f[1] & " " & $checked.error
+      let context = checked.value.verifiedGuaranteeContext.value
+      assert uint32(context.slot) == uint32(parseInt(f[4]))
+      assert uint64(context.population) == uint64(validatorCount(active).value)
       inc accepted
       result = checked.value.verifiedGuaranteeAt(0).value.report # Retained child survives all local context owners.
       let expected = f[10].split(',')
@@ -290,6 +293,10 @@ proc boundaries(base: OwnedReport) =
   assert unique.verifiedReporterCount.value == 1 # Reporter set deduplicates keys, never credential ordinals.
   assert array[32, byte](unique.verifiedReporterAt(0).value) == array[32, byte](publicKey(repeated[0]).value)
   let empty = verifyGuaranteeCredentials([], active, previous, entropy, StateTime(12), [], config).value
+  assert uint32(empty.verifiedGuaranteeContext.value.slot) == 12
+  assert uint64(empty.verifiedGuaranteeContext.value.population) == 6
+  assert default(VerifiedGuaranteeCredentials).verifiedGuaranteeContext.error ==
+      GuaranteeCredentialError.Uninitialized
   assert empty.verifiedGuaranteeCount.value == 0 and empty.verifiedReporterCount.value == 0
   assert verifyGuaranteeCredentials([], default(ValidatorStateSnapshot), previous, entropy,
       StateTime(12), [], config).error == GuaranteeCredentialError.AssignmentFailure

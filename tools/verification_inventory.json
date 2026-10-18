@@ -1,5 +1,7 @@
 {
   "UNIT_SUITES": [
+    "pvm_machine",
+    "pvm_program",
     "telemetry",
     "telemetry_chain",
     "natural",
@@ -90,9 +92,19 @@
     "guarantee_credentials",
     "report_policy",
     "report_anchors",
-    "report_packages"
+    "report_packages",
+    "report_assignments"
   ],
   "PRIVATE": {
+    "pvm_memory_owner_private": "data",
+    "pvm_machine_owner_private": "data",
+    "pvm_machine_payload_private": "completed",
+    "pvm_machine_retag_private": "status",
+    "pvm_machine_fault_private": "failedPage",
+
+    "pvm_result_private": "completed",
+    "pvm_result_retag": "status",
+    "pvm_owner_private": "data",
     "safrole_transition_payload_private": "completed",
     "safrole_transition_retag_private": "status",
     "safrole_transition_rotation_private": "rotationReason",
@@ -742,9 +754,19 @@
     "report_anchors_owner_private": "data",
     "report_packages_result_private": "completed",
     "report_packages_retag_private": "status",
-    "report_packages_owner_private": "data"
+    "report_packages_owner_private": "data",
+    "report_assignments_result_private": "completed",
+    "report_assignments_retag_private": "status",
+    "report_assignments_owner_private": "data"
   },
   "NOMINAL": {
+    "pvm_memory_raw_address": "[2] expected: MemoryAddress but got: uint64",
+    "pvm_page_as_address": "[2] expected: MemoryAddress but got: PageIndex",
+    "pvm_raw_page_limit": "[2] expected: PageLimit but got: uint32",
+
+    "pvm_raw_address": "[2] expected: CodeAddress but got: uint64",
+    "pvm_jump_as_address": "[2] expected: CodeAddress but got: JumpIndex",
+    "pvm_swapped_limit": "[3] expected: ProgramByteLimit but got: JumpCountLimit",
     "swapped_report_root": "got: ReportHash but wanted: ReportHash",
     "swapped_report_slot": "got: LookupSlot but wanted: AnchorSlot",
     "swapped_lookup_state": "got: ReportHash but wanted: ReportHash",
@@ -941,6 +963,13 @@
     "entry-index"
   ],
   "EARLY_NOMINAL": {
+    "pvm_memory_raw_address": ["load(", "[2] expected: MemoryAddress but got: uint64"],
+    "pvm_page_as_address": ["load(", "[2] expected: MemoryAddress but got: PageIndex"],
+    "pvm_raw_page_limit": ["captureMemory(", "[2] expected: PageLimit but got: uint32"],
+
+    "pvm_raw_address": ["instruction(", "[2] expected: CodeAddress but got: uint64"],
+    "pvm_jump_as_address": ["instruction(", "[2] expected: CodeAddress but got: JumpIndex"],
+    "pvm_swapped_limit": ["decodeProgram(", "[3] expected: ProgramByteLimit but got: JumpCountLimit"],
     "raw_integer": ["encode(", "[1] expected: JamNatural but got: uint64"],
     "fixed_raw_value": ["encodeFixed(", "[1] expected: FixedUnsigned but got: uint64"],
     "fixed_raw_width": ["encodeFixed(", "[2] expected: ByteWidth but got: int64"],
@@ -972,6 +1001,7 @@
     "normalize-short"
   ],
   "FAILURE_COUNTS": {
+    "pvm_machine": 5,
     "safrole_transition": 9,
     "safrole_authentication": 3,
     "safrole_markers": 2,
@@ -1032,7 +1062,8 @@
     "guarantee_credentials": 4,
     "report_policy": 2,
     "report_anchors": 2,
-    "report_packages": 2
+    "report_packages": 2,
+    "report_assignments": 3
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1078,6 +1109,7 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "pvm_machine": "pvm_machine_arc_release",
     "availability_transition": "availability_transition_arc_release",
     "disputes_transition": "disputes_transition_arc_release",
     "block_admission": "block_admission_arc_release",
@@ -1127,7 +1159,8 @@
     "guarantee_credentials": "guarantee_credentials_arc_release",
     "report_policy": "report_policy_arc_release",
     "report_anchors": "report_anchors_arc_release",
-    "report_packages": "report_packages_arc_release"
+    "report_packages": "report_packages_arc_release",
+    "report_assignments": "report_assignments_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1198,6 +1231,7 @@
     "guarantee_credentials": "observer",
     "report_policy": "observer",
     "report_anchors": "observer",
-    "report_packages": "observer"
+    "report_packages": "observer",
+    "report_assignments": "observer"
   }
 }
