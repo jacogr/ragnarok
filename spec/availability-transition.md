@@ -82,6 +82,7 @@ Fixtures, source hashes and native reports remain under ignored `build/`.
 
 ## Next bounded work
 
-Guarantor assignments and guarantee validation/new C(10) assignment, consuming post-assurances
-capacity. Accumulation/PVM execution, wall-clock admission and full block execution/import remain
+The [guarantor assignment foundation](guarantor-assignments.md) is implemented separately.
+Guarantee credential verification, complete contextual report validation and new C(10) assignment
+will consume post-assurances capacity. Accumulation/PVM execution, wall-clock admission and full block execution/import remain
 separate later slices; returning an available report does not execute it.
