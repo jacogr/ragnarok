@@ -23,6 +23,7 @@ type
   Genesis* = object
     ready: bool
     state: StateStoreSnapshot
+    sealedHeader: OwnedHeader   # Retain the codec owner of the exact hashed wire bytes.
     identity: BlockHash
     timeslot: uint32
     epochLength: EpochSlots     # Captured with the same parameters as header validation.
@@ -51,6 +52,8 @@ func unavailableGenesis*(): GenesisResult = GenesisResult(status: GenesisError.U
 func invalidGenesis*(): GenesisResult = GenesisResult(status: GenesisError.Invalid)
 ## Return the copied block identity.
 func blockHash*(value: Genesis): BlockHash {.requires: value.ready.} = value.identity
+## Retain the validated immutable sealed-header owner, independent of the genesis handle lifetime.
+func header*(value: Genesis): OwnedHeader {.requires: value.ready.} = value.sealedHeader
 ## Return the retained core configuration used to decode this snapshot.
 func cores*(value: Genesis): CoreCount {.requires: value.ready.} = value.corePopulation
 ## Return the captured epoch-ring length used to decode retained ready state.
@@ -175,6 +178,7 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   let hashed = blake2b256(wire)
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
   GenesisResult(status: GenesisError.None, completed: Genesis(ready: true, state: saved.value,
+    sealedHeader: decoded.value.owner,
     identity: BlockHash(array[32, byte](hashed.value)), epochLength: EpochSlots(parameters.get(
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
             keys: captureKeys(entries), services: discoverServices(entries)))

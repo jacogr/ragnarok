@@ -12,7 +12,7 @@
 import std/[strutils, parsejson, streams, base64]
 import ./wire
 import ../chain/[parameters, genesis, services, statistics, beefy, reports]
-import ../codec/[state_trie, state_layout]
+import ../codec/[state_trie, state_layout, header]
 import ../state/store
 
 const MaxReplyBytes = 65535 # One canonical medium-length WS frame, including batch punctuation.
@@ -312,7 +312,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
       GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -524,7 +524,8 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         "Invalid or unreadable service state") # Do not publish malformed imported state.
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
         found.value.bytes)) & "}"
-  if methodName in ["parent", "stateRoot", "statistics", "listServices", "beefyRoot"]:
+  if methodName in ["parent", "stateRoot", "statistics", "listServices", "beefyRoot",
+      "ragnarok_header"]:
     if parameters < 0: return error(id, -32602, "Expected one header hash") # Hash lookup always needs an argument.
     let argument = parameters + 1
     if values[parameters].next != argument + 1 or values[argument].kind != stringValue:
@@ -535,6 +536,20 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     if methodName != "parent" and info.genesis.error == GenesisError.None:
       let view = info.genesis.value
       if hash == base64.encode(array[32, byte](view.blockHash)):
+        if methodName == "ragnarok_header":
+          # Retain the canonical sealed header; its bytes are exactly those hashed at genesis capture.
+          let owner = view.header
+          let metadata = headerInfo(owner)
+          if metadata.error != HeaderError.None:
+            return error(id, 0, "Invalid header owner") # Failed owners cannot supply lengths or bytes.
+          let budget = min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3))
+          if metadata.value.consumed > budget:
+            return error(id, 0, ReplyBudgetError) # Check complete size before allocation, copying or Base64 encoding.
+          var bytes = newSeq[byte](metadata.value.consumed)
+          if encodeOwnedHeader(owner, bytes).error != HeaderError.None:
+            return error(id, 0, "Unreadable header") # Never publish partial encodings.
+          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+              bytes)) & "}"
         if methodName == "listServices":
           # Retained scalar IDs are already sorted; never rescan or decode the map per request.
           var ids = "["

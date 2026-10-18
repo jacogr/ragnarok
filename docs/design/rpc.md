@@ -10,7 +10,8 @@ now expose a genesis-only immutable view when an explicit genesis pair is suppli
 remain unavailable until block import and update events exist. `parameters()` reads an immutable
 GP 0.8.0 parameter snapshot from the explicit chainspec; four live-state fields are documented zero
 placeholders. `src/chain/genesis.nim` retains the configured serialized map through the existing
-state store, checks header/roster/time framing and computes its root at startup. It does not validate
+state store, checks header/roster/time framing, retains the immutable sealed-header codec owner, and computes
+its root at startup. It does not validate
 all state chapters or run consensus. `src/chain/services.nim` reads account metadata, storage
 values, verified preimages and fixed request histories through immutable store views; RPC bounds raw values and aggregate
 batch responses before copying them. `src/chain/statistics.nim` validates C(13) against retained
