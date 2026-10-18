@@ -66,7 +66,9 @@ ARC and checked Clang LTO. Generated source evidence, fixtures and logs remain u
 
 ## Next bounded work
 
-Bind all report checks to one admitted block, its actual parent, corrected history, retained
-ancestors and post-assurance stage. Publish the completed C(10) candidate atomically through the
-block coordinator, preserving whole-block rollback on any later refusal. Accumulation/PVM
-execution remains later work.
+Publish the completed block-bound C(10) candidate atomically through the block coordinator,
+preserving whole-block rollback on any later refusal. Accumulation/PVM execution remains later work.
+
+The [block-bound report planner](report-admission.md) now composes these checks over the real
+coordinator result and its retained parent/staged context. Atomic C(10) publication and complete
+block-coordinator rollback remain the next bounded increment.

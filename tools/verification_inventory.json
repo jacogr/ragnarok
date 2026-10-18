@@ -95,7 +95,8 @@
     "report_policy",
     "report_anchors",
     "report_packages",
-    "report_assignments"
+    "report_assignments",
+    "report_admission"
   ],
   "PRIVATE": {
     "pvm_register_payload_private": "completed",
@@ -762,7 +763,11 @@
     "report_packages_owner_private": "data",
     "report_assignments_result_private": "completed",
     "report_assignments_retag_private": "status",
-    "report_assignments_owner_private": "data"
+    "report_assignments_owner_private": "data",
+    "report_admission_result_private": "completed",
+    "report_admission_retag_private": "status",
+    "report_admission_owner_private": "data",
+    "block_transition_profile_private": "profile"
   },
   "NOMINAL": {
     "pvm_register_raw_address": "[2] expected: CodeAddress but got: uint64",
@@ -1071,7 +1076,8 @@
     "report_policy": 2,
     "report_anchors": 2,
     "report_packages": 2,
-    "report_assignments": 3
+    "report_assignments": 3,
+    "report_admission": 10
   },
   "CORPUS_NAMES": [
     "accounts_corpus",
@@ -1168,7 +1174,8 @@
     "report_policy": "report_policy_arc_release",
     "report_anchors": "report_anchors_arc_release",
     "report_packages": "report_packages_arc_release",
-    "report_assignments": "report_assignments_arc_release"
+    "report_assignments": "report_assignments_arc_release",
+    "report_admission": "report_admission_arc_release"
   },
   "UNIT_LINKS": {
     "safrole_transition": "observer",
@@ -1240,6 +1247,7 @@
     "report_policy": "observer",
     "report_anchors": "observer",
     "report_packages": "observer",
-    "report_assignments": "observer"
+    "report_assignments": "observer",
+    "report_admission": "observer"
   }
 }

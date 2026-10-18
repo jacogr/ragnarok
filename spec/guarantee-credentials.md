@@ -90,4 +90,8 @@ pinned nightly, ARC and checked Clang LTO. Generated source evidence and fixture
 [Recent/lookup anchors](report-anchors.md) are also implemented separately.
 [Package/dependency checks](report-packages.md) are now separate stages.
 [Post-assurance capacity and assignment planning](report-assignments.md) are also implemented.
-Next bind the report stages, publish C(10) atomically and integrate into the block coordinator. Accumulation/PVM execution remains later work.
+Next publish C(10) atomically through the block coordinator. Accumulation/PVM execution remains later work.
+
+The [block-bound report planner](report-admission.md) now composes these checks over the real
+coordinator result and its retained parent/staged context. Atomic C(10) publication and complete
+block-coordinator rollback remain the next bounded increment.

@@ -88,7 +88,10 @@ from parent C(10)/C(14)/C(15). See [the package contract](../spec/report-package
 `src/state/report_assignments.nim` plans new C(10) assignments only on vacant post-assurance cores,
 using candidate time and active population retained in the credential certificate. It preserves
 untouched guarantees and registration times; see [the assignment contract](../spec/report-assignments.md).
-Complete report-stage binding, C(10) publication and coordinator integration remain subsequent slices.
+`src/state/report_admission.nim` now binds all those checks to one private successful coordinator
+result, deriving the actual block/parent, corrected history, posterior credentials and post-assurance
+capacity. See [the binding contract](../spec/report-admission.md). Atomic C(10) publication through
+the coordinator remains the next bounded slice.
 
 `src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
 formats into copied values backed by an immutable program owner. See

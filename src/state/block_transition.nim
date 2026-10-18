@@ -13,6 +13,7 @@ type
     Uninitialized, None, AdmissionFailure, DisputesFailure, SafroleFailure, AvailabilityFailure
   ## Success retains the original block binding, complete disputes plan and authenticated posterior state.
   BlockTransition* = object
+    profile: FrameConfig          # Retain the exact decoding/transition chain domains for later report binding.
     admitted*: BoundBlock
     disputes*: DisputesPlan
     safrole*: SafroleTransition   # Intermediate state before assurance-driven C(10) changes.
@@ -39,6 +40,9 @@ func error*(outcome: BlockTransitionResult): BlockTransitionError = outcome.stat
 ## Read complete success only after all staged work has been accepted.
 func value*(outcome: BlockTransitionResult): BlockTransition {.inline,
     requires: outcome.status == BlockTransitionError.None.} = outcome.completed
+## Copy the profile from a completed coordinator result; callers cannot attach a different chain domain.
+func blockTransitionProfile*(outcome: BlockTransitionResult): FrameConfig {.inline,
+    requires: outcome.status == BlockTransitionError.None.} = outcome.completed.profile
 ## Inspect only an admission failure's cause.
 func admissionError*(outcome: BlockTransitionResult): BlockAdmissionError {.inline,
     requires: outcome.status == BlockTransitionError.AdmissionFailure.} = outcome.admissionReason
@@ -131,5 +135,6 @@ proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: Ow
       availabilityReason: available) # Even fully authenticated Safrole changes remain private on this refusal.
   state = working # One canonical handle replacement publishes every accepted stage together.
   BlockTransitionResult(status: BlockTransitionError.None,
-    completed: BlockTransition(admitted: exact, disputes: plan.value, safrole: advanced.value,
+    completed: BlockTransition(profile: admission.frame, admitted: exact, disputes: plan.value,
+      safrole: advanced.value,
       availability: available.value.plan, snapshot: available.value.snapshot))
