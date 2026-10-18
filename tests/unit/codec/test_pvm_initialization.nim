@@ -216,11 +216,11 @@ proc cycle() =
 
 cycle()
 let before = getOccupiedMem()
-for iteration in 0..<100:
+for iteration in 0..<1000:
   # Success and all temporary copies release without retaining a program/memory ownership cycle.
   cycle()
 let after = getOccupiedMem()
 assert before == after
-recordArcRelease("pvm_initialization", 100, before, after)
+recordArcRelease("pvm_initialization", 1000, before, after)
 echo "PVM initialization passed"
-echo "ARC_RELEASE cycles=100 unchanged"
+echo "ARC_RELEASE cycles=1000 unchanged"
