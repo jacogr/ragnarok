@@ -149,7 +149,8 @@ state store, checks header/roster/time framing and computes its root at startup.
 all state chapters or run consensus. `src/chain/services.nim` reads account metadata, storage
 values and verified preimages through immutable store views; RPC bounds raw values and aggregate
 batch responses before copying them. `src/chain/statistics.nim` validates C(13) against retained
-core configuration and current/previous rosters before returning its exact bytes. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
+core configuration and current/previous rosters before returning its exact bytes. Genesis capture
+also retains sorted IDs from exact valid account entries for bounded `listServices` responses. RPC and telemetry share the same startup file snapshot. See [RPC scope](../spec/rpc.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.

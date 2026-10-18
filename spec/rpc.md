@@ -31,7 +31,7 @@ Send a WebSocket text message:
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)` and the service queries below are implemented; other JIP-2 chain methods
+unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)` and the service queries below are implemented; other JIP-2 chain methods
 and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -181,6 +181,33 @@ Native tests cover independent literal bytes (including uint64-max compact gas),
 chapter prefixes, malformed counts/dictionaries, differing roster populations, missing data,
 response limits, notifications, batches and repeated ARC cleanup. The live WS harness checks
 exact statistics from the frozen service fixture after the source file has changed.
+
+## Genesis-only service discovery
+
+`listServices(header_hash)` follows the pinned JIP-2 best-effort discovery method. It returns
+an array of unsigned service IDs in ascending numeric order, including ID zero when present.
+The supplied hash must identify the configured genesis snapshot. Unknown blocks return error `1`
+with the requested hash in `error.data`; malformed hashes or argument lists return `-32602`.
+A known snapshot with no discoverable accounts returns `[]`.
+
+Discovery runs once at genesis capture. It recognizes only exact GP 0.8.0 C(255, service) keys
+with complete supported version-zero metadata, using the existing account decoder. Malformed,
+truncated, extended or unsupported metadata is omitted. Storage/preimage entries do not establish
+an account, and matching only the first key byte is insufficient. This best-effort list describes
+the structurally valid accounts found in the operator-supplied map; it is not proof of account
+eligibility, activity or whole-state consensus validity. See [service metadata](state-accounts.md)
+and the pinned JIP-2 `listServices` definition.
+
+The private list contains copied scalar IDs and retains no source aliases. It is bounded by the
+existing 16,384-entry genesis map limit; duplicate map keys are rejected before discovery.
+Requests do not scan the map or decode metadata. Rendering shares the 65,535-byte reply budget:
+a list too large for its single/batch allowance returns error `0`, never a silently truncated list.
+The protocol has no pagination parameter, and subscriptions remain unavailable.
+
+Native tests cover numeric versus serialized-key ordering, zero/uint32-max IDs, exact key shape,
+malformed records, orphan keys, empty lists, unknown blocks, immutable extraction, notifications,
+batches and large-list response limits. Live WebSocket tests verify discovery from the frozen
+service map after startup file mutation. A `rpc_` compiler probe protects the private ID sequence.
 
 ## Protocol and bounds
 

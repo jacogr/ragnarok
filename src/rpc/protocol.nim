@@ -311,7 +311,7 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
       GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"statistics\"]")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"statistics\",\"listServices\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -390,7 +390,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         "Invalid or unreadable service state") # Do not publish malformed imported state.
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
         found.value.bytes)) & "}"
-  if methodName in ["parent", "stateRoot", "statistics"]:
+  if methodName in ["parent", "stateRoot", "statistics", "listServices"]:
     if parameters < 0: return error(id, -32602, "Expected one header hash") # Hash lookup always needs an argument.
     let argument = parameters + 1
     if values[parameters].next != argument + 1 or values[argument].kind != stringValue:
@@ -401,6 +401,18 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     if methodName != "parent" and info.genesis.error == GenesisError.None:
       let view = info.genesis.value
       if hash == base64.encode(array[32, byte](view.blockHash)):
+        if methodName == "listServices":
+          # Retained scalar IDs are already sorted; never rescan or decode the map per request.
+          var ids = "["
+          let budget = max(0, allowance - id.len - 256)
+          for index in 0..<view.serviceCount:
+            let item = $uint32(view.serviceAt(ServiceListIndex(index)))
+            if ids.len + item.len + 2 > budget:
+              return error(id, 0, ReplyBudgetError) # Reserve comma/closing bracket; never return a partial list.
+            if index > 0: ids.add(',') # The first member needs no separator.
+            ids.add(item)
+          ids.add(']')
+          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & ids & "}"
         if methodName == "statistics":
           # Use the same raw-value and aggregate reply ceilings as service blobs.
           let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))

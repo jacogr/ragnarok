@@ -225,6 +225,7 @@ def check_service_queries(connection, expected):
     header = expected['header_hash']
     cases = [
         ('statistics', [header], expected['statistics']),
+        ('listServices', [header], [42, 4294967295]),
         ('serviceData', [header, 42], expected['metadata']),
         ('serviceValue', [header, 42, 'a2V5'], expected['value']),
         ('serviceValue', [header, 42, ''], ''),
