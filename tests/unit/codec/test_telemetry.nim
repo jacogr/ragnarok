@@ -141,6 +141,18 @@ blocked.opened = true
 assert fcntl(descriptors[0], F_SETFL, O_NONBLOCK) == 0
 assert fcntl(descriptors[1], F_SETFL, O_NONBLOCK) == 0
 var scratch = default(array[4096, byte])
+# Regression: a close queued just before a due status must not manufacture a loss marker.
+blocked.statusAt = 2000
+blocked.peerDisconnected(1999, Timestamp(19), remoteIdentity)
+blocked.tick(2000, Timestamp(20), 0)
+assert blocked.lost == 0 and blocked.nextEvent == 2
+let simultaneous = receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0)
+assert simultaneous == closed.len + sample.len
+assert scratch[12] == 27 and scratch[closed.len + 12] == 10
+assert blocked.length == 0
+# Reset only test counters before the independent backpressure schedule below.
+blocked.statusAt = 0
+blocked.nextEvent = 0
 var filled = false
 # Saturate at most 32 MiB of kernel writes; no syscall can block after O_NONBLOCK.
 for iteration in 0..<8192:
@@ -150,20 +162,24 @@ for iteration in 0..<8192:
     filled = true
     break
 assert filled
-blocked.queue(sample, 0)
+# Maximum-size statuses exhaust the fixed buffer even though a small lifecycle frame would fit.
+let largeSample = status(maximum.value, Timestamp(30), 7)
+blocked.metadata = maximum.value
+blocked.queue(largeSample, 0)
 blocked.offset = 7 # Model a previously accepted prefix before collector backpressure.
 blocked.tick(0, Timestamp(10), 7)
 blocked.tick(2000, Timestamp(20), 7)
-assert blocked.offset == 7 and blocked.length == sample.len and blocked.lost == 2
+assert blocked.offset == 7 and blocked.length == largeSample.len and blocked.lost == 2
 # Drain kernel filler completely without blocking or spinning indefinitely.
 for iteration in 0..<8192:
   if receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0) < 0: break
 blocked.tick(2500, Timestamp(25), 7)
 assert blocked.length == 0
 let suffix = receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0)
-assert suffix == sample.len - 7
+assert suffix == largeSample.len - 7
 # A partial write resumes at its exact suffix, without duplicating frame bytes.
-for i in 0..<suffix: assert scratch[i] == sample[i + 7]
+for i in 0..<suffix: assert scratch[i] == largeSample[i + 7]
+blocked.metadata = parsed.value # Resume with the original small status after true capacity loss.
 blocked.tick(4000, Timestamp(40), 7)
 let resumed = receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0)
 assert resumed == 29 + sample.len
@@ -175,8 +191,8 @@ let attempt = blocked.dialing(4100, Timestamp(41), remoteIdentity, remoteAddress
 assert uint64(attempt) == 3 and blocked.length == dialFrame.len
 let originalDeadline = blocked.deadline
 blocked.offset = 5
-let skipped = blocked.event(sample, 4200, Timestamp(42), false)
-assert uint64(skipped) == 4 and blocked.lost == 1
+blocked.omit(Timestamp(42)) # Missing native metadata still consumes one correlated position.
+assert blocked.nextEvent == 5 and blocked.lost == 1
 blocked.dialOutcome(4300, Timestamp(43), attempt, true)
 assert blocked.nextEvent == 6 and blocked.lost == 0 and blocked.offset == 5
 assert blocked.deadline == originalDeadline
