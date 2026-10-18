@@ -680,6 +680,7 @@
     "request_result_retag": "status",
     "request_result_value_write": "value",
     "rpc_beefy_result_private": "status",
+    "rpc_erasure_geometry_private": "pieceLength",
     "rpc_genesis_owner_private": "state",
     "rpc_genesis_result_private": "status",
     "rpc_header_private": "sealedHeader",

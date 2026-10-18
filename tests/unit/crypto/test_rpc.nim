@@ -846,7 +846,11 @@ for population in [6, 9, 12]:
   assert int(context.value.activeValidators) == population
   source = "{}" # Captured counts survive replacement of the caller's JSON storage.
   let owner = ClientInfo(parameters: genesisParameters, genesis: context)
-  let expected = parameterAnswer.replace("\"val_count\":0", "\"val_count\":" & $population)
+  let pieceBytes = if population == 6: 6 else: 8 # Twelve validators must skip the non-divisor five.
+  let pieces = if population == 6: 684 else: 513
+  let expected = parameterAnswer.replace("\"val_count\":0", "\"val_count\":" & $population).replace(
+    "\"basic_piece_len\":0", "\"basic_piece_len\":" & $pieceBytes).replace(
+    "\"segment_piece_count\":0", "\"segment_piece_count\":" & $pieces)
   assert respond(parameterRequest, owner) == expected
   assert respond("[" & parameterRequest & "," & parameterRequest & "]", owner) ==
     "[" & expected & "," & expected & "]"
@@ -886,6 +890,8 @@ for population in [6, 9, 12]:
     # Schedule kind does not alter the pending population used by the pinned formula.
     let owner = ticketContext(ticketChapter(population, 600, tag))
     let answer = parameterAnswer.replace("\"val_count\":0", "\"val_count\":6").replace(
+      "\"basic_piece_len\":0", "\"basic_piece_len\":6").replace("\"segment_piece_count\":0",
+          "\"segment_piece_count\":684").replace(
       "\"tickets_attempts_number\":0", "\"tickets_attempts_number\":" & $expected)
     assert uint64(owner.genesis.value.ticketAttempts) == uint64(expected)
     assert respond(parameterRequest, owner) == answer
@@ -899,8 +905,42 @@ for malformed in ["", "09", completeTickets[0..^3], completeTickets & "00",
   # Missing fields, bad tags/populations/accumulators, trailing bytes and resource limits preserve zero.
   let owner = ticketContext(malformed)
   assert uint64(owner.genesis.value.ticketAttempts) == 0
-  assert respond(parameterRequest, owner) == parameterAnswer.replace("\"val_count\":0", "\"val_count\":6")
+  assert respond(parameterRequest, owner) == parameterAnswer.replace("\"val_count\":0",
+      "\"val_count\":6").replace("\"basic_piece_len\":0", "\"basic_piece_len\":6").replace(
+          "\"segment_piece_count\":0", "\"segment_piece_count\":684")
 assert uint64(ticketContext(ticketChapter(9, 4096), 4096).genesis.value.ticketAttempts) == 911
 assert uint64(ticketContext(ticketChapter(9, 4097), 4097).genesis.value.ticketAttempts) == 0
+
+## Construct large active-roster fixtures with independent one/two-byte JAM count encoding.
+proc erasureContext(population: int): ClientInfo =
+  var parameterWire = ParameterHex
+  parameterWire[48] = '5'; parameterWire[49] = '5' # 341 cores, little-endian 0x0155.
+  parameterWire[50] = '0'; parameterWire[51] = '1'
+  let parameters = decodeParametersHex(parameterWire)
+  assert parameters.ok
+  let prefix = if population < 128: toHex(population, 2) else:
+    toHex(128 or (population shr 8), 2) & toHex(population and 255, 2) # Canonical E(population).
+  var source = genesisText.replace("06" & repeat("00", 2016), prefix & repeat("00", population * 336))
+  let captured = configuredGenesis(source, parameters.value)
+  assert captured.error == GenesisError.None
+  source = "{}" # Cached geometry must outlive source storage.
+  ClientInfo(parameters: parameters, genesis: captured)
+
+for sample in [(6, 6, 684), (9, 8, 513), (12, 8, 513), (15, 12, 342),
+    (339, 228, 18), (510, 342, 12), (681, 456, 9), (1020, 456, 9), (1023, 684, 6)]:
+  # Independent expected pairs cover minimum/maximum populations and divisor-selection boundaries.
+  let (population, bytesPerPiece, piecesPerSegment) = sample
+  let owner = erasureContext(population)
+  assert uint64(owner.genesis.value.basicPieceLength) == uint64(bytesPerPiece)
+  assert uint64(owner.genesis.value.segmentPieces) == uint64(piecesPerSegment)
+  assert bytesPerPiece * piecesPerSegment == 4104
+  let answer = parameterAnswer.replace("\"core_count\":4", "\"core_count\":341").replace(
+    "\"val_count\":0", "\"val_count\":" & $population).replace(
+    "\"basic_piece_len\":0", "\"basic_piece_len\":" & $bytesPerPiece).replace(
+    "\"segment_piece_count\":0", "\"segment_piece_count\":" & $piecesPerSegment)
+  assert respond(parameterRequest, owner) == answer
+  assert respond("[" & parameterRequest & "," & parameterRequest & "]", owner) ==
+    "[" & answer & "," & answer & "]"
+  assert respond(parameterRequest.replace(",\"id\":7", ""), owner) == ""
 
 echo "rpc ok"
