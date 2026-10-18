@@ -1893,5 +1893,57 @@
         }
       }
     ]
+  },
+  "guarantee_credentials": {
+    "source": "tests/native/guarantee_credential_results.nim",
+    "build_name": "guarantee-credential-results",
+    "crypto_library": "crypto",
+    "native_libraries": [],
+    "cases": [
+      {
+        "arguments": [
+          "default"
+        ],
+        "name": "guarantee-credentials-default",
+        "diagnostic": "outcome.status == None",
+        "description": "Credential result default extraction guard",
+        "identity": {
+          "origin": "default"
+        }
+      },
+      {
+        "arguments": [
+          "error"
+        ],
+        "name": "guarantee-credentials-error",
+        "diagnostic": "outcome.status == None",
+        "description": "Credential result error extraction guard",
+        "identity": {
+          "origin": "error"
+        }
+      },
+      {
+        "arguments": [
+          "structure"
+        ],
+        "name": "guarantee-credentials-structure",
+        "diagnostic": "outcome.status == StructureFailure",
+        "description": "Credential result structure extraction guard",
+        "identity": {
+          "origin": "structure"
+        }
+      },
+      {
+        "arguments": [
+          "assignment"
+        ],
+        "name": "guarantee-credentials-assignment",
+        "diagnostic": "outcome.status == AssignmentFailure",
+        "description": "Credential result assignment extraction guard",
+        "identity": {
+          "origin": "assignment"
+        }
+      }
+    ]
   }
 }

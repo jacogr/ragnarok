@@ -73,7 +73,10 @@ changes. The block coordinator includes this stage before its final publication;
 wall-clock admission and whole-block execution remain open.
 `src/state/guarantors.nim` supplies immutable current/previous rotation assignments from posterior
 rosters, entropy and offenders. See [the assignment contract](../spec/guarantor-assignments.md);
-credential verification and complete report admission remain separate subsequent slices.
+`src/state/guarantee_credentials.nim` now verifies the exact report signatures, current-core/shard
+constraints and unique reporter keys against those assignments. See
+[the credential contract](../spec/guarantee-credentials.md); full report-context admission and C(10)
+publication remain subsequent slices.
 
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
