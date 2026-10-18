@@ -48,6 +48,12 @@ def controls(binary, fixtures):
         args = base.copy()
         args[6] = text
         cases.append(('timeout-'+text, args))
+    # RPC is independently optional but its port and command scope remain strict.
+    for text in ('0', '-1', '65536', 'no', ''):
+        cases.append(('rpc-port-'+text, [*base, '--rpc-port', text]))
+    cases += [('rpc-missing', [*base, '--rpc-port']),
+              ('rpc-duplicate', [*base, '--rpc-port', '19800', '--rpc-port', '19801']),
+              ('rpc-selftest', ['--selftest', '--rpc-port', '19800'])]
     rows = []
     for name, args in cases:
         result = subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=4)

@@ -126,6 +126,11 @@ and event-ID sequence; status counts their single pinned remote peer once across
 An explicit JIP-4 file supplies network metadata; it does not initialize chain execution.
 See [telemetry scope and limits](../spec/telemetry.md).
 
+An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
+at most eight nonblocking loopback connections and bounded input/output buffers. The first
+method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Chain queries
+and subscriptions remain unavailable until a real chain backend exists. See [RPC scope](../spec/rpc.md).
+
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.
 

@@ -10,31 +10,49 @@ export wire, client
 # Locate the first reserved option; all configuration pairs must follow positional peer arguments.
 proc optionStart(): int =
   for i in 1..paramCount():
-    if paramStr(i) in ["--telemetry", "--chain"]: return i # Reserve both names even in malformed input.
+    if paramStr(i) in ["--telemetry", "--chain", "--rpc-port"]: return i # Reserve both names even in malformed input.
   paramCount() + 1
 
-# Both options are required together; either pair order is accepted without changing positional modes.
+# Validate unique trailing pairs; telemetry still requires an explicit chain, RPC is independently optional.
 proc validTelemetryOption*(): bool =
   let first = optionStart()
-  if first > paramCount(): return true # Existing invocations need no chain configuration.
-  if paramCount() - first != 3: return false # Reject missing values, duplicates and extra arguments.
-  let left = paramStr(first)
-  let right = paramStr(first + 2)
-  if not ((left == "--chain" and right == "--telemetry") or
-      (left == "--telemetry" and right == "--chain")): return false
-  for i in [first + 1, first + 3]:
-    if paramStr(i).len == 0 or paramStr(i).startsWith("--"): return false # Values cannot be options.
-  true
+  if (paramCount() - first + 1) mod 2 != 0: return false # Every option requires one value.
+  var seen: seq[string] = @[]
+  var i = first
+  while i <= paramCount(): # Preserve positional arguments and reject unknown or duplicate options.
+    let name = paramStr(i)
+    let value = paramStr(i + 1)
+    if name notin ["--telemetry", "--chain", "--rpc-port"] or name in seen or
+        value.len == 0 or value.startsWith("--"): return false
+    seen.add(name)
+    if name == "--rpc-port": # Bound decimal parsing before narrowing to the native port type.
+      if value.len > 5: return false
+      var port = 0
+      for c in value:
+        if c notin {'0'..'9'}: return false # No signs, spaces or numeric aliases.
+        port = port * 10 + ord(c) - ord('0')
+      if port notin 1..65535: return false
+    i += 2
+  ("--telemetry" in seen) == ("--chain" in seen)
 
-# Read a validated trailing option value; callers validate syntax before starting the peer.
+# Read a validated option; absent optional features have no implicit configuration.
 proc optionValue(name: string): string =
-  let first = optionStart()
-  if first > paramCount(): return "" # Disabled telemetry has no configuration values.
-  if paramStr(first) == name: return paramStr(first + 1)
-  paramStr(first + 3)
+  var i = optionStart()
+  while i < paramCount(): # Only validated pairs are used by startup callers.
+    if paramStr(i) == name: return paramStr(i + 1)
+    i += 2
+  ""
 
-# Recognize configured telemetry only after validating both required option/value pairs.
-proc requested*(): bool = optionStart() <= paramCount()
+# Telemetry remains independent of RPC, including its early clock/syscall shortcuts.
+proc requested*(): bool = optionValue("--telemetry").len > 0
+
+# Zero means disabled; syntax validation proves any present decimal value fits uint16.
+proc rpcPort*(): uint16 =
+  let value = optionValue("--rpc-port")
+  if value.len == 0: return 0 # Default peer invocations do not listen for RPC.
+  var port = 0
+  for c in value: port = port * 10 + ord(c) - ord('0') # Startup already validated every digit and the range.
+  uint16(port)
 
 # Keep the existing positional command parsing independent of trailing option order.
 proc peerParamCount*(): int = optionStart() - 1

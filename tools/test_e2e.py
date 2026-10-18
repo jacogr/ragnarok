@@ -16,7 +16,7 @@ from e2e_checks import run
 
 BUILD = ROOT/'build/tests/e2e'
 # Each lifecycle has a distinct required verdict; an omitted workload is never an implicit pass.
-WORKLOADS = ('telemetry', 'quic_peer', 'quic_peer_controls', 'quic_service', 'quic_integration_service',
+WORKLOADS = ('rpc', 'telemetry', 'quic_peer', 'quic_peer_controls', 'quic_service', 'quic_integration_service',
              'quic_mesh', 'quic_mesh_disruption', 'quic_endpoint_soak', 'quic_admission',
              'quic_closed_before_request', 'quic_offload')
 # Entry-point and shutdown selftests remain covered once, alongside the binaries used by live workloads.
@@ -51,6 +51,7 @@ def main():
                    ROOT/'spec/toolchain.json', ROOT/'spec/quic-proof-pins.json',
                    ROOT/'spec/bandersnatch-pins.json', *sorted((ROOT/'src/quic').glob('*.nim')),
                    *sorted((ROOT/'src/telemetry').glob('*.nim')), ROOT/'tests/telemetry_checks.py', ROOT/'tests/fixtures/telemetry-dev.json',
+                   *sorted((ROOT/'src/rpc').glob('*.nim')), ROOT/'tests/rpc_checks.py',
                    *[ROOT/'tests'/name for name in ('nimony_peer.py', 'test_quic_service.py',
                      'test_quic_mesh.py', 'test_quic_resilience.py', 'test_quic_soak.py',
                      'test_quic_offload.py', 'test_integration.py')]]
