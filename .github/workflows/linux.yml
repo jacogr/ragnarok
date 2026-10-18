@@ -206,3 +206,29 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+
+  telemetry-interop:
+    name: JAM Tart interoperability
+    timeout-minutes: 60
+    runs-on: *linux-runner
+    steps:
+      - *checkout
+      - *python
+      - name: Build pinned collector and verify real peer events
+        run: make check-telemetry-interop-ci
+      # Keep diagnostics on setup/build/test failures; exclude fixture keys and dependency trees.
+      - name: Retain interoperability evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: linux-telemetry-interop-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/telemetry-interop/**/*.log
+            build/tests/telemetry-interop/results.json
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log

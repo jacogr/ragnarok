@@ -25,3 +25,6 @@
 [submodule "vendor/jam-np"]
 	path = vendor/jam-np
 	url = https://github.com/zdave-parity/jam-np.git
+[submodule "vendor/jamtart"]
+	path = vendor/jamtart
+	url = https://github.com/paritytech/jamtart.git
