@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent additional guarantee inspection/standalone expectations for the compiler trial."""
 import random
 from guarantees_oracle import (requests as extrinsic_requests, decode, encode, record, published,

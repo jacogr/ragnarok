@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted independent source/field adapter for chapter-4 serialization and immutable parent ownership.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_consensus, state_safrole, state_trie, bounded, assurances]

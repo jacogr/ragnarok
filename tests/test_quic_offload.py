@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Fixed worker RingVRF verification alongside persistent native QUIC, with bounded owned jobs."""
 import hashlib
 import json

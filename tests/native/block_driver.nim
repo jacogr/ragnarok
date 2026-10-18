@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted full-parent adapter: independent typed child sources, ownership checks and exact prefix observation.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,

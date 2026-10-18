@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T: service storage/preimage keyed entries and immutable raw trie-value capture.
 ## Hash domains are explicit; raw values have no framing prefix and capture requires no reversible original key.
 import std/assertions

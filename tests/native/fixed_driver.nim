@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Fixed-width batch adapter; preserve invalid widths and reject textual uint64/host-int overflow.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support

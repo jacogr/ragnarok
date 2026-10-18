@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Load merge-friendly verification data while retaining the harness's public value types."""
 import json
 from pathlib import Path

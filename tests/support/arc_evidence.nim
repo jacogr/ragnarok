@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Test-only numeric observations: ownership assertions remain in the calling Nim suite.
 import std/[envvars, syncio, assertions]
 

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted batch adapter exposes complete roots/counts or failure-only reasons.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_trie, state_layout, bounded]

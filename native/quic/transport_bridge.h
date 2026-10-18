@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Ragnarök contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 #ifndef RQ_TRANSPORT_BRIDGE_H
 #define RQ_TRANSPORT_BRIDGE_H
 #include <stdint.h>

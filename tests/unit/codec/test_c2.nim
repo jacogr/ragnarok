@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Focused C.2 lifetime, resource, alias and selected-alternative regressions.
 import std/[assertions, syncio]
 import ../../support/arc_evidence

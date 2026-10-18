@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 safrole.tex slotkeysequence, outside-in Z and fallbackkeysequence F.
 ## Parent C(4) supplies the contest/schedule; staged C(4), active roster and entropy are supplied posterior inputs.
 import ../codec/[state_safrole, state_consensus, bounded]

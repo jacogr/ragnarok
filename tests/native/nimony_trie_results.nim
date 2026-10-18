@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated default/failed public commitments and private child hashes require supported success contracts.
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_trie

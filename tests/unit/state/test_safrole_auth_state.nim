@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published authentication against immutable parent/staged maps before entropy publication; no state mutation or trust in staged entropy.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[safrole_authentication, authentication_state, entropy, store]

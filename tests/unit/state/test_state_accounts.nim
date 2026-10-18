@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Fixed-value metadata contracts: no heap owner, independent source/input copies and failure guards.
 import std/[assertions, syncio]
 import ../../../src/codec/[state_accounts, bounded]

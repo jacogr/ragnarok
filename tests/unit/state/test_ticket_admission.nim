@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published proof/selection projections plus authored transcript, ordering, policy and owner boundaries.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/ticket_admission

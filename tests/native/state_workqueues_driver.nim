@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted independent source and immutable observation adapter for state chapters 14/15.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[state_workqueues, report_owned, owned, state_trie, bounded]

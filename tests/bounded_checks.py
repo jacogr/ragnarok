@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent bounded-container reference cases (stdlib only)."""
 import json
 from pathlib import Path

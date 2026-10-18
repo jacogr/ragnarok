@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 name: Linux
 
 # Check master after pushes/merges; feature branches run through their PR only.

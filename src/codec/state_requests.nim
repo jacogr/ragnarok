@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 T service request history: C(service,E4(length)||hash) maps to a count and up to three E4 timeslots.
 ## Tagged fixed histories model shape only; chronology, availability and cross-map invariants remain contextual.
 import std/assertions

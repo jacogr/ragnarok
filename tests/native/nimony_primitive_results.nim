@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Runtime-selected misuse probes cover primitive success payloads and failure-only reasons.
 import ../../src/codec/[natural, fixed_unsigned]
 import std/[cmdline, syncio]

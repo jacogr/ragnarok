@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Published GP epoch/winner marker outputs and exact optional, entropy, ordering and attempt checks.
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/safrole_markers

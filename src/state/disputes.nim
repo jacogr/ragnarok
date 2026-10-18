@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 judgments.tex: contextual verdict/evidence validation and immutable C(5)/C(10) planning.
 ## Parent rosters/time are read before Safrole rotation; no incomplete plan or cryptographic bypass escapes.
 import std/[algorithm, assertions]

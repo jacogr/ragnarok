@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 C.2 availability specifications and accumulation input records; see spec/c2-records.md.
 import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_digest, work_report, assurances]

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Native full/unsigned/marker ownership, lifetime, atomicity, alias and guarded-alternative regressions.
 import ../../support/arc_evidence
 import std/[assertions, syncio]

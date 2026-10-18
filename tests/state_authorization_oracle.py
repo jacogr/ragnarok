@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Independent state T chapters 1/2: framed pools and fixed queues, preserving core/row order."""
 import hashlib
 import json

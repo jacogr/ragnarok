@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 C.2 complete extrinsic/block composition over immutable schema-bound components.
 import std/assertions
 import ./[bounded, composite, owned, tickets, assurances, guarantees, disputes, header]

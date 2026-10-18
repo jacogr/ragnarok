@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Batch natural adapter; malformed decimal/hex transport is distinct from codec failure.
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Trusted independent assurances adapter, including deliberate overlap and lifetime probes.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/assurances

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Process-level collector harness driver; all production wire/network logic remains in Nim.
 import std/[os, strutils, assertions, syncio, times, monotimes]
 import std/posix/posix

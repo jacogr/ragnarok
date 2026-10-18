@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated actual/default result reads must reject through the exact chapter-16 success contract.
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_outputs

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 utilities.tex and reporting_assurance.tex: shuffled, rotated guarantor assignments.
 ## Plans use posterior rosters/entropy/offenders. They do not verify signatures or publish C(10).
 import ../codec/[state_safrole, assurances, bounded, header, guarantees, work_report]

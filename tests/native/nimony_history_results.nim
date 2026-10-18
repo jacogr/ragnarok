@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated public/internal result failures and absent optional hashes require their exact contracts.
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_history

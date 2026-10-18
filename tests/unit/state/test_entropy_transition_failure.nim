@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Fixed-size entropy/time failures preserve both chapters and all retained historical owners.
 import std/[assertions, syncio]
 import ../../support/[entropy_transition_fixture, arc_evidence]

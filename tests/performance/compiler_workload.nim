@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Identical checked workload compiled against isolated pre-port and current source snapshots.
 import std/[assertions, syncio]
 import ./src/codec/[natural, fixed_unsigned, bounded, owned]

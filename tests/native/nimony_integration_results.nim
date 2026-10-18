@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Integration results expose no default or failed key, snapshot, child, count or fixture bytes.
 import std/[assertions, cmdline, syncio]
 import ../../src/quic/integration

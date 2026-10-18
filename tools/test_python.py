@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 """Run Python reference, tooling and provenance unittests once as an independent verification group."""
 import json
 from pathlib import Path

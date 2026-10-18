@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Retained full-guarantee/report lifetimes, optional fields, independent slots and failure/index guards.
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances]
