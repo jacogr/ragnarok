@@ -126,47 +126,6 @@ not a deployable network genesis; expected hash/root values come from Python has
 independent trie reference. Native and live WS tests cover exact results, absent/unknown data,
 malformed pairs and hashes, shared telemetry startup, and file mutation after capture.
 
-## `parameters()` and startup configuration
-
-Append `--chain /path/to/chain.json` alongside `--rpc-port 19800`. `--chain` may serve RPC
-without telemetry; telemetry still requires it. Startup reads one bounded file snapshot for both
-services. RPC requires one `protocol_parameters` string with exactly 244 unprefixed hexadecimal
-characters, decoding the 122-byte GP 0.8.0 `fetch(0)` tuple. Both hex letter cases are accepted.
-Missing, malformed, duplicate, truncated or extended explicit configuration fails startup before
-opening the RPC listener. With no `--chain`, diagnostics remain available and `parameters()`
-returns JIP-2 error `0` (“Chain parameters unavailable; configure --chain”). No defaults are inferred.
-
-Requests take no arguments (`params: []` or omitted). The result is `{"V1": {...}}` with all
-33 JIP-2 field names. The 29 encoded fields retain their exact unsigned integer values, including
-64-bit values above JSON clients' floating-point precision. Clients must use lossless JSON number
-handling when needed. Invalid arguments use `-32602`; notifications remain silent.
-
-**Temporary zero placeholders:** `tickets_attempts_number`, `val_count`, `basic_piece_len`, and
-`segment_piece_count` return **0 to mean “not yet derived.” These are not actual chain values.**
-This is an explicitly documented incomplete implementation of their JIP-2 meanings, selected by
-the maintainer; zero must not be used to size validator sets, produce tickets or encode data.
-These values require live state, which this proof peer does not yet maintain:
-
-- `val_count` must come from the relevant validator roster, not `3 * core_count` or a test profile.
-- `tickets_attempts_number` must follow GP 0.8.0 Safrole's `ceil(2 * epoch_period / pending_validator_count)`.
-- Erasure-coding sizes must follow GP 0.8.0's validator-dependent original-shard count and fixed
-  4,104-byte segment, with the JIP-2 mapping specified when live-state support is added.
-
-References: JIP-2 `parameters()`/Errors at the revision above; [JIP-4](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-4.md)
-`protocol_parameters`; GP 0.8.0 at `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix B
-`fetch(0)` (`text/pvm_invocations.tex`), Safrole `valcount`/`ticketsextrinsic`, and erasure coding
-`ecoriginalshards`. The GP fetch tuple has 29 fields; it does not encode these four state-dependent
-values. JIP-4's linked historical fetch encoding is not accepted as an alternate byte layout.
-
-Configuration validation here covers strict JSON, the exact GP tuple, and basic usability:
-core count at least two, nonzero epoch/slot/rotation periods, and epoch tail no later than the epoch
-end. It does **not** import or validate genesis state, initialize a live chain, or establish all
-cross-field consensus constraints. Unknown chainspec fields are syntax-checked but not interpreted.
-Parsing is bounded to 8 MiB, 32 nesting levels, 262,144 values and 64 root members. The immutable
-parameter owner retains only fixed-size integers; file edits after startup require restarting the node.
-The existing proof-peer codecs still receive their own explicit configurations; this increment does
-not silently reconfigure consensus execution or replace those contracts.
-
 ## Protocol and bounds
 
 Only WebSocket version 13 is supported; HTTP is used solely for the RFC 6455 upgrade handshake.
