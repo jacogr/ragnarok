@@ -3,11 +3,12 @@ import hashlib
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from corpus_checks import compare_corpus
+from corpus_checks import compare_corpus, run_corpus
 
 
 # Exercise the shared process boundary independently of any protocol oracle or native compiler.
@@ -55,3 +56,49 @@ class CorpusHarness(unittest.TestCase):
             compare_corpus(corpus, command, ['driver'], 'corpus', ['one'])
         self.assertFalse(corpus['passed'])
         self.assertNotIn('run', corpus)
+
+    # Freeze exact request bytes before compilation and forward linking, evidence and completeness unchanged.
+    def test_setup_bytes_build_options_and_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder)/'requests.txt'
+            options = dict(crypto_library=Path('/crypto'), native_libraries=(Path('/bs'),),
+                           defines=('integration',))
+            metadata = dict(published_checks=7, scope='independent fixture')
+            def compile_probe(*args, **kwargs):
+                # The native compiler must see the same completed request file as the later driver.
+                self.assertEqual(source.read_bytes(), 'alpha\nβ\n'.encode())
+                return dict(exit_code=0), Path('/binary')
+            build = Mock(side_effect=compile_probe)
+            command = Mock(return_value=dict(exit_code=0, output='ok\n', log='retained.log'))
+            corpus = run_corpus(build, command, 'compiler', 'driver.nim', 'build-name', source,
+                                ['alpha', 'β'], ['ok'], 'run-name', metadata=metadata,
+                                complete=False, **options)
+            build.assert_called_once_with('compiler', 'driver.nim', 'build-name', **options)
+            command.assert_called_once_with([Path('/binary'), source], 'run-name')
+            self.assertFalse(corpus['passed'])
+            self.assertEqual(corpus['requests'], 2)
+            self.assertEqual(corpus['requests_sha256'], hashlib.sha256(source.read_bytes()).hexdigest())
+            self.assertEqual(corpus['published_checks'], 7)
+            self.assertEqual(metadata, dict(published_checks=7, scope='independent fixture'))
+
+    # Failed builds retain request evidence and only the expected hashes historically emitted by that corpus.
+    def test_setup_failed_build_hash_policy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for retain in (False, True):
+                # Empty corpora still serialize their original trailing newline; stale drivers never execute.
+                with self.subTest(expected_hash=retain):
+                    source = Path(folder)/'requests.txt'
+                    compiled = dict(exit_code=1, log='failed-build.log')
+                    build = Mock(return_value=(compiled, Path('/stale-binary')))
+                    command = Mock()
+                    corpus = run_corpus(build, command, 'compiler', 'driver.nim', 'build-name',
+                                        source, [], [], 'run-name', expected_hash=retain)
+                    self.assertEqual(source.read_bytes(), b'\n')
+                    self.assertEqual(corpus['build'], compiled)
+                    self.assertFalse(corpus['passed'])
+                    self.assertNotIn('actual_sha256', corpus)
+                    self.assertEqual('expected_sha256' in corpus, retain)
+                    if retain:
+                        # The failed-build expected hash uses the same newline convention as successful runs.
+                        self.assertEqual(corpus['expected_sha256'], hashlib.sha256(b'\n').hexdigest())
+                    command.assert_not_called()

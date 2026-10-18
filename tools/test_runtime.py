@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify checked native suites, independent corpora, runtime misuse contracts."""
 import argparse
+from functools import partial
 import os
 import hashlib
 import json
@@ -10,7 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 from native_checks import NativeChecks, announce
-from corpus_checks import compare_corpus
+from corpus_checks import run_corpus
 from failure_checks import probe_failure, run_failure_suite
 from verification_inventory import (
     ACCOUNTS_MEMBERS, ASSURANCE_CONTEXT_MEMBERS, ASSURANCE_MEMBERS, AUTHORIZATION_MEMBERS,
@@ -62,6 +63,8 @@ def failures_passed(report):
 
 # Execute ordinary Hastur suites and independent references with the existing fixture/linking contracts.
 def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires):
+    # Bind the group compiler and process runners once; each corpus keeps its explicit build profile.
+    execute_corpus = partial(run_corpus, build, command, compiler)
     crypto_library = libraries['crypto']
     bs_library = libraries['bandersnatch']
     quic_library = libraries['quic']
@@ -100,14 +103,10 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     for family, adapter, observations in early:
         lines, expected, *anchors = observations
         source = BUILD/(family+'-requests.txt')
-        source.write_text('\n'.join(lines)+'\n')
-        compiled, binary = build(compiler, ROOT/f'tests/native/{adapter}.nim', 'early-'+family)
-        corpus = dict(build=compiled, requests=len(lines), passed=False,
-                      published_checks=anchors[0],
-                      requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                      expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
         # Compare complete byte/field/error observations; adapters retain atomicity and owned-copy assertions.
-        compare_corpus(corpus, command, [binary, source], 'early-' + family + '-corpus', expected)
+        corpus = execute_corpus(ROOT / f'tests/native/{adapter}.nim', 'early-' + family,
+                            source, lines, expected, 'early-' + family + '-corpus',
+                            metadata=dict(published_checks=anchors[0]), expected_hash=True)
         report[family+'_corpus'] = corpus
         announce('unchanged independent '+family+' corpus', corpus['passed'])
     # The full report driver retains the unchanged codec batch and exposes credential composition separately.
@@ -115,12 +114,10 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from report_oracle import requests
     lines, expected = requests()
     source = BUILD/'report-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/report_driver.nim', 'report-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Compare all encoded bytes and decoded semantic fields, including malformed and published fixtures.
-    compare_corpus(corpus, command, [binary, source], 'report-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/report_driver.nim', 'report-codec',
+                        source, lines, expected, 'report-corpus',
+                        crypto_library=crypto_library)
     report['report_corpus'] = corpus
     announce('independent report corpus', corpus['passed'])
     # Independently signed full-report fixtures retain all original key/signature/domain/new-field mutations.
@@ -167,38 +164,33 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
             lines.append(' '.join(['I', fields[1], fields[2], fields[4]]))
             expected.append(parts[0]+' '+parts[2] if len(parts) == 3 else result)
     source = BUILD/'assurance-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/assurances_driver.nim', 'assurances-codec')
-    corpus = dict(build=compiled, codec_requests=codec_count, inspection_requests=len(lines)-codec_count,
-                  requests=len(lines), passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Compare complete named fields/bytes and errors; native assertions additionally protect atomic output/lifetimes.
-    compare_corpus(corpus, command, [binary, source], 'assurances-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/assurances_driver.nim', 'assurances-codec',
+                        source, lines, expected, 'assurances-corpus',
+                        metadata=dict(codec_requests=codec_count,
+                                      inspection_requests=len(lines)-codec_count))
     report['assurance_corpus'] = corpus
     announce('independent assurance codec/inspection corpus', corpus['passed'])
     # Preserve the complete independently signed assurance-context corpus and frozen source/expected identities.
     from assurance_crypto_oracle import requests as assurance_context_requests
     provider, lines, expected = assurance_context_requests()
     source = BUILD/'assurance-context-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/assurance_crypto_driver.nim', 'assurance-context-codec', crypto_library)
-    corpus = dict(build=compiled, provider=provider, requests=len(lines), passed=False,
-                  scope='fixed transcript and stateless validator-key/parent checks; no state eligibility or point-policy change',
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                  expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())
     # Ordinary OpenSSL signatures and hashlib transcripts precede native execution; compare every complete result.
-    compare_corpus(corpus, command, [binary, source], 'assurance-context-corpus', expected, complete=len(lines) == 2087)
+    corpus = execute_corpus(ROOT / 'tests/native/assurance_crypto_driver.nim', 'assurance-context-codec',
+                        source, lines, expected, 'assurance-context-corpus',
+                        metadata=dict(provider=provider,
+                                      scope='fixed transcript and stateless validator-key/parent checks; no state eligibility or point-policy change'), expected_hash=True, complete=len(lines) == 2087,
+                        crypto_library=crypto_library)
     report['assurance_context_corpus'] = corpus
     announce('independent assurance transcript/context/signature corpus', corpus['passed'])
     # Keep the original guarantee corpus intact and independently check inspection and standalone APIs.
     from guarantees_checks import requests as guarantee_requests
     lines, expected, counts = guarantee_requests()
     source = BUILD/'guarantee-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/guarantees_driver.nim', 'guarantees-codec')
-    corpus = dict(build=compiled, request_groups=counts, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Native assertions additionally cover input mutation, copied metadata and whole-output atomicity.
-    compare_corpus(corpus, command, [binary, source], 'guarantees-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/guarantees_driver.nim', 'guarantees-codec',
+                        source, lines, expected, 'guarantees-corpus',
+                        metadata=dict(request_groups=counts))
     report['guarantee_corpus'] = corpus
     announce('independent guarantee extrinsic/inspection/standalone corpus', corpus['passed'])
     # Keep every original ticket request and add unsigned policy extremes before direct inspections.
@@ -228,13 +220,12 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
             lines.append(' '.join(['I', fields[1], '0', fields[3]]))
             expected.append(parts[0]+' '+parts[2] if len(parts) == 3 else result)
     source = BUILD/'ticket-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/tickets_driver.nim', 'tickets-codec')
-    corpus = dict(build=compiled, original_requests=original_count, codec_requests=codec_count,
-                  inspection_requests=len(lines)-codec_count, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Exact attempts/proofs and consumed metadata are observed independently after source mutation.
-    compare_corpus(corpus, command, [binary, source], 'tickets-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/tickets_driver.nim', 'tickets-codec',
+                        source, lines, expected, 'tickets-corpus',
+                        metadata=dict(original_requests=original_count,
+                                      codec_requests=codec_count,
+                                      inspection_requests=len(lines)-codec_count))
     report['ticket_corpus'] = corpus
     announce('independent ticket codec/inspection corpus', corpus['passed'])
     # Preserve original dispute semantics, including published ordering rejections, plus unsigned policy extremes.
@@ -278,13 +269,12 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
                 assert cursor == len(parts)
                 expected.append(f'{verdicts} {culprits} {faults} {parts[0]}')
     source = BUILD/'dispute-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/disputes_driver.nim', 'disputes-codec')
-    corpus = dict(build=compiled, original_requests=original_count, codec_requests=codec_count,
-                  inspection_requests=len(lines)-codec_count, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Native checks also protect owner copies, exact prefix retention and whole-output failure atomicity.
-    compare_corpus(corpus, command, [binary, source], 'disputes-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/disputes_driver.nim', 'disputes-codec',
+                        source, lines, expected, 'disputes-corpus',
+                        metadata=dict(original_requests=original_count,
+                                      codec_requests=codec_count,
+                                      inspection_requests=len(lines)-codec_count))
     report['dispute_corpus'] = corpus
     announce('independent dispute codec/inspection corpus', corpus['passed'])
     # The unchanged package oracle covers context, import, commitment, standalone item and complete package APIs.
@@ -292,12 +282,10 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     lines, expected = package_requests()
     groups = {kind: sum(line.split(' ', 2)[1] == kind for line in lines) for kind in ('C', 'R', 'X', 'I', 'P')}
     source = BUILD/'package-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/package_driver.nim', 'package-codec')
-    corpus = dict(build=compiled, request_groups=groups, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Every typed field/payload is observed independently after original input mutation; failures retain sentinels.
-    compare_corpus(corpus, command, [binary, source], 'package-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/package_driver.nim', 'package-codec',
+                        source, lines, expected, 'package-corpus',
+                        metadata=dict(request_groups=groups))
     report['package_corpus'] = corpus
     announce('independent context/import/commitment/item/package corpus', corpus['passed'])
     # Retain the complete five-family header corpus and add direct full-header inspection expectations.
@@ -337,62 +325,54 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
                 assert len(parts) == cursor+4+int(offenders)
                 expected.append(' '.join([parts[0], str(int(parts[0])-96), *parts[1:5], author, proof, offenders, parts[-1]]))
     source = BUILD/'header-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/header_driver.nim', 'header-codec')
-    corpus = dict(build=compiled, original_requests=original_count, request_groups=groups,
-                  inspection_requests=len(lines)-original_count, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Independently observe every field after source erasure, marker retention and exact signing-prefix checks.
-    compare_corpus(corpus, command, [binary, source], 'header-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/header_driver.nim', 'header-codec',
+                        source, lines, expected, 'header-corpus',
+                        metadata=dict(original_requests=original_count,
+                                      request_groups=groups,
+                                      inspection_requests=len(lines)-original_count))
     report['header_corpus'] = corpus
     announce('independent ticket/epoch/winner/unsigned/full-header corpus', corpus['passed'])
     # Preserve every independent whole-block/extrinsic expectation, including actual published policy failures.
     from block_oracle import requests as block_requests
     lines, expected = block_requests()
     source = BUILD/'block-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     groups = {operation+'-'+kind: sum(line.startswith(operation+' '+kind+' ') for line in lines)
               for operation in ('D', 'E') for kind in ('E', 'B')}
-    compiled, binary = build(compiler, ROOT/'tests/native/block_driver.nim', 'block-codec')
-    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
-                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Compare all six exact child wires/counts after source erasure and on-demand materialization.
-    compare_corpus(corpus, command, [binary, source], 'block-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/block_driver.nim', 'block-codec',
+                        source, lines, expected, 'block-corpus',
+                        metadata=dict(request_groups=groups))
     report['block_corpus'] = corpus
     announce('independent complete extrinsic/block corpus', corpus['passed'])
     # Preserve all exhaustive Boolean/padding cases and pinned profile-field checks from the independent oracle.
     from bits_oracle import requests as bits_requests
     lines, expected = bits_requests()
     source = BUILD/'bits-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     groups = {operation: sum(line.startswith(operation+' ') for line in lines)
               for operation in ('BD', 'BE', 'D', 'E')}
-    compiled, binary = build(compiler, ROOT/'tests/native/bits_driver.nim', 'bits-codec')
-    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
-                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every logical bit/count/extent after input erasure and compare both owner framing forms.
-    compare_corpus(corpus, command, [binary, source], 'bits-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/bits_driver.nim', 'bits-codec',
+                        source, lines, expected, 'bits-corpus',
+                        metadata=dict(request_groups=groups))
     report['bits_corpus'] = corpus
     announce('independent Boolean/fixed/variable bitstring corpus', corpus['passed'])
     # Preserve the unchanged collection oracle: numeric/byte ordering, pairing and zero-width singleton domains.
     from collections_oracle import requests as collection_requests
     lines, expected = collection_requests()
     source = BUILD/'collection-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     groups = {kind: sum(line.split()[1] == kind for line in lines) for kind in ('F', 'S', 'M')}
     assert sum(groups.values()) == len(lines), groups
-    compiled, binary = build(compiler, ROOT/'tests/native/collections_driver.nim', 'collection-codec')
-    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
-                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Compare copied logical fields, canonical wire, consumed progress and typed reasons after input erasure.
-    compare_corpus(corpus, command, [binary, source], 'collection-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/collections_driver.nim', 'collection-codec',
+                        source, lines, expected, 'collection-corpus',
+                        metadata=dict(request_groups=groups))
     report['collection_corpus'] = corpus
     announce('independent canonical fixed/variable set/dictionary corpus', corpus['passed'])
     # Independent C.2 references retain exact availability/transfer/operand framing and tagged-union agreement.
     from c2_oracle import requests as c2_requests
     lines, expected = c2_requests()
     source = BUILD/'c2-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     groups = {}
     # Classify actual request names rather than guessing adapter tags; every request must be included.
     for line in lines:
@@ -400,142 +380,123 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
         key = parts[0]+'-'+parts[1]
         groups[key] = groups.get(key, 0)+1
     assert sum(groups.values()) == len(lines), groups
-    compiled, binary = build(compiler, ROOT/'tests/native/c2_driver.nim', 'c2-codec')
-    corpus = dict(build=compiled, requests=len(lines), request_groups=groups,
-                  passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every fixed field, payload/trace copy and exact owned wire after destructive caller mutation.
-    compare_corpus(corpus, command, [binary, source], 'c2-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/c2_driver.nim', 'c2-codec',
+                        source, lines, expected, 'c2-corpus',
+                        metadata=dict(request_groups=groups))
     report['c2_corpus'] = corpus
     announce('independent availability/transfer/operand/accumulation corpus', corpus['passed'])
     # Preserve the independent C/B/L equations, every hostile header/padding request and labelled historical projections.
     from state_layout_oracle import requests as layout_requests, legacy_singletons
     lines, expected = layout_requests()
     source = BUILD/'layout-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_layout_driver.nim', 'layout-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  historical_projected_singletons=len(legacy_singletons()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # The reference computes keys/fields/padding/hash bytes independently before native execution.
-    compare_corpus(corpus, command, [binary, source], 'layout-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_layout_driver.nim', 'layout-codec',
+                        source, lines, expected, 'layout-corpus',
+                        metadata=dict(historical_projected_singletons=len(legacy_singletons())),
+                        crypto_library=crypto_library)
     report['layout_corpus'] = corpus
     announce('independent state-key/node layout and hash corpus', corpus['passed'])
     # Compare independent unsorted-list partitions, every key divergence bit and labelled historical projections.
     from state_trie_oracle import requests as trie_requests, legacy_maps
     lines, expected = trie_requests()
     source = BUILD/'trie-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_trie_driver.nim', 'trie-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  historical_projected_maps=len(legacy_maps()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Every result compares exact root/counts or a typed reason; caller preservation is checked by the adapter.
-    compare_corpus(corpus, command, [binary, source], 'trie-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_trie_driver.nim', 'trie-codec',
+                        source, lines, expected, 'trie-corpus',
+                        metadata=dict(historical_projected_maps=len(legacy_maps())),
+                        crypto_library=crypto_library)
     report['trie_corpus'] = corpus
     announce('independent bounded state trie root corpus', corpus['passed'])
     # Preserve independent entropy/time/roster bytes, malformed inputs, published derived fixtures and partial roots.
     from state_safrole_oracle import requests as safrole_requests, published as safrole_published
     lines, expected = safrole_requests()
     source = BUILD/'safrole-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_safrole_driver.nim', 'safrole-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_derived_state_sources=len(safrole_published()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Native fields/consumed counts and roots are compared only with independently authored expectations.
-    compare_corpus(corpus, command, [binary, source], 'safrole-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_safrole_driver.nim', 'safrole-codec',
+                        source, lines, expected, 'safrole-corpus',
+                        metadata=dict(published_derived_state_sources=len(safrole_published())),
+                        crypto_library=crypto_library)
     report['safrole_corpus'] = corpus
     announce('independent entropy/validator-roster/timeslot state corpus', corpus['passed'])
     # Preserve independent ordered core/row equations, malformed inputs, derived fixtures and partial commitments.
     from state_authorization_oracle import requests as authorization_requests, published as authorization_published
     lines, expected = authorization_requests()
     source = BUILD/'authorization-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_authorization_driver.nim', 'authorization-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_derived_state_sources=len(authorization_published()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe fixed hashes and owner-bound boundaries after destructive caller mutation, comparing independent bytes.
-    compare_corpus(corpus, command, [binary, source], 'authorization-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_authorization_driver.nim', 'authorization-codec',
+                        source, lines, expected, 'authorization-corpus',
+                        metadata=dict(published_derived_state_sources=len(authorization_published())),
+                        crypto_library=crypto_library)
     report['authorization_corpus'] = corpus
     announce('independent authorization pool/queue state corpus', corpus['passed'])
     # Preserve independent chapter-4 byte/field equations, derived fixtures and partial single-entry roots.
     from state_consensus_oracle import requests as consensus_requests, published as consensus_published
     lines, expected = consensus_requests()
     source = BUILD/'consensus-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_consensus_driver.nim', 'consensus-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_derived_state_sources=len(consensus_published()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every child field after caller mutation; no native round trip supplies an expected answer.
-    compare_corpus(corpus, command, [binary, source], 'consensus-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_consensus_driver.nim', 'consensus-codec',
+                        source, lines, expected, 'consensus-corpus',
+                        metadata=dict(published_derived_state_sources=len(consensus_published())),
+                        crypto_library=crypto_library)
     report['consensus_corpus'] = corpus
     announce('independent chapter-4 Safrole basic state corpus', corpus['passed'])
     # Preserve independent chapter-5 byte/field equations, derived fixtures and partial single-entry roots.
     from state_disputes_oracle import requests as state_disputes_requests, published as state_disputes_published
     lines, expected = state_disputes_requests()
     source = BUILD/'state_disputes-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_disputes_driver.nim', 'state_disputes-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_derived_state_sources=len(state_disputes_published()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every child field after caller mutation; no native round trip supplies an expected answer.
-    compare_corpus(corpus, command, [binary, source], 'state_disputes-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_disputes_driver.nim', 'state_disputes-codec',
+                        source, lines, expected, 'state_disputes-corpus',
+                        metadata=dict(published_derived_state_sources=len(state_disputes_published())),
+                        crypto_library=crypto_library)
     report['state_disputes_corpus'] = corpus
     announce('independent chapter-5 dispute judgment/offender state corpus', corpus['passed'])
     # Preserve independent chapter-3 byte/field equations, derived fixtures and partial single-entry roots.
     from state_history_oracle import requests as state_history_requests, published as state_history_published
     lines, expected = state_history_requests()
     source = BUILD/'state_history-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_history_driver.nim', 'state_history-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_derived_state_sources=len(state_history_published()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every child field after caller mutation; no native round trip supplies an expected answer.
-    compare_corpus(corpus, command, [binary, source], 'state_history-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_history_driver.nim', 'state_history-codec',
+                        source, lines, expected, 'state_history-corpus',
+                        metadata=dict(published_derived_state_sources=len(state_history_published())),
+                        crypto_library=crypto_library)
     report['history_corpus'] = corpus
     announce('independent chapter-3 recent history state corpus', corpus['passed'])
     # Preserve independent chapter-10 byte/field equations, derived fixtures and partial single-entry roots.
     from state_availability_oracle import requests as state_availability_requests, published as state_availability_published, published_verdicts as availability_verdicts
     lines, expected = state_availability_requests()
     source = BUILD/'state_availability-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_availability_driver.nim', 'state_availability-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_derived_state_sources=len(state_availability_published()), published_decode_verdicts=availability_verdicts(),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every child field after caller mutation; no native round trip supplies an expected answer.
-    compare_corpus(corpus, command, [binary, source], 'state_availability-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_availability_driver.nim', 'state_availability-codec',
+                        source, lines, expected, 'state_availability-corpus',
+                        metadata=dict(published_derived_state_sources=len(state_availability_published()),
+                                      published_decode_verdicts=availability_verdicts()),
+                        crypto_library=crypto_library)
     report['availability_corpus'] = corpus
     announce('independent chapter-10 availability assignment state corpus', corpus['passed'])
     # Preserve independent chapter-12 byte/field equations, derived fixtures and partial single-entry roots.
     from state_privileges_oracle import requests as state_privileges_requests, published as state_privileges_published
     lines, expected = state_privileges_requests()
     source = BUILD/'state_privileges-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_privileges_driver.nim', 'state_privileges-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_derived_state_sources=len(state_privileges_published()),
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every child field after caller mutation; no native round trip supplies an expected answer.
-    compare_corpus(corpus, command, [binary, source], 'state_privileges-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_privileges_driver.nim', 'state_privileges-codec',
+                        source, lines, expected, 'state_privileges-corpus',
+                        metadata=dict(published_derived_state_sources=len(state_privileges_published())),
+                        crypto_library=crypto_library)
     report['privileges_corpus'] = corpus
     announce('independent chapter-12 privileged service state corpus', corpus['passed'])
     # Preserve independent chapter-13 byte/field equations, derived fixtures and partial single-entry roots.
     from state_statistics_oracle import requests as state_statistics_requests, published_validators as state_statistics_published, trace_evidence as statistics_traces
     lines, expected = state_statistics_requests()
     source = BUILD/'state_statistics-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_statistics_driver.nim', 'state_statistics-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_partial_validator_sources=len(state_statistics_published()), published_trace_components=statistics_traces(),
-                  gas_encoding_policy="accepted canonical compact naturals; no fallback",
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Observe every child field after caller mutation; no native round trip supplies an expected answer.
-    compare_corpus(corpus, command, [binary, source], 'state_statistics-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_statistics_driver.nim', 'state_statistics-codec',
+                        source, lines, expected, 'state_statistics-corpus',
+                        metadata=dict(published_partial_validator_sources=len(state_statistics_published()),
+                                      published_trace_components=statistics_traces(),
+                                      gas_encoding_policy="accepted canonical compact naturals; no fallback"),
+                        crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(corpus['published_trace_components']) == 6 and all(row['complete_component_match'] for row in corpus['published_trace_components'])
     report['statistics_corpus'] = corpus
     announce('independent chapter-13 activity statistics state corpus', corpus['passed'])
@@ -543,7 +504,6 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from state_workqueues_oracle import requests as workqueue_requests, published as workqueue_published, published_traces as workqueue_traces, parse as workqueue_parse, wire as workqueue_wire
     lines, expected = workqueue_requests()
     source = BUILD/'workqueues-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     traces = []
     # Whole-component trace replay is separate from sorted JSON-derived mathematical sets.
     for kind, data, config in workqueue_traces():
@@ -551,12 +511,12 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
         traces.append(dict(kind=kind, bytes=len(data), consumed=consumed, items=items,
                            dependencies=dependencies, sha256=hashlib.sha256(data).hexdigest(),
                            complete_component_match=consumed == len(data) and workqueue_wire(kind, rows) == data))
-    compiled, binary = build(compiler, ROOT/'tests/native/state_workqueues_driver.nim', 'state_workqueues-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_json_components=len(workqueue_published()), published_trace_components=traces,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Expected observations come from the independent reference, never a native round trip.
-    compare_corpus(corpus, command, [binary, source], 'state_workqueues-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_workqueues_driver.nim', 'state_workqueues-codec',
+                        source, lines, expected, 'state_workqueues-corpus',
+                        metadata=dict(published_json_components=len(workqueue_published()),
+                                      published_trace_components=traces),
+                        crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 12 and all(row['complete_component_match'] for row in traces)
     report['workqueues_corpus'] = corpus
     announce('independent chapters 14/15 ready/accumulated queue corpus', corpus['passed'])
@@ -564,7 +524,6 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from state_outputs_oracle import requests as outputs_requests, published as outputs_published, parse as outputs_parse, wire as outputs_wire, DEFAULT as outputs_default
     lines, expected = outputs_requests()
     source = BUILD/'outputs-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     traces = []
     # Selected trace entries are empty logs; authored cases supply nonempty field/order coverage.
     for entry in outputs_published():
@@ -572,13 +531,12 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
         traces.append(dict(path=entry['path'], phase=entry['phase'], bytes=len(entry['wire']),
                            items=len(values), consumed=consumed, sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=consumed == len(entry['wire']) and outputs_wire(values) == entry['wire']))
-    compiled, binary = build(compiler, ROOT/'tests/native/state_outputs_driver.nim', 'state_outputs-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_trace_components=traces,
-                  scope='ordered fixed pairs; published traces empty, nonempty coverage authored; no accumulation execution',
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # All expected fields/bytes/reasons come from independent equations computed before native execution.
-    compare_corpus(corpus, command, [binary, source], 'state_outputs-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_outputs_driver.nim', 'state_outputs-codec',
+                        source, lines, expected, 'state_outputs-corpus',
+                        metadata=dict(published_trace_components=traces,
+                                      scope='ordered fixed pairs; published traces empty, nonempty coverage authored; no accumulation execution'),
+                        crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 8 and all(row['complete_component_match'] for row in traces)
     report['outputs_corpus'] = corpus
     announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
@@ -586,7 +544,6 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from state_accounts_oracle import requests as accounts_requests, published_json as accounts_json, published_traces as accounts_traces, parse as accounts_parse, wire as accounts_wire, key as accounts_key, MAX as accounts_max, SIZE as accounts_size
     lines, expected = accounts_requests()
     source = BUILD/'accounts-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     traces = []
     # Select exact reconstructable C(255, service) keys, never arbitrary hashed keys sharing the first byte.
     for entry in accounts_traces():
@@ -595,13 +552,13 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
                            key=accounts_key(entry['service']).hex(), bytes=len(entry['wire']), consumed=accounts_size,
                            sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=len(entry['wire']) == accounts_size and accounts_wire(fields) == entry['wire']))
-    compiled, binary = build(compiler, ROOT/'tests/native/state_accounts_driver.nim', 'state_accounts-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_json_metadata=len(accounts_json()), published_trace_metadata=traces,
-                  scope='C(255,service) fixed version-zero metadata; no nested maps, account validation or transitions',
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Independent expected fields/bytes/reasons precede execution; native round trips supply no expected answers.
-    compare_corpus(corpus, command, [binary, source], 'state_accounts-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_accounts_driver.nim', 'state_accounts-codec',
+                        source, lines, expected, 'state_accounts-corpus',
+                        metadata=dict(published_json_metadata=len(accounts_json()),
+                                      published_trace_metadata=traces,
+                                      scope='C(255,service) fixed version-zero metadata; no nested maps, account validation or transitions'),
+                        crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 20 and all(row['complete_component_match'] for row in traces)
     report['accounts_corpus'] = corpus
     announce('independent C(255,service) account metadata corpus', corpus['passed'])
@@ -609,20 +566,18 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from state_service_values_oracle import requests as service_values_requests, published as service_values_published, published_traces as service_values_traces
     lines, expected = service_values_requests()
     source = BUILD/'service-values-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     sources = service_values_published()
     traces = [dict(path=entry['path'], phase=entry['phase'], service=entry['service'], key=entry['key'].hex(),
                    bytes=len(entry['value']), sha256=hashlib.sha256(entry['value']).hexdigest(),
                    namespace='opaque; not recoverable from key') for entry in service_values_traces()]
-    compiled, binary = build(compiler, ROOT/'tests/native/state_service_values_driver.nim', 'state_service_values-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_json_storage=sum(row[0] == 'S' for row in sources),
-                  published_json_preimages=sum(row[0] == 'P' for row in sources),
-                  published_opaque_trace_values=traces,
-                  scope='keyed storage/preimage serialization and opaque capture; no namespace recovery, hash/content invariant or transitions',
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Native observations expose retained fields after caller mutation; expected answers precede execution.
-    compare_corpus(corpus, command, [binary, source], 'state_service_values-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_service_values_driver.nim', 'state_service_values-codec',
+                        source, lines, expected, 'state_service_values-corpus',
+                        metadata=dict(published_json_storage=sum(row[0] == 'S' for row in sources),
+                                      published_json_preimages=sum(row[0] == 'P' for row in sources),
+                                      published_opaque_trace_values=traces,
+                                      scope='keyed storage/preimage serialization and opaque capture; no namespace recovery, hash/content invariant or transitions'),
+                        crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 16 and corpus['published_json_storage'] == 12 and corpus['published_json_preimages'] == 16
     report['service_values_corpus'] = corpus
     announce('independent service storage/preimage keys and opaque raw-value corpus', corpus['passed'])
@@ -630,7 +585,6 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from state_requests_oracle import requests as requests_requests, published as requests_published, published_traces as requests_traces, parse as requests_parse, wire as requests_wire
     lines, expected = requests_requests()
     source = BUILD/'requests-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
     published = requests_published()
     traces = []
     # Identities come from exact content/preimage/request relationships in one state, never guessed hashed namespaces.
@@ -640,17 +594,16 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
                            key=entry['key'].hex(), bytes=len(entry['wire']), count=len(slots), consumed=consumed,
                            sha256=hashlib.sha256(entry['wire']).hexdigest(),
                            complete_component_match=consumed == len(entry['wire']) and requests_wire(slots) == entry['wire']))
-    compiled, binary = build(compiler, ROOT/'tests/native/state_requests_driver.nim', 'state_requests-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_json_histories=len(published),
-                  published_json_shapes={str(n): sum(len(row[3]) == n for row in published) for n in range(4)},
-                  published_trace_histories=traces,
-                  namespace_overlap=dict(status='parked_by_maintainer_until_graypaper_0.8.1_or_0.8.2', lengths=[2**32-2, 2**32-1],
-                    observation='full stated domain preserved; overlapping keys reject at trie composition; no restriction inferred'),
-                  scope='request key/history framing only; no chronology, availability or lifecycle transitions',
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Independent expected fields/bytes/reasons precede execution; source and input mutation cannot change observations.
-    compare_corpus(corpus, command, [binary, source], 'state_requests-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_requests_driver.nim', 'state_requests-codec',
+                        source, lines, expected, 'state_requests-corpus',
+                        metadata=dict(published_json_histories=len(published),
+                                      published_json_shapes={str(n): sum(len(row[3]) == n for row in published) for n in range(4)},
+                                      published_trace_histories=traces,
+                                      namespace_overlap=dict(status='parked_by_maintainer_until_graypaper_0.8.1_or_0.8.2', lengths=[2**32-2, 2**32-1],
+                    observation='full stated domain preserved; overlapping keys reject at trie composition; no restriction inferred'),
+                                      scope='request key/history framing only; no chronology, availability or lifecycle transitions'),
+                        crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 20 and all(row['complete_component_match'] for row in traces)
     report['requests_corpus'] = corpus
     announce('independent service request-history key/shape corpus', corpus['passed'])
@@ -658,15 +611,14 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from state_composition_oracle import requests as composition_requests
     lines, expected, components, whole = composition_requests()
     source = BUILD/'composition-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/state_composition_driver.nim', 'state_composition-codec', crypto_library)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  published_component_observations=components, published_composed_states=whole,
-                  published_exact_captures=sum(row['verdict'] == 'ok' for row in components),
-                  scope='exact typed chapter capture and complete mappings; opaque service values explicit; no transitions',
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     # Expected complete mappings and roots precede execution; embedded ownership/association selftests also run.
-    compare_corpus(corpus, command, [binary, source], 'state_composition-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/state_composition_driver.nim', 'state_composition-codec',
+                        source, lines, expected, 'state_composition-corpus',
+                        metadata=dict(published_component_observations=components,
+                                      published_composed_states=whole,
+                                      published_exact_captures=sum(row['verdict'] == 'ok' for row in components),
+                                      scope='exact typed chapter capture and complete mappings; opaque service values explicit; no transitions'),
+                        crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(components) == 224 and corpus['published_exact_captures'] == 224 and len(whole) == 14
     report['composition_corpus'] = corpus
     announce('independent exact chapter/service and whole-state composition corpus', corpus['passed'])
@@ -772,28 +724,24 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
     from quic_protocol_oracle import requests as protocol_requests
     lines, expected, groups = protocol_requests(quic_fixtures)
     source = BUILD/'quic-protocol-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/quic_protocol_driver.nim', 'quic-protocol-driver', quic_library=quic_library)
-    corpus = dict(build=compiled, requests=len(lines), groups=groups, passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                  expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest(),
-                  scope='pinned SAN/DER identity and structural CE framing; no TLS handshake or fixture eligibility claim')
     # Keep exact status/identity/length/extent observations; incomplete results expose no payload metadata.
-    compare_corpus(corpus, command, [binary, source], 'quic-protocol-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/quic_protocol_driver.nim', 'quic-protocol-driver',
+                        source, lines, expected, 'quic-protocol-corpus',
+                        metadata=dict(groups=groups,
+                                      scope='pinned SAN/DER identity and structural CE framing; no TLS handshake or fixture eligibility claim'), expected_hash=True,
+                        quic_library=quic_library)
     report['quic_protocol_corpus'] = corpus
     announce('independent SAN/DER/frame boundary corpus', corpus['passed'])
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
     source = BUILD/'integration-requests.txt'
-    source.write_text('\n'.join(lines)+'\n')
-    compiled, binary = build(compiler, ROOT/'tests/native/integration_driver.nim', 'integration-driver', crypto_library, defines=('integration',))
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                  expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest(),
-                  scope='CE fixture codec/crypto composition; no authenticated transport or normative digest/preimage relationship')
     # Compare complete serialized bytes and failure ordering, not only a self-generated round trip.
-    compare_corpus(corpus, command, [binary, source], 'integration-corpus', expected)
+    corpus = execute_corpus(ROOT / 'tests/native/integration_driver.nim', 'integration-driver',
+                        source, lines, expected, 'integration-corpus',
+                        metadata=dict(scope='CE fixture codec/crypto composition; no authenticated transport or normative digest/preimage relationship'), expected_hash=True,
+                        crypto_library=crypto_library,
+                        defines=('integration',))
     report['integration_corpus'] = corpus
     announce('independent CE digest capture/hash-binding corpus', corpus['passed'])
     # Preserve every independent primitive vector, ownership check and joined native-thread workload.

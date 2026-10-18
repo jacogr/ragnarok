@@ -137,6 +137,10 @@ coverage predicates. The shared comparison preserves nonzero-exit rejection, mis
 rejection, exact output hashes, first-mismatch indices and build-failure refusal. It uses the
 existing command runner's timeout and full logs. Specialized signature, proof and reused-driver
 checks retain their explicit paths.
+The shared `run_corpus` path writes exact request rows, builds the named driver with explicit
+linking options, initializes request/hash evidence and calls the existing comparison. Callers
+keep independent generation, corpus-specific metadata and coverage predicates. Expected hashes
+previously retained after build failure remain opt-in so failed reports preserve their schema.
 
 `tools/failure_checks.py` preserves the exact exit-code-1, expected-diagnostic and
 `[AssertionDefect]` predicate for ordinary runtime guard probes, including complete command logs
