@@ -109,6 +109,16 @@ with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine
 including its explicit wrapping-access specification gate. Gas charging, instruction
 execution and host calls remain open.
 
+`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
+formats into copied values backed by an immutable program owner. See
+[the program decoding contract](../spec/pvm-program.md). This is the first PVM
+increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
+with atomic scalar stores; see [the machine/memory contract](../spec/pvm-machine.md),
+including its explicit wrapping-access specification gate. `src/pvm/registers.nim`
+evaluates all 85 register-only instruction mutations against a copied register file;
+see [the register semantics contract](../spec/pvm-registers.md). Gas charging, complete
+instruction stepping, control flow, memory-instruction integration and host calls remain open.
+
 `src/crypto/` composes domains and codecs around narrow maintained primitive ABIs. BoringSSL
 provides Blake2b-256 and ordinary Ed25519; XKCP provides legacy Keccak-256. The release-designated ark-vrf 0.2.2
 Bandersnatch Rust backend is isolated behind `native/bandersnatch/` and a typed Nim adapter.

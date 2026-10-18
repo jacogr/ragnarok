@@ -34,7 +34,7 @@ class NativeUnitHarness(unittest.TestCase):
         names = [name for _, members, _ in batches for name in members]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
-        self.assertEqual(len(batches[0][1]), 25)
+        self.assertEqual(len(batches[0][1]), 26)
         self.assertIsNone(batches[0][2])
         for name, members, target in batches[1:]:
             # Every profile with special linking or runtime resources remains a single-file invocation.
@@ -304,7 +304,7 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
         self.assertEqual(variable, 'RAGNAROK_BLOCK_FIXTURES')
         sources = {path for path, _ in required} | {native_tests.UNIT_FIXTURES['guarantees'][1]}
-        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT, native_tests.COMPOSITION_FIXTURE})
+        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT, native_tests.COMPOSITION_FIXTURE, native_tests.PVM_REGISTERS})
 
     # State report consumers must retain the same independently authored byte fixture and checksum.
     def test_state_report_reference(self):
