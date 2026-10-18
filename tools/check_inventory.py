@@ -31,6 +31,8 @@ def validate_inventory():
     from failure_checks import FAILURE_SUITES
     from native_tests import unit_source
     from verification_inventory import UNIT_SUITES, UNIT_LINKS, PRIVATE, NOMINAL, CONTRACTS, RUNTIME_SOURCES
+    from runtime_provenance import runtime_sources, validate_coverage
+    validate_coverage(ROOT, runtime_sources())
     validate_registration(FAILURE_SUITES, (ROOT/'tools/test_runtime.py').read_text())
     expected = {unit_source(name) for name in UNIT_SUITES}
     actual = set((ROOT/'tests/unit').rglob('*.nim'))

@@ -10,6 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from check_inventory import validate_registration
+from runtime_provenance import validate_coverage
 from failure_checks import FAILURE_SUITES, load_suites
 
 
@@ -83,6 +84,27 @@ class InventoryPreflight(unittest.TestCase):
                 validate_registration(suites, runner(names))
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, 'No failure suites'):
             load_suites(Path(temporary))
+
+    # Nested new helpers and JSON metadata must be covered; stale exclusions cannot hide deletions.
+    def test_provenance_omissions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths = [root/name for name in ('tools/helper.py', 'tools/nested/profile.json', 'tests/nested/oracle.py')]
+            for path in paths:
+                # Files need no executable content for source coverage validation.
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            validate_coverage(root, paths, {})
+            for omitted in paths:
+                # Each scope is checked independently rather than only the tools directory.
+                with self.subTest(path=omitted), self.assertRaisesRegex(ValueError, 'Unlisted runtime provenance'):
+                    validate_coverage(root, [p for p in paths if p != omitted], {})
+            excluded = 'tools/helper.py'
+            validate_coverage(root, paths[1:], {excluded: 'Historical standalone control.'})
+            for exclusions in ({excluded: ''}, {'tools/deleted.py': 'Removed'}, {excluded: 'Already covered'}):
+                # Exceptions must be current, justified and disjoint from actual report coverage.
+                with self.subTest(exclusions=exclusions), self.assertRaisesRegex(ValueError, 'Invalid provenance exclusion'):
+                    validate_coverage(root, paths, exclusions)
 
     # The public preflight command must succeed without scheduling dependency setup or a native compiler.
     def test_standalone_command(self):

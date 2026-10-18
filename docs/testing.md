@@ -905,3 +905,11 @@ Add a failure family as `tools/failure_suites/<family>.json`, retaining one case
 independent count in `verification_inventory.json` and an explicit `run_failure_suite` call at
 the intended position. Alphabetical file loading does not change execution order. All family
 files are automatically included in runtime provenance; no central list of JSON files is needed.
+
+Provenance preflight checks all Python files recursively under `tools/` and `tests/`, plus
+JSON files under `tools/`, against the exact source expansion used by runtime reports.
+Add newly introduced helpers to `tools/runtime_sources.json`; existing explicit discovery
+rules also count as coverage. Historical exceptions live in `runtime_provenance.EXCLUSIONS`
+with a reason; missing, already-covered or unjustified exceptions fail preflight. This check
+also catches untracked new helpers locally. Native sources and fixtures retain their separate
+inventory checks; this policy does not claim complete dependency-graph discovery.
