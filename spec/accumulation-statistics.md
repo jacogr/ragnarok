@@ -68,6 +68,7 @@ passed 443 tests with seven skips; inventory, pinned formatting and diff checks 
 builds reused existing native libraries. No existing fixture, finalizer, collector, codec or PVM
 implementation changed, so their unchanged consumer evidence was reused. Logs are retained under
 ignored `build/accumulation-statistics/`; these are local macOS results, separate from exact-head
-Linux CI. Queue/history and complete C(13) coordination remain subsequent work alongside the
+Linux CI. [Accumulated-package history](accumulation-history.md) now advances C(15) on a private
+full-state candidate. C(14)/C(3) and complete C(13) coordination remain subsequent work alongside the
 existing transfer/account/privilege and whole-block gates. M1 framing remains complete; full state
 serialization and accumulation parity remain open.
