@@ -57,10 +57,11 @@ proc code(ending: ExecutionEnding): seq[byte] =
   for octet in envelope: result.add(octet)
 
 proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
-    second = ExecutionEnding.Halt, empty = false, report = false): ExecutionFixture =
-  ## Recompute parent commitments and real signatures after selecting code and free allowances.
-  let firstCode = code(first)
-  let secondCode = code(second)
+    second = ExecutionEnding.Halt, empty = false, report = false, firstProgram: seq[byte] = @[],
+    secondProgram: seq[byte] = @[]): ExecutionFixture =
+  ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
+  let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
+  let secondCode = (if secondProgram.len == 0: code(second) else: secondProgram)
   var allowances: seq[AlwaysAccumulate] = @[]
   if not empty:
     for ordinal, ending in [first, second]:
