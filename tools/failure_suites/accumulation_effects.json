@@ -143,6 +143,28 @@
         "origin": "account-info"
       },
       "name": "accumulation-effect-account-info"
+    },
+    {
+      "arguments": [
+        "privileges"
+      ],
+      "description": "Accumulation privilege selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "privileges"
+      },
+      "name": "accumulation-effect-privileges"
+    },
+    {
+      "arguments": [
+        "bless"
+      ],
+      "description": "Accumulation privilege selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "bless"
+      },
+      "name": "accumulation-effect-bless"
     }
   ],
   "crypto_library": "crypto",

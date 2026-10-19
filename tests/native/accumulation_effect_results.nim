@@ -6,7 +6,7 @@
 
 import std/cmdline
 import ../../src/state/[accumulation_effects, accumulation_context]
-import ../../src/codec/[state_outputs, bounded, composite]
+import ../../src/codec/[state_outputs, bounded, composite, state_privileges]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 
@@ -28,6 +28,9 @@ of "storage": discard recordAccumulationStorage(pair, [], [], default(Parameters
     0)).value # Failed changes contain no successor.
 of "account-info": discard context.effectAccountInfo(ServiceIndex(42), default(
     Parameters)).value # No fabricated fixed account record.
+of "privileges": discard context.effectPrivileges.value # Default contexts expose no current privilege snapshot.
+of "bless": discard recordAccumulationBless(pair, default(PrivilegeState), default(
+    PrivilegeConfig)).value # Default pairs cannot publish roles.
 of "info": discard context.effectInfo.value # No default metadata/effects.
 of "yield": discard context.effectYield.value # No default hash.
 of "absent": discard pair.effectContext(AccumulationDimension.Regular).value.effectYield.value # Absence is not zero bytes.
