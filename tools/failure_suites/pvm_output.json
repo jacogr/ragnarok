@@ -1,0 +1,52 @@
+{
+  "source": "tests/native/pvm_output_results.nim",
+  "build_name": "pvm-output-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-output-default",
+      "diagnostic": "r.status == None",
+      "description": "PVM output failure payload default"
+    },
+    {
+      "identity": {
+        "origin": "nonhalt"
+      },
+      "arguments": [
+        "nonhalt"
+      ],
+      "name": "pvm-output-nonhalt",
+      "diagnostic": "r.status == None",
+      "description": "PVM output failure payload nonhalt"
+    },
+    {
+      "identity": {
+        "origin": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "pvm-output-invalid",
+      "diagnostic": "r.status == None",
+      "description": "PVM output failure payload invalid"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-output-limit",
+      "diagnostic": "r.status == None",
+      "description": "PVM output failure payload limit"
+    }
+  ]
+}

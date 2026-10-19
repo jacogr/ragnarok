@@ -1,0 +1,164 @@
+{
+  "source": "tests/native/pvm_host_response_results.nim",
+  "build_name": "pvm-host-response-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default",
+        "accessor": "value"
+      },
+      "arguments": [
+        "default",
+        "value"
+      ],
+      "name": "pvm-host-response-default",
+      "diagnostic": "r.status == None",
+      "description": "Host response failure payload default"
+    },
+    {
+      "identity": {
+        "origin": "nonhost",
+        "accessor": "value"
+      },
+      "arguments": [
+        "nonhost",
+        "value"
+      ],
+      "name": "pvm-host-response-nonhost",
+      "diagnostic": "r.status == None",
+      "description": "Host response failure payload nonhost"
+    },
+    {
+      "identity": {
+        "origin": "memory",
+        "accessor": "value"
+      },
+      "arguments": [
+        "memory",
+        "value"
+      ],
+      "name": "pvm-host-response-memory",
+      "diagnostic": "r.status == None",
+      "description": "Host response failure payload memory"
+    },
+    {
+      "identity": {
+        "origin": "machine",
+        "accessor": "value"
+      },
+      "arguments": [
+        "machine",
+        "value"
+      ],
+      "name": "pvm-host-response-machine",
+      "diagnostic": "r.status == None",
+      "description": "Host response failure payload machine"
+    },
+    {
+      "identity": {
+        "origin": "continue",
+        "accessor": "host"
+      },
+      "arguments": [
+        "continue",
+        "host"
+      ],
+      "name": "pvm-host-response-continue-host",
+      "diagnostic": "outcome.kind == Host",
+      "description": "Host response metadata continue host"
+    },
+    {
+      "identity": {
+        "origin": "continue",
+        "accessor": "fault"
+      },
+      "arguments": [
+        "continue",
+        "fault"
+      ],
+      "name": "pvm-host-response-continue-fault",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "Host response metadata continue fault"
+    },
+    {
+      "identity": {
+        "origin": "halt",
+        "accessor": "host"
+      },
+      "arguments": [
+        "halt",
+        "host"
+      ],
+      "name": "pvm-host-response-halt-host",
+      "diagnostic": "outcome.kind == Host",
+      "description": "Host response metadata halt host"
+    },
+    {
+      "identity": {
+        "origin": "halt",
+        "accessor": "fault"
+      },
+      "arguments": [
+        "halt",
+        "fault"
+      ],
+      "name": "pvm-host-response-halt-fault",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "Host response metadata halt fault"
+    },
+    {
+      "identity": {
+        "origin": "panic",
+        "accessor": "host"
+      },
+      "arguments": [
+        "panic",
+        "host"
+      ],
+      "name": "pvm-host-response-panic-host",
+      "diagnostic": "outcome.kind == Host",
+      "description": "Host response metadata panic host"
+    },
+    {
+      "identity": {
+        "origin": "panic",
+        "accessor": "fault"
+      },
+      "arguments": [
+        "panic",
+        "fault"
+      ],
+      "name": "pvm-host-response-panic-fault",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "Host response metadata panic fault"
+    },
+    {
+      "identity": {
+        "origin": "oog",
+        "accessor": "host"
+      },
+      "arguments": [
+        "oog",
+        "host"
+      ],
+      "name": "pvm-host-response-oog-host",
+      "diagnostic": "outcome.kind == Host",
+      "description": "Host response metadata oog host"
+    },
+    {
+      "identity": {
+        "origin": "oog",
+        "accessor": "fault"
+      },
+      "arguments": [
+        "oog",
+        "fault"
+      ],
+      "name": "pvm-host-response-oog-fault",
+      "diagnostic": "outcome.kind == Fault",
+      "description": "Host response metadata oog fault"
+    }
+  ]
+}

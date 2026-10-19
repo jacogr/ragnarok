@@ -1,0 +1,50 @@
+{
+  "source": "tests/native/pvm_fetch_package_results.nim",
+  "build_name": "pvm-fetch-package-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-fetch-package-context",
+      "diagnostic": "r.status == None",
+      "description": "Package fetch capture refusal context"
+    },
+    {
+      "identity": {
+        "reason": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-fetch-package-owner",
+      "diagnostic": "r.status == None",
+      "description": "Package fetch capture refusal owner"
+    },
+    {
+      "identity": {
+        "reason": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-fetch-package-limit",
+      "diagnostic": "r.status == None",
+      "description": "Package fetch capture refusal limit"
+    },
+    {
+      "identity": {
+        "reason": "encoding"
+      },
+      "arguments": [
+        "encoding"
+      ],
+      "name": "pvm-fetch-package-encoding",
+      "diagnostic": "r.status == None",
+      "description": "Package fetch capture refusal encoding"
+    }
+  ]
+}

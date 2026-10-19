@@ -1,0 +1,50 @@
+{
+  "source": "tests/native/pvm_fetch_inputs_results.nim",
+  "build_name": "pvm-fetch-inputs-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-fetch-inputs-context",
+      "diagnostic": "r.status == None",
+      "description": "External input capture refusal context"
+    },
+    {
+      "identity": {
+        "reason": "current"
+      },
+      "arguments": [
+        "current"
+      ],
+      "name": "pvm-fetch-inputs-current",
+      "diagnostic": "r.status == None",
+      "description": "External input capture refusal current"
+    },
+    {
+      "identity": {
+        "reason": "count"
+      },
+      "arguments": [
+        "count"
+      ],
+      "name": "pvm-fetch-inputs-count",
+      "diagnostic": "r.status == None",
+      "description": "External input capture refusal count"
+    },
+    {
+      "identity": {
+        "reason": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-fetch-inputs-limit",
+      "diagnostic": "r.status == None",
+      "description": "External input capture refusal limit"
+    }
+  ]
+}

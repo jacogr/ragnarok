@@ -5,7 +5,8 @@
 ## immutable, acyclic ARC graphs. Updates return independent snapshots.
 ##
 ## Exposes immutable Memory/Machine snapshots, page capture/replacement, checked scalar
-## load/store, programOf/memoryOf child access, copied state updates and terminal-state capture.
+## load/store, bounded host readBytes/writeBytes, programOf/memoryOf child access, copied state
+## updates, writable-page range counting/mapping and terminal-state capture.
 
 import ./program
 
@@ -14,16 +15,24 @@ type
   MemoryAddress* = distinct uint64
   # Fault reasons contain a physical aligned byte address, not a page ordinal.
   PageAddress* = distinct uint32
-  # Page ordinals must be below 2^20; construction validates before indexing or allocation.
+  # Page ordinals are below 2^20; validated exclusive range endpoints may equal 2^20.
   PageIndex* = distinct uint32
+  ## A count of pages is distinct from an ordinal, byte length and local allocation policy.
+  PageCount* = distinct uint32
   # Local allocation policy bounds materialized pages, including inaccessible retained pages.
   PageLimit* = distinct uint32
   # Supported scalar access sizes are 1, 2, 4 and 8; other values return InvalidWidth.
   AccessWidth* = distinct byte
+  # Natural byte-range length for host memory operations, never a scalar instruction width.
+  MemoryLength* = distinct uint64
+  # Local payload-copy ceiling; independent of guest lengths and page-allocation limits.
+  MemoryByteLimit* = distinct uint64
   # Register values are independent of decoded immediates and addresses.
   RegisterValue* = distinct uint64
-  # PVM gas is unsigned here; signed host-call gas accounting is outside this increment.
+  # Nonnegative gas component; a terminal negative balance is represented separately by GasDeficit.
   MachineGas* = distinct uint64
+  # Magnitude of a negative terminal balance, at most 2^63; nonzero deficit requires zero gas.
+  GasDeficit* = distinct uint64
   # Every machine snapshot contains exactly thirteen copied register values.
   RegisterFile* = array[13, RegisterValue]
   # Writable pages are also readable; inaccessible pages may retain bytes for later remapping.
@@ -37,7 +46,7 @@ type
   # Local API failures are distinct from guest panic/fault, including an explicit specification gate.
   MachineError* {.pure.} = enum
     Uninitialized, None, InvalidOwner, InvalidPage, UnsortedPages, LimitExceeded,
-    InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder
+    InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange, InvalidGasState
   # Fault addresses belong to the failure reason; other failures carry no value or progress.
   MachineResult*[T] = object
     case status: MachineError
@@ -64,6 +73,8 @@ type
   MachineInfo* = object
     pc*: CodeAddress
     gas*: MachineGas
+    # Terminal negative magnitude; gas credit must be zero whenever this is nonzero.
+    gasDeficit*: GasDeficit
     blockCharged*: bool
     registers*: RegisterFile
   # Immutable machine root retains program and memory owners without any back-reference.
@@ -165,6 +176,76 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
+## Count writable pages in [first, past), with an exclusive endpoint up to 2^20.
+## Walk only retained pages; missing pages are inaccessible. This does not infer heap bounds.
+proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[PageCount] =
+  let data = memory.data
+  if data == nil:
+    # Default owners must not masquerade as an empty, valid address space.
+    return MachineResult[PageCount](status: MachineError.InvalidOwner)
+  if uint32(first) > uint32(past) or uint32(past) > 0x100000'u32:
+    # Ordered endpoints prove both are in range before any lookup or subtraction.
+    return MachineResult[PageCount](status: MachineError.InvalidRange)
+  let start = lowerBound(data, uint32(first))
+  let stop = lowerBound(data, uint32(past))
+  var count = 0'u32
+  for i in start..<stop:
+    # Only writable retained pages contribute; read-only and inaccessible pages do not.
+    if data.pages[i].image.access == PageAccess.ReadWrite:
+      inc count # Unique ordinals bound the count by the physical page domain.
+  MachineResult[PageCount](status: MachineError.None, completed: PageCount(count))
+
+## Atomically map [first, past) writable, preserving all retained bytes and outside permissions.
+## Preflight the owner's complete page policy before allocation. Absent pages become zero-filled;
+## unchanged page owners are shared. Callers must separately enforce host-call region/gas rules.
+proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[Memory] =
+  let data = memory.data
+  if data == nil:
+    # No partial allocation or default empty address space is produced on invalid ownership.
+    return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if uint32(first) > uint32(past) or uint32(past) > 0x100000'u32:
+    # Validate the exclusive endpoint before subtraction and native-int conversion.
+    return MachineResult[Memory](status: MachineError.InvalidRange)
+  let start = lowerBound(data, uint32(first))
+  let stop = lowerBound(data, uint32(past))
+  let added = uint64(uint32(past)-uint32(first)) - uint64(stop-start)
+  let total = uint64(data.pages.len) + added
+  if total > uint64(uint32(data.limit)) or total > uint64(high(int) div sizeof(PageData)):
+    # Count inaccessible retained pages too; only truly absent ordinals require new slots.
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
+  var changed = added != 0
+  for i in start..<stop:
+    # Permission-only changes still need a successor, even when no page is added.
+    if data.pages[i].image.access != PageAccess.ReadWrite:
+      changed = true
+  if not changed:
+    # Empty and already-writable intervals retain the original immutable owner without allocation.
+    return MachineResult[Memory](status: MachineError.None, completed: memory)
+  var pages = newSeqOfCap[PageData](int(total))
+  for i in 0..<start:
+    pages.add(data.pages[i]) # Retain the untouched prefix, including permissions and nonzero bytes.
+  var at = start
+  var ordinal = uint32(first)
+  while ordinal < uint32(past):
+    # Merge the validated interval with the sorted retained vector exactly once.
+    if at < stop and uint32(data.pages[at].image.index) == ordinal:
+      if data.pages[at].image.access == PageAccess.ReadWrite:
+        pages.add(data.pages[at]) # Already-writable page storage stays shared and immutable.
+      else:
+        var page = data.pages[at].image # Retain inaccessible/read-only bytes when changing access.
+        page.access = PageAccess.ReadWrite
+        pages.add(PageData(image: page))
+      inc at
+    else:
+      # An absent page has implicit zero storage; materialization must preserve those bytes.
+      pages.add(PageData(image: PageImage(index: PageIndex(ordinal), access: PageAccess.ReadWrite,
+        bytes: default(array[4096, byte]))))
+    inc ordinal
+  for i in stop..<data.pages.len:
+    pages.add(data.pages[i]) # The exclusive endpoint and entire suffix remain untouched.
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+
 # Resolve a guest scalar byte cyclically without overflowing a 64-bit input address.
 func byteAddress(address: MemoryAddress, offset: int): uint32 =
   uint32(((uint64(address) and 0xffffffff'u64) + uint64(offset)) and 0xffffffff'u64)
@@ -252,10 +333,107 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
+# Validate a natural host range and all permissions before copying any payload or page storage.
+# Fault is a diagnostic page here; the concrete host function decides its guest panic/result mapping.
+proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
+    limit: MemoryByteLimit, writing: bool): MachineResult[bool] =
+  if memory.data == nil:
+    # Empty ranges still require a genuine immutable owner.
+    return MachineResult[bool](status: MachineError.InvalidOwner)
+  let size = uint64(length)
+  if size == 0:
+    # The empty natural interval is accessible for every pointer, even UINT64_MAX.
+    return MachineResult[bool](status: MachineError.None, completed: true)
+  let start = uint64(address)
+  if start >= 0x100000000'u64 or size > 0x100000000'u64 - start:
+    # Host ranges never wrap or silently discard high pointer bits.
+    return MachineResult[bool](status: MachineError.InvalidRange)
+  if size > uint64(limit) or size > uint64(high(int)):
+    # Bound permission scanning and later allocation before narrowing to a native sequence index.
+    return MachineResult[bool](status: MachineError.LimitExceeded)
+  let lastPage = (start + size - 1) div 4096
+  var page = start div 4096
+  let data = memory.data
+  while page <= lastPage:
+    # Page permissions suffice for every byte in this nonwrapping interval, including low memory.
+    let at = lowerBound(data, uint32(page))
+    if at == data.pages.len or uint32(data.pages[at].image.index) != uint32(page):
+      # Absent sparse pages are inaccessible; report the first failing physical page in range order.
+      return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
+    let access = data.pages[at].image.access
+    if access == PageAccess.Inaccessible or (writing and access != PageAccess.ReadWrite):
+      # Retained inaccessible bytes are not readable; read-only pages cannot receive host writes.
+      return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
+    inc page
+  MachineResult[bool](status: MachineError.None, completed: true)
+
+# Copy a complete readable host range into independent bytes; failure never exposes a readable prefix.
+proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
+    limit: MemoryByteLimit): MachineResult[seq[byte]] =
+  let checked = inspectRange(memory, address, length, limit, false)
+  if checked.error != MachineError.None:
+    # Preserve the exact local reason or first inaccessible page without publishing partial bytes.
+    return failure[seq[byte], bool](checked)
+  if memory.data == nil:
+    # Reestablish the validated non-nil owner for the compiler's local flow analysis.
+    return MachineResult[seq[byte]](status: MachineError.InvalidOwner)
+  let data = memory.data
+  let size = int(uint64(length))
+  var bytes = newSeq[byte](size)
+  var copied = 0
+  while copied < size:
+    # The preflight proved all addresses and native index conversions before allocation.
+    let physical = uint64(address) + uint64(copied)
+    let at = lowerBound(data, uint32(physical div 4096))
+    let offset = int(physical mod 4096)
+    let count = min(size - copied, 4096 - offset)
+    for i in 0..<count:
+      # Copy only the requested portion of each page; no mutable page reference escapes.
+      bytes[copied + i] = data.pages[at].image.bytes[offset + i]
+    copied += count
+  MachineResult[seq[byte]](status: MachineError.None, completed: bytes)
+
+# Atomically copy borrowed input into a new memory snapshot; unchanged pages remain shared immutable.
+# Input is borrowed only during this call. Failed writes never alter or expose a partial successor.
+proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
+    limit: MemoryByteLimit): MachineResult[Memory] =
+  let checked = inspectRange(memory, address, MemoryLength(uint64(input.len)), limit, true)
+  if checked.error != MachineError.None:
+    # Full permission and policy checks precede every cloned page and reference-vector allocation.
+    return failure[Memory, bool](checked)
+  if input.len == 0:
+    # Empty writes retain the immutable source without allocating a redundant snapshot.
+    return MachineResult[Memory](status: MachineError.None, completed: memory)
+  if memory.data == nil:
+    # The compiler requires this explicit non-nil selection after the helper's validation.
+    return MachineResult[Memory](status: MachineError.InvalidOwner)
+  let data = memory.data
+  var pages = newSeqOfCap[PageData](data.pages.len)
+  for page in data.pages:
+    # Share all old page owners initially; each touched page is cloned exactly once below.
+    pages.add(page)
+  var copied = 0
+  while copied < input.len:
+    # Nonwrapping contiguous ranges visit each affected page exactly once.
+    let physical = uint64(address) + uint64(copied)
+    let at = lowerBound(data, uint32(physical div 4096))
+    let offset = int(physical mod 4096)
+    let count = min(input.len - copied, 4096 - offset)
+    pages[at] = PageData(image: data.pages[at].image)
+    for i in 0..<count:
+      # Mutations target only the private clone; untouched bytes and permissions are preserved.
+      pages[at].image.bytes[offset + i] = input[copied + i]
+    copied += count
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+
 # Capture a validated entry location and copied CPU values; this is not standard JAM initialization.
 proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
   # Empty/default memory must be distinguished from a valid all-inaccessible memory snapshot.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
+  if uint64(info.gasDeficit) != 0:
+    # Negative balances are terminal state and cannot be captured as executable guest input.
+    return MachineResult[Machine](status: MachineError.InvalidGasState)
   # Reuse the base PR's instruction-boundary validation without re-decoding or copying its program.
   if instruction(program, info.pc).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
@@ -269,6 +447,10 @@ proc captureTerminalMachine*(program: Program, memory: Memory,
     info: MachineInfo): MachineResult[Machine] =
   # Even terminal snapshots require genuine program and memory owners.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
+  if uint64(info.gasDeficit) > 0x8000000000000000'u64 or
+      (uint64(info.gasDeficit) != 0 and uint64(info.gas) != 0):
+    # Canonical balances never carry simultaneous credit/debt or exceed the signed negative domain.
+    return MachineResult[Machine](status: MachineError.InvalidGasState)
   if codeLength(program).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
   MachineResult[Machine](status: MachineError.None,

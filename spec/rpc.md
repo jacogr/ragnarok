@@ -24,20 +24,23 @@ Send a WebSocket text message:
   target OS and architecture, and peer command role (`server`, `client`, or `mesh`).
 - Milliseconds since RPC startup, observed connected peer count, and occupied/reserved ARC
   allocator bytes (not process RSS). Mesh counts its logical remote once across two role engines.
-- `bestBlock`: the configured genesis descriptor when imported, otherwise null.
-- `chain` and `finalizedBlock`: null; no network identity or finalization view is published yet.
+- `bestBlock`: the selected head descriptor when available, initially configured genesis; otherwise null.
+- `chain`: null; no network identity is published. `finalizedBlock` is null until explicitly published
+  by a trusted finality source, then contains its block descriptor.
 - RPC transport, loopback address, port, available method names, subscription availability,
   maximum message bytes and batch size.
 
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
-unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
-and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
+unprefixed names. `parameters()`, `bestBlock()`, `finalizedBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
+remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request subscriptions
+are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
 
-Queries use an immutable genesis snapshot imported independently of telemetry metadata.
-Advancing heads, finalized queries and subscriptions still require block import and update events.
+Queries use immutable snapshots initialized independently of telemetry metadata. The dispatcher
+can publish a direct child and emit best-block updates, but the CLI remains genesis-only until a
+validated importer calls that boundary. Finalized queries require a finality source.
 
 ## `parameters()` and startup configuration
 
@@ -72,14 +75,25 @@ These are local resource ceilings, not protocol constants. Structural decoding d
 key validity, ticket eligibility, ring-root consistency or consensus validity. As with `val_count`,
 the value describes the frozen configured state and does not track later epochs.
 
-**Remaining zero placeholders:** `basic_piece_len` and
-`segment_piece_count` return **0 to mean “not yet derived.” These are not actual chain values.**
-This is an explicitly documented incomplete implementation of their JIP-2 meanings, selected by
-the maintainer; placeholders must not be used to size validator sets, produce tickets or encode data.
-The remaining derivations require additional state interpretation:
+`basic_piece_len` and `segment_piece_count` use the active C(8) population `v`, independently of
+optional pending-roster C(4). GP 0.8.0 `ecoriginalshards` selects the largest positive `d` satisfying
+`d <= v / 3 + 1` and `4104 mod (2 * d) == 0`. Startup caches `basic_piece_len = 2 * d`;
+`segment_piece_count = 4104 / basic_piece_len` is exact. The search is bounded by the already
+validated population (6–1,023 validators, in multiples of three), with at most 342 candidates.
+It performs no Reed–Solomon encoding or data-availability work.
 
-- Erasure-coding sizes must follow GP 0.8.0's validator-dependent original-shard count and fixed
-  4,104-byte segment, with the JIP-2 mapping specified when live-state support is added.
+This maps JIP-2’s historical `W_E`/`W_P` names to the pinned GP’s basic input piece size and segment
+parallelism. For 1,023 validators the values are 684 bytes and six pieces, matching the historical
+GP 0.6.2 definitions; for six validators they are six bytes and 684 pieces. Twelve validators use
+four original shards, not five: divisibility by 4,104 constrains the choice. Neither the core count
+nor the pending roster substitutes for active population. These frozen values do not track epochs
+or describe an independently retained work-report’s historical erasure profile.
+
+All four state-dependent parameter fields now have implemented derivations. **Zero still means
+“not derived”, never an actual chain value:** parameters-only configuration returns zero for all
+four; configured genesis without usable C(4) returns zero only for ticket attempts. This does not
+establish complete JIP-2 support, block import or consensus validity. Consumers must not use
+placeholder zeros to size validator sets, produce tickets or encode data.
 
 References: JIP-2 `parameters()`/Errors at the revision above; [JIP-4](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-4.md)
 `protocol_parameters`; GP 0.8.0 at `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix B
@@ -114,7 +128,8 @@ its existing metadata extraction contract.
 
 Both hash methods require exactly one canonical padded Base64 string decoding to 32 bytes.
 Malformed hashes or argument lists return `-32602`. `bestBlock` takes no arguments. Existing
-batch and notification behavior applies. Finalized queries and all subscriptions remain unsupported.
+batch and notification behavior applies. Explicit finalized queries and both subscription sources
+are described below.
 The active validator count also uses this retained state; other parameter gaps are described above.
 
 The genesis loader checks strict bounded JSON, exact 31-byte hex keys, hex values, duplicate decoded
@@ -247,7 +262,7 @@ The private list contains copied scalar IDs and retains no source aliases. It is
 existing 16,384-entry genesis map limit; duplicate map keys are rejected before discovery.
 Requests do not scan the map or decode metadata. Rendering shares the 65,535-byte reply budget:
 a list too large for its single/batch allowance returns error `0`, never a silently truncated list.
-The protocol has no pagination parameter, and subscriptions remain unavailable.
+The protocol has no pagination parameter, and service-list subscriptions remain unavailable.
 
 Native tests cover numeric versus serialized-key ordering, zero/uint32-max IDs, exact key shape,
 malformed records, orphan keys, empty lists, unknown blocks, immutable extraction, notifications,
@@ -317,7 +332,10 @@ check actual active populations of 6, 9 and 12 with four configured cores, retai
 batches and notifications. Ticket tests vary pending populations independently of the six active
 validators, exercise both schedule tags, exact division and rounding, malformed/trailing/truncated
 chapters and byte/epoch ceilings. Live genesis fixtures independently expect six active validators;
-the service fixture includes nine pending validators and expects 134 ticket attempts.
+the service fixture includes nine pending validators and expects 134 ticket attempts. Erasure tests
+cover minimum and maximum active populations, divisor-selection boundaries, source isolation,
+batches and notifications; both live genesis fixtures independently expect six-byte pieces and
+684 pieces per segment, even when their pending rosters differ.
 Native tests cover truncation, malformed hex,
 configuration syntax/duplicates, invalid basic settings, snapshot isolation, unavailable configuration,
 argument validation and batches. Compiler probes protect private configuration/result fields and
@@ -504,3 +522,414 @@ bytes exercise size and aggregate-batch refusal; their hashes were computed inde
 with Python Blake2b. Private-field rejection protects the retained header. Existing server
 retirement checks now also cover its header owner. Live WS checks retrieve the sealed header
 after chainspec mutation and independently hash its bytes to the advertised block identity.
+
+## Immutable chain-view boundary
+
+RPC selects blocks through `ChainView` (`src/chain/provider.nim`) rather than comparing each
+request with the configured genesis hash itself. `bestBlock`, exact `blockAt`, `parentOf` and
+bounded `reportAt` form the typed read interface. The initial `genesisView` adapter owns the
+existing genesis snapshot. Empty/invalid configuration supplies no block; unknown hashes never
+fall back to the best block, and raw parent-header bytes never invent a parent descriptor.
+
+The provider accepts nominal binary hashes; JSON/Base64 parsing and JIP-2 error mapping stay in
+RPC. Successful block and report results retain immutable owners after the originating view is
+released. Each dispatcher tick captures one `ClientInfo` read view, and a batch uses that same
+view throughout. Copies have acyclic ARC ownership; private provider storage cannot be mutated
+by consumers. Parameters remain the separately captured startup configuration.
+
+This is an internal boundary refactor with unchanged WS methods, result/error shapes, response
+budgets and genesis-only scope under the pinned JIP-2 references above. It does not introduce a
+live importer, persistent historical storage, finality or subscriptions.
+The bounded history and dispatcher handoff below extend this initial boundary.
+Native tests cover empty/invalid/unknown lookup, unavailable parents, report-budget propagation,
+retained-result lifetime and copied request/batch isolation. Existing native and live WS suites
+remain regression coverage; a compiler rejection probe protects private provider storage.
+
+## Bounded block-snapshot history
+
+`BlockSnapshot` is the immutable header/posterior-map owner previously named `Genesis`.
+`Genesis` and `GenesisResult` remain compatibility names; `BlockSnapshotResult` and
+`captureBlockSnapshot` support non-genesis capture with the same framing, roster/time checks,
+map completeness assumption and existing resource ceilings. Capture copies the parent hash,
+header prior-state root and complete 29-field protocol tuple alongside the existing metadata.
+No execution or consensus validity follows from structural capture.
+
+`advanceView(view, child)` returns a guarded success containing a **new** `ChainView`, or a
+failure reason without a replacement view. It requires an initialized view and successful child
+capture, rejects retained duplicate identities, and checks that the child names the selected head,
+has a strictly greater slot, commits to the head’s posterior state as its prior root, and uses the
+same complete protocol tuple. Slot gaps are allowed. This follows GP 0.8.0 revision
+`07f041dabd073f9018b418e9ee72e79dd2185401`, `text/header.tex` parent linkage, time-slot ordering
+and prior-state-root definitions. Tuple equality is this adapter’s policy, not a protocol-upgrade
+mechanism. It performs no wall-clock, signature, execution or fork-choice validation.
+
+A view retains at most eight snapshots, oldest to newest. Appending the ninth evicts exactly the
+oldest from the new view. Exact block lookup and parent resolution scan at most eight identities;
+a parent is available only while both the child and parent are retained. Historical state/header
+queries continue through the existing RPC paths; unknown or evicted hashes keep JIP-2 error 1.
+The selected head supplies `bestBlock` and the state-derived parameter fields. Retained-report
+lookup stays head-only, preserving its existing decoder-work bound rather than searching all eight
+maps. No persistent block or report archive is introduced.
+
+Each view owns a separate private sequence of immutable owner handles. Prior views, batch contexts
+and extracted results survive subsequent append/eviction. Eight is a **per-view** retention limit:
+callers that keep old views also keep their state, so future import integration must bound outstanding
+readers. Each snapshot retains the existing map/header/trie resource ceilings. The append API copies
+at most eight handles and does not duplicate maps, decode chapters or run consensus.
+
+The CLI still initializes a genesis-only view; no RPC method accepts arbitrary blocks. The
+dispatcher handoff below provides publication, while a future importer must supply execution-validated
+snapshots and manage head selection/events. Tests exercise two-block best/parent/state/header/raw-value reads,
+slot gaps, every rejection reason, full-tuple mismatch beyond core/epoch fields, eight-block capacity,
+eviction, unavailable evicted parents, and retained old-view/result/batch lifetime. Compiler probes
+protect the append discriminator and reject extracting a known failed result.
+
+## Dispatcher publication handoff
+
+`Server.publishBlock(child)` installs a new bounded history between dispatcher ticks. The caller
+must run it on the listener's dispatcher thread and supply an execution-validated snapshot; the
+method performs only the existing `advanceView` linkage/configuration checks described above.
+This is an internal application API, not a JSON-RPC method or a claim of block-import validation.
+No JIP-2 wire method or result shape changes.
+
+Default, disabled, closed and unseeded servers return `ViewAdvanceError.Uninitialized`. Other
+rejections forward the provider's reason and leave the selected view intact. Successful publication
+copies at most eight snapshot handles, replaces the server's chain view and preserves listener,
+connections, startup parameters and queued response bytes/offsets, except when the subscription
+queue overflow policy below disconnects a slow consumer. Each following tick captures
+the new view once for all its request contexts. Already serialized replies keep their original
+bytes; incomplete incoming requests use the view of the tick that completes their processing.
+There are no cross-thread calls, locks or callbacks. Best-block subscription delivery is described below.
+
+Native tests use a real ephemeral listener and connected nonblocking sockets carrying masked WS
+frames to check publication while a reply is partly written, subsequent batch queries on the same
+connection, historical lookup, old-context lifetime, all append rejection reasons, repeated
+publication, incomplete input across an update and default/disabled/unseeded/closed lifecycle behavior.
+The complete importer must still call this boundary after successful execution and head selection; CLI startup remains
+genesis-only until that integration exists. Finality and reorgs remain separate work.
+
+
+## Best-block WebSocket subscriptions
+
+`subscribeBestBlock()` and `unsubscribeBestBlock(id)` implement the pinned JIP-2 Protocol /
+Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
+Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
+`{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
+Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request methods are enabled; finalized subscriptions use explicitly published finality as described below.
+`ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
+The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
+`respond(text, info, session)` with its connection-owned `RpcSession`.
+
+Each connection owns at most eight subscriptions across supported families. IDs are increasing uint32 integers starting at
+one, never reused within that connection; exhaustion returns JIP-2 error 0 without wrapping.
+Unsubscribe accepts exactly one nonnegative integer lexeme within uint32 range, returns `true` if
+that connection owned the ID and `false` otherwise. Default/unconfigured chain views cannot be
+subscribed to and return error 0. Invalid positional arguments return `-32602`. A connection with
+configured genesis can subscribe immediately, even though the current CLI has no live importer.
+
+JIP-2 does not specify an initial update or unsubscribe result. This implementation queues the
+current head immediately after subscription, and uses the boolean cancellation result above.
+The subscription response (or whole batch response) is written before its initial update. Batch
+members execute in order, so subscribe followed by unsubscribe can cancel that initial update.
+Valid JSON-RPC notifications execute subscription/cancellation changes without replying; a
+notification-form subscribe identifies its subscription through the initial update. Invalid JSON,
+oversized batches and malformed envelopes cannot create subscriptions. Changes are committed only
+if their response fits the existing aggregate output budget.
+
+Successful `publishBlock` enqueues the new descriptor for every active subscriber. Rejected
+publication emits nothing. Each connection owns a FIFO of at most sixteen serialized updates and 65,535 queued bytes;
+these retain no state maps or views. The byte ceiling was added with statistics subscriptions below. One dispatcher tick still writes at most one frame per slot,
+servicing request replies before queued updates. Already queued transport bytes and partial-write
+offsets remain intact. Cancellation removes pending updates for that ID but cannot retract a frame
+already handed to the transport buffer. Closing/reusing a connection releases its subscriptions,
+notifications and ID namespace. Each notification frame gets the existing five-second write
+budget without extending an earlier partial-input deadline.
+
+Publication preflights queue capacity per connection. A consumer that cannot hold all its updates
+is disconnected immediately, releasing its FIFO; publication and other connections continue.
+No updates are silently coalesced or dropped on a surviving connection. Immediate socket closure
+also avoids splicing an error/close frame into a partly written response. Capacity exhaustion when
+creating an additional subscription instead returns error 0 and preserves existing subscriptions.
+These limits are local resource policies, not JIP-2 constants or claims of finality.
+
+Native tests cover exact envelopes, initial/current-head updates, per-connection ID isolation,
+monotonic reuse prevention, invalid arguments/envelopes, parse/batch atomicity, notification-form
+calls, cancellation ordering, eight-subscription and sixteen-update boundaries, overflow preserving
+queued events, ARC retirement and private-table rejection. Connected socket tests exercise reply-
+before-update ordering, live publication, rejected-publication silence, cancellation and slow-client
+disconnection while another client and the listener/head continue, plus partial-input deadline
+preservation during notification delivery. Live process tests cover configured and absent
+chain sources and cancellation over actual loopback WS. Full import, fork selection, finalized
+views and other subscription families remain separate bounded work.
+
+
+## Best-chain statistics subscriptions
+
+`subscribeStatistics(false)` and `unsubscribeStatistics(id)` implement the best-chain part of the
+pinned JIP-2 Methods / subscribeStatistics definition. Exactly one Boolean is required when
+subscribing. `true` selects explicitly published finality; without it, error 0 (`Finalized chain view unavailable`)
+is returned. The server never silently substitutes the best chain.
+The method names are advertised by `ragnarok_clientInfo` on stateful WS connections.
+
+The initial update follows the subscription response. Each successfully published head produces
+an update, including when its statistics bytes are unchanged. `params.result` is a Chain
+Subscription Update: `{"header_hash": "…", "slot": n, "value": "…"}`. The value is the exact padded
+Base64 C(13) encoding used by `statistics(hash)`, after the same roster/core/framing validation and
+32 KiB raw limit. No decoding or serialization rules change. A missing, malformed or oversized
+initial value returns error 0 without allocating an ID. Unsupported arguments return `-32602`.
+
+Subscriptions share one increasing ID sequence and the existing eight-entry table. Cancellation
+must use the corresponding method: `unsubscribeBestBlock` cannot cancel a statistics subscription,
+and vice versa. A wrong-family or unknown ID returns `false` without removing queued data. Normal
+cancellation returns `true` and removes pending messages for that ID; JSON-RPC notification-form
+calls and sequential batches retain their existing behavior.
+
+At publication, statistics are decoded at most once per connection, only if at least one statistics
+subscription exists. The validated serialized value is reused while constructing that connection's
+updates. Across the eight connections, this bounds work to eight statistics reads per publication,
+independent of the number of subscriptions. No state snapshot is retained by the notification FIFO.
+If statistics become unavailable/invalid/oversized, existing statistics subscriptions each receive
+one `params.error` string and are removed. Best-block subscriptions and the connection continue.
+Terminal removal is a local policy where JIP-2 does not specify recovery; a later unsubscribe
+returns `false`, and the already queued terminal notification remains deliverable.
+
+The FIFO now enforces both sixteen messages and **65,535 serialized notification bytes** per
+connection, separate from the transport's current frame. A message fits the existing WS frame
+limit. All messages and terminal removals for a publication are preflighted before committing
+any of them. Overflow disconnects only that consumer without undoing the chain publication.
+Creation refusal preserves the next ID and existing queue; dequeue and cancellation release their
+exact byte allowances. Together with the 32 KiB raw-value ceiling and eight-entry table, these
+bounds also cap temporary notification construction. Large values can therefore fill the byte
+budget before the count budget, even for a small number of subscribers.
+
+Native checks cover exact value-bearing envelopes, unchanged-value delivery, finalized refusal,
+malformed arguments/state, wrong-family cancellation, shared IDs, mixed best/statistics delivery,
+terminal-error isolation, notification-form calls and batches. A valid 2,000-service statistics
+fixture exercises byte overflow, atomic refusal, ID preservation and byte reclamation. ARC checks
+cover decoder and notification lifetime. Connected socket tests publish changed statistics and a
+missing-statistics child, checking the resulting update/error while preserving the connection.
+Live process checks exercise configured statistics, absent chapters, finalized refusal and
+cancellation. Importer integration, finalized views and the other subscription families remain separate work.
+
+
+## Best-chain service-data subscriptions
+
+`subscribeServiceData(id, false)` and `unsubscribeServiceData(subscription)` implement the best-chain
+part of pinned JIP-2 Methods / subscribeServiceData. Subscribe requires a uint32 service ID followed
+by exactly one Boolean. Invalid IDs/arguments return `-32602`; `true` selects the finalized view
+and returns error 0 only while that view is unavailable. An absent chain returns error 0, independently of service absence.
+Both methods are advertised on stateful WS connections and use the existing connection-local
+subscription IDs, table, FIFO, cancellation, notification-form call and batch rules.
+
+Each subscription retains one nominal `ServiceIndex`, not a map or account view. The initial and
+each published-head notification use method `subscribeServiceData` and a Chain Subscription Update
+in `params.result`: `{"header_hash": "…", "slot": n, "value": null-or-Blob}`. The value is exactly
+what `serviceData(hash, id)` returns: `null` for an absent C(255, id) account, or padded Base64 of the
+complete validated version-zero 89-byte metadata record. Validation and encoding remain those of
+the existing GP 0.8.0 account reader. No storage values, preimages or request histories are included.
+
+Absence is a successful update and keeps the subscription active, so clients can observe service
+creation, metadata changes, removal and later reappearance. Every published head yields an update,
+even if the value is unchanged. Malformed/unsupported/unreadable initial metadata returns error 0
+without consuming an ID. If a later head has such metadata, that subscription receives one terminal
+`params.error` string and is removed; subscriptions for other service IDs, best blocks or statistics
+continue. A malformed account is never reported as `null`.
+
+The subscriber's method family determines cancellation, so the best-block/statistics unsubscribe
+methods cannot remove a service-data subscription. Normal cancellation removes only that ID's
+pending updates. Terminal errors retain the documented delivery/removal policy. Publication
+preflights all messages and removals before committing, preserving the shared eight-subscription,
+sixteen-update and 65,535-byte FIFO ceilings. Each account subscription reads at most one fixed
+record per publication: at most eight account reads per connection and 64 across the server.
+No subscriber-controlled allocation follows from the service ID.
+
+Native coverage includes exact present/null envelopes, unavailable/finalized refusal, malformed
+arguments and accounts, maximum uint32 service IDs, independent selectors, wrong-family cancellation,
+notification-form calls, sequential batches, terminal-error isolation and ARC retirement. Connected
+socket tests publish account creation, balance change, removal and malformed metadata while keeping
+the same connection alive. Live process tests check present and absent accounts, unavailable chains,
+finalized refusal and cancellation. Importer integration and finalized tracking remain outstanding.
+
+
+## Best-chain service-value subscriptions
+
+`subscribeServiceValue(id, key, false)` and `unsubscribeServiceValue(subscription)` implement the
+best-chain part of pinned JIP-2 Methods / subscribeServiceValue. The required arguments are a uint32
+service ID, a canonical padded Base64 key and a Boolean. Empty keys are valid; keys larger than
+4,096 decoded bytes, malformed encodings, narrowing/float IDs and invalid argument shapes return
+`-32602` before allocating a subscription. Finalized tracking (`true`) without an explicitly published finalized head returns error 0, and the
+stateless adapter continues to reject subscription methods.
+
+Each connection-owned selector retains its nominal service ID and an immutable owned key of at
+most 4 KiB. Eight shared subscription slots bound retained key storage to 32 KiB per connection.
+The key is copied from decoded input, never borrowed from a request buffer or exposed mutably.
+Candidate session copies share immutable ARC key owners; cancellation, terminal removal and
+connection retirement release those handles. No state map/value owner is retained by a selector.
+
+The initial update and each published head use method `subscribeServiceValue`, with a Chain
+Subscription Update in `params.result`: `{"header_hash": "…", "slot": n, "value": null-or-Blob}`.
+Reads use the same service-account validation, maintained storage namespace/key derivation and
+32 KiB raw-value ceiling as `serviceValue(hash, id, key)`. Missing accounts/keys return `null` and
+remain subscribed. Present zero-length values return the empty Base64 string, never `null`.
+Orphaned storage entries do not establish service presence. Opaque bytes are preserved exactly.
+
+Malformed/unsupported account metadata, backend failures and oversized values reject initial
+subscription with error 0. The same failures on a later head emit one terminal `params.error`
+string and remove only the affected subscription. Existing shared ID sequencing, corresponding-
+method cancellation, batch/notification-form calls, update ordering and slow-client policy are
+unchanged. Both sixteen pending messages and 65,535 serialized pending bytes remain enforced
+before publication commits; key ownership is bounded separately as above.
+
+Each storage subscription performs one bounded key derivation plus an account/value read per
+publication. At most eight such operations occur per connection and 64 across the listener. Values
+are sized before copying/encoding, and publication retains no old views. Every published head
+emits an update, including unchanged values, matching the other implemented subscription families.
+
+Native coverage includes exact present/null/empty results, independent keys, caller-buffer isolation,
+canonical encoding, 4,096/4,097-byte key boundaries, 32 KiB value/queue limits, unavailable/finalized
+refusal, malformed accounts, wrong-family cancellation, batches and notification-form calls. ARC
+checks retire eight maximum-sized keys. Connected socket tests publish binary value creation, empty
+value replacement, deletion, orphaned storage and an oversized value; only the latter terminates
+the subscription, and the connection survives. Live process tests check present/missing values,
+finalized refusal and cancellation. Importer integration and finalized tracking remain outstanding.
+
+
+## Best-chain service-preimage subscriptions
+
+`subscribeServicePreimage(id, hash, false)` and `unsubscribeServicePreimage(subscription)` implement
+pinned JIP-2 Methods / subscribeServicePreimage. The three required arguments are an exact uint32
+service ID, a canonical padded Base64 hash of exactly 32 bytes, and a Boolean. Invalid argument
+shapes, hash widths/encodings and service IDs return `-32602` without consuming an ID. Finalized
+tracking (`true`) without an explicitly published finalized head returns error 0; the stateless adapter remains query-only.
+
+Each selector retains a fixed nominal `ServicePreimageHash`, with no decoded key or snapshot owner.
+The initial notification and every published best head carry the usual Chain Subscription Update
+under method `subscribeServicePreimage`. A missing account or preimage produces `value: null`;
+a valid empty preimage produces `value: ""`. Reads reuse `servicePreimage` account validation,
+namespace derivation, the 32 KiB raw-value ceiling and Blake2b-256 verification. Corrupt bytes cannot
+be exposed as a successful preimage or misreported as absence. Oversized values are rejected before
+copying/hashing. A later read failure emits one terminal error and removes only its subscription.
+
+The existing eight subscription slots, sixteen pending updates, 65,535 pending serialized bytes,
+monotonic IDs and family-specific cancellation apply unchanged. At most eight bounded preimage
+reads/hashes occur per connection per publication. No old state owner survives in a selector.
+
+Native coverage checks valid/empty/missing values, canonical hash and ID rejection, wrong-family
+cancellation, independent selectors, 32 KiB value/queue boundaries, batches and notification-form calls. Connected socket coverage
+publishes a valid preimage, deletes it and supplies corrupt bytes; the connection survives the
+terminal error. Live process checks cover configured and unavailable chains and cancellation.
+Finality and live importer integration remain outstanding.
+
+
+## Best-chain service-request subscriptions
+
+`subscribeServiceRequest(id, hash, len, false)` and `unsubscribeServiceRequest(subscription)`
+implement pinned JIP-2 Methods / subscribeServiceRequest. Required arguments are an exact uint32
+service ID, a canonical padded Base64 32-byte preimage hash, an exact uint32 length and a Boolean.
+Invalid shapes or selectors return `-32602` without consuming an ID. Finalized tracking (`true`) without an explicitly published finalized head
+returns error 0; the stateless adapter remains query-only.
+
+Each selector owns a fixed nominal hash and `RequestLength`; the length never sizes an allocation.
+Initial and per-head updates reuse the existing account validation and request namespace/decoder.
+Missing accounts or entries yield `null`; requested-but-unprovided entries yield `[]`. Provided,
+forgotten and requested-again histories yield one, two or three full uint32 slot numbers. Query and
+subscription serialization share one validated-history formatter. No state owner is retained.
+
+The existing GP 0.8.0 namespace ambiguity policy applies: marker-length entries can prove absence,
+but present colliding entries fail instead of being interpreted as histories. Malformed, unreadable
+or ambiguous initial state returns error 0. Later failures emit a terminal error for only that
+subscription. Cancellation, monotonic IDs, eight shared selectors, sixteen queued messages and the
+65,535-byte serialized queue ceiling remain unchanged. Each read copies at most thirteen history
+bytes after checking size; no preimage bytes are copied or hashed for request subscriptions.
+
+Native tests cover all four history states, absent accounts/entries, full-width timestamps,
+independent lengths, invalid selectors, malformed and ambiguous state, batches and cancellation.
+Connected socket tests publish each history state, deletion and invalid count while preserving the
+connection. Live WebSocket tests cover configured/unavailable chains and cancellation.
+All four service subscription families now support best-chain updates. Finality and live importer
+integration remain gaps; finalized subscriptions need an actual finalized-chain provider first.
+
+
+## Explicit finalized-head publication
+
+Pinned JIP-2 Methods / finalizedBlock returns a Block Descriptor for the latest finalized block.
+`finalizedBlock()` now reads an explicitly selected finalized snapshot; absent finality returns
+error 0. It never substitutes genesis or the best head. `ragnarok_clientInfo.finalizedBlock`
+reports the same descriptor, or `null` while unavailable. Positional arguments must be empty.
+
+`ChainView.finalizeView(hash)` and `Server.publishFinalized(hash)` are internal trusted-caller
+boundaries, not network mutation methods or consensus finality verification. The caller must
+certify finality before handing off on the dispatcher thread between ticks. Selection accepts only
+an exact known block on the retained linear chain, refuses decreasing slots and unknown/evicted
+hashes, and is idempotent for the current finalized hash. Closed listeners refuse publication.
+Failures preserve both best and finalized views. Genesis capture and best-head publication never
+implicitly establish or advance finality.
+
+A view retains at most eight rolling history snapshots plus one finalized snapshot. The additional
+owner keeps finalized state queries available after the rolling history evicts that block; selecting
+a newer finalized block releases the previous extra owner when no older reader retains it.
+`retainedCount` continues to count the rolling history only. Exact hash lookup can additionally
+resolve the finalized snapshot; this does not create an archive or make evicted intermediate
+ancestors available. No snapshot bytes are copied during finality selection.
+
+Native tests cover independent best/finalized heads, immutable previous readers, repeated selection,
+unknown hashes, regressions, window eviction, replacement and query batches/notifications. Socket
+coverage verifies dispatcher publication and the returned descriptor; compiler probes protect the
+new tagged result. Live startup checks confirm finality remains unavailable with and without genesis.
+No consensus engine calls this handoff yet. Finality-source integration remains outstanding; finalized subscriptions use this handoff as described below.
+
+
+## Finalized subscription routing
+
+Pinned JIP-2 Methods / subscribeFinalizedBlock and the finalized flags on statistics and service
+subscriptions now use the explicit finalized-head boundary. `subscribeFinalizedBlock()` and
+`unsubscribeFinalizedBlock(subscription)` have the same initial-descriptor and cancellation policy
+as the best-block pair. `subscribeStatistics(true)` and all four service subscription methods with
+`finalized: true` read the finalized snapshot for both initial values and subsequent updates.
+Without published finality, creation returns error 0 without allocating an ID; configured genesis
+alone still supplies no finality. The stateless adapter remains query-only.
+
+Each private selector records its publication source. `publishBlock` queues only best subscriptions;
+`publishFinalized` queues only finalized subscriptions. A repeated finalized hash is silent. Unknown
+or regressing finality changes neither state nor queues. When finality skips multiple blocks, one
+update describes the newly selected head; this does not replay intermediate history. Query and
+value-validation semantics, including null versus empty and terminal errors, are unchanged.
+
+Sources share eight active slots, monotonic IDs, sixteen pending messages and the 65,535-byte queue.
+Capacity is preflighted only for subscribers matching the event source. Publication overflow closes
+only that connection while preserving the selected head. Cancellation remains per family/ID;
+best-block cancellation cannot cancel a finalized-block subscription. No selector retains state.
+
+Native coverage verifies each family against a finalized snapshot older than the best head, both
+directions of stream isolation, shared queue limits and cancellation. Connected socket coverage
+checks finality events, silent repeat publication and slow-consumer disconnection without blocking
+finality advancement. Live startup checks retain explicit unavailability in the absence of finality.
+Consensus finality production and live block-import integration remain outstanding; this is RPC
+routing for caller-certified events, not a consensus implementation.
+
+
+## Connection subscription diagnostics
+
+The Ragnarok extension `ragnarok_clientInfo()` now reports enforced limits in its `rpc` object:
+`maxReplyBytes` (65,535), `maxBlobReplyBytes` (32,768), `maxSubscriptions` (8),
+`maxPendingUpdates` (16) and `maxPendingBytes` (65,535), alongside the existing message/batch limits.
+These are local resource ceilings, not JAM protocol constants or negotiated allowances.
+
+`rpc.subscriptionState` is a connection-local object with `active`, `best`, `finalized`,
+`pendingUpdates` and `pendingBytes`. Active counts describe occupied selectors, grouped by their
+publication source. Pending counts describe the shared notification FIFO; pending bytes are exact
+serialized notification JSON bytes, excluding WS framing, queued replies and any notification already
+moved into the transport output buffer. They are not total connection memory or network backlog.
+A terminal error can remain pending after its selector is removed, so pending updates need not
+correspond to active subscriptions. The stateless adapter reports `subscriptionState: null`.
+
+Diagnostics scan at most eight selectors and read existing FIFO counters. They do not drain updates,
+allocate subscription IDs, expose selectors/keys or inspect other connections. A batch observes
+previously committed operations in order, including earlier subscription creation/cancellation.
+Native tests cover mixed best/finalized usage, exact pending bytes, dequeue, cancellation, terminal
+errors, connection isolation and retirement. Live WS tests verify the advertised limits and exact
+FIFO bytes in a subscribe-plus-clientInfo batch before transport drains the initial update.
+
+Remaining JIP-2 work requires real synchronization progress, work-package lifecycle evidence,
+submission routing or DA retrieval. These diagnostics describe available RPC state without claiming
+those capabilities. Consensus finality and importer integration also remain outstanding.

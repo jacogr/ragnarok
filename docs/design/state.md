@@ -90,6 +90,10 @@ parent C(14)/C(15) from completed report admission, then computes dependency rem
 ready waves without writes. See [the queue contract](../../spec/accumulation-queue.md). Per-service
 operand preparation is next; PVM execution and full block execution remain later work.
 
+`src/state/accumulation_fetch.nim` connects a selected prepared input group to the PVM
+fetch boundary. It preserves preparation order and owns bounded encoded bytes without
+executing a service or certifying block provenance. See [the adapter contract](../../spec/pvm-fetch-invocation.md).
+
 ## Full and light node modes
 
 The client will support full and light operation selected by a command-line mode flag. Startup
