@@ -824,6 +824,68 @@ proc ejectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid state includes unrepresentable balance addition.
   hostSuccess[AccumulationDispatchError](response)
 
+# Query charges first, then validates full-width length before memory or exact current-self lookup.
+proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 643, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve the shared debt representation contract.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No row validation, input copy or namespace hashing before affordability.
+  let length = uint64(cpu.registers[8])
+  if length > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-8)
+    return hostSuccess[AccumulationDispatchError](response) # HUH preserves r8 and precedes memory/copy policy.
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # Only a complete hash authorizes lookup of the exact pair.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic
+    return hostSuccess[AccumulationDispatchError](
+        response) # Charged panic preserves both input registers and effects.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture ceilings do not become guest panic or NONE.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no hash.
+  var hash = default(array[32, byte])
+  for i in 0..<32:
+    hash[i] = captured.value[i] # Fixed copied hash cannot alias mutable guest memory.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let found = current.effectRequestHistory(ServicePreimageHash(hash), RequestLength(uint32(length)))
+  case found.error
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64))
+    response.registers[8] = RegisterValue(0)
+    return hostSuccess[AccumulationDispatchError](response) # NONE differs from a present empty history.
+  of AccumulationEffectError.None:
+    discard # Fixed tagged history grants only its selected timestamp fields.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Corrupt state has no fabricated guest shape.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # Failed namespace hashing cannot fabricate absence.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Only an initialized current owner can supply history.
+  let history = found.value
+  response.registers[8] = RegisterValue(0)
+  case history.state
+  of RequestState.Requested:
+    response.registers[7] = RegisterValue(0) # Present empty request returns two zero registers.
+  of RequestState.Available:
+    response.registers[7] = RegisterValue(1'u64 or (uint64(uint32(
+        history.since)) shl 32)) # E4 time occupies the high word.
+  of RequestState.Unavailable:
+    response.registers[7] = RegisterValue(2'u64 or (uint64(uint32(history.availableFrom)) shl 32))
+    response.registers[8] = RegisterValue(uint64(uint32(
+        history.unavailableFrom))) # Preserve the original second position.
+  of RequestState.Reavailable:
+    response.registers[7] = RegisterValue(3'u64 or (uint64(uint32(history.originalFrom)) shl 32))
+    response.registers[8] = RegisterValue(uint64(uint32(history.removedAt)) or
+      (uint64(uint32(history.restoredAt)) shl 32)) # Two complete E4 times fill one E8 register without arithmetic carry.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -868,9 +930,11 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     transferResponse(context, cpu, memory) # Conditional fee and atomic deferred transfer publication.
   of 22:
     ejectResponse(context, cpu, memory) # Reclaim an eligible other account with one atomic credit/deletion.
+  of 23:
+    queryResponse(context, cpu, memory) # Exact current-self request history packed into two registers.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 23..25:
+  of 1, 24..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
