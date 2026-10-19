@@ -53,14 +53,14 @@ proc hasToken(value, expected: string): bool =
     if token.strip().toLowerAscii() == expected: return true
   false
 
-proc upgrade*(header: string): string =
-  ## Accept only a complete RFC 6455 version-13 upgrade at /, with no body or browser Origin.
+proc upgrade*(header: string, uiPort: uint16 = 0): string =
+  ## Accept only a complete RFC 6455 version-13 upgrade at /, with no body and an optional exact UI browser Origin.
   ## Empty output means invalid. SHA-1 is used solely for RFC 6455's public handshake challenge.
   result = ""
   if header.len > MaxHeader or not header.endsWith("\r\n\r\n"): return
   let lines = header.split("\r\n")
   if lines.len < 3 or lines[0] != "GET / HTTP/1.1": return
-  var key, connection, protocol, version, host = ""
+  var key, connection, protocol, version, host, origin = ""
   var seen: seq[string] = @[]
   for i in 1..<lines.len - 2: # Reject ambiguous duplicated headers and obsolete line folding.
     let line = lines[i]
@@ -81,7 +81,13 @@ proc upgrade*(header: string): string =
     of "upgrade": protocol = value # Only WebSocket is negotiated.
     of "sec-websocket-version": version = value # No legacy framing dialect.
     of "host": host = value # HTTP/1.1 requires a host.
-    of "origin", "content-length", "transfer-encoding": return # Local tooling only; no request body.
+    of "origin":
+      # RFC 6455 uses an Origin check rather than an HTTP CORS preflight for WebSocket access.
+      let suffix = if uiPort == 80: "" else: ":" & $uiPort # Browsers omit the default HTTP port.
+      if uiPort == 0 or value notin ["http://127.0.0.1" & suffix,
+          "http://localhost" & suffix]: return
+      origin = value
+    of "content-length", "transfer-encoding": return # RPC upgrades never carry a request body.
     else: discard # Unknown extension/subprotocol offers are not negotiated.
   if host.len == 0 or version != "13" or not hasToken(connection, "upgrade") or
       protocol.toLowerAscii() != "websocket" or key.len != 24: return
@@ -93,7 +99,10 @@ proc upgrade*(header: string): string =
   hash.update(key & "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
   let digest = hash.finalize()
   result = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " &
-      base64.encode(digest) & "\r\n\r\n"
+      base64.encode(digest) & "\r\n"
+  if origin.len > 0: # Reflect only an exact allowlisted UI origin, never a wildcard.
+    result.add("Access-Control-Allow-Origin: " & origin & "\r\nVary: Origin\r\n")
+  result.add("\r\n")
 
 # Parse outcome carries bytes only on success; incomplete and invalid frames expose no progress.
 type

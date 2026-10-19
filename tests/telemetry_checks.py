@@ -148,7 +148,7 @@ def pending_reconnect(binary, certificates, chain, folder):
               seconds=5, thread_limits={'server': 1})
         client = subprocess.Popen([str(binary), 'client', str(gate.getsockname()[1]),
             str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'), str(certificates/'a.pub'),
-            'jamnp-s/1/245becfe', '30000', 'clean', '--chain', str(chain), '--telemetry', endpoint],
+            'jamnp-s/1/245becfe', '30000', 'clean', '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint],
             stdout=logs[1], stderr=subprocess.STDOUT)
         owners.callback(stop, client)
         first, _ = collector.accept()
@@ -237,7 +237,7 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False, startup_d
         endpoint = f'{host}:{server.getsockname()[1]}'
         args = [str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
                 str(certificates/'a.key.pem'), str(certificates/'b.pub'), alpn, '7000',
-                '--chain', str(chain), '--telemetry', endpoint]
+                '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint]
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             connection, _ = server.accept()
@@ -258,7 +258,7 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False, startup_d
                     time.sleep(startup_delay)
                 client = subprocess.run([str(binary), 'client', str(port),
                     str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
-                    str(certificates/'a.pub'), alpn, '3000', 'clean', '--telemetry', endpoint,
+                    str(certificates/'a.pub'), alpn, '3000', 'clean', '--with-telemetry', '--telemetry', endpoint,
                     '--chain', str(chain)], capture_output=True, timeout=6)
                 assert client.returncode == 0, (client.stdout, client.stderr)
                 outgoing, _ = server.accept()
@@ -304,7 +304,7 @@ def dial_failure(binary, certificates, chain, folder):
             endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
             process = subprocess.Popen([str(binary), 'client', str(silent.getsockname()[1]),
                 str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'), str(certificates/'a.pub'),
-                'jamnp-s/1/245becfe', '500', '--telemetry', endpoint, '--chain', str(chain)],
+                'jamnp-s/1/245becfe', '500', '--with-telemetry', '--telemetry', endpoint, '--chain', str(chain)],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 connection, _ = collector.accept()
@@ -341,7 +341,7 @@ def peer_loss(binary, certificates, chain, folder):
             endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
             client = subprocess.Popen([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
                 str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-                '6000', 'idle', '--chain', str(chain), '--telemetry', endpoint],
+                '6000', 'idle', '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 connection, _ = collector.accept()
@@ -386,7 +386,7 @@ def incoming_failure(binary, certificates, chain, folder):
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
         server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
             str(certificates/'a.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe', '1500',
-            '--chain', str(chain), '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             connection, _ = collector.accept()
             with connection:
@@ -436,7 +436,7 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup
         output = server_log.open('w'); handles.append(output)
         server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
             str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000',
-            'overload', '--chain', str(chain), '--telemetry', endpoint], stdout=output, stderr=subprocess.STDOUT,
+            'overload', '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint], stdout=output, stderr=subprocess.STDOUT,
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop_gate)})
         try:
             connection, _ = collector.accept()
@@ -615,7 +615,7 @@ def mesh_shutdown(binary, certificates, chain, folder, silent=False):
                            str(certificates/f'{role}.pub'), str(certificates/f'{other}.pub'),
                            'jamnp-s/1/245becfe', str(gate)]
                 if role == 'a':
-                    command += ['--chain', str(chain), '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}']
+                    command += ['--chain', str(chain), '--with-telemetry', '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}']
                 processes[role] = subprocess.Popen(command, stdout=handles[role], stderr=subprocess.STDOUT,
                     env={**os.environ, 'RAGNAROK_MESH_ROUNDS': '1', 'RAGNAROK_MESH_FALLBACK': '0',
                          'RAGNAROK_MESH_DISRUPT': '0'})
@@ -670,7 +670,7 @@ def capacity_refusal(binary, certificates, chain, folder):
             output = server_log.open('w'); handles.append(output)
             server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
                 str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000', 'overload',
-                '--chain', str(chain), '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}'],
+                '--chain', str(chain), '--with-telemetry', '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}'],
                 env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(gate)}, stdout=output, stderr=subprocess.STDOUT)
             children.append(server)
             # Observe native admission counters before creating the excess connection.

@@ -8,6 +8,7 @@ parameters and service queries, shared telemetry startup, immutable configuratio
 """
 import base64
 import hashlib
+import http.client
 import json
 import os
 import socket
@@ -53,12 +54,14 @@ def receive(connection):
 
 
 # Upgrade a local socket and independently verify the server's challenge response.
-def connect(port):
+def connect(port, origin=None):
     connection = socket.create_connection(('127.0.0.1', port), timeout=3)
     connection.settimeout(3)
     key = base64.b64encode(b'0123456789abcdef').decode()
     header = (f'GET / HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUpgrade: websocket\r\n'
               f'Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n')
+    if origin is not None:
+        header = header[:-2] + f'Origin: {origin}\r\n\r\n'
     connection.sendall(header.encode())
     response = b''
     while not response.endswith(b'\r\n\r\n'):
@@ -82,7 +85,7 @@ def ready(process, log):
 
 
 # Exercise RPC on a real retained peer while an independent QUIC client completes application work.
-def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False):
+def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False):
     folder.mkdir(parents=True, exist_ok=True)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
@@ -92,26 +95,86 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('127.0.0.1', 0))
         peer_port = reservation.getsockname()[1]
+    with socket.socket() as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        ui_port = reservation.getsockname()[1]
+    static = folder/'static'
+    static.mkdir(exist_ok=True)
+    (static/'index.html').write_bytes(b'<h1>UI</h1>')
+    (static/'app.js').write_bytes(b'const ready = true;')
+    (static/'large.bin').write_bytes(bytes(range(256))*1024)
+    (static/'escape').unlink(missing_ok=True)
+    (static/'escape').symlink_to('../peer.log')
     log = folder/'peer.log'
     command = [str(binary), 'server', str(peer_port), str(certificates/'a.cert.pem'),
                str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '30000', 'service',
-               '--rpc-port', str(rpc_port)]
+               '--with-rpc', '--rpc-port', str(rpc_port)]
+    if ui:
+        command.remove('--with-rpc') # Prove UI alone enables the separate RPC listener.
+        command += ['--with-ui', '--ui-dir', str(static), '--ui-port', str(ui_port)]
     if chain is not None:
         command += ['--chain', str(chain)] # The same CLI supports RPC with and without telemetry.
     if telemetry:
-        command += ['--telemetry', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
+        command += ['--with-telemetry', '--telemetry', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
     expected_genesis = None
     if chain is not None and 'genesis_state' in json.loads(chain.read_text()):
         # This harness uses the frozen synthetic genesis for every configured chain view.
         expected_file = 'rpc-services-result.json' if service_queries else 'rpc-genesis-result.json'
         expected_genesis = json.loads((Path(__file__).parent/'fixtures'/expected_file).read_text())
+    if ui:
+        # Configuration alone must leave all services disabled, even with unusable settings.
+        disabled_stop = folder/'disabled-stop'
+        disabled_stop.unlink(missing_ok=True)
+        disabled_log = folder/'disabled.log'
+        with socket.socket() as occupied, disabled_log.open('wb') as output:
+            occupied.bind(('127.0.0.1', 0))
+            occupied.listen()
+            port = str(occupied.getsockname()[1])
+            inactive = command[:9] + ['--rpc-port', port, '--ui-port', port,
+                                      '--ui-dir', str(folder/'missing'), '--telemetry', 'invalid']
+            child = subprocess.Popen(inactive,
+                                     env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(disabled_stop)},
+                                     stdout=output, stderr=subprocess.STDOUT)
+            try:
+                ready(child, disabled_log)
+                disabled_stop.touch()
+                # The proof service deliberately fails an empty workload after a successful startup.
+                assert child.wait(timeout=5) == 2, disabled_log.read_text()
+                assert 'SERVICE_DONE 0 0 0' in disabled_log.read_text()
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=5)
     with log.open('wb') as output:
         process = subprocess.Popen(command, env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)},
                                    stdout=output, stderr=subprocess.STDOUT)
         sockets = []
         try:
             ready(process, log)
-            with connect(rpc_port) as connection:
+            if ui:
+                # Static HTTP uses a separate socket and streams beyond its fixed chunk size.
+                for method, target, status, body in [
+                        ('GET', '/', 200, b'<h1>UI</h1>'),
+                        ('HEAD', '/', 200, b''),
+                        ('GET', '/app.js?v=1', 200, b'const ready = true;'),
+                        ('GET', '/large.bin', 200, bytes(range(256))*1024),
+                        ('GET', '/missing', 404, b''), ('GET', '/escape', 404, b''),
+                        ('GET', '/%2e%2e/peer.log', 400, b''),
+                        ('GET', '/%00', 400, b''), ('POST', '/', 405, b'')]:
+                    client = http.client.HTTPConnection('127.0.0.1', ui_port, timeout=3)
+                    try:
+                        client.request(method, target)
+                        response = client.getresponse()
+                        received = response.read()
+                        assert response.status == status and received == body, (method, target, response.status, len(received), status, len(body))
+                        assert response.getheader('Connection') == 'close'
+                        if method == 'HEAD':
+                            assert response.getheader('Content-Length') == '11'
+                        if target.startswith('/app.js'):
+                            assert response.getheader('Content-Type') == 'text/javascript; charset=utf-8'
+                    finally:
+                        client.close()
+            with connect(rpc_port, f'http://127.0.0.1:{ui_port}' if ui else None) as connection:
                 request = dict(jsonrpc='2.0', method='ragnarok_clientInfo', id='client')
                 text = json.dumps(request)
                 send(connection, text[:20], final=False)
@@ -340,7 +403,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 process.kill()
             process.wait(timeout=5)
     return dict(passed=True, transport='websocket', quic_progress=True, bounded_admission=True,
-                clean_shutdown=True, log=str(log))
+                clean_shutdown=True, static_ui=ui, ui_implies_rpc=ui, log=str(log))
 
 
 # Query frozen service fixtures and prove that large batches remain bounded without losing response IDs.
@@ -436,7 +499,7 @@ def parameter_checks(binary, certificates, folder):
     # The preceding run changed its source file to {}; startup must now reject that incomplete configuration.
     arguments = [str(binary), 'server', '19899', str(certificates/'a.cert.pem'),
                  str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '100', 'valid',
-                 '--rpc-port', str(rpc_port), '--chain', str(chain)]
+                 '--with-rpc', '--rpc-port', str(rpc_port), '--chain', str(chain)]
     failed = subprocess.run(arguments, capture_output=True, timeout=5)
     assert failed.returncode != 0 and b'Invalid RPC listener or --chain parameters' in failed.stderr
     # Supplied genesis fields must form a complete valid pair before a listener can open.

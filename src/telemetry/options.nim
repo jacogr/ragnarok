@@ -13,55 +13,85 @@ import ../rpc/[server, protocol]
 import ../chain/[parameters, genesis]
 export wire, client
 
-# Locate the first reserved option; all configuration pairs must follow positional peer arguments.
+const
+  Switches = ["--with-ui", "--with-rpc", "--with-telemetry"]
+  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--ui-dir"]
+
+# Locate reserved controls without consuming positional peer arguments.
 proc optionStart(): int =
-  for i in 1..paramCount():
-    if paramStr(i) in ["--telemetry", "--chain", "--rpc-port"]: return i # Reserve both names even in malformed input.
+  for i in 1..paramCount(): # Both switches and pairs start the trailing configuration region.
+    if paramStr(i) in Switches or paramStr(i) in Values: return i
   paramCount() + 1
 
-proc validTelemetryOption*(): bool =
-  ## Validate unique trailing pairs; telemetry still requires an explicit chain, RPC is independently optional.
-  let first = optionStart()
-  if (paramCount() - first + 1) mod 2 != 0: return false # Every option requires one value.
-  var seen: seq[string] = @[]
-  var i = first
-  while i <= paramCount(): # Preserve positional arguments and reject unknown or duplicate options.
-    let name = paramStr(i)
-    let value = paramStr(i + 1)
-    if name notin ["--telemetry", "--chain", "--rpc-port"] or name in seen or
-        value.len == 0 or value.startsWith("--"): return false
-    seen.add(name)
-    if name == "--rpc-port": # Bound decimal parsing before narrowing to the native port type.
-      if value.len > 5: return false
-      var port = 0
-      for c in value:
-        if c notin {'0'..'9'}: return false # No signs, spaces or numeric aliases.
-        port = port * 10 + ord(c) - ord('0')
-      if port notin 1..65535: return false
-    i += 2
-  # Telemetry needs a chain; RPC may use the same chain independently or run diagnostics without one.
-  ("--telemetry" notin seen or "--chain" in seen) and
-    ("--chain" notin seen or "--telemetry" in seen or "--rpc-port" in seen)
-
-# Read a validated option; absent optional features have no implicit configuration.
+# Only validated trailing controls reach the startup adapters.
 proc optionValue(name: string): string =
   var i = optionStart()
-  while i < paramCount(): # Only validated pairs are used by startup callers.
-    if paramStr(i) == name: return paramStr(i + 1)
-    i += 2
+  while i <= paramCount(): # Switches consume one argument; configuration pairs consume two.
+    if paramStr(i) == name:
+      if name in Switches: return "true"
+      if i < paramCount(): return paramStr(i + 1)
+      return ""
+    i += (if paramStr(i) in Switches: 1 else: 2)
   ""
 
+proc uiRequested*(): bool =
+  ## UI activation also activates RPC; configuration alone never starts either listener.
+  optionValue("--with-ui").len > 0
+
 proc requested*(): bool =
-  ## Telemetry remains independent of RPC, including its early clock/syscall shortcuts.
-  optionValue("--telemetry").len > 0
+  ## Telemetry requires an explicit enable switch, endpoint and chain configuration.
+  optionValue("--with-telemetry").len > 0
+
+# Decode decimal ports after CLI validation, using the documented service default when absent.
+proc configuredPort(name: string, fallback: uint16): uint16 =
+  let value = optionValue(name)
+  if value.len == 0: return fallback
+  var port = 0
+  for c in value: port = port * 10 + ord(c) - ord('0') # Validation proves the range before narrowing.
+  uint16(port)
 
 proc rpcPort*(): uint16 =
-  ## Zero means disabled; syntax validation proves any present decimal value fits uint16.
-  let value = optionValue("--rpc-port")
-  if value.len == 0: return 0 # Default peer invocations do not listen for RPC.
-  var port = 0
-  for c in value: port = port * 10 + ord(c) - ord('0') # Startup already validated every digit and the range.
-  uint16(port)
+  ## Zero disables RPC; UI implies RPC with the same configurable port.
+  if not uiRequested() and optionValue("--with-rpc").len == 0: return 0
+  configuredPort("--rpc-port", 19800)
+
+proc uiPort*(): uint16 =
+  ## Zero disables UI; the default enabled listener uses port 8888.
+  if not uiRequested(): return 0
+  configuredPort("--ui-port", 8888)
+
+proc uiDirectory*(): string =
+  ## Resolve the static root at startup; relative paths are relative to the process directory.
+  let value = optionValue("--ui-dir")
+  if value.len == 0: "ui" else: value
+
+proc validTelemetryOption*(): bool =
+  ## Validate unique trailing switches/pairs, decimal ports and enabled-service dependencies.
+  var seen: seq[string] = @[]
+  var i = optionStart()
+  while i <= paramCount(): # Reject duplicates, unknown controls and missing pair values before use.
+    let name = paramStr(i)
+    if name in seen: return false
+    seen.add(name)
+    if name in Switches:
+      inc i # Enable switches have no value.
+    elif name in Values:
+      if i == paramCount(): return false
+      let value = paramStr(i + 1)
+      if value.len == 0 or value.startsWith("--"): return false
+      if name in ["--rpc-port", "--ui-port"]: # Prove the bounded decimal conversion before narrowing.
+        if value.len > 5: return false
+        var port = 0
+        for c in value:
+          if c notin {'0'..'9'}: return false
+          port = port * 10 + ord(c) - ord('0')
+        if port notin 1..65535: return false
+      i += 2
+    else: return false # Unknown trailing configuration is never positional fixture input.
+  if requested() and ("--telemetry" notin seen or "--chain" notin seen): return false
+  if "--chain" in seen and not requested() and rpcPort() == 0: return false
+  if uiRequested() and uiPort() == rpcPort(): return false # Independent listeners need distinct ports.
+  true
 
 proc peerParamCount*(): int =
   ## Keep the existing positional command parsing independent of trailing option order.
@@ -94,7 +124,7 @@ proc setupRpc*(rpc: var Server, role: string, text: string): bool =
     if not parameters.ok: return false # Fail startup rather than advertise a partial/default parameter set.
     genesis = configuredGenesis(text, parameters.value)
     if genesis.error == GenesisError.Invalid: return false # Reject an incomplete or malformed explicit genesis.
-  rpc.start(rpcPort(), role, parameters, genesis)
+  rpc.start(rpcPort(), role, parameters, genesis, uiPort())
 
 proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool,
     text: string): bool {.raises.} =

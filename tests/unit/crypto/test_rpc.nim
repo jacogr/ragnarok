@@ -294,6 +294,26 @@ let large = decodeFrame(masked(repeat("x", MaxMessage)))
 assert large.status == complete and large.payload.len == MaxMessage
 assert decodeFrame(masked(repeat("x", MaxMessage + 1))).status == invalid
 
+# Only exact origins of the enabled UI may establish browser WebSocket access.
+for origin in ["http://localhost:8888", "http://127.0.0.1:8888"]:
+  let browser = upgradeHeader.replace("Host: localhost", "Host: localhost\r\nOrigin: " & origin)
+  assert upgrade(browser).len == 0
+  assert "Access-Control-Allow-Origin: " & origin & "\r\n" in upgrade(browser, 8888)
+  assert upgrade(browser, 8889).len == 0
+for origin in ["null", "https://localhost:8888", "http://localhost:8888.evil", "http://evil:8888",
+    "http://127.0.0.1:8888/", "http://localhost:8888 http://evil", ""]:
+  assert upgrade(upgradeHeader.replace("Host: localhost", "Host: localhost\r\nOrigin: " & origin),
+      8888).len == 0
+assert upgrade(upgradeHeader.replace("Host: localhost",
+    "Host: localhost\r\nOrigin: http://localhost:8888\r\nOrigin: http://localhost:8888"),
+    8888).len == 0
+
+# HTTP port 80 is serialized without a port in browser origins.
+for origin in ["http://localhost", "http://127.0.0.1"]:
+  let browser = upgradeHeader.replace("Host: localhost", "Host: localhost\r\nOrigin: " & origin)
+  assert upgrade(browser, 80).len > 0
+  assert upgrade(browser, 8888).len == 0
+
 # Direct session processing exercises fragmentation and control interleaving without nondeterministic timing.
 var slot = default(Connection)
 slot.upgraded = true

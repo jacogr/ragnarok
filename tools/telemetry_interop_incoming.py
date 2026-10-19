@@ -91,7 +91,7 @@ def run_incoming(binary, collector, report, folder, rejected):
         pin = certificates/'b.pub' if rejected else '-'
         server = session.launch('server', [binary, 'server', udp_port, certificates/'a.cert.pem',
             certificates/'a.key.pem', pin, 'jamnp-s/1/245becfe', '60000', 'service',
-            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--telemetry', f'127.0.0.1:{relay.port}'],
+            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry', f'127.0.0.1:{relay.port}'],
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(shutdown)})
         session.ready(server, 'server')
         deadline = time.monotonic() + 45

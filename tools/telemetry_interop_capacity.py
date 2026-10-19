@@ -77,7 +77,7 @@ def run_capacity(binary, collector, report, folder):
         stream = session.subscribe(messages)
         server = session.launch('server', [binary, 'server', udp_port, certificates/'a.cert.pem',
             certificates/'a.key.pem', '-', 'jamnp-s/1/245becfe', '60000', 'overload',
-            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--telemetry', f'127.0.0.1:{telemetry_port}'],
+            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry', f'127.0.0.1:{telemetry_port}'],
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(shutdown)})
         session.ready(server, 'server')
         deadline = time.monotonic() + 45

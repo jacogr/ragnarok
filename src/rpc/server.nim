@@ -27,7 +27,7 @@ type
     fd: cint
     connections: array[MaxConnections, Connection]
     started: int64
-    port: uint16
+    port, uiPort: uint16
     role: string
     chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
     parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
@@ -106,7 +106,8 @@ proc nonblocking(fd: cint): bool =
   true
 
 proc start*(server: var Server, port: uint16, role: string,
-    parameters = unavailableParameters(), genesis = unavailableGenesis()): bool =
+    parameters = unavailableParameters(), genesis = unavailableGenesis(),
+        uiPort: uint16 = 0): bool =
   ## Bind loopback only; port zero disables RPC. Startup failure is reported to the peer CLI.
   if server.opened:
     # A second start cannot leak or replace a live listener.
@@ -138,6 +139,7 @@ proc start*(server: var Server, port: uint16, role: string,
     return false
   server.started = getMonoTime().ticks div 1_000_000
   server.port = port
+  server.uiPort = uiPort
   server.role = role
   server.parameters = parameters
   server.chain = genesisView(genesis)
@@ -190,7 +192,7 @@ proc reject(slot: var Connection, code: int, now: int64) =
   slot.deadline = now + 5000
 
 # Process at most one frame per slot/turn, including control frames interleaved with fragmented text.
-proc process(slot: var Connection, info: ClientInfo, now: int64) =
+proc process(slot: var Connection, info: ClientInfo, now: int64, uiPort: uint16 = 0) =
   if not slot.upgraded: # The only HTTP operation is an explicit WebSocket upgrade, never RPC over POST.
     let ending = slot.input.find("\r\n\r\n")
     if ending < 0:
@@ -198,7 +200,7 @@ proc process(slot: var Connection, info: ClientInfo, now: int64) =
         # Incomplete headers cannot grow without bound.
         slot.close()
       return
-    let response = upgrade(slot.input[0..<ending + 4])
+    let response = upgrade(slot.input[0..<ending + 4], uiPort)
     if response.len == 0:
       # Invalid upgrades close without dispatching their body.
       slot.close()
@@ -326,7 +328,7 @@ proc tick*(server: var Server, peers: uint32) =
             # Copy only the initialized native prefix.
             slot.input.add(bytes[i])
       if slot.opened and slot.output.len == 0:
-        slot.process(info, now)
+        slot.process(info, now, server.uiPort)
     if slot.opened and not slot.closing and slot.output.len == 0:
       let update = slot.session.nextUpdate()
       if update.len > 0:

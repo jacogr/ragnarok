@@ -34,14 +34,14 @@ def controls(binary, fixtures):
             str(fixtures/'a.pub'), 'jamnp-s/1/00000000', '900']
     cases = [('arity', []), ('role', ['other', *base[1:]]),
              ('telemetry-missing-endpoint', ['server', *base[1:], '--telemetry']),
-             ('telemetry-nontrailing', ['--telemetry', '127.0.0.1:9000', *base]),
-             ('telemetry-duplicate', [*base, '--telemetry', '127.0.0.1:9000', '--telemetry', '127.0.0.1:9001']),
-             ('chain-missing-value', [*base, '--telemetry', '127.0.0.1:9000', '--chain']),
-             ('chain-missing-option', [*base, '--telemetry', '127.0.0.1:9000']),
+             ('telemetry-nontrailing', ['--with-telemetry', '--telemetry', '127.0.0.1:9000', *base]),
+             ('telemetry-duplicate', [*base, '--with-telemetry', '--telemetry', '127.0.0.1:9000', '--telemetry', '127.0.0.1:9001']),
+             ('chain-missing-value', [*base, '--with-telemetry', '--telemetry', '127.0.0.1:9000', '--chain']),
+             ('chain-missing-option', [*base, '--with-telemetry', '--telemetry', '127.0.0.1:9000']),
              ('chain-without-telemetry', [*base, '--chain', 'unused.json']),
              ('chain-duplicate', [*base, '--chain', 'a.json', '--chain', 'b.json']),
-             ('chain-option-as-value', [*base, '--chain', '--chain', '--telemetry', '127.0.0.1:9000']),
-             ('telemetry-selftest', ['--selftest', '--telemetry', '127.0.0.1:9000'])]
+             ('chain-option-as-value', [*base, '--chain', '--chain', '--with-telemetry', '--telemetry', '127.0.0.1:9000']),
+             ('telemetry-selftest', ['--selftest', '--with-telemetry', '--telemetry', '127.0.0.1:9000'])]
     # Host/native port narrowing and deadline validation must precede opening any endpoint.
     for text in ('0', '-1', '65536', 'not-a-port'):
         args = base.copy()
@@ -53,10 +53,19 @@ def controls(binary, fixtures):
         cases.append(('timeout-'+text, args))
     # RPC is independently optional but its port and command scope remain strict.
     for text in ('0', '-1', '65536', 'no', ''):
-        cases.append(('rpc-port-'+text, [*base, '--rpc-port', text]))
+        cases.append(('rpc-port-'+text, [*base, '--with-rpc', '--rpc-port', text]))
     cases += [('rpc-missing', [*base, '--rpc-port']),
-              ('rpc-duplicate', [*base, '--rpc-port', '19800', '--rpc-port', '19801']),
-              ('rpc-selftest', ['--selftest', '--rpc-port', '19800'])]
+              ('rpc-duplicate', [*base, '--with-rpc', '--rpc-port', '19800', '--rpc-port', '19801']),
+              ('rpc-selftest', ['--selftest', '--with-rpc', '--rpc-port', '19800'])]
+    # UI configuration uses the same strict trailing parser and distinct listener ports.
+    for text in ('0', '-1', '65536', 'no', ''):
+        cases.append(('ui-port-'+text, [*base, '--with-ui', '--ui-port', text]))
+    cases += [('ui-missing-port', [*base, '--with-ui', '--ui-port']),
+              ('ui-duplicate', [*base, '--with-ui', '--with-ui']),
+              ('ui-port-collision', [*base, '--with-ui', '--ui-port', '19800']),
+              ('ui-selftest', ['--selftest', '--with-ui']),
+              ('ui-dir-missing', [*base, '--with-ui', '--ui-dir']),
+              ('telemetry-enable-missing-config', [*base, '--with-telemetry'])]
     rows = []
     for name, args in cases:
         result = subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=4)

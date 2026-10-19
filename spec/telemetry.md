@@ -7,7 +7,7 @@ This is a JIP-3 version-1 subset, not a claim of full telemetry or validator fun
 
 ## Run
 
-Append `--telemetry HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
+Append `--with-telemetry --telemetry HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
 accept numeric IPv4, `localhost` (IPv4 loopback), and bracketed IPv6 literals such as
 `--telemetry '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
 unbracketed IPv6 endpoints remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
@@ -19,10 +19,11 @@ the usual proof-peer certificate/key/public-key fixtures:
 
 ```sh
 ./build/ragnarok server 40000 a.cert.pem a.key.pem b.pub \
-  jamnp-s/1/245becfe 10000 --chain /absolute/path/dev.json --telemetry 127.0.0.1:9000
+  jamnp-s/1/245becfe 10000 --chain /absolute/path/dev.json --with-telemetry --telemetry 127.0.0.1:9000
 ```
 
-Keep the existing positional mode argument, if any, before the option pairs. The retained `mesh`
+Keep the existing positional mode argument, if any, before the trailing switches and option pairs.
+Endpoint configuration alone does not enable telemetry. The retained `mesh`
 command accepts the same trailing option pairs after its positional gate directory. No collector address or chain is
 assumed when telemetry is absent. An invalid explicit endpoint, certificate or chain file fails
 startup with a diagnostic. An unavailable collector never fails an otherwise valid peer session.
