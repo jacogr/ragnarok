@@ -10,6 +10,10 @@
     {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-outputs-index", "diagnostic": "outcome.status == None", "description": "Accumulation outputs index extraction guard"},
     {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "accumulation-outputs-entry", "diagnostic": "outcome.status == None", "description": "Accumulation outputs entry extraction guard"},
     {"identity": {"reason": "root"}, "arguments": ["root"], "name": "accumulation-outputs-root", "diagnostic": "outcome.status == None", "description": "Accumulation outputs root extraction guard"},
-    {"identity": {"reason": "wrong-history"}, "arguments": ["wrong-history"], "name": "accumulation-outputs-wrong-history", "diagnostic": "outcome.status == HistoryFailure", "description": "Accumulation outputs wrong-history extraction guard"}
+    {"identity": {"reason": "wrong-history"}, "arguments": ["wrong-history"], "name": "accumulation-outputs-wrong-history", "diagnostic": "outcome.status == HistoryFailure", "description": "Accumulation outputs wrong-history extraction guard"},
+    {"identity": {"reason": "continuation"}, "arguments": ["continuation"], "name": "accumulation-outputs-continuation", "diagnostic": "outcome.status == None", "description": "Accumulation outputs continuation extraction guard"},
+    {"identity": {"reason": "reentry"}, "arguments": ["reentry"], "name": "accumulation-outputs-reentry", "diagnostic": "outcome.status == None", "description": "Accumulation outputs reentry extraction guard"},
+    {"identity": {"reason": "continuation-source"}, "arguments": ["continuation-source"], "name": "accumulation-outputs-continuation-source", "diagnostic": "outcome.status == None", "description": "Accumulation outputs continuation-source extraction guard"},
+    {"identity": {"reason": "reentry-source"}, "arguments": ["reentry-source"], "name": "accumulation-outputs-reentry-source", "diagnostic": "outcome.status == None", "description": "Accumulation outputs reentry-source extraction guard"}
   ]
 }
