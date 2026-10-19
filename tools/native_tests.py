@@ -46,6 +46,7 @@ UNIT_FIXTURES['pvm_registers'] = ('RAGNAROK_PVM_REGISTERS', PVM_REGISTERS,
 STATE_REPORT = ROOT/'tests/fixtures/state-report.bin'
 for case in ('state_availability', 'state_availability_private', 'state_workqueues',
              'state_workqueues_private', 'accumulation_execution', 'accumulation_finalization',
+             'accumulation_history',
              'accumulation_outputs',
              'accumulation_continuation', 'accumulation_continuation_execution',
              'accumulation_continuation_inputs',

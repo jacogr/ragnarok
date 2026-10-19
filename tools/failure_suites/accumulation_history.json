@@ -1,0 +1,17 @@
+{
+  "source": "tests/native/accumulation_history_results.nim",
+  "build_name": "accumulation-history-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-history-default", "diagnostic": "outcome.status == None", "description": "Accumulation history default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-history-refused", "diagnostic": "outcome.status == None", "description": "Accumulation history refused extraction guard"},
+    {"identity": {"reason": "projection"}, "arguments": ["projection"], "name": "accumulation-history-projection", "diagnostic": "outcome.status == None", "description": "Accumulation history projection extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-history-info", "diagnostic": "outcome.status == None", "description": "Accumulation history info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-history-source", "diagnostic": "outcome.status == None", "description": "Accumulation history source extraction guard"},
+    {"identity": {"reason": "ring"}, "arguments": ["ring"], "name": "accumulation-history-ring", "diagnostic": "outcome.status == None", "description": "Accumulation history ring extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-history-state", "diagnostic": "outcome.status == None", "description": "Accumulation history state extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "accumulation-history-entry", "diagnostic": "outcome.status == None", "description": "Accumulation history entry extraction guard"},
+    {"identity": {"reason": "wrong-codec"}, "arguments": ["wrong-codec"], "name": "accumulation-history-wrong-codec", "diagnostic": "outcome.status == CodecFailure", "description": "Accumulation history wrong-codec extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-history-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation history wrong-state extraction guard"}
+  ]
+}
