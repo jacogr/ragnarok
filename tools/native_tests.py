@@ -4,7 +4,7 @@
 """Launch native application tests through the Hastur shipped with the pinned Nimony archive.
 
 Exposes native suite planning, compiler commands, environments and evidence paths; main runs the
-standalone native test launcher.
+standalone native test launcher, optionally selecting one registered suite with bounded log output.
 """
 from pathlib import Path
 import json
@@ -12,6 +12,7 @@ import hashlib
 import os
 import subprocess
 import platform
+import argparse
 from setup_nimony import ROOT, cache_directory
 
 # Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
@@ -205,11 +206,52 @@ def unit_plan(compiler, libraries):
     return [unit_command(compiler, target, libraries) for _, _, target in unit_batches()]
 
 
-# Prepare pinned native fixtures and run every ordinary suite with strict output/ARC evidence.
+# Execute only the selected scope, retaining its own fixture checks, exit status and fresh ARC evidence.
+def run_units(compiler, libraries, fixtures, suite=None):
+    if suite is None:
+        # Complete native verification retains the established batching, environment and streamed diagnostics.
+        selected = unit_environment(compiler, fixtures=fixtures)
+        for arguments in unit_plan(compiler, libraries):
+            # A failed compile, assertion or expected-output comparison must terminate the complete run.
+            print('+ '+' '.join(arguments), flush=True)
+            subprocess.run(arguments, cwd=unit_work_directory(compiler), env=selected, check=True)
+        observed = ARC_SUITES
+    else:
+        # A focused run must neither execute another suite nor retire another suite's ARC observation.
+        arguments = unit_command(compiler, suite, libraries)
+        selected = unit_environment(compiler, name=suite, fixtures=fixtures)
+        log = ROOT/'build/tests/native/selected'/(suite+'.log')
+        log.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Keep successful compiler output out of agent context without weakening Hastur's verdict.
+            with log.open('w') as output:
+                subprocess.run(arguments, cwd=unit_work_directory(compiler), env=selected,
+                               stdout=output, stderr=subprocess.STDOUT, check=True)
+        except subprocess.CalledProcessError:
+            # Failures expose a bounded excerpt and retain the full diagnostic file for investigation.
+            print('FAIL '+suite+'; log: '+str(log), flush=True)
+            print('\n'.join(log.read_text(errors='replace').splitlines()[-40:]), flush=True)
+            raise
+        print('PASS '+suite+'; log: '+str(log), flush=True)
+        observed = (suite,) if suite in ARC_SUITES else ()
+    for name in observed:
+        # Only freshly executed ARC workloads contribute evidence; an unrelated old report is never reused.
+        print('ARC '+name+': '+json.dumps(unit_evidence(compiler, name), sort_keys=True), flush=True)
+
+
+# Select a registered suite before provisioning; full discovery remains the default supported behavior.
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--suite', choices=UNIT_SUITES, help='Run one registered native suite only')
+    arguments = parser.parse_args()
     from setup_nimony import installed
     compiler, _ = installed()
-    selected = dict(os.environ)
+    if arguments.suite is not None:
+        # Pure, unprepared suites need no foreign libraries or generated integration fixtures.
+        profile = NATIVE_REQUIREMENTS[arguments.suite]
+        if not profile['libraries'] and not profile['prepared']:
+            run_units(compiler, {}, {}, arguments.suite)
+            return
     from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures
     folder = ROOT/'build/tests/native/preparation'
     folder.mkdir(parents=True, exist_ok=True)
@@ -233,15 +275,8 @@ def main():
     libraries, certificates, _ = prepare_libraries(folder, record)
     wires, reload, _ = prepare_integration(folder)
     fixtures, _ = prepare_unit_fixtures(folder, certificates, wires, reload, record)
-    # All fixture hashes are verified and old observations retired before any native suite runs.
-    selected = unit_environment(compiler, base=selected, fixtures=fixtures)
-    for arguments in unit_plan(compiler, libraries):
-        # Every failed compile, assertion or output mismatch must stop the invocation.
-        print('+ '+' '.join(arguments), flush=True)
-        subprocess.run(arguments, cwd=unit_work_directory(compiler), env=selected, check=True)
-    for name in ARC_SUITES:
-        # Preserve measured live occupancy rather than baking host heap sizes into goldens.
-        print('ARC '+name+': '+json.dumps(unit_evidence(compiler, name), sort_keys=True), flush=True)
+    # Shared preparation remains unchanged; focused runs select only their own validated fixture manifest.
+    run_units(compiler, libraries, fixtures, arguments.suite)
 
 
 # Imports expose profiles without provisioning dependencies or running tests.

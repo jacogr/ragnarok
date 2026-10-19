@@ -17,6 +17,8 @@ export PYTHONUNBUFFERED := 1
 export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(open("spec/bandersnatch-pins.json"))["rust"])')
 # Bound compatible codec runs and independent compiler checks to the Linux runner's four CPUs.
 export COMPILE_CHECK_JOBS ?= 4
+# Optional one-suite selection is passed through the environment, never interpolated as shell code.
+export SUITE ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
 .PHONY: check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
@@ -110,7 +112,11 @@ check-telemetry-interop: check-inventory telemetry-interop-python build
 
 # Fixture preparation, exact linking profiles and ARC observations belong to the native runner.
 unit: setup
-	$(PYTHON) tools/native_tests.py
+	@if [ -n "$$SUITE" ]; then \
+	  $(PYTHON) tools/native_tests.py --suite "$$SUITE"; \
+	else \
+	  $(PYTHON) tools/native_tests.py; \
+	fi
 
 # Apply both pinned language formatters; check mode must leave source files untouched.
 format: toolchain rust-tools
@@ -149,6 +155,7 @@ help:
 	  'make clean         Remove build/ completely' \
 	  'make check / test  Provision dependencies and run complete verification' \
 	  'make unit          Run Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
+	  'make unit SUITE=natural  Run one native suite; full output stays under build/tests/native/selected/' \
 	  'make check-modules Check every production module' \
 	  'make check-inventory  Validate local registries without native setup' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
