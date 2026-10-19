@@ -36,7 +36,7 @@ proc reentryReady*(base: OwnedReport, id: byte, gases: openArray[uint64],
 proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = ExecutionEnding.Halt,
     firstGas = 1000'u64, secondGas = 1000'u64, provided = false, stopped = false,
     empty = false, tail: ReadyRow = @[], firstProgram: seq[byte] = @[],
-    secondProgram: seq[byte] = @[]): ReentryFixture =
+    secondProgram: seq[byte] = @[], extra: seq[StateEntry] = @[]): ReentryFixture =
   ## Consume one report initially, reserve nearly all later gas in the second, then release the true two-service reentry suffix.
   # Optional authored preimages enter the signed parent; provided retains its original special program.
   let firstEnding = if provided: ExecutionEnding.Exhausted else: first
@@ -53,14 +53,15 @@ proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = E
       reentryReady(base, 66, [firstGas, secondGas]), reentryReady(base, 67, [0'u64])]
   for item in tail: queue.add(item) # Additional authenticated suffix rows permit real repeated-round witnesses.
   var code = firstProgram
-  var extra: seq[StateEntry] = @[]
+  var entries = extra # Additional authored state enters the signed parent, never an existing certificate.
   if provided:
     code = @[0'u8]
     for octet in batchEnvelope(BatchEnding.Halt): code.add(
         octet) # Initial one-gas OOG cannot reach provide; later execution can.
-    extra = @[provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
+    entries.add(provisionRequest(42, @[73'u8]))
+    entries.add(provisionRequest(99, @[81'u8]))
   var initial = executionFixture(base, first = firstEnding, second = second, empty = empty,
-    ready = queue, firstProgram = code, secondProgram = secondProgram, extra = extra)
+    ready = queue, firstProgram = code, secondProgram = secondProgram, extra = entries)
   var policy = executionRoundConfig()
   policy.blockGas = Gas(budget)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value
