@@ -82,6 +82,6 @@ formatting and diff checks passed. No PVM, codec, history algorithm
 or batch implementation changed; their existing evidence is reused.
 
 Logs and diagnostics are retained under `build/accumulation-outputs/`. These are local macOS results,
-separate from exact-head Linux CI. Next work plans later rounds with remaining reports, actual gas
-and outgoing transfers; final output-set union and block publication wait for that coordinator and
-supported mutable account/privilege integration.
+separate from exact-head Linux CI. The [continuation planner](accumulation-continuation.md) now selects the next report-only prefix
+from actual remaining gas and the original admitted queue. Range input/state binding and
+transfer-aware execution, final output-set union and block publication remain subsequent work.
