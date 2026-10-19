@@ -3,8 +3,8 @@
 
 ## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
 ##
-## Exposes the Server owner and start/tick/close lifecycle, with bounded connection slots
-## serviced by the caller.
+## Exposes the Server owner, publishBlock handoff and start/tick/close lifecycle.
+## The caller services a bounded number of connection slots.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -140,6 +140,19 @@ proc start*(server: var Server, port: uint16, role: string,
   server.parameters = parameters
   server.chain = genesisView(genesis)
   true
+
+## Publish a caller-validated direct child between ticks on the same dispatcher thread.
+## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
+## current view and forward advanceView's reason. Success replaces only the chain handle, leaving
+## sockets, queued replies and startup parameters intact. This is not a thread-safe import/validation API.
+proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceError =
+  if not server.opened:
+    return ViewAdvanceError.Uninitialized # Shutdown cannot be bypassed by publishing another snapshot.
+  let update = server.chain.advanceView(child)
+  if update.error != ViewAdvanceError.None:
+    return update.error # Never install a partial or rejected history.
+  server.chain = update.value
+  ViewAdvanceError.None
 
 # Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
 proc reject(slot: var Connection, code: int, now: int64) =
