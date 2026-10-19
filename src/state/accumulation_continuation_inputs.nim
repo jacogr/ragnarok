@@ -4,21 +4,22 @@
 ## Bind selected continuation range inputs to the actual privately applied initial batch state.
 ## Retains immutable source/input/full-map owners; never accepts replacement provenance or publishes caller state.
 
-import ../codec/[header]
+import ../codec/[bounded, c2_records, header]
 import ./[accumulation_continuation, accumulation_execution, accumulation_round, accumulation_queue,
   accumulation_operands, accumulation_inputs, accumulation_batch, accumulation_service,
-  report_admission, block_transition, block_admission, store]
+  accumulation_round_transfers, accumulation_transfers, report_admission, block_transition,
+  block_admission, store]
 
 type
   AccumulationContinuationInputConfig* = object ## Independent selected-range C.2 and service-input materialization budgets.
     operands*: AccumulationOperandConfig ## Bounds apply only to selected continuation reports and their payloads.
-    inputs*: AccumulationInputConfig ## Bounds report-only groups; no transfers or recurring allowances are supplied.
+    inputs*: AccumulationInputConfig ## Bounds combined transfer/report groups; no recurring allowances are supplied.
   AccumulationContinuationInputError* {.pure.} = enum ## Refusals expose no partially prepared inputs, state or source plan.
     Uninitialized,  ## Default result or owner without initialized preparation.
     None,           ## Complete selected success permits guarded extraction.
     InvalidPlan,    ## No genuine prepared continuation was supplied.
     OperandFailure, ## Selected range materialization refused; inspect operandError.
-    InputFailure,   ## Report-only service grouping refused; inspect inputError.
+    InputFailure,   ## Transfer/report service grouping refused; inspect inputError.
     ServiceFailure, ## Service resolution refused; inspect serviceError.
     BatchFailure    ## Actual private batch application refused; inspect the failed parent's guarded reasons.
   # Private acyclic owner retains only complete range inputs and the actual initial-batch successor.
@@ -79,7 +80,7 @@ requires: outcome.status == AccumulationContinuationInputError.BatchFailure.} =
 
 proc continuationInputs*(owner: PreparedAccumulationContinuationInputs): AccumulationContinuationInputResult[
     PreparedAccumulationInputs] =
-  ## Retain report-only inputs independently of the preparation handle's lifetime.
+  ## Retain transfer/report inputs independently of the preparation handle's lifetime.
   let data = owner.data
   if data == nil:
     return AccumulationContinuationInputResult[PreparedAccumulationInputs](
@@ -125,7 +126,7 @@ proc prepareContinuationAccumulationService*(owner: PreparedAccumulationContinua
 proc prepareAccumulationContinuationInputs*(plan: PreparedAccumulationContinuation,
     config: AccumulationContinuationInputConfig): AccumulationContinuationInputResult[
         PreparedAccumulationContinuationInputs] =
-  ## Materialize only the selected range, with empty transfers/allowances, then apply the actual initial batch privately.
+  ## Materialize the selected range and bound outgoing transfers with empty allowances, then apply the actual initial batch privately.
   ## Preserve inherited store ceilings and publish an owner only after all input and state phases succeed.
   let selected = plan.continuationInfo
   if selected.error != AccumulationContinuationError.None:
@@ -141,7 +142,18 @@ proc prepareAccumulationContinuationInputs*(plan: PreparedAccumulationContinuati
     return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
       status: AccumulationContinuationInputError.OperandFailure,
       operandReason: operands.error) # No earlier projection escapes before state work.
-  let inputs = prepareAccumulationInputs(operands.value, [], [], config.inputs)
+  let count = selected.value.transfers
+  if uint64(count) > uint64(config.inputs.inputs):
+    return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
+      status: AccumulationContinuationInputError.InputFailure,
+      inputReason: AccumulationInputError.LimitExceeded) # Refuse transfer descriptors before allocating their temporary copy.
+  let collected = plan.continuationTransfers.value.roundTransferCollection.value
+  # The same retained collection proved this fixed-record native extent before copying; no caller count is accepted.
+  var transfers = newSeq[DeferredTransfer](count)
+  for index in 0..<count:
+    transfers[index] = collected.collectedTransferAt(CollectedTransferIndex(uint64(
+        index))).value # Preserve canonical source/append order before destination grouping.
+  let inputs = prepareAccumulationInputs(operands.value, transfers, [], config.inputs)
   if inputs.error != AccumulationInputError.None:
     return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
       status: AccumulationContinuationInputError.InputFailure,

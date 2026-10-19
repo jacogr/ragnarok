@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/accumulation_round_transfer_results.nim",
+  "build_name": "accumulation-round-transfer-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "collection"}, "arguments": ["collection"], "name": "accumulation-round-transfer-collection", "diagnostic": "outcome.status == None", "description": "Round transfer collection extraction guard"},
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-round-transfer-default", "diagnostic": "outcome.status == None", "description": "Round transfer default extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-round-transfer-info", "diagnostic": "outcome.status == None", "description": "Round transfer info extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-round-transfer-refused", "diagnostic": "outcome.status == None", "description": "Round transfer refused extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-round-transfer-source", "diagnostic": "outcome.status == None", "description": "Round transfer source extraction guard"}
+  ]
+}

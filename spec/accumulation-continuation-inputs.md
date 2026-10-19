@@ -2,8 +2,8 @@
 
 ## Scope and authority
 
-Prepare the range selected by `PreparedAccumulationContinuation` as report-only service inputs,
-retaining the original admitted queue and applying its completed initial batch on a private
+Prepare the range selected by `PreparedAccumulationContinuation` together with its bound outgoing
+transfers as service inputs, retaining the original admitted queue and applying its completed initial batch on a private
 complete-map fork. Authority remains GP 0.8.0 revision
 `07f041dabd073f9018b418e9ee72e79dd2185401`, accumulation.tex SHA-256
 `bc919b34266cee75577f5fb3282b55768d0d75b6b8fe15d2835a228be18e6a6f` (`accseq`, `accone`,
@@ -13,7 +13,8 @@ Extend operand preparation with a nominal original-queue start and selected coun
 count using subtraction before narrowing/addition, retain both range coordinates and the original
 queue, and materialize only selected reports. The existing prefix API remains the start-zero path.
 No reconstructed queue, replay of completed reports, recurring free allowances or implicit transfer
-inputs are permitted. Reuse canonical C.2 and prepared-input codecs and their independent budgets.
+inputs are permitted; outgoing values must come from the plan's exact completed-round owner.
+Reuse canonical C.2 and prepared-input codecs and their independent budgets.
 
 After input preflight, derive the exact original admitted parent and candidate slot through the
 retained completed source. Apply its actual complete batch privately under inherited store limits.
@@ -21,9 +22,11 @@ Return the resulting immutable full-map snapshot together with inputs and source
 complete success. Preserve all nested batch refusal reasons without exposing an earlier input
 owner or candidate state. Caller stores and original snapshots remain unchanged.
 
-This prepares a report-only continuation context; later invocation entropy binding, execution,
-recursive completion and final publication remain subsequent work. PVM mutations remain protected
-by the existing selected-account gate, and outgoing transfers by the continuation planner's gate.
+[Transfer-aware initial preparation](pvm-transfer-continuation.md) places bound outgoing transfers
+before selected report operands in each destination group and carries no recurring allowances.
+Service resolution credits destinations from the actual privately applied post-debit map.
+Unsupported account ancestry remains gated. Later reentry transfer selection/input binding
+and final publication remain subsequent work.
 M1 framing remains complete; full serialization and accumulation/block parity remain open.
 
 ## Completion tests

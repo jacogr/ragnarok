@@ -37,10 +37,12 @@ serialization/accumulation parity remains open.
 transfer sequences under independent source, transfer and memo-byte ceilings.
 It preserves ordered duplicates and source ownership. [Transfer debit
 publication](pvm-transfer-publication.md) now projects only each participant's
-selected own record; recursive transfer execution retains its existing gate.
+selected own record. [Completed-round continuation](pvm-transfer-continuation.md)
+now binds outgoing values and gas to initial recursive preparation; later reentry
+transfer handling retains its existing gate.
 
-Next bounded work: bind outgoing collection to completed common-source rounds
-and prepare recursive transfer inputs/gas. Unsupported account ancestry and
+Next bounded work: extend completed-round transfer binding and recursive
+input/gas preparation to later reentry rounds. Unsupported account ancestry and
 participating-target deletion conflicts retain their existing local gates.
 
 ## Remaining boundaries after the merge
@@ -49,7 +51,7 @@ participating-target deletion conflicts retain their existing local gates.
 | --- | --- |
 | grow_heap (1) | Implemented under the maintainer-adopted merged #533/#538 fixes; see [heap integration](pvm-accumulation-heap.md). |
 | Selected account effects | Bounded self metadata/entries, creation/deletion proofs and [transfer debits](pvm-transfer-publication.md) publish through common-source batches. Unsupported ancestry and participating-target deletion conflicts remain gated; equal roots alone do not permit substitution. |
-| Transfer-aware recursion | UnsupportedTransfers in report-only continuation; bounded outgoing collection is implemented, while completed-round binding and recursive input/gas integration remain open. |
+| Transfer-aware recursion | [Initial completed-round collection and recursive input/gas preparation](pvm-transfer-continuation.md) are implemented under explicit transfer/memo limits. Later reentry still returns UnsupportedTransfers for new outgoing effects. |
 | Conflicting bless allowances | AmbiguousPrivileges; pinned set-to-dictionary semantics remain unresolved. |
 | 32-byte halt return with provisions | Implemented using the adopted [regular X projection](pvm-hash-return-provisions.md); the historical AmbiguousProvisions value is no longer emitted. |
 | Negative host-gas debt outside the signed domain | GasRangeExceeded; no truncation or clamping. |

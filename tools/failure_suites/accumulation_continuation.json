@@ -7,6 +7,7 @@
     {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-continuation-refused", "diagnostic": "outcome.status == None", "description": "Accumulation continuation refused extraction guard"},
     {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-continuation-info", "diagnostic": "outcome.status == None", "description": "Accumulation continuation info extraction guard"},
     {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-continuation-source", "diagnostic": "outcome.status == None", "description": "Accumulation continuation source extraction guard"},
-    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-continuation-index", "diagnostic": "outcome.status == None", "description": "Accumulation continuation index extraction guard"}
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-continuation-index", "diagnostic": "outcome.status == None", "description": "Accumulation continuation index extraction guard"},
+    {"identity": {"reason": "transfers"}, "arguments": ["transfers"], "name": "accumulation-continuation-transfers", "diagnostic": "outcome.status == None", "description": "Continuation transfer owner extraction guard"}
   ]
 }

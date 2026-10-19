@@ -15,7 +15,7 @@ import ../../../src/crypto/primitives
 import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ../../support/[accumulation_execution_context, accumulation_batch_context,
   pvm_accumulation_context, pvm_accumulation_provision, accumulation_provision_integration,
-  report_context, arc_evidence]
+  report_context, accumulation_transfer_continuation, arc_evidence]
 
 # Backend refusal distinguishes input preflight from private candidate-state fulfillment.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -57,6 +57,7 @@ proc main() {.raises.} =
   var wire = newSeq[byte](raw.len)
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
+  checkTransferContinuation(base) # Genuine transferred rounds exercise the new bound collection and input/gas path.
   let ready = @[queued(base, 64, 10), queued(base, 65, 11), queued(base, 66, 0)]
   var fixture = executionFixture(base, first = ExecutionEnding.Panic,
     second = ExecutionEnding.Panic,

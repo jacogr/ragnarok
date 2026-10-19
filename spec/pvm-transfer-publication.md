@@ -2,6 +2,10 @@
 
 ## Scope and authority
 
+The next layer implements [completed-round transfer continuation](pvm-transfer-continuation.md).
+The publication contract below remains unchanged; its local verification records
+retain the prior layer's initial-continuation gate as historical evidence.
+
 GP 0.8.0 revision `07f041dabd073f9018b418e9ee72e79dd2185401`,
 accumulation.tex `accpar` projects each participant's own final account and
 pvm_invocations.tex transfer debits only the invoking service while appending

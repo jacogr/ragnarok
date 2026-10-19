@@ -1,25 +1,29 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Plan the report-only accseq continuation after an admitted completed initial round.
+## Plan the transfer-aware initial accseq continuation after an admitted completed initial round.
 ## Retains source and original queue without copying prior reports, executing guests or publishing state.
 
 import ../codec/[bounded, work_digest, report_owned]
 import ./[accumulation_execution, accumulation_round, accumulation_queue, accumulation_operands,
-  accumulation_batch, accumulation_outcome, accumulation_provisions]
+  accumulation_round_transfers, accumulation_transfers]
 
 type
   AccumulationContinuationLimits* = object ## Independent traversal ceilings include inspected but unaffordable work.
     executions*: ElementLimit ## Maximum selected initial execution outcomes inspected for outgoing transfers.
+    transfers*: ElementLimit ## Maximum outgoing fixed records copied; zero authorizes no nonempty sequence.
+    memoBytes*: ByteLimit ## Aggregate copied memo bytes, including repeated transfers.
     reports*: ElementLimit ## Maximum unprocessed reports inspected, including the first rejected report.
     digests*: ElementLimit ## Maximum digest gas values inspected, including those in a rejected report.
   AccumulationContinuationInfo* = object ## Copied recursive-entry planning facts do not certify later execution or state publication.
     completedPrefix*: AccumulationReportPrefix ## Reports already processed by the completed initial round.
     pendingReports*: int              ## Reports in the original priority suffix before this new selection.
     prefix*: AccumulationReportPrefix ## Newly selected whole-report prefix of that suffix.
-    budget*: Gas                      ## Recursive input budget: original budget minus actual initial gas spent.
+    budget*: Gas ## Recursive input budget: original minus actual initial gas plus paid outgoing gas.
+    transfers*: int                   ## Selected outgoing records, including zero-gas transfers.
+    transferGas*: Gas ## Paid outgoing gas restored to the budget and reserved before report selection.
     reportGas*: Gas                   ## Declared digest gas reserved by the newly selected reports.
-    dispatch*: bool ## True exactly when at least one remaining report is selected; no free allowances recur.
+    dispatch*: bool ## True exactly when a remaining report or outgoing transfer is selected; no free allowances recur.
   ContinuationReportIndex* = distinct uint64 ## Plan-local selected-report ordinal, distinct from original queue positions.
   AccumulationContinuationError* {.pure.} = enum ## Refusals retain no selected prefix, source owner or partial gas progress.
     Uninitialized, ## Default result or plan without initialized ownership.
@@ -27,13 +31,14 @@ type
     InvalidSource, ## The supplied completion is uninitialized or has no valid queue-prefix provenance.
     InvalidIndex,  ## The full-width plan-local ordinal is outside its selected report range.
     LimitExceeded, ## Outcome, remaining-report or digest inspection exceeds its independent ceiling.
-    UnsupportedTransfers ## Selected outgoing transfers require collection and recursive gas/input integration first.
+    UnsupportedTransfers ## Reserved historical initial-continuation refusal; later reentry has its own transfer gate.
   # Private acyclic storage keeps the actual completion and original immutable priority queue together.
   ContinuationData = ref object
     source: CompletedBlockAccumulation
     queue: AccumulationQueuePlan
+    transfers: PreparedRoundAccumulationTransfers
     info: AccumulationContinuationInfo
-  PreparedAccumulationContinuation* = object ## Only a completed admitted initial round can authorize this report-only recursive prefix plan.
+  PreparedAccumulationContinuation* = object ## Only a completed admitted initial round can authorize this transfer-aware initial recursive prefix plan.
     data: nil ContinuationData
   AccumulationContinuationResult*[T] = object ## Failed/default alternatives carry reasons alone, never an earlier successful candidate.
     case status: AccumulationContinuationError
@@ -71,6 +76,16 @@ proc continuationSource*(plan: PreparedAccumulationContinuation): AccumulationCo
   AccumulationContinuationResult[CompletedBlockAccumulation](
       status: AccumulationContinuationError.None, completed: data.source)
 
+proc continuationTransfers*(plan: PreparedAccumulationContinuation):
+    AccumulationContinuationResult[PreparedRoundAccumulationTransfers] =
+  ## Retain this plan's exact completed-round outgoing owner; no substitute collection is accepted.
+  let data = plan.data
+  if data == nil:
+    return AccumulationContinuationResult[PreparedRoundAccumulationTransfers](
+      status: AccumulationContinuationError.Uninitialized) # Default plans cannot provide a recursive transfer sequence.
+  AccumulationContinuationResult[PreparedRoundAccumulationTransfers](
+    status: AccumulationContinuationError.None, completed: data.transfers)
+
 proc continuationReportAt*(plan: PreparedAccumulationContinuation, index: ContinuationReportIndex):
     AccumulationContinuationResult[OwnedReport] =
   ## Retain one selected report at a local ordinal; completed-prefix reports cannot be readdressed through this accessor.
@@ -89,8 +104,8 @@ proc continuationReportAt*(plan: PreparedAccumulationContinuation, index: Contin
 proc planAccumulationContinuation*(source: CompletedBlockAccumulation,
     limits: AccumulationContinuationLimits):
     AccumulationContinuationResult[PreparedAccumulationContinuation] =
-  ## Select the next affordable whole-report prefix using actual gas, the original queue suffix and no recurring allowances.
-  ## Inspected rejected reports consume local work ceilings; preparation performs no hashing, copying or publication.
+  ## Select the next affordable whole-report prefix using actual gas, reserved outgoing gas, the original queue suffix and no recurring allowances.
+  ## Inspected rejected reports consume local work ceilings; preparation copies only bounded outgoing values and performs no hashing or publication.
   # Refuse without exposing an earlier selected prefix or partial recursive budget.
   template fail(reason: AccumulationContinuationError) =
     return AccumulationContinuationResult[PreparedAccumulationContinuation](status: reason)
@@ -100,19 +115,22 @@ proc planAccumulationContinuation*(source: CompletedBlockAccumulation,
   let facts = completed.value
   if uint64(facts.batch.executions) > uint64(limits.executions):
     fail(AccumulationContinuationError.LimitExceeded) # Bound even outcomes with no selected transfers.
-  let batch = source.executionBatch.value
-  for index in 0..<facts.batch.executions:
-    # Future transfer hosts must not silently lose their outgoing gas/destination contributions here.
-    let outcome = batch.batchOutcomeAt(AccumulationProvisionSourceIndex(uint64(index))).value
-    if outcome.outcomeInfo.value.transfers != 0:
-      fail(AccumulationContinuationError.UnsupportedTransfers)
+  let transfers = prepareRoundAccumulationTransfers(source, AccumulationTransferCollectionLimits(
+    sources: limits.executions, transfers: limits.transfers, memoBytes: limits.memoBytes))
+  if transfers.error == AccumulationRoundTransferError.LimitExceeded:
+    fail(AccumulationContinuationError.LimitExceeded) # Explicit transfer and memo policy bounds every retained outgoing record.
+  if transfers.error != AccumulationRoundTransferError.None:
+    fail(AccumulationContinuationError.InvalidSource) # No inconsistent completed owner can authorize recursive gas restoration.
+  let outgoing = transfers.value.roundTransferInfo.value
   let queue = source.executionRound.value.roundBlockQueue.value.accumulationProjection.value
   let count = queue.accumulationCount.value
   let start = uint64(facts.round.prefix)
   if start > uint64(count) or uint64(facts.gasUsed) > uint64(facts.round.budget):
     fail(AccumulationContinuationError.InvalidSource) # Prove suffix conversion and recursive budget subtraction.
-  let budget = uint64(facts.round.budget) - uint64(facts.gasUsed)
-  var remaining = budget
+  let reportBudget = uint64(facts.round.budget) - uint64(facts.gasUsed)
+  # The bound collector proves outgoing.gas <= actual gas, so this addition cannot exceed the original budget.
+  let budget = reportBudget + uint64(outgoing.gas)
+  var remaining = reportBudget
   var prefix = 0'u64
   var reports = 0'u64
   var digests = 0'u64
@@ -141,7 +159,10 @@ proc planAccumulationContinuation*(source: CompletedBlockAccumulation,
   AccumulationContinuationResult[PreparedAccumulationContinuation](
     status: AccumulationContinuationError.None,
     completed: PreparedAccumulationContinuation(data: ContinuationData(source: source, queue: queue,
+      transfers: transfers.value,
       info: AccumulationContinuationInfo(completedPrefix: facts.round.prefix,
         pendingReports: count-int(start), prefix: AccumulationReportPrefix(prefix), budget: Gas(
             budget),
-        reportGas: Gas(budget-remaining), dispatch: prefix != 0))))
+        transfers: outgoing.collection.transfers, transferGas: outgoing.gas,
+        reportGas: Gas(reportBudget-remaining), dispatch: prefix != 0 or
+            outgoing.collection.transfers != 0))))

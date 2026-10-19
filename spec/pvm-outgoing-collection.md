@@ -32,7 +32,8 @@ opaque memos, full-width gas, source-array replacement, detached sources and
 
 [Transfer debit publication](pvm-transfer-publication.md) now projects only each
 invoking service's selected own record. Unsupported account ancestry remains
-gated; transfer-aware recursion still returns `UnsupportedTransfers`.
+gated. [Completed-round binding](pvm-transfer-continuation.md) now supports initial
+transfer-aware continuation preparation; later reentry retains `UnsupportedTransfers`.
 M1 framing is complete; full state serialization remains open. Pins are unchanged.
 
 ## Local verification (2026-10-19)
@@ -53,5 +54,6 @@ local macOS results; exact-head Linux CI is separate. Prepared dependencies
 were reused without running unrelated setup.
 
 The next publication layer now admits supported transfer-bearing batches using
-common-source account provenance. Next bounded work: bind collection to completed
-rounds and prepare recursive transfer inputs/gas.
+common-source account provenance. Initial completed-round binding and recursive
+input/gas preparation are implemented in the next layer. Next bounded work:
+extend that binding to later reentry rounds.
