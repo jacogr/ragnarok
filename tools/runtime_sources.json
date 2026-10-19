@@ -232,6 +232,7 @@
   "tests/native/state_service_values_driver.nim",
   "tests/native/state_statistics_driver.nim",
   "tests/native/state_store_results.nim",
+  "tests/native/state_store_slice_results.nim",
   "tests/native/state_trie_driver.nim",
   "tests/native/state_workqueues_driver.nim",
   "tests/native/ticket_admission_results.nim",

@@ -306,6 +306,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'consensus')
     # All public result shapes and private scan layouts require success before payload access.
     run_failure_suite(compiler, report, libraries, build, command, 'state_disputes')
+    run_failure_suite(compiler, report, libraries, build, command, 'state_store_slice')
     # Public/private results and runtime-selected absent peak copies require exact supported contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'history')
     # Every public/private result and each inactive assignment field must retain its exact contract.

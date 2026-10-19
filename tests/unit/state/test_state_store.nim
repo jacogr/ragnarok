@@ -283,6 +283,37 @@ proc boundaries() =
   assert state.apply(@[StateWrite(key: key(0), kind: StateWriteKind.Put, value: newSeq[byte](
       33))]).error == StateStoreError.None
 
+## Bounded slices retain exact view ownership and validate full-width ranges before allocation.
+proc slices() =
+  var input = @[10'u8, 11, 12, 13, 14, 15, 16, 17]
+  var state = newStateStore([StateEntry(key: key(0), value: input)], policy()).value
+  let view = state.snapshot.value.lookup(key(0)).value
+  input[0] = 99 # The retained view owns the original bytes, independent of caller storage.
+  for offset in 0..9:
+    for length in 0..9:
+      let copied = view.copySlice(uint64(offset), uint64(length), ByteLimit(8))
+      if offset > 8 or length > 8-offset:
+        assert copied.error == StateStoreError.InvalidRange # No invalid interval can expose an empty/partial success.
+      else:
+        assert copied.error == StateStoreError.None and copied.value.len == length
+        for i in 0..<length:
+          assert copied.value[i] == byte(10+offset+i) # Exact original bytes in source order.
+        if length > 0:
+          assert view.copySlice(uint64(offset), uint64(length), ByteLimit(length-1)).error ==
+              StateStoreError.LimitExceeded
+  assert view.copySlice(high(uint64), 0, ByteLimit(0)).error == StateStoreError.InvalidRange
+  assert view.copySlice(0, high(uint64), ByteLimit(high(uint64))).error ==
+      StateStoreError.InvalidRange
+  assert default(StateValue).copySlice(0, 0, ByteLimit(0)).error == StateStoreError.Uninitialized
+  var detached = view.copySlice(2, 3, ByteLimit(3)).value
+  detached[0] = 255
+  assert view.copySlice(2, 3, ByteLimit(3)).value == @[12'u8, 13, 14]
+  assert state.apply([StateWrite(key: key(0), kind: StateWriteKind.Put, value: @[0'u8])]).error ==
+      StateStoreError.None
+  assert view.copySlice(0, 8, ByteLimit(8)).value[0] ==
+      10 # Older owners remain independent of later map publication.
+
+slices()
 semantics()
 policies()
 histories()
