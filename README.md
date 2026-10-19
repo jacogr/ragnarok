@@ -1,106 +1,83 @@
 # JAM Ragnarök
 
+An independent [Join-Accumulate Machine (JAM)](https://graypaper.com/) client in **Nim**,
+built with **Nimony** against pinned Gray Paper and JAMNP-S specifications.
+
 Ragnarök is a joint effort between the maintainer and AI coding agents, and we are proud of it.
-The maintainer sets direction, steers each increment and owns decisions; AI agents help research,
-implement, test and document the work. We make that collaboration explicit.
+The maintainer sets direction, steers each increment and owns decisions; agents help research,
+implement, test and document the work.
 
-Protocol target: **Gray Paper 0.8.0**. The implemented report codec and validator-set domains
-and the release-designated ark-vrf 0.2.2 reference are migrated. Exact Bandersnatch draft-text
-parity remains gated by its 16-byte versus reference 32-byte challenge discrepancy.
-See the [migration audit](spec/graypaper-0.8.0.md) for coverage, fixture provenance and open gates.
+## Status
 
-An independent **Nim** implementation of the Join-Accumulate Machine (JAM), built against pinned
-Gray Paper and JAMNP-S specifications. Language selection is complete; its sources, comparisons
-and observations are preserved in the
+The protocol target is **Gray Paper 0.8.0**. The current implementation includes codecs and
+immutable snapshots, state storage foundations, cryptographic adapters, PVM foundations and
+authenticated nonblocking QUIC, with optional RPC and telemetry in the development proof peer.
+It is not yet a full JAM client or a production validator.
+
+See the [source guide](src/README.md) for modules and proof-peer usage,
+[implementation scope](docs/design/scope.md) for coverage and remaining work, and the
+[migration audit](spec/graypaper-0.8.0.md) for protocol compatibility and open gates.
+
+## Getting started
+
+Setup supports **Linux x86-64** and **macOS ARM64**. Bootstrap prerequisites are Make,
+Python 3.12+ and rustup. Native tools include Clang/C++, CMake, zlib and OpenSSL, plus lld
+on Linux. Make installs missing Ubuntu native packages; macOS requires its native development
+tools to be available. See the [development guide](docs/development.md) for setup details.
+
+```sh
+make check   # Provision dependencies and run complete verification.
+make         # Build the development proof peer as build/ragnarok.
+```
+
+Make provisions the pinned Nimony compiler and formatter, Rust toolchain and dependency sources.
+A global Nim installation is not required. Generated tools, binaries, fixtures and logs stay
+under ignored `build/`.
+
+Use `make help` to list targets, `make format` to format Nim and Rust, and `make format-check`
+to check formatting. The [development guide](docs/development.md) describes individual check
+groups; the [testing guide](docs/testing.md) explains their coverage.
+
+## Q&A
+
+### Is Ragnarök eligible for the JAM Implementer's Prize?
+
+No. We know that our substantive use of AI coding agents breaks
+[rule 9 of the JAM Prize](https://jam.web3.foundation/rules), which prohibits substantive
+generative AI use. We are building Ragnarök with that understanding.
+
+### Why use coding agents?
+
+We want to explore how a maintainer and coding agents can build a substantial protocol
+implementation together. Agents help turn bounded tasks into code, tests and documentation,
+while the maintainer directs the work and remains responsible for the result. That makes
+readable code, explicit decisions and independent verification central to the project.
+
+### Why Nim when it is not one of the listed JAM languages?
+
+We chose Nim for readable native code, distinct protocol types, explicit ownership and access
+to C libraries for low-level primitives. The language choice serves the implementation we want
+to build. Nim is absent from the prize's [published language sets](https://jam.web3.foundation/);
+rule 3 allows applications for unlisted languages, but that would not address our use of agents.
+The original evaluation is preserved in the
 [`language-selection` release](https://github.com/jacogr/ragnarok/releases/tag/language-selection).
 
-The current foundation includes canonical codecs and immutable snapshots, native crypto adapters,
-and authenticated nonblocking QUIC with bounded ownership/cancellation tests. It is not yet a full
-JAM client or production validator. [M1 codec progress](docs/m1.md) and [design/remaining work](docs/design.md) describe the scope.
+### Why Nimony?
 
-## Setup
+Nimony is our chosen Nim compiler. Its ARC ownership model and supported contracts fit the
+project's immutable snapshots, guarded results and explicit resource lifetimes. We use a pinned
+nightly and check the behavior we depend on through positive tests and deliberate runtime and
+compilation failures. The [compiler record](docs/nimony-trial.md) documents the migration,
+limitations and remaining gates; the [measured comparison](docs/nimony-performance.md) records
+the bounded local performance evidence. Nim 2 remains a historical comparison only.
 
-The supported compiler is **Nimony 0.6.3**, pinned to the 2026-10-15 nightly
-`5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, with ARC and checked Clang LTO.
-Setup supports Linux x86-64 and macOS ARM64 from checksum-pinned official archives. Rust **1.99.0**
-provides the maintained Bandersnatch primitive bridge; Python **3.12+** runs tooling. CMake, zlib,
-OpenSSL and Clang are required; Linux additionally uses lld. See [development](docs/development.md).
+### How do you check the implementation?
 
-```sh
-make clean   # Remove build/ completely (optional).
-make check   # Provision dependencies, build and run complete verification.
-make         # Provision dependencies and build the proof peer as build/ragnarok.
-```
-
-Select just the affected group while developing:
-
-```sh
-make check-unit     # Native suites and independent corpora.
-make check-failures # Runtime assertion/contract probes and positive controls.
-make check-guards   # Compiler rejection guards.
-make check-e2e      # Real peers, services, resilience, soak and proof offload.
-make check-python   # Python references, tooling and provenance.
-make check-modules  # Every-source semantic compilation.
-```
-
-Make owns setup and test sequencing; `make help` lists the bounded test and formatting targets.
-`make setup` reuses an intact compiler/formatter and refreshes them when pins change. Make/Python and rustup are bootstrap prerequisites; Make installs missing Ubuntu native packages.
-macOS requires its native development tools. The default artifact is the current authenticated QUIC
-proof peer with integration and bounded offload enabled; it is not a full validator executable.
-
-The normal verification command resolves the installed compiler and formatter automatically;
-there is no global Nim compiler requirement. `build/toolchain/env.sh` optionally activates the
-same tools in a shell. Only `nimpretty` is exposed from its pinned formatter archive. Normal
-verification never invokes the historical Nim 2 compiler.
-
-Verification includes the all-source audit, protocol provenance, formatting, independent Python
-harnesses and checked codec/crypto/networking/offload suites. Linux CI uses the same Make targets
-in six independent parallel jobs: source compilation, Python references/tooling, native unit/codec,
-runtime failure/contract checks, compiler rejection guards and end-to-end networking.
-Generated builds, fixture keys and logs stay under ignored
-`build/`. Implemented-scope local migration coverage is complete; final Linux confirmation and
-normative policy gates remain explicit in the [compiler record](docs/nimony-trial.md).
-
-For all native application suites, use `make unit`. This prepares
-the pinned crypto/QUIC libraries and generated fixtures. See
-[native test migration](docs/testing.md) for coverage and retained Python responsibilities.
-
-## Code and verification
-
-| Path | Purpose |
-| --- | --- |
-| `src/codec/` | Nim codecs, consensus-facing types and owned snapshots |
-| `src/crypto/` | Blake2b-256, Ed25519, Keccak-256 and signing contexts |
-| `src/bandersnatch/` | Typed release-reference IETF VRF/RingVRF adapter and domain policy |
-| `src/quic/` | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload |
-| `tests/` | Independent references and verification runners |
-| `tests/unit/` | Nim application tests executed by the pinned native Hastur runner |
-| `tests/fixtures/` | Native test inputs with hashes and independent-reference checks |
-| `tests/native/` | Native drivers, remaining selftests and intentional compile-failure fixtures |
-| `native/` | Narrow maintained C/Rust primitive and transport bridges |
-| `spec/`, `vectors/`, `vendor/` | Pinned interpretations, project fixtures and upstream submodules |
-
-Use `make format` to apply the pinned formatter and `make format-check` to verify it.
-The underlying Python entry points remain available; no global Nim compiler is required.
-See [codec](docs/codec.md), [crypto](docs/crypto.md) and [networking](docs/networking.md) for APIs,
-ownership, reproduction commands and outstanding protocol/security gates.
-
-## Telemetry
-
-The proof peer (`server`, `client` and retained `mesh`) supports an opt-in JIP-3 telemetry subset: append `--telemetry HOST:PORT` and
-`--chain PATH` with an explicit JIP-4 chain file. It reports local node information and
-periodic peer/status observations, incoming/outgoing handshake outcomes and observed disconnections,
-with bounded nonblocking TCP delivery and reconnects.
-See [telemetry usage, scope and verification](spec/telemetry.md).
-
-The proof peer also supports an opt-in WebSocket JSON-RPC endpoint: append `--rpc-port 19800`
-and connect to `ws://127.0.0.1:19800/`. `ragnarok_clientInfo` reports client diagnostics.
-`parameters()` reads GP 0.8.0 configuration from `--chain`; four state-derived fields are
-documented zero placeholders. A configured genesis header/state pair enables genesis-only
-`bestBlock()`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)` and bounded `serviceData`, `serviceValue`, `servicePreimage` and `serviceRequest`
-queries; `parent(hash)` reports unavailable. Block import,
-finalization and subscriptions remain future work.
-See [RPC scope and usage](spec/rpc.md).
+We use pinned specifications and published vectors, independent test references, native boundary
+and malformed-input tests, ownership checks, compiler rejection tests and live peer scenarios.
+`make check` runs the complete verification; Linux CI runs its check groups independently.
+Passing those checks is evidence for the implemented scope, not a security audit or proof of
+full JAM conformance.
 
 ## License
 
