@@ -1,0 +1,51 @@
+{
+  "source": "tests/native/pvm_accumulation_machine_results.nim",
+  "build_name": "pvm-accumulation-machine-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "machine"
+      },
+      "arguments": [
+        "machine"
+      ],
+      "name": "pvm-accumulation-machine-machine",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation machine machine extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "bootstrap"
+      },
+      "arguments": [
+        "bootstrap"
+      ],
+      "name": "pvm-accumulation-machine-bootstrap",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation machine bootstrap extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "invocation"
+      },
+      "arguments": [
+        "invocation"
+      ],
+      "name": "pvm-accumulation-machine-invocation",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation machine invocation extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-accumulation-machine-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation machine limit extraction guard"
+    }
+  ]
+}

@@ -169,8 +169,34 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_memory_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_execution')
+    # Fetch local refusals must not expose a completed host response.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_dispatch')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_fetch')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_machine')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
+    # Optional fetch capture and dispatch failures expose no partial owner or response.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_accumulation')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_context')
+    # Package blob capture refuses invalid owners and aggregate limits without partial snapshots.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_inputs')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_invocation')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_package')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_parameters')
+    # Host dispatch and shared instruction budgets never expose failed execution payloads.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_execution')
+    # Fallible callbacks preserve their reasons without exposing partial execution payloads.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_failures')
+    # Terminal gas deficits cannot bypass canonical state or success selection.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_gas')
+    # Failed host range copies never expose partial buffers or memory owners.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_heap_memory')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_memory')
+    # Host replies publish only valid posterior snapshots and no stale suspension metadata.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_response')
     # Initialization failures never expose a partially prepared machine.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_initialization')
+    # Local return-buffer refusals never expose bytes or a copied prefix.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_output')
     run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
     run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
     run_failure_suite(compiler, report, libraries, build, command, 'report_admission')

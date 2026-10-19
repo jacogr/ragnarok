@@ -74,6 +74,7 @@ Compiler and isolated runtime probes cover private results, nominal limits and
 success-only extraction. Fixtures are original; no upstream code or binaries are
 copied.
 
-Standard executable initialization is now available. Host transitions, argument
-invocation/return extraction and JAM-specific invocation wrappers remain future
-bounded increments; existing execution specification gates remain unchanged.
+Standard executable initialization is now available and composes with
+[halt return-data capture](pvm-output.md). Host transitions, full argument invocation
+and JAM-specific invocation wrappers remain future bounded increments; existing
+execution specification gates remain unchanged.

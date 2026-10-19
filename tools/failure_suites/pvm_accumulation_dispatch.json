@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/pvm_accumulation_dispatch_results.nim",
+  "build_name": "pvm-accumulation-dispatch-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-accumulation-dispatch-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation dispatch default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "engine"
+      },
+      "arguments": [
+        "engine"
+      ],
+      "name": "pvm-accumulation-dispatch-engine",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Accumulation dispatch engine extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "failed"
+      },
+      "arguments": [
+        "failed"
+      ],
+      "name": "pvm-accumulation-dispatch-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation dispatch failed extraction guard"
+    }
+  ]
+}

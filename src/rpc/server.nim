@@ -3,13 +3,13 @@
 
 ## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
 ##
-## Exposes the Server owner and start/tick/close lifecycle, with bounded connection slots
-## serviced by the caller.
+## Exposes the Server owner, publishBlock/publishFinalized handoffs and start/tick/close lifecycle.
+## The caller services bounded connection slots and per-connection chain subscription queues.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol]
-import ../chain/[parameters, genesis]
+import ../chain/[parameters, genesis, provider]
 
 const MaxConnections* = 8
 
@@ -20,6 +20,7 @@ type
     fd: cint
     input, output, message: string
     offset: int
+    session: RpcSession # Per-connection IDs and bounded notifications, released on disconnect.
     deadline, messageDeadline: int64
   Server* = object
     opened: bool
@@ -28,7 +29,7 @@ type
     started: int64
     port: uint16
     role: string
-    genesis: GenesisResult      # Retained immutable startup chain view.
+    chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
     parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
 
 # POSIX APIs borrow bounded stack values only for their synchronous nonblocking syscall.
@@ -71,13 +72,14 @@ proc `=destroy`*(server: Server) =
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
   `=destroy`(server.connections)
   `=destroy`(server.role)
-  `=destroy`(server.genesis) # The retained state map is an ARC owner too.
+  `=destroy`(server.chain) # The retained state map is an ARC owner too.
 
 # Retire one slot exactly once and release queued data; close is not retried after EINTR.
 proc close(slot: var Connection) =
   if slot.opened:
     discard posix.close(slot.fd)
   slot.opened = false
+  slot.session = default(RpcSession) # Reused connection slots cannot inherit subscriptions or pending updates.
   slot.input = ""; slot.output = ""; slot.message = ""
   slot.messageDeadline = 0
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
@@ -138,8 +140,46 @@ proc start*(server: var Server, port: uint16, role: string,
   server.port = port
   server.role = role
   server.parameters = parameters
-  server.genesis = genesis
+  server.chain = genesisView(genesis)
   true
+
+## Publish a caller-validated direct child between ticks on the same dispatcher thread.
+## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
+## current view and forward advanceView's reason. Success replaces the chain and queues subscription updates,
+## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
+## This is not a thread-safe import/validation API.
+proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceError =
+  if not server.opened:
+    return ViewAdvanceError.Uninitialized # Shutdown cannot be bypassed by publishing another snapshot.
+  let update = server.chain.advanceView(child)
+  if update.error != ViewAdvanceError.None:
+    return update.error # Never install a partial or rejected history.
+  server.chain = update.value
+  for slot in mitems(server.connections):
+    if slot.opened and slot.upgraded and not slot.closing: # Only usable WS connections receive events.
+      if not slot.session.queueChainUpdates(child):
+        slot.close() # Disconnect only the overflowing consumer; never drop updates or reject the chain head.
+  ViewAdvanceError.None
+
+## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.
+## Requires a known retained chain block; failures leave the view intact. No finality proof is verified.
+## A new finalized head emits only finalized subscription events; repeats are silent and best is unchanged.
+proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
+  if not server.opened:
+    return ViewFinalizeError.Uninitialized # Closed listeners cannot receive state publications.
+  let update = server.chain.finalizeView(hash)
+  if update.error != ViewFinalizeError.None:
+    return update.error # Preserve the entire view on a rejected selection.
+  let previous = server.chain.finalizedBlock
+  if previous.error == GenesisError.None:
+    if array[32, byte](previous.value.blockHash) == array[32, byte](hash):
+      return ViewFinalizeError.None # Idempotent publication must not duplicate notifications.
+  server.chain = update.value
+  for slot in mitems(server.connections):
+    if slot.opened and slot.upgraded and not slot.closing:
+      if not slot.session.queueChainUpdates(server.chain.finalizedBlock, finalized = true):
+        slot.close() # Finality still advances; only the slow consumer is disconnected.
+  ViewFinalizeError.None
 
 # Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
 proc reject(slot: var Connection, code: int, now: int64) =
@@ -216,7 +256,7 @@ proc process(slot: var Connection, info: ClientInfo, now: int64) =
       if not validUtf8(slot.message):
         slot.reject(1007, now)
         return
-      let response = respond(slot.message, info)
+      let response = respond(slot.message, info, slot.session)
       slot.message = ""
       slot.messageDeadline = 0
       if response.len > 0:
@@ -255,7 +295,7 @@ proc tick*(server: var Server, peers: uint32) =
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
-      port: server.port, parameters: server.parameters, genesis: server.genesis,
+      port: server.port, parameters: server.parameters, chain: server.chain,
       occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.
     if not slot.opened:
@@ -287,6 +327,12 @@ proc tick*(server: var Server, peers: uint32) =
             slot.input.add(bytes[i])
       if slot.opened and slot.output.len == 0:
         slot.process(info, now)
+    if slot.opened and not slot.closing and slot.output.len == 0:
+      let update = slot.session.nextUpdate()
+      if update.len > 0:
+        slot.output = frame(update) # Request replies precede queued notifications on this connection.
+        slot.offset = 0
+        slot.deadline = min(slot.deadline, now + 5000) # Notifications cannot extend a partial input deadline.
     if not slot.opened or slot.output.len == 0:
       continue
     var flags = 0.cint
