@@ -32,7 +32,7 @@ type
       TransferGasLow         ## Offered deferred gas is below the current destination minimum.
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
     Initial,         ## No account mutation occurred on this retained lineage.
-    SelfMetadata,    ## Only upgrade changed the invoking service's metadata.
+    SelfMetadata,    ## Only upgrade or transfer changed the invoking service's metadata.
     SelfEntries,     ## Bounded unique self storage/request keys accompany selected metadata.
     CreatedAccounts, ## Bounded creation proofs accompany supported self metadata/entries.
     DeletedAccounts, ## Bounded ejection proofs accompany supported self/created account changes.
@@ -157,11 +157,11 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
     selfMetadata = false): EffectData =
   var scope = previous.accountScope
   if not sameStateSnapshot(previous.accounts, accounts):
-    # Only the upgrade operation can certify a self-only metadata successor; unsupported ancestry is sticky.
+    # Only upgrade and transfer commits certify self-only metadata successors; unsupported ancestry is sticky.
     if selfMetadata and scope != AccumulationAccountScope.Unsupported:
       if scope notin {AccumulationAccountScope.SelfEntries,
           AccumulationAccountScope.CreatedAccounts, AccumulationAccountScope.DeletedAccounts}:
-        scope = AccumulationAccountScope.SelfMetadata # Upgrade preserves any existing bounded self-key proof.
+        scope = AccumulationAccountScope.SelfMetadata # Self metadata preserves any existing bounded self-key proof.
     else:
       scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
   EffectData(deleted: previous.deleted, deletedLimit: previous.deletedLimit,
@@ -1249,7 +1249,8 @@ proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: 
     fail(AccumulationEffectError.BackendFailure) # Old accounts and outgoing owners survive hashing failure.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let candidate = successorData(previous, changed.value)
+  # The bound transfer plan writes exactly the invoker metadata; keep broader supported proofs and unsupported ancestry.
+  let candidate = successorData(previous, changed.value, selfMetadata = true)
   candidate.transfers = TransferSetData(values: transfers)
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,

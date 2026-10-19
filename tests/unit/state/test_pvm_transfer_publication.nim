@@ -1,0 +1,416 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"arc": "pvm_transfer_publication_arc_release"}
+
+## Genuine common-source transfers publish only selected own debits, preserve ordered outputs and roll back atomically.
+
+import std/[assertions, syncio]
+import ../../../src/chain/parameters
+import ../../../src/codec/[bounded, composite, header, c2_records, state_accounts,
+  state_layout, state_service_values, state_requests, state_trie]
+import ../../../src/state/[accumulation_batch, accumulation_dispatch, accumulation_effects,
+  accumulation_context, accumulation_invocation, accumulation_outcome, accumulation_provisions,
+  accumulation_transfers, store]
+import ../../../src/pvm/[machine, step]
+import ../../../src/crypto/primitives
+import ../../support/[accumulation_batch_context, accumulation_provision_integration,
+  pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+
+# Observe exact publication phases without replacing the maintained backend or outcome constructors.
+proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
+type
+  DebitEnding {.pure.} = enum ## Authored terminal alternatives select real X/Y owners.
+    Halt, Panic, Fault, OutOfGas, HashReturn
+
+proc memo(): seq[byte] =
+  ## Every fixed memo byte has an independent literal pattern, including non-ASCII octets.
+  result = newSeq[byte](128)
+  for index in 0..<128:
+    result[index] = byte((index*7+3) mod 256) # Bounded opaque input is not a string or hash-only witness.
+
+proc profile(): Parameters =
+  ## Small actual balances use zero deposits while retaining the required fixed memo profile.
+  var bytes = encodeParameters(pvmParameters())
+  for index in 0..<24:
+    bytes[index] = 0 # Initialize every deposit word before real host funding validation.
+  for index in 110..<114:
+    bytes[index] = 0 # Set the whole E4 memo-size field, with no stale high bytes.
+  bytes[110] = 128
+  for index in 74..<78:
+    bytes[index] = 0 # A one-slot lookup age makes the literal expired ejection request independently eligible.
+  bytes[74] = 1
+  decodeParameters(bytes).value
+
+proc transfer(destination, amount: uint64): seq[seq[byte]] =
+  ## Assemble a complete successful-row proposal; the production host supplies its verdict and debit.
+  @[registerImmediate(7, destination), registerImmediate(8, amount), registerImmediate(9, 0),
+    registerImmediate(10, 196608), @[10'u8, 21]]
+
+proc append(code: var seq[seq[byte]], more: seq[seq[byte]]) =
+  ## Preserve authored instruction boundaries through the existing envelope builder.
+  for instruction in more:
+    code.add(instruction) # Borrowed fixture instructions never substitute a production effect certificate.
+
+proc envelope(amount = 5'u64, destination = 99'u64, checkpoint = false,
+    repeat = false, ending = DebitEnding.Halt): seq[byte] =
+  ## Checkpoint after the first debit, then optionally duplicate it before the selected terminal.
+  var code = transfer(destination, amount)
+  if checkpoint:
+    code.add(@[10'u8, 18]) # Y retains the exact first debit and outgoing sequence together.
+  if repeat:
+    code.add(registerImmediate(7, destination))
+    code.add(@[10'u8, 21]) # Same amount/gas/memo: duplicates are separate debits.
+  case ending
+  of DebitEnding.Halt:
+    discard # Ordinary halt selects every regular append.
+  of DebitEnding.Panic:
+    code.add(@[0'u8]) # A genuine trap rolls back the later regular suffix.
+  of DebitEnding.Fault:
+    code.add(@[52'u8, 2, 0, 0, 4]) # Unmapped physical load selects the same exceptional checkpoint.
+  of DebitEnding.OutOfGas:
+    code.add(registerImmediate(7, destination))
+    code.add(registerImmediate(9, 100000))
+    code.add(@[10'u8, 21]) # Valid third proposal exceeds remaining gas before any new debit or append.
+  of DebitEnding.HashReturn:
+    code.add(registerImmediate(7, 65536))
+    code.add(registerImmediate(8, 32)) # Readable return hash overrides only the yield.
+  code.add(@[50'u8, 0])
+  guestEnvelope(code, memo())
+
+proc fixture(first: seq[byte], second: seq[byte] = guestEnvelope([@[50'u8, 0]]),
+    incoming = true): BatchFixture =
+  ## Both services share one actual input/prior owner; default sibling halt contributes no pending provision.
+  batchFixture(firstEnvelope = first, secondEnvelope = second, incoming = incoming)
+
+proc execute(source: BatchFixture, index = 0'u64, keys = 0'u64): AccumulationDispatchResult =
+  ## Use real guest execution with finite memo, transfer and optional self-write tracing ceilings.
+  batchExecution(source, index, copyLimit = MemoryByteLimit(128), parameters = profile(),
+    transferLimit = ElementLimit(3), accountWriteKeys = ElementLimit(keys))
+
+proc prepare(source: BatchFixture, first, second: AccumulationDispatchResult,
+    accounts = 2'u64, keys = 0'u64, bytes = 0'u64): AccumulationBatchResult[
+        PreparedAccumulationBatch] =
+  ## Preserve common-source provenance and full service coverage through the maintained batch coordinator.
+  let prior = source.state.snapshot.value
+  let executions = [first, second]
+  prepareCompleteAccumulationBatch(source.inputs, prior, executions, [], HeaderSlot(128),
+    batchPolicy(accounts, selfWrites = keys, selfValueBytes = bytes))
+
+proc metadata(state: StateStoreSnapshot, service: uint32): ServiceMetadata =
+  ## Decode the exact canonical record rather than trusting a copied batch balance observation.
+  decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
+    ServiceIndex(service))).value.bytes, ByteLimit(89)).value.metadata
+
+proc expectedRows(source: BatchFixture, firstBalance, secondBalance: uint64,
+    upgrade = false, storage = false): seq[StateEntry] =
+  ## Replace literal final balances/fields in a complete independent map, preserving all unrelated entries.
+  result = @[]
+  for entry in source.entries:
+    var copied = StateEntry(key: entry.key, value: entry.value)
+    for service in [42'u32, 99'u32]:
+      if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
+          ServiceIndex(service))):
+        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        account.balance = AccountBalance(if service == 42: firstBalance else: secondBalance)
+        if service == 42 and upgrade:
+          var digest = default(array[32, byte])
+          let input = memo()
+          for index in 0..<32:
+            digest[index] = input[index] # Code hash is the raw fixed guest proposal, not its hash.
+          account.codeHash = CodeHash(digest)
+          account.minimumAccumulationGas = Gas(7)
+          account.minimumTransferGas = Gas(9)
+        if service == 42 and storage:
+          account.storageItems = AccountStorageItems(1)
+          account.storageBytes = AccountStorageBytes(
+              36) # Existing self-write fixture's independently derived footprint.
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+    result.add(copied)
+  if storage:
+    result.add(serviceStorageEntry(ServiceIndex(42), @[73'u8], @[3'u8],
+      ServiceEntryLimits(keyBytes: ByteLimit(1), valueBytes: ByteLimit(
+          1))).value) # RO key and first RW memo octet.
+
+proc sameRoot(state: StateStore, rows: seq[StateEntry]) =
+  ## Compare complete-map commitments, never a root reconstructed from partial service state.
+  let wanted = newStateStore(rows, integrationStoreLimits()).value
+  assert array[32, byte](state.snapshot.value.commitment.root) ==
+    array[32, byte](wanted.snapshot.value.commitment.root), "exact full map including unrelated records"
+
+proc collect(plan: PreparedAccumulationBatch): PreparedAccumulationTransfers =
+  ## Only this common-source batch's actual normalized outcomes can contribute outgoing values.
+  let outcomes = [plan.batchOutcomeAt(AccumulationProvisionSourceIndex(0)).value,
+    plan.batchOutcomeAt(AccumulationProvisionSourceIndex(1)).value]
+  prepareAccumulationTransfers(outcomes, AccumulationTransferCollectionLimits(
+    sources: ElementLimit(2), transfers: ElementLimit(6), memoBytes: ByteLimit(768))).value
+
+# Halt/hash return preserve both appends; every exceptional terminal selects the checkpoint prefix or original credit.
+for ending in [DebitEnding.Halt, DebitEnding.HashReturn, DebitEnding.Panic, DebitEnding.Fault,
+    DebitEnding.OutOfGas]:
+  for checkpoint in [false, true]:
+    let source = fixture(envelope(checkpoint = checkpoint, repeat = true, ending = ending))
+    let first = execute(source)
+    let second = execute(source, 1)
+    assert first.error == AccumulationDispatchError.None and second.error ==
+        AccumulationDispatchError.None
+    let normal = ending in {DebitEnding.Halt, DebitEnding.HashReturn}
+    let retained = (if normal: 2 else: (if checkpoint: 1 else: 0))
+    let wantedBalance = 17-5*uint64(retained)
+    for reverse in [false, true]:
+      let plan = (if reverse: prepare(source, second, first) else: prepare(source, first, second)).value
+      let outgoing = collect(plan)
+      assert outgoing.transferCollectionInfo.value.transfers == retained
+      for index in 0..<retained:
+        let value = outgoing.collectedTransferAt(CollectedTransferIndex(uint64(index))).value
+        assert uint32(value.source) == 42 and uint32(value.destination) == 99
+        assert uint64(value.amount) == 5 and uint64(value.gas) == 0
+        let bytes = array[128, byte](value.memo)
+        for offset in 0..<128:
+          assert bytes[offset] == byte((offset*7+3) mod 256) # Complete duplicate memos survive publication planning.
+      var state = source.state
+      discard applyAccumulationBatch(state, plan).value
+      sameRoot(state, expectedRows(source, wantedBalance, 31))
+      assert uint64(metadata(source.state.snapshot.value, 42).balance) == 10, "prior remains uncredited"
+      assert uint64(metadata(state.snapshot.value, 99).balance) == 31, "outgoing destination gets no credit in this round"
+
+# Two stale sibling views cannot replace each other's own final debits or incoming credits.
+let mutual = fixture(envelope(), envelope(3, 42))
+let a = execute(mutual)
+let b = execute(mutual, 1)
+let selected = prepare(mutual, a, b).value
+var mutualState = mutual.state
+discard applyAccumulationBatch(mutualState, selected).value
+sameRoot(mutualState, expectedRows(mutual, 12, 28))
+assert collect(selected).transferCollectionInfo.value.transfers == 2
+let beforeStale = mutualState.snapshot.value
+failHash(1)
+assert applyAccumulationBatch(mutualState, selected).error == AccumulationBatchError.StaleState and
+    hashCalls() == 0
+failHash(0)
+assert sameStateSnapshot(beforeStale, mutualState.snapshot.value), "stale application cannot debit or credit again"
+let foreign = fixture(envelope(), envelope(3, 42))
+assert prepare(mutual, execute(foreign), b).error == AccumulationBatchError.SourceMismatch
+assert prepare(mutual, a, a).error == AccumulationBatchError.DuplicateService
+failHash(1)
+assert prepare(mutual, a, b, accounts = 1).error == AccumulationBatchError.LimitExceeded and
+    hashCalls() == 0
+failHash(0)
+
+# Self and zero transfers retain their debit proof even without an incoming-credit map fork.
+for incoming in [false, true]:
+  for amount in [0'u64, 5]:
+    let source = fixture(envelope(amount, 42), incoming = incoming)
+    let first = execute(source)
+    let context = first.effects.effectContext(AccumulationDimension.Regular).value
+    assert context.effectAccountScope.value == AccumulationAccountScope.SelfMetadata
+    let second = execute(source, 1)
+    let plan = prepare(source, first, second).value
+    var state = source.state
+    discard applyAccumulationBatch(state, plan).value
+    sameRoot(state, expectedRows(source, (if incoming: 17'u64 else: 10'u64)-amount,
+      (if incoming: 31'u64 else: 20'u64)))
+    let outgoing = collect(plan).collectedTransferAt(CollectedTransferIndex(0)).value
+    assert uint32(outgoing.destination) == 42 and uint64(outgoing.amount) == amount
+    if not incoming and amount == 0:
+      assert plan.batchInfo.value.accountWrites == 1, "equal metadata does not erase successful mutation ancestry"
+      failHash(1)
+      assert prepare(source, first, second, accounts = 0).error ==
+          AccumulationBatchError.LimitExceeded
+      failHash(0)
+
+# Upgrade and bounded self-key writes compose on either side of a transfer without losing their proof traces.
+for storage in [false, true]:
+  for before in [false, true]:
+    let mutation = (if storage:
+      @[registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
+        registerImmediate(10, 1), @[10'u8, 5]] else:
+      @[registerImmediate(7, 196608), registerImmediate(8, 7), registerImmediate(9, 9), @[10'u8, 20]])
+    var code: seq[seq[byte]] = @[]
+    if before:
+      append(code, mutation) # A later transfer must preserve an existing supported key proof.
+    append(code, transfer(99, 5))
+    if not before:
+      append(code, mutation) # A later self writer must preserve the earlier debit and outgoing sequence.
+    code.add(@[50'u8, 0])
+    let source = fixture(guestEnvelope(code, memo()))
+    let first = execute(source, keys = 1)
+    let plan = prepare(source, first, execute(source, 1), keys = 1, bytes = 1).value
+    var state = source.state
+    discard applyAccumulationBatch(state, plan).value
+    sameRoot(state, expectedRows(source, 12, 31, upgrade = not storage, storage = storage))
+    assert collect(plan).transferCollectionInfo.value.transfers == 1
+    if storage:
+      assert plan.batchInfo.value.selfWrites == 1 and plan.batchInfo.value.selfValueBytes == 1
+      assert prepare(source, first, execute(source, 1)).error ==
+          AccumulationBatchError.LimitExceeded
+    # The same untraced storage change must remain unsupported, even after a later supported transfer.
+    if storage:
+      let untraced = execute(source)
+      assert untraced.effects.effectContext(AccumulationDimension.Regular).value.effectAccountScope.value ==
+        AccumulationAccountScope.Unsupported
+      assert prepare(source, untraced, execute(source, 1)).error ==
+          AccumulationBatchError.UnsupportedAccountEffects
+
+# Transfer preserves created-account facts regardless of whether the child was created before or after the debit.
+for before in [false, true]:
+  var code: seq[seq[byte]] = @[]
+  if before:
+    append(code, transfer(99, 5)) # Creation must retain an already certified self debit.
+  append(code, @[registerImmediate(7, 196608), registerImmediate(8, 1), registerImmediate(9, 0),
+    registerImmediate(10, 0), registerImmediate(11, 0), registerImmediate(12, high(uint64)), @[
+        10'u8, 19]])
+  if not before:
+    append(code, transfer(99, 5)) # Transfer must retain the earlier child's membership proof.
+  code.add(@[50'u8, 0])
+  let source = fixture(guestEnvelope(code, memo()))
+  let first = batchExecution(source, 0, copyLimit = MemoryByteLimit(128), parameters = profile(),
+    transferLimit = ElementLimit(1), createdAccounts = ElementLimit(1),
+        serviceProbes = ServiceProbeLimit(1))
+  let second = execute(source, 1)
+  let context = first.effects.effectContext(AccumulationDimension.Regular).value
+  assert context.effectAccountScope.value == AccumulationAccountScope.CreatedAccounts, "creation scope survives transfer on either side"
+  let child = context.effectCreatedAccountAt(AccumulationCreatedAccountIndex(0)).value.service
+  let plan = prepareCompleteAccumulationBatch(source.inputs, source.state.snapshot.value,
+    [first, second], [], HeaderSlot(128), batchPolicy(createdAccounts = 1)).value
+  var state = source.state
+  discard applyAccumulationBatch(state, plan).value
+  var rows = expectedRows(source, 12, 31)
+  var digest = default(array[32, byte])
+  let input = memo()
+  for index in 0..<32:
+    digest[index] = input[index] # Literal code-hash proposal is copied exactly into child metadata.
+  rows.add(serviceMetadataEntry(child, ServiceMetadata(codeHash: CodeHash(digest),
+    storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(82),
+    created: AccountSlot(128), parent: ServiceIndex(42)), ByteLimit(89)).value)
+  rows.add(serviceRequestEntry(child, ServicePreimageHash(digest), RequestLength(1),
+      requestedHistory(),
+    RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
+        0), maxBytes: ByteLimit(1)))).value)
+  sameRoot(state, rows)
+  assert plan.batchInfo.value.createdAccounts == 1 and collect(
+      plan).transferCollectionInfo.value.transfers == 1
+  assert prepare(source, first, second).error == AccumulationBatchError.LimitExceeded
+
+# Eject and transfer keep the genuine foreign removal proof on either side of the own-metadata debit.
+for before in [false, true]:
+  let blob = @[5'u8, 7, 9]
+  let digest = ServicePreimageHash(array[32, byte](blake2b256(blob).value))
+  var input = memo()
+  for index, octet in array[32, byte](digest):
+    input[index] = octet # Eject reads this exact eligible request hash; transfer copies the same fixed memo.
+  var identity = default(array[32, byte])
+  identity[0] = 42
+  let target = @[
+    serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(codeHash: CodeHash(identity),
+        balance: AccountBalance(9),
+      storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(84)), ByteLimit(
+          89)).value,
+    serviceRequestEntry(ServiceIndex(77), digest, RequestLength(3), unavailableHistory(RequestSlot(
+        5), RequestSlot(7)),
+      RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
+          3), maxBytes: ByteLimit(13)))).value,
+    servicePreimageEntry(ServiceIndex(77), digest, blob, ServiceEntryLimits(keyBytes: ByteLimit(32),
+        valueBytes: ByteLimit(3))).value]
+  var code: seq[seq[byte]] = @[]
+  if before:
+    append(code, transfer(99, 5)) # A later eject must retain the prior debit's supported ancestry.
+  append(code, @[registerImmediate(7, 77), registerImmediate(8, 196608), @[10'u8, 22]])
+  if not before:
+    append(code, transfer(99, 5)) # A later transfer must preserve the captured deletion facts.
+  code.add(@[50'u8, 0])
+  let source = batchFixture(firstEnvelope = guestEnvelope(code, input),
+    secondEnvelope = guestEnvelope([@[50'u8, 0]]), extra = target)
+  let first = batchExecution(source, 0, slot = HeaderSlot(50000), copyLimit = MemoryByteLimit(128),
+      parameters = profile(),
+    transferLimit = ElementLimit(1), deletedAccounts = ElementLimit(1))
+  let second = batchExecution(source, 1, slot = HeaderSlot(50000))
+  assert first.effects.effectContext(AccumulationDimension.Regular).value.effectAccountScope.value ==
+    AccumulationAccountScope.DeletedAccounts, "mature eligible eject retains deletion scope across transfer"
+  let plan = prepareCompleteAccumulationBatch(source.inputs, source.state.snapshot.value,
+    [first, second], [], HeaderSlot(50000), batchPolicy(deletedAccounts = 1)).value
+  var rows: seq[StateEntry] = @[]
+  for entry in expectedRows(source, 21, 31):
+    var removed = false
+    for deleted in target:
+      if array[31, byte](entry.key) == array[31, byte](deleted.key):
+        removed = true # The three exact eligible target records are absent from the expected posterior.
+    if not removed:
+      rows.add(entry) # Preserve every unrelated record and the independently credited/debited self metadata.
+  var state = source.state
+  discard applyAccumulationBatch(state, plan).value
+  sameRoot(state, rows)
+  assert plan.batchInfo.value.deletedAccounts == 1 and collect(
+      plan).transferCollectionInfo.value.transfers == 1
+  assert prepareCompleteAccumulationBatch(source.inputs, source.state.snapshot.value,
+    [first, second], [], HeaderSlot(50000), batchPolicy()).error ==
+        AccumulationBatchError.LimitExceeded,
+    "retained deletion proof consumes its independent batch budget"
+
+# A no-credit preparation must still pay for one metadata replacement, and a backend failure publishes neither debit.
+let noCredit = fixture(envelope(), incoming = false)
+let noCreditFirst = execute(noCredit)
+let noCreditSecond = execute(noCredit, 1)
+failHash(1)
+assert prepare(noCredit, noCreditFirst, noCreditSecond, accounts = 0).error ==
+    AccumulationBatchError.LimitExceeded
+failHash(0)
+for successful in [0, 2]:
+  var state = mutual.state
+  let prior = state.snapshot.value
+  hashAfter(cint(successful))
+  let failed = applyAccumulationBatch(state, selected)
+  assert failed.error == AccumulationBatchError.StoreFailure and failed.storeError ==
+      StateStoreError.BackendFailure
+  failHash(0)
+  assert sameStateSnapshot(prior, state.snapshot.value), "early or delayed account hashing failure retains the exact prior"
+
+# A late provision failure must discard a fully computed debit/credit candidate too.
+let withProvision = batchFixture(firstEnvelope = envelope())
+let debit = execute(withProvision)
+let provider = execute(withProvision, 1)
+let pending = prepare(withProvision, debit, provider).value
+var calibrated = withProvision.state
+var writes: seq[StateWrite] = @[]
+for service in [42'u32, 99'u32]:
+  var account = metadata(withProvision.state.snapshot.value, service)
+  account.balance = AccountBalance(if service == 42: 12 else: 31)
+  let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+  writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put, value: entry.value))
+failHash(0)
+discard calibrated.apply(writes).value
+let accountHashes = hashCalls()
+assert accountHashes > 0
+var late = withProvision.state
+let latePrior = late.snapshot.value
+hashAfter(accountHashes)
+let refused = applyAccumulationBatch(late, pending)
+assert refused.error == AccumulationBatchError.TerminalFailure and refused.provisionError ==
+    AccumulationProvisionError.BackendFailure
+failHash(0)
+assert sameStateSnapshot(latePrior, late.snapshot.value), "late provision refusal publishes no credit or debit"
+
+var detached = default(PreparedAccumulationBatch)
+var detachedState = default(StateStore)
+block released_callers:
+  let local = fixture(envelope())
+  detached = prepare(local, execute(local), execute(local, 1)).value
+  detachedState = local.state # Execution arrays and their local fixture do not survive this scope.
+discard applyAccumulationBatch(detachedState, detached).value
+assert uint64(metadata(detachedState.snapshot.value, 42).balance) == 12
+assert collect(detached).transferCollectionInfo.value.transfers == 1
+let before = getOccupiedMem()
+for iteration in 0..<1000:
+  let plan = prepare(mutual, a, b).value
+  var state = mutual.state
+  discard applyAccumulationBatch(state, plan).value
+  assert uint64(metadata(state.snapshot.value, 42).balance) == 12
+  assert collect(plan).transferCollectionInfo.value.transfers ==
+      2 # Release candidate maps and retained collection owners each cycle.
+let after = getOccupiedMem()
+assert before == after
+recordArcRelease("pvm_transfer_publication", 1000, before, after)
+echo "PVM transfer publication passed"
+echo "ARC_RELEASE cycles=1000 unchanged"

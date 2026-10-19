@@ -158,8 +158,13 @@ for amount in [0'u64, 1]:
           "publication retains incoming credit without applying rolled-back outgoing transfers"
       else:
         assert selected.outcomeInfo.value.transfers == 1 and plan.error ==
-            AccumulationBatchError.UnsupportedAccountEffects,
-          "selected deferred transfers stay gated at account publication"
+            AccumulationBatchError.None,
+          "selected deferred debits publish only their invoking metadata"
+        var state = fixture.state
+        discard applyAccumulationBatch(state, plan.value).value
+        assert balance(state.snapshot.value, 42) == 17-amount and balance(state.snapshot.value,
+            99) == 31,
+          "incoming credits and selected debit publish once; outgoing destination credit remains deferred"
 
 # Pre-mutation checkpoint retains provide/yield while later request mutation rolls back; later checkpoint gates publication.
 for retainMutation in [false, true]:

@@ -2,6 +2,11 @@
 
 ## Scope and authority
 
+The original upgrade-only boundary below has since been extended by bounded
+[self writes](pvm-self-account-writes.md), creation/deletion proofs and
+[transfer debit publication](pvm-transfer-publication.md). Its verification notes
+retain the original layer's historical scope.
+
 This layer follows PR #190's integration witnesses on master b954efd. Authority is
 Gray Paper 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`, accumulation.tex
 `accpar` self-account projection and `accone`, with vectors
