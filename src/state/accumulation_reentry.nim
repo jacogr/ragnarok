@@ -1,22 +1,27 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Select and materialize report-only accseq reentry after a completed continuation, then apply its batch privately.
+## Own preparation and completion of bounded report-only accseq reentries, applying only the just-completed batch privately.
 ## Retains immutable original-queue provenance and actual full-map successor without publishing caller state.
 
-import ../codec/[bounded, composite, header, work_digest, report_owned]
+import std/algorithm
+import ../codec/[bounded, composite, header, work_digest, report_owned, state_safrole, state_layout, state_trie]
 import ./[accumulation_continuation_execution, accumulation_continuation_inputs,
   accumulation_continuation, accumulation_execution, accumulation_round, accumulation_queue,
   accumulation_operands, accumulation_inputs, accumulation_batch, accumulation_outcome,
   accumulation_provisions, accumulation_service, report_admission, block_transition,
-  block_admission, store]
+  block_admission, accumulation_dispatch, accumulation_skip, accumulation_effects,
+  accumulation_context, accumulation_invocation, store]
 
 type
+  AccumulationReentryDepth* = distinct uint64 ## Retained reentry ordinal starts at one and is distinct from report counts or gas.
+  AccumulationReentryDepthLimit* = distinct uint64 ## Explicit maximum retained history depth for repeated advance.
   AccumulationReentryConfig* = object ## Selection work and input materialization have independent local ceilings.
     selection*: AccumulationContinuationLimits ## Inspected outcomes/reports/digests, including rejected reports.
     operands*: AccumulationOperandConfig ## Only newly selected report payloads count toward these limits.
     inputs*: AccumulationInputConfig ## Only report-derived groups; no recurring allowances or transfers.
   AccumulationReentryInfo* = object ## Copied next-entry facts retain cumulative progress without claiming later execution or final publication.
+    depth*: AccumulationReentryDepth ## First reentry is one; repeated advance increments only below its explicit cap.
     completedPrefix*: AccumulationReportPrefix ## Total original reports processed by initial and completed later rounds.
     pendingReports*: int ## Original-queue reports remaining before this new selection.
     prefix*: AccumulationReportPrefix ## Newly selected whole reports after the cumulative completed offset.
@@ -26,6 +31,8 @@ type
   AccumulationReentryError* {.pure.} = enum ## Refusals expose no earlier range, source, inputs or state candidate.
     Uninitialized,        ## Default result or preparation handle.
     None,                 ## Complete selected success permits guarded extraction.
+    NoPrevious,           ## First reentry has only the original continuation root, no prior completed reentry.
+    Stopped,              ## A completed n=0 entry cannot authorize another advance.
     InvalidSource,        ## No genuine completed continuation or valid range/gas provenance.
     InvalidIndex,         ## Full-width selected-report ordinal is outside the retained range.
     LimitExceeded,        ## Independent selection inspection budget exhausted.
@@ -37,6 +44,7 @@ type
   # Acyclic immutable storage retains exact completed source, original queue and complete prepared successor.
   ReentryData = ref object
     source: CompletedAccumulationContinuation
+    previous: nil ReentryExecutionData
     queue: AccumulationQueuePlan
     info: AccumulationReentryInfo
     inputs: PreparedAccumulationInputs
@@ -58,6 +66,50 @@ type
       failed: AccumulationBatchResult[StateStoreSnapshot] # Invariant: genuinely failed, so no successful snapshot exists.
     else:
       discard      # Defaults, bounds, transfer and invalid-source reasons carry no payload.
+
+  AccumulationReentryExecutionInfo* = object ## Declared reentry reservations remain separate from actual terminal gas.
+    round*: AccumulationReentryInfo ## Retained selected suffix and recursive budget; allowances do not recur.
+    batch*: AccumulationBatchInfo ## Complete input coverage and selected provision accounting.
+    services*: int                ## Number of retained service-indexed gas rows.
+    gasUsed*: Gas                 ## Checked sum of actual gas, never above the reentry budget.
+  AccumulationReentryExecutionError* {.pure.} = enum ## Refusals expose no completed round, gas sequence or usable batch.
+    Uninitialized,   ## Default result or certificate without initialized ownership.
+    None,            ## Complete selected success permits guarded extraction.
+    InvalidEntropy,  ## The stage has no exact decodable posterior entropy chapter.
+    EntropyMismatch, ## An execution bootstrapped from a different posterior entropy word.
+    InvalidInputs,   ## No genuine prepared reentry context was supplied.
+    InvalidIndex,    ## The full-width gas ordinal is outside this round's service set.
+    LimitExceeded,   ## Gas-row count or descriptor extent exceeds local bounds.
+    GasExceeded,     ## Actual consumption exceeds the retained reentry's remaining budget.
+    BatchFailure     ## Inspect the failed complete-batch result, including its guarded nested reasons.
+  # Acyclic immutable storage keeps admitted source, private batch and copied gas accounting together.
+  ReentryExecutionData = ref object
+    source: PreparedAccumulationReentry
+    batch: PreparedAccumulationBatch
+    usage: seq[AccumulationGasUsage]
+    gasUsed: Gas
+  CompletedAccumulationReentry* = object ## Only complete verified coverage of genuine reentry inputs constructs this owner.
+    data: nil ReentryExecutionData
+  AccumulationReentryExecutionResult*[T] = object ## Failed batch alternatives retain only a genuinely refused parent's reason payload.
+    case status: AccumulationReentryExecutionError
+    of None:
+      completed: T # Only complete selected success exposes a copied observation or immutable certificate.
+    of BatchFailure:
+      failed: AccumulationBatchResult[PreparedAccumulationBatch] # Invariant: error != None; no success owner exists.
+    else:
+      discard # Defaults and other failures carry just their reason.
+
+              # Explicit private phase inputs come only from genuine completion certificates.
+  ReentryStep = object
+    root: CompletedAccumulationContinuation
+    previous: nil ReentryExecutionData
+    prior: StateStoreSnapshot
+    batch: PreparedAccumulationBatch
+    start, processed: AccumulationReportPrefix
+    budget, gasUsed: Gas
+    executions: int
+    dispatch: bool
+    depth: AccumulationReentryDepth
 
 func error*[T](outcome: AccumulationReentryResult[T]): AccumulationReentryError =
   ## Read the selected reason without permitting retagging.
@@ -96,7 +148,7 @@ proc reentryInfo*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
       completed: data.info)
 proc reentrySource*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     CompletedAccumulationContinuation] =
-  ## Retain the exact completed later round independently of this preparation handle.
+  ## Retain the original completed continuation root in constant time, independently of reentry depth.
   let data = plan.data
   if data == nil:
     return AccumulationReentryResult[CompletedAccumulationContinuation](
@@ -152,39 +204,34 @@ proc prepareReentryAccumulationService*(plan: PreparedAccumulationReentry,
   AccumulationReentryResult[PreparedAccumulationService](status: AccumulationReentryError.None,
       completed: service.value)
 
-proc prepareAccumulationReentry*(source: CompletedAccumulationContinuation,
+proc prepareReentryStep(step: ReentryStep,
     config: AccumulationReentryConfig): AccumulationReentryResult[PreparedAccumulationReentry] =
-  ## Advance the original report range using actual gas, preflight report-only inputs, then apply only this completed batch privately.
-  ## Borrow source during preparation and retain it only on complete success; caller state is never published.
+  # Share bounded selection/materialization and exact-prior application for first and repeated entries.
+  # Private step inputs retain actual certificates; no caller may substitute raw range, budget or state fields.
   template fail(reason: AccumulationReentryError) =
     return AccumulationReentryResult[PreparedAccumulationReentry](status: reason)
-  let completed = source.executionInfo
-  if completed.error != AccumulationContinuationExecutionError.None:
-    fail(AccumulationReentryError.InvalidSource) # Default completions cannot authorize reentry.
-  let facts = completed.value
-  if uint64(facts.batch.executions) > uint64(config.selection.executions):
+  if uint64(step.executions) > uint64(config.selection.executions):
     fail(AccumulationReentryError.LimitExceeded) # Bound even outcomes with no outgoing transfers.
-  let batch = source.executionBatch.value
-  for index in 0..<facts.batch.executions:
+  let batch = step.batch
+  for index in 0..<step.executions:
     let outcome = batch.batchOutcomeAt(AccumulationProvisionSourceIndex(uint64(index))).value
     if outcome.outcomeInfo.value.transfers != 0:
       fail(AccumulationReentryError.UnsupportedTransfers) # Never discard outgoing destination/gas contributions.
-  let context = source.executionContinuation.value
-  let initial = context.continuationPlan.value.continuationSource.value
+  let initial = step.root.executionContinuation.value.continuationPlan.value.continuationSource.value
   let blockQueue = initial.executionRound.value.roundBlockQueue.value
   let queue = blockQueue.accumulationProjection.value
   let count = queue.accumulationCount.value
-  let previous = uint64(facts.round.completedPrefix)
-  if previous > uint64(count) or uint64(facts.round.prefix) > uint64(count) - previous or
-      uint64(facts.gasUsed) > uint64(facts.round.budget):
+  let previous = uint64(step.start)
+  if previous > uint64(count) or uint64(step.processed) > uint64(count) - previous or
+      uint64(step.gasUsed) > uint64(step.budget):
     fail(AccumulationReentryError.InvalidSource) # Prove addition, native conversion and gas subtraction first.
-  let start = previous + uint64(facts.round.prefix)
-  let budget = uint64(facts.round.budget) - uint64(facts.gasUsed)
+  let start = previous + uint64(step.processed)
+  let budget = uint64(step.budget) - uint64(step.gasUsed)
   var remaining = budget
   var prefix = 0'u64
   var reports = 0'u64
   var digests = 0'u64
-  if facts.round.dispatch:
+  if step.dispatch:
     for index in int(start)..<count:
       # n=0 is terminal in accseq; only an actually dispatched source can authorize further traversal.
       if reports >= uint64(config.selection.reports): fail(AccumulationReentryError.LimitExceeded)
@@ -216,7 +263,7 @@ proc prepareAccumulationReentry*(source: CompletedAccumulationContinuation,
     return AccumulationReentryResult[PreparedAccumulationReentry](
       status: AccumulationReentryError.InputFailure,
       inputReason: inputs.error) # No recurring free allowance or implicit transfer group is introduced.
-  var working = forkStateStore(context.continuationState.value).value
+  var working = forkStateStore(step.prior).value
   let applied = applyAccumulationBatch(working, batch)
   if applied.error != AccumulationBatchError.None:
     return AccumulationReentryResult[PreparedAccumulationReentry](
@@ -225,9 +272,205 @@ proc prepareAccumulationReentry*(source: CompletedAccumulationContinuation,
   let stage = blockQueue.accumulationAdmission.value.reportBlockStage.value.value
   let slot = headerInfo(stage.admitted.admittedHeader).value.unsigned.slot
   AccumulationReentryResult[PreparedAccumulationReentry](status: AccumulationReentryError.None,
-    completed: PreparedAccumulationReentry(data: ReentryData(source: source, queue: queue,
-      info: AccumulationReentryInfo(completedPrefix: AccumulationReportPrefix(start),
+    completed: PreparedAccumulationReentry(data: ReentryData(source: step.root,
+      previous: step.previous, queue: queue,
+      info: AccumulationReentryInfo(depth: step.depth, completedPrefix: AccumulationReportPrefix(
+          start),
         pendingReports: count-int(start), prefix: AccumulationReportPrefix(prefix), budget: Gas(
             budget),
         reportGas: Gas(budget-remaining), dispatch: prefix != 0),
       inputs: inputs.value, state: applied.value, slot: slot)))
+
+proc reentryPrevious*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
+    CompletedAccumulationReentry] =
+  ## Retain only the immediate genuine predecessor; first entry reports NoPrevious rather than fabricating a completion.
+  let data = plan.data
+  if data == nil:
+    return AccumulationReentryResult[CompletedAccumulationReentry](
+        status: AccumulationReentryError.Uninitialized) # Defaults supply no history.
+  if data.previous == nil:
+    return AccumulationReentryResult[CompletedAccumulationReentry](
+        status: AccumulationReentryError.NoPrevious) # The original continuation remains available through reentrySource.
+  AccumulationReentryResult[CompletedAccumulationReentry](status: AccumulationReentryError.None,
+    completed: CompletedAccumulationReentry(data: data.previous))
+
+proc prepareAccumulationReentry*(source: CompletedAccumulationContinuation,
+    config: AccumulationReentryConfig): AccumulationReentryResult[PreparedAccumulationReentry] =
+  ## Prepare the first reentry from a genuine completed continuation, preserving the existing bounded contract.
+  let completed = source.executionInfo
+  if completed.error != AccumulationContinuationExecutionError.None:
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.InvalidSource) # No default completion authorizes first entry.
+  let facts = completed.value
+  prepareReentryStep(ReentryStep(root: source, previous: nil,
+    prior: source.executionContinuation.value.continuationState.value,
+    batch: source.executionBatch.value,
+    start: facts.round.completedPrefix, processed: facts.round.prefix, budget: facts.round.budget,
+    gasUsed: facts.gasUsed, executions: facts.batch.executions, dispatch: facts.round.dispatch,
+    depth: AccumulationReentryDepth(1)), config)
+
+func error*[T](outcome: AccumulationReentryExecutionResult[
+    T]): AccumulationReentryExecutionError =
+  ## Inspect the selected reason without allowing retagging.
+  outcome.status
+
+func value*[T](outcome: AccumulationReentryExecutionResult[T]): T {.inline,
+    requires: outcome.status == AccumulationReentryExecutionError.None.} =
+  ## Extract selected success under checked optimized contracts.
+  outcome.completed
+
+func batchFailure*[T](outcome: AccumulationReentryExecutionResult[T]):
+    AccumulationBatchResult[PreparedAccumulationBatch] {.inline,
+    requires: outcome.status == AccumulationReentryExecutionError.BatchFailure.} =
+  ## Inspect the actual refused parent result; its existing nested reason contracts remain enforced.
+  outcome.failed
+
+# Canonical gas sequence ordering is numeric service order, independent of caller execution order.
+func compareUsage(left, right: AccumulationGasUsage): int =
+  if uint32(left.service) < uint32(right.service): return -1
+  if uint32(left.service) > uint32(right.service): return 1
+  0
+
+proc executionInfo*(plan: CompletedAccumulationReentry):
+    AccumulationReentryExecutionResult[AccumulationReentryExecutionInfo] =
+  ## Copy actual usage and declared round reservations without exposing the owned row sequence.
+  let data = plan.data
+  # A default owner cannot supply copied observations or retained source/publication certificates.
+  if data == nil:
+    return AccumulationReentryExecutionResult[AccumulationReentryExecutionInfo](
+        status: AccumulationReentryExecutionError.Uninitialized)
+  AccumulationReentryExecutionResult[AccumulationReentryExecutionInfo](
+    status: AccumulationReentryExecutionError.None,
+    completed: AccumulationReentryExecutionInfo(
+      round: data.source.reentryInfo.value,
+      batch: data.batch.batchInfo.value, services: data.usage.len, gasUsed: data.gasUsed))
+
+proc executionGasAt*(plan: CompletedAccumulationReentry, index: InvocationServiceIndex):
+    AccumulationReentryExecutionResult[AccumulationGasUsage] =
+  ## Copy the gas row at this round's sorted input-service ordinal; full-width invalid indices refuse before narrowing.
+  let data = plan.data
+  # A default owner cannot supply copied observations or retained source/publication certificates.
+  if data == nil:
+    return AccumulationReentryExecutionResult[AccumulationGasUsage](
+        status: AccumulationReentryExecutionError.Uninitialized)
+  if uint64(index) >= uint64(data.usage.len):
+    return AccumulationReentryExecutionResult[AccumulationGasUsage](
+        status: AccumulationReentryExecutionError.InvalidIndex)
+  AccumulationReentryExecutionResult[AccumulationGasUsage](
+    status: AccumulationReentryExecutionError.None,
+    completed: data.usage[int(uint64(index))])
+
+proc executionReentry*(plan: CompletedAccumulationReentry):
+    AccumulationReentryExecutionResult[PreparedAccumulationReentry] =
+  ## Retain the exact prepared inputs and posterior state independently of this completion's lifetime.
+  let data = plan.data
+  if data == nil:
+    return AccumulationReentryExecutionResult[PreparedAccumulationReentry](
+      status: AccumulationReentryExecutionError.Uninitialized) # No fabricated reentry source.
+  AccumulationReentryExecutionResult[PreparedAccumulationReentry](
+    status: AccumulationReentryExecutionError.None, completed: data.source)
+
+proc executionBatch*(plan: CompletedAccumulationReentry):
+    AccumulationReentryExecutionResult[PreparedAccumulationBatch] =
+  ## Retain the complete batch for existing atomic publication against its exact reentry posterior snapshot.
+  let data = plan.data
+  # A default owner cannot supply copied observations or retained source/publication certificates.
+  if data == nil:
+    return AccumulationReentryExecutionResult[PreparedAccumulationBatch](
+        status: AccumulationReentryExecutionError.Uninitialized)
+  AccumulationReentryExecutionResult[PreparedAccumulationBatch](
+    status: AccumulationReentryExecutionError.None,
+    completed: data.batch)
+
+proc completeAccumulationReentry*(source: PreparedAccumulationReentry,
+    executions: openArray[AccumulationDispatchResult], skipped: openArray[SkippedAccumulation],
+    limits: AccumulationExecutionLimits): AccumulationReentryExecutionResult[
+        CompletedAccumulationReentry] =
+  ## Bind complete coverage and actual gas to the round's exact inputs, actual posterior state, slot and posterior entropy.
+  ## Borrowed arrays remain stable during the call; terminal selection/union preparation occurs once in the batch adapter.
+  # Refuse without publishing an earlier batch or a partial gas sequence.
+  template fail(reason: AccumulationReentryExecutionError) =
+    return AccumulationReentryExecutionResult[CompletedAccumulationReentry](status: reason)
+  let selected = source.reentryInfo
+  if selected.error != AccumulationReentryError.None:
+    fail(AccumulationReentryExecutionError.InvalidInputs) # Defaults cannot authorize a completed later round.
+  let facts = selected.value
+  let inputs = source.reentryInputs.value
+  let count = inputs.invocationServiceCount.value
+  if uint64(count) > uint64(limits.services) or count > high(int) div sizeof(AccumulationGasUsage):
+    fail(AccumulationReentryExecutionError.LimitExceeded) # Bound complete gas rows before batch hashing/allocation.
+  let round = source.reentrySource.value.executionContinuation.value.continuationPlan.value.continuationSource.value.executionRound.value
+  let stage = round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value
+  let parent = source.reentryState.value
+  let slot = headerInfo(stage.admitted.admittedHeader).value.unsigned.slot
+  if executions.len > 0 and executions.len <= count:
+    # Prove the bootstrap seed against posterior C(6), not caller-supplied or admitted-parent entropy.
+    # Count bounds cap this preflight; invalid dispatches are left for the batch adapter's typed refusal.
+    let found = stage.snapshot.lookup(chapterKey(StateChapter(6)))
+    if found.error != StateStoreError.None:
+      fail(AccumulationReentryExecutionError.InvalidEntropy)
+    if found.value.byteLength != 128:
+      fail(AccumulationReentryExecutionError.InvalidEntropy)
+    let entropy = decodeStateEntropy(found.value.bytes)
+    if entropy.error != StateComponentError.None:
+      fail(AccumulationReentryExecutionError.InvalidEntropy)
+    let expected = array[32, byte](entropy.value.value[0])
+    for execution in executions:
+      if execution.error == AccumulationDispatchError.None:
+        let source = execution.effects.effectsSource.value.initialContext(
+            AccumulationDimension.Regular).value
+        let invocation = source.contextInvocation.value.bootstrapInfo.value
+        if array[32, byte](invocation.entropy) != expected:
+          fail(AccumulationReentryExecutionError.EntropyMismatch) # Refuse before any provision union hashing.
+  let batch = prepareCompleteAccumulationBatch(inputs, parent, executions, skipped, slot, limits.batch)
+  if batch.error != AccumulationBatchError.None:
+    return AccumulationReentryExecutionResult[CompletedAccumulationReentry](
+      status: AccumulationReentryExecutionError.BatchFailure,
+      failed: batch) # Only a failed parent result is retained, preserving all nested reason alternatives.
+  let budget = uint64(facts.budget)
+  var total = 0'u64
+  var usage = newSeq[AccumulationGasUsage](count)
+  for index in 0..<executions.len:
+    # Normalized actual consumption includes gas spent before a rolled-back checkpoint or panic.
+    let info = batch.value.batchOutcomeAt(AccumulationProvisionSourceIndex(uint64(
+        index))).value.outcomeInfo.value
+    let consumed = uint64(info.gasUsed)
+    if consumed > budget - total:
+      fail(AccumulationReentryExecutionError.GasExceeded) # Subtraction proves both budget compliance and sum representability.
+    total += consumed
+    usage[index] = AccumulationGasUsage(service: info.service, gasUsed: info.gasUsed)
+  for index, outcome in skipped:
+    # The complete batch already verified each genuine skip's owner, slot, membership and uniqueness.
+    usage[executions.len + index] = AccumulationGasUsage(service: outcome.skipInfo.value.service,
+        gasUsed: Gas(0))
+  usage.sort(compareUsage)
+  AccumulationReentryExecutionResult[CompletedAccumulationReentry](
+    status: AccumulationReentryExecutionError.None,
+    completed: CompletedAccumulationReentry(data: ReentryExecutionData(source: source,
+      batch: batch.value,
+      usage: usage, gasUsed: Gas(total))))
+
+proc prepareAccumulationReentry*(source: CompletedAccumulationReentry,
+    config: AccumulationReentryConfig, depth: AccumulationReentryDepthLimit): AccumulationReentryResult[
+        PreparedAccumulationReentry] =
+  ## Advance only a genuine dispatched completion, under an explicit maximum retained depth; apply only its batch privately.
+  ## Source, queue, budget and prior map cannot be replaced; no caller store is published on success or refusal.
+  let data = source.data
+  if data == nil:
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.InvalidSource) # No fabricated completion enters the shared step.
+  let current = data.source.data
+  if current == nil:
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.InvalidSource) # Defensive owner invariant, never a default successful source.
+  if not current.info.dispatch:
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.Stopped) # n=0 is terminal; no history or suffix rescan occurs.
+  if uint64(current.info.depth) >= uint64(depth):
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.LimitExceeded) # Prove increment representability and cap compliance before any step work.
+  prepareReentryStep(ReentryStep(root: current.source, previous: data, prior: current.state,
+    batch: data.batch, start: current.info.completedPrefix, processed: current.info.prefix,
+    budget: current.info.budget, gasUsed: data.gasUsed,
+    executions: data.batch.batchInfo.value.executions,
+    dispatch: current.info.dispatch, depth: AccumulationReentryDepth(uint64(current.info.depth)+1)), config)

@@ -20,9 +20,9 @@ type
     initial*: ExecutionFixture ## Genuine initial round and original complete state.
     source*: PreparedAccumulationReentry ## Selected reentry after actual completed initial and later rounds.
 
-# Only copied metadata changes before canonical encoding and real parent signing.
-proc ready(base: OwnedReport, id: byte, gases: openArray[uint64],
+proc reentryReady*(base: OwnedReport, id: byte, gases: openArray[uint64],
     firstService = 42'u32): ReadyItem =
+  ## Capture a uniquely identified ready report before real parent signing; optional second digest targets service 99.
   let raw = reportBytes(reportFor(base, 0, gases, service = firstService))
   var decoded = decodeReportBorrowed(raw, 2).value
   decoded.header.packageHash.bytes[0] = id
@@ -35,7 +35,7 @@ proc ready(base: OwnedReport, id: byte, gases: openArray[uint64],
 
 proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = ExecutionEnding.Halt,
     firstGas = 1000'u64, secondGas = 1000'u64, provided = false, stopped = false,
-    empty = false): ReentryFixture =
+    empty = false, tail: ReadyRow = @[]): ReentryFixture =
   ## Consume one report initially, reserve nearly all later gas in the second, then release the true two-service reentry suffix.
   let firstEnding = if provided: ExecutionEnding.Exhausted else: first
   var budget = 1000'u64
@@ -45,9 +45,11 @@ proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = E
     budget += allowance # Two finite fixture credits and the first report fit independently of supplied reentry gas.
   let reserved = if budget < 200000: 100000'u64 else: 200000'u64
   let middle = if stopped: @[high(uint64)] else: @[reserved div 2, reserved div 2]
-  let queue = if empty: newSeq[ReadyItem]() else:
-    @[ready(base, 64, [1000'u64], if provided: 99'u32 else: 42'u32), ready(base, 65, middle),
-      ready(base, 66, [firstGas, secondGas]), ready(base, 67, [0'u64])]
+  var queue = if empty: newSeq[ReadyItem]() else:
+    @[reentryReady(base, 64, [1000'u64], if provided: 99'u32 else: 42'u32), reentryReady(base, 65,
+        middle),
+      reentryReady(base, 66, [firstGas, secondGas]), reentryReady(base, 67, [0'u64])]
+  for item in tail: queue.add(item) # Additional authenticated suffix rows permit real repeated-round witnesses.
   var code: seq[byte] = @[]
   var extra: seq[StateEntry] = @[]
   if provided:
