@@ -110,3 +110,67 @@ No unrelated dependency setup, whole-source sweep or native corpus rerun was use
 The reverse creation/ejection order was added before the final affected-suite run.
 Next: participating-target deletion precedence and prior-ID recreation semantics;
 grow_heap remains gated. M1 framing stays complete, with full serialization open.
+
+
+## Participating-target precedence review (2026-10-19)
+
+Bounded scope: investigate the participating-target gate against the same pinned
+GP 0.8.0 revision and vector revision above. Completion requires pinned-source
+checks, an independent set witness, the genuine missing-code native regression
+with and without incoming credit, and an explicit pending protocol-parity test.
+No publication rule or dependency pin changes in this increment.
+
+In `accumulation.tex`, `eq:accpar` defines the final accounts as
+`fnprovide((accounts union n) minus m, provisions)`. Its following paragraph says
+that different services contributing the same new, altered or removed index make
+the block invalid, and asserts removed/altered overlap cannot occur because a
+removable service cannot execute. `pvm_invocations.tex`, `eq:accinvocation`, however,
+returns the post-transfer state even when code is unavailable. Thus nonexecution
+does not prove the absence of an account alteration: incoming credit survives.
+
+The existing native witness has invoker 42 with balance 10 and target 99 with
+balance 20, owned by 42 through its E32 code hash. Target 99 has the required two
+items, expired two-slot request and present request preimage, but no executable
+code. Incoming transfers independently credit 42 by 7 and 99 by 11. Invoker 42's
+successful eject reclaims the common-prior target balance 20, leaving 37. Target
+99's certified missing-code skip retains balance 31. The invoker contributes 99
+to m while the target contributes its credited self record to n. Applying just the
+set formula removes 99, discarding its eleven-unit incoming credit; the collision
+paragraph instead appears to require invalidity for this altered/removed overlap.
+Neither an extra beneficiary credit nor resurrection follows from the formula.
+
+Even without incoming credit, n's self-account projection retains the unchanged
+target, while the prose speaks of altered accounts. Whether that unchanged
+contribution triggers collision invalidity needs an explicit interpretation too.
+Prior-ID recreation is distinct: a target deleted and recreated in one selected
+poststate is present in its final domain, so that execution does not contribute
+that target to m. An eject event journal alone cannot be used as the GP removal
+set in that case. The current selected-absence gate remains necessary.
+
+`tests/test_pvm_deletion_spec.py` pins both source hashes, verifies these relevant
+clauses, and models only the set/domain arithmetic with literal balances. Its
+pending test records the unresolved validity decision; it does not implement a
+Python protocol runtime. The native `participating_skip_conflict` case preserves
+the local UnsupportedAccountEffects refusal for both credited and uncredited
+skips, checks actual selected/skip balances and exact prior ownership on refusal,
+and retains independently checked explicit-subset publication.
+
+Disposition: retain the conservative local gate; do not report protocol invalidity
+or deletion precedence as implemented. Resolve the collision paragraph versus the
+post-union removal formula for participating skips before extending publication.
+Then address prior-ID recreation from selected final membership, including request
+replacement and self metadata provenance, as a separate bounded increment.
+M1 framing remains complete; full serialization remains open.
+
+
+Verification for this review: focused native `pvm_deleted_accounts` passed with
+fresh 1,000-cycle ARC evidence at 159,344 occupied bytes before and after. Three
+active Python checks passed and one protocol-parity check remains intentionally
+pending. Source inventory, affected-test pinned formatting and whitespace checks
+passed. Logs: `build/pvm-deletion-precedence-native.log`,
+`build/pvm-deletion-precedence-python.log` and
+`build/pvm-deletion-precedence-inventory.log`. These are local macOS results.
+The Make entry point attempted unrelated LSQUIC initialization; it was stopped
+and the new checkout returned to its prior uninitialized state. The existing
+focused native driver then passed using its declared crypto preparation. No
+production source, vendor gitlink, toolchain or registry changed.

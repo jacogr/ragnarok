@@ -247,40 +247,54 @@ block budgets_and_defaults:
       0)).error == AccumulationEffectError.Uninitialized, "default deletion facts have no payload"
 
 block participating_skip_conflict:
-  var fixture = setup(envelope(target = 99))
-  let old = decodeServiceMetadata(fixture.state.snapshot.value.lookup(chapterServiceKey(
-      StateChapter(255), ServiceIndex(99))).value.bytes, ByteLimit(89)).value.metadata
-  let codeKey = servicePreimageKey(ServiceIndex(99), ServicePreimageHash(array[32, byte](
-      old.codeHash)), ByteLimit(32)).value
-  let requestKey = integrationRequest(99, @[81'u8]).key
-  let accountKey = chapterServiceKey(StateChapter(255), ServiceIndex(99))
-  var entries: seq[StateEntry] = @[]
-  for entry in fixture.entries:
-    var keep = true
-    for oldKey in [accountKey, codeKey, requestKey]:
-      if array[31, byte](entry.key) == array[31, byte](
-          oldKey): keep = false # Drop each obsolete target component without a wrapped compound predicate.
-    if keep:
-      entries.add(entry) # Replace target 99 with its coherent eligible owned request/preimage representation.
-  for entry in targetEntries(99, 20): entries.add(entry)
-  fixture.entries = entries
-  fixture.state = newStateStore(entries, integrationStoreLimits()).value
-  let first = execute(fixture)
-  let prior = fixture.state.snapshot.value
-  let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(1), prior, slot,
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
-  let skipped = finishUninvokedAccumulation(service).value
-  assert skipped.skipInfo.value.code == AccumulationCodeStatus.Missing, "real owned target has missing executable code"
-  let complete = prepareCompleteAccumulationBatch(fixture.inputs, prior, [first], [skipped], slot,
-      batchPolicy(deletedAccounts = 1))
-  assert complete.error == AccumulationBatchError.UnsupportedAccountEffects,
-    "participating target skip carries incoming credit that cannot be silently discarded by this bounded merger"
-  let subset = prepareAccumulationBatch(fixture.inputs, prior, [first], slot, batchPolicy(
-      deletedAccounts = 1)).value
-  assert not subset.batchInfo.value.completeInputs, "explicit subset certifies no omitted target work"
-  var state = fixture.state
-  discard applyAccumulationBatch(state, subset).value
-  sameRoot(state, expected(fixture, @[99'u32])) # Omitted target receives no extra credit; its prior twenty-unit balance is reclaimed exactly once.
+  # Nonexecution alone proves neither unchanged metadata nor collision validity.
+  for incoming in [false, true]:
+    var fixture = setup(envelope(target = 99), incoming = incoming)
+    let old = decodeServiceMetadata(fixture.state.snapshot.value.lookup(chapterServiceKey(
+        StateChapter(255), ServiceIndex(99))).value.bytes, ByteLimit(89)).value.metadata
+    let codeKey = servicePreimageKey(ServiceIndex(99), ServicePreimageHash(array[32, byte](
+        old.codeHash)), ByteLimit(32)).value
+    let requestKey = integrationRequest(99, @[81'u8]).key
+    let accountKey = chapterServiceKey(StateChapter(255), ServiceIndex(99))
+    var entries: seq[StateEntry] = @[]
+    for entry in fixture.entries:
+      var keep = true
+      for oldKey in [accountKey, codeKey, requestKey]:
+        if array[31, byte](entry.key) == array[31, byte](
+            oldKey): keep = false # Drop each obsolete target component without a wrapped compound predicate.
+      if keep:
+        entries.add(entry) # Replace target 99 with its coherent eligible owned request/preimage representation.
+    for entry in targetEntries(99, 20): entries.add(entry)
+    fixture.entries = entries
+    fixture.state = newStateStore(entries, integrationStoreLimits()).value
+    let first = execute(fixture)
+    let prior = fixture.state.snapshot.value
+    let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(1), prior, slot,
+      AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
+    let skipped = finishUninvokedAccumulation(service).value
+    assert skipped.skipInfo.value.code == AccumulationCodeStatus.Missing, "real owned target has missing executable code"
+    let credited = skipped.skipState.value.lookup(accountKey).value.bytes
+    assert uint64(decodeServiceMetadata(credited, ByteLimit(89)).value.metadata.balance) ==
+        (if incoming: 31'u64 else: 20'u64),
+      "missing-code skips retain actual incoming credit without executing"
+    let selected = normalizeAccumulationOutcome(first).value.outcomeContext.value
+    let beneficiary = selected.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255),
+        ServiceIndex(42))).value.bytes
+    assert uint64(decodeServiceMetadata(beneficiary, ByteLimit(89)).value.metadata.balance) ==
+        (if incoming: 37'u64 else: 30'u64),
+      "eject reclaims only the target balance visible in the common prior"
+    let complete = prepareCompleteAccumulationBatch(fixture.inputs, prior, [first], [skipped], slot,
+        batchPolicy(deletedAccounts = 1))
+    assert complete.error == AccumulationBatchError.UnsupportedAccountEffects,
+      "participating target validity remains gated with or without incoming credit"
+    assert sameStateSnapshot(prior, fixture.state.snapshot.value),
+      "refused participating-target preparation preserves the exact prior owner"
+    let subset = prepareAccumulationBatch(fixture.inputs, prior, [first], slot, batchPolicy(
+        deletedAccounts = 1)).value
+    assert not subset.batchInfo.value.completeInputs, "explicit subset certifies no omitted target work"
+    var state = fixture.state
+    discard applyAccumulationBatch(state, subset).value
+    sameRoot(state, expected(fixture, @[99'u32], incoming = incoming)) # Omitted target receives no extra credit; its prior twenty-unit balance is reclaimed exactly once.
 
 block recreate_prior_target:
   var fixture = setup(envelope(recreate = true))
