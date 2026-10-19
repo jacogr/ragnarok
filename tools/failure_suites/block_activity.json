@@ -1,0 +1,19 @@
+{
+  "source": "tests/native/block_activity_results.nim",
+  "build_name": "block-activity-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "block-activity-default", "diagnostic": "outcome.status == None", "description": "Block activity default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "block-activity-refused", "diagnostic": "outcome.status == None", "description": "Block activity refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "block-activity-info", "diagnostic": "outcome.status == None", "description": "Block activity info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "block-activity-source", "diagnostic": "outcome.status == None", "description": "Block activity source extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "block-activity-entry", "diagnostic": "outcome.status == None", "description": "Block activity entry extraction guard"},
+    {"identity": {"reason": "profile"}, "arguments": ["profile"], "name": "block-activity-profile", "diagnostic": "outcome.status == None", "description": "Block activity profile extraction guard"},
+    {"identity": {"reason": "published-source"}, "arguments": ["published-source"], "name": "block-activity-published-source", "diagnostic": "outcome.status == None", "description": "Block activity published-source extraction guard"},
+    {"identity": {"reason": "published-state"}, "arguments": ["published-state"], "name": "block-activity-published-state", "diagnostic": "outcome.status == None", "description": "Block activity published-state extraction guard"},
+    {"identity": {"reason": "core-error"}, "arguments": ["core-error"], "name": "block-activity-core-error", "diagnostic": "outcome.status == CoreFailure", "description": "Block activity core-error extraction guard"},
+    {"identity": {"reason": "validator-error"}, "arguments": ["validator-error"], "name": "block-activity-validator-error", "diagnostic": "outcome.status == ValidatorFailure", "description": "Block activity validator-error extraction guard"},
+    {"identity": {"reason": "codec-error"}, "arguments": ["codec-error"], "name": "block-activity-codec-error", "diagnostic": "outcome.status == CodecFailure", "description": "Block activity codec-error extraction guard"},
+    {"identity": {"reason": "state-error"}, "arguments": ["state-error"], "name": "block-activity-state-error", "diagnostic": "outcome.status == StateFailure", "description": "Block activity state-error extraction guard"}
+  ]
+}
