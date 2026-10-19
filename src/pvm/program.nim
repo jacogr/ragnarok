@@ -11,24 +11,16 @@
 import ../codec/natural
 
 type
-  # Byte-addressed instruction counter, also used for copied dynamic jump targets.
-  CodeAddress* = distinct uint64
-  # A table ordinal is deliberately not an instruction counter or dynamic jump address.
-  JumpIndex* = distinct uint64
-  # Caller policy is separate from consensus admissibility.
-  ProgramByteLimit* = distinct uint64
-  # Logical table count policy also bounds zero-width encodings.
-  JumpCountLimit* = distinct uint64
-  # Register identifiers and register-width immediate bit patterns are separate domains.
-  RegisterIndex* = distinct byte
-  # Sign-extended values preserve their unsigned 64-bit register representation.
-  Immediate* = distinct uint64
-  # All failures carry only a reason; the default is never successful.
-  ProgramError* {.pure.} = enum
+  CodeAddress* = distinct uint64 ## Byte-addressed instruction counter, also used for copied dynamic jump targets.
+  JumpIndex* = distinct uint64 ## A table ordinal is deliberately not an instruction counter or dynamic jump address.
+  ProgramByteLimit* = distinct uint64 ## Caller policy is separate from consensus admissibility.
+  JumpCountLimit* = distinct uint64 ## Logical table count policy also bounds zero-width encodings.
+  RegisterIndex* = distinct byte ## Register identifiers and register-width immediate bit patterns are separate domains.
+  Immediate* = distinct uint64 ## Sign-extended values preserve their unsigned 64-bit register representation.
+  ProgramError* {.pure.} = enum ## All failures carry only a reason; the default is never successful.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, InvalidJumpValue,
     InvalidProgram, InvalidInstruction, InvalidOwner, InvalidIndex, TrailingBytes
-  # Private variants prevent callers from forging success or extracting failed payloads.
-  ProgramResult*[T] = object
+  ProgramResult*[T] = object ## Private variants prevent callers from forging success or extracting failed payloads.
     case status: ProgramError
     of None:
       # Only fully validated values are published.
@@ -41,17 +33,14 @@ type
     bytes: seq[byte]
     codeOffset, codeLength, maskOffset, jumpOffset, jumpWidth: int
     jumps: uint64
-  # Copyable ARC handle; no API exports its backing bytes or mutable storage.
-  Program* = object
+  Program* = object ## Copyable ARC handle; no API exports its backing bytes or mutable storage.
     data: nil ProgramData
-  # Each shape follows one operand equation in the pinned instruction tables.
-  OperandShape* {.pure.} = enum
+  OperandShape* {.pure.} = enum ## Each shape follows one operand equation in the pinned instruction tables.
     NoArguments, OneImmediate, ExtendedImmediate, TwoImmediates, OneOffset,
     RegisterImmediate, RegisterTwoImmediates, RegisterImmediateOffset, TwoRegisters,
     TwoRegistersImmediate, TwoRegistersOffset, TwoRegistersTwoImmediates, ThreeRegisters
-  # Copied decoded operands use the GP names A/B/D and X/Y; unused fields are zero.
-  # Offsets remain signed displacements: resolving a target must not wrap a negative address.
-  Instruction* = object
+  Instruction* = object ## Copied decoded operands use the GP names A/B/D and X/Y; unused fields are zero.
+ ## Offsets remain signed displacements: resolving a target must not wrap a negative address.
     address*: CodeAddress
     opcode*: byte
     shape*: OperandShape
@@ -60,20 +49,21 @@ type
     x*, y*: Immediate
     displacement*: int64
 
-# Inspect status without exposing a mutable discriminator.
-func error*[T](r: ProgramResult[T]): ProgramError = r.status
-# Extract a copied value only after establishing complete success.
+func error*[T](r: ProgramResult[T]): ProgramError =
+  ## Inspect status without exposing a mutable discriminator.
+  r.status
 func value*[T](r: ProgramResult[T]): T {.inline, requires: r.status == ProgramError.None.} =
+  ## Extract a copied value only after establishing complete success.
   r.completed
 
-# Exact set U from the 0.8.0 instruction tables, including unlikely (2).
 func validOpcode*(opcode: byte): bool =
+  ## Exact set U from the 0.8.0 instruction tables, including unlikely (2).
   opcode in {0'u8..2'u8, 10'u8, 20'u8, 30'u8..33'u8, 40'u8, 50'u8..62'u8,
     70'u8..73'u8, 80'u8..90'u8, 100'u8..110'u8, 120'u8..161'u8,
     170'u8..175'u8, 180'u8, 190'u8..230'u8}
 
-# Exact set T; a host call suspends execution but does not terminate a basic block.
 func terminatesBlock*(opcode: byte): bool =
+  ## Exact set T; a host call suspends execution but does not terminate a basic block.
   opcode in {0'u8, 1'u8, 40'u8, 50'u8, 80'u8..90'u8, 170'u8..175'u8, 180'u8}
 
 # Read a known in-range logical mask bit; callers establish the extent first.
@@ -89,10 +79,10 @@ func distance(bytes: openArray[byte], maskOffset, length, index: int): range[0..
     if marked(bytes, maskOffset, index + 1 + result): break
     inc result
 
-# Decode canonical framing, check every extent/value before allocation, then capture one owned copy.
-# entry must name a marked valid opcode; jump targets are checked only when executed, not here.
 proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
+  ## Decode canonical framing, check every extent/value before allocation, then capture one owned copy.
+  ## entry must name a marked valid opcode; jump targets are checked only when executed, not here.
   # Bound even a fully present input before scanning or copying it.
   if uint64(input.len) > uint64(byteLimit):
     return ProgramResult[Program](status: ProgramError.LimitExceeded)
@@ -175,14 +165,14 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
     bytes: owned, codeOffset: codeOffset, codeLength: codeLength, maskOffset: maskOffset,
     jumpOffset: jumpOffset, jumpWidth: width, jumps: jumps)))
 
-# Return logical code size without publishing backing storage; default handles are typed failures.
 proc codeLength*(program: Program): ProgramResult[uint64] =
+  ## Return logical code size without publishing backing storage; default handles are typed failures.
   # A default handle has no validated storage to inspect.
   if program.data == nil: return ProgramResult[uint64](status: ProgramError.InvalidOwner)
   ProgramResult[uint64](status: ProgramError.None, completed: uint64(program.data.codeLength))
 
-# Read a table entry by ordinal, including implicit zero values in a zero-width table.
 proc jumpTarget*(program: Program, index: JumpIndex): ProgramResult[CodeAddress] =
+  ## Read a table entry by ordinal, including implicit zero values in a zero-width table.
   # A default handle has no validated storage to inspect.
   if program.data == nil: return ProgramResult[CodeAddress](status: ProgramError.InvalidOwner)
   let data = program.data
@@ -225,8 +215,8 @@ func offsetOperand(data: ProgramData, start: uint64, width: int): int64 =
   if width > 0 and (raw and (1'u64 shl (width * 8 - 1))) != 0:
     result -= 1'i64 shl (width * 8)
 
-# Copy a decoded instruction; invalid addresses and default handles never yield operands.
 proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruction] =
+  ## Copy a decoded instruction; invalid addresses and default handles never yield operands.
   # A default handle has no validated storage to inspect.
   if program.data == nil: return ProgramResult[Instruction](status: ProgramError.InvalidOwner)
   let data = program.data
@@ -323,8 +313,8 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
   ProgramResult[Instruction](status: ProgramError.None, completed: item)
 
-# Membership in varpi uses a bounded backward search, since skip is at most 24.
 proc basicBlockStart*(program: Program, address: CodeAddress): ProgramResult[bool] =
+  ## Membership in varpi uses a bounded backward search, since skip is at most 24.
   # Establish ownership locally as well as through the instruction result.
   # A default handle has no validated storage to inspect.
   if program.data == nil: return ProgramResult[bool](status: ProgramError.InvalidOwner)
@@ -345,17 +335,17 @@ proc basicBlockStart*(program: Program, address: CodeAddress): ProgramResult[boo
     dec previous
   ProgramResult[bool](status: ProgramError.None, completed: false)
 
-# Inspect the raw instruction byte sequence with its normative infinite zero suffix.
-# Unlike instruction(), this deliberately accepts unmarked operands and out-of-range addresses.
 proc instructionByte*(program: Program, address: CodeAddress): ProgramResult[byte] =
+  ## Inspect the raw instruction byte sequence with its normative infinite zero suffix.
+  ## Unlike instruction(), this deliberately accepts unmarked operands and out-of-range addresses.
   # A default owner has no byte sequence, even though valid programs have a zero suffix.
   if program.data == nil: return ProgramResult[byte](status: ProgramError.InvalidOwner)
   let data = program.data
   ProgramResult[byte](status: ProgramError.None, completed: codeByte(data, uint64(address)))
 
-# Find GP startofbasicblock for a valid instruction, including entry in the middle of a block.
-# The backward byte scan is bounded by the validated program size and retains no storage.
 proc containingBlockStart*(program: Program, address: CodeAddress): ProgramResult[CodeAddress] =
+  ## Find GP startofbasicblock for a valid instruction, including entry in the middle of a block.
+  ## The backward byte scan is bounded by the validated program size and retains no storage.
   let current = instruction(program, address)
   # Reject default owners and invalid addresses before narrowing or scanning bytes.
   if current.error != ProgramError.None:

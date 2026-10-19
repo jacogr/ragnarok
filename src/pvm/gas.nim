@@ -8,15 +8,11 @@
 import ./program
 
 type
-  # A computed block charge is distinct from both a program address and a local work limit.
-  BlockGas* = distinct uint64
-  # Local simulation ceiling counts pipeline cycles, including the three-cycle adjustment.
-  GasCycleLimit* = distinct uint64
-  # Local failures never masquerade as guest out-of-gas or publish partial costs.
-  GasError* {.pure.} = enum
+  BlockGas* = distinct uint64 ## A computed block charge is distinct from both a program address and a local work limit.
+  GasCycleLimit* = distinct uint64 ## Local simulation ceiling counts pipeline cycles, including the three-cycle adjustment.
+  GasError* {.pure.} = enum ## Local failures never masquerade as guest out-of-gas or publish partial costs.
     Uninitialized, None, InvalidStart, CycleLimitExceeded, NegativeBranchTarget
-  # Only a completed simulation carries a charge; private fields prevent success forgery.
-  GasResult* = object
+  GasResult* = object ## Only a completed simulation carries a charge; private fields prevent success forgery.
     case status: GasError
     of None:
       # Copied scalar result has no lifetime dependency on the borrowed program.
@@ -42,10 +38,12 @@ type
     clobbers: uint16
     units: Units
 
-# Read status without exposing the variant tag to mutation.
-func error*(r: GasResult): GasError = r.status
-# The caller must select success before extracting the copied block charge.
-func value*(r: GasResult): BlockGas {.requires: r.status == GasError.None.} = r.completed
+func error*(r: GasResult): GasError =
+  ## Read status without exposing the variant tag to mutation.
+  r.status
+func value*(r: GasResult): BlockGas {.requires: r.status == GasError.None.} =
+  ## The caller must select success before extracting the copied block charge.
+  r.completed
 
 # Convert an already saturated register identifier to its singleton dependency set.
 func bit(index: RegisterIndex): uint16 = 1'u16 shl int(byte(index))
@@ -213,9 +211,9 @@ func fits(needed, available: Units): bool =
   for i in 0..<5:
     if needed[i] > available[i]: return false
 
-# Compute the whole block charge, with no register/memory/gas mutation or retained allocation.
-# start must be a block boundary; the cycle ceiling is local work policy, not guest gas.
 proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasResult =
+  ## Compute the whole block charge, with no register/memory/gas mutation or retained allocation.
+  ## start must be a block boundary; the cycle ceiling is local work policy, not guest gas.
   let boundary = basicBlockStart(program, start)
   # Reject default owners, operand bytes and interior instruction addresses uniformly.
   if boundary.error != ProgramError.None or not boundary.value:

@@ -9,19 +9,15 @@ import std/assertions
 import ./[program, machine]
 
 type
-  # Local input policy bounds the complete JAM envelope independently of the embedded program.
-  InitializationByteLimit* = distinct uint64
-  # Independent local allocation and decoding ceilings never change consensus layout rules.
-  InitializationLimits* = object
+  InitializationByteLimit* = distinct uint64 ## Local input policy bounds the complete JAM envelope independently of the embedded program.
+  InitializationLimits* = object ## Independent local allocation and decoding ceilings never change consensus layout rules.
     envelope*: InitializationByteLimit
     program*: ProgramByteLimit
     jumps*: JumpCountLimit
     pages*: PageLimit
-  # No failed/default result contains a machine, memory or partially decoded input.
-  InitializationError* {.pure.} = enum
+  InitializationError* {.pure.} = enum ## No failed/default result contains a machine, memory or partially decoded input.
     Uninitialized, None, InvalidEnvelope, ArgumentsTooLarge, LimitExceeded, InvalidProgram
-  # Private discriminated storage publishes only completely initialized executable snapshots.
-  InitializationResult* = object
+  InitializationResult* = object ## Private discriminated storage publishes only completely initialized executable snapshots.
     case status: InitializationError
     of None:
       # The resulting machine retains its program and memory children without back-references.
@@ -30,11 +26,12 @@ type
       # Rejection carries only its reason, never partially allocated state.
       discard
 
-# Inspect success without permitting result retagging.
-func error*(r: InitializationResult): InitializationError = r.status
-# Borrowing the result yields a retained immutable machine only on successful selection.
+func error*(r: InitializationResult): InitializationError =
+  ## Inspect success without permitting result retagging.
+  r.status
 func value*(r: InitializationResult): Machine {.inline, requires: r.status ==
     InitializationError.None.} =
+  ## Borrowing the result yields a retained immutable machine only on successful selection.
   r.completed
 
 # Decode a fixed little-endian field after its caller establishes the complete header extent.
@@ -64,10 +61,10 @@ proc region(pages: var seq[PageImage], start, size: uint64, access: PageAccess,
         inc consumed
     pages.add(page)
 
-# Apply standard Y framing/layout, validate the embedded program and entry, then capture a CPU.
-# Gas is caller supplied and initially uncharged. All size/policy checks precede page allocation.
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits): InitializationResult =
+  ## Apply standard Y framing/layout, validate the embedded program and entry, then capture a CPU.
+  ## Gas is caller supplied and initially uncharged. All size/policy checks precede page allocation.
   # Argument admissibility is a protocol bound, separate from caller allocation policy.
   if uint64(arguments.len) > 0x1000000'u64:
     return InitializationResult(status: InitializationError.ArgumentsTooLarge)

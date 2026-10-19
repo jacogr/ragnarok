@@ -11,13 +11,10 @@ import ../chain/parameters
 import ../codec/[work_package, fixed_unsigned, c2_records, bounded, natural]
 
 type
-  # Invocation entropy is one nominal 32-byte value, distinct from arbitrary trace bytes.
-  FetchEntropy* = distinct array[32, byte]
-  # Local misuse and resource policy are not guest-visible host exits.
-  FetchError* {.pure.} = enum
+  FetchEntropy* = distinct array[32, byte] ## Invocation entropy is one nominal 32-byte value, distinct from arbitrary trace bytes.
+  FetchError* {.pure.} = enum ## Local misuse and resource policy are not guest-visible host exits.
     Uninitialized, None, UnsupportedSelector, InvalidMemory, LimitExceeded, InvalidContext
-  # Private tagged alternatives prevent reading a response after a local refusal.
-  FetchResult* = object
+  FetchResult* = object ## Private tagged alternatives prevent reading a response after a local refusal.
     case status: FetchError
     of None:
       # The response retains immutable memory and copies registers; no borrowed input escapes.
@@ -27,24 +24,16 @@ type
       discard
 
 type
-  # Explicit presence distinguishes an absent trace from a present zero-byte trace.
-  FetchPresence* {.pure.} = enum
+  FetchPresence* {.pure.} = enum ## Explicit presence distinguishes an absent trace from a present zero-byte trace.
     Absent, Present
-  # Local cap on variable trace snapshot bytes; the fixed entropy field is always constant-size.
-  FetchTraceLimit* = distinct uint64
-  # Local cap on configuration, token and all item payload bytes captured together.
-  FetchPackageLimit* = distinct uint64
-  # Separate local cap on the complete canonical package encoding, including framing and manifests.
-  FetchEncodingLimit* = distinct uint64
-  # Index of the invocation's current work item, separate from guest-supplied register indices.
-  FetchItemIndex* = distinct uint64
-  # GP 0.8.0 data segments have exactly 4104 bytes, unlike arbitrary extrinsic preimages.
-  FetchSegment* = distinct array[4104, byte]
-  # Aggregate selected extrinsic and import bytes; metadata has separate fixed protocol bounds.
-  FetchInputLimit* = distinct uint64
-  # Borrowed capture description. Absent fields are ignored; present tables preserve item order.
-  # Caller must supply authenticated preimages/segments matching the invocation's manifests.
-  FetchInputs* = object
+  FetchTraceLimit* = distinct uint64 ## Local cap on variable trace snapshot bytes; the fixed entropy field is always constant-size.
+  FetchPackageLimit* = distinct uint64 ## Local cap on configuration, token and all item payload bytes captured together.
+  FetchEncodingLimit* = distinct uint64 ## Separate local cap on the complete canonical package encoding, including framing and manifests.
+  FetchItemIndex* = distinct uint64 ## Index of the invocation's current work item, separate from guest-supplied register indices.
+  FetchSegment* = distinct array[4104, byte] ## GP 0.8.0 data segments have exactly 4104 bytes, unlike arbitrary extrinsic preimages.
+  FetchInputLimit* = distinct uint64 ## Aggregate selected extrinsic and import bytes; metadata has separate fixed protocol bounds.
+  FetchInputs* = object ## Borrowed capture description. Absent fields are ignored; present tables preserve item order.
+ ## Caller must supply authenticated preimages/segments matching the invocation's manifests.
     extrinsicsPresence*: FetchPresence
     importsPresence*: FetchPresence
     currentPresence*: FetchPresence
@@ -71,8 +60,7 @@ type
     entropy: FetchEntropy
     tracePresence: FetchPresence
     trace: seq[byte]
-  # Independent local limits bound descriptors, complete list bytes and each C.2 input record.
-  FetchAccumulationLimits* = object
+  FetchAccumulationLimits* = object ## Independent local limits bound descriptors, complete list bytes and each C.2 input record.
     items*: ElementLimit
     bytes*: ByteLimit
     operand*: OperandLimits
@@ -86,15 +74,13 @@ type
   # Fixed parameter encoding is captured once from the configured chain snapshot.
   FetchParameterData = ref object
     bytes: array[ParameterBytes, byte]
-  # Public immutable handle; default is invalid, while explicit all-absent capture is valid.
-  FetchContext* = object
+  FetchContext* = object ## Public immutable handle; default is invalid, while explicit all-absent capture is valid.
     data: nil FetchContextData
     packageData: nil FetchPackageData
     inputData: nil FetchInputData
     parameterData: nil FetchParameterData
     accumulationData: nil FetchAccumulationData
-  # Capture failures carry only the local reason, never a partial owner or borrowed input span.
-  FetchContextResult* = object
+  FetchContextResult* = object ## Capture failures carry only the local reason, never a partial owner or borrowed input span.
     case status: FetchError
     of None:
       # Extracted handles share an immutable snapshot with no writable storage accessor.
@@ -103,18 +89,20 @@ type
       # Uninitialized and refused captures expose no snapshot.
       discard
 
-# Inspect capture status without allowing result retagging.
-func error*(r: FetchContextResult): FetchError = r.status
-# Select the captured immutable context only after checking success.
+func error*(r: FetchContextResult): FetchError =
+  ## Inspect capture status without allowing result retagging.
+  r.status
 func value*(r: FetchContextResult): FetchContext
-    {.requires: r.status == FetchError.None.} = r.completed
+    {.requires: r.status == FetchError.None.} =
+  ## Select the captured immutable context only after checking success.
+  r.completed
 
-# Capture entropy and trace presence independently; borrow caller inputs only until this call returns.
-# Absent payload arguments are ignored and not copied. A present trace is bounded before allocation;
-# its length is already representable as int because the input is a valid openArray.
 proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
     tracePresence: FetchPresence, trace: openArray[byte],
         limit: FetchTraceLimit): FetchContextResult =
+  ## Capture entropy and trace presence independently; borrow caller inputs only until this call returns.
+  ## Absent payload arguments are ignored and not copied. A present trace is bounded before allocation;
+  ## its length is already representable as int because the input is a valid openArray.
   if tracePresence == FetchPresence.Present and uint64(trace.len) > uint64(limit):
     # A local capture cap cannot silently truncate a protocol value or turn it into absence.
     return FetchContextResult(status: FetchError.LimitExceeded)
@@ -132,11 +120,11 @@ proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner,
       packageData: nil, inputData: nil, parameterData: nil, accumulationData: nil))
 
-# Capture the caller's ordered accumulation inputs using the existing C.2 encoder.
-# Caller sources must remain stable until return. Invocation assembly supplies the correct ordering;
-# this operation neither sorts inputs nor authenticates their provenance. Absence ignores sources/caps.
 proc withFetchAccumulation*(context: FetchContext, presence: FetchPresence,
     inputs: openArray[AccumulationSource], limits: FetchAccumulationLimits): FetchContextResult =
+  ## Capture the caller's ordered accumulation inputs using the existing C.2 encoder.
+  ## Caller sources must remain stable until return. Invocation assembly supplies the correct ordering;
+  ## this operation neither sorts inputs nor authenticates their provenance. Absence ignores sources/caps.
   if context.data == nil:
     # Missing base context cannot become valid through an absent or present attachment.
     return FetchContextResult(status: FetchError.InvalidContext)
@@ -189,9 +177,9 @@ proc withFetchAccumulation*(context: FetchContext, presence: FetchPresence,
   captured.accumulationData = owner
   FetchContextResult(status: FetchError.None, completed: captured)
 
-# Attach the configured chain parameters while preserving all invocation-specific selections.
-# Missing/default parameters are local configuration errors, never an absent protocol value.
 proc withFetchParameters*(context: FetchContext, parameters: Parameters): FetchContextResult =
+  ## Attach the configured chain parameters while preserving all invocation-specific selections.
+  ## Missing/default parameters are local configuration errors, never an absent protocol value.
   if context.data == nil or not parameters.valid:
     # Reject uninitialized context or parameters before allocating the fixed-size snapshot.
     return FetchContextResult(status: FetchError.InvalidContext)
@@ -200,11 +188,11 @@ proc withFetchParameters*(context: FetchContext, parameters: Parameters): FetchC
     parameterData: FetchParameterData(bytes: encodeParameters(parameters)),
     accumulationData: context.accumulationData))
 
-# Replace both external-input selections while retaining package, entropy and trace snapshots.
-# Preflight all counts, current-item indices and aggregate bytes before any variable allocation.
-# The caller keeps source storage stable until return; absent table arguments are never inspected.
 proc withFetchInputs*(context: FetchContext, source: FetchInputs,
     limit: FetchInputLimit): FetchContextResult =
+  ## Replace both external-input selections while retaining package, entropy and trace snapshots.
+  ## Preflight all counts, current-item indices and aggregate bytes before any variable allocation.
+  ## The caller keeps source storage stable until return; absent table arguments are never inspected.
   if context.data == nil:
     # A default base cannot be repaired by attaching external inputs.
     return FetchContextResult(status: FetchError.InvalidContext)
@@ -307,13 +295,13 @@ proc encodeSummary(item: ItemInfo, output: var openArray[byte]): bool =
     output[4 + i] = hash[i]
   true
 
-# Attach package blobs and encoded metadata while preserving the original entropy/trace snapshot.
-# Present input must be a validated codec owner. Preflight aggregate byte lengths before allocating;
-# The raw-blob cap and complete-encoding cap are independent and both checked before allocation.
-# Copying happens once at capture, never once per guest fetch. Absence ignores package and both caps.
 proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
     package: OwnedWorkPackage, limit: FetchPackageLimit,
     encodingLimit: FetchEncodingLimit): FetchContextResult =
+  ## Attach package blobs and encoded metadata while preserving the original entropy/trace snapshot.
+  ## Present input must be a validated codec owner. Preflight aggregate byte lengths before allocating;
+  ## The raw-blob cap and complete-encoding cap are independent and both checked before allocation.
+  ## Copying happens once at capture, never once per guest fetch. Absence ignores package and both caps.
   if context.data == nil:
     # An invalid base must not be converted into a valid context by attaching package data.
     return FetchContextResult(status: FetchError.InvalidContext)
@@ -402,10 +390,12 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
         inputData: context.inputData, parameterData: context.parameterData,
         accumulationData: context.accumulationData))
 
-# Inspect a result without exposing mutable variant storage.
-func error*(r: FetchResult): FetchError = r.status
-# Select a completed protocol outcome only after checking success.
-func value*(r: FetchResult): HostResponse {.requires: r.status == FetchError.None.} = r.completed
+func error*(r: FetchResult): FetchError =
+  ## Inspect a result without exposing mutable variant storage.
+  r.status
+func value*(r: FetchResult): HostResponse {.requires: r.status == FetchError.None.} =
+  ## Select a completed protocol outcome only after checking success.
+  r.completed
 
 # Apply a selected value or absence after the wrapper chooses its selector and fixed prices.
 # Caller bytes must remain stable during this synchronous call; the source memory is immutable.
@@ -461,24 +451,24 @@ proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
     return FetchResult(status: FetchError.InvalidMemory)
   FetchResult(status: FetchError.None, completed: response)
 
-# Fetch selector 1 with present 32-byte entropy: fixed cost 103, independent of requested length.
-# Dispatcher supplies the invocation's entropy and host identifier 2; absence is outside this API.
 proc fetchEntropyResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory,
     entropy: FetchEntropy, limit: MemoryByteLimit): FetchResult =
+  ## Fetch selector 1 with present 32-byte entropy: fixed cost 103, independent of requested length.
+  ## Dispatcher supplies the invocation's entropy and host identifier 2; absence is outside this API.
   fetchValue(gas, registers, memory, array[32, byte](entropy), true, 1, 103, 0, limit)
 
-# Fetch selector 2 with a present trace (including empty): cost 80 + ceil(96*r9/1024).
-# This does not select invocation context. A local failure must be propagated by the dispatcher,
-# never converted to HostAction.Panic. Fallible executeWithHost callbacks can return hostFailure(error).
 proc fetchTraceResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory,
     trace: openArray[byte], limit: MemoryByteLimit): FetchResult =
+  ## Fetch selector 2 with a present trace (including empty): cost 80 + ceil(96*r9/1024).
+  ## This does not select invocation context. A local failure must be propagated by the dispatcher,
+  ## never converted to HostAction.Panic. Fallible executeWithHost callbacks can return hostFailure(error).
   fetchValue(gas, registers, memory, trace, true, 2, 80, 96, limit)
 
-# Select configured parameters and invocation values for host identifier 2; remaining selectors refuse.
-# Values >= 16 are protocol-unknown selectors (cost 80, NONE), not unknown host identifiers.
-# Invalid context/memory and local copy caps remain typed failures for fallible host dispatch.
 proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: RegisterFile,
     memory: Memory, limit: MemoryByteLimit): FetchResult =
+  ## Select configured parameters and invocation values for host identifier 2; remaining selectors refuse.
+  ## Values >= 16 are protocol-unknown selectors (cost 80, NONE), not unknown host identifiers.
+  ## Invalid context/memory and local copy caps remain typed failures for fallible host dispatch.
   let owner = context.data
   if owner == nil:
     # Default handles cannot masquerade as a valid invocation with both values absent.

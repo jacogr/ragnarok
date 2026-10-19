@@ -18,17 +18,17 @@ func charged(gas: MachineGas, cost: uint64, registers: RegisterFile, memory: Mem
   HostResponse(action: HostAction.Continue, gas: MachineGas(available - cost),
     gasDeficit: GasDeficit(0), registers: registers, memory: memory)
 
-# Evaluate Omega_G (host identifier 0): cost 48, then return remaining gas in r7 only if affordable.
-# The dispatcher supplies an active nonnegative balance and selects the identifier; invalid memory
-# is rejected when applying the response, not silently replaced here. Other state is unchanged.
 func gasHostResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory): HostResponse =
+  ## Evaluate Omega_G (host identifier 0): cost 48, then return remaining gas in r7 only if affordable.
+  ## The dispatcher supplies an active nonnegative balance and selects the identifier; invalid memory
+  ## is rejected when applying the response, not silently replaced here. Other state is unchanged.
   result = charged(gas, 48, registers, memory)
   if result.action == HostAction.Continue:
     # General-host underfunding precedes table mutations, so r7 stays untouched on OutOfGas.
     result.registers[7] = RegisterValue(uint64(result.gas))
 
-# Evaluate only the invocation dispatcher's unknown-call branch, not an unimplemented known call.
-# Its WHAT return register is assigned even on underflow, unlike the general-function gas rule.
 func unknownHostResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory): HostResponse =
+  ## Evaluate only the invocation dispatcher's unknown-call branch, not an unimplemented known call.
+  ## Its WHAT return register is assigned even on underflow, unlike the general-function gas rule.
   result = charged(gas, 1000, registers, memory)
   result.registers[7] = RegisterValue(high(uint64) - 1)
