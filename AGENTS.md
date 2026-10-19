@@ -165,6 +165,16 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   per-suite requirement files and existing failure-family files are discovered automatically.
   Preserve genuinely ordered values, including native library/link/include order, positional
   diagnostic records and runtime scenario steps. Document and test any new ordering exception.
+- Choose local verification from the actual diff and affected consumers, not the entire project.
+  Use `make unit SUITE=<name>` for focused native tests; CI retains complete verification.
+  Registry-only conflicts need inventory/provenance checks; docs/comments need relevant lint only.
+  For history-only reconciliation, prove exact tree equality and cite the prior test evidence.
+  Do not rerun passing checks on an unchanged tree or run unrelated native/E2E groups. Broaden
+  checks only for cross-cutting changes, actual failures, or an explicit maintainer request.
+- Keep tool output compact: full logs under `build/`, concise success summaries, bounded failure
+  excerpts. Search named files/modules first; exclude generated/dependency trees unless relevant.
+  Read instructions once per unchanged revision. Batch independent reads and avoid repeated short
+  polls. Report verification scope honestly; a focused run never certifies full-suite success.
 - Run relevant checks, report commands/results and distinguish local verification from Linux CI.
   Keep generated outputs, temporary keys, logs and binaries under ignored `build/`.
 - Keep correctness tests separate from any future performance measurement. Do not weaken semantics,
@@ -175,35 +185,19 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 - All commits must use semantic commit messages in Conventional Commits form:
   `type(scope): summary`, with an optional scope and a concise imperative summary. Use the type
   that describes the change, such as `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci` or `chore`.
-- A maintainer request for a **stacked PR** means a registered native GitHub pull request stack.
-  Setting a dependent base branch or writing "depends on #N" does not register a stack. Use the
-  website's "Start a pull request stack" option, `gh stack link`, or a supported stack API.
-  Verify GitHub displays numbered stack membership (such as `1/2`, `2/2`) or confirms equivalent
-  stack/position metadata before reporting success. If registration fails or is unavailable,
-  report that explicitly; never silently substitute ordinary dependent PRs.
-- Keep squash merging available for native stacks. GitHub automatically rebases/re-targets the
-  remaining layers after a lower layer lands. Use its native stack workflow for trunk updates;
-  do not independently merge master into every layer or run `sync_stack.py` on a native stack.
-  Fetch the updated remote heads and safely reconcile local checkouts before continuing, preserving
-  uncommitted work. See the
-  [GitHub stack reference](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests).
-- Ad hoc force pushes remain prohibited, including `--force`, `--force-with-lease`, direct ref API
-  updates and CLI wrappers that rewrite published history. GitHub-managed restacking through its
-  registered native stack workflow is the narrow exception, including automatic updates after an
-  authorized merge and the native "Rebase stack" action. Verify stack membership first; never
-  extend this exception to unrelated branches or rewriting history to correct commit messages.
-- For legacy, unregistered dependent PRs only: before merging master after a parent squash,
-  reconcile the original parent tip with its landed squash first. Fetch and use a clean checkout:
-  run `python3 tools/sync_stack.py --parent <original-parent-tip> --landed <squash-commit>`.
-  The helper requires the parent to be in HEAD, the squash to be on origin/master, and exact
-  tree equality before recording ancestry without changing files. If it refuses, inspect and
-  resolve a normal merge; never bypass its checks with a blanket ours/theirs resolution.
-  Then merge current origin/master normally, test and propagate the updated parent through
-  each open child in order. Recheck this at every parent landing, not only at PR creation.
-- Before the final push to an ordinary PR, fetch `origin` and merge the latest `origin/master`
-  into the PR branch. Resolve conflicts and run affected checks before pushing. For registered
-  native stacks, use the stack workflow above and verify the updated remote stack instead of
-  applying independent master merges to its layers. Neither process authorizes merging the PR.
+- Use authenticated `gh` for GitHub work; prefer selected JSON fields over browser automation or
+  handwritten authentication/API clients. Follow [the workflow](docs/agent-workflow.md) and the
+  installed `gh-stack` skill for registered native stacks. Verify remote stack membership; a
+  dependent base alone is not a stack. Do not merge a PR without explicit maintainer authorization.
+- Use official `gh stack checkout/rebase/push/submit` for native stack maintenance. Verify scope,
+  clean worktrees and published heads first; preserve unpublished work and reconcile GitHub rewrites.
+  The extension's guarded pushes are authorized only for verified stack branches after its native
+  rebase. Manual force pushes/ref rewrites, independent master merges into native layers and
+  `sync_stack.py` on native stacks remain prohibited. An exit code alone is not proof of sync:
+  inspect the resulting stack. Never use stack-wide pruning without explicit authorization.
+- Before an ordinary PR's final push, fetch and merge current `origin/master`, resolving conflicts
+  and checking affected behavior. For native stacks use the native workflow instead. Legacy,
+  unregistered dependent branches follow the ancestry checks in the workflow document.
 - Every AI run must include a suggested semantic commit message in its final report, accurately
   describing the changes made. If no files changed, explicitly report that no commit is needed.
 - For milestone increments, state current parity/remaining gaps and the next planned bounded chunk
