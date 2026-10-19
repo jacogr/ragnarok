@@ -231,6 +231,39 @@
         "origin": "upgrade"
       },
       "name": "accumulation-effect-upgrade"
+    },
+    {
+      "arguments": [
+        "transfer"
+      ],
+      "description": "Accumulation transfer selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "transfer"
+      },
+      "name": "accumulation-effect-transfer"
+    },
+    {
+      "arguments": [
+        "transfer-prepare"
+      ],
+      "description": "Accumulation transfer selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "transfer-prepare"
+      },
+      "name": "accumulation-effect-transfer-prepare"
+    },
+    {
+      "arguments": [
+        "transfer-commit"
+      ],
+      "description": "Accumulation transfer selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "transfer-commit"
+      },
+      "name": "accumulation-effect-transfer-commit"
     }
   ],
   "crypto_library": "crypto",

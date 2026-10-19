@@ -9,7 +9,8 @@
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_fetch]
 import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
-    state_requests, state_privileges, state_authorization, work_report, state_safrole, assurances, bounded]
+    state_requests, state_privileges, state_authorization, work_report, state_safrole, assurances,
+    c2_records, bounded]
 import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects,
     accumulation_invocation, store]
 
@@ -37,6 +38,7 @@ type
     copyLimit: MemoryByteLimit
     effects: AccumulationEffects
     provisionLimits: AccumulationProvisionLimits
+    transferLimit: ElementLimit
     serviceProbes: ServiceProbeLimit
 
 func error*(outcome: AccumulationDispatchResult): AccumulationDispatchError =
@@ -702,6 +704,80 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Other invariant failures publish no effects.
   hostSuccess[AccumulationDispatchError](response)
 
+# Transfer quotes the conditional fee from pure row validation before charging or publishing any debit.
+proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  if context.parameters.get(transferMemoSize) != 128:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # The fixed C.2 memo type must match the protocol profile.
+  var planned = default(PreparedAccumulationTransfer)
+  var action = HostAction.Continue
+  var code = 0'u64
+  var deferredGas = 0'u64
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[10])), MemoryLength(128),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    var memo = default(array[128, byte])
+    for i in 0..<128:
+      memo[i] = captured.value[i] # Complete fixed input capture precedes WHO/LOW/CASH checks.
+    let prepared = prepareAccumulationTransfer(context.effects,
+      AccumulationTransferDestination(uint64(cpu.registers[7])), TransferBalance(uint64(
+          cpu.registers[8])),
+      Gas(uint64(cpu.registers[9])), TransferMemo(memo), context.parameters)
+    case prepared.error
+    of AccumulationEffectError.None:
+      planned = prepared.value # This exact source version supplies the debit after full affordability.
+      deferredGas = uint64(cpu.registers[9])
+    of AccumulationEffectError.UnknownService:
+      code = high(uint64)-3 # WHO pays only the base fee.
+    of AccumulationEffectError.TransferGasLow:
+      code = high(uint64)-7 # LOW precedes CASH and pays only the base fee.
+    of AccumulationEffectError.InsufficientCash:
+      code = high(uint64)-6 # CASH pays no deferred gas.
+    of AccumulationEffectError.MalformedState:
+      return hostFailure(AccumulationDispatchError.MalformedState) # No fabricated guest verdict for corrupt metadata.
+    else:
+      return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid plan can quote a successful fee.
+  of MachineError.Fault, MachineError.InvalidRange:
+    action = HostAction.Panic # Memory failure quotes base-only gas and preserves the original destination register.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Explicit local capture policy may refuse pure fee evaluation.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no memo.
+  var low = 0'u64
+  var upper = 0'u64
+  if deferredGas > high(uint64)-575:
+    upper = 1
+    low = deferredGas-(high(uint64)-575)-1 # Exact carry without forming an overflowing sum.
+  else:
+    low = deferredGas+575 # Proven representable; refusals have deferredGas zero.
+  let charged = chargedResponse(cpu, memory, low, upper)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve exact signed-debt representation refusals.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # OOG wins over the row verdict and never commits a prepared debit.
+  response.action = action
+  if action == HostAction.Panic:
+    return hostSuccess[AccumulationDispatchError](
+        response) # Charged panic leaves r7 and both dimensions unchanged.
+  if code != 0:
+    response.registers[7] = RegisterValue(code)
+    return hostSuccess[AccumulationDispatchError](
+        response) # Funded WHO/LOW/CASH have no account or outgoing mutation.
+  let changed = commitAccumulationTransfer(planned, context.transferLimit)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value # Creator debit and append publish as one current version.
+    response.registers[7] = RegisterValue(0) # OK, including zero-value and self transfers.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Capacity refusal is not protocol FULL or CASH.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No append survives failed creator Merklization.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid commit may publish.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -742,9 +818,11 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     newResponse(context, cpu, memory) # Atomic account creation and versioned allocation cursor.
   of 20:
     upgradeResponse(context, cpu, memory) # Replace self metadata while retaining current code execution.
+  of 21:
+    transferResponse(context, cpu, memory) # Conditional fee and atomic deferred transfer publication.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 21..25:
+  of 1, 22..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
@@ -756,9 +834,11 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
     steps: ExecutionStepLimit, calls: HostCallLimit,
     cycles: GasCycleLimit, contextConfig: AccumulationContextConfig,
     provisionLimits = default(AccumulationProvisionLimits),
-    serviceProbes = ServiceProbeLimit(0)): AccumulationDispatchResult =
+    serviceProbes = ServiceProbeLimit(0), transferLimit = ElementLimit(
+        0)): AccumulationDispatchResult =
   ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
   ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
+  ## Omitted transferLimit permits no outgoing append; protocol refusals and OOG require no capacity.
   ## Omitted serviceProbes permits no automatic successor probing; reserved creation needs no probes.
   ## Omitted provision limits give zero retained capacity; no default authorizes unbounded capture.
   ## Each call prepares I from this machine's own bootstrap and starts from its immutable initial CPU.
@@ -791,7 +871,8 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
       queues: contextConfig.queues, privileges: contextConfig.privileges, fetch: captured.value,
           copyLimit: copyLimit,
 
-effects: initialized.value, provisionLimits: provisionLimits, serviceProbes: serviceProbes)
+effects: initialized.value, provisionLimits: provisionLimits, serviceProbes: serviceProbes,
+      transferLimit: transferLimit)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
     steps, calls, cycles)
   case evaluated.error

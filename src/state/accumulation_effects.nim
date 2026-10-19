@@ -1,13 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 implications: immutable account/queue/staging/privilege writes, yields, provisions and exceptional checkpoints.
+## GP 0.8.0 implications: immutable account/queue/staging/privilege writes, yields, provisions, deferred transfers and exceptional checkpoints.
 ## Exposes prepared pairs, guarded current accounts/info/queues/staging/privileges and controlled mutations with a versioned allocation cursor.
 ## Guest memory, gas, registers, execution verdicts and publication belong to their caller's PVM layer.
 
 import std/[assertions, algorithm]
 import ../codec/[bounded, composite, state_outputs, state_accounts, state_layout, state_requests,
-    state_service_values, state_privileges, state_authorization, work_report, state_safrole]
+    state_service_values, state_privileges, state_authorization, work_report, state_safrole, c2_records]
 import ../chain/parameters
 import ../crypto/primitives
 import ./[accumulation_context, accumulation_invocation, store, preimages]
@@ -27,8 +27,14 @@ type
       NotAssigner,           ## Only the current assigner may replace its core queue.
       InvalidValidatorCount, ## Staging population must be a supported multiple of three.
       NotDelegator,          ## Only the current delegator may replace the staging roster.
-      InsufficientCash,      ## Child funding must leave the creator above its own minimum balance.
-      ServiceExists          ## A registrar-selected reserved service ID is already occupied.
+      InsufficientCash,      ## Account debits must preserve the creator's own minimum balance.
+      ServiceExists,         ## A registrar-selected reserved service ID is already occupied.
+      TransferGasLow         ## Offered deferred gas is below the current destination minimum.
+  AccumulationTransferDestination* = distinct uint64 ## Full register domain; high bits are rejected as WHO before narrowing to ServiceIndex.
+  AccumulationTransferIndex* = distinct uint64 ## Outgoing ordinal is neither a service identity nor a transfer amount.
+  # Immutable ordered transfer backing is shared only by frozen effect versions.
+  TransferSetData = ref object
+    values: seq[DeferredTransfer]
   AccumulationDesiredService* = distinct uint64 ## Full-width proposal: only registrar values below 65536 select a reserved uint32 ID.
   AccumulationNewService* = object ## Copied creation proposal; account identity, parent, slot and starting balance are derived by the state operation.
     codeHash*: CodeHash     ## Raw offered hash; creation neither requires nor publishes its preimage.
@@ -61,8 +67,7 @@ type
       commitment: OutputCommitment # Zero bytes remain a present protocol value.
     of false:
       discard                      # Absence carries no commitment payload.
-  ## Current implications retain separate initial provenance and versioned accounts, yield and provisions.
-  EffectData = ref object
+  EffectData = ref object # Current implications retain separate initial provenance, accounts, yield, provisions and transfers.
     initial: InitialAccumulationContext
     accounts: StateStoreSnapshot
     nextService: ServiceIndex
@@ -71,6 +76,7 @@ type
     privileges: PrivilegeSnapshot
     output: YieldValue
     provisions: ProvisionSetData
+    transfers: TransferSetData
   AccumulationEffectContext* = object ## Read-only acyclic context; copies retain a version independently of later effect operations.
     data: nil EffectData
   ## Private pair retains exact initial provenance; neither child refers back to this owner or older pairs.
@@ -79,6 +85,13 @@ type
     regular, exceptional: AccumulationEffectContext
   AccumulationEffects* = object ## Only prepared initial contexts create a pair; mutations preserve their service/input identity.
     data: nil PairData
+  # Acyclic immutable plan retains its exact source pair and copied prospective debit/transfer.
+  TransferPlanData = ref object
+    source: AccumulationEffects
+    metadata: ServiceMetadata
+    transfer: DeferredTransfer
+  PreparedAccumulationTransfer* = object ## Pure validated transfer; only commit can publish against this plan's retained source version.
+    data: nil TransferPlanData
   AccumulationStorageChange* = object ## A completed storage mutation owns its successor pair and copied prior-value facts.
     effects*: AccumulationEffects ## Independently retained successor; prior regular/checkpoint owners remain unchanged.
     hadValue*: bool     ## Distinguish an absent key from a present value whose previous length was zero.
@@ -86,7 +99,7 @@ type
   AccumulationServiceChange* = object ## A completed creation owns both its successor and the exact selected service ID.
     effects*: AccumulationEffects ## Current accounts and allocation cursor advance together; older versions remain valid.
     service*: ServiceIndex ## Reserved or automatic ID actually created by this operation.
-  AccumulationEffectInfo* = object ## Copied current facts report retained provisions and the still-empty outgoing transfer sequence.
+  AccumulationEffectInfo* = object ## Copied current facts report retained outgoing transfers, provisions and service/cursor identity.
     service*: ServiceIndex ## The invoking service retains its initial identity.
     nextService*: ServiceIndex ## Current allocation cursor; historical initial provenance remains separate.
     transfers*, provisions*: int
@@ -105,6 +118,12 @@ func value*[T](outcome: AccumulationEffectResult[T]): T {.inline,
     requires: outcome.status == AccumulationEffectError.None.} =
   ## Extract selected success under compiler/runtime contracts, including optimized execution.
   outcome.completed
+
+# Build an unpublished successor sharing frozen components; each operation replaces only its selected fields.
+proc successorData(previous: EffectData, accounts: StateStoreSnapshot): EffectData =
+  EffectData(initial: previous.initial, accounts: accounts, nextService: previous.nextService,
+    staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
+    output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
 
 proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffectResult[
     InitialAccumulationContext] =
@@ -164,7 +183,7 @@ proc effectInfo*(context: AccumulationEffectContext): AccumulationEffectResult[
   let source = data.initial.contextInfo.value
   AccumulationEffectResult[AccumulationEffectInfo](status: AccumulationEffectError.None,
     completed: AccumulationEffectInfo(service: source.service, nextService: data.nextService,
-      transfers: source.transfers, provisions: data.provisions.values.len,
+      transfers: data.transfers.values.len, provisions: data.provisions.values.len,
       hasYield: data.output.present))
 
 proc effectYield*(context: AccumulationEffectContext): AccumulationEffectResult[OutputCommitment] =
@@ -221,7 +240,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): Accumu
     nextService: initial.value.contextInfo.value.nextService,
     staging: initial.value.contextStaging.value, queues: initial.value.contextQueues.value,
     privileges: initial.value.contextPrivileges.value,
-    output: YieldValue(present: false),
+    output: YieldValue(present: false), transfers: TransferSetData(values: @[]),
 
 provisions: ProvisionSetData(values: @[], bytes: 0, largest: 0)))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
@@ -239,11 +258,9 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
         status: AccumulationEffectError.Uninitialized)
   let previous = data.regular.data
   assert previous != nil # Private construction preserves initialized children for every published pair.
-  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: previous.accounts, nextService: previous.nextService, staging: previous.staging,
-    queues: previous.queues,
-    privileges: previous.privileges,
-    output: YieldValue(present: true, commitment: commitment), provisions: previous.provisions))
+  let candidate = successorData(previous, previous.accounts)
+  candidate.output = YieldValue(present: true, commitment: commitment)
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
@@ -356,15 +373,10 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   for i, provision in previous.provisions.values: provisions[i] = provision
   provisions[previous.provisions.values.len] = AccumulationProvision(data: ProvisionData(
       service: service, bytes: owned))
-  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: previous.accounts, nextService: previous.nextService, staging: previous.staging,
-    queues: previous.queues,
-    privileges: previous.privileges,
-    output: previous.output,
-    provisions: ProvisionSetData(
-      values: provisions,
-      bytes: previous.provisions.bytes+size,
-      largest: max(previous.provisions.largest, size))))
+  let candidate = successorData(previous, previous.accounts)
+  candidate.provisions = ProvisionSetData(values: provisions,
+    bytes: previous.provisions.bytes+size, largest: max(previous.provisions.largest, size))
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
@@ -545,12 +557,8 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     fail(AccumulationEffectError.BackendFailure) # Merklization failure leaves the source owner untouched.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial successor on any store invariant failure.
-  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, nextService: previous.nextService, staging: previous.staging,
-    queues: previous.queues,
-    privileges: previous.privileges,
-    output: previous.output,
-    provisions: previous.provisions))
+  let candidate = successorData(previous, changed.value)
+  let current = AccumulationEffectContext(data: candidate)
   let successor = AccumulationEffects(data: PairData(source: data.source, regular: current,
     exceptional: data.exceptional))
   AccumulationEffectResult[AccumulationStorageChange](status: AccumulationEffectError.None,
@@ -622,12 +630,9 @@ proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeSta
     fail(AccumulationEffectError.BackendFailure) # Prior accounts and privileges survive failed hashing.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial map survives any other store invariant failure.
-  let currentContext = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, nextService: previous.nextService, staging: previous.staging,
-    queues: previous.queues,
-    privileges: decoded.value.snapshot,
-    output: previous.output,
-    provisions: previous.provisions))
+  let candidate = successorData(previous, changed.value)
+  candidate.privileges = decoded.value.snapshot
+  let currentContext = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: currentContext,
       exceptional: data.exceptional)))
@@ -704,11 +709,10 @@ proc recordAccumulationAssign*(effects: AccumulationEffects, core: Authorization
     fail(AccumulationEffectError.BackendFailure) # Original accounts and both typed owners survive hash failure.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, nextService: previous.nextService, staging: previous.staging,
-    queues: nextQueues.value.snapshot,
-    privileges: nextRoles.value.snapshot,
-    output: previous.output, provisions: previous.provisions))
+  let candidate = successorData(previous, changed.value)
+  candidate.queues = nextQueues.value.snapshot
+  candidate.privileges = nextRoles.value.snapshot
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
@@ -753,10 +757,9 @@ proc recordAccumulationDesignate*(effects: AccumulationEffects, validators: open
     fail(AccumulationEffectError.BackendFailure) # Prior serialized state and typed roster remain valid.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, nextService: previous.nextService, staging: decoded.value.value,
-    queues: previous.queues,
-    privileges: previous.privileges, output: previous.output, provisions: previous.provisions))
+  let candidate = successorData(previous, changed.value)
+  candidate.staging = decoded.value.value
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
@@ -853,9 +856,9 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     fail(AccumulationEffectError.BackendFailure) # Source accounts and cursor survive even delayed hash failure.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, nextService: next, staging: previous.staging, queues: previous.queues,
-    privileges: previous.privileges, output: previous.output, provisions: previous.provisions))
+  let candidate = successorData(previous, changed.value)
+  candidate.nextService = next
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationServiceChange](status: AccumulationEffectError.None,
     completed: AccumulationServiceChange(service: selected, effects: AccumulationEffects(data:
     PairData(source: data.source, regular: current, exceptional: data.exceptional))))
@@ -898,10 +901,112 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
     fail(AccumulationEffectError.BackendFailure) # Existing accounts and every retained owner survive hashing refusal.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, nextService: previous.nextService, staging: previous.staging,
-    queues: previous.queues, privileges: previous.privileges, output: previous.output,
-    provisions: previous.provisions))
+  let candidate = successorData(previous, changed.value)
+  let current = AccumulationEffectContext(data: candidate)
+  AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+    completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
+      exceptional: data.exceptional)))
+
+proc effectTransferAt*(context: AccumulationEffectContext, index: AccumulationTransferIndex):
+    AccumulationEffectResult[DeferredTransfer] =
+  ## Copy one complete outgoing transfer by its ordinal; no mutable memo or backing sequence escapes.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[DeferredTransfer](
+        status: AccumulationEffectError.Uninitialized) # Defaults own no transfers.
+  if uint64(index) >= uint64(data.transfers.values.len):
+    return AccumulationEffectResult[DeferredTransfer](
+        status: AccumulationEffectError.InvalidIndex) # Bound before native narrowing.
+  AccumulationEffectResult[DeferredTransfer](status: AccumulationEffectError.None,
+    completed: data.transfers.values[int(uint64(index))])
+
+proc prepareAccumulationTransfer*(effects: AccumulationEffects,
+    destination: AccumulationTransferDestination,
+
+amount: TransferBalance, gas: Gas, memo: TransferMemo, parameters: Parameters):
+    AccumulationEffectResult[PreparedAccumulationTransfer] =
+  ## Validate WHO/LOW/CASH in pinned order without writes/hashing; the immutable plan binds this exact source version.
+  ## Gas charging and append/store capacity belong after this pure validation; inputs are copied fixed values.
+  # Failed plans expose no metadata, memo or source owner payload.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[PreparedAccumulationTransfer](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # No default owner can authorize a debit.
+  if not parameters.valid:
+    fail(AccumulationEffectError.InvalidParameters) # Funding never uses a fabricated schedule.
+  let previous = data.regular.data
+  assert previous != nil # Private constructors retain complete current snapshots.
+  if uint64(destination) > uint64(high(uint32)):
+    fail(AccumulationEffectError.UnknownService) # Full-width destination has no sentinel or low-bit alias.
+  let target = ServiceIndex(uint32(uint64(destination)))
+  let found = previous.accounts.lookup(chapterServiceKey(StateChapter(255), target))
+  if found.error == StateStoreError.MissingKey:
+    fail(AccumulationEffectError.UnknownService) # Actual current membership alone authorizes destination lookup.
+  if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # Corrupt current targets are not fabricated absent accounts.
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if decoded.error != ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # Require canonical target metadata before minimum-gas comparison.
+  if uint64(gas) < uint64(decoded.value.metadata.minimumTransferGas):
+    fail(AccumulationEffectError.TransferGasLow) # LOW precedes creator funding checks.
+  let self = previous.initial.contextInfo.value.service
+  let creator = previous.accounts.lookup(chapterServiceKey(StateChapter(255), self))
+  if creator.error != StateStoreError.None or creator.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # The invoking account must remain complete and canonical.
+  let original = decodeServiceMetadata(creator.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if original.error != ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # Never repair source metadata while transferring funds.
+  var metadata = original.value.metadata
+  if uint64(amount) > uint64(metadata.balance):
+    fail(AccumulationEffectError.InsufficientCash) # Prove subtraction before computing the prospective debit.
+  metadata.balance = AccountBalance(uint64(metadata.balance)-uint64(amount))
+  if not funded(metadata, parameters):
+    fail(AccumulationEffectError.InsufficientCash) # CASH includes the creator's own exact storage threshold.
+  let plan = PreparedAccumulationTransfer(data: TransferPlanData(source: effects,
+    metadata: metadata,
+    transfer: DeferredTransfer(source: self, destination: target, amount: amount, gas: gas, memo: memo)))
+  AccumulationEffectResult[PreparedAccumulationTransfer](status: AccumulationEffectError.None,
+      completed: plan)
+
+proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: ElementLimit):
+    AccumulationEffectResult[AccumulationEffects] =
+  ## Publish the bound creator debit and one ordered append atomically; callers must first charge conditional host gas.
+  ## Reusing a plan produces successors of the same retained version, never appends to an ambient replacement state.
+  # No partially debited account or detached transfer sequence escapes any refusal.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationEffects](status: reason)
+  let plan = prepared.data
+  if plan == nil:
+    fail(AccumulationEffectError.Uninitialized) # A default handle grants no prepared transfer.
+  let data = plan.source.data
+  assert data != nil # Only successful preparation creates a source-bound plan.
+  let previous = data.regular.data
+  assert previous != nil # Prepared immutable pairs always retain their current child.
+  let count = previous.transfers.values.len
+  if uint64(count) >= uint64(limit) or count >= high(int) div sizeof(DeferredTransfer):
+    fail(AccumulationEffectError.LimitExceeded) # Prove count+1 and typed allocation extent before appending.
+  var transfers = newSeq[DeferredTransfer](count+1)
+  for i in 0..<count:
+    transfers[i] = previous.transfers.values[i] # Copy fixed values in exact existing order, including duplicates.
+  transfers[count] = plan.transfer
+  let encoded = serviceMetadataEntry(plan.transfer.source, plan.metadata, ByteLimit(
+      ServiceMetadataBytes)).value
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply([StateWrite(key: encoded.key, kind: StateWriteKind.Put,
+      value: encoded.value)])
+  case changed.error
+  of StateStoreError.None:
+    discard # Only a fully Merklized creator debit can accompany the appended transfer.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Inherited store policy remains an explicit local refusal.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # Old accounts and outgoing owners survive hashing failure.
+  else:
+    fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
+  let candidate = successorData(previous, changed.value)
+  candidate.transfers = TransferSetData(values: transfers)
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
