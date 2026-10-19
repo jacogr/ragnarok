@@ -90,3 +90,10 @@ The final dispatcher suite was rerun after the last executable test change.
 The verified pinned tool installation was reused from the sibling checkout;
 crypto/observer dependencies were rebuilt locally. Only affected checks ran;
 complete six-group verification and Linux CI are not claimed.
+
+## State-stack reconciliation
+
+The merged PVM dispatcher owns checkpoint/yield execution and its guarded effects API. The
+state stack uses that implementation rather than retaining a parallel effects entry point. An
+additional authored guest checks all 32 distinct commitment bytes through checkpoint and a later
+zero yield, preserving the distinction between the regular and exceptional dimensions.

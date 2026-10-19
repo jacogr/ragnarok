@@ -7,7 +7,8 @@
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_context, accumulation_effects]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, c2_records, state_outputs]
+import ../../../src/codec/[bounded, c2_records, state_outputs, assurances, composite,
+  state_authorization, state_safrole, state_privileges, state_layout, state_trie]
 import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
 
@@ -207,6 +208,59 @@ assert executeAccumulationMachine(history, pvmParameters(), limits(), MemoryByte
   ExecutionStepLimit(100), HostCallLimit(10), GasCycleLimit(1000), insufficient).error ==
   AccumulationDispatchError.LimitExceeded
 checkYield(completed, regular, true, 81) # Later refusals never mutate already published effects.
+## Each descriptor optionally loads r7 before issuing its host call; checkpoints use the preceding registers.
+type GuestCall = (byte, uint32)
+
+## Assemble only literal load_imm/ecalli/return opcodes with independently marked instruction boundaries.
+proc patternedPrepared(sequence: openArray[GuestCall],
+    credit = 10000'u64): PreparedAccumulationMachine =
+  var code = @[0'u8, 0, 0, 0, 0]
+  var starts = @[0, 1, 2, 3, 4]
+  # Every yield receives an explicit pointer, including signed/full-width and inaccessible cases.
+  for call in sequence:
+    if call[0] == 26:
+      starts.add(code.len)
+      code.add(51); code.add(7)
+      for i in 0..<4: code.add(byte((call[1] shr (8*i)) and 255)) # Literal E4 signed immediate.
+    starts.add(code.len)
+    code.add(10); code.add(call[0])
+  starts.add(code.len)
+  code.add(50); code.add(0)
+  assert code.len < 128 # This authored helper uses one-byte compact program lengths.
+  var raw = @[0'u8, 0, byte(code.len)]
+  for octet in code: raw.add(octet) # The raw instruction sequence is followed by its boundary bitmask.
+  var mask = newSeq[byte]((code.len+7) div 8)
+  for start in starts: mask[start div 8] = mask[start div 8] or byte(1 shl (start mod 8))
+  for octet in mask: raw.add(octet)
+  let config = pvmContextConfig()
+  let entries = @[
+    authorizationEntry(AuthorizationKind.Queues,
+      @[newSeq[AuthorizerHash](80), newSeq[AuthorizerHash](80)], config.queues).value,
+    validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6), config.staging).value,
+    privilegeStateEntry(PrivilegeState(assigners: @[ServiceIndex(0), ServiceIndex(0)]),
+      config.privileges).value]
+  var envelope = @[32'u8, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0]
+  # Literal patterned RO data catches every missing/reordered hash byte; following padding is all zero.
+  for i in 0..<32: envelope.add(byte(73+i))
+  envelope.add(81)
+  for i in 0..<4: envelope.add(byte((uint64(raw.len) shr (8*i)) and 255))
+  for octet in raw: envelope.add(octet)
+  initializeAccumulationMachine(pvmBootstrap(envelope, credit, extra = entries),
+    InitializationLimits(envelope: InitializationByteLimit(128), program: ProgramByteLimit(100),
+      jumps: JumpCountLimit(0), pages: PageLimit(5))).value
+
+# A nonconstant 32-byte commitment detects truncation, byte swaps and incorrect zero padding.
+let patterned = runEffects(patternedPrepared([(26'u8, 65536'u32), (18'u8, 0'u32),
+  (26'u8, 65568'u32)]))
+assert patterned.error == AccumulationDispatchError.None and patterned.value.exit == StepExit.Halt
+for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exceptional]:
+  # The checkpoint retains every patterned byte while the later yield captures a present zero value.
+  let child = patterned.effects.effectContext(dimension).value
+  assert child.effectInfo.value.hasYield
+  let bytes = array[32, byte](child.effectYield.value)
+  for i in 0..<32:
+    assert bytes[i] == (if dimension == AccumulationDimension.Regular: 0'u8 else: byte(73+i))
+
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   # Repeated execution captures/releases its own environment and never advances the original CPU.
