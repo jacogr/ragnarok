@@ -10,11 +10,9 @@
 import ./[natural, bounded, composite, work_digest]
 
 type
-  # Each snapshot has exactly one validated schema, independent of later input mutations.
-  OwnedKind* {.pure.} = enum
+  OwnedKind* {.pure.} = enum ## Each snapshot has exactly one validated schema, independent of later input mutations.
     Bytes, Optional, Work, Preimages, Digest
-  # Wire failures retain their meaning; ownership operations add missing-owner/schema/index failures.
-  OwnershipError* {.pure.} = enum
+  OwnershipError* {.pure.} = enum ## Wire failures retain their meaning; ownership operations add missing-owner/schema/index failures.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
     AliasedBuffers, LengthOverflow, InvalidTag, InvalidSpan, InvalidOwner,
     WrongSchema, InvalidIndex, AllocationFailure
@@ -27,11 +25,9 @@ type
     workKind: WorkKind
     records: seq[Preimage]
     digest: WorkDigest
-  # Copying this opaque value retains its immutable storage through ARC, including across scopes.
-  OwnedFrame* = object
+  OwnedFrame* = object ## Copying this opaque value retains its immutable storage through ARC, including across scopes.
     data: nil FrameData
-  # Private tagged outcomes expose copied data only after success; defaults are Uninitialized.
-  OwnedResult*[T] = object
+  OwnedResult*[T] = object ## Private tagged outcomes expose copied data only after success; defaults are Uninitialized.
     case status: OwnershipError
     of None:
       # Payload may contain an opaque owner, never private backing bytes.
@@ -39,12 +35,10 @@ type
     else:
       # Failed/default alternatives contain only their reason.
       discard
-  # Common scalar metadata; blobCount is the number of payloads available through copyOwnedBlob.
-  OwnedInfo* = object
+  OwnedInfo* = object ## Common scalar metadata; blobCount is the number of payloads available through copyOwnedBlob.
     kind*: OwnedKind
     consumed*, blobCount*: int
-  # Optional metadata contains a length only when a payload exists, never a detached span.
-  OwnedOptionalInfo* = object
+  OwnedOptionalInfo* = object ## Optional metadata contains a length only when a payload exists, never a detached span.
     case isPresent: bool
     of true:
       # An empty present blob still has a length of zero and one copyable payload.
@@ -52,8 +46,7 @@ type
     else:
       # Absence carries no payload metadata.
       discard
-  # Work errors are valid decoded values; only success contains a payload length.
-  OwnedWorkInfo* = object
+  OwnedWorkInfo* = object ## Work errors are valid decoded values; only success contains a payload length.
     case outputKind: WorkKind
     of Success:
       # Payload bytes remain private to the owner.
@@ -61,8 +54,7 @@ type
     else:
       # Work errors carry their protocol tag alone.
       discard
-  # All digest fields are copied values, with a length-only work output rather than a borrowed descriptor.
-  OwnedDigestInfo* = object
+  OwnedDigestInfo* = object ## All digest fields are copied values, with a length-only work output rather than a borrowed descriptor.
     service*: ServiceIndex
     codeHash*: CodeHash
     payloadHash*: PayloadHash
@@ -70,34 +62,39 @@ type
     output*: OwnedWorkInfo
     refine*: RefineLoad
 
-# Read an outcome without permitting callers to mutate its discriminator.
-func error*[T](value: OwnedResult[T]): OwnershipError = value.status
-# Return copied metadata or a retained opaque owner only after successful completion.
+func error*[T](value: OwnedResult[T]): OwnershipError =
+  ## Read an outcome without permitting callers to mutate its discriminator.
+  value.status
 func value*[T](value: OwnedResult[T]): T {.inline, requires: value.status == OwnershipError.None.} =
+  ## Return copied metadata or a retained opaque owner only after successful completion.
   value.completed
-# Sibling adapters may report failures, but cannot label missing data as None/success.
 func ownedFailure*[T](reason: OwnershipError): OwnedResult[T] {.requires: reason !=
     OwnershipError.None.} =
+  ## Sibling adapters may report failures, but cannot label missing data as None/success.
   OwnedResult[T](status: reason)
-# Sibling adapters explicitly report completed values; this builder alone does not validate an owner.
-func ownedSuccess*[T](value: T): OwnedResult[T] = OwnedResult[T](status: OwnershipError.None,
+func ownedSuccess*[T](value: T): OwnedResult[T] =
+  ## Sibling adapters explicitly report completed values; this builder alone does not validate an owner.
+  OwnedResult[T](status: OwnershipError.None,
     completed: value)
 
-# Read optional metadata without allowing presence to be changed.
-func present*(value: OwnedOptionalInfo): bool = value.isPresent
-# Only present optional metadata has a length; bytes remain accessible solely through the owner.
+func present*(value: OwnedOptionalInfo): bool =
+  ## Read optional metadata without allowing presence to be changed.
+  value.isPresent
 func length*(value: OwnedOptionalInfo): int {.inline,
-    requires: value.isPresent.} = value.payloadLength
-# Read a copied work tag without exposing a writable discriminator.
-func kind*(value: OwnedWorkInfo): WorkKind = value.outputKind
-# Work errors have no payload length, independently of a successful outer metadata query.
-func length*(value: OwnedWorkInfo): int {.inline, requires: value.outputKind == WorkKind.Success.} =
+    requires: value.isPresent.} =
+  ## Only present optional metadata has a length; bytes remain accessible solely through the owner.
   value.payloadLength
-# Sibling report adapters may construct successful length-only metadata after validating a snapshot.
+func kind*(value: OwnedWorkInfo): WorkKind =
+  ## Read a copied work tag without exposing a writable discriminator.
+  value.outputKind
+func length*(value: OwnedWorkInfo): int {.inline, requires: value.outputKind == WorkKind.Success.} =
+  ## Work errors have no payload length, independently of a successful outer metadata query.
+  value.payloadLength
 func successfulOwnedWorkInfo*(length: int): OwnedWorkInfo {.requires: length >= 0.} =
+  ## Sibling report adapters may construct successful length-only metadata after validating a snapshot.
   OwnedWorkInfo(outputKind: WorkKind.Success, payloadLength: length)
-# Payload-free work metadata may not manufacture Success, which requires an explicit length.
 func failedOwnedWorkInfo*(kind: WorkKind): OwnedWorkInfo {.requires: kind != WorkKind.Success.} =
+  ## Payload-free work metadata may not manufacture Success, which requires an explicit length.
   OwnedWorkInfo(outputKind: kind)
 
 # Convert composite wire failures without conflating an uninitialized result with success.
@@ -193,28 +190,28 @@ proc capture(input: openArray[byte], kind: OwnedKind, limit: ByteLimit,
     copyMem(addr data.wire[0], unsafeAddr input[0], consumed)
   OwnedResult[OwnedFrame](status: OwnershipError.None, completed: OwnedFrame(data: data))
 
-# Own one C.1.2 variable byte string; caller input may be released or mutated after return.
 proc decodeOwnedBytes*(input: openArray[byte], limit: ByteLimit): OwnedResult[OwnedFrame] =
+  ## Own one C.1.2 variable byte string; caller input may be released or mutated after return.
   capture(input, OwnedKind.Bytes, limit, PreimageLimits())
 
-# Own a C.1.3 optional blob, including a payload-free absent value.
 proc decodeOwnedOptional*(input: openArray[byte], limit: ByteLimit): OwnedResult[OwnedFrame] =
+  ## Own a C.1.3 optional blob, including a payload-free absent value.
   capture(input, OwnedKind.Optional, limit, PreimageLimits())
 
-# Own a C.2 work output; work-error tags remain successful decoded values.
 proc decodeOwnedWork*(input: openArray[byte], limit: ByteLimit): OwnedResult[OwnedFrame] =
+  ## Own a C.2 work output; work-error tags remain successful decoded values.
   capture(input, OwnedKind.Work, limit, PreimageLimits())
 
-# Own the complete preimage extrinsic and all nested payloads, with policy-bounded private records.
 proc decodeOwnedPreimages*(input: openArray[byte], limits: PreimageLimits): OwnedResult[OwnedFrame] =
+  ## Own the complete preimage extrinsic and all nested payloads, with policy-bounded private records.
   capture(input, OwnedKind.Preimages, ByteLimit(0), limits)
 
-# Own a complete C.2 digest, copying fixed fields and retaining successful payload bytes.
 proc decodeOwnedDigest*(input: openArray[byte], limit: ByteLimit): OwnedResult[OwnedFrame] =
+  ## Own a complete C.2 digest, copying fixed fields and retaining successful payload bytes.
   capture(input, OwnedKind.Digest, limit, PreimageLimits())
 
-# Report schema, consumed prefix and available payload count without exposing source coordinates.
 proc ownedInfo*(frame: OwnedFrame): OwnedResult[OwnedInfo] =
+  ## Report schema, consumed prefix and available payload count without exposing source coordinates.
   # A default handle contains no validated storage.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data
@@ -223,8 +220,8 @@ proc ownedInfo*(frame: OwnedFrame): OwnedResult[OwnedInfo] =
   OwnedResult[OwnedInfo](status: OwnershipError.None,
       completed: OwnedInfo(kind: data.kind, consumed: data.wire.len, blobCount: count))
 
-# Obtain optional metadata only from the optional schema; no raw span or mutable slice escapes.
 proc ownedOptionalInfo*(frame: OwnedFrame): OwnedResult[OwnedOptionalInfo] =
+  ## Obtain optional metadata only from the optional schema; no raw span or mutable slice escapes.
   # Missing owners and wrong schemas are ordinary typed API errors.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data
@@ -244,8 +241,8 @@ proc workInfo(data: FrameData): OwnedWorkInfo =
       payloadLength: data.blob.length)
   OwnedWorkInfo(outputKind: data.workKind)
 
-# Read a work schema's tag and successful payload length as copied scalar metadata.
 proc ownedWorkInfo*(frame: OwnedFrame): OwnedResult[OwnedWorkInfo] =
+  ## Read a work schema's tag and successful payload length as copied scalar metadata.
   # Reject default owners and schema mismatches before accessing private fields.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data
@@ -254,8 +251,8 @@ proc ownedWorkInfo*(frame: OwnedFrame): OwnedResult[OwnedWorkInfo] =
       status: OwnershipError.WrongSchema)
   OwnedResult[OwnedWorkInfo](status: OwnershipError.None, completed: workInfo(data))
 
-# Copy all fixed digest fields and tag/length metadata; payload access stays bound to the frame owner.
 proc ownedDigestInfo*(frame: OwnedFrame): OwnedResult[OwnedDigestInfo] =
+  ## Copy all fixed digest fields and tag/length metadata; payload access stays bound to the frame owner.
   # A missing or differently typed frame cannot yield a default digest.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data
@@ -267,8 +264,8 @@ proc ownedDigestInfo*(frame: OwnedFrame): OwnedResult[OwnedDigestInfo] =
       service: value.service, codeHash: value.codeHash, payloadHash: value.payloadHash,
       accumulateGas: value.accumulateGas, output: workInfo(data), refine: value.refine))
 
-# Select a preimage's nominal service ID without returning its borrowed payload descriptor.
 proc ownedService*(frame: OwnedFrame, index: int): OwnedResult[ServiceIndex] =
+  ## Select a preimage's nominal service ID without returning its borrowed payload descriptor.
   # Schema and index checks precede any private-record access.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data
@@ -279,8 +276,8 @@ proc ownedService*(frame: OwnedFrame, index: int): OwnedResult[ServiceIndex] =
       status: OwnershipError.InvalidIndex)
   OwnedResult[ServiceIndex](status: OwnershipError.None, completed: data.records[index].service)
 
-# Query one owner's payload length before allocating caller-owned copy storage; indices never escape as spans.
 proc ownedBlobLength*(frame: OwnedFrame, index: int): OwnedResult[int] =
+  ## Query one owner's payload length before allocating caller-owned copy storage; indices never escape as spans.
   # Default owners and payload-free values cannot expose a fabricated zero length.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data
@@ -291,8 +288,8 @@ proc ownedBlobLength*(frame: OwnedFrame, index: int): OwnedResult[int] =
   let span = if data.kind == OwnedKind.Preimages: data.records[index].blob else: data.blob
   OwnedResult[int](status: OwnershipError.None, completed: span.length)
 
-# Copy bytes into caller storage atomically; no mutable alias to the snapshot is ever returned.
 proc copyOwnedBlob*(frame: OwnedFrame, index: int, output: var openArray[byte]): OwnedResult[int] =
+  ## Copy bytes into caller storage atomically; no mutable alias to the snapshot is ever returned.
   # A default owner has neither a schema nor payloads.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data
@@ -309,8 +306,8 @@ proc copyOwnedBlob*(frame: OwnedFrame, index: int, output: var openArray[byte]):
     copyMem(addr output[0], unsafeAddr data.wire[span.offset], span.length)
   OwnedResult[int](status: OwnershipError.None, completed: span.length)
 
-# Emit the validated canonical frame from its private snapshot, preserving output on insufficient capacity.
 proc encodeOwned*(frame: OwnedFrame, output: var openArray[byte]): OwnedResult[int] =
+  ## Emit the validated canonical frame from its private snapshot, preserving output on insufficient capacity.
   # Uninitialized owners must not serialize default data.
   # Retain one stable reference before the nil check so later reads share its proven lifetime.
   let data = frame.data

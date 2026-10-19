@@ -11,44 +11,38 @@ import std/algorithm
 import ./[state_layout, bounded]
 
 type
-  ## A serialized mapping entry; callers own the value and retain its lifetime during construction.
-  StateEntry* = object
+  StateEntry* = object ## A serialized mapping entry; callers own the value and retain its lifetime during construction.
     key*: StateKey
     value*: seq[byte]
-  ## A complete trie root, distinct from internal node identities and partial commitments.
-  StateRoot* = distinct array[32, byte]
-  ## Maximum number of nonempty leaf/branch nodes hashed during a call.
-  TrieNodeLimit* = distinct uint64
-  ## Independent ceilings bound entries, individual/aggregate value bytes and trie topology.
-  StateTrieLimits* = object
+  StateRoot* = distinct array[32, byte] ## A complete trie root, distinct from internal node identities and partial commitments.
+  TrieNodeLimit* = distinct uint64 ## Maximum number of nonempty leaf/branch nodes hashed during a call.
+  StateTrieLimits* = object ## Independent ceilings bound entries, individual/aggregate value bytes and trie topology.
     items*: ElementLimit
     perValue*, totalValueBytes*: ByteLimit
     nodes*: TrieNodeLimit
-  ## Default and failed results carry no root, count or intermediate progress.
-  StateTrieError* {.pure.} = enum
+  StateTrieError* {.pure.} = enum ## Default and failed results carry no root, count or intermediate progress.
     Uninitialized, None, LimitExceeded, DuplicateKey, LengthOverflow, BackendFailure
-  ## A completed root and exact number of entries/nonempty nodes committed.
-  StateTrieCommitment* = object
+  StateTrieCommitment* = object ## A completed root and exact number of entries/nonempty nodes committed.
     root*: StateRoot
     entries*: int
     nodes*: uint64
-  ## Only a successful alternative exposes a completed commitment.
-  StateTrieResult*[T] = object
+  StateTrieResult*[T] = object ## Only a successful alternative exposes a completed commitment.
     case status: StateTrieError
     of None:
-      completed: T # Only complete success exposes root/count metadata.
+      completed: T             # Only complete success exposes root/count metadata.
     else:
-      discard      # Default and failures contain their reason alone.
+      discard                  # Default and failures contain their reason alone.
   ## Private copied keys and source indices avoid retaining or copying caller values during sorting.
   KeyIndex = object
     key: StateKey
     index: int
 
-# Read failure reasons without granting access to a completed root, child identity or counts.
-func error*[T](value: StateTrieResult[T]): StateTrieError = value.status
-# Every public/private success payload requires explicit successful selection in optimized builds.
+func error*[T](value: StateTrieResult[T]): StateTrieError =
+  ## Read failure reasons without granting access to a completed root, child identity or counts.
+  value.status
 func value*[T](value: StateTrieResult[T]): T {.inline, requires: value.status ==
     StateTrieError.None.} =
+  ## Every public/private success payload requires explicit successful selection in optimized builds.
   value.completed
 
 ## Compare fixed keys lexicographically, which agrees with MSB-first bit order.
@@ -115,11 +109,11 @@ proc commit(entries: openArray[StateEntry], keys: seq[KeyIndex], first, stop, de
     return StateTrieResult[StateNodeHash](status: StateTrieError.BackendFailure) # Foreign primitive failure cannot become a zero root.
   StateTrieResult[StateNodeHash](status: StateTrieError.None, completed: hashed.value)
 
-## Compute an order-independent root without mutating inputs. All duplicate keys are rejected.
-## O(n) private key/index sorting scratch and at most 248 recursive branch levels are released by ARC.
-## Values remain borrowed; allocation exhaustion follows the project's Nim fail-stop allocation policy.
 proc stateTrieRoot*(entries: openArray[StateEntry], limits: StateTrieLimits): StateTrieResult[
     StateTrieCommitment] =
+  ## Compute an order-independent root without mutating inputs. All duplicate keys are rejected.
+  ## O(n) private key/index sorting scratch and at most 248 recursive branch levels are released by ARC.
+  ## Values remain borrowed; allocation exhaustion follows the project's Nim fail-stop allocation policy.
   if uint64(entries.len) > uint64(limits.items):
     return StateTrieResult[StateTrieCommitment](status: StateTrieError.LimitExceeded) # Bound input-derived scratch first.
   if entries.len > high(int) div sizeof(KeyIndex) or entries.len > high(int) div sizeof(StateEntry):

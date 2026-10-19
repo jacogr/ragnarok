@@ -13,16 +13,11 @@ export ServiceIndex, CodeHash, Gas
 const ServiceMetadataBytes* = 89 ## Version zero, code hash, five E8 values and four E4 values.
 
 type
-  ## Balance and gratis/deposit offset share token units, distinct from gas or storage size.
-  AccountBalance* = distinct uint64
-  ## Stored footprint octets use the full E8 domain and cannot substitute for item counts.
-  AccountStorageBytes* = distinct uint64
-  ## Stored footprint item count uses E4, independently from byte counts and service IDs.
-  AccountStorageItems* = distinct uint32
-  ## Service creation/last-accumulation absolute timeslots are separate from service IDs or record ordinals.
-  AccountSlot* = distinct uint32
-  ## Version-zero fixed metadata owns every field by value; nested maps and service identity are outside this payload.
-  ServiceMetadata* = object
+  AccountBalance* = distinct uint64 ## Balance and gratis/deposit offset share token units, distinct from gas or storage size.
+  AccountStorageBytes* = distinct uint64 ## Stored footprint octets use the full E8 domain and cannot substitute for item counts.
+  AccountStorageItems* = distinct uint32 ## Stored footprint item count uses E4, independently from byte counts and service IDs.
+  AccountSlot* = distinct uint32 ## Service creation/last-accumulation absolute timeslots are separate from service IDs or record ordinals.
+  ServiceMetadata* = object ## Version-zero fixed metadata owns every field by value; nested maps and service identity are outside this payload.
     codeHash*: CodeHash
     balance*, depositOffset*: AccountBalance
     minimumAccumulationGas*, minimumTransferGas*: Gas
@@ -30,26 +25,25 @@ type
     storageItems*: AccountStorageItems
     created*, lastAccumulation*: AccountSlot
     parent*: ServiceIndex
-  ## Default and failed results contain reasons alone, never default metadata or partial consumed progress.
-  ServiceMetadataError* {.pure.} = enum
+  ServiceMetadataError* {.pure.} = enum ## Default and failed results contain reasons alone, never default metadata or partial consumed progress.
     Uninitialized, None, Truncated, NonCanonical, UnsupportedVersion, LimitExceeded
-  ## Only a selected complete success exposes its application payload.
-  ServiceMetadataResult*[T] = object
+  ServiceMetadataResult*[T] = object ## Only a selected complete success exposes its application payload.
     case status: ServiceMetadataError
     of None:
       completed: T # Success requires the guarded accessor, including in checked optimized builds.
     else:
       discard      # Failure cannot fabricate a usable all-zero account.
-  ## Complete prefix decode returns independent fixed fields and exact consumed extent, with no heap owner required.
-  ServiceMetadataRead* = object
+  ServiceMetadataRead* = object ## Complete prefix decode returns independent fixed fields and exact consumed extent, with no heap owner required.
     metadata*: ServiceMetadata
     consumed*: int
 
-## Failure reasons are read-only and never authorize metadata, encoded bytes or progress.
-func error*[T](parsed: ServiceMetadataResult[T]): ServiceMetadataError = parsed.status
-## Complete fixed metadata and encoded entries require successful payload selection.
+func error*[T](parsed: ServiceMetadataResult[T]): ServiceMetadataError =
+  ## Failure reasons are read-only and never authorize metadata, encoded bytes or progress.
+  parsed.status
 func value*[T](parsed: ServiceMetadataResult[T]): T
-    {.inline, requires: parsed.status == ServiceMetadataError.None.} = parsed.completed
+    {.inline, requires: parsed.status == ServiceMetadataError.None.} =
+  ## Complete fixed metadata and encoded entries require successful payload selection.
+  parsed.completed
 
 ## Copy one proved E8 field using explicit little-endian shifts without alignment or host-endian assumptions.
 proc read64(input: openArray[byte], offset: int): uint64 =
@@ -63,9 +57,9 @@ proc read32(input: openArray[byte], offset: int): uint32 =
   for i in 0..<4: result = result or (uint32(input[offset+i]) shl (
       i*8)) # The schema fixes this scalar at four bytes.
 
-## Decode only canonical version-zero metadata after policy, version and complete payload checks.
 proc decodeServiceMetadata*(input: openArray[byte], maxBytes: ByteLimit): ServiceMetadataResult[
     ServiceMetadataRead] =
+  ## Decode only canonical version-zero metadata after policy, version and complete payload checks.
   if uint64(maxBytes) < uint64(ServiceMetadataBytes):
     return ServiceMetadataResult[ServiceMetadataRead](
         status: ServiceMetadataError.LimitExceeded) # Current schema must fit caller policy before input work.
@@ -94,9 +88,9 @@ proc decodeServiceMetadata*(input: openArray[byte], maxBytes: ByteLimit): Servic
   ServiceMetadataResult[ServiceMetadataRead](status: ServiceMetadataError.None,
     completed: ServiceMetadataRead(metadata: metadata, consumed: ServiceMetadataBytes))
 
-## Construct C(255, service) with independent version-zero payload after fixed-size resource preflight.
 proc serviceMetadataEntry*(service: ServiceIndex, metadata: ServiceMetadata,
     maxBytes: ByteLimit): ServiceMetadataResult[StateEntry] =
+  ## Construct C(255, service) with independent version-zero payload after fixed-size resource preflight.
   if uint64(maxBytes) < uint64(ServiceMetadataBytes):
     return ServiceMetadataResult[StateEntry](status: ServiceMetadataError.LimitExceeded) # No allocation occurs when the entire fixed schema exceeds policy.
   var entry = StateEntry(key: chapterServiceKey(StateChapter(255), service), value: newSeq[byte](ServiceMetadataBytes))

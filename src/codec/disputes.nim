@@ -11,53 +11,40 @@ import std/assertions
 import ./[natural, bounded, assurances]
 
 type
-  # A disputed report identity is distinct from an offender key, despite the same wire width.
-  DisputeHash* = distinct array[32, byte]
-  # Verdict epochs are E4 values, separate from report slots and other timeslots.
-  DisputeEpoch* = distinct uint32
-  # Judgment E2 indices belong to the selected validator population.
-  JudgeIndex* = distinct uint16
-  # Exact Ed25519 offender identity bytes determine evidence order.
-  OffenderKey* = distinct array[32, byte]
-  # Opaque Ed25519 evidence bytes carry no signature-verification claim.
-  DisputeSignature* = distinct array[64, byte]
-  # A judgment owns all its fields; validity is a canonical Boolean, never an arbitrary tag byte.
-  Judgment* = object
+  DisputeHash* = distinct array[32, byte] ## A disputed report identity is distinct from an offender key, despite the same wire width.
+  DisputeEpoch* = distinct uint32 ## Verdict epochs are E4 values, separate from report slots and other timeslots.
+  JudgeIndex* = distinct uint16 ## Judgment E2 indices belong to the selected validator population.
+  OffenderKey* = distinct array[32, byte] ## Exact Ed25519 offender identity bytes determine evidence order.
+  DisputeSignature* = distinct array[64, byte] ## Opaque Ed25519 evidence bytes carry no signature-verification claim.
+  Judgment* = object ## A judgment owns all its fields; validity is a canonical Boolean, never an arbitrary tag byte.
     valid*: bool
     judge*: JudgeIndex
     signature*: DisputeSignature
-  # Encoder-only borrowed source; its sequence must remain stable during the synchronous call.
-  Verdict* = object
+  Verdict* = object ## Encoder-only borrowed source; its sequence must remain stable during the synchronous call.
     target*: DisputeHash
     epoch*: DisputeEpoch
     judgments*: seq[Judgment]
-  # Culprit evidence owns exact report, Ed25519 key and signature bytes.
-  Culprit* = object
+  Culprit* = object ## Culprit evidence owns exact report, Ed25519 key and signature bytes.
     target*: DisputeHash
     key*: OffenderKey
     signature*: DisputeSignature
-  # Fault evidence additionally records the signed judgment's validity bit.
-  Fault* = object
+  Fault* = object ## Fault evidence additionally records the signed judgment's validity bit.
     target*: DisputeHash
     valid*: bool
     key*: OffenderKey
     signature*: DisputeSignature
-  # Stable borrowed encoding sources; no mutable sequence is exported by a decoded owner.
-  Disputes* = object
+  Disputes* = object ## Stable borrowed encoding sources; no mutable sequence is exported by a decoded owner.
     verdicts*: seq[Verdict]
     culprits*: seq[Culprit]
     faults*: seq[Fault]
-  # The caller supplies a structural ceiling covering both eligible validator sets and a prefix byte budget.
-  DisputeConfig* = object
+  DisputeConfig* = object ## The caller supplies a structural ceiling covering both eligible validator sets and a prefix byte budget.
     validators*: ValidatorCount
     maxBytes*: ByteLimit
-  # Failure alternatives never contain records, owner handles or parser progress.
-  DisputeError* {.pure.} = enum
+  DisputeError* {.pure.} = enum ## Failure alternatives never contain records, owner handles or parser progress.
     Uninitialized, None, InvalidConfig, Truncated, NonCanonical, LimitExceeded,
     InvalidTag, InvalidValidator, OutputTooSmall, AliasedBuffers,
     InvalidOwner, InvalidIndex
-  # Only an explicitly successful tagged result carries an application value.
-  DisputeResult*[T] = object
+  DisputeResult*[T] = object ## Only an explicitly successful tagged result carries an application value.
     case status: DisputeError
     of None:
       # A successful selection alone authorizes application access.
@@ -65,13 +52,11 @@ type
     else:
       # Default and rejected inputs expose only their failure reason.
       discard
-  # Public metadata copies fixed fields and lengths without detaching coordinates from an owner.
-  VerdictInfo* = object
+  VerdictInfo* = object ## Public metadata copies fixed fields and lengths without detaching coordinates from an owner.
     target*: DisputeHash
     epoch*: DisputeEpoch
     judgments*: int
-  # Public cardinalities describe a complete validated prefix.
-  DisputeInfo* = object
+  DisputeInfo* = object ## Public cardinalities describe a complete validated prefix.
     verdicts*, culprits*, faults*, consumed*: int
   # Private bounded offsets exist only alongside the exact retained bytes they describe.
   Layout = object
@@ -82,22 +67,21 @@ type
   DisputeData = ref object
     wire: seq[byte]
     layout: Layout
-  # Copying this opaque handle retains the same immutable snapshot without exposing bytes or offsets.
-  OwnedDisputes* = object
+  OwnedDisputes* = object ## Copying this opaque handle retains the same immutable snapshot without exposing bytes or offsets.
     data: nil DisputeData
-  # Decode success binds exact prefix progress to its owning snapshot.
-  DisputesRead* = object
+  DisputesRead* = object ## Decode success binds exact prefix progress to its owning snapshot.
     owner*: OwnedDisputes
     info*: DisputeInfo
 
-# Observe a generic operation's outcome without permitting safe-code retagging.
-func error*[T](value: DisputeResult[T]): DisputeError = value.status
-# Only complete validated operations expose application values, owners or progress.
+func error*[T](value: DisputeResult[T]): DisputeError =
+  ## Observe a generic operation's outcome without permitting safe-code retagging.
+  value.status
 func value*[T](value: DisputeResult[T]): T {.inline, requires: value.status == DisputeError.None.} =
+  ## Only complete validated operations expose application values, owners or progress.
   value.completed
-# Sibling adapters can construct a failure reason, never success without a completed operation.
 func disputeFailure*[T](reason: DisputeError): DisputeResult[T] {.requires: reason !=
     DisputeError.None.} =
+  ## Sibling adapters can construct a failure reason, never success without a completed operation.
   DisputeResult[T](status: reason)
 
 # Both eligible populations must fit this GP 0.8.0 domain; selecting the actual epoch set is external.
@@ -212,9 +196,9 @@ proc scan(input: openArray[byte], config: DisputeConfig): DisputeResult[Layout] 
   layout.info.consumed = cursor
   DisputeResult[Layout](status: DisputeError.None, completed: layout)
 
-# Snapshot only the completely validated prefix; callers keep borrowed input stable during this call.
 proc decodeDisputes*(input: openArray[byte], config: DisputeConfig): DisputeResult[
     DisputesRead] {.raises: [].} =
+  ## Snapshot only the completely validated prefix; callers keep borrowed input stable during this call.
   let parsed = scan(input, config)
   # No input-derived allocation occurs on a malformed frame or invalid caller configuration.
   if parsed.error != DisputeError.None: return DisputeResult[DisputesRead](status: parsed.error)
@@ -278,9 +262,9 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
   if left <= right: right-left < uint(an) # Lower source address selects its own extent.
   else: left-right < uint(bn) # Lower destination address selects the written prefix extent.
 
-# Encode stable borrowed sources atomically after checking outer records and all nested judgment storage.
 proc encodeDisputes*(value: Disputes, config: DisputeConfig,
     output: var openArray[byte]): DisputeResult[int] {.raises: [].} =
+  ## Encode stable borrowed sources atomically after checking outer records and all nested judgment storage.
   let measured = measure(value, config)
   # Source policy errors take precedence over capacity and cannot alter caller sentinels.
   if measured.error != DisputeError.None: return measured
@@ -351,15 +335,15 @@ proc encodeDisputes*(value: Disputes, config: DisputeConfig,
   assert cursor == required
   measured
 
-# Return copied cardinalities; a default handle never fabricates an empty validated extrinsic.
 proc disputesInfo*(owner: OwnedDisputes): DisputeResult[DisputeInfo] {.raises: [].} =
+  ## Return copied cardinalities; a default handle never fabricates an empty validated extrinsic.
   # A default handle carries no validated snapshot, even when an empty result would be plausible.
   let data = owner.data
   if data == nil: return DisputeResult[DisputeInfo](status: DisputeError.InvalidOwner)
   DisputeResult[DisputeInfo](status: DisputeError.None, completed: data.layout.info)
 
-# Copy fixed verdict metadata; judgments are selected only through the matching retained owner.
 proc verdictAt*(owner: OwnedDisputes, index: int): DisputeResult[VerdictInfo] {.raises: [].} =
+  ## Copy fixed verdict metadata; judgments are selected only through the matching retained owner.
   # A default handle carries no validated snapshot, even when an empty result would be plausible.
   let data = owner.data
   if data == nil: return DisputeResult[VerdictInfo](status: DisputeError.InvalidOwner)
@@ -372,8 +356,8 @@ proc verdictAt*(owner: OwnedDisputes, index: int): DisputeResult[VerdictInfo] {.
     epoch: DisputeEpoch(integer(data.wire, start+32, 4)),
     judgments: data.layout.voteCounts[index]))
 
-# Copy one complete judgment; neither detached offsets nor mutable vote sequences leave the owner.
 proc judgmentAt*(owner: OwnedDisputes, verdict, index: int): DisputeResult[Judgment] {.raises: [].} =
+  ## Copy one complete judgment; neither detached offsets nor mutable vote sequences leave the owner.
   # Retain and prove the backing reference independently of the nested verdict query.
   let data = owner.data
   if data == nil: return DisputeResult[Judgment](status: DisputeError.InvalidOwner)
@@ -388,8 +372,8 @@ proc judgmentAt*(owner: OwnedDisputes, verdict, index: int): DisputeResult[Judgm
     valid: data.wire[start] == 1, judge: JudgeIndex(integer(data.wire, start+1, 2)),
     signature: DisputeSignature(fixed[64](data.wire, start+3))))
 
-# Copy complete culprit evidence from a validated owner-bound record.
 proc culpritAt*(owner: OwnedDisputes, index: int): DisputeResult[Culprit] {.raises: [].} =
+  ## Copy complete culprit evidence from a validated owner-bound record.
   # A default handle carries no validated snapshot, even when an empty result would be plausible.
   let data = owner.data
   if data == nil: return DisputeResult[Culprit](status: DisputeError.InvalidOwner)
@@ -402,8 +386,8 @@ proc culpritAt*(owner: OwnedDisputes, index: int): DisputeResult[Culprit] {.rais
     key: OffenderKey(fixed[32](data.wire, start+32)),
     signature: DisputeSignature(fixed[64](data.wire, start+64))))
 
-# Copy complete fault evidence, preserving the validity bit's meaning separately from its signature.
 proc faultAt*(owner: OwnedDisputes, index: int): DisputeResult[Fault] {.raises: [].} =
+  ## Copy complete fault evidence, preserving the validity bit's meaning separately from its signature.
   # A default handle carries no validated snapshot, even when an empty result would be plausible.
   let data = owner.data
   if data == nil: return DisputeResult[Fault](status: DisputeError.InvalidOwner)
@@ -416,9 +400,9 @@ proc faultAt*(owner: OwnedDisputes, index: int): DisputeResult[Fault] {.raises: 
     key: OffenderKey(fixed[32](data.wire, start+33)),
     signature: DisputeSignature(fixed[64](data.wire, start+65))))
 
-# Re-emit an immutable validated snapshot atomically without exporting its storage.
 proc encodeOwnedDisputes*(owner: OwnedDisputes, output: var openArray[byte]): DisputeResult[
     int] {.raises: [].} =
+  ## Re-emit an immutable validated snapshot atomically without exporting its storage.
   # A default handle carries no validated snapshot, even when an empty result would be plausible.
   let data = owner.data
   if data == nil: return DisputeResult[int](status: DisputeError.InvalidOwner)
@@ -432,9 +416,9 @@ proc encodeOwnedDisputes*(owner: OwnedDisputes, output: var openArray[byte]): Di
   for i in 0..<required: output[i] = data.wire[i]
   DisputeResult[int](status: DisputeError.None, completed: required)
 
-# Inspect all dispute sections without capturing bytes; only copied counts and exact progress leave the scan.
 proc inspectDisputes*(input: openArray[byte], config: DisputeConfig): DisputeResult[
     DisputeInfo] {.raises: [].} =
+  ## Inspect all dispute sections without capturing bytes; only copied counts and exact progress leave the scan.
   let scanned = scan(input, config)
   # Reuse the existing complete Boolean/index/order/extent validator.
   if scanned.error != DisputeError.None: return DisputeResult[DisputeInfo](status: scanned.error)

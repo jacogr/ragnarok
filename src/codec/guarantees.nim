@@ -12,42 +12,33 @@ import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_report, report_owned, owned, assurances]
 
 type
-  # A guarantee's evaluation slot is separate from anchor/lookup timeslots.
-  GuaranteeSlot* = distinct uint32
-  # A guarantor credential index cannot silently become an assurance-record index.
-  GuarantorIndex* = distinct uint16
-  # An exact Ed25519 wire encoding; no signature-validity claim is made by this codec.
-  GuaranteeSignature* = distinct array[64, byte]
-  # Complete owned credential bytes are independent of input lifetimes.
-  GuaranteeCredential* = object
+  GuaranteeSlot* = distinct uint32 ## A guarantee's evaluation slot is separate from anchor/lookup timeslots.
+  GuarantorIndex* = distinct uint16 ## A guarantor credential index cannot silently become an assurance-record index.
+  GuaranteeSignature* = distinct array[64, byte] ## An exact Ed25519 wire encoding; no signature-validity claim is made by this codec.
+  GuaranteeCredential* = object ## Complete owned credential bytes are independent of input lifetimes.
     validator*: GuarantorIndex
     signature*: GuaranteeSignature
-  # A copied value retains its immutable report through ARC and owns its fixed credential array.
-  Guarantee* = object
+  Guarantee* = object ## A copied value retains its immutable report through ARC and owns its fixed credential array.
     report*: OwnedReport
     slot*: GuaranteeSlot
     credentials*: array[3, GuaranteeCredential]
     credentialCount*: int
-  # Explicit structural ceilings; validator membership/rotation selection remains caller context.
-  GuaranteeConfig* = object
+  GuaranteeConfig* = object ## Explicit structural ceilings; validator membership/rotation selection remains caller context.
     cores*: CoreCount
     validators*: ValidatorCount
     maxBytes*: ByteLimit
-  # Failure-only reasons preserve framing errors and add owner/configuration/credential errors.
-  GuaranteeError* {.pure.} = enum
+  GuaranteeError* {.pure.} = enum ## Failure-only reasons preserve framing errors and add owner/configuration/credential errors.
     Uninitialized, None, InvalidConfig, Truncated, NonCanonical, LimitExceeded,
     OutputTooSmall, AliasedBuffers, LengthOverflow, InvalidTag, InvalidReport,
     InvalidCredential, InvalidValidator, InvalidOwner, InvalidIndex
-  # Tagged success is the only branch containing a value or progress.
-  GuaranteeResult*[T] = object
+  GuaranteeResult*[T] = object ## Tagged success is the only branch containing a value or progress.
     case status: GuaranteeError
     of None:
       completed: T
     else:
       # Defaults and malformed nested reports expose no application value.
       discard
-  # One complete standalone guarantee, without an extrinsic sequence count prefix.
-  GuaranteeRead* = object
+  GuaranteeRead* = object ## One complete standalone guarantee, without an extrinsic sequence count prefix.
     value*: Guarantee
     consumed*: int
   # Private acyclic owner stores only complete owned records and their validated configuration.
@@ -55,11 +46,9 @@ type
     values: seq[Guarantee]
     config: GuaranteeConfig
     consumed: int
-  # Copying this opaque handle retains all reports and fixed metadata without exposing mutable storage.
-  OwnedGuarantees* = object
+  OwnedGuarantees* = object ## Copying this opaque handle retains all reports and fixed metadata without exposing mutable storage.
     data: nil GuaranteesData
-  # Successful prefix progress and its matching owner travel together.
-  GuaranteesRead* = object
+  GuaranteesRead* = object ## Successful prefix progress and its matching owner travel together.
     owner*: OwnedGuarantees
     count*, consumed*: int
   # Preflight descriptors are private and used only while the original borrowed input is stable.
@@ -74,15 +63,16 @@ type
     values: array[341, ScannedGuarantee]
     count, consumed: int
 
-# Read a generic guarantee outcome without permitting callers to retag its private state.
-func error*[T](value: GuaranteeResult[T]): GuaranteeError = value.status
-# Only complete operations expose their value, owner or progress metadata.
+func error*[T](value: GuaranteeResult[T]): GuaranteeError =
+  ## Read a generic guarantee outcome without permitting callers to retag its private state.
+  value.status
 func value*[T](value: GuaranteeResult[T]): T {.inline, requires: value.status ==
     GuaranteeError.None.} =
+  ## Only complete operations expose their value, owner or progress metadata.
   value.completed
-# Sibling adapters may report a failure, never manufacture success without a completed value.
 func guaranteeFailure*[T](reason: GuaranteeError): GuaranteeResult[T] {.requires: reason !=
     GuaranteeError.None.} =
+  ## Sibling adapters may report a failure, never manufacture success without a completed value.
   GuaranteeResult[T](status: reason)
 
 # Validate chain ceilings before byte access; the same validator domain applies to assurances.
@@ -209,9 +199,9 @@ proc scan(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[Scan
   scanned.consumed = cursor
   GuaranteeResult[Scan](status: GuaranteeError.None, completed: scanned)
 
-# Capture only completely validated records, retaining no caller buffer or detached borrowed spans.
 proc decodeGuarantees*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[
     GuaranteesRead] {.raises: [].} =
+  ## Capture only completely validated records, retaining no caller buffer or detached borrowed spans.
   let scanned = scan(input, config)
   # No allocation based on an untrusted count occurs until the complete scan succeeds.
   if scanned.error != GuaranteeError.None: return GuaranteeResult[GuaranteesRead](
@@ -319,9 +309,9 @@ proc writeRecord(value: Guarantee, output: var openArray[byte], cursor: var int,
     for k in 0..<64: output[cursor+2+k] = signature[k] # Preserve all opaque signature bytes.
     cursor += 66
 
-# Serialize only after complete preflight; private report storage and all source records remain stable.
 proc encodeGuarantees*(values: openArray[Guarantee], config: GuaranteeConfig,
                        output: var openArray[byte]): GuaranteeResult[int] {.raises: [].} =
+  ## Serialize only after complete preflight; private report storage and all source records remain stable.
   let measured = measure(values, config)
   # Failed sources expose only their reason and cannot affect destination sentinels.
   if measured.error != GuaranteeError.None: return measured
@@ -348,8 +338,8 @@ proc encodeGuarantees*(values: openArray[Guarantee], config: GuaranteeConfig,
     writeRecord(value, output, cursor, required)
   GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
-# Copy a fixed record and immutable report handle without exposing the owner's mutable sequence storage.
 proc guaranteeAt*(owner: OwnedGuarantees, index: int): GuaranteeResult[Guarantee] {.raises: [].} =
+  ## Copy a fixed record and immutable report handle without exposing the owner's mutable sequence storage.
   # Default handles and signed invalid indices must not fabricate a usable record.
   let data = owner.data
   if data == nil: return GuaranteeResult[Guarantee](status: GuaranteeError.InvalidOwner)
@@ -358,17 +348,17 @@ proc guaranteeAt*(owner: OwnedGuarantees, index: int): GuaranteeResult[Guarantee
       status: GuaranteeError.InvalidIndex)
   GuaranteeResult[Guarantee](status: GuaranteeError.None, completed: data.values[index])
 
-# Re-emit the validated owned sequence atomically without exporting its private bytes or record sequence.
 proc encodeOwnedGuarantees*(owner: OwnedGuarantees, output: var openArray[byte]): GuaranteeResult[
     int] {.raises: [].} =
+  ## Re-emit the validated owned sequence atomically without exporting its private bytes or record sequence.
   # An uninitialized owner cannot stand in for a validated zero-record extrinsic.
   let data = owner.data
   if data == nil: return GuaranteeResult[int](status: GuaranteeError.InvalidOwner)
   encodeGuarantees(data.values, data.config, output)
 
-# Inspect all reports/credentials without capturing child owners; parent frames can preflight before allocation.
 proc inspectGuarantees*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[tuple[
     count, consumed: int]] {.raises: [].} =
+  ## Inspect all reports/credentials without capturing child owners; parent frames can preflight before allocation.
   let scanned = scan(input, config)
   # The existing scan owns every normative framing/order/credential rule.
   if scanned.error != GuaranteeError.None:
@@ -376,9 +366,9 @@ proc inspectGuarantees*(input: openArray[byte], config: GuaranteeConfig): Guaran
   GuaranteeResult[tuple[count, consumed: int]](status: GuaranteeError.None,
     completed: (count: scanned.value.count, consumed: scanned.value.consumed))
 
-# Inspect one standalone guarantee prefix without an extrinsic count or child-owner allocation.
 proc inspectGuarantee*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[tuple[
     core: CoreIndex, consumed: int]] {.raises: [].} =
+  ## Inspect one standalone guarantee prefix without an extrinsic count or child-owner allocation.
   if not validConfig(config):
     return GuaranteeResult[tuple[core: CoreIndex, consumed: int]](
         status: GuaranteeError.InvalidConfig) # Configuration precedes input access.
@@ -389,9 +379,9 @@ proc inspectGuarantee*(input: openArray[byte], config: GuaranteeConfig): Guarant
   GuaranteeResult[tuple[core: CoreIndex, consumed: int]](status: GuaranteeError.None,
     completed: (CoreIndex(scanned.value.core), scanned.value.endCursor))
 
-# Capture one standalone guarantee only after its complete report, E4 slot and credentials validate.
 proc decodeGuarantee*(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[
     GuaranteeRead] {.raises: [].} =
+  ## Capture one standalone guarantee only after its complete report, E4 slot and credentials validate.
   if not validConfig(config): return GuaranteeResult[GuaranteeRead](
       status: GuaranteeError.InvalidConfig) # Never inspect input under invalid policy.
   let scanned = scanRecord(input, 0, config)
@@ -406,8 +396,8 @@ proc decodeGuarantee*(input: openArray[byte], config: GuaranteeConfig): Guarante
     value: Guarantee(report: report.value, slot: record.slot, credentials: record.credentials,
       credentialCount: record.credentialCount), consumed: record.endCursor))
 
-# Measure a standalone record with the same policy as the extrinsic, excluding the outer sequence count.
 proc measureGuarantee*(value: Guarantee, config: GuaranteeConfig): GuaranteeResult[int] {.raises: [].} =
+  ## Measure a standalone record with the same policy as the extrinsic, excluding the outer sequence count.
   if not validConfig(config): return GuaranteeResult[int](
       status: GuaranteeError.InvalidConfig) # Default owners are inspected only under valid policy.
   var required = 0
@@ -416,9 +406,9 @@ proc measureGuarantee*(value: Guarantee, config: GuaranteeConfig): GuaranteeResu
       status: checked.error) # No size on failure.
   GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
-# Return fresh standalone record bytes; no caller output can alias immutable reports or source credentials.
 proc encodeGuaranteeValue*(value: Guarantee, config: GuaranteeConfig): GuaranteeResult[seq[
     byte]] {.raises: [].} =
+  ## Return fresh standalone record bytes; no caller output can alias immutable reports or source credentials.
   let measured = measureGuarantee(value, config)
   if measured.error != GuaranteeError.None:
     return GuaranteeResult[seq[byte]](status: measured.error) # Full source preflight precedes allocation.

@@ -9,33 +9,27 @@
 import ./natural
 
 type
-  # Configuration domains remain distinct from each other and from encoded validator indices.
-  CoreCount* = distinct uint64
+  CoreCount* = distinct uint64 ## Configuration domains remain distinct from each other and from encoded validator indices.
   ValidatorCount* = distinct uint64
   ValidatorIndex* = distinct uint16
-  # Fixed identity wrappers prevent anchor, availability and signature substitution.
-  AssuranceAnchor* = object
+  AssuranceAnchor* = object ## Fixed identity wrappers prevent anchor, availability and signature substitution.
     bytes*: array[32, byte]
   AssuranceBits* = object
     bytes*: array[43, byte]
   AssuranceSignature* = object
     bytes*: array[64, byte]
-  # Explicit profile bounds are checked before accessing external input.
-  AssuranceConfig* = object
+  AssuranceConfig* = object ## Explicit profile bounds are checked before accessing external input.
     cores*: CoreCount
     validators*: ValidatorCount
-  # All record fields own their bytes; no allocation, source pointer or reference cycle remains.
-  Assurance* = object
+  Assurance* = object ## All record fields own their bytes; no allocation, source pointer or reference cycle remains.
     anchor*: AssuranceAnchor
     bits*: AssuranceBits
     validator*: ValidatorIndex
     signature*: AssuranceSignature
-  # Default is a failure; None is selected only after complete validation and commit.
-  AssuranceError* {.pure.} = enum
+  AssuranceError* {.pure.} = enum ## Default is a failure; None is selected only after complete validation and commit.
     Uninitialized, None, InvalidConfig, Truncated, NonCanonical, LimitExceeded,
     OutputTooSmall, AliasedBuffers, LengthOverflow, InvalidValidator
-  # Encoder progress exists exclusively in the checked success branch.
-  AssuranceWriteResult* = object
+  AssuranceWriteResult* = object ## Encoder progress exists exclusively in the checked success branch.
     case status: AssuranceError
     of None:
       # A successful result selects exactly the written output prefix.
@@ -43,8 +37,7 @@ type
     else:
       # Failure never exposes partial progress.
       discard
-  # Caller-owned typed records are selected exclusively by successful decode metadata.
-  AssuranceDecodeResult* = object
+  AssuranceDecodeResult* = object ## Caller-owned typed records are selected exclusively by successful decode metadata.
     case status: AssuranceError
     of None:
       # Unused output elements remain unchanged and trailing input belongs to the caller.
@@ -53,25 +46,27 @@ type
       # Failed decodes expose neither a default record nor consumed metadata.
       discard
 
-# Read encoder outcomes without allowing safe callers to retag the private result.
-func error*(value: AssuranceWriteResult): AssuranceError = value.status
-# Read decoder/inspection outcomes; failure contains no progress or records.
-func error*(value: AssuranceDecodeResult): AssuranceError = value.status
-# Only a completely committed encode exposes its byte extent.
+func error*(value: AssuranceWriteResult): AssuranceError =
+  ## Read encoder outcomes without allowing safe callers to retag the private result.
+  value.status
+func error*(value: AssuranceDecodeResult): AssuranceError =
+  ## Read decoder/inspection outcomes; failure contains no progress or records.
+  value.status
 func written*(value: AssuranceWriteResult): int {.inline, requires: value.status ==
     AssuranceError.None.} =
+  ## Only a completely committed encode exposes its byte extent.
   value.byteWritten
-# Only a complete validated prefix exposes the number of records in caller storage or inspection.
 func count*(value: AssuranceDecodeResult): int {.inline, requires: value.status ==
     AssuranceError.None.} =
+  ## Only a complete validated prefix exposes the number of records in caller storage or inspection.
   value.recordCount
-# Only successful decode/inspection may advance a caller's wire cursor.
 func consumed*(value: AssuranceDecodeResult): int {.inline, requires: value.status ==
     AssuranceError.None.} =
+  ## Only successful decode/inspection may advance a caller's wire cursor.
   value.byteConsumed
 
-# Validate configuration in its unsigned domain before any conversion or byte access.
 proc validConfig*(config: AssuranceConfig): bool {.raises: [].} =
+  ## Validate configuration in its unsigned domain before any conversion or byte access.
   uint64(config.cores) in 2'u64..341'u64 and
     uint64(config.validators) >= 6 and uint64(config.validators) <= 3*uint64(config.cores) and
     uint64(config.validators) mod 3 == 0
@@ -119,9 +114,9 @@ proc readRecord(input: openArray[byte], start, width: int): Assurance {.raises: 
   # Signatures are opaque bytes; cryptographic verification requires external context.
   for i in 0..<64: result.signature.bytes[i] = input[position+2+i]
 
-# Encode stable borrowed records atomically into separate caller-owned byte storage.
 proc encodeAssurances*(values: openArray[Assurance], config: AssuranceConfig,
                        output: var openArray[byte]): AssuranceWriteResult {.raises: [].} =
+  ## Encode stable borrowed records atomically into separate caller-owned byte storage.
   # Configuration takes precedence even when the sequence is empty.
   if not validConfig(config): return AssuranceWriteResult(status: AssuranceError.InvalidConfig)
   # Apply the policy before output capacity or host arithmetic.
@@ -165,9 +160,9 @@ proc encodeAssurances*(values: openArray[Assurance], config: AssuranceConfig,
     for j in 0..<64: output[position+2+j] = value.signature.bytes[j]
   AssuranceWriteResult(status: AssuranceError.None, byteWritten: total)
 
-# Decode one prefix into independent caller records; the whole destination survives any failure.
 proc decodeAssurances*(input: openArray[byte], config: AssuranceConfig,
                        output: var openArray[Assurance]): AssuranceDecodeResult {.raises: [].} =
+  ## Decode one prefix into independent caller records; the whole destination survives any failure.
   # Reject invalid profiles before reading even the count header.
   if not validConfig(config): return AssuranceDecodeResult(status: AssuranceError.InvalidConfig)
   let prefix = natural.decode(input)
@@ -211,8 +206,8 @@ proc decodeAssurances*(input: openArray[byte], config: AssuranceConfig,
   AssuranceDecodeResult(status: AssuranceError.None, recordCount: length,
       byteConsumed: prefix.consumed+length*stride)
 
-# Inspect complete assurance records without allocation/writes, reusing the existing per-record policy.
 proc inspectAssurances*(input: openArray[byte], config: AssuranceConfig): AssuranceDecodeResult {.raises: [].} =
+  ## Inspect complete assurance records without allocation/writes, reusing the existing per-record policy.
   # Caller domains precede any untrusted count or profile-dependent stride.
   if not validConfig(config): return AssuranceDecodeResult(status: AssuranceError.InvalidConfig)
   let prefix = natural.decode(input)

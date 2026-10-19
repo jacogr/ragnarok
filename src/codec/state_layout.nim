@@ -12,25 +12,16 @@ import ./[bounded, composite]
 import ../crypto/primitives
 
 type
-  # Chapter namespace octet is distinct from a service identifier or raw integer.
-  StateChapter* = distinct uint8
-  # GP state serialization keys contain exactly 31 octets, not full 32-byte hashes.
-  StateKey* = distinct array[31, byte]
-  # Complete trie child/node identity; hashing a node is separate from the empty-trie zero identity rule.
-  StateNodeHash* = distinct array[32, byte]
-  # A branch stores only the low 255 bits of its left child; this cannot implicitly become a complete hash.
-  LeftChildCommitment* = distinct array[32, byte]
-  # A regular leaf stores a value hash, not a child-node identity or the original long value.
-  StateValueHash* = distinct array[32, byte]
-  # Every encoded branch or leaf owns its entire canonical 64-octet node representation.
-  EncodedStateNode* = distinct array[64, byte]
-  # Embedded logical byte count must validate within 0..32 before any field/array use.
-  EmbeddedLength* = distinct uint8
-  # Default/failure alternatives expose only reasons, never keys, nodes, hashes or progress.
-  StateLayoutError* {.pure.} = enum
+  StateChapter* = distinct uint8 ## Chapter namespace octet is distinct from a service identifier or raw integer.
+  StateKey* = distinct array[31, byte] ## GP state serialization keys contain exactly 31 octets, not full 32-byte hashes.
+  StateNodeHash* = distinct array[32, byte] ## Complete trie child/node identity; hashing a node is separate from the empty-trie zero identity rule.
+  LeftChildCommitment* = distinct array[32, byte] ## A branch stores only the low 255 bits of its left child; this cannot implicitly become a complete hash.
+  StateValueHash* = distinct array[32, byte] ## A regular leaf stores a value hash, not a child-node identity or the original long value.
+  EncodedStateNode* = distinct array[64, byte] ## Every encoded branch or leaf owns its entire canonical 64-octet node representation.
+  EmbeddedLength* = distinct uint8 ## Embedded logical byte count must validate within 0..32 before any field/array use.
+  StateLayoutError* {.pure.} = enum ## Default/failure alternatives expose only reasons, never keys, nodes, hashes or progress.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, BackendFailure
-  # Success alone contains a complete independent fixed value.
-  StateLayoutResult*[T] = object
+  StateLayoutResult*[T] = object ## Success alone contains a complete independent fixed value.
     case status: StateLayoutError
     of None:
       # Select successful validation before reading any application field or completed extent.
@@ -38,11 +29,9 @@ type
     else:
       # Default/failure contains no usable data or cursor.
       discard
-  # Node metadata alternatives expose only fields actually committed by that node format.
-  StateNodeKind* {.pure.} = enum
+  StateNodeKind* {.pure.} = enum ## Node metadata alternatives expose only fields actually committed by that node format.
     Branch, EmbeddedLeaf, HashedLeaf
-  # Every metadata field is a fixed value copy; no pointer, span, heap owner or reconstructed long value escapes.
-  StateNodeInfo* = object
+  StateNodeInfo* = object ## Every metadata field is a fixed value copy; no pointer, span, heap owner or reconstructed long value escapes.
     case nodeKind: StateNodeKind
     of Branch:
       # Left commitment has a zero high bit; the lost original high bit is deliberately not fabricated.
@@ -57,67 +46,68 @@ type
       # A long value's hash cannot be confused with an embedded value or a complete child hash.
       regularKey: StateKey
       regularHash: StateValueHash
-  # A successful decoder consumes one canonical fixed node prefix, leaving unrelated suffixes to its caller.
-  StateNodeRead* = object
+  StateNodeRead* = object ## A successful decoder consumes one canonical fixed node prefix, leaving unrelated suffixes to its caller.
     node*: StateNodeInfo
     consumed*: int
 
-# Failure reasons remain readable without authorizing any completed key, node, metadata or progress.
-func error*[T](value: StateLayoutResult[T]): StateLayoutError = value.status
-# Completed fields require the selected success alternative in optimized builds too.
+func error*[T](value: StateLayoutResult[T]): StateLayoutError =
+  ## Failure reasons remain readable without authorizing any completed key, node, metadata or progress.
+  value.status
 func value*[T](value: StateLayoutResult[T]): T {.inline, requires: value.status ==
     StateLayoutError.None.} =
+  ## Completed fields require the selected success alternative in optimized builds too.
   value.completed
-# Metadata tags are read-only; default metadata is the existing all-zero branch.
-func kind*(node: StateNodeInfo): StateNodeKind = node.nodeKind
-# Return an independent left copy only from its selected Branch alternative.
+func kind*(node: StateNodeInfo): StateNodeKind =
+  ## Metadata tags are read-only; default metadata is the existing all-zero branch.
+  node.nodeKind
 func left*(node: StateNodeInfo): LeftChildCommitment {.inline, requires: node.nodeKind ==
     StateNodeKind.Branch.} =
+  ## Return an independent left copy only from its selected Branch alternative.
   node.branchLeft
-# Return an independent right copy only from its selected Branch alternative.
 func right*(node: StateNodeInfo): StateNodeHash {.inline, requires: node.nodeKind ==
     StateNodeKind.Branch.} =
+  ## Return an independent right copy only from its selected Branch alternative.
   node.branchRight
-# Return an independent embeddedKey copy only from its selected EmbeddedLeaf alternative.
 func embeddedKey*(node: StateNodeInfo): StateKey {.inline, requires: node.nodeKind ==
     StateNodeKind.EmbeddedLeaf.} =
+  ## Return an independent embeddedKey copy only from its selected EmbeddedLeaf alternative.
   node.inlineKey
-# Return an independent length copy only from its selected EmbeddedLeaf alternative.
 func length*(node: StateNodeInfo): EmbeddedLength {.inline, requires: node.nodeKind ==
     StateNodeKind.EmbeddedLeaf.} =
+  ## Return an independent length copy only from its selected EmbeddedLeaf alternative.
   node.inlineLength
-# Return an independent embedded copy only from its selected EmbeddedLeaf alternative.
 func embedded*(node: StateNodeInfo): array[32, byte] {.inline, requires: node.nodeKind ==
     StateNodeKind.EmbeddedLeaf.} =
+  ## Return an independent embedded copy only from its selected EmbeddedLeaf alternative.
   node.inlineBytes
-# Return an independent hashedKey copy only from its selected HashedLeaf alternative.
 func hashedKey*(node: StateNodeInfo): StateKey {.inline, requires: node.nodeKind ==
     StateNodeKind.HashedLeaf.} =
+  ## Return an independent hashedKey copy only from its selected HashedLeaf alternative.
   node.regularKey
-# Return an independent valueHash copy only from its selected HashedLeaf alternative.
 func valueHash*(node: StateNodeInfo): StateValueHash {.inline, requires: node.nodeKind ==
     StateNodeKind.HashedLeaf.} =
+  ## Return an independent valueHash copy only from its selected HashedLeaf alternative.
   node.regularHash
 
-# Construct copied branch source metadata; encodeStateNode validates its partial commitment before emission.
 func branchNodeInfo*(left: LeftChildCommitment, right: StateNodeHash): StateNodeInfo =
+  ## Construct copied branch source metadata; encodeStateNode validates its partial commitment before emission.
   StateNodeInfo(nodeKind: Branch, branchLeft: left, branchRight: right)
-# Construct copied embedded source metadata; encodeStateNode validates length and every unused padding byte.
 func embeddedNodeInfo*(key: StateKey, length: EmbeddedLength, bytes: array[32,
     byte]): StateNodeInfo =
+  ## Construct copied embedded source metadata; encodeStateNode validates length and every unused padding byte.
   StateNodeInfo(nodeKind: EmbeddedLeaf, inlineKey: key, inlineLength: length, inlineBytes: bytes)
-# Construct copied regular source metadata without claiming possession of the long value's preimage.
 func hashedNodeInfo*(key: StateKey, hash: StateValueHash): StateNodeInfo =
+  ## Construct copied regular source metadata without claiming possession of the long value's preimage.
   StateNodeInfo(nodeKind: HashedLeaf, regularKey: key, regularHash: hash)
 
-# Construct C(i): chapter octet followed by thirty zero octets, with no natural-length prefix.
 proc chapterKey*(chapter: StateChapter): StateKey {.raises: [].} =
+  ## Construct C(i): chapter octet followed by thirty zero octets, with no natural-length prefix.
   var bytes = default(array[31, byte])
   bytes[0] = byte(chapter)
   StateKey(bytes)
 
-# Construct C(i,s): interleave little-endian E4 service octets with zeroes after the chapter octet.
 proc chapterServiceKey*(chapter: StateChapter, service: ServiceIndex): StateKey {.raises: [].} =
+  ## Construct C(i,s): interleave little-endian E4 service octets with zeroes after the chapter octet.
   var bytes = default(array[31, byte])
   bytes[0] = byte(chapter)
   let number = uint32(service)
@@ -125,9 +115,9 @@ proc chapterServiceKey*(chapter: StateChapter, service: ServiceIndex): StateKey 
   for i in 0..<4: bytes[1+2*i] = byte((number shr (8*i)) and 255)
   StateKey(bytes)
 
-# Construct C(s,h) using the exact raw preimage h, whose semantic namespace/domain prefix belongs to its caller.
 proc hashedServiceKey*(service: ServiceIndex, preimage: openArray[byte],
     limit: ByteLimit): StateLayoutResult[StateKey] =
+  ## Construct C(s,h) using the exact raw preimage h, whose semantic namespace/domain prefix belongs to its caller.
   # Caller resource policy precedes hashing borrowed bytes; no length discriminator is added to h.
   if uint64(preimage.len) > uint64(limit): return StateLayoutResult[StateKey](
       status: StateLayoutError.LimitExceeded)
@@ -146,8 +136,8 @@ proc hashedServiceKey*(service: ServiceIndex, preimage: openArray[byte],
   for i in 4..<27: bytes[i+4] = digest[i]
   StateLayoutResult[StateKey](status: StateLayoutError.None, completed: StateKey(bytes))
 
-# Encode B(left,right), explicitly discarding only the original left hash's most-significant bit.
 proc encodeStateBranch*(left, right: StateNodeHash): EncodedStateNode {.raises: [].} =
+  ## Encode B(left,right), explicitly discarding only the original left hash's most-significant bit.
   let a = array[32, byte](left)
   let b = array[32, byte](right)
   var bytes = default(array[64, byte])
@@ -158,9 +148,9 @@ proc encodeStateBranch*(left, right: StateNodeHash): EncodedStateNode {.raises: 
   bytes[0] = bytes[0] and 127
   EncodedStateNode(bytes)
 
-# Encode L(key,value): embed 0..32 raw octets or commit a longer value with Blake2b-256.
 proc encodeStateLeaf*(key: StateKey, value: openArray[byte],
     limit: ByteLimit): StateLayoutResult[EncodedStateNode] =
+  ## Encode L(key,value): embed 0..32 raw octets or commit a longer value with Blake2b-256.
   # Structural value policy is explicit and applies before reading/hashing any borrowed value bytes.
   if uint64(value.len) > uint64(limit): return StateLayoutResult[EncodedStateNode](
       status: StateLayoutError.LimitExceeded)
@@ -184,8 +174,8 @@ proc encodeStateLeaf*(key: StateKey, value: openArray[byte],
     for i in 0..<32: bytes[32+i] = digest[i]
   StateLayoutResult[EncodedStateNode](status: StateLayoutError.None, completed: EncodedStateNode(bytes))
 
-# Decode one complete node prefix into independently copied metadata; reject reserved headers and nonzero embedded padding.
 proc decodeStateNode*(input: openArray[byte]): StateLayoutResult[StateNodeRead] {.raises: [].} =
+  ## Decode one complete node prefix into independently copied metadata; reject reserved headers and nonzero embedded padding.
   # All node formats are fixed at 64 octets; no tag or metadata escapes a shorter input.
   if input.len < 64: return StateLayoutResult[StateNodeRead](status: StateLayoutError.Truncated)
   var first = default(array[32, byte])
@@ -220,8 +210,8 @@ proc decodeStateNode*(input: openArray[byte]): StateLayoutResult[StateNodeRead] 
     node: StateNodeInfo(nodeKind: StateNodeKind.HashedLeaf, regularKey: StateKey(key),
         regularHash: StateValueHash(second)), consumed: 64))
 
-# Re-emit copied node metadata without inventing the missing left-hash bit or requiring a regular leaf's original value.
 proc encodeStateNode*(node: StateNodeInfo): StateLayoutResult[EncodedStateNode] {.raises: [].} =
+  ## Re-emit copied node metadata without inventing the missing left-hash bit or requiring a regular leaf's original value.
   var bytes = default(array[64, byte])
   case node.kind
   of Branch:
@@ -257,8 +247,8 @@ proc encodeStateNode*(node: StateNodeInfo): StateLayoutResult[EncodedStateNode] 
     for i in 0..<32: bytes[32+i] = digest[i] # The digest is not decoded as embedded bytes.
   StateLayoutResult[EncodedStateNode](status: StateLayoutError.None, completed: EncodedStateNode(bytes))
 
-# Hash a canonical encoded node using raw Blake2b-256; empty-trie identity and trie traversal are separate responsibilities.
 proc hashStateNode*(node: EncodedStateNode): StateLayoutResult[StateNodeHash] =
+  ## Hash a canonical encoded node using raw Blake2b-256; empty-trie identity and trie traversal are separate responsibilities.
   let bytes = array[64, byte](node)
   let checked = decodeStateNode(bytes)
   # Constructing a nominal encoded value manually must not bypass header/padding canonicality.

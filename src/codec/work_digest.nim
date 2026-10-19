@@ -9,37 +9,28 @@
 import ./[natural, fixed_unsigned, bounded, composite]
 
 type
-  # Owned 32-byte code hash, nominally separate from a payload hash; no hashing is performed here.
-  CodeHash* = distinct array[32, byte]
-  # Owned 32-byte payload hash, whose bytes are serialized in their supplied order.
-  PayloadHash* = distinct array[32, byte]
-  # Gas units; a work digest uses E8 for accumulation gas and a natural for refinement gas.
-  # The same units in a C.2 accumulation operand use a general natural rather than E8.
-  Gas* = distinct uint64
-  # Number of imported segments, serialized as a general natural.
-  ImportCount* = distinct uint64
-  # Number of extrinsics used by refinement, separate from their aggregate size.
-  ExtrinsicCount* = distinct uint64
-  # Aggregate extrinsic size in bytes, serialized as a general natural.
-  ExtrinsicBytes* = distinct uint64
-  # Number of exported segments, independent of import count.
-  ExportCount* = distinct uint64
+  CodeHash* = distinct array[32, byte] ## Owned 32-byte code hash, nominally separate from a payload hash; no hashing is performed here.
+  PayloadHash* = distinct array[32, byte] ## Owned 32-byte payload hash, whose bytes are serialized in their supplied order.
+  Gas* = distinct uint64 ## Gas units; a work digest uses E8 for accumulation gas and a natural for refinement gas.
+                         ## The same units in a C.2 accumulation operand use a general natural rather than E8.
+  ImportCount* = distinct uint64 ## Number of imported segments, serialized as a general natural.
+  ExtrinsicCount* = distinct uint64 ## Number of extrinsics used by refinement, separate from their aggregate size.
+  ExtrinsicBytes* = distinct uint64 ## Aggregate extrinsic size in bytes, serialized as a general natural.
+  ExportCount* = distinct uint64 ## Number of exported segments, independent of import count.
   RefineLoad* = object
     gasUsed*: Gas
     imports*: ImportCount
     extrinsicCount*: ExtrinsicCount
     extrinsicSize*: ExtrinsicBytes
     exports*: ExportCount
-  # Owned fixed fields plus a work output whose successful span borrows the matching input/pool.
-  WorkDigest* = object
+  WorkDigest* = object ## Owned fixed fields plus a work output whose successful span borrows the matching input/pool.
     service*: ServiceIndex
     codeHash*: CodeHash
     payloadHash*: PayloadHash
     accumulateGas*: Gas
     output*: WorkOutput
     refine*: RefineLoad
-  # Private tagged state exposes complete copied digests only through guarded accessors.
-  DigestResult* = object
+  DigestResult* = object ## Private tagged state exposes complete copied digests only through guarded accessors.
     case status: CompositeError
     of None:
       # Successful spans remain relative to the original borrowed input.
@@ -49,14 +40,15 @@ type
       # Default/failure alternatives expose only a typed reason.
       discard
 
-# Read the reason without permitting callers to retag a failure as success.
-func error*(value: DigestResult): CompositeError = value.status
-# A failed digest cannot expose default hashes, service identity or nested work output.
+func error*(value: DigestResult): CompositeError =
+  ## Read the reason without permitting callers to retag a failure as success.
+  value.status
 func value*(value: DigestResult): WorkDigest {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## A failed digest cannot expose default hashes, service identity or nested work output.
   value.decodedValue
-# Only a complete digest prefix can advance the caller's cursor.
 func consumed*(value: DigestResult): int {.inline, requires: value.status == CompositeError.None.} =
+  ## Only a complete digest prefix can advance the caller's cursor.
   value.byteConsumed
 
 # Compare pointer differences without overflowing endpoint addition; empty spans never overlap.
@@ -74,9 +66,9 @@ proc metrics(load: RefineLoad): array[5, uint64] {.raises: [].} =
   [uint64(load.gasUsed), uint64(load.imports), uint64(load.extrinsicCount),
    uint64(load.extrinsicSize), uint64(load.exports)]
 
-# Serialize the complete tuple into caller storage after validating every field, extent and borrowed pool.
 proc encodeDigestBorrowed*(source: WorkDigest, pool: openArray[byte], limit: ByteLimit,
                    output: var openArray[byte]): CompositeWrite {.raises: [].} =
+  ## Serialize the complete tuple into caller storage after validating every field, extent and borrowed pool.
   # Own a value snapshot so output may overlap the original record without corrupting later fixed fields.
   var value = source
   let work = measureWork(value.output, pool.len, limit)
@@ -114,8 +106,8 @@ proc encodeDigestBorrowed*(source: WorkDigest, pool: openArray[byte], limit: Byt
     cursor += field.len
   compositeWritten(required)
 
-# Decode one complete digest prefix; returned successful blob coordinates refer to the original input.
 proc decodeDigestBorrowed*(input: openArray[byte], limit: ByteLimit): DigestResult {.raises: [].} =
+  ## Decode one complete digest prefix; returned successful blob coordinates refer to the original input.
   # The fixed prefix must exist before reading any service, hash or gas byte.
   if input.len < 76: return DigestResult(status: CompositeError.Truncated)
   let work = decodeWorkBorrowed(input.toOpenArray(76, input.len - 1), limit)

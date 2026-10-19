@@ -10,39 +10,23 @@ import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_digest]
 
 type
-  # Distinct generic hash domains own their bytes and cannot be silently interchanged.
-  ReportHash*[kind: static[int]] = object
+  ReportHash*[kind: static[int]] = object ## Distinct generic hash domains own their bytes and cannot be silently interchanged.
     bytes*: array[32, byte]
-  # Package identity is separate from roots and historical block identities.
-  PackageHash* = ReportHash[0]
-  # Erasure commitment identifies the auditable bundle.
-  ErasureRoot* = ReportHash[1]
-  # Export commitment identifies the segment tree.
-  SegmentRoot* = ReportHash[2]
-  # Historical anchor identity.
-  BlockHash* = ReportHash[3]
-  # Posterior state commitment at the anchor.
-  StateRoot* = ReportHash[4]
-  # Accumulation output log commitment at the anchor.
-  AccumulationRoot* = ReportHash[5]
-  # Authorization-code identity has a separate nominal domain.
-  AuthorizerHash* = ReportHash[6]
-  # Serialized auditable-bundle byte count uses E4.
-  BundleLength* = distinct uint32
-  # Total erasure shards identify the assuring validator-set cardinality, encoded as E2.
-  ErasureShards* = distinct uint16
-  # Anchor timeslot uses E4 and cannot be substituted for the lookup timeslot.
-  AnchorSlot* = distinct uint32
-  # Lookup-anchor posterior state has its own nominal role.
-  LookupStateRoot* = ReportHash[7]
-  # Exported segment count uses E2.
-  SegmentCount* = distinct uint16
-  # Historical lookup timeslot uses E4.
-  LookupSlot* = distinct uint32
-  # Core indices use general naturals with an explicit chain-dependent upper bound.
-  CoreIndex* = distinct uint64
-  # Complete owned fixed availability/context fields; prerequisites follow separately on the wire.
-  ReportHeader* = object
+  PackageHash* = ReportHash[0] ## Package identity is separate from roots and historical block identities.
+  ErasureRoot* = ReportHash[1] ## Erasure commitment identifies the auditable bundle.
+  SegmentRoot* = ReportHash[2] ## Export commitment identifies the segment tree.
+  BlockHash* = ReportHash[3] ## Historical anchor identity.
+  StateRoot* = ReportHash[4] ## Posterior state commitment at the anchor.
+  AccumulationRoot* = ReportHash[5] ## Accumulation output log commitment at the anchor.
+  AuthorizerHash* = ReportHash[6] ## Authorization-code identity has a separate nominal domain.
+  BundleLength* = distinct uint32 ## Serialized auditable-bundle byte count uses E4.
+  ErasureShards* = distinct uint16 ## Total erasure shards identify the assuring validator-set cardinality, encoded as E2.
+  AnchorSlot* = distinct uint32 ## Anchor timeslot uses E4 and cannot be substituted for the lookup timeslot.
+  LookupStateRoot* = ReportHash[7] ## Lookup-anchor posterior state has its own nominal role.
+  SegmentCount* = distinct uint16 ## Exported segment count uses E2.
+  LookupSlot* = distinct uint32 ## Historical lookup timeslot uses E4.
+  CoreIndex* = distinct uint64 ## Core indices use general naturals with an explicit chain-dependent upper bound.
+  ReportHeader* = object ## Complete owned fixed availability/context fields; prerequisites follow separately on the wire.
     packageHash*: PackageHash
     bundleLength*: BundleLength
     erasureRoot*: ErasureRoot
@@ -56,12 +40,10 @@ type
     lookupAnchor*: BlockHash
     lookupSlot*: LookupSlot
     lookupStateRoot*: LookupStateRoot
-  # Dictionary entries own their package key and associated segment commitment.
-  SegmentLookup* = object
+  SegmentLookup* = object ## Dictionary entries own their package key and associated segment commitment.
     packageHash*: PackageHash
     segmentRoot*: SegmentRoot
-  # Protocol-bounded typed metadata; payload spans explicitly borrow the exact matching input/pool.
-  WorkReport* = object
+  WorkReport* = object ## Protocol-bounded typed metadata; payload spans explicitly borrow the exact matching input/pool.
     header*: ReportHeader
     prerequisites*: array[8, PackageHash]
     prerequisiteCount*: int
@@ -73,8 +55,7 @@ type
     lookupCount*: int
     digests*: array[16, WorkDigest]
     digestCount*: int
-  # Complete copied report data is private until the success precondition holds.
-  ReportResult* = object
+  ReportResult* = object ## Complete copied report data is private until the success precondition holds.
     case status: CompositeError
     of None:
       # Borrowed payload spans remain bound to the caller's exact input/pool.
@@ -83,8 +64,7 @@ type
     else:
       # Failed/default outcomes contain no partial report or cursor progress.
       discard
-  # Fixed headers are copied values; truncated/invalid headers expose only their reason.
-  ReportHeaderResult* = object
+  ReportHeaderResult* = object ## Fixed headers are copied values; truncated/invalid headers expose only their reason.
     case status: CompositeError
     of None:
       # The complete header includes every 0.8.0 nominal field.
@@ -93,28 +73,30 @@ type
       # Default results remain Uninitialized, distinct from an all-zero header.
       discard
 
-# Read the full-report outcome without permitting retagging.
-func error*(value: ReportResult): CompositeError = value.status
-# Read the fixed-header outcome without exposing a writable discriminator.
-func error*(value: ReportHeaderResult): CompositeError = value.status
-# Only complete report decoding exposes copied fields and caller-bound spans.
+func error*(value: ReportResult): CompositeError =
+  ## Read the full-report outcome without permitting retagging.
+  value.status
+func error*(value: ReportHeaderResult): CompositeError =
+  ## Read the fixed-header outcome without exposing a writable discriminator.
+  value.status
 func value*(value: ReportResult): WorkReport {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## Only complete report decoding exposes copied fields and caller-bound spans.
   value.decodedValue
-# Only complete report decoding may advance the input cursor.
 func consumed*(value: ReportResult): int {.inline, requires: value.status == CompositeError.None.} =
+  ## Only complete report decoding may advance the input cursor.
   value.byteConsumed
-# Failed/default fixed headers cannot expose default nominal identities.
 func value*(value: ReportHeaderResult): ReportHeader {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## Failed/default fixed headers cannot expose default nominal identities.
   value.decodedValue
 
 # Validate GP 0.8.0 valcount independently of state-dependent active-set equality.
 proc validErasureShards(value: ErasureShards): bool {.raises: [].} =
   uint16(value) >= 6 and uint16(value) <= 1023 and uint16(value) mod 3 == 0
 
-# Decode all fixed availability/context fields before exposing any owned nominal values.
 proc decodeReportHeader*(input: openArray[byte]): ReportHeaderResult {.raises: [].} =
+  ## Decode all fixed availability/context fields before exposing any owned nominal values.
   # Prove the complete 0.8.0 fixed prefix before reading any new or retained field.
   if input.len < 272: return ReportHeaderResult(status: CompositeError.Truncated)
   var value: ReportHeader = default(ReportHeader)
@@ -144,9 +126,9 @@ proc decodeReportHeader*(input: openArray[byte]): ReportHeaderResult {.raises: [
     return ReportHeaderResult(status: CompositeError.LimitExceeded)
   ReportHeaderResult(status: CompositeError.None, decodedValue: value)
 
-# Emit a fixed header value snapshot atomically, without retaining caller references.
 proc encodeReportHeader*(source: ReportHeader, output: var openArray[
     byte]): CompositeWrite {.raises: [].} =
+  ## Emit a fixed header value snapshot atomically, without retaining caller references.
   let value = source
   # Reject an invalid shard domain before capacity checks or destination mutation.
   if not validErasureShards(value.erasureShards):
@@ -194,8 +176,8 @@ proc reportHashLess(a, b: PackageHash): bool {.raises: [].} =
     if a.bytes[i] != b.bytes[i]: return a.bytes[i] < b.bytes[i]
   false
 
-# Decode one bounded complete report prefix without allocation; spans use original whole-input coordinates.
 proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportResult {.raises: [].} =
+  ## Decode one bounded complete report prefix without allocation; spans use original whole-input coordinates.
   let header = decodeReportHeader(input)
   # A missing fixed header cannot construct a report with invented default fields.
   if header.error != CompositeError.None: return ReportResult(status: header.error)
@@ -340,9 +322,9 @@ proc reportPutNatural(number: uint64, output: var openArray[byte], cursor: var i
   for i in 0..<encoded.len: output[cursor+i] = encoded.bytes[i]
   cursor += encoded.len
 
-# Encode a value snapshot atomically, preserving the entire borrowed pool against overlap.
 proc encodeReportBorrowed*(source: WorkReport, pool: openArray[byte], coreCount: uint64,
     output: var openArray[byte]): CompositeWrite {.raises: [].} =
+  ## Encode a value snapshot atomically, preserving the entire borrowed pool against overlap.
   let value = source
   let measured = measureReportBorrowed(value, pool.len, coreCount)
   # No mutation is permitted until all fixed fields and the final nested metric have validated.

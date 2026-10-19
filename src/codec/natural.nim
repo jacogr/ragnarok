@@ -7,17 +7,13 @@
 ## Exposes JamNatural, encode/decode and checked value, consumption and error accessors.
 
 type
-  # A protocol natural, kept separate from ordinary integers to require an explicit conversion.
-  JamNatural* = distinct uint64
-  # Owns the encoded bytes; only the first len bytes are part of the wire representation.
-  EncodedNatural* = object
+  JamNatural* = distinct uint64 ## A protocol natural, kept separate from ordinary integers to require an explicit conversion.
+  EncodedNatural* = object ## Owns the encoded bytes; only the first len bytes are part of the wire representation.
     bytes*: array[9, byte]
     len*: range[1..9]
-  # Reasons why the supplied bytes do not contain a complete, canonical natural.
-  DecodeError* = enum
+  DecodeError* = enum ## Reasons why the supplied bytes do not contain a complete, canonical natural.
     truncated, nonCanonical
-  # Private tagged state prevents callers from retagging failures or reading nonexistent values.
-  DecodeResult* = object
+  DecodeResult* = object ## Private tagged state prevents callers from retagging failures or reading nonexistent values.
     case success: bool
     of true:
       # Only the decoder constructs the copied natural and exact prefix extent.
@@ -27,20 +23,21 @@ type
       # Failed/default results carry only their reason; default remains truncated.
       failureReason: DecodeError
 
-# The outcome is always readable, but cannot be changed to manufacture a successful result.
-func ok*(value: DecodeResult): bool = value.success
-# Return copied decoded data only after the caller establishes success.
+func ok*(value: DecodeResult): bool =
+  ## The outcome is always readable, but cannot be changed to manufacture a successful result.
+  value.success
 func value*(value: DecodeResult): JamNatural {.inline, requires: value.success.} =
+  ## Return copied decoded data only after the caller establishes success.
   value.decodedValue
-# A failed natural never publishes a prefix extent that could advance a cursor.
 func consumed*(value: DecodeResult): range[1..9] {.inline, requires: value.success.} =
+  ## A failed natural never publishes a prefix extent that could advance a cursor.
   value.byteConsumed
-# Successful results have no error payload; select failure before asking for its reason.
 func error*(value: DecodeResult): DecodeError {.inline, requires: not value.success.} =
+  ## Successful results have no error payload; select failure before asking for its reason.
   value.failureReason
 
-# Encode a natural into its shortest JAM representation, using at most nine bytes.
 proc encode*(value: JamNatural): EncodedNatural {.raises: [].} =
+  ## Encode a natural into its shortest JAM representation, using at most nine bytes.
   result = EncodedNatural(len: 1)
   let x = uint64(value)
   var tail: range[0..8] = 0
@@ -60,8 +57,8 @@ proc encode*(value: JamNatural): EncodedNatural {.raises: [].} =
   for i in 0..<tail:
     result.bytes[i + 1] = byte((x shr (8 * i)) and 255)
 
-# Read one natural from the start of a borrowed buffer without allocating or advancing caller state.
 proc decode*(input: openArray[byte]): DecodeResult {.raises: [].} =
+  ## Read one natural from the start of a borrowed buffer without allocating or advancing caller state.
   ## Decode one canonical value from the front; trailing bytes belong to caller.
   ## Failure has no consumed count. No input-derived allocation or host-int cast.
   # A header is required even for zero; an empty buffer cannot contain a value.

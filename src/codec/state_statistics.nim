@@ -12,79 +12,58 @@ import ./[natural, bounded, composite, assurances, state_layout, state_trie]
 export ServiceIndex, CoreCount, ValidatorCount
 
 type
-  ## Current and previous epoch populations are separately configured and need not match after resizing.
-  StatisticsEpoch* {.pure.} = enum
+  StatisticsEpoch* {.pure.} = enum ## Current and previous epoch populations are separately configured and need not match after resizing.
     Current, Previous
-  ## Six validator counters follow the exact activityspec tuple order, all encoded E4.
-  ValidatorMeasure* {.pure.} = enum
+  ValidatorMeasure* {.pure.} = enum ## Six validator counters follow the exact activityspec tuple order, all encoded E4.
     Blocks, Tickets, PreimageCount, PreimageBytes, Guarantees, Assurances
-  ## Fixed E4 validator counter; a natural gas allowance cannot be assigned without conversion.
-  ValidatorCounter* = distinct uint32
-  ## Core non-gas measures precede the final gas field in their normative order.
-  CoreMeasure* {.pure.} = enum
+  ValidatorCounter* = distinct uint32 ## Fixed E4 validator counter; a natural gas allowance cannot be assigned without conversion.
+  CoreMeasure* {.pure.} = enum ## Core non-gas measures precede the final gas field in their normative order.
     DataAvailabilityLoad, Popularity, Imports, ExtrinsicCount, ExtrinsicBytes, Exports, BundleBytes
-  ## Service non-gas fields retain their named tuple positions; gas fields remain separate nominal values.
-  ServiceMeasure* {.pure.} = enum
+  ServiceMeasure* {.pure.} = enum ## Service non-gas fields retain their named tuple positions; gas fields remain separate nominal values.
     ProvisionCount, ProvisionBytes, RefinementCount, Imports, ExtrinsicCount, ExtrinsicBytes,
     Exports, AccumulationCount, TransferCount
-  ## Natural statistic fields support the entire canonical unsigned 64-bit encoding domain.
-  ActivityNatural* = distinct uint64
-  ## Gas statistics cannot accidentally substitute for natural counts or E4 validator counters.
-  ActivityGas* = distinct uint64
-  ## Every validator record is a fixed independent copy, with no nested mutable storage.
-  ValidatorActivity* = array[ValidatorMeasure, ValidatorCounter]
-  ## Seven natural core measures and final natural gas usage form one fixed eight-field tuple.
-  CoreActivity* = object
+  ActivityNatural* = distinct uint64 ## Natural statistic fields support the entire canonical unsigned 64-bit encoding domain.
+  ActivityGas* = distinct uint64 ## Gas statistics cannot accidentally substitute for natural counts or E4 validator counters.
+  ValidatorActivity* = array[ValidatorMeasure, ValidatorCounter] ## Every validator record is a fixed independent copy, with no nested mutable storage.
+  CoreActivity* = object ## Seven natural core measures and final natural gas usage form one fixed eight-field tuple.
     counters*: array[CoreMeasure, ActivityNatural]
     gas*: ActivityGas
-  ## Eleven natural service fields include provision/refinement and three accumulation statistics.
-  ServiceActivity* = object
+  ServiceActivity* = object ## Eleven natural service fields include provision/refinement and three accumulation statistics.
     counters*: array[ServiceMeasure, ActivityNatural]
     refinementGas*, accumulationGas*: ActivityGas
-  ## Service statistics dictionary entries retain the numeric service ID beside its complete fixed tuple.
-  ServiceStatisticsEntry* = object
+  ServiceStatisticsEntry* = object ## Service statistics dictionary entries retain the numeric service ID beside its complete fixed tuple.
     service*: ServiceIndex
     statistics*: ServiceActivity
-  ## Validator/core positions and service dictionary ordinals have independent nominal domains.
-  StatisticsValidatorIndex* = distinct uint64
-  ## Core positions are independent of validator positions and service dictionary ordinals.
-  StatisticsCoreIndex* = distinct uint64
-  ## Service extraction uses a dictionary ordinal, not the service ID or a core position.
-  StatisticsServiceIndex* = distinct uint64
-  ## Stable synchronous source; array shapes/order must already agree with the supplied profile.
-  ActivityState* = object
+  StatisticsValidatorIndex* = distinct uint64 ## Validator/core positions and service dictionary ordinals have independent nominal domains.
+  StatisticsCoreIndex* = distinct uint64 ## Core positions are independent of validator positions and service dictionary ordinals.
+  StatisticsServiceIndex* = distinct uint64 ## Service extraction uses a dictionary ordinal, not the service ID or a core position.
+  ActivityState* = object ## Stable synchronous source; array shapes/order must already agree with the supplied profile.
     validators*: array[StatisticsEpoch, seq[ValidatorActivity]]
     cores*: seq[CoreActivity]
     services*: seq[ServiceStatisticsEntry]
-  ## Both roster populations are explicit; item and whole-parent byte ceilings independently bound resources.
-  ActivityConfig* = object
+  ActivityConfig* = object ## Both roster populations are explicit; item and whole-parent byte ceilings independently bound resources.
     cores*: CoreCount
     current*, previous*: ValidatorCount
     maxServices*: ElementLimit
     maxBytes*: ByteLimit
-  ## Default and failures carry only reasons, without values, owner handles or parser progress.
-  ActivityError* {.pure.} = enum
+  ActivityError* {.pure.} = enum ## Default and failures carry only reasons, without values, owner handles or parser progress.
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical, LimitExceeded,
     LengthOverflow, InvalidService, InvalidOwner, InvalidIndex, InvalidTag
-  ## Only complete success exposes an application payload.
-  ActivityResult*[T] = object
+  ActivityResult*[T] = object ## Only complete success exposes an application payload.
     case status: ActivityError
     of None:
-      completed: T # Success must be selected before any payload access.
+      completed: T            # Success must be selected before any payload access.
     else:
-      discard      # Default/failed alternatives cannot masquerade as empty statistics.
+      discard                 # Default/failed alternatives cannot masquerade as empty statistics.
   ## Acyclic private ARC storage owns independent fixed records, without caller-array aliases.
   ActivityData = ref object
     state: ActivityState
-  ## Value handles retain shared immutable private storage; replacement cannot mutate other copies.
-  ActivitySnapshot* = object
+  ActivitySnapshot* = object ## Value handles retain shared immutable private storage; replacement cannot mutate other copies.
     data: nil ActivityData
-  ## Prefix success binds its retained snapshot to the exact complete consumed extent.
-  ActivityRead* = object
+  ActivityRead* = object ## Prefix success binds its retained snapshot to the exact complete consumed extent.
     snapshot*: ActivitySnapshot
     consumed*: int
-  ## Copied cardinalities expose no mutable validator/core/service arrays.
-  ActivityInfo* = object
+  ActivityInfo* = object ## Copied cardinalities expose no mutable validator/core/service arrays.
     validators*: array[StatisticsEpoch, int]
     cores*, services*: int
   ## Local proof holds only offsets/counts and never escapes as detached input spans.
@@ -92,11 +71,12 @@ type
     starts: array[StatisticsEpoch, int]
     coreStart, serviceStart, services, consumed: int
 
-## Failure reasons remain read-only and never authorize values or partial parser progress.
-func error*[T](value: ActivityResult[T]): ActivityError = value.status
-## Public and private payloads require complete success under checked optimized builds too.
+func error*[T](value: ActivityResult[T]): ActivityError =
+  ## Failure reasons remain read-only and never authorize values or partial parser progress.
+  value.status
 func value*[T](value: ActivityResult[T]): T {.inline, requires: value.status ==
     ActivityError.None.} =
+  ## Public and private payloads require complete success under checked optimized builds too.
   value.completed
 
 ## Validate both independent roster domains before core/count conversions or input access.
@@ -233,8 +213,8 @@ proc serviceFields(value: ServiceActivity): array[11, uint64] =
         ServiceMeasure.TransferCount]),
     uint64(value.accumulationGas)]
 
-## Capture a complete preflighted component into independent fixed typed arrays with an immutable owner.
 proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): ActivityResult[ActivityRead] =
+  ## Capture a complete preflighted component into independent fixed typed arrays with an immutable owner.
   let checked = scan(input, config)
   if checked.error != ActivityError.None: return ActivityResult[ActivityRead](
       status: checked.error) # No earlier owner/progress after failure.
@@ -283,8 +263,8 @@ proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
     output[cursor] = encoded.bytes[i]
     inc cursor
 
-## Validate exact source shape/order/extent before allocating independent C(13) output bytes.
 proc activityStateEntry*(source: ActivityState, config: ActivityConfig): ActivityResult[StateEntry] =
+  ## Validate exact source shape/order/extent before allocating independent C(13) output bytes.
   let valid = validate(config)
   if valid != ActivityError.None: return ActivityResult[StateEntry](
       status: valid) # Configuration precedes source traversal.
@@ -346,8 +326,8 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
         cursor) # Tuple has fixed arity, without its own count.
   ActivityResult[StateEntry](status: ActivityError.None, completed: entry)
 
-## Return copied record counts without exposing any retained arrays.
 proc activityInfo*(owner: ActivitySnapshot): ActivityResult[ActivityInfo] =
+  ## Return copied record counts without exposing any retained arrays.
   let data = owner.data
   if data == nil: return ActivityResult[ActivityInfo](
       status: ActivityError.InvalidOwner) # Default is not validated zero state.
@@ -357,9 +337,9 @@ proc activityInfo*(owner: ActivitySnapshot): ActivityResult[ActivityInfo] =
       epoch] = data.state.validators[epoch].len # Preserve independent populations.
   ActivityResult[ActivityInfo](status: ActivityError.None, completed: info)
 
-## Copy a complete validator tuple selected by epoch and nominal validator position.
 proc validatorActivityAt*(owner: ActivitySnapshot, epoch: StatisticsEpoch,
     index: StatisticsValidatorIndex): ActivityResult[ValidatorActivity] =
+  ## Copy a complete validator tuple selected by epoch and nominal validator position.
   let data = owner.data
   if data == nil: return ActivityResult[ValidatorActivity](
       status: ActivityError.InvalidOwner) # Missing storage cannot return counters.
@@ -370,8 +350,8 @@ proc validatorActivityAt*(owner: ActivitySnapshot, epoch: StatisticsEpoch,
   ActivityResult[ValidatorActivity](status: ActivityError.None, completed: data.state.validators[
       epoch][int(uint64(index))])
 
-## Copy one core's complete fixed tuple through its independently checked nominal position.
 proc coreActivityAt*(owner: ActivitySnapshot, index: StatisticsCoreIndex): ActivityResult[CoreActivity] =
+  ## Copy one core's complete fixed tuple through its independently checked nominal position.
   let data = owner.data
   if data == nil: return ActivityResult[CoreActivity](
       status: ActivityError.InvalidOwner) # No default counters after failure.
@@ -379,9 +359,9 @@ proc coreActivityAt*(owner: ActivitySnapshot, index: StatisticsCoreIndex): Activ
     return ActivityResult[CoreActivity](status: ActivityError.InvalidIndex) # Core positions are unrelated to dictionary ordinals.
   ActivityResult[CoreActivity](status: ActivityError.None, completed: data.state.cores[int(uint64(index))])
 
-## Copy one numeric key and full service tuple; the pair has no owner-dependent mutable storage.
 proc serviceActivityAt*(owner: ActivitySnapshot, index: StatisticsServiceIndex): ActivityResult[
     ServiceStatisticsEntry] =
+  ## Copy one numeric key and full service tuple; the pair has no owner-dependent mutable storage.
   let data = owner.data
   if data == nil: return ActivityResult[ServiceStatisticsEntry](
       status: ActivityError.InvalidOwner) # No fabricated service pair.

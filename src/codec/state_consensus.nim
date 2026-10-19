@@ -15,8 +15,7 @@ from ./tickets import TicketAttempt
 export WinningTicket, WinningTicketId, EpochSlots, TicketAttempt
 
 type
-  ## Chapter-local result keeps successful construction private while child-roster outcomes are converted explicitly.
-  SafroleStateResult*[T] = object
+  SafroleStateResult*[T] = object ## Chapter-local result keeps successful construction private while child-roster outcomes are converted explicitly.
     case status: StateComponentError
     of None:
       # Only successful chapter operations carry data or completed progress.
@@ -24,34 +23,27 @@ type
     else:
       # Defaults/failures expose only the shared typed reason.
       discard
-  ## Opaque serialized ring commitment, distinct from a trie root or validator BLS key of equal width.
-  StateRingRoot* = distinct array[144, byte]
-  ## Exact chapter-4 discriminator: zero for tickets, one for fallback Bandersnatch keys.
-  SealerKind* {.pure.} = enum
+  StateRingRoot* = distinct array[144, byte] ## Opaque serialized ring commitment, distinct from a trie root or validator BLS key of equal width.
+  SealerKind* {.pure.} = enum ## Exact chapter-4 discriminator: zero for tickets, one for fallback Bandersnatch keys.
     Tickets, Keys
-  ## Borrowed schedule source; only the selected alternative has backing sequence storage.
-  SealerSchedule* = object
+  SealerSchedule* = object ## Borrowed schedule source; only the selected alternative has backing sequence storage.
     case mode: SealerKind
     of Tickets:
       ticketValues: seq[WinningTicket] # Slot order is preserved, never score-sorted here.
     of Keys:
       keyValues: seq[StateBsKey]       # Fallback keys remain opaque and may repeat.
-  ## Synchronous borrowed source; every source sequence must remain stable throughout encoding.
-  SafroleState* = object
+  SafroleState* = object ## Synchronous borrowed source; every source sequence must remain stable throughout encoding.
     pending*: seq[StateValidator]
     root*: StateRingRoot
     schedule*: SealerSchedule
     accumulator*: seq[WinningTicket]
-  ## Explicit roster policy, chain epoch length, accumulator ceiling and complete chapter byte ceiling.
-  SafroleStateConfig* = object
+  SafroleStateConfig* = object ## Explicit roster policy, chain epoch length, accumulator ceiling and complete chapter byte ceiling.
     validators*: ValidatorStateConfig
     epochSlots*: EpochSlots
     maxAccumulator*: ElementLimit
     maxBytes*: ByteLimit
-  ## Owner-bound ordinal for schedule/accumulator extraction, distinct from a pending validator index.
-  SafroleStateIndex* = distinct uint64
-  ## Fixed copied metadata identifies the selected schedule without exporting mutable storage.
-  SafroleStateInfo* = object
+  SafroleStateIndex* = distinct uint64 ## Owner-bound ordinal for schedule/accumulator extraction, distinct from a pending validator index.
+  SafroleStateInfo* = object ## Fixed copied metadata identifies the selected schedule without exporting mutable storage.
     root*: StateRingRoot
     kind*: SealerKind
     validators*, slots*, accumulated*: int
@@ -61,11 +53,9 @@ type
     root: StateRingRoot
     schedule: SealerSchedule
     accumulator: seq[WinningTicket]
-  ## Value handles share private immutable data; default handles contain no valid state.
-  SafroleStateSnapshot* = object
+  SafroleStateSnapshot* = object ## Value handles share private immutable data; default handles contain no valid state.
     data: nil SafroleStateData
-  ## Only complete decoding publishes a snapshot plus its exact prefix extent.
-  SafroleStateRead* = object
+  SafroleStateRead* = object ## Only complete decoding publishes a snapshot plus its exact prefix extent.
     snapshot*: SafroleStateSnapshot
     consumed*: int
   ## Private no-allocation layout proof contains offsets only during the stable synchronous call.
@@ -73,28 +63,30 @@ type
     pending, schedule, accumulator, count, consumed: int
     kind: SealerKind
 
-# Read only the reason until the caller has selected successful completion.
-func error*[T](value: SafroleStateResult[T]): StateComponentError = value.status
-# No default/failed chapter result may expose an owner, entry, metadata, record or cursor.
+func error*[T](value: SafroleStateResult[T]): StateComponentError =
+  ## Read only the reason until the caller has selected successful completion.
+  value.status
 func value*[T](value: SafroleStateResult[T]): T {.inline, requires: value.status ==
     StateComponentError.None.} =
+  ## No default/failed chapter result may expose an owner, entry, metadata, record or cursor.
   value.completed
-# Tags are read-only; default source schedules retain the existing empty ticket alternative.
-func kind*(source: SealerSchedule): SealerKind = source.mode
-# Borrow caller ticket storage synchronously during encoding; tag and selected storage are constructed together.
+func kind*(source: SealerSchedule): SealerKind =
+  ## Tags are read-only; default source schedules retain the existing empty ticket alternative.
+  source.mode
 func ticketSchedule*(values: seq[WinningTicket]): SealerSchedule =
+  ## Borrow caller ticket storage synchronously during encoding; tag and selected storage are constructed together.
   SealerSchedule(mode: Tickets, ticketValues: values)
-# Borrow caller key storage synchronously during encoding without allowing caller retagging.
 func keySchedule*(values: seq[StateBsKey]): SealerSchedule =
+  ## Borrow caller key storage synchronously during encoding without allowing caller retagging.
   SealerSchedule(mode: Keys, keyValues: values)
-# Inspect an independent ticket sequence copy only from the active source alternative.
 proc tickets*(source: SealerSchedule): seq[WinningTicket] {.requires: source.mode ==
     SealerKind.Tickets.} =
+  ## Inspect an independent ticket sequence copy only from the active source alternative.
   result = newSeq[WinningTicket](source.ticketValues.len)
   # Copy fixed records so inspecting/editing returned values cannot modify the original source.
   for i in 0..<result.len: result[i] = source.ticketValues[i]
-# Inspect an independent key sequence copy only from the active source alternative.
 proc keys*(source: SealerSchedule): seq[StateBsKey] {.requires: source.mode == SealerKind.Keys.} =
+  ## Inspect an independent key sequence copy only from the active source alternative.
   result = newSeq[StateBsKey](source.keyValues.len)
   # Each copied fixed key remains independent of caller/source backing sequences.
   for i in 0..<result.len: result[i] = source.keyValues[i]
@@ -185,9 +177,9 @@ proc fixed[N: static[int]](input: openArray[byte], offset: int): array[N, byte] 
 proc ticket(input: openArray[byte], offset: int): WinningTicket =
   WinningTicket(id: WinningTicketId(fixed[32](input, offset)), attempt: TicketAttempt(input[offset+32]))
 
-## Decode chapter 4 into immutable private storage only after the entire source prefix is valid.
 proc decodeSafroleState*(input: openArray[byte], config: SafroleStateConfig): SafroleStateResult[
     SafroleStateRead] =
+  ## Decode chapter 4 into immutable private storage only after the entire source prefix is valid.
   let checked = scan(input, config)
   if checked.error != StateComponentError.None:
     return SafroleStateResult[SafroleStateRead](
@@ -230,8 +222,8 @@ proc putTicket(value: WinningTicket, output: var seq[byte], cursor: var int) =
   output[cursor] = byte(value.attempt)
   inc cursor
 
-## Encode a stable borrowed chapter source into an independent C(4) entry after complete source preflight.
 proc safroleStateEntry*(source: SafroleState, config: SafroleStateConfig): SafroleStateResult[StateEntry] =
+  ## Encode a stable borrowed chapter source into an independent C(4) entry after complete source preflight.
   let valid = validate(config)
   if valid != StateComponentError.None: return SafroleStateResult[StateEntry](
       status: valid) # No allocation for invalid epoch policy.
@@ -279,8 +271,8 @@ proc safroleStateEntry*(source: SafroleState, config: SafroleStateConfig): Safro
   for value in source.accumulator: putTicket(value, entry.value, cursor)
   SafroleStateResult[StateEntry](status: StateComponentError.None, completed: entry)
 
-## Inspect copied metadata without exporting either schedule branch or private backing arrays.
 proc safroleInfo*(owner: SafroleStateSnapshot): SafroleStateResult[SafroleStateInfo] =
+  ## Inspect copied metadata without exporting either schedule branch or private backing arrays.
   let data = owner.data
   if data == nil: return SafroleStateResult[SafroleStateInfo](
       status: StateComponentError.InvalidOwner) # Default handles are not state.
@@ -293,9 +285,9 @@ proc safroleInfo*(owner: SafroleStateSnapshot): SafroleStateResult[SafroleStateI
     kind: data.schedule.kind, validators: validators.value, slots: slots,
     accumulated: data.accumulator.len))
 
-## Extract one fixed pending validator copy through its immutable parent and nested roster owner.
 proc pendingValidatorAt*(owner: SafroleStateSnapshot,
     index: StateValidatorIndex): SafroleStateResult[StateValidator] =
+  ## Extract one fixed pending validator copy through its immutable parent and nested roster owner.
   let data = owner.data
   if data == nil: return SafroleStateResult[StateValidator](
       status: StateComponentError.InvalidOwner) # Never dereference default handles.
@@ -305,9 +297,9 @@ proc pendingValidatorAt*(owner: SafroleStateSnapshot,
     return SafroleStateResult[StateValidator](status: child.error)
   SafroleStateResult[StateValidator](status: StateComponentError.None, completed: child.value)
 
-## Extract a fixed winning ticket only from a ticket schedule, after checking its nominal slot ordinal.
 proc sealerTicketAt*(owner: SafroleStateSnapshot, index: SafroleStateIndex): SafroleStateResult[
     WinningTicket] =
+  ## Extract a fixed winning ticket only from a ticket schedule, after checking its nominal slot ordinal.
   let data = owner.data
   if data == nil: return SafroleStateResult[WinningTicket](
       status: StateComponentError.InvalidOwner) # No source owner.
@@ -318,8 +310,8 @@ proc sealerTicketAt*(owner: SafroleStateSnapshot, index: SafroleStateIndex): Saf
   SafroleStateResult[WinningTicket](status: StateComponentError.None,
       completed: data.schedule.ticketValues[int(uint64(index))])
 
-## Extract a copied fallback key only from the key schedule, without interpreting point validity.
 proc sealerKeyAt*(owner: SafroleStateSnapshot, index: SafroleStateIndex): SafroleStateResult[StateBsKey] =
+  ## Extract a copied fallback key only from the key schedule, without interpreting point validity.
   let data = owner.data
   if data == nil: return SafroleStateResult[StateBsKey](
       status: StateComponentError.InvalidOwner) # No source owner.
@@ -330,9 +322,9 @@ proc sealerKeyAt*(owner: SafroleStateSnapshot, index: SafroleStateIndex): Safrol
   SafroleStateResult[StateBsKey](status: StateComponentError.None,
       completed: data.schedule.keyValues[int(uint64(index))])
 
-## Extract one copied accumulator ticket without exposing or reordering the private sequence.
 proc accumulatedTicketAt*(owner: SafroleStateSnapshot,
     index: SafroleStateIndex): SafroleStateResult[WinningTicket] =
+  ## Extract one copied accumulator ticket without exposing or reordering the private sequence.
   let data = owner.data
   if data == nil: return SafroleStateResult[WinningTicket](
       status: StateComponentError.InvalidOwner) # No default progress or data.

@@ -11,12 +11,10 @@ import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_digest, work_report, assurances]
 
 type
-  # Missing/default outcomes cannot expose a fabricated fixed record, retained owner or cursor.
-  RecordError* {.pure.} = enum
+  RecordError* {.pure.} = enum ## Missing/default outcomes cannot expose a fabricated fixed record, retained owner or cursor.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, InvalidTag, InvalidConfig,
     InvalidOwner, NoPayload, OutputTooSmall, AliasedBuffers, LengthOverflow
-  # Success alone carries a complete copied value, owner or byte extent.
-  RecordResult*[T] = object
+  RecordResult*[T] = object ## Success alone carries a complete copied value, owner or byte extent.
     case status: RecordError
     of None:
       # Caller must select successful validation before reading any value/progress.
@@ -24,38 +22,30 @@ type
     else:
       # Every failed/default result contains only its reason.
       discard
-  # Fixed availability fields use the existing report hash/length/cardinality domains, without context fields.
-  AvailabilitySpec* {.byref.} = object
+  AvailabilitySpec* {.byref.} = object ## Fixed availability fields use the existing report hash/length/cardinality domains, without context fields.
     packageHash*: PackageHash
     bundleLength*: BundleLength
     erasureRoot*: ErasureRoot
     erasureShards*: ErasureShards
     segmentRoot*: SegmentRoot
     segmentCount*: SegmentCount
-  # Caller core ceiling bounds structural shard cardinality; matching the active set still needs state.
-  AvailabilityConfig* = object
+  AvailabilityConfig* = object ## Caller core ceiling bounds structural shard cardinality; matching the active set still needs state.
     cores*: CoreCount
     maxBytes*: ByteLimit
-  # Availability decoding copies all fields and consumes exactly its 104-byte prefix, retaining no input pointer.
-  AvailabilityRead* = object
+  AvailabilityRead* = object ## Availability decoding copies all fields and consumes exactly its 104-byte prefix, retaining no input pointer.
     value*: AvailabilitySpec
     consumed*: int
-  # Transfer balance is not implicitly interchangeable with gas or ordinary uint64 values.
-  TransferBalance* = distinct uint64
-  # A transfer memo always owns exactly 128 octets and has no length discriminator.
-  TransferMemo* = distinct array[128, byte]
-  # Transfers own every field; the standalone C.2 representation includes the outer tag one.
-  DeferredTransfer* {.byref.} = object
+  TransferBalance* = distinct uint64 ## Transfer balance is not implicitly interchangeable with gas or ordinary uint64 values.
+  TransferMemo* = distinct array[128, byte] ## A transfer memo always owns exactly 128 octets and has no length discriminator.
+  DeferredTransfer* {.byref.} = object ## Transfers own every field; the standalone C.2 representation includes the outer tag one.
     source*, destination*: ServiceIndex
     amount*: TransferBalance
     memo*: TransferMemo
     gas*: Gas
-  # Copied transfer fields require no heap owner, source buffer or later extraction coordinates.
-  TransferRead* = object
+  TransferRead* = object ## Copied transfer fields require no heap owner, source buffer or later extraction coordinates.
     value*: DeferredTransfer
     consumed*: int
-  # Logical source output owns a borrowed-during-call sequence only on the success alternative.
-  OperandOutput* = object
+  OperandOutput* = object ## Logical source output owns a borrowed-during-call sequence only on the success alternative.
     case outputKind: WorkKind
     of Success:
       # The encoder borrows this public sequence synchronously; decoding never returns this mutable source.
@@ -63,8 +53,7 @@ type
     else:
       # Work errors are valid application values and contain no default payload.
       discard
-  # Source descriptors borrow their sequences only until complete preflight/commit; all hash roles remain nominal.
-  AccumulationOperand* {.byref.} = object
+  AccumulationOperand* {.byref.} = object ## Source descriptors borrow their sequences only until complete preflight/commit; all hash roles remain nominal.
     packageHash*: PackageHash
     segmentRoot*: SegmentRoot
     authorizer*: AuthorizerHash
@@ -72,11 +61,9 @@ type
     gas*: Gas
     output*: OperandOutput
     authTrace*: seq[byte]
-  # Explicit caller resource ceilings are not invented protocol maxima for standalone accumulator records.
-  OperandLimits* = object
+  OperandLimits* = object ## Explicit caller resource ceilings are not invented protocol maxima for standalone accumulator records.
     outputBytes*, authBytes*, totalBlobBytes*, maxBytes*: ByteLimit
-  # Copied output metadata carries a length only for a successful work result, never a detached span.
-  OperandOutputInfo* = object
+  OperandOutputInfo* = object ## Copied output metadata carries a length only for a successful work result, never a detached span.
     case outputKind: WorkKind
     of Success:
       # The matching immutable operand owner authorizes later payload copies.
@@ -84,8 +71,7 @@ type
     else:
       # Error alternatives expose only their protocol reason tag.
       discard
-  # Complete metadata copies fixed fields and logical lengths without exposing mutable private wire storage.
-  OperandInfo* = object
+  OperandInfo* = object ## Complete metadata copies fixed fields and logical lengths without exposing mutable private wire storage.
     packageHash*: PackageHash
     segmentRoot*: SegmentRoot
     authorizer*: AuthorizerHash
@@ -101,18 +87,14 @@ type
   OperandData = ref object
     wire: seq[byte]
     layout: OperandLayout
-  # Retaining a handle preserves immutable bytes independently of the caller's original buffer or other handles.
-  OwnedOperand* {.byref.} = object
+  OwnedOperand* {.byref.} = object ## Retaining a handle preserves immutable bytes independently of the caller's original buffer or other handles.
     data: nil OperandData
-  # Successful operand decoding returns one complete owner with exact whole-record prefix consumption.
-  OperandRead* = object
+  OperandRead* = object ## Successful operand decoding returns one complete owner with exact whole-record prefix consumption.
     owner*: OwnedOperand
     consumed*: int
-  # The two accumulation input alternatives share their actual C.2 outer tags, not an extra wrapper tag.
-  AccumulationKind* {.pure.} = enum
+  AccumulationKind* {.pure.} = enum ## The two accumulation input alternatives share their actual C.2 outer tags, not an extra wrapper tag.
     Operand, Transfer
-  # Independent source alternatives are passed by reference so alias preflight protects the entire active descriptor.
-  AccumulationSource* {.byref.} = object
+  AccumulationSource* {.byref.} = object ## Independent source alternatives are passed by reference so alias preflight protects the entire active descriptor.
     case inputKind: AccumulationKind
     of Operand:
       # Operand sources borrow sequences only for the synchronous encode operation.
@@ -120,8 +102,7 @@ type
     of Transfer:
       # Transfers contain only complete fixed values and a fixed memo.
       transferValue: DeferredTransfer
-  # Successful union decoding exposes only the selected valid alternative, with no inactive default operand/transfer.
-  AccumulationValue* = object
+  AccumulationValue* = object ## Successful union decoding exposes only the selected valid alternative, with no inactive default operand/transfer.
     case inputKind: AccumulationKind
     of Operand:
       # Variable fields stay bound to their matching immutable owner.
@@ -129,62 +110,66 @@ type
     of Transfer:
       # Fixed transfer fields are independent value copies.
       transferValue: DeferredTransfer
-  # One successful union read advances by exactly the selected operand or transfer record.
-  AccumulationRead* = object
+  AccumulationRead* = object ## One successful union read advances by exactly the selected operand or transfer record.
     value*: AccumulationValue
     consumed*: int
 
-# Outcomes are read-only; complete success alone grants values, retained owners or progress.
-func error*[T](value: RecordResult[T]): RecordError = value.status
-# Default and rejected operations cannot expose fabricated complete records.
+func error*[T](value: RecordResult[T]): RecordError =
+  ## Outcomes are read-only; complete success alone grants values, retained owners or progress.
+  value.status
 func value*[T](value: RecordResult[T]): T {.inline, requires: value.status == RecordError.None.} =
+  ## Default and rejected operations cannot expose fabricated complete records.
   value.completed
-# Construct a success source whose payload is borrowed only during synchronous encoding.
 func successfulOperandOutput*(payload: seq[byte]): OperandOutput =
+  ## Construct a success source whose payload is borrowed only during synchronous encoding.
   OperandOutput(outputKind: WorkKind.Success, payloadValues: payload)
-# A work error is a valid source alternative, never a success without its payload.
 func failedOperandOutput*(kind: WorkKind): OperandOutput {.requires: kind != WorkKind.Success.} =
+  ## A work error is a valid source alternative, never a success without its payload.
   OperandOutput(outputKind: kind)
-# Source work tags cannot be retagged independently of their payload.
-func kind*(value: OperandOutput): WorkKind = value.outputKind
-# Source payload edits are explicit and require the selected success alternative.
+func kind*(value: OperandOutput): WorkKind =
+  ## Source work tags cannot be retagged independently of their payload.
+  value.outputKind
 proc editOperandPayload*(value: var OperandOutput): var seq[byte] {.requires: value.outputKind ==
     WorkKind.Success.} =
+  ## Source payload edits are explicit and require the selected success alternative.
   value.payloadValues
-# Source copies are independent of the stable sequence used by alias preflight.
 func operandPayloadCopies*(value: OperandOutput): seq[byte] {.requires: value.outputKind ==
     WorkKind.Success.} =
+  ## Source copies are independent of the stable sequence used by alias preflight.
   value.payloadValues
-# Metadata exposes a read-only work tag with a success-only copied byte length.
-func kind*(value: OperandOutputInfo): WorkKind = value.outputKind
-# Error work alternatives contain no payload length to mistake for empty success.
+func kind*(value: OperandOutputInfo): WorkKind =
+  ## Metadata exposes a read-only work tag with a success-only copied byte length.
+  value.outputKind
 func length*(value: OperandOutputInfo): int {.requires: value.outputKind == WorkKind.Success.} =
+  ## Error work alternatives contain no payload length to mistake for empty success.
   value.byteLength
-# Explicit source constructors keep tag and selected descriptor together.
 func operandSource*(value: AccumulationOperand): AccumulationSource =
+  ## Explicit source constructors keep tag and selected descriptor together.
   AccumulationSource(inputKind: AccumulationKind.Operand, operandValue: value)
-# Transfers own fixed values and use their existing outer tag one.
 func transferSource*(value: DeferredTransfer): AccumulationSource =
+  ## Transfers own fixed values and use their existing outer tag one.
   AccumulationSource(inputKind: AccumulationKind.Transfer, transferValue: value)
-# Source union identity is read-only; selected fields are guarded copies.
-func kind*(value: AccumulationSource): AccumulationKind = value.inputKind
-# Copy the selected source operand; encoding itself still uses the original private descriptor.
+func kind*(value: AccumulationSource): AccumulationKind =
+  ## Source union identity is read-only; selected fields are guarded copies.
+  value.inputKind
 func operand*(value: AccumulationSource): AccumulationOperand {.requires: value.inputKind ==
     AccumulationKind.Operand.} =
+  ## Copy the selected source operand; encoding itself still uses the original private descriptor.
   value.operandValue
-# Copy only the selected fixed source transfer.
 func transfer*(value: AccumulationSource): DeferredTransfer {.requires: value.inputKind ==
     AccumulationKind.Transfer.} =
+  ## Copy only the selected fixed source transfer.
   value.transferValue
-# Decoded union tags cannot be independently changed to authorize an inactive value.
-func kind*(value: AccumulationValue): AccumulationKind = value.inputKind
-# Retain only the selected immutable decoded operand.
+func kind*(value: AccumulationValue): AccumulationKind =
+  ## Decoded union tags cannot be independently changed to authorize an inactive value.
+  value.inputKind
 func operand*(value: AccumulationValue): OwnedOperand {.requires: value.inputKind ==
     AccumulationKind.Operand.} =
+  ## Retain only the selected immutable decoded operand.
   value.operandOwner
-# Copy only the selected decoded transfer; no backing source buffer is retained.
 func transfer*(value: AccumulationValue): DeferredTransfer {.requires: value.inputKind ==
     AccumulationKind.Transfer.} =
+  ## Copy only the selected decoded transfer; no backing source buffer is retained.
   value.transferValue
 
 # Preserve child composite wire errors without publishing child values, spans or partial progress.
@@ -269,9 +254,9 @@ proc valid(spec: AvailabilitySpec, config: AvailabilityConfig): bool =
   let shards = uint16(spec.erasureShards)
   shards >= 6 and shards <= 3*uint64(config.cores) and shards mod 3 == 0
 
-# Decode exactly one fixed 104-byte availability specification, not the following report context.
 proc decodeAvailability*(input: openArray[byte], config: AvailabilityConfig): RecordResult[
     AvailabilityRead] =
+  ## Decode exactly one fixed 104-byte availability specification, not the following report context.
   # Invalid configured domains precede untrusted wire access.
   if not valid(config): return RecordResult[AvailabilityRead](status: RecordError.InvalidConfig)
   # Complete field availability precedes individual cardinality and byte-budget policy.
@@ -291,9 +276,9 @@ proc decodeAvailability*(input: openArray[byte], config: AvailabilityConfig): Re
   RecordResult[AvailabilityRead](status: RecordError.None, completed: AvailabilityRead(value: value,
       consumed: 104))
 
-# Encode one complete availability value after source, whole capacity and descriptor-alias checks.
 proc encodeAvailability*(value: AvailabilitySpec, config: AvailabilityConfig,
     output: var openArray[byte]): RecordResult[int] =
+  ## Encode one complete availability value after source, whole capacity and descriptor-alias checks.
   # Configuration and structural source policies precede output sizing.
   if not valid(config): return RecordResult[int](status: RecordError.InvalidConfig)
   if not valid(value, config) or uint64(config.maxBytes) < 104:
@@ -312,8 +297,8 @@ proc encodeAvailability*(value: AvailabilitySpec, config: AvailabilityConfig,
   put(uint64(value.segmentCount), 2, output, cursor)
   RecordResult[int](status: RecordError.None, completed: cursor)
 
-# Decode a tagged fixed transfer; state balance/service checks are not part of structural deserialization.
 proc decodeTransfer*(input: openArray[byte], maxBytes: ByteLimit): RecordResult[TransferRead] =
+  ## Decode a tagged fixed transfer; state balance/service checks are not part of structural deserialization.
   var cursor = 0
   let tag = readNatural(input, cursor)
   # Preserve missing/overlong discriminator failures before choosing a schema.
@@ -331,9 +316,9 @@ proc decodeTransfer*(input: openArray[byte], maxBytes: ByteLimit): RecordResult[
   RecordResult[TransferRead](status: RecordError.None, completed: TransferRead(value: value,
       consumed: cursor+152))
 
-# Encode all fixed transfer fields atomically, with E8 gas and a fixed memo rather than operand gas framing.
 proc encodeTransfer*(value: DeferredTransfer, maxBytes: ByteLimit,
     output: var openArray[byte]): RecordResult[int] =
+  ## Encode all fixed transfer fields atomically, with E8 gas and a fixed memo rather than operand gas framing.
   # Explicit serialized budget precedes capacity and alias decisions.
   if uint64(maxBytes) < 153: return RecordResult[int](status: RecordError.LimitExceeded)
   if output.len < 153: return RecordResult[int](status: RecordError.OutputTooSmall) # No partial memo/header can be emitted.
@@ -401,8 +386,8 @@ proc scanOperand(input: openArray[byte], limits: OperandLimits): RecordResult[Op
   layout.info.consumed = cursor
   RecordResult[OperandLayout](status: RecordError.None, completed: layout)
 
-# Decode one complete tagged operand into private immutable ARC storage after all fields and limits validate.
 proc decodeOperand*(input: openArray[byte], limits: OperandLimits): RecordResult[OperandRead] =
+  ## Decode one complete tagged operand into private immutable ARC storage after all fields and limits validate.
   let parsed = scanOperand(input, limits)
   # No partial owner or coordinate leaves a failed complete-record scan.
   if parsed.error != RecordError.None: return RecordResult[OperandRead](status: parsed.error)
@@ -467,9 +452,9 @@ proc aliases(value: AccumulationOperand, output: var openArray[byte], total: int
         total): return true
   false
 
-# Encode one operand atomically after all source, payload, wire-size, capacity and alias preflight succeeds.
 proc encodeOperand*(value: AccumulationOperand, limits: OperandLimits,
     output: var openArray[byte]): RecordResult[int] =
+  ## Encode one operand atomically after all source, payload, wire-size, capacity and alias preflight succeeds.
   let measured = measure(value, limits)
   if measured.error != RecordError.None: return measured # Late trace/source errors precede any output inspection or mutation.
   let total = measured.value
@@ -494,8 +479,8 @@ proc encodeOperand*(value: AccumulationOperand, limits: OperandLimits,
   assert cursor == total
   RecordResult[int](status: RecordError.None, completed: cursor)
 
-# Copy complete operand metadata through its matching retained owner, with no mutable bytes or detached spans.
 proc operandInfo*(owner: OwnedOperand): RecordResult[OperandInfo] =
+  ## Copy complete operand metadata through its matching retained owner, with no mutable bytes or detached spans.
   let data = owner.data
   if data == nil: return RecordResult[OperandInfo](
       status: RecordError.InvalidOwner) # Defaults contain no validated frame.
@@ -517,23 +502,23 @@ proc extract(owner: OwnedOperand, span: BlobSpan, output: var openArray[byte]): 
   put(data.wire.toOpenArray(span.offset, span.offset+span.length-1), output, cursor)
   RecordResult[int](status: RecordError.None, completed: cursor)
 
-# Copy only a successful operand result's payload through its matching immutable owner.
 proc copyOperandOutput*(owner: OwnedOperand, output: var openArray[byte]): RecordResult[int] =
+  ## Copy only a successful operand result's payload through its matching immutable owner.
   let data = owner.data
   if data == nil: return RecordResult[int](status: RecordError.InvalidOwner) # No default payload coordinates exist.
   if data.layout.info.output.kind != WorkKind.Success:
     return RecordResult[int](status: RecordError.NoPayload) # Work errors cannot fabricate an empty success payload.
   extract(owner, data.layout.output, output)
 
-# Copy the complete authorization trace through its matching immutable operand owner, including a valid empty trace.
 proc copyOperandTrace*(owner: OwnedOperand, output: var openArray[byte]): RecordResult[int] =
+  ## Copy the complete authorization trace through its matching immutable operand owner, including a valid empty trace.
   let data = owner.data
   if data == nil: return RecordResult[int](status: RecordError.InvalidOwner) # Default owners cannot authorize extraction.
   extract(owner, data.layout.auth, output)
 
-# Validate an immutable operand against a fresh policy without allocating output storage.
-# Returns its complete canonical tagged extent; defaults and stricter budgets fail without a size.
 proc ownedOperandSize*(owner: OwnedOperand, limits: OperandLimits): RecordResult[int] =
+  ## Validate an immutable operand against a fresh policy without allocating output storage.
+  ## Returns its complete canonical tagged extent; defaults and stricter budgets fail without a size.
   let data = owner.data
   if data == nil:
     # Only a validated owner can supply bytes for policy revalidation.
@@ -544,9 +529,9 @@ proc ownedOperandSize*(owner: OwnedOperand, limits: OperandLimits): RecordResult
     return RecordResult[int](status: parsed.error)
   RecordResult[int](status: RecordError.None, completed: data.wire.len)
 
-# Re-emit exact immutable operand bytes only after checking the current caller's policy, capacity and private-wire aliases.
 proc encodeOwnedOperand*(owner: OwnedOperand, limits: OperandLimits,
     output: var openArray[byte]): RecordResult[int] =
+  ## Re-emit exact immutable operand bytes only after checking the current caller's policy, capacity and private-wire aliases.
   let data = owner.data
   if data == nil: return RecordResult[int](status: RecordError.InvalidOwner) # Defaults differ from validated empty payloads.
   let measured = ownedOperandSize(owner, limits)
@@ -564,9 +549,9 @@ proc encodeOwnedOperand*(owner: OwnedOperand, limits: OperandLimits,
   put(data.wire, output, cursor)
   RecordResult[int](status: RecordError.None, completed: cursor)
 
-# Decode either accumulation input using its canonical outer tag, without an additional union wrapper or partial value.
 proc decodeAccumulationInput*(input: openArray[byte], limits: OperandLimits): RecordResult[
     AccumulationRead] =
+  ## Decode either accumulation input using its canonical outer tag, without an additional union wrapper or partial value.
   var cursor = 0
   let tag = readNatural(input, cursor)
   if tag.error != RecordError.None: return RecordResult[AccumulationRead](
@@ -592,9 +577,9 @@ proc decodeAccumulationInput*(input: openArray[byte], limits: OperandLimits): Re
     # No undefined outer accumulation input alternative is accepted.
     RecordResult[AccumulationRead](status: RecordError.InvalidTag)
 
-# Validate and measure a selected accumulation input without allocating or writing any bytes.
-# This is the encoder's shared preflight; limits include tags, framing and the selected record.
 proc accumulationInputSize*(value: AccumulationSource, limits: OperandLimits): RecordResult[int] =
+  ## Validate and measure a selected accumulation input without allocating or writing any bytes.
+  ## This is the encoder's shared preflight; limits include tags, framing and the selected record.
   case value.kind
   of Operand:
     # Operand measurement checks each variable blob and the complete canonical record extent.
@@ -605,9 +590,9 @@ proc accumulationInputSize*(value: AccumulationSource, limits: OperandLimits): R
       return RecordResult[int](status: RecordError.LimitExceeded)
     RecordResult[int](status: RecordError.None, completed: 153)
 
-# Encode an independently selected accumulation source, protecting the whole union descriptor before child writes.
 proc encodeAccumulationInput*(value: AccumulationSource, limits: OperandLimits,
     output: var openArray[byte]): RecordResult[int] =
+  ## Encode an independently selected accumulation source, protecting the whole union descriptor before child writes.
   let measured = accumulationInputSize(value, limits)
   if measured.error != RecordError.None:
     # Source validation precedes output capacity and whole-union descriptor aliases.

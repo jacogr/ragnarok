@@ -14,32 +14,23 @@ from ./header import EpochSlots
 export EpochSlots, CoreCount, PackageHash, OwnedReport
 
 type
-  ## Slot positions belong to the fixed epoch ring, not an absolute timeslot or a report index.
-  WorkQueueSlot* = distinct uint64
-  ## An ordinal in one ready slot's ordered report sequence.
-  ReadyItemIndex* = distinct uint64
-  ## An ordinal in a dependency/accumulated set, separate from ready-report positions.
-  WorkQueueHashIndex* = distinct uint64
-  ## Stable source item retains its report; dependency hashes are already strictly octet-sorted and unique.
-  ReadyItem* = object
+  WorkQueueSlot* = distinct uint64 ## Slot positions belong to the fixed epoch ring, not an absolute timeslot or a report index.
+  ReadyItemIndex* = distinct uint64 ## An ordinal in one ready slot's ordered report sequence.
+  WorkQueueHashIndex* = distinct uint64 ## An ordinal in a dependency/accumulated set, separate from ready-report positions.
+  ReadyItem* = object ## Stable source item retains its report; dependency hashes are already strictly octet-sorted and unique.
     report*: OwnedReport
     dependencies*: seq[PackageHash]
-  ## Source row order is significant; report identities may repeat structurally without being sorted here.
-  ReadyRow* = seq[ReadyItem]
-  ## One canonical accumulated package set has no mutable storage shared with retained snapshots.
-  AccumulatedRow* = seq[PackageHash]
-  ## Fixed epoch length plus independent row/aggregate item, dependency and complete byte ceilings.
-  WorkQueueConfig* = object
+  ReadyRow* = seq[ReadyItem] ## Source row order is significant; report identities may repeat structurally without being sorted here.
+  AccumulatedRow* = seq[PackageHash] ## One canonical accumulated package set has no mutable storage shared with retained snapshots.
+  WorkQueueConfig* = object ## Fixed epoch length plus independent row/aggregate item, dependency and complete byte ceilings.
     epochSlots*: EpochSlots
     cores*: CoreCount
     perSlot*, totalItems*, perDependencies*, totalDependencies*: ElementLimit
     reportBytes*, maxBytes*: ByteLimit
-  ## Default and failures contain only reasons, never owners, values or consumed metadata.
-  WorkQueueError* {.pure.} = enum
+  WorkQueueError* {.pure.} = enum ## Default and failures contain only reasons, never owners, values or consumed metadata.
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical, LimitExceeded,
     LengthOverflow, InvalidTag, InvalidReport, InvalidOwner, InvalidIndex
-  ## A successful selected alternative alone exposes a complete application payload.
-  WorkQueueResult*[T] = object
+  WorkQueueResult*[T] = object ## A successful selected alternative alone exposes a complete application payload.
     case status: WorkQueueError
     of None:
       completed: T # Select success before reading retained state or a completed extent.
@@ -53,32 +44,28 @@ type
   AccumulatedData = ref object
     rows: seq[AccumulatedRow]
     items: int
-  ## Separate value handles prevent using accumulated state as a ready-report owner.
-  ReadySnapshot* = object
+  ReadySnapshot* = object ## Separate value handles prevent using accumulated state as a ready-report owner.
     data: nil ReadyData
-  ## Copies share immutable private storage; replacing one handle cannot mutate another.
-  AccumulatedSnapshot* = object
+  AccumulatedSnapshot* = object ## Copies share immutable private storage; replacing one handle cannot mutate another.
     data: nil AccumulatedData
-  ## Prefix success binds a complete retained ring to its exact consumed extent.
-  WorkQueueRead*[T] = object
+  WorkQueueRead*[T] = object ## Prefix success binds a complete retained ring to its exact consumed extent.
     snapshot*: T
     consumed*: int
-  ## Copied ring metadata exports counts alone, without mutable slot or child arrays.
-  WorkQueueInfo* = object
+  WorkQueueInfo* = object ## Copied ring metadata exports counts alone, without mutable slot or child arrays.
     slots*, items*, dependencies*: int
-  ## Fixed extracted metadata retains the report independently while keeping dependencies private to the parent.
-  ReadyItemInfo* = object
+  ReadyItemInfo* = object ## Fixed extracted metadata retains the report independently while keeping dependencies private to the parent.
     report*: OwnedReport
     dependencies*: int
   ## Local no-allocation scan proof publishes nothing until the whole fixed ring succeeds.
   Layout = object
     consumed, items, dependencies: int
 
-## Failure reasons are read-only and cannot authorize values, child handles or progress.
-func error*[T](value: WorkQueueResult[T]): WorkQueueError = value.status
-## Complete public payloads and private scalar/layout proofs require successful selection.
+func error*[T](value: WorkQueueResult[T]): WorkQueueError =
+  ## Failure reasons are read-only and cannot authorize values, child handles or progress.
+  value.status
 func value*[T](value: WorkQueueResult[T]): T {.inline, requires: value.status ==
     WorkQueueError.None.} =
+  ## Complete public payloads and private scalar/layout proofs require successful selection.
   value.completed
 
 ## Validate positive epoch/native descriptor bounds and supported report profile before traversal.
@@ -211,9 +198,9 @@ proc scan(input: openArray[byte], config: WorkQueueConfig, ready: bool): WorkQue
   WorkQueueResult[Layout](status: WorkQueueError.None,
     completed: Layout(consumed: cursor, items: int(items), dependencies: int(dependencies)))
 
-## Decode chapter 14 only after every slot/report/dependency has passed the complete no-allocation scan.
 proc decodeReadyState*(input: openArray[byte], config: WorkQueueConfig): WorkQueueResult[
     WorkQueueRead[ReadySnapshot]] =
+  ## Decode chapter 14 only after every slot/report/dependency has passed the complete no-allocation scan.
   let checked = scan(input, config, true)
   if checked.error != WorkQueueError.None:
     return WorkQueueResult[WorkQueueRead[ReadySnapshot]](
@@ -238,9 +225,9 @@ proc decodeReadyState*(input: openArray[byte], config: WorkQueueConfig): WorkQue
     completed: WorkQueueRead[ReadySnapshot](snapshot: ReadySnapshot(data: data),
         consumed: checked.value.consumed))
 
-## Decode chapter 15 into independent canonical hash rows after the complete ring has validated.
 proc decodeAccumulatedState*(input: openArray[byte], config: WorkQueueConfig): WorkQueueResult[
     WorkQueueRead[AccumulatedSnapshot]] =
+  ## Decode chapter 15 into independent canonical hash rows after the complete ring has validated.
   let checked = scan(input, config, false)
   if checked.error != WorkQueueError.None:
     return WorkQueueResult[WorkQueueRead[AccumulatedSnapshot]](
@@ -283,8 +270,8 @@ proc putHashes(output: var seq[byte], cursor: var int, values: openArray[Package
       output[cursor] = b # Destination is fresh and cannot alias retained report storage or source arrays.
       inc cursor
 
-## Encode exact fixed-epoch ready rows after complete shape, child profile, set and resource preflight.
 proc readyStateEntry*(rows: openArray[ReadyRow], config: WorkQueueConfig): WorkQueueResult[StateEntry] =
+  ## Encode exact fixed-epoch ready rows after complete shape, child profile, set and resource preflight.
   let valid = validate(config)
   if valid != WorkQueueError.None:
     return WorkQueueResult[StateEntry](status: valid) # Configuration precedes source traversal.
@@ -337,9 +324,9 @@ proc readyStateEntry*(rows: openArray[ReadyRow], config: WorkQueueConfig): WorkQ
       putHashes(entry.value, cursor, item.dependencies)
   WorkQueueResult[StateEntry](status: WorkQueueError.None, completed: entry)
 
-## Encode exact fixed-epoch accumulated sets atomically into one independent C(15) entry.
 proc accumulatedStateEntry*(rows: openArray[AccumulatedRow],
     config: WorkQueueConfig): WorkQueueResult[StateEntry] =
+  ## Encode exact fixed-epoch accumulated sets atomically into one independent C(15) entry.
   let valid = validate(config)
   if valid != WorkQueueError.None:
     return WorkQueueResult[StateEntry](status: valid) # No traversal under invalid configuration.
@@ -366,8 +353,8 @@ proc accumulatedStateEntry*(rows: openArray[AccumulatedRow],
     putHashes(entry.value, cursor, row)
   WorkQueueResult[StateEntry](status: WorkQueueError.None, completed: entry)
 
-## Inspect copied ready-ring cardinalities without exporting nested mutable arrays.
 proc readyInfo*(owner: ReadySnapshot): WorkQueueResult[WorkQueueInfo] =
+  ## Inspect copied ready-ring cardinalities without exporting nested mutable arrays.
   let data = owner.data
   if data == nil:
     return WorkQueueResult[WorkQueueInfo](status: WorkQueueError.InvalidOwner) # Default handles are not validated empty rings.
@@ -375,16 +362,16 @@ proc readyInfo*(owner: ReadySnapshot): WorkQueueResult[WorkQueueInfo] =
     completed: WorkQueueInfo(slots: data.rows.len, items: data.items,
         dependencies: data.dependencies))
 
-## Inspect copied accumulated-ring cardinalities; this component has no dependency sets.
 proc accumulatedInfo*(owner: AccumulatedSnapshot): WorkQueueResult[WorkQueueInfo] =
+  ## Inspect copied accumulated-ring cardinalities; this component has no dependency sets.
   let data = owner.data
   if data == nil:
     return WorkQueueResult[WorkQueueInfo](status: WorkQueueError.InvalidOwner) # No successful counts from missing storage.
   WorkQueueResult[WorkQueueInfo](status: WorkQueueError.None,
     completed: WorkQueueInfo(slots: data.rows.len, items: data.items, dependencies: 0))
 
-## Return one ready-slot count through a nominal ring position.
 proc readySlotCount*(owner: ReadySnapshot, slot: WorkQueueSlot): WorkQueueResult[int] =
+  ## Return one ready-slot count through a nominal ring position.
   let data = owner.data
   if data == nil:
     return WorkQueueResult[int](status: WorkQueueError.InvalidOwner) # No implicit empty default row.
@@ -392,8 +379,8 @@ proc readySlotCount*(owner: ReadySnapshot, slot: WorkQueueSlot): WorkQueueResult
     return WorkQueueResult[int](status: WorkQueueError.InvalidIndex) # Check before narrowing.
   WorkQueueResult[int](status: WorkQueueError.None, completed: data.rows[int(uint64(slot))].len)
 
-## Return one accumulated set's copied cardinality without exposing its hash array.
 proc accumulatedSlotCount*(owner: AccumulatedSnapshot, slot: WorkQueueSlot): WorkQueueResult[int] =
+  ## Return one accumulated set's copied cardinality without exposing its hash array.
   let data = owner.data
   if data == nil:
     return WorkQueueResult[int](status: WorkQueueError.InvalidOwner) # Default differs from a captured empty set.
@@ -401,9 +388,9 @@ proc accumulatedSlotCount*(owner: AccumulatedSnapshot, slot: WorkQueueSlot): Wor
     return WorkQueueResult[int](status: WorkQueueError.InvalidIndex) # Prove native slot conversion.
   WorkQueueResult[int](status: WorkQueueError.None, completed: data.rows[int(uint64(slot))].len)
 
-## Extract a copied report handle and dependency count; the report survives parent release.
 proc readyItemAt*(owner: ReadySnapshot, slot: WorkQueueSlot,
     index: ReadyItemIndex): WorkQueueResult[ReadyItemInfo] =
+  ## Extract a copied report handle and dependency count; the report survives parent release.
   let data = owner.data
   if data == nil:
     return WorkQueueResult[ReadyItemInfo](status: WorkQueueError.InvalidOwner) # No storage on default handles.
@@ -418,9 +405,9 @@ proc readyItemAt*(owner: ReadySnapshot, slot: WorkQueueSlot,
     completed: ReadyItemInfo(report: data.rows[row][position].report,
       dependencies: data.rows[row][position].dependencies.len))
 
-## Extract one dependency's fixed value through the parent, slot and selected ready-item ordinal.
 proc readyDependencyAt*(owner: ReadySnapshot, slot: WorkQueueSlot, item: ReadyItemIndex,
     index: WorkQueueHashIndex): WorkQueueResult[PackageHash] =
+  ## Extract one dependency's fixed value through the parent, slot and selected ready-item ordinal.
   let data = owner.data
   if data == nil:
     return WorkQueueResult[PackageHash](status: WorkQueueError.InvalidOwner) # No storage on default handles.
@@ -432,9 +419,9 @@ proc readyDependencyAt*(owner: ReadySnapshot, slot: WorkQueueSlot, item: ReadyIt
   WorkQueueResult[PackageHash](status: WorkQueueError.None,
     completed: data.rows[int(uint64(slot))][int(uint64(item))].dependencies[int(uint64(index))])
 
-## Extract one accumulated package hash as an independent fixed copy.
 proc accumulatedHashAt*(owner: AccumulatedSnapshot, slot: WorkQueueSlot,
     index: WorkQueueHashIndex): WorkQueueResult[PackageHash] =
+  ## Extract one accumulated package hash as an independent fixed copy.
   let data = owner.data
   if data == nil:
     return WorkQueueResult[PackageHash](status: WorkQueueError.InvalidOwner) # No storage on default handles.

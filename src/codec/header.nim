@@ -11,43 +11,27 @@ import std/assertions
 import ./[natural, bounded, assurances, tickets]
 
 type
-  # Parent block identity is distinct from the header's two other commitments.
-  HeaderParent* = distinct array[32, byte]
-  # This root commits to the prior state rather than a work-report anchor state.
-  PriorStateRoot* = distinct array[32, byte]
-  # Header extrinsic commitment is separate from a work-item's individual input-data hash.
-  ExtrinsicRoot* = distinct array[32, byte]
-  # Header timeslots use E4 and cannot be silently substituted for lookup/report slots.
-  HeaderSlot* = distinct uint32
-  # Author indices use E2 into the posterior active validator population supplied by context.
-  AuthorIndex* = distinct uint16
-  # Epoch randomness accumulator encoding is distinct from the ticket-contest randomness.
-  EpochEntropy* = distinct array[32, byte]
-  # Ticket-contest entropy retains its separate nominal role in an epoch marker.
-  TicketsEntropy* = distinct array[32, byte]
-  # Encoded Bandersnatch validator key; structural decoding does not validate its curve point.
-  HeaderBsKey* = distinct array[32, byte]
-  # Encoded Ed25519 key used in epoch pairs and newly offending validator markers.
-  HeaderEdKey* = distinct array[32, byte]
-  # A ticket identifier is an opaque hash, not a RingVRF proof or arbitrary root.
-  WinningTicketId* = distinct array[32, byte]
-  # Full opaque 96-byte entropy-yielding VRF encoding; no verification claim is made here.
-  HeaderEntropyProof* = distinct array[96, byte]
-  # Full opaque 96-byte block seal is nominally distinct from the entropy proof.
-  HeaderSeal* = distinct array[96, byte]
-  # Epoch length is an explicit chain parameter; winner sequences have no count on the wire.
-  EpochSlots* = distinct uint64
-  # One indexed validator pair owns its complete key encodings and preserves validator order.
-  EpochValidator* = object
+  HeaderParent* = distinct array[32, byte] ## Parent block identity is distinct from the header's two other commitments.
+  PriorStateRoot* = distinct array[32, byte] ## This root commits to the prior state rather than a work-report anchor state.
+  ExtrinsicRoot* = distinct array[32, byte] ## Header extrinsic commitment is separate from a work-item's individual input-data hash.
+  HeaderSlot* = distinct uint32 ## Header timeslots use E4 and cannot be silently substituted for lookup/report slots.
+  AuthorIndex* = distinct uint16 ## Author indices use E2 into the posterior active validator population supplied by context.
+  EpochEntropy* = distinct array[32, byte] ## Epoch randomness accumulator encoding is distinct from the ticket-contest randomness.
+  TicketsEntropy* = distinct array[32, byte] ## Ticket-contest entropy retains its separate nominal role in an epoch marker.
+  HeaderBsKey* = distinct array[32, byte] ## Encoded Bandersnatch validator key; structural decoding does not validate its curve point.
+  HeaderEdKey* = distinct array[32, byte] ## Encoded Ed25519 key used in epoch pairs and newly offending validator markers.
+  WinningTicketId* = distinct array[32, byte] ## A ticket identifier is an opaque hash, not a RingVRF proof or arbitrary root.
+  HeaderEntropyProof* = distinct array[96, byte] ## Full opaque 96-byte entropy-yielding VRF encoding; no verification claim is made here.
+  HeaderSeal* = distinct array[96, byte] ## Full opaque 96-byte block seal is nominally distinct from the entropy proof.
+  EpochSlots* = distinct uint64 ## Epoch length is an explicit chain parameter; winner sequences have no count on the wire.
+  EpochValidator* = object ## One indexed validator pair owns its complete key encodings and preserves validator order.
     bandersnatch*: HeaderBsKey
     ed25519*: HeaderEdKey
-  # Public byref source records keep caller-storage identity stable for preflight alias checks.
-  # Winning tickets are fixed owned hash/E1 records; TicketAttempt reuses the existing entry-index domain.
-  WinningTicket* {.byref.} = object
+  WinningTicket* {.byref.} = object ## Public byref source records keep caller-storage identity stable for preflight alias checks.
+                                      ## Winning tickets are fixed owned hash/E1 records; TicketAttempt reuses the existing entry-index domain.
     id*: WinningTicketId
     attempt*: TicketAttempt
-  # Encoder source is absent or contains exactly the two entropies and stable borrowed validator sequence.
-  EpochMarker* {.byref.} = object
+  EpochMarker* {.byref.} = object ## Encoder source is absent or contains exactly the two entropies and stable borrowed validator sequence.
     case isPresent: bool
     of true:
       entropyValue: EpochEntropy # Present markers alone contain epoch randomness.
@@ -73,22 +57,18 @@ type
     author*: AuthorIndex
     entropyProof*: HeaderEntropyProof
     offenders*: seq[HeaderEdKey]
-  # A complete header appends the seal to the entire unsigned serialization, including offender keys.
-  Header* {.byref.} = object
+  Header* {.byref.} = object ## A complete header appends the seal to the entire unsigned serialization, including offender keys.
     unsigned*: UnsignedHeader
     seal*: HeaderSeal
-  # Core ceiling bounds pending epoch key counts independently of the author's posterior-set ceiling.
-  HeaderConfig* = object
+  HeaderConfig* = object ## Core ceiling bounds pending epoch key counts independently of the author's posterior-set ceiling.
     cores*: CoreCount
     authorValidators*: ValidatorCount
     epochSlots*: EpochSlots
     maxBytes*: ByteLimit
-  # Failures/default results never carry a record, owner, length or partial parser cursor.
-  HeaderError* {.pure.} = enum
+  HeaderError* {.pure.} = enum ## Failures/default results never carry a record, owner, length or partial parser cursor.
     Uninitialized, None, InvalidConfig, Truncated, NonCanonical, LimitExceeded,
     InvalidTag, InvalidAuthor, OutputTooSmall, AliasedBuffers, LengthOverflow, InvalidOwner, InvalidIndex
-  # Success must be selected explicitly before reading the complete application value.
-  HeaderResult*[T] = object
+  HeaderResult*[T] = object ## Success must be selected explicitly before reading the complete application value.
     case status: HeaderError
     of None:
       completed: T # Only successful operations publish values or progress.
@@ -98,8 +78,7 @@ type
   WinningTicketRead* = object
     value*: WinningTicket
     consumed*: int
-  # Copied marker metadata cannot expose or rebind its retained validator storage.
-  EpochMarkerInfo* = object
+  EpochMarkerInfo* = object      ## Copied marker metadata cannot expose or rebind its retained validator storage.
     case isPresent: bool
     of true:
       entropyValue: EpochEntropy # Entropies and count exist only for the present alternative.
@@ -123,8 +102,7 @@ type
     author*: AuthorIndex
     entropyProof*: HeaderEntropyProof
     offenders*, consumed*: int
-  # Full metadata contains the exact unsigned prefix and final copied seal in distinct nominal roles.
-  HeaderInfo* = object
+  HeaderInfo* = object ## Full metadata contains the exact unsigned prefix and final copied seal in distinct nominal roles.
     unsigned*: UnsignedHeaderInfo
     seal*: HeaderSeal
     consumed*: int
@@ -139,91 +117,100 @@ type
   HeaderData = ref object
     wire: seq[byte]
     layout: Layout
-  # Full header handles retain private bytes and cannot be constructed from an unsigned-only snapshot.
-  OwnedHeader* = object
+  OwnedHeader* = object ## Full header handles retain private bytes and cannot be constructed from an unsigned-only snapshot.
     data: nil HeaderData
-  # Unsigned handles retain the whole parent snapshot when selected from a sealed header.
-  OwnedUnsignedHeader* = object
+  OwnedUnsignedHeader* = object ## Unsigned handles retain the whole parent snapshot when selected from a sealed header.
     data: nil HeaderData
-  # Epoch handles retain their original header/standalone marker without exposing coordinates.
-  OwnedEpochMarker* = object
+  OwnedEpochMarker* = object ## Epoch handles retain their original header/standalone marker without exposing coordinates.
     data: nil HeaderData
-  # Winner handles retain their original header/standalone marker without exporting mutable tickets.
-  OwnedWinnersMarker* = object
+  OwnedWinnersMarker* = object ## Winner handles retain their original header/standalone marker without exporting mutable tickets.
     data: nil HeaderData
-  # Successful full decoding binds exact consumed progress to its owner.
-  HeaderRead* = object
+  HeaderRead* = object ## Successful full decoding binds exact consumed progress to its owner.
     owner*: OwnedHeader
     consumed*: int
-  # Successful unsigned decoding has its own handle type, distinct from a sealed header.
-  UnsignedHeaderRead* = object
+  UnsignedHeaderRead* = object ## Successful unsigned decoding has its own handle type, distinct from a sealed header.
     owner*: OwnedUnsignedHeader
     consumed*: int
-  # Standalone epoch decoding returns an owner even for a validated absent marker.
-  EpochMarkerRead* = object
+  EpochMarkerRead* = object ## Standalone epoch decoding returns an owner even for a validated absent marker.
     owner*: OwnedEpochMarker
     consumed*: int
-  # Standalone winner decoding returns an owner even for a validated absent marker.
-  WinnersMarkerRead* = object
+  WinnersMarkerRead* = object ## Standalone winner decoding returns an owner even for a validated absent marker.
     owner*: OwnedWinnersMarker
     consumed*: int
 
-# Read generic outcomes without exposing a mutable result discriminator.
-func error*[T](value: HeaderResult[T]): HeaderError = value.status
-# Only a complete operation publishes values, retained handles or progress.
+func error*[T](value: HeaderResult[T]): HeaderError =
+  ## Read generic outcomes without exposing a mutable result discriminator.
+  value.status
 func value*[T](value: HeaderResult[T]): T {.inline, requires: value.status == HeaderError.None.} =
+  ## Only a complete operation publishes values, retained handles or progress.
   value.completed
-# Sibling frame adapters may report failure; the success tag is forbidden without a value.
 func headerFailure*[T](reason: HeaderError): HeaderResult[T] {.requires: reason !=
     HeaderError.None.} =
+  ## Sibling frame adapters may report failure; the success tag is forbidden without a value.
   HeaderResult[T](status: reason)
-# Encoder source presence is read-only and cannot be retagged independently of its payload.
-func present*(value: EpochMarker): bool = value.isPresent
-# Winner source presence selects whether any ticket storage exists.
-func present*(value: WinnersMarker): bool = value.isPresent
-# Copied epoch metadata preserves validated absence independently of default owners.
-func present*(value: EpochMarkerInfo): bool = value.isPresent
-# Copied winner metadata has no sequence length when absent.
-func present*(value: WinnersMarkerInfo): bool = value.isPresent
-# Source entropy is copied only from a present marker.
-func entropy*(value: EpochMarker): EpochEntropy {.requires: value.isPresent.} = value.entropyValue
-# Source contest entropy retains its distinct nominal domain and requires presence.
-func ticketsEntropy*(value: EpochMarker): TicketsEntropy {.requires: value.isPresent.} = value.ticketEntropyValue
-# Read-only source access returns a value copy; internal encoders borrow private storage directly.
+func present*(value: EpochMarker): bool =
+  ## Encoder source presence is read-only and cannot be retagged independently of its payload.
+  value.isPresent
+func present*(value: WinnersMarker): bool =
+  ## Winner source presence selects whether any ticket storage exists.
+  value.isPresent
+func present*(value: EpochMarkerInfo): bool =
+  ## Copied epoch metadata preserves validated absence independently of default owners.
+  value.isPresent
+func present*(value: WinnersMarkerInfo): bool =
+  ## Copied winner metadata has no sequence length when absent.
+  value.isPresent
+func entropy*(value: EpochMarker): EpochEntropy {.requires: value.isPresent.} =
+  ## Source entropy is copied only from a present marker.
+  value.entropyValue
+func ticketsEntropy*(value: EpochMarker): TicketsEntropy {.requires: value.isPresent.} =
+  ## Source contest entropy retains its distinct nominal domain and requires presence.
+  value.ticketEntropyValue
 func epochValidatorCopies*(value: EpochMarker): seq[
-    EpochValidator] {.requires: value.isPresent.} = value.validatorValues
-# Mutable encoder sources retain ordinary sequence editing through a presence-checked borrowed field.
+    EpochValidator] {.requires: value.isPresent.} =
+  ## Read-only source access returns a value copy; internal encoders borrow private storage directly.
+  value.validatorValues
 proc editEpochValidators*(value: var EpochMarker): var seq[
-    EpochValidator] {.requires: value.isPresent.} = value.validatorValues
-# Read-only winner source access returns a copy, never an immutable snapshot's private storage.
+    EpochValidator] {.requires: value.isPresent.} =
+  ## Mutable encoder sources retain ordinary sequence editing through a presence-checked borrowed field.
+  value.validatorValues
 func winnerTicketCopies*(value: WinnersMarker): seq[
-    WinningTicket] {.requires: value.isPresent.} = value.ticketValues
-# Mutable source ticket edits preserve actual source identity for later alias preflight.
+    WinningTicket] {.requires: value.isPresent.} =
+  ## Read-only winner source access returns a copy, never an immutable snapshot's private storage.
+  value.ticketValues
 proc editWinnerTickets*(value: var WinnersMarker): var seq[
-    WinningTicket] {.requires: value.isPresent.} = value.ticketValues
-# Copied epoch entropy exists only in the present metadata alternative.
-func entropy*(value: EpochMarkerInfo): EpochEntropy {.requires: value.isPresent.} = value.entropyValue
-# Copied contest entropy requires the same present alternative.
-func ticketsEntropy*(value: EpochMarkerInfo): TicketsEntropy {.requires: value.isPresent.} = value.ticketEntropyValue
-# Only present metadata exposes a validator cardinality.
-func validators*(value: EpochMarkerInfo): int {.requires: value.isPresent.} = value.validatorCount
-# Only present metadata exposes a configured ticket count.
-func tickets*(value: WinnersMarkerInfo): int {.requires: value.isPresent.} = value.ticketCount
-# Absent epoch sources contain no entropy or validator sequence.
-func absentEpoch*(): EpochMarker = default(EpochMarker)
-# Construct a present borrowed source; configuration/cardinality policy remains encoder preflight.
+    WinningTicket] {.requires: value.isPresent.} =
+  ## Mutable source ticket edits preserve actual source identity for later alias preflight.
+  value.ticketValues
+func entropy*(value: EpochMarkerInfo): EpochEntropy {.requires: value.isPresent.} =
+  ## Copied epoch entropy exists only in the present metadata alternative.
+  value.entropyValue
+func ticketsEntropy*(value: EpochMarkerInfo): TicketsEntropy {.requires: value.isPresent.} =
+  ## Copied contest entropy requires the same present alternative.
+  value.ticketEntropyValue
+func validators*(value: EpochMarkerInfo): int {.requires: value.isPresent.} =
+  ## Only present metadata exposes a validator cardinality.
+  value.validatorCount
+func tickets*(value: WinnersMarkerInfo): int {.requires: value.isPresent.} =
+  ## Only present metadata exposes a configured ticket count.
+  value.ticketCount
+func absentEpoch*(): EpochMarker =
+  ## Absent epoch sources contain no entropy or validator sequence.
+  default(EpochMarker)
 func presentEpoch*(entropy: EpochEntropy, ticketsEntropy: TicketsEntropy, validators: seq[
     EpochValidator]): EpochMarker =
+  ## Construct a present borrowed source; configuration/cardinality policy remains encoder preflight.
   EpochMarker(isPresent: true, entropyValue: entropy, ticketEntropyValue: ticketsEntropy,
       validatorValues: validators)
-# An absent winner source contains no default ticket sequence.
-func absentWinners*(): WinnersMarker = default(WinnersMarker)
-# Construct a present winner source; exact configured epoch length is checked before encoding.
+func absentWinners*(): WinnersMarker =
+  ## An absent winner source contains no default ticket sequence.
+  default(WinnersMarker)
 func presentWinners*(tickets: seq[WinningTicket]): WinnersMarker =
+  ## Construct a present winner source; exact configured epoch length is checked before encoding.
   WinnersMarker(isPresent: true, ticketValues: tickets)
 
-# Full-profile convenience leaves the serialized byte budget an explicit caller resource decision.
 proc fullHeaderConfig*(maxBytes: ByteLimit): HeaderConfig {.raises: [].} =
+  ## Full-profile convenience leaves the serialized byte budget an explicit caller resource decision.
   HeaderConfig(cores: CoreCount(341), authorValidators: ValidatorCount(1023),
     epochSlots: EpochSlots(600), maxBytes: maxBytes)
 
@@ -405,9 +392,9 @@ proc capture(input: openArray[byte], layout: Layout): HeaderData {.raises: [].} 
   # Exclude unrelated trailing bytes from the snapshot and its resource accounting.
   for i in 0..<result.wire.len: result.wire[i] = input[i]
 
-# Decode a full header only after all framing, counts, author policy and final seal bytes validate.
 proc decodeHeader*(input: openArray[byte], config: HeaderConfig): HeaderResult[
     HeaderRead] {.raises: [].} =
+  ## Decode a full header only after all framing, counts, author policy and final seal bytes validate.
   let scanned = scanHeader(input, config, true)
   # No attacker-derived allocation occurs for failed/default results.
   if scanned.error != HeaderError.None:
@@ -415,9 +402,9 @@ proc decodeHeader*(input: openArray[byte], config: HeaderConfig): HeaderResult[
   HeaderResult[HeaderRead](status: HeaderError.None, completed: HeaderRead(
     owner: OwnedHeader(data: capture(input, scanned.value)), consumed: scanned.value.consumed))
 
-# Decode an unsigned header as its own prefix/owner type; no seal is required or guessed.
 proc decodeUnsignedHeader*(input: openArray[byte], config: HeaderConfig): HeaderResult[
     UnsignedHeaderRead] {.raises: [].} =
+  ## Decode an unsigned header as its own prefix/owner type; no seal is required or guessed.
   let scanned = scanHeader(input, config, false)
   # Every failed scan discards its private marker coordinates and progress.
   if scanned.error != HeaderError.None:
@@ -426,9 +413,9 @@ proc decodeUnsignedHeader*(input: openArray[byte], config: HeaderConfig): Header
     owner: OwnedUnsignedHeader(data: capture(input, scanned.value)),
         consumed: scanned.value.consumed))
 
-# Decode a standalone epoch marker, preserving initialized absence separately from a default owner.
 proc decodeEpochMarker*(input: openArray[byte], config: HeaderConfig): HeaderResult[
     EpochMarkerRead] {.raises: [].} =
+  ## Decode a standalone epoch marker, preserving initialized absence separately from a default owner.
   # Reject invalid chain domains before input access.
   if not validConfig(config):
     return HeaderResult[EpochMarkerRead](status: HeaderError.InvalidConfig)
@@ -442,9 +429,9 @@ proc decodeEpochMarker*(input: openArray[byte], config: HeaderConfig): HeaderRes
   HeaderResult[EpochMarkerRead](status: HeaderError.None, completed: EpochMarkerRead(
     owner: OwnedEpochMarker(data: capture(input, layout)), consumed: cursor))
 
-# Decode standalone winners using the caller's epoch length rather than a nonexistent sequence count.
 proc decodeWinnersMarker*(input: openArray[byte], config: HeaderConfig): HeaderResult[
     WinnersMarkerRead] {.raises: [].} =
+  ## Decode standalone winners using the caller's epoch length rather than a nonexistent sequence count.
   # Require explicit valid chain configuration first.
   if not validConfig(config):
     return HeaderResult[WinnersMarkerRead](status: HeaderError.InvalidConfig)
@@ -458,8 +445,8 @@ proc decodeWinnersMarker*(input: openArray[byte], config: HeaderConfig): HeaderR
   HeaderResult[WinnersMarkerRead](status: HeaderError.None, completed: WinnersMarkerRead(
     owner: OwnedWinnersMarker(data: capture(input, layout)), consumed: cursor))
 
-# Fixed winner-ticket decoding owns every identifier/attempt byte and needs no chain configuration.
 proc decodeWinningTicket*(input: openArray[byte]): HeaderResult[WinningTicketRead] {.raises: [].} =
+  ## Fixed winner-ticket decoding owns every identifier/attempt byte and needs no chain configuration.
   # Identifier and E1 attempt must both exist.
   if input.len < 33:
     return HeaderResult[WinningTicketRead](status: HeaderError.Truncated)
@@ -643,9 +630,9 @@ proc unsignedAlias(value: UnsignedHeader, output: var openArray[byte],
       return error
   sourceAlias(value.offenders, output, size)
 
-# Atomically encode a full header after validating every unsigned source field and its final seal extent.
 proc encodeHeader*(value: Header, config: HeaderConfig, output: var openArray[byte]): HeaderResult[
     int] {.raises: [].} =
+  ## Atomically encode a full header after validating every unsigned source field and its final seal extent.
   # Invalid chain domains precede source traversal.
   if not validConfig(config):
     return HeaderResult[int](status: HeaderError.InvalidConfig)
@@ -675,9 +662,9 @@ proc encodeHeader*(value: Header, config: HeaderConfig, output: var openArray[by
   assert cursor == size
   HeaderResult[int](status: HeaderError.None, completed: size)
 
-# Atomically encode the exact header signing payload, omitting only the final 96-byte seal.
 proc encodeUnsignedHeader*(value: UnsignedHeader, config: HeaderConfig, output: var openArray[
     byte]): HeaderResult[int] {.raises: [].} =
+  ## Atomically encode the exact header signing payload, omitting only the final 96-byte seal.
   # Caller supplies the author population and epoch parameters.
   if not validConfig(config):
     return HeaderResult[int](status: HeaderError.InvalidConfig)
@@ -698,9 +685,9 @@ proc encodeUnsignedHeader*(value: UnsignedHeader, config: HeaderConfig, output: 
   assert cursor == measured.value
   measured
 
-# Encode one standalone optional epoch marker with the same validator-count policy as headers.
 proc encodeEpochMarker*(value: EpochMarker, config: HeaderConfig, output: var openArray[
     byte]): HeaderResult[int] {.raises: [].} =
+  ## Encode one standalone optional epoch marker with the same validator-count policy as headers.
   # Default profiles cannot authorize marker access.
   if not validConfig(config):
     return HeaderResult[int](status: HeaderError.InvalidConfig)
@@ -725,9 +712,9 @@ proc encodeEpochMarker*(value: EpochMarker, config: HeaderConfig, output: var op
   putEpoch(value, output, cursor)
   measured
 
-# Encode one optional configured-length winner tuple without serializing a count.
 proc encodeWinnersMarker*(value: WinnersMarker, config: HeaderConfig, output: var openArray[
     byte]): HeaderResult[int] {.raises: [].} =
+  ## Encode one optional configured-length winner tuple without serializing a count.
   # Epoch length must be positive even for absent markers.
   if not validConfig(config):
     return HeaderResult[int](status: HeaderError.InvalidConfig)
@@ -752,9 +739,9 @@ proc encodeWinnersMarker*(value: WinnersMarker, config: HeaderConfig, output: va
   putWinners(value, output, cursor)
   measured
 
-# Encode one owned fixed winning ticket atomically; every E1 attempt byte is structurally representable.
 proc encodeWinningTicket*(value: WinningTicket, output: var openArray[byte]): HeaderResult[
     int] {.raises: [].} =
+  ## Encode one owned fixed winning ticket atomically; every E1 attempt byte is structurally representable.
   # The identifier and final attempt must both fit.
   if output.len < 33:
     return HeaderResult[int](status: HeaderError.OutputTooSmall)
@@ -778,8 +765,8 @@ proc copy(data: HeaderData, start, size: int, output: var openArray[byte]): Head
   for i in 0..<size: output[i] = data.wire[start+i]
   HeaderResult[int](status: HeaderError.None, completed: size)
 
-# Select an unsigned view retaining its full sealed parent; callers cannot pair it with another buffer.
 proc unsignedPart*(owner: OwnedHeader): HeaderResult[OwnedUnsignedHeader] {.raises: [].} =
+  ## Select an unsigned view retaining its full sealed parent; callers cannot pair it with another buffer.
   # Default handles carry no validated parent.
   let data = owner.data
   if data == nil:
@@ -787,16 +774,16 @@ proc unsignedPart*(owner: OwnedHeader): HeaderResult[OwnedUnsignedHeader] {.rais
   HeaderResult[OwnedUnsignedHeader](status: HeaderError.None, completed: OwnedUnsignedHeader(
       data: data))
 
-# Copy unsigned fixed metadata and exact signing-prefix length without exposing private offsets.
 proc unsignedHeaderInfo*(owner: OwnedUnsignedHeader): HeaderResult[UnsignedHeaderInfo] {.raises: [].} =
+  ## Copy unsigned fixed metadata and exact signing-prefix length without exposing private offsets.
   # No fabricated empty header for default handles.
   let data = owner.data
   if data == nil:
     return HeaderResult[UnsignedHeaderInfo](status: HeaderError.InvalidOwner)
   HeaderResult[UnsignedHeaderInfo](status: HeaderError.None, completed: data.layout.unsigned)
 
-# Copy complete full-header metadata; the seal remains a separate nominal value after unsigned consumption.
 proc headerInfo*(owner: OwnedHeader): HeaderResult[HeaderInfo] {.raises: [].} =
+  ## Copy complete full-header metadata; the seal remains a separate nominal value after unsigned consumption.
   # Only a validated full capture carries a seal.
   let data = owner.data
   if data == nil:
@@ -807,16 +794,16 @@ proc headerInfo*(owner: OwnedHeader): HeaderResult[HeaderInfo] {.raises: [].} =
     seal: HeaderSeal(fixed[96](data.wire, layout.unsigned.consumed)),
         consumed: layout.consumed))
 
-# Retain the parent's exact epoch marker, including initialized absence, without detached coordinates.
 proc headerEpoch*(owner: OwnedUnsignedHeader): HeaderResult[OwnedEpochMarker] {.raises: [].} =
+  ## Retain the parent's exact epoch marker, including initialized absence, without detached coordinates.
   # Missing parent storage cannot create a marker.
   let data = owner.data
   if data == nil:
     return HeaderResult[OwnedEpochMarker](status: HeaderError.InvalidOwner)
   HeaderResult[OwnedEpochMarker](status: HeaderError.None, completed: OwnedEpochMarker(data: data))
 
-# Retain the parent's exact winner marker without exporting mutable ticket storage.
 proc headerWinners*(owner: OwnedUnsignedHeader): HeaderResult[OwnedWinnersMarker] {.raises: [].} =
+  ## Retain the parent's exact winner marker without exporting mutable ticket storage.
   # Default headers have no validated marker alternative.
   let data = owner.data
   if data == nil:
@@ -824,25 +811,25 @@ proc headerWinners*(owner: OwnedUnsignedHeader): HeaderResult[OwnedWinnersMarker
   HeaderResult[OwnedWinnersMarker](status: HeaderError.None, completed: OwnedWinnersMarker(
       data: data))
 
-# Copy epoch entropy/count metadata while preserving the optional marker's tagged alternative.
 proc epochMarkerInfo*(owner: OwnedEpochMarker): HeaderResult[EpochMarkerInfo] {.raises: [].} =
+  ## Copy epoch entropy/count metadata while preserving the optional marker's tagged alternative.
   # Distinguish default handles from validated absence.
   let data = owner.data
   if data == nil:
     return HeaderResult[EpochMarkerInfo](status: HeaderError.InvalidOwner)
   HeaderResult[EpochMarkerInfo](status: HeaderError.None, completed: data.layout.epoch)
 
-# Copy winner presence/count metadata without exposing slot-order sequences or snapshot storage.
 proc winnersMarkerInfo*(owner: OwnedWinnersMarker): HeaderResult[WinnersMarkerInfo] {.raises: [].} =
+  ## Copy winner presence/count metadata without exposing slot-order sequences or snapshot storage.
   # Only validated captures can describe absence.
   let data = owner.data
   if data == nil:
     return HeaderResult[WinnersMarkerInfo](status: HeaderError.InvalidOwner)
   HeaderResult[WinnersMarkerInfo](status: HeaderError.None, completed: data.layout.winners)
 
-# Copy one indexed validator key pair, bound to the exact retained present epoch marker.
 proc epochValidatorAt*(owner: OwnedEpochMarker, index: int): HeaderResult[
     EpochValidator] {.raises: [].} =
+  ## Copy one indexed validator key pair, bound to the exact retained present epoch marker.
   # Default marker storage cannot be indexed.
   let data = owner.data
   if data == nil:
@@ -859,9 +846,9 @@ proc epochValidatorAt*(owner: OwnedEpochMarker, index: int): HeaderResult[
     bandersnatch: HeaderBsKey(fixed[32](data.wire, start)),
     ed25519: HeaderEdKey(fixed[32](data.wire, start+32))))
 
-# Copy one slot-ordered winning ticket using its original marker owner only.
 proc winningTicketAt*(owner: OwnedWinnersMarker, index: int): HeaderResult[
     WinningTicket] {.raises: [].} =
+  ## Copy one slot-ordered winning ticket using its original marker owner only.
   # Missing owners contain no configured winner sequence.
   let data = owner.data
   if data == nil:
@@ -878,9 +865,9 @@ proc winningTicketAt*(owner: OwnedWinnersMarker, index: int): HeaderResult[
   assert parsed.error == HeaderError.None
   HeaderResult[WinningTicket](status: HeaderError.None, completed: parsed.value.value)
 
-# Copy one offender identity without sorting or removing cross-section duplicates.
 proc headerOffenderAt*(owner: OwnedUnsignedHeader, index: int): HeaderResult[
     HeaderEdKey] {.raises: [].} =
+  ## Copy one offender identity without sorting or removing cross-section duplicates.
   # Missing parent handles have no offender sequence.
   let data = owner.data
   if data == nil:
@@ -892,45 +879,45 @@ proc headerOffenderAt*(owner: OwnedUnsignedHeader, index: int): HeaderResult[
   HeaderResult[HeaderEdKey](status: HeaderError.None,
     completed: HeaderEdKey(fixed[32](data.wire, layout.offenderStart+32*index)))
 
-# Re-emit an immutable full header atomically, preserving any unused output suffix.
 proc encodeOwnedHeader*(owner: OwnedHeader, output: var openArray[byte]): HeaderResult[
     int] {.raises: [].} =
+  ## Re-emit an immutable full header atomically, preserving any unused output suffix.
   # Default handles cannot stand in for empty headers.
   let data = owner.data
   if data == nil:
     return HeaderResult[int](status: HeaderError.InvalidOwner)
   copy(data, 0, data.layout.consumed, output)
 
-# Copy exactly the signing payload from either standalone unsigned or retained full-header storage.
 proc encodeOwnedUnsignedHeader*(owner: OwnedUnsignedHeader, output: var openArray[
     byte]): HeaderResult[int] {.raises: [].} =
+  ## Copy exactly the signing payload from either standalone unsigned or retained full-header storage.
   # No default signing prefix exists.
   let data = owner.data
   if data == nil:
     return HeaderResult[int](status: HeaderError.InvalidOwner)
   copy(data, 0, data.layout.unsigned.consumed, output)
 
-# Re-emit the owner's epoch marker without requiring a second source buffer or configuration.
 proc encodeOwnedEpochMarker*(owner: OwnedEpochMarker, output: var openArray[byte]): HeaderResult[
     int] {.raises: [].} =
+  ## Re-emit the owner's epoch marker without requiring a second source buffer or configuration.
   # Initialized absence differs from a default owner.
   let data = owner.data
   if data == nil:
     return HeaderResult[int](status: HeaderError.InvalidOwner)
   copy(data, data.layout.epochStart, data.layout.epochLength, output)
 
-# Re-emit the owner's configured winner marker, retaining the original exact slot order.
 proc encodeOwnedWinnersMarker*(owner: OwnedWinnersMarker, output: var openArray[
     byte]): HeaderResult[int] {.raises: [].} =
+  ## Re-emit the owner's configured winner marker, retaining the original exact slot order.
   # Missing storage cannot fabricate an absent marker.
   let data = owner.data
   if data == nil:
     return HeaderResult[int](status: HeaderError.InvalidOwner)
   copy(data, data.layout.winnersStart, data.layout.winnersLength, output)
 
-# Inspect a complete sealed header without allocation; parent block scans retain no source coordinates.
 proc inspectHeader*(input: openArray[byte], config: HeaderConfig): HeaderResult[
     HeaderInfo] {.raises: [].} =
+  ## Inspect a complete sealed header without allocation; parent block scans retain no source coordinates.
   let scanned = scanHeader(input, config, true)
   # The existing sealed scanner proves every marker, author and final signature extent.
   if scanned.error != HeaderError.None: return HeaderResult[HeaderInfo](status: scanned.error)

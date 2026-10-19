@@ -11,30 +11,23 @@
 import ./natural
 
 type
-  # An entry index occupies exactly one octet, including values whose compact encoding would be longer.
-  TicketAttempt* = distinct uint8
-  # Opaque fixed-width RingVRF encoding; construction does not assert cryptographic validity.
-  TicketProof* = distinct array[784, byte]
-  # Explicit caller count ceiling; tiny/full profiles use three/sixteen respectively.
-  TicketLimit* = distinct uint64
-  # Every record owns all bytes and can outlive its source buffer without an owner handle.
-  Ticket* = object
+  TicketAttempt* = distinct uint8 ## An entry index occupies exactly one octet, including values whose compact encoding would be longer.
+  TicketProof* = distinct array[784, byte] ## Opaque fixed-width RingVRF encoding; construction does not assert cryptographic validity.
+  TicketLimit* = distinct uint64 ## Explicit caller count ceiling; tiny/full profiles use three/sixteen respectively.
+  Ticket* = object ## Every record owns all bytes and can outlive its source buffer without an owner handle.
     attempt*: TicketAttempt
     proof*: TicketProof
-  # Default and all failed outcomes contain no usable progress or record values.
-  TicketError* {.pure.} = enum
+  TicketError* {.pure.} = enum ## Default and all failed outcomes contain no usable progress or record values.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
     AliasedBuffers, LengthOverflow
-  # Successful encoding reports only its complete committed prefix length.
-  TicketWrite* = object
+  TicketWrite* = object ## Successful encoding reports only its complete committed prefix length.
     case status: TicketError
     of None:
       byteWritten: int
     else:
       # Failed encodes leave the complete destination untouched.
       discard
-  # Successful decoding selects the written typed prefix and exact source prefix length.
-  TicketRead* = object
+  TicketRead* = object ## Successful decoding selects the written typed prefix and exact source prefix length.
     case status: TicketError
     of None:
       recordCount, byteConsumed: int
@@ -42,18 +35,20 @@ type
       # A failed read publishes no partial count or cursor.
       discard
 
-# Read write outcomes without exposing a mutable discriminator.
-func error*(value: TicketWrite): TicketError = value.status
-# Read decode/inspection outcomes; failed/default alternatives carry no progress.
-func error*(value: TicketRead): TicketError = value.status
-# Successful preflight and commit are required before observing the written prefix.
+func error*(value: TicketWrite): TicketError =
+  ## Read write outcomes without exposing a mutable discriminator.
+  value.status
+func error*(value: TicketRead): TicketError =
+  ## Read decode/inspection outcomes; failed/default alternatives carry no progress.
+  value.status
 func written*(value: TicketWrite): int {.inline, requires: value.status == TicketError.None.} =
+  ## Successful preflight and commit are required before observing the written prefix.
   value.byteWritten
-# Only a complete validated sequence exposes its initialized record count.
 func count*(value: TicketRead): int {.inline, requires: value.status == TicketError.None.} =
+  ## Only a complete validated sequence exposes its initialized record count.
   value.recordCount
-# Failed decode/inspection cannot advance a caller's input cursor.
 func consumed*(value: TicketRead): int {.inline, requires: value.status == TicketError.None.} =
+  ## Failed decode/inspection cannot advance a caller's input cursor.
   value.byteConsumed
 
 # Nominal attempt equality supports fully owned record comparisons without implicit integer conversion.
@@ -71,9 +66,9 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
   if left <= right: right-left < uint(an)
   else: left-right < uint(bn) # Reverse the ranges when output starts first.
 
-# Validate the entire source extent and output before committing a canonical tickets extrinsic.
 proc encodeTickets*(values: openArray[Ticket], limit: TicketLimit,
                     output: var openArray[byte]): TicketWrite {.raises: [].} =
+  ## Validate the entire source extent and output before committing a canonical tickets extrinsic.
   # Count policy precedes extent arithmetic, allocation or any destination access.
   if uint64(values.len) > uint64(limit): return TicketWrite(status: TicketError.LimitExceeded)
   let prefix = natural.encode(JamNatural(values.len))
@@ -98,9 +93,9 @@ proc encodeTickets*(values: openArray[Ticket], limit: TicketLimit,
     cursor += 785
   TicketWrite(status: TicketError.None, byteWritten: required)
 
-# Decode into fully owned caller records atomically, consuming exactly one extrinsic prefix.
 proc decodeTickets*(input: openArray[byte], limit: TicketLimit,
                     output: var openArray[Ticket]): TicketRead {.raises: [].} =
+  ## Decode into fully owned caller records atomically, consuming exactly one extrinsic prefix.
   let prefix = natural.decode(input)
   # Preserve canonicality/truncation reasons before any untrusted count can be narrowed.
   if not prefix.ok:
@@ -132,8 +127,8 @@ proc decodeTickets*(input: openArray[byte], limit: TicketLimit,
     cursor += 785
   TicketRead(status: TicketError.None, recordCount: size, byteConsumed: consumed)
 
-# Inspect complete ticket framing without allocating records or exposing any borrowed proof bytes.
 proc inspectTickets*(input: openArray[byte], limit: TicketLimit): TicketRead {.raises: [].} =
+  ## Inspect complete ticket framing without allocating records or exposing any borrowed proof bytes.
   let prefix = natural.decode(input)
   # An incomplete/overlong count cannot authorize a record extent or host conversion.
   if not prefix.ok:

@@ -15,84 +15,75 @@ import ./[bounded, assurances, guarantees, state_layout, state_trie, state_autho
   state_requests]
 
 type
-  ## Total enum makes each of the sixteen required chapter slots explicit at the composition boundary.
-  StateChapterId* {.pure.} = enum
+  StateChapterId* {.pure.} = enum ## Total enum makes each of the sixteen required chapter slots explicit at the composition boundary.
     Pools = 1, Queues, History, Safrole, Disputes, Entropy, Staging, Active, Previous,
     Availability, Time, Privileges, Statistics, Ready, Accumulated, Outputs
-  ## Shared chain cardinalities bind captures to one interpretation; limits are separate caller policy.
-  StateProfile* = object
+  StateProfile* = object ## Shared chain cardinalities bind captures to one interpretation; limits are separate caller policy.
     cores*: CoreCount
     current*, previous*: ValidatorCount
     epochSlots*: EpochSlots
-  ## Common conservative item/byte ceilings feed existing chapter-specific checked decoders.
-  StateChapterPolicy* = object
+  StateChapterPolicy* = object ## Common conservative item/byte ceilings feed existing chapter-specific checked decoders.
     items*: ElementLimit
     maxBytes*: ByteLimit
-  ## Failed/default results contain only a reason, never a root, owner, entry or progress.
-  StateCompositionError* {.pure.} = enum
+  StateCompositionError* {.pure.} = enum ## Failed/default results contain only a reason, never a root, owner, entry or progress.
     Uninitialized, None, InvalidConfig, InvalidComponent, Truncated, NonCanonical, TrailingBytes,
     LimitExceeded, LengthOverflow, DuplicateKey, BackendFailure, InvalidOwner, InvalidIndex,
     WrongChapter, ProfileMismatch
-  ## Only complete success exposes the selected result value.
-  StateCompositionResult*[T] = object
+  StateCompositionResult*[T] = object ## Only complete success exposes the selected result value.
     case status: StateCompositionError
     of None:
-      completed: T # Complete payload access requires the guarded accessor.
+      completed: T                    # Complete payload access requires the guarded accessor.
     else:
-      discard      # No partially composed mapping escapes on any failure.
+      discard                         # No partially composed mapping escapes on any failure.
   ## Private acyclic owner retains exact bytes after typed decoding; no borrowed spans escape.
   StateChapterData = ref object
     chapter: StateChapterId
     profile: StateProfile
     bytes: seq[byte]
-  ## Immutable handle cannot be forged with raw bytes or edited through public fields.
-  StateChapterSnapshot* = object
+  StateChapterSnapshot* = object ## Immutable handle cannot be forged with raw bytes or edited through public fields.
     data: nil StateChapterData
-  ## Fixed complete chapter slots retain nominal chapter indexing without nonzero enum-indexed array defaults.
-  StateChapters* = object
+  StateChapters* = object ## Fixed complete chapter slots retain nominal chapter indexing without nonzero enum-indexed array defaults.
     slots: array[16, StateChapterSnapshot]
-  ## One raw storage source; stable input is borrowed only during synchronous composition.
-  StateStorageItem* = object
+  StateStorageItem* = object ## One raw storage source; stable input is borrowed only during synchronous composition.
     key*, value*: seq[byte]
-  ## Opaque preimage content is preserved without asserting its hash/content validity.
-  StatePreimageItem* = object
+  StatePreimageItem* = object ## Opaque preimage content is preserved without asserting its hash/content validity.
     hash*: ServicePreimageHash
     value*: seq[byte]
-  ## Request identity and fixed tagged history retain their existing complete E4 domains.
-  StateRequestItem* = object
+  StateRequestItem* = object ## Request identity and fixed tagged history retain their existing complete E4 domains.
     hash*: ServicePreimageHash
     length*: RequestLength
     history*: RequestHistory
-  ## Metadata plus nested service mappings; captured values support storage without original keys.
-  StateService* = object
+  StateService* = object ## Metadata plus nested service mappings; captured values support storage without original keys.
     service*: ServiceIndex
     metadata*: ServiceMetadata
     storage*: seq[StateStorageItem]
     preimages*: seq[StatePreimageItem]
     requests*: seq[StateRequestItem]
     captured*: seq[ServiceValueSnapshot]
-  ## Entry extraction takes an ordinal, never a service index, chapter number or byte offset.
-  StateEntryIndex* = distinct uint64
+  StateEntryIndex* = distinct uint64 ## Entry extraction takes an ordinal, never a service index, chapter number or byte offset.
   ## Private final mapping owns all value bytes; no source pointers or mutable arrays are exported.
   StateCompositionData = ref object
     entries: seq[StateEntry]
     commitment: StateTrieCommitment
-  ## Immutable completed state mapping, explicitly not a valid-state or execution certificate.
-  StateSnapshot* = object
+  StateSnapshot* = object ## Immutable completed state mapping, explicitly not a valid-state or execution certificate.
     data: nil StateCompositionData
 
-## Failure reasons are read-only and cannot authorize chapter bytes, whole mappings or roots.
-func error*[T](value: StateCompositionResult[T]): StateCompositionError = value.status
-## Complete public payloads require successful selection before any retained data is exposed.
+func error*[T](value: StateCompositionResult[T]): StateCompositionError =
+  ## Failure reasons are read-only and cannot authorize chapter bytes, whole mappings or roots.
+  value.status
 func value*[T](value: StateCompositionResult[T]): T
-    {.inline, requires: value.status == StateCompositionError.None.} = value.completed
+    {.inline, requires: value.status == StateCompositionError.None.} =
+  ## Complete public payloads require successful selection before any retained data is exposed.
+  value.completed
 
-## Select one retained chapter handle through its nominal identity; default slots remain missing owners.
 func `[]`*(chapters: StateChapters, chapter: StateChapterId): StateChapterSnapshot
-    {.inline, requires: ord(chapter) >= 1 and ord(chapter) <= 16.} = chapters.slots[ord(chapter)-1]
-## Replace a caller-owned chapter slot without exposing the immutable capture's private bytes.
+    {.inline, requires: ord(chapter) >= 1 and ord(chapter) <= 16.} =
+  ## Select one retained chapter handle through its nominal identity; default slots remain missing owners.
+  chapters.slots[ord(chapter)-1]
 proc `[]=`*(chapters: var StateChapters, chapter: StateChapterId, value: StateChapterSnapshot)
-    {.inline, requires: ord(chapter) >= 1 and ord(chapter) <= 16.} = chapters.slots[ord(
+    {.inline, requires: ord(chapter) >= 1 and ord(chapter) <= 16.} =
+  ## Replace a caller-owned chapter slot without exposing the immutable capture's private bytes.
+  chapters.slots[ord(
         chapter)-1] = value
 
 ## Reject unsupported shared profiles before any decoder traverses caller input.
@@ -221,10 +212,10 @@ proc reason(error: RequestError): StateCompositionError =
   of RequestError.BackendFailure: StateCompositionError.BackendFailure # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Decode the selected typed component and require exact extent before retaining an independent copy.
-## Input is stable only during this call. Temporary typed child owners are released by ARC.
 proc captureStateChapter*(chapter: StateChapterId, input: openArray[byte], profile: StateProfile,
     policy: StateChapterPolicy): StateCompositionResult[StateChapterSnapshot] =
+  ## Decode the selected typed component and require exact extent before retaining an independent copy.
+  ## Input is stable only during this call. Temporary typed child owners are released by ARC.
   if not valid(profile):
     return StateCompositionResult[StateChapterSnapshot](
         status: StateCompositionError.InvalidConfig) # Reject profile before input.
@@ -360,12 +351,12 @@ proc charge(size: uint64, limits: StateTrieLimits, count,
 proc historySize(history: RequestHistory): uint64 =
   1'u64+4'u64*uint64(ord(history.state))
 
-## Compose all required exact chapters plus typed service entries under one profile and parent policy.
-## Sources remain stable for this synchronous call. Parent failure publishes no partial mapping/root.
-## Duplicate identities, including namespace overlaps, reject rather than choosing an overwrite policy.
 proc composeState*(chapters: StateChapters,
     services: openArray[StateService], limits: StateTrieLimits,
     maxStorageKeyBytes: ByteLimit): StateCompositionResult[StateSnapshot] =
+  ## Compose all required exact chapters plus typed service entries under one profile and parent policy.
+  ## Sources remain stable for this synchronous call. Parent failure publishes no partial mapping/root.
+  ## Duplicate identities, including namespace overlaps, reject rather than choosing an overwrite policy.
   var count = 0'u64
   var total = 0'u64
   ## Apply the same complete parent budget to chapters and every nested service entry.
@@ -454,8 +445,8 @@ proc composeState*(chapters: StateChapters,
     completed: StateSnapshot(data: StateCompositionData(entries: entries,
         commitment: committed.value)))
 
-## Return a copied fixed commitment only from a complete immutable owner.
 proc stateCommitment*(owner: StateSnapshot): StateCompositionResult[StateTrieCommitment] =
+  ## Return a copied fixed commitment only from a complete immutable owner.
   let data = owner.data
   if data == nil:
     return StateCompositionResult[StateTrieCommitment](
@@ -463,8 +454,8 @@ proc stateCommitment*(owner: StateSnapshot): StateCompositionResult[StateTrieCom
   StateCompositionResult[StateTrieCommitment](status: StateCompositionError.None,
       completed: data.commitment)
 
-## Copy one complete entry into independent caller-owned storage after nominal index validation.
 proc stateEntryAt*(owner: StateSnapshot, index: StateEntryIndex): StateCompositionResult[StateEntry] =
+  ## Copy one complete entry into independent caller-owned storage after nominal index validation.
   let data = owner.data
   if data == nil:
     return StateCompositionResult[StateEntry](status: StateCompositionError.InvalidOwner) # Missing owner cannot authorize extraction.
