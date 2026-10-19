@@ -13,6 +13,8 @@
     {"identity": {"reason": "wrong-operand"}, "arguments": ["wrong-operand"], "name": "accumulation-reentry-wrong-operand", "diagnostic": "outcome.status == OperandFailure", "description": "Accumulation reentry wrong-operand extraction guard"},
     {"identity": {"reason": "wrong-input"}, "arguments": ["wrong-input"], "name": "accumulation-reentry-wrong-input", "diagnostic": "outcome.status == InputFailure", "description": "Accumulation reentry wrong-input extraction guard"},
     {"identity": {"reason": "wrong-service"}, "arguments": ["wrong-service"], "name": "accumulation-reentry-wrong-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Accumulation reentry wrong-service extraction guard"},
-    {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-reentry-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Accumulation reentry wrong-batch extraction guard"}
+    {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-reentry-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Accumulation reentry wrong-batch extraction guard"},
+    {"identity": {"reason": "previous"}, "arguments": ["previous"], "name": "accumulation-reentry-previous", "diagnostic": "outcome.status == None", "description": "Accumulation reentry previous extraction guard"},
+    {"identity": {"reason": "cycle-default"}, "arguments": ["cycle-default"], "name": "accumulation-reentry-cycle-default", "diagnostic": "outcome.status == None", "description": "Accumulation reentry cycle-default extraction guard"}
   ]
 }

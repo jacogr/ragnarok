@@ -12,6 +12,11 @@ let result = if argument == "default": default(AccumulationReentryResult[Prepare
   else: prepareAccumulationReentry(default(CompletedAccumulationContinuation), default(
       AccumulationReentryConfig))
 case argument
+of "previous": discard owner.reentryPrevious.value # Defaults have no immediate predecessor.
+of "cycle-default":
+  discard prepareAccumulationReentry(default(CompletedAccumulationReentry), default(
+      AccumulationReentryConfig),
+    AccumulationReentryDepthLimit(1)).value # No fabricated completed cycle source.
 of "info": discard owner.reentryInfo.value # No fabricated empty/stopped selection.
 of "source": discard owner.reentrySource.value # No fabricated completed later round.
 of "inputs": discard owner.reentryInputs.value # No fabricated selected groups.

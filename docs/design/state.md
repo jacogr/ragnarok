@@ -96,6 +96,12 @@ operand preparation is next; PVM execution and full block execution remain later
 fetch boundary. It preserves preparation order and owns bounded encoded bytes without
 executing a service or certifying block provenance. See [the adapter contract](../../spec/pvm-fetch-invocation.md).
 
+Reentry preparation and completion share a private immutable certificate graph in
+`src/state/accumulation_reentry.nim`. This keeps repeated advance source-authenticated without
+exporting raw construction fields or creating a module dependency cycle. The execution import
+module remains a narrow compatibility facade; bounded history retains an immediate predecessor
+and direct original block provenance. See [the repeated reentry contract](../../spec/accumulation-reentry-cycle.md).
+
 ## Full and light node modes
 
 The client will support full and light operation selected by a command-line mode flag. Startup
