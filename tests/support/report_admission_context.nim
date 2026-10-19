@@ -140,9 +140,10 @@ type Context* = object
 
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
     withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
-        byte] = @[]): Context =
+        byte] = @[], ready: ReadyRow = @[]): Context =
   ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
+  ## Optional ready rows are committed in the genuine parent before block admission.
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()
@@ -213,7 +214,9 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
     assignments[0] = presentAssignment(prior, AssignmentSlot(
         1)) # Occupied at slot 2; timeout modes below use slot 6.
   entries.add(availabilityStateEntry(assignments, cfg.packages.availability).value)
-  entries.add(readyStateEntry(newSeq[ReadyRow](12), cfg.packages.queues).value)
+  var readyRows = newSeq[ReadyRow](12)
+  readyRows[0] = ready # Optional already-queued reports enter the signed parent commitment before admission.
+  entries.add(readyStateEntry(readyRows, cfg.packages.queues).value)
   var accumulated = newSeq[AccumulatedRow](12)
   if mode == 6:
     var duplicate = PackageHash(bytes: default(array[32, byte]))

@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/accumulation_continuation_results.nim",
+  "build_name": "accumulation-continuation-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-continuation-default", "diagnostic": "outcome.status == None", "description": "Accumulation continuation default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-continuation-refused", "diagnostic": "outcome.status == None", "description": "Accumulation continuation refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-continuation-info", "diagnostic": "outcome.status == None", "description": "Accumulation continuation info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-continuation-source", "diagnostic": "outcome.status == None", "description": "Accumulation continuation source extraction guard"},
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-continuation-index", "diagnostic": "outcome.status == None", "description": "Accumulation continuation index extraction guard"}
+  ]
+}

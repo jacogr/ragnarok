@@ -58,8 +58,10 @@ proc code(ending: ExecutionEnding): seq[byte] =
 
 proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     second = ExecutionEnding.Halt, empty = false, report = false, firstProgram: seq[byte] = @[],
-    secondProgram: seq[byte] = @[]): ExecutionFixture =
+    secondProgram: seq[byte] = @[], allowanceGas = 100000'u64,
+    ready: ReadyRow = @[]): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
+  ## Optional allowance gas and ready rows enter the signed parent before the round is planned.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
   let secondCode = (if secondProgram.len == 0: code(second) else: secondProgram)
   var allowances: seq[AlwaysAccumulate] = @[]
@@ -67,7 +69,7 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     for ordinal, ending in [first, second]:
       let service = ServiceIndex(if ordinal == 0: 42 else: 99)
       let gas = (if ending == ExecutionEnding.Exhausted: 1'u64 elif ending ==
-          ExecutionEnding.HostExhausted: 200'u64 else: 100000'u64)
+          ExecutionEnding.HostExhausted: 200'u64 else: allowanceGas)
       allowances.add(AlwaysAccumulate(service: service, gas: PrivilegeGas(gas)))
   let privileges = privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](2),
     always: allowances), executionRoundConfig().privileges).value
@@ -86,7 +88,7 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
       entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), raw,
         ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(raw.len))).value)
   let context = authored(base, reports = 0, withAvailable = report, extra = entries,
-      accountCode = firstCode)
+      accountCode = firstCode, ready = ready)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,
