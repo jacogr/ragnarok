@@ -54,8 +54,8 @@ No modulo charge, saturation or alternate representation is accepted.
 
 All existing yield/checkpoint/source ownership contracts remain in force. Provide returns only a
 new regular set, preserves the exceptional checkpoint and current yield, and leaves guest memory,
-account records and outstanding request histories unchanged. Fulfillment and later publication
-require a separate accumulation stage.
+account records and outstanding request histories unchanged. The [union/fulfillment planner](accumulation-provision-integration.md) now supplies explicit state-side
+application; terminal/pipeline binding and complete block publication remain separate.
 
 
 ## Local verification

@@ -207,6 +207,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_queue')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_operands')
     # Requested provision owners and refusal results retain strict selected-success extraction.
+    # Union preparation and posterior fulfillment preserve guarded success and private ownership.
+    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_provision_integration')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_provisions')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_context')
     # Default, absent-yield and refused state effects must reject through selected-success extraction.
