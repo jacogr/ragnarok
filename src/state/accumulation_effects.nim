@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 implications: immutable account writes, yields, provisions and exceptional checkpoints.
-## Exposes prepared pairs, guarded current accounts, storage/yield/checkpoint/provision mutations and extraction.
+## Exposes prepared pairs, guarded current accounts/info, storage/yield/checkpoint/provision mutations and extraction.
 ## Guest memory, gas, registers, execution verdicts and publication belong to their caller's PVM layer.
 
 import std/assertions
@@ -10,6 +10,8 @@ import ../codec/[bounded, composite, state_outputs, state_accounts, state_layout
 import ../chain/parameters
 import ../crypto/primitives
 import ./[accumulation_context, store, preimages]
+
+const AccumulationAccountInfoBytes* = 96 ## Fixed Omega_I record, excluding serialized metadata's version byte.
 
 type
   AccumulationEffectError* {.pure.} = enum ## No refused/default operation exposes a partial context, fabricated hash or successful empty owner.
@@ -325,6 +327,17 @@ proc consumeDeposit(low, upper: var uint64, count, rate: uint64): bool =
     low -= productLow
   true
 
+## Consume the same exact three deposit terms for both funding and minimum-balance queries.
+proc consumeAccountDeposit(metadata: ServiceMetadata, parameters: Parameters,
+    low, upper: var uint64): bool =
+  for term in [(1'u64, parameters.get(depositPerAccount)),
+      (uint64(metadata.storageItems), parameters.get(depositPerItem)),
+      (uint64(metadata.storageBytes), parameters.get(depositPerByte))]:
+    let (count, rate) = term # Each independent term consumes the remaining exact two-limb budget.
+    if not consumeDeposit(low, upper, count, rate):
+      return false # FULL includes products larger than the complete available budget.
+  true
+
 ## Compare threshold to balance using the equivalent deposit <= balance+gratis equation.
 ## Even full-width configured rates and footprint fields cannot overflow this comparison.
 proc funded(metadata: ServiceMetadata, parameters: Parameters): bool =
@@ -337,13 +350,59 @@ proc funded(metadata: ServiceMetadata, parameters: Parameters): bool =
     low = gratis-(high(uint64)-balance)-1
   else:
     low = balance+gratis # Proven representable before addition.
-  for term in [(1'u64, parameters.get(depositPerAccount)),
-      (uint64(metadata.storageItems), parameters.get(depositPerItem)),
-      (uint64(metadata.storageBytes), parameters.get(depositPerByte))]:
-    let (count, rate) = term # Each independent term consumes the remaining exact two-limb budget.
-    if not consumeDeposit(low, upper, count, rate):
-      return false # FULL includes products larger than the complete available budget.
-  true
+  consumeAccountDeposit(metadata, parameters, low, upper)
+
+## Encode this version's complete account into the fixed Omega_I wire record.
+## Refused/default queries contain only a reason; no caller-selected account or fabricated bytes escape.
+proc effectAccountInfo*(context: AccumulationEffectContext, service: ServiceIndex,
+    parameters: Parameters): AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]] =
+  ## Retain no partial record on invalid provenance, missing accounts or malformed dependent values.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]](status: reason)
+  let data = context.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # Default versions cannot authorize account queries.
+  if not parameters.valid:
+    fail(AccumulationEffectError.InvalidParameters) # No substituted default deposit configuration.
+  let found = data.accounts.lookup(chapterServiceKey(StateChapter(255), service))
+  if found.error == StateStoreError.MissingKey:
+    fail(AccumulationEffectError.UnknownService) # Protocol NONE is selected only by a complete-map absence.
+  if found.error != StateStoreError.None:
+    fail(AccumulationEffectError.InvalidState) # Invalid owners cannot fabricate absent accounts.
+  if found.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # Bound the entire metadata copy before allocation.
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if decoded.error != ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # Require the one complete canonical version-zero schema.
+  let metadata = decoded.value.metadata
+  let gratis = uint64(metadata.depositOffset)
+  var low = high(uint64)
+  var upper = 0'u64
+  if gratis != 0:
+    upper = 1 # UINT64_MAX+gratis has this exact two-limb representation.
+    low = gratis-1
+  if not consumeAccountDeposit(metadata, parameters, low, upper):
+    fail(AccumulationEffectError.MalformedState) # Deposit>UINT64_MAX+gratis implies an unencodable E8 threshold.
+  # Remaining budget is UINT64_MAX+gratis-deposit; subtract from UINT64_MAX only when nonnegative.
+  let minimum = (if upper != 0 or low == high(uint64): 0'u64 else: high(uint64)-low)
+  var bytes = default(array[AccumulationAccountInfoBytes, byte])
+  let hash = array[32, byte](metadata.codeHash)
+  for i in 0..<32:
+    bytes[i] = hash[i] # Raw hash has no version, count or prefix.
+  for field, value in [uint64(metadata.balance), minimum, uint64(metadata.minimumAccumulationGas),
+      uint64(metadata.minimumTransferGas), uint64(metadata.storageBytes)]:
+    for i in 0..<8:
+      bytes[32+field*8+i] = byte((value shr (8*i)) and 255) # Five exact E8 values occupy bytes32..71.
+  for i in 0..<4:
+    bytes[72+i] = byte((uint32(metadata.storageItems) shr (8*i)) and 255) # Items alone use E4 before gratis.
+  for i in 0..<8:
+    bytes[76+i] = byte((gratis shr (8*i)) and 255) # Preserve all gratis bits after the E4 item field.
+  for field, value in [uint32(metadata.created), uint32(metadata.lastAccumulation), uint32(
+      metadata.parent)]:
+    for i in 0..<4:
+      bytes[84+field*4+i] = byte((value shr (8*i)) and 255) # Exact E4 slots/parent finish the fixed record.
+  AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]](
+    status: AccumulationEffectError.None, completed: bytes)
 
 proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openArray[byte],
     parameters: Parameters, limit: ByteLimit): AccumulationEffectResult[AccumulationStorageChange] =

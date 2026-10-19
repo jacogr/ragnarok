@@ -6,7 +6,7 @@
 
 import std/cmdline
 import ../../src/state/[accumulation_effects, accumulation_context]
-import ../../src/codec/[state_outputs, bounded]
+import ../../src/codec/[state_outputs, bounded, composite]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 
@@ -26,6 +26,8 @@ of "initial": discard context.effectInitialContext.value # No substituted accoun
 of "accounts": discard context.effectAccounts.value # Default contexts cannot fabricate current accounts.
 of "storage": discard recordAccumulationStorage(pair, [], [], default(Parameters), ByteLimit(
     0)).value # Failed changes contain no successor.
+of "account-info": discard context.effectAccountInfo(ServiceIndex(42), default(
+    Parameters)).value # No fabricated fixed account record.
 of "info": discard context.effectInfo.value # No default metadata/effects.
 of "yield": discard context.effectYield.value # No default hash.
 of "absent": discard pair.effectContext(AccumulationDimension.Regular).value.effectYield.value # Absence is not zero bytes.
