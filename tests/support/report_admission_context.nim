@@ -147,7 +147,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
             poolCopies = 1, refinementGas = high(uint64),
     historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32, withTicket = false,
     shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[RefineLoad] = @[],
-        parentPools: seq[AuthorizerRow] = @[]): Context =
+        parentPools: seq[AuthorizerRow] = @[], storeWrites = 1000'u64): Context =
   ## Author a signed advancing block (slot 2 by default), then run real disputes/Safrole/assurance processing.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
   ## Optional ready rows and belt peaks enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
@@ -268,6 +268,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   for entry in extra: entries.add(entry)
   var bounds = limits()
   bounds.writeValueBytes = ByteLimit(maxWriteBytes)
+  bounds.writes = ElementLimit(storeWrites) # Optional inherited batch limits enter the original store before any stage.
   let created = newStateStore(entries, bounds)
   assert created.error == StateStoreError.None, $created.error
   var state = created.value

@@ -1,0 +1,14 @@
+{
+  "source": "tests/native/accumulation_consensus_results.nim",
+  "build_name": "accumulation-consensus-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-consensus-default", "diagnostic": "outcome.status == None", "description": "Accumulation consensus default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-consensus-refused", "diagnostic": "outcome.status == None", "description": "Accumulation consensus refused extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-consensus-source", "diagnostic": "outcome.status == None", "description": "Accumulation consensus source extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-consensus-info", "diagnostic": "outcome.status == None", "description": "Accumulation consensus info extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-consensus-state", "diagnostic": "outcome.status == None", "description": "Accumulation consensus state extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-consensus-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation consensus wrong-state extraction guard"},
+    {"identity": {"reason": "assignment-bytes"}, "arguments": ["assignment-bytes"], "name": "accumulation-consensus-assignment-bytes", "diagnostic": "outcome.status == None", "description": "Accumulation consensus assignment-bytes extraction guard"}
+  ]
+}
