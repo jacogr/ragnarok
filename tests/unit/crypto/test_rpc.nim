@@ -141,7 +141,7 @@ var genesisInput = genesisText
 let capturedGenesis = configuredGenesis(genesisInput, genesisParameters.value)
 assert capturedGenesis.error == GenesisError.None
 genesisInput = "{}" # Mutating source JSON cannot alter the retained owner.
-let withGenesis = ClientInfo(genesis: capturedGenesis)
+let withGenesis = ClientInfo(chain: genesisView(capturedGenesis))
 let bestRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":1}"
 let genesisHash = "5mOOsjxqUxhky5HYvxomxm/u7dg7VcwqcsnDWQBCjtQ="
 let rootRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"stateRoot\",\"params\":[\"" & genesisHash & "\"],\"id\":1}"
@@ -190,7 +190,7 @@ let serviceState = genesisState[0..^2] &
 let serviceText = genesisText.replace(genesisState, serviceState)
 let serviceGenesis = configuredGenesis(serviceText, genesisParameters.value)
 assert serviceGenesis.error == GenesisError.None
-let serviceInfo = ClientInfo(genesis: serviceGenesis)
+let serviceInfo = ClientInfo(chain: genesisView(serviceGenesis))
 # Produce ordinary positional calls while keeping expected payloads independent of production codecs.
 proc serviceCall(methodName, service, extra: string): string =
   "{\"jsonrpc\":\"2.0\",\"method\":\"" & methodName & "\",\"params\":[\"" & genesisHash & "\"," &
@@ -290,8 +290,8 @@ let previousKey = "09" & repeat("00", 30)
 proc activityInfo(wire: string, previous = "06" & repeat("00", 2016)): ClientInfo =
   let state = genesisState[0..^2] & ",\"" & previousKey & "\":\"" & previous & "\",\"" &
       activityKey & "\":\"" & wire & "\"}"
-  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
-      genesisParameters.value))
+  ClientInfo(chain: genesisView(configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value)))
 let activityCall = "{\"jsonrpc\":\"2.0\",\"method\":\"statistics\",\"params\":[\"" & genesisHash &
     "\"],\"id\":1}"
 let activityOwner = activityInfo(activityHex)
@@ -323,12 +323,12 @@ let resizedHex = activityHex[0..<290] & "09" & repeat("00000000", 54) & activity
 assert "\"result\"" in respond(activityCall, activityInfo(resizedHex, "09" & repeat("00", 3024)))
 assert statistics.statistics(default(Genesis), ByteLimit(32768)).error ==
     StatisticsReadError.Uninitialized
-let limitedActivity = statistics.statistics(activityOwner.genesis.value, ByteLimit((
+let limitedActivity = statistics.statistics(activityOwner.chain.bestBlock.value, ByteLimit((
     activityHex.len div 2) - 1))
 assert limitedActivity.error == StatisticsReadError.LimitExceeded
 
 # Copies extracted from a retained statistics view cannot mutate its original bytes.
-let activityView = statistics.statistics(activityOwner.genesis.value, ByteLimit(32768))
+let activityView = statistics.statistics(activityOwner.chain.bestBlock.value, ByteLimit(32768))
 assert activityView.error == StatisticsReadError.None
 var activityCopy = activityView.value.bytes
 activityCopy[0] = 0
@@ -365,8 +365,8 @@ proc accountHex(service: uint32): string =
 # Capture one map from supplied account JSON; source buffers may be edited/dropped afterward.
 proc discoveryInfo(accounts: string): ClientInfo =
   let state = genesisState[0..^2] & accounts & "}"
-  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
-      genesisParameters.value))
+  ClientInfo(chain: genesisView(configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value)))
 var accounts = ""
 for service in [256'u32, 255'u32, 0'u32, 1'u32]: # Deliberately neither numeric nor serialized-key order.
   accounts.add(",\"" & accountHex(service) & "\":\"" & repeat("00", 89) & "\"")
@@ -377,10 +377,10 @@ accounts.add(",\"" & accountHex(4) & "\":\"" & repeat("00", 90) & "\"")
 let discovered = discoveryInfo(accounts)
 accounts = "" # The retained scalar list cannot alias mutable source text.
 assert respond(listCall, discovered) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[0,1,255,256]}"
-assert discovered.genesis.value.serviceCount == 4
-var copiedService = discovered.genesis.value.serviceAt(ServiceListIndex(0))
+assert discovered.chain.bestBlock.value.serviceCount == 4
+var copiedService = discovered.chain.bestBlock.value.serviceAt(ServiceListIndex(0))
 copiedService = ServiceIndex(123)
-assert uint32(discovered.genesis.value.serviceAt(ServiceListIndex(0))) == 0
+assert uint32(discovered.chain.bestBlock.value.serviceAt(ServiceListIndex(0))) == 0
 # A large valid map proves list output is bounded without silently returning an arbitrary prefix.
 var manyAccounts = ""
 var mediumServices = default(ClientInfo)
@@ -393,8 +393,8 @@ let mediumBatch = respond("[" & listCall & "," & listCall & "]", mediumServices)
 assert mediumBatch.len <= 65535 and "\"result\":[4000000000," in mediumBatch
 assert "\"code\":0" in mediumBatch and mediumBatch.split("\"id\":").len == 3
 let manyServices = discoveryInfo(manyAccounts)
-assert manyServices.genesis.error == GenesisError.None
-assert manyServices.genesis.value.serviceCount == 6000
+assert manyServices.chain.bestBlock.error == GenesisError.None
+assert manyServices.chain.bestBlock.value.serviceCount == 6000
 assert "\"code\":0" in respond(listCall, manyServices) # 66,001 result bytes exceed the whole frame budget.
 # Mixed blobs and discovery share one aggregate response budget.
 let listBatch = "[" & repeat(largeCall & ",", 2) & listCall & "]"
@@ -413,7 +413,8 @@ let requestState = serviceState[0..^2] &
   ",\"2a420004008a00a811572c33c69803a3ab3e8bae6796ff8e1304cbd807247e\":\"0000\"" &
   ",\"2ab200540082004f0ab3061e517af2f904bb387ba8e3dccc0381f9a9de0f8f\":\"8000\"" & "}"
 let requestsText = genesisText.replace(genesisState, requestState)
-let requestsInfo = ClientInfo(genesis: configuredGenesis(requestsText, genesisParameters.value))
+let requestsInfo = ClientInfo(chain: genesisView(configuredGenesis(requestsText,
+    genesisParameters.value)))
 # Build four-argument history queries without narrowing unsigned length literals.
 proc requestCall(length: string): string =
   serviceCall("serviceRequest", "42", ",\"" & repeat("A", 43) & "=\"," & length)
@@ -444,7 +445,8 @@ let threeSlots = "030000000000000080ffffffff"
 for size in 0..<13: # Every incomplete three-slot value fails, including the empty byte string.
   let field = "\"2a41000c008b00bb716d041a883bf3a1f5572a0510f7cd920057800f95d72b\":\""
   let shortened = requestsText.replace(field & threeSlots, field & threeSlots[0..<size*2])
-  let invalid = ClientInfo(genesis: configuredGenesis(shortened, genesisParameters.value))
+  let invalid = ClientInfo(chain: genesisView(configuredGenesis(shortened,
+      genesisParameters.value)))
   assert "\"code\":0" in respond(requestCall("3"), invalid)
 let defaultRequest = services.serviceRequest(default(Genesis), ServiceIndex(42), default(
     ServicePreimageHash), RequestLength(0))
@@ -454,8 +456,8 @@ assert emptyRequestResult.error == ServiceReadError.Uninitialized
 
 # Excess bytes and repeated extraction cannot expose a partial history or retain temporary request owners.
 let longHistoryText = requestsText.replace(threeSlots & "\"", threeSlots & "00\"")
-let longHistoryInfo = ClientInfo(genesis: configuredGenesis(longHistoryText,
-    genesisParameters.value))
+let longHistoryInfo = ClientInfo(chain: genesisView(configuredGenesis(longHistoryText,
+    genesisParameters.value)))
 assert "\"code\":0" in respond(requestCall("3"), longHistoryInfo)
 proc retireRequestReply() =
   assert "\"result\":[0,2147483648,4294967295]" in respond(requestCall("3"), requestsInfo)
@@ -484,8 +486,8 @@ assert getOccupiedMem() <= baseline + 256
 # A newly imported snapshot must retire with the server, even without explicit shutdown.
 proc retireGenesis() =
   var owner = default(Server)
-  owner.genesis = configuredGenesis(serviceText, genesisParameters.value)
-  assert owner.genesis.error == GenesisError.None
+  owner.chain = genesisView(configuredGenesis(serviceText, genesisParameters.value))
+  assert owner.chain.bestBlock.error == GenesisError.None
 retireGenesis() # Warm parsing and trie allocation before measuring retained storage.
 let genesisBaseline = getOccupiedMem()
 for iteration in 0..<20: retireGenesis() # Independent maps expose a missing custom-destructor field release.
@@ -495,8 +497,8 @@ assert getOccupiedMem() <= genesisBaseline + 256
 proc beefyInfo(wire: string): ClientInfo =
   ## Capture a fresh immutable configured map with the supplied history bytes.
   let state = genesisState[0..^2] & ",\"03" & repeat("00", 30) & "\":\"" & wire & "\"}"
-  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
-    genesisParameters.value))
+  ClientInfo(chain: genesisView(configuredGenesis(genesisText.replace(genesisState, state),
+    genesisParameters.value)))
 let beefyCall = rootRequest.replace("stateRoot", "beefyRoot")
 let historyHeader = "e6638eb23c6a531864cb91d8bf1a26c66feeedd83b55cc2a72c9c35900428ed4"
 let historyRecord = historyHeader & repeat("ab", 32) & repeat("00", 32) & "0700000000"
@@ -541,8 +543,8 @@ assert getOccupiedMem() <= beefyBaseline + 256
 proc reportInfo(wire: string): ClientInfo =
   ## Capture an immutable chapter-10 fixture without borrowing the source JSON.
   let state = genesisState[0..^2] & ",\"0a" & repeat("00", 30) & "\":\"" & wire & "\"}"
-  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
-      genesisParameters.value))
+  ClientInfo(chain: genesisView(configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value)))
 let reportWire = "000130466e0ae1b05dde5249872475f6beeac368fd014b5a3413ceb32d38721432842a0000007af11fdaa717c398e223211842b41392f18df4bbc4ea0f4cfb972f19c7a649490600e8e52949f6e4fb1d943248df48c3f2b538200fddfea22388e5e061be8ebf21a74500c0564c5e0de0942589df4343ad1956da66797240e2a2f2d6f8116b50477689860b000000f6967658df626fa39cbfb6014b50196d23bc2cfbfa71a7591ca7715472dd2b489329de635d4bbb8c47cdccbbc1285e48bf9dbad365af44b205343e99dea298f360751ab5b251361fbfd3ad5b0e84f051ccece6b00830aed31a5354e00b20b9ed210000008f665c40573f1288749767417430f62360e37865ef773c24186527aa24b5a4930001022e5e165cc8bd586404257f5cd6f5a31177b5c951eb076c7c10174f90006eef000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ffffffff02000011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111010012121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212070000000000"
 let reportOwner = reportInfo(reportWire)
 let reportHashText = "TPewtqai8WQjWIo74eXNrAyVpYAPROxl7JGzk+ASWA0="
@@ -580,17 +582,17 @@ let reportIdentity = WorkReportHash([76'u8, 247'u8, 176'u8, 182'u8, 166'u8, 162'
     15'u8, 68'u8, 236'u8, 101'u8, 236'u8, 145'u8, 179'u8, 147'u8, 224'u8, 18'u8, 88'u8, 13'u8])
 assert workReport(default(Genesis), reportIdentity, ByteLimit(393)).error ==
     ReportReadError.Uninitialized
-assert workReport(reportOwner.genesis.value, reportIdentity, ByteLimit(392)).error ==
+assert workReport(reportOwner.chain.bestBlock.value, reportIdentity, ByteLimit(392)).error ==
     ReportReadError.LimitExceeded
-assert workReport(reportOwner.genesis.value, reportIdentity, ByteLimit(393)).error ==
+assert workReport(reportOwner.chain.bestBlock.value, reportIdentity, ByteLimit(393)).error ==
     ReportReadError.None
-assert workReport(reportOwner.genesis.value, default(WorkReportHash), ByteLimit(0)).error ==
+assert workReport(reportOwner.chain.bestBlock.value, default(WorkReportHash), ByteLimit(0)).error ==
     ReportReadError.Missing
 # A returned report owns its bytes even after the configured map and parent decoder retire.
 proc retainedReport(): OwnedReport =
   ## Return just the validated report owner from a short-lived configured state.
   let transient = reportInfo(reportWire)
-  let found = workReport(transient.genesis.value, reportIdentity, ByteLimit(393))
+  let found = workReport(transient.chain.bestBlock.value, reportIdentity, ByteLimit(393))
   assert found.error == ReportReadError.None
   found.value
 let reportRetained = retainedReport()
@@ -621,7 +623,8 @@ proc readyReportInfo(wire: string, assignments = "", largeEpoch = false): Client
   state.add("}")
   let parameters = if largeEpoch: configuredParameters(configText.replace("58020000",
       "01100000")) else: genesisParameters
-  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state), parameters.value))
+  ClientInfo(chain: genesisView(configuredGenesis(genesisText.replace(genesisState, state),
+      parameters.value)))
 let readyWire = repeat("00", 599) & "01" & readyReportHex & "01" & repeat("12", 32)
 let readyOwner = readyReportInfo(readyWire, reportWire)
 assert respond(readyCall, readyOwner) == readyAnswer
@@ -647,16 +650,16 @@ assert respond(readyCall.replace(",\"id\":1", ""), readyOwner) == ""
 let readyIdentity = WorkReportHash([196'u8, 85'u8, 73'u8, 247'u8, 122'u8, 99'u8, 104'u8, 199'u8,
     110'u8, 83'u8, 202'u8, 42'u8, 176'u8, 8'u8, 113'u8, 254'u8, 219'u8, 63'u8, 33'u8, 9'u8, 119'u8,
     104'u8, 88'u8, 49'u8, 122'u8, 214'u8, 31'u8, 241'u8, 213'u8, 143'u8, 169'u8, 204'u8])
-assert workReport(readyOwner.genesis.value, readyIdentity, ByteLimit(392)).error ==
+assert workReport(readyOwner.chain.bestBlock.value, readyIdentity, ByteLimit(392)).error ==
     ReportReadError.LimitExceeded
-assert workReport(readyOwner.genesis.value, readyIdentity, ByteLimit(393)).error ==
+assert workReport(readyOwner.chain.bestBlock.value, readyIdentity, ByteLimit(393)).error ==
     ReportReadError.None
 assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 1048577)))
 assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 4097), largeEpoch = true))
 proc retainReadyReport(): OwnedReport =
   ## Return a child owner beyond both genesis and ready-ring decoder lifetimes.
   let transient = readyReportInfo(readyWire)
-  let found = workReport(transient.genesis.value, readyIdentity, ByteLimit(393))
+  let found = workReport(transient.chain.bestBlock.value, readyIdentity, ByteLimit(393))
   assert found.error == ReportReadError.None
   found.value
 let readyRetained = retainReadyReport()
@@ -702,8 +705,8 @@ for args in ["[]", "[0,0]", "[\"" & genesisHash & "\"]", "[\"" & genesisHash & "
 proc rawValueInfo(hex: string): ClientInfo =
   ## Capture opaque bytes at an otherwise absent serialized key; no schema validation is implied.
   let state = genesisState[0..^2] & ",\"ff" & repeat("00", 30) & "\":\"" & hex & "\"}"
-  ClientInfo(genesis: configuredGenesis(genesisText.replace(genesisState, state),
-      genesisParameters.value))
+  ClientInfo(chain: genesisView(configuredGenesis(genesisText.replace(genesisState, state),
+      genesisParameters.value)))
 let rawOpaqueCall = rawCall.replace(rawTimeKey, rawMissingKey)
 assert respond(rawOpaqueCall, rawValueInfo("")) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"\"}"
 assert respond(rawOpaqueCall, rawValueInfo("ff00")) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"/wA=\"}"
@@ -755,11 +758,11 @@ for args in ["null,0", "null,129", "null,-1", "null,1.0", "null,1e0", "null,true
 # Enumeration includes malformed/empty values; it lists serialized keys without classifying their contents.
 assert respond(keysRequest.replace("null,1", "\"" & rawTimeKey & "\",1"), rawValueInfo("")) ==
     "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"keys\":[\"" & rawMissingKey & "\"],\"next\":null}}"
-assert withGenesis.genesis.value.keyCount == 2
-var keyCopy = array[31, byte](withGenesis.genesis.value.keyAt(StateKeyIndex(0)))
+assert withGenesis.chain.bestBlock.value.keyCount == 2
+var keyCopy = array[31, byte](withGenesis.chain.bestBlock.value.keyAt(StateKeyIndex(0)))
 keyCopy[0] = 0 # Copies cannot mutate the index or its future pagination order.
 assert respond(keysRequest, withGenesis) == keysFirst
-assert discovered.genesis.value.keyCount == 9 # Malformed account metadata still has a serialized key.
+assert discovered.chain.bestBlock.value.keyCount == 9 # Malformed account metadata still has a serialized key.
 # A maximum page stays bounded; an oversized batch refuses later pages without partial results.
 let keysMaximum = keysRequest.replace("null,1", "null,128")
 let keysMaximumReply = respond(keysMaximum, manyServices)
@@ -816,7 +819,7 @@ proc headerBoundary(epoch: int, offender: bool): tuple[info: ClientInfo, raw: st
   let parameters = configuredParameters(configText.replace("58020000", epochHex))
   let captured = configuredGenesis(genesisText.replace(genesisWire, hex), parameters.value)
   assert captured.error == GenesisError.None
-  (ClientInfo(genesis: captured), raw)
+  (ClientInfo(chain: genesisView(captured)), raw)
 let headerAtLimit = headerBoundary(983, true)
 let headerOverLimit = headerBoundary(984, false)
 assert headerAtLimit.raw.len == 32768 and headerOverLimit.raw.len == 32769
@@ -845,7 +848,7 @@ for population in [6, 9, 12]:
   assert context.error == GenesisError.None
   assert int(context.value.activeValidators) == population
   source = "{}" # Captured counts survive replacement of the caller's JSON storage.
-  let owner = ClientInfo(parameters: genesisParameters, genesis: context)
+  let owner = ClientInfo(parameters: genesisParameters, chain: genesisView(context))
   let pieceBytes = if population == 6: 6 else: 8 # Twelve validators must skip the non-divisor five.
   let pieces = if population == 6: 684 else: 513
   let expected = parameterAnswer.replace("\"val_count\":0", "\"val_count\":" & $population).replace(
@@ -857,7 +860,7 @@ for population in [6, 9, 12]:
   assert respond(parameterRequest.replace(",\"id\":7", ""), owner) == ""
 # An invalid/default genesis result must never be extracted for a parameter-only query.
 assert respond(parameterRequest, ClientInfo(parameters: configured,
-  genesis: invalidGenesis())) == parameterAnswer
+  chain: genesisView(invalidGenesis()))) == parameterAnswer
 assert respond(parameterRequest, configuredInfo) == parameterAnswer
 
 ## Build a synthetic complete C(4) with an independently chosen pending roster and empty accumulator.
@@ -881,7 +884,7 @@ proc ticketContext(wire: string, epoch = 600): ClientInfo =
   let captured = configuredGenesis(source, parameters.value)
   assert captured.error == GenesisError.None
   source = "{}" # The derived limit and retained map must survive source replacement.
-  ClientInfo(parameters: parameters, genesis: captured)
+  ClientInfo(parameters: parameters, chain: genesisView(captured))
 
 for population in [6, 9, 12]:
   # Active population stays six: pending sizes independently produce exact and rounded-up limits.
@@ -893,7 +896,7 @@ for population in [6, 9, 12]:
       "\"basic_piece_len\":0", "\"basic_piece_len\":6").replace("\"segment_piece_count\":0",
           "\"segment_piece_count\":684").replace(
       "\"tickets_attempts_number\":0", "\"tickets_attempts_number\":" & $expected)
-    assert uint64(owner.genesis.value.ticketAttempts) == uint64(expected)
+    assert uint64(owner.chain.bestBlock.value.ticketAttempts) == uint64(expected)
     assert respond(parameterRequest, owner) == answer
     assert respond("[" & parameterRequest & "," & parameterRequest & "]", owner) ==
       "[" & answer & "," & answer & "]"
@@ -904,12 +907,12 @@ for malformed in ["", "09", completeTickets[0..^3], completeTickets & "00",
     completeTickets[0..^3] & "01", repeat("00", 1024 * 1024 + 1)]:
   # Missing fields, bad tags/populations/accumulators, trailing bytes and resource limits preserve zero.
   let owner = ticketContext(malformed)
-  assert uint64(owner.genesis.value.ticketAttempts) == 0
+  assert uint64(owner.chain.bestBlock.value.ticketAttempts) == 0
   assert respond(parameterRequest, owner) == parameterAnswer.replace("\"val_count\":0",
       "\"val_count\":6").replace("\"basic_piece_len\":0", "\"basic_piece_len\":6").replace(
           "\"segment_piece_count\":0", "\"segment_piece_count\":684")
-assert uint64(ticketContext(ticketChapter(9, 4096), 4096).genesis.value.ticketAttempts) == 911
-assert uint64(ticketContext(ticketChapter(9, 4097), 4097).genesis.value.ticketAttempts) == 0
+assert uint64(ticketContext(ticketChapter(9, 4096), 4096).chain.bestBlock.value.ticketAttempts) == 911
+assert uint64(ticketContext(ticketChapter(9, 4097), 4097).chain.bestBlock.value.ticketAttempts) == 0
 
 ## Construct large active-roster fixtures with independent one/two-byte JAM count encoding.
 proc erasureContext(population: int): ClientInfo =
@@ -924,15 +927,15 @@ proc erasureContext(population: int): ClientInfo =
   let captured = configuredGenesis(source, parameters.value)
   assert captured.error == GenesisError.None
   source = "{}" # Cached geometry must outlive source storage.
-  ClientInfo(parameters: parameters, genesis: captured)
+  ClientInfo(parameters: parameters, chain: genesisView(captured))
 
 for sample in [(6, 6, 684), (9, 8, 513), (12, 8, 513), (15, 12, 342),
     (339, 228, 18), (510, 342, 12), (681, 456, 9), (1020, 456, 9), (1023, 684, 6)]:
   # Independent expected pairs cover minimum/maximum populations and divisor-selection boundaries.
   let (population, bytesPerPiece, piecesPerSegment) = sample
   let owner = erasureContext(population)
-  assert uint64(owner.genesis.value.basicPieceLength) == uint64(bytesPerPiece)
-  assert uint64(owner.genesis.value.segmentPieces) == uint64(piecesPerSegment)
+  assert uint64(owner.chain.bestBlock.value.basicPieceLength) == uint64(bytesPerPiece)
+  assert uint64(owner.chain.bestBlock.value.segmentPieces) == uint64(piecesPerSegment)
   assert bytesPerPiece * piecesPerSegment == 4104
   let answer = parameterAnswer.replace("\"core_count\":4", "\"core_count\":341").replace(
     "\"val_count\":0", "\"val_count\":" & $population).replace(
@@ -942,5 +945,46 @@ for sample in [(6, 6, 684), (9, 8, 513), (12, 8, 513), (15, 12, 342),
   assert respond("[" & parameterRequest & "," & parameterRequest & "]", owner) ==
     "[" & answer & "," & answer & "]"
   assert respond(parameterRequest.replace(",\"id\":7", ""), owner) == ""
+
+# Provider lookup distinguishes empty, known and unknown identities without implicit head fallback.
+let emptyChain = default(ChainView)
+let selectedHash = capturedGenesis.value.blockHash
+var unknownBytes = array[32, byte](selectedHash)
+unknownBytes[0] = unknownBytes[0] xor 1
+let unknownHash = BlockHash(unknownBytes)
+assert emptyChain.bestBlock.error == GenesisError.Unavailable
+assert emptyChain.blockAt(selectedHash).error == GenesisError.Unavailable
+assert genesisView(invalidGenesis()).bestBlock.error == GenesisError.Unavailable
+assert withGenesis.chain.blockAt(selectedHash).error == GenesisError.None
+assert withGenesis.chain.blockAt(unknownHash).error == GenesisError.Unavailable
+assert withGenesis.chain.parentOf(selectedHash).error == GenesisError.Unavailable
+assert withGenesis.chain.parentOf(unknownHash).error == GenesisError.Unavailable
+assert emptyChain.reportAt(reportIdentity, ByteLimit(32768)).error == ReportReadError.Uninitialized
+assert reportOwner.chain.reportAt(reportIdentity, ByteLimit(32768)).error == ReportReadError.None
+assert reportOwner.chain.reportAt(reportIdentity, ByteLimit(1)).error ==
+    ReportReadError.LimitExceeded
+
+## Return a selected owner after its transient provider and input handles have retired.
+proc retainedProviderBlock(): GenesisResult =
+  var source = configuredGenesis(serviceText, genesisParameters.value)
+  var chain = genesisView(source)
+  let selected = chain.blockAt(source.value.blockHash)
+  source = unavailableGenesis()
+  chain = default(ChainView)
+  selected
+let retainedProvider = retainedProviderBlock()
+assert retainedProvider.error == GenesisError.None
+assert array[32, byte](retainedProvider.value.stateRoot) ==
+  array[32, byte](serviceInfo.chain.bestBlock.value.stateRoot)
+
+# A copied request context retains one read view even when another context is replaced.
+var changingInfo = withGenesis
+let pinnedInfo = changingInfo
+let pinnedAnswer = respond(rootRequest, pinnedInfo)
+changingInfo.chain = default(ChainView)
+assert respond(rootRequest, pinnedInfo) == pinnedAnswer
+assert "\"code\":1" in respond(rootRequest, changingInfo)
+assert respond("[" & rootRequest & "," & rootRequest & "]", pinnedInfo) ==
+  "[" & pinnedAnswer & "," & pinnedAnswer & "]"
 
 echo "rpc ok"

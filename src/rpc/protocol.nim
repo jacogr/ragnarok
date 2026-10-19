@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JSON-RPC 2.0 dispatch for configured chain parameters and immutable genesis/service queries.
+## JSON-RPC 2.0 dispatch for configured parameters and immutable provider-backed chain/service queries.
 ## Bounds: 16 KiB input, 16 levels, 2048 values, 16 requests and 65,535 output bytes; no retained borrows.
 ##
 ## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
@@ -12,7 +12,7 @@
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
-import ../chain/[parameters, genesis, services, statistics, beefy, reports]
+import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]
 import ../state/store
 
@@ -41,7 +41,7 @@ type
     role*: string
     port*: uint16
     occupiedBytes*, reservedBytes*: int
-    genesis*: GenesisResult # Immutable configured genesis; no block-import or finality claim.
+    chain*: ChainView # Immutable request view; the initial adapter retains configured genesis.
     parameters*: ParameterResult # Optional immutable startup configuration; never read from disk per request.
 
 # JSON quoting preserves UTF-8 while escaping ASCII controls and delimiters.
@@ -278,6 +278,18 @@ proc configuredParameters*(text: string): ParameterResult =
   if not found: return default(ParameterResult)
   decodeParametersHex(encoded)
 
+## Resolve a canonical wire identity through the provider; wire validation never leaks into chain code.
+proc resolveBlock(chain: ChainView, text: string, parent = false): GenesisResult =
+  var bytes: seq[byte] = @[]
+  if not decodeBlob(text, 32, bytes) or bytes.len != 32:
+    return unavailableGenesis() # Defensive rejection keeps the typed lookup independent of caller validation.
+  var identity = default(array[32, byte])
+  for index in 0..<32:
+    identity[index] = bytes[index] # Exact width was established before copying.
+  if parent:
+    return chain.parentOf(BlockHash(identity)) # Parent descriptors require retained provider evidence.
+  chain.blockAt(BlockHash(identity))
+
 # Map the immutable GP fetch tuple to JIP-2 V1 without machine signed/float conversions.
 # Captured C(8)/C(4) supply population, erasure geometry and ticket attempts; missing state uses zero.
 proc parameterObject(parameters: Parameters, genesis: GenesisResult): string =
@@ -319,8 +331,8 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"connectedPeers\":" & $info.peers)
   result.add(",\"memory\":{\"occupiedBytes\":" & $info.occupiedBytes)
   result.add(",\"reservedBytes\":" & $info.reservedBytes & "}")
-  result.add(",\"chain\":null,\"bestBlock\":" & (if info.genesis.error ==
-      GenesisError.None: descriptor(info.genesis.value) else: "null") & ",\"finalizedBlock\":null")
+  result.add(",\"chain\":null,\"bestBlock\":" & (if info.chain.bestBlock.error ==
+      GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
   result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"]")
   result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
@@ -373,32 +385,32 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     var count = 0'u32
     if not serviceNumber(values[argument + 2], count) or count == 0 or count > 128:
       return error(id, -32602, "Expected count from 1 to 128") # Bound work and JSON growth before lookup.
-    if info.genesis.error == GenesisError.None:
+    let selected = resolveBlock(info.chain, hash)
+    if selected.error == GenesisError.None:
       # Each page is bound to the requested immutable block, never a moving implicit head.
-      let view = info.genesis.value
-      if hash == base64.encode(array[32, byte](view.blockHash)):
-        var start = 0
-        if not fromStart:
-          # Exact cursor bytes locate an exclusive upper bound without scanning prior keys.
-          var key = default(array[31, byte])
-          for index in 0..<31: key[index] = keyBytes[index] # Decoding proved the complete extent.
-          start = int(view.keyAfter(StateKey(key)))
-        let finish = start + min(int(count), view.keyCount - start)
-        var keys = "["
-        var last = "null"
-        let budget = max(0, allowance - id.len - 256)
-        for index in start..<finish:
-          # Encode fixed key copies only; enumeration never reads or copies state values.
-          let encoded = quote(base64.encode(array[31, byte](view.keyAt(StateKeyIndex(index)))))
-          if keys.len + encoded.len + 2 > budget:
-            return error(id, 0, ReplyBudgetError) # No misleading partial page or skipped continuation.
-          if index > start: keys.add(',') # Separate keys after the first item.
-          keys.add(encoded)
-          last = encoded
-        keys.add(']')
-        if finish == view.keyCount: last = "null" # No continuation when the end was reached exactly.
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":{\"keys\":" & keys &
-            ",\"next\":" & last & "}}"
+      let view = selected.value
+      var start = 0
+      if not fromStart:
+        # Exact cursor bytes locate an exclusive upper bound without scanning prior keys.
+        var key = default(array[31, byte])
+        for index in 0..<31: key[index] = keyBytes[index] # Decoding proved the complete extent.
+        start = int(view.keyAfter(StateKey(key)))
+      let finish = start + min(int(count), view.keyCount - start)
+      var keys = "["
+      var last = "null"
+      let budget = max(0, allowance - id.len - 256)
+      for index in start..<finish:
+        # Encode fixed key copies only; enumeration never reads or copies state values.
+        let encoded = quote(base64.encode(array[31, byte](view.keyAt(StateKeyIndex(index)))))
+        if keys.len + encoded.len + 2 > budget:
+          return error(id, 0, ReplyBudgetError) # No misleading partial page or skipped continuation.
+        if index > start: keys.add(',') # Separate keys after the first item.
+        keys.add(encoded)
+        last = encoded
+      keys.add(']')
+      if finish == view.keyCount: last = "null" # No continuation when the end was reached exactly.
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":{\"keys\":" & keys &
+          ",\"next\":" & last & "}}"
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
         quote(hash) & "}}"
   if methodName == "ragnarok_stateValue":
@@ -413,23 +425,23 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     var keyBytes: seq[byte] = @[]
     if not decodeBlob(values[argument + 1].text, 31, keyBytes) or keyBytes.len != 31:
       return error(id, -32602, "Expected padded Base64 31-byte state key") # Full serialized state keys, not service storage keys.
-    if info.genesis.error == GenesisError.None:
+    let selected = resolveBlock(info.chain, hash)
+    if selected.error == GenesisError.None:
       # Resolve the block before distinguishing missing and present entries.
-      let view = info.genesis.value
-      if hash == base64.encode(array[32, byte](view.blockHash)):
-        var key = default(array[31, byte])
-        for index in 0..<31: key[index] = keyBytes[index] # Exact key width was proved above.
-        let found = view.lookup(StateKey(key))
-        if found.error == StateStoreError.MissingKey:
-          return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
-              ",\"result\":null}" # Missing differs from a present empty blob.
-        if found.error != StateStoreError.None:
-          return error(id, 0, "Unreadable state value") # Failed owners never expose bytes.
-        let budget = min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3))
-        if found.value.byteLength > budget:
-          return error(id, 0, ReplyBudgetError) # Reject before copying or Base64 allocation.
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-            found.value.bytes)) & "}"
+      let view = selected.value
+      var key = default(array[31, byte])
+      for index in 0..<31: key[index] = keyBytes[index] # Exact key width was proved above.
+      let found = view.lookup(StateKey(key))
+      if found.error == StateStoreError.MissingKey:
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
+            ",\"result\":null}" # Missing differs from a present empty blob.
+      if found.error != StateStoreError.None:
+        return error(id, 0, "Unreadable state value") # Failed owners never expose bytes.
+      let budget = min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3))
+      if found.value.byteLength > budget:
+        return error(id, 0, ReplyBudgetError) # Reject before copying or Base64 allocation.
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+          found.value.bytes)) & "}"
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
         quote(hash) & "}}"
   if methodName == "workReport":
@@ -439,13 +451,13 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
       return error(id, -32602, "Expected one report hash") # Only one positional scalar is accepted.
     let hash = values[argument].text
     if not validHash(hash): return error(id, -32602, "Expected padded Base64 hash") # Check before decoding.
-    if info.genesis.error == GenesisError.None:
+    if info.chain.bestBlock.error == GenesisError.None:
       # Search the immutable configured assignments under the shared response budget.
       let raw = base64.decode(hash)
       var identity = default(array[32, byte])
       for index in 0..<32: identity[index] = byte(raw[index]) # Canonical hash validation proved the extent.
       let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
-      let found = reports.workReport(info.genesis.value, WorkReportHash(identity), budget)
+      let found = info.chain.reportAt(WorkReportHash(identity), budget)
       if found.error == ReportReadError.None:
         # Retain the report owner while copying its complete canonical bytes for Base64.
         let metadata = ownedReportInfo(found.value)
@@ -484,12 +496,12 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
       if not serviceNumber(values[first + 3], length):
         return error(id, -32602, "Expected uint32 preimage length") # Parse without narrowing or allocation based on length.
     let hash = values[first].text
-    if info.genesis.error != GenesisError.None or hash != base64.encode(array[32, byte](
-        info.genesis.value.blockHash)):
+    let selected = resolveBlock(info.chain, hash)
+    if selected.error != GenesisError.None:
       return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
           ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" & quote(hash) &
           "}}" # Unknown blocks cannot yield a false absence verdict.
-    let view = info.genesis.value
+    let view = selected.value
     if methodName == "serviceRequest":
       var identity = default(array[32, byte])
       for j in 0..<32: identity[j] = key[j] # Canonical hash width was validated above.
@@ -543,66 +555,70 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     let hash = values[argument].text
     if not validHash(hash): return error(id, -32602,
         "Expected padded Base64 hash") # Reject malformed identities before lookup.
-    if methodName != "parent" and info.genesis.error == GenesisError.None:
-      let view = info.genesis.value
-      if hash == base64.encode(array[32, byte](view.blockHash)):
-        if methodName == "ragnarok_header":
-          # Retain the canonical sealed header; its bytes are exactly those hashed at genesis capture.
-          let owner = view.header
-          let metadata = headerInfo(owner)
-          if metadata.error != HeaderError.None:
-            return error(id, 0, "Invalid header owner") # Failed owners cannot supply lengths or bytes.
-          let budget = min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3))
-          if metadata.value.consumed > budget:
-            return error(id, 0, ReplyBudgetError) # Check complete size before allocation, copying or Base64 encoding.
-          var bytes = newSeq[byte](metadata.value.consumed)
-          if encodeOwnedHeader(owner, bytes).error != HeaderError.None:
-            return error(id, 0, "Unreadable header") # Never publish partial encodings.
-          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-              bytes)) & "}"
-        if methodName == "listServices":
-          # Retained scalar IDs are already sorted; never rescan or decode the map per request.
-          var ids = "["
-          let budget = max(0, allowance - id.len - 256)
-          for index in 0..<view.serviceCount:
-            let item = $uint32(view.serviceAt(ServiceListIndex(index)))
-            if ids.len + item.len + 2 > budget:
-              return error(id, 0, ReplyBudgetError) # Reserve comma/closing bracket; never return a partial list.
-            if index > 0: ids.add(',') # The first member needs no separator.
-            ids.add(item)
-          ids.add(']')
-          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & ids & "}"
-        if methodName == "beefyRoot":
-          # The fixed commitment comes from the complete matching history, not a guessed empty root.
-          let found = beefy.beefyRoot(view)
-          if found.error != BeefyReadError.None:
-            return error(id, 0, "Invalid or unavailable BEEFY history") # No root is exposed on failure.
-          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-            array[32, byte](found.value))) & "}"
-        if methodName == "statistics":
-          # Use the same raw-value and aggregate reply ceilings as service blobs.
-          let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
-          let found = statistics.statistics(view, budget)
-          if found.error == StatisticsReadError.LimitExceeded:
-            return error(id, 0, ReplyBudgetError) # A complete value must fit; no truncation.
-          if found.error != StatisticsReadError.None:
-            return error(id, 0, "Invalid or unavailable activity statistics") # Missing chapters are not empty statistics.
-          return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-              found.value.bytes)) & "}"
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(array[32,
-            byte](view.stateRoot))) & "}"
+    let selected = resolveBlock(info.chain, hash, methodName == "parent")
+    if selected.error == GenesisError.None:
+      let view = selected.value
+      if methodName == "parent":
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(view) &
+            "}" # Only provider-backed parents succeed.
+      if methodName == "ragnarok_header":
+        # Retain the canonical sealed header; its bytes are exactly those hashed at genesis capture.
+        let owner = view.header
+        let metadata = headerInfo(owner)
+        if metadata.error != HeaderError.None:
+          return error(id, 0, "Invalid header owner") # Failed owners cannot supply lengths or bytes.
+        let budget = min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3))
+        if metadata.value.consumed > budget:
+          return error(id, 0, ReplyBudgetError) # Check complete size before allocation, copying or Base64 encoding.
+        var bytes = newSeq[byte](metadata.value.consumed)
+        if encodeOwnedHeader(owner, bytes).error != HeaderError.None:
+          return error(id, 0, "Unreadable header") # Never publish partial encodings.
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+            bytes)) & "}"
+      if methodName == "listServices":
+        # Retained scalar IDs are already sorted; never rescan or decode the map per request.
+        var ids = "["
+        let budget = max(0, allowance - id.len - 256)
+        for index in 0..<view.serviceCount:
+          let item = $uint32(view.serviceAt(ServiceListIndex(index)))
+          if ids.len + item.len + 2 > budget:
+            return error(id, 0, ReplyBudgetError) # Reserve comma/closing bracket; never return a partial list.
+          if index > 0: ids.add(',') # The first member needs no separator.
+          ids.add(item)
+        ids.add(']')
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & ids & "}"
+      if methodName == "beefyRoot":
+        # The fixed commitment comes from the complete matching history, not a guessed empty root.
+        let found = beefy.beefyRoot(view)
+        if found.error != BeefyReadError.None:
+          return error(id, 0, "Invalid or unavailable BEEFY history") # No root is exposed on failure.
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+          array[32, byte](found.value))) & "}"
+      if methodName == "statistics":
+        # Use the same raw-value and aggregate reply ceilings as service blobs.
+        let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
+        let found = statistics.statistics(view, budget)
+        if found.error == StatisticsReadError.LimitExceeded:
+          return error(id, 0, ReplyBudgetError) # A complete value must fit; no truncation.
+        if found.error != StatisticsReadError.None:
+          return error(id, 0, "Invalid or unavailable activity statistics") # Missing chapters are not empty statistics.
+        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
+            found.value.bytes)) & "}"
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(array[32,
+          byte](view.stateRoot))) & "}"
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
         quote(hash) & "}}" # No parent or unknown block data exists in this genesis-only view.
   if methodName in ["ragnarok_clientInfo", "parameters", "bestBlock"]:
     if parameters >= 0 and values[parameters].next != parameters + 1: return error(id, -32602, "Expected no parameters")
     if methodName == "bestBlock":
-      if info.genesis.error != GenesisError.None: return error(id, 0,
+      if info.chain.bestBlock.error != GenesisError.None: return error(id, 0,
           "Genesis chain view unavailable") # No configured head exists.
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(info.genesis.value) & "}"
+      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(
+          info.chain.bestBlock.value) & "}"
     if methodName == "parameters":
       if not info.parameters.ok: return error(id, 0, "Chain parameters unavailable; configure --chain")
       return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & parameterObject(
-          info.parameters.value, info.genesis) & "}"
+          info.parameters.value, info.chain.bestBlock) & "}"
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info) & "}"
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 

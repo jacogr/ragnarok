@@ -9,7 +9,7 @@
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol]
-import ../chain/[parameters, genesis]
+import ../chain/[parameters, genesis, provider]
 
 const MaxConnections* = 8
 
@@ -28,7 +28,7 @@ type
     started: int64
     port: uint16
     role: string
-    genesis: GenesisResult      # Retained immutable startup chain view.
+    chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
     parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
 
 # POSIX APIs borrow bounded stack values only for their synchronous nonblocking syscall.
@@ -71,7 +71,7 @@ proc `=destroy`*(server: Server) =
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
   `=destroy`(server.connections)
   `=destroy`(server.role)
-  `=destroy`(server.genesis) # The retained state map is an ARC owner too.
+  `=destroy`(server.chain) # The retained state map is an ARC owner too.
 
 # Retire one slot exactly once and release queued data; close is not retried after EINTR.
 proc close(slot: var Connection) =
@@ -138,7 +138,7 @@ proc start*(server: var Server, port: uint16, role: string,
   server.port = port
   server.role = role
   server.parameters = parameters
-  server.genesis = genesis
+  server.chain = genesisView(genesis)
   true
 
 # Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
@@ -255,7 +255,7 @@ proc tick*(server: var Server, peers: uint32) =
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
-      port: server.port, parameters: server.parameters, genesis: server.genesis,
+      port: server.port, parameters: server.parameters, chain: server.chain,
       occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.
     if not slot.opened:

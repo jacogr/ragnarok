@@ -21,6 +21,7 @@
   "src/chain/beefy.nim",
   "src/chain/genesis.nim",
   "src/chain/parameters.nim",
+  "src/chain/provider.nim",
   "src/chain/reports.nim",
   "src/chain/services.nim",
   "src/chain/statistics.nim",
