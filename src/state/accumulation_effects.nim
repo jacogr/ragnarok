@@ -31,10 +31,18 @@ type
       ServiceExists,         ## A registrar-selected reserved service ID is already occupied.
       TransferGasLow         ## Offered deferred gas is below the current destination minimum.
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
-    Initial,      ## No account mutation occurred on this retained lineage.
-    SelfMetadata, ## Only upgrade changed the invoking service's metadata.
-    SelfEntries,  ## Bounded unique self storage/request keys accompany selected metadata.
-    Unsupported   ## At least one broader mutation requires later publication support.
+    Initial,         ## No account mutation occurred on this retained lineage.
+    SelfMetadata,    ## Only upgrade changed the invoking service's metadata.
+    SelfEntries,     ## Bounded unique self storage/request keys accompany selected metadata.
+    CreatedAccounts, ## Bounded creation proofs accompany supported self metadata/entries.
+    Unsupported      ## At least one broader mutation requires later publication support.
+  AccumulationCreatedAccountIndex* = distinct uint64 ## A created-account ordinal cannot substitute a service identity.
+  AccumulationCreatedAccount* = object ## Copied creation facts remain tied to their producing effect context for final-value extraction.
+    service*: ServiceIndex ## Actual reserved/automatic ID chosen by a genuine successful new call.
+    requestKey*: StateKey  ## Canonical empty code-request key captured by that exact creation.
+  # Immutable creation membership contains fixed facts, never copied account values or parent effect versions.
+  CreatedAccountsData = ref object
+    values: seq[AccumulationCreatedAccount]
   AccumulationAccountWriteIndex* = distinct uint64 ## A traced key ordinal cannot substitute a service identity or raw storage key.
   # Only self operation implementations construct this immutable unique-key proof; values stay in the account snapshot.
   AccountKeysData = ref object
@@ -83,6 +91,8 @@ type
     accountScope: AccumulationAccountScope
     accountKeys: AccountKeysData
     accountKeyLimit: ElementLimit
+    created: CreatedAccountsData
+    createdLimit: ElementLimit
     nextService: ServiceIndex
     staging: ValidatorStateSnapshot
     queues: AuthorizationSnapshot
@@ -139,11 +149,13 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
   if not sameStateSnapshot(previous.accounts, accounts):
     # Only the upgrade operation can certify a self-only metadata successor; unsupported ancestry is sticky.
     if selfMetadata and scope != AccumulationAccountScope.Unsupported:
-      if scope != AccumulationAccountScope.SelfEntries:
+      if scope notin {AccumulationAccountScope.SelfEntries,
+          AccumulationAccountScope.CreatedAccounts}:
         scope = AccumulationAccountScope.SelfMetadata # Upgrade preserves any existing bounded self-key proof.
     else:
       scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
-  EffectData(accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
+  EffectData(created: previous.created, createdLimit: previous.createdLimit,
+    accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
     accountScope: scope, initial: previous.initial, accounts: accounts,
     nextService: previous.nextService,
     staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
@@ -200,8 +212,27 @@ proc selfAccountData(previous: EffectData, accounts: StateStoreSnapshot,
   result = successorData(previous, accounts)
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.accountKeyLimit) != 0:
-    result.accountScope = AccumulationAccountScope.SelfEntries # Only the three audited self writers use this private constructor.
+    result.accountScope = if previous.accountScope == AccumulationAccountScope.CreatedAccounts:
+      AccumulationAccountScope.CreatedAccounts else: AccumulationAccountScope.SelfEntries # Self writers preserve existing child provenance.
     result.accountKeys = keys
+
+# Bound fixed creation provenance before any candidate account map is hashed or published.
+proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestKey: StateKey):
+    AccumulationEffectResult[CreatedAccountsData] =
+  if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
+      previous.createdLimit) == 0:
+    return AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
+      completed: previous.created) # Disabled tracing never changes an earlier local new-call success.
+  let count = previous.created.values.len
+  if uint64(count) >= uint64(previous.createdLimit) or count >= high(int) div sizeof(AccumulationCreatedAccount):
+    return AccumulationEffectResult[CreatedAccountsData](
+        status: AccumulationEffectError.LimitExceeded) # No partial child/cursor/debit or descriptor allocation.
+  var values = newSeq[AccumulationCreatedAccount](count+1)
+  for index, value in previous.created.values:
+    values[index] = value # Immutable fixed facts are copied without retaining parent effect chains.
+  values[count] = AccumulationCreatedAccount(service: service, requestKey: requestKey)
+  AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
+    completed: CreatedAccountsData(values: values))
 
 proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffectResult[
     InitialAccumulationContext] =
@@ -256,6 +287,32 @@ proc effectAccountWriteKeyAt*(context: AccumulationEffectContext,
   assert data != nil # Successful count proves this retained immutable owner is initialized.
   AccumulationEffectResult[StateKey](status: AccumulationEffectError.None,
     completed: data.accountKeys.keys[int(uint64(index))])
+
+proc effectCreatedAccountCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Count this selected context's genuine creations; unsupported lineages expose no partial membership proof.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized) # A default is not an initialized empty creation set.
+  if data.accountScope == AccumulationAccountScope.Unsupported:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.InvalidState) # Broader account changes cannot masquerade as a complete trace.
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.created.values.len)
+
+proc effectCreatedAccountAt*(context: AccumulationEffectContext,
+    index: AccumulationCreatedAccountIndex):
+    AccumulationEffectResult[AccumulationCreatedAccount] =
+  ## Copy fixed creation facts at a full-width ordinal; obtain values from this same context's effectAccounts only.
+  let count = context.effectCreatedAccountCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationCreatedAccount](
+        status: count.error) # No uninitialized or incomplete proof payload.
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationCreatedAccount](
+        status: AccumulationEffectError.InvalidIndex) # Bound before narrowing.
+  let data = context.data
+  assert data != nil # Successful count established the retained immutable owner.
+  AccumulationEffectResult[AccumulationCreatedAccount](status: AccumulationEffectError.None,
+    completed: data.created.values[int(uint64(index))])
 
 proc effectPrivileges*(context: AccumulationEffectContext): AccumulationEffectResult[
     PrivilegeSnapshot] =
@@ -340,10 +397,11 @@ proc effectsSource*(effects: AccumulationEffects): AccumulationEffectResult[
     completed: data.source)
 
 proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
-    accountWriteKeys = ElementLimit(0)): AccumulationEffectResult[
+    accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(
+        0)): AccumulationEffectResult[
     AccumulationEffects] =
   ## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
-  ## accountWriteKeys explicitly bounds unique self storage/request provenance; zero retains the earlier publication gate.
+  ## accountWriteKeys bounds unique self keys; createdAccounts independently bounds genuine creation facts. Zero retains the earlier gates.
   let initial = contexts.initialContext(AccumulationDimension.Regular)
   if initial.error != AccumulationContextError.None:
     # Only successfully prepared immutable contexts can authorize host state effects.
@@ -352,6 +410,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
+    created: CreatedAccountsData(values: @[]), createdLimit: createdAccounts,
     nextService: initial.value.contextInfo.value.nextService,
     staging: initial.value.contextStaging.value, queues: initial.value.contextQueues.value,
     privileges: initial.value.contextPrivileges.value,
@@ -961,6 +1020,9 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     fail(AccumulationEffectError.BackendFailure) # Fixed canonical request policy is sufficient; failed derivation never changes namespace.
   let parentEntry = serviceMetadataEntry(self, creator, ByteLimit(ServiceMetadataBytes)).value
   let childEntry = serviceMetadataEntry(selected, child, ByteLimit(ServiceMetadataBytes)).value
+  let captured = prepareCreatedAccount(previous, selected, request.value.key)
+  if captured.error != AccumulationEffectError.None:
+    fail(captured.error) # Creation capacity precedes account-map hashing and cursor publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([
     StateWrite(key: parentEntry.key, kind: StateWriteKind.Put, value: parentEntry.value),
@@ -976,6 +1038,10 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
   let candidate = successorData(previous, changed.value)
+  if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
+      previous.createdLimit) != 0:
+    candidate.accountScope = AccumulationAccountScope.CreatedAccounts # Only actual successful new calls can certify foreign additions.
+    candidate.created = captured.value
   candidate.nextService = next
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationServiceChange](status: AccumulationEffectError.None,

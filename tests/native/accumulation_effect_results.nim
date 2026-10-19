@@ -13,8 +13,8 @@ import ../support/accumulation_effect_context
 
 # Absent-yield and absent-request extraction need a genuinely prepared initialized owner as its negative control.
 let pair = if paramStr(1) == "absent" or paramStr(1) ==
-    "request-absent" or paramStr(1) == "account-write-index": prepareAccumulationEffects(
-        preparedEffectContexts()).value
+    "request-absent" or paramStr(1) == "account-write-index" or paramStr(1) ==
+        "created-index": prepareAccumulationEffects(preparedEffectContexts()).value
 else: default(AccumulationEffects) # Other modes intentionally retain no initialized provenance.
 
 # Dynamic origins keep the default/refused extraction checks in the runtime harness rather than static evaluation.
@@ -32,6 +32,12 @@ of "account-write-key": discard context.effectAccountWriteKeyAt(AccumulationAcco
 of "account-write-index": discard pair.effectContext(
     AccumulationDimension.Regular).value.effectAccountWriteKeyAt(AccumulationAccountWriteIndex(high(
     uint64))).value # Initialized empty proofs still reject full-width invalid indices.
+of "created-count": discard context.effectCreatedAccountCount.value # Defaults contain no initialized membership proof.
+of "created-at": discard context.effectCreatedAccountAt(AccumulationCreatedAccountIndex(
+    0)).value # Defaults expose no created-account facts.
+of "created-index": discard pair.effectContext(AccumulationDimension.Regular).value.effectCreatedAccountAt(
+    AccumulationCreatedAccountIndex(high(
+    uint64))).value # A real initialized empty trace still rejects a full-width invalid index.
 of "account-scope": discard context.effectAccountScope.value # A default context cannot fabricate mutation provenance.
 of "accounts": discard context.effectAccounts.value # Default contexts cannot fabricate current accounts.
 of "storage": discard recordAccumulationStorage(pair, [], [], default(Parameters), ByteLimit(

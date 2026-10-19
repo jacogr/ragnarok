@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Merge common-source credits, proven selected self account writes and provisions on a private complete-map fork.
+## Merge common-source credits, selected self changes, created accounts and provisions on a private complete-map fork.
 ## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
@@ -13,7 +13,8 @@ import ./[accumulation_inputs, accumulation_service, accumulation_invocation, ac
 
 type
   AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
-    accounts*: ElementLimit ## Maximum self-metadata records copied for credits or supported selected upgrades.
+    accounts*: ElementLimit ## Maximum invoking metadata records copied for credits or supported selected changes.
+    createdAccounts*: ElementLimit ## Maximum genuine children copied as fixed metadata plus empty request; zero preserves the gate.
     selfWrites*: ElementLimit ## Maximum unique nonmetadata self keys copied across all selected executions; zero preserves the gate.
     selfValueBytes*: ByteLimit ## Aggregate copied final self values; deletions consume a key but no value bytes.
     provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
@@ -30,7 +31,7 @@ type
     DuplicateService,   ## A service occurs more than once across executions and skips.
     InvalidIndex,       ## The plan-owned execution ordinal is outside the retained outcomes.
     StaleState,         ## The publication store no longer retains this plan's exact prior version.
-    UnsupportedAccountEffects, ## Selected changes exceed proven self scope or produce conflicting physical keys.
+    UnsupportedAccountEffects, ## Selected changes exceed proven self/creation scope or conflict on physical keys.
     LimitExceeded,      ## Batch descriptors or account writes exceed local preparation ceilings.
     TerminalFailure,    ## Terminal preparation or provision fulfillment refused; inspect its nested reason.
     StoreFailure        ## The private account-write phase refused; inspect storeError.
@@ -38,7 +39,8 @@ type
     executions*: int      ## Unique services with genuine completed executions.
     skipped*: int         ## Unique services with certified non-executing outcomes.
     completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
-    accountWrites*: int   ## Self-metadata records prepared for incoming credits or selected upgrades.
+    accountWrites*: int   ## Invoking metadata records prepared for credits or supported selected changes.
+    createdAccounts*: int ## New foreign accounts published with the selected creator debit.
     selfWrites*: int      ## Unique nonmetadata keys prepared from selected self-write provenance.
     selfValueBytes*: uint64 ## Copied final self values, excluding fixed metadata and terminal provisions.
     terminal*: AccumulationTerminalProvisionInfo ## Checked invocation slot and selected-provision accounting.
@@ -49,6 +51,7 @@ type
     writes: seq[StateWrite]
     metadataWrites: int
     selfBytes: uint64
+    selfWriteCount, createdCount: int
     terminal: PreparedTerminalAccumulationProvisions
     skipped: int
     completeInputs: bool
@@ -130,7 +133,8 @@ proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[Accumu
   AccumulationBatchResult[AccumulationBatchInfo](status: AccumulationBatchError.None,
     completed: AccumulationBatchInfo(executions: data.terminal.terminalProvisionInfo.value.provisions.contexts,
       skipped: data.skipped, completeInputs: data.completeInputs,
-      accountWrites: data.metadataWrites, selfWrites: data.writes.len-data.metadataWrites,
+      accountWrites: data.metadataWrites, createdAccounts: data.createdCount,
+      selfWrites: data.selfWriteCount,
       selfValueBytes: data.selfBytes, terminal: data.terminal.terminalProvisionInfo.value))
 
 proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisionSourceIndex):
@@ -215,6 +219,7 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   var metadataWrites = 0
   var selfWrites = 0'u64
   var selfBytes = 0'u64
+  var createdCount = 0'u64
   for index, service in services:
     # Skips retain their credited initial map; executions must use one terminal-selected scope/account owner.
     var accounts = service.serviceState.value
@@ -227,6 +232,29 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
           scope.value == AccumulationAccountScope.Unsupported:
         fail(AccumulationBatchError.UnsupportedAccountEffects) # Restored equal bytes cannot erase unsupported mutation ancestry.
       accounts = context.effectAccounts.value
+      let children = context.effectCreatedAccountCount.value
+      if uint64(children) > uint64(limits.createdAccounts)-createdCount:
+        fail(AccumulationBatchError.LimitExceeded) # Bound all fixed child records before any copied payloads.
+      for ordinal in 0..<children:
+        if writes.len > high(int) div sizeof(StateWrite)-2:
+          fail(AccumulationBatchError.LimitExceeded) # Each child adds exactly two fully bounded descriptors.
+        let child = context.effectCreatedAccountAt(AccumulationCreatedAccountIndex(uint64(
+            ordinal))).value
+        let key = chapterServiceKey(StateChapter(255), child.service)
+        if prior.lookup(key).error != StateStoreError.MissingKey:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # Only accounts absent from the common prior belong to the supported new-account set.
+        let record = accounts.lookup(key)
+        let request = accounts.lookup(child.requestKey)
+        if record.error != StateStoreError.None or record.value.byteLength != ServiceMetadataBytes:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # A created child must retain complete metadata.
+        if request.error != StateStoreError.None or request.value.byteLength != 1:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # A captured child request must remain present and empty.
+        let bytes = request.value.bytes
+        if bytes[0] != 0:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # The captured code request remains genuinely empty until fnprovide.
+        writes.add(StateWrite(key: key, kind: StateWriteKind.Put, value: record.value.bytes))
+        writes.add(StateWrite(key: child.requestKey, kind: StateWriteKind.Put, value: bytes))
+        inc createdCount
       let count = context.effectAccountWriteCount.value
       if uint64(count) > uint64(limits.selfWrites)-selfWrites:
         fail(AccumulationBatchError.LimitExceeded) # Bound the entire selected trace before value copying or descriptor growth.
@@ -267,6 +295,7 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   AccumulationBatchResult[PreparedAccumulationBatch](status: AccumulationBatchError.None,
     completed: PreparedAccumulationBatch(data: BatchData(inputs: inputs, prior: prior,
       writes: writes, metadataWrites: metadataWrites, selfBytes: selfBytes,
+      selfWriteCount: int(selfWrites), createdCount: int(createdCount),
       terminal: selected.value, skipped: skipped.len,
       completeInputs: serviceCount == count.value)))
 
@@ -283,7 +312,7 @@ proc prepareCompleteAccumulationBatch*(inputs: PreparedAccumulationInputs,
     slot: HeaderSlot, limits: AccumulationBatchLimits): AccumulationBatchResult[
         PreparedAccumulationBatch] =
   ## Require exactly one real execution or certified skip per prepared input service, from the exact prior and slot.
-  ## Merge incoming credits and proven selected self metadata atomically with provisions; no admitted-round provenance is implied.
+  ## Merge incoming credits and supported selected accounts atomically with provisions; no admitted-round provenance is implied.
   ## Borrowed arrays remain stable during preparation; the plan retains only immutable owners and copied writes.
   prepareBatch(inputs, prior, executions, skipped, slot, limits, true)
 
