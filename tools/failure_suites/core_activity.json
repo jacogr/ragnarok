@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/core_activity_results.nim",
+  "build_name": "core-activity-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "core-activity-default", "diagnostic": "outcome.status == None", "description": "Core activity default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "core-activity-refused", "diagnostic": "outcome.status == None", "description": "Core activity refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "core-activity-info", "diagnostic": "outcome.status == None", "description": "Core activity info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "core-activity-source", "diagnostic": "outcome.status == None", "description": "Core activity source extraction guard"},
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "core-activity-index", "diagnostic": "outcome.status == None", "description": "Core activity index extraction guard"}
+  ]
+}
