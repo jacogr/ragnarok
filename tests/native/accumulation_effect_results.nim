@@ -7,7 +7,7 @@
 import std/cmdline
 import ../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation]
 import ../../src/codec/[state_outputs, state_accounts, bounded, composite, state_privileges,
-    state_authorization, state_safrole]
+    state_authorization, state_safrole, c2_records]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 
@@ -38,6 +38,12 @@ of "designate": discard recordAccumulationDesignate(pair, [], default(
     ValidatorStateConfig)).value # Failed mutation has no successor.
 of "new": discard recordAccumulationNew(pair, default(AccumulationNewService), default(Parameters),
     ServiceProbeLimit(0)).value # Failed creation has no successor or service ID.
+of "transfer": discard context.effectTransferAt(AccumulationTransferIndex(
+    0)).value # Default contexts have no outgoing element.
+of "transfer-prepare": discard prepareAccumulationTransfer(pair, AccumulationTransferDestination(99),
+  TransferBalance(0), Gas(0), default(TransferMemo), default(Parameters)).value # Failed validation has no plan.
+of "transfer-commit": discard commitAccumulationTransfer(default(PreparedAccumulationTransfer),
+  ElementLimit(0)).value # Default plans cannot publish a successor.
 of "upgrade": discard recordAccumulationUpgrade(pair, default(CodeHash), Gas(0), Gas(
     0)).value # Failed upgrade has no successor metadata/effects.
 of "bless": discard recordAccumulationBless(pair, default(PrivilegeState), default(
