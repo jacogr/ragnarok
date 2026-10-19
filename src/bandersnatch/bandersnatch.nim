@@ -49,22 +49,15 @@ proc nativePadding(output: nil pointer): uint32 {.importc: "bs_padding", header:
     raises: [], gcsafe.}
 
 type
-  # Encoded public key, distinct from output hashes and other primitive keys.
-  BsPublicKey* = distinct array[32, byte]
-  # Owned complete output||c||s signature; not a newer Tiny/Thin VRF proof.
-  BsSignature* = distinct array[96, byte]
-  # Owned complete output/Pedersen/membership proof bundle.
-  BsRingProof* = distinct array[784, byte]
-  # Owned compressed ring commitment, bound to its setup domain and SRS.
-  BsRingRoot* = distinct array[144, byte]
-  # Only a successful verification operation exposes this nominal 32-byte VRF output hash.
-  BsOutput* = distinct array[32, byte]
-  # Typed ABI failures preserve default/owner/encoding/verification/backend distinctions.
-  BsError* {.pure.} = enum
+  BsPublicKey* = distinct array[32, byte] ## Encoded public key, distinct from output hashes and other primitive keys.
+  BsSignature* = distinct array[96, byte] ## Owned complete output||c||s signature; not a newer Tiny/Thin VRF proof.
+  BsRingProof* = distinct array[784, byte] ## Owned complete output/Pedersen/membership proof bundle.
+  BsRingRoot* = distinct array[144, byte] ## Owned compressed ring commitment, bound to its setup domain and SRS.
+  BsOutput* = distinct array[32, byte] ## Only a successful verification operation exposes this nominal 32-byte VRF output hash.
+  BsError* {.pure.} = enum ## Typed ABI failures preserve default/owner/encoding/verification/backend distinctions.
     Uninitialized, None, InvalidLength, InvalidEncoding, InvalidOwner, VerificationFailure,
       BackendFailure, BackendPanic
-  # Checked result carries a value only in the successful branch.
-  BsResult*[T] = object
+  BsResult*[T] = object ## Checked result carries a value only in the successful branch.
     case status: BsError
     of None:
       # Completed owned bytes/handles exist only here.
@@ -80,18 +73,17 @@ type
     kind: NativeKind
   # Private acyclic ARC reference; explicit nil storage represents a default owner.
   NativeData = ref NativeState
-  # Opaque scalar owner; aliases retain ARC storage and closing one invalidates all aliases.
-  BsKey* = object
+  BsKey* = object ## Opaque scalar owner; aliases retain ARC storage and closing one invalidates all aliases.
     state: nil NativeData
-  # Opaque immutable ring parameter owner; its domain/SRS must match each root/proof.
-  BsSetup* = object
+  BsSetup* = object ## Opaque immutable ring parameter owner; its domain/SRS must match each root/proof.
     state: nil NativeData
 
-# Read only the outcome; failed/default operations carry no native handle or proof value.
-func error*[T](value: BsResult[T]): BsError = value.status
+func error*[T](value: BsResult[T]): BsError =
+  ## Read only the outcome; failed/default operations carry no native handle or proof value.
+  value.status
 
-# Success contracts protect every fixed value, normalized sequence and opaque native owner.
 func value*[T](value: BsResult[T]): T {.inline, requires: value.status == BsError.None.} =
+  ## Success contracts protect every fixed value, normalized sequence and opaque native owner.
   value.completed
 
 # Release native allocations exactly once, including when the last retained ARC reference leaves scope.
@@ -134,8 +126,8 @@ proc handle(setup: BsSetup): nil pointer {.raises: [], gcsafe.} =
   if state == nil: return nil # A default setup has no native allocation.
   state.handle
 
-# Import exactly one canonical nonzero scalar, not a seed; caller retains responsibility for original secret bytes.
 proc importScalar*(input: openArray[byte]): BsResult[BsKey] {.raises: [], gcsafe.} =
+  ## Import exactly one canonical nonzero scalar, not a seed; caller retains responsibility for original secret bytes.
   var native: nil pointer = nil
   let reason = error(keyNew(data(input), csize_t(input.len), addr native))
   # Native import errors contain no pointer or default key value.
@@ -143,8 +135,8 @@ proc importScalar*(input: openArray[byte]): BsResult[BsKey] {.raises: [], gcsafe
   let state = NativeData(handle: native, kind: SecretKind)
   BsResult[BsKey](status: BsError.None, completed: BsKey(state: state))
 
-# Build immutable trusted-SRS parameters; capacity is bounded before conversion to native size_t.
 proc newSetup*(capacity: int): BsResult[BsSetup] {.raises: [], gcsafe.} =
+  ## Build immutable trusted-SRS parameters; capacity is bounded before conversion to native size_t.
   # Negative, empty and unsupported capacities cannot wrap or change the SRS domain implicitly.
   if capacity < 1 or capacity > 1023: return BsResult[BsSetup](status: BsError.InvalidLength)
   var native: nil pointer = nil
@@ -154,23 +146,23 @@ proc newSetup*(capacity: int): BsResult[BsSetup] {.raises: [], gcsafe.} =
   let state = NativeData(handle: native, kind: SetupKind)
   BsResult[BsSetup](status: BsError.None, completed: BsSetup(state: state))
 
-# Close a retained key once; shared ARC aliases observe the cleared native pointer and fail subsequent operations.
 proc close*(key: BsKey) {.raises: [], gcsafe.} =
+  ## Close a retained key once; shared ARC aliases observe the cleared native pointer and fail subsequent operations.
   # Default/already closed keys contain no allocation to release.
   let state = key.state
   if state == nil or state.handle == nil: return # Defaults and already closed aliases have nothing to release.
   keyFree(state.handle)
   state.handle = nil
-# Close retained setup allocation; no alias may race close with an in-flight operation.
 proc close*(setup: BsSetup) {.raises: [], gcsafe.} =
+  ## Close retained setup allocation; no alias may race close with an in-flight operation.
   # Clearing an absent/already closed retained owner is harmless.
   let state = setup.state
   if state == nil or state.handle == nil: return # Release each shared native setup only once.
   setupFree(state.handle)
   state.handle = nil
 
-# Validate exact canonical public encodings, then retain a fixed independent copy.
 proc importPublicKey*(input: openArray[byte]): BsResult[BsPublicKey] {.raises: [], gcsafe.} =
+  ## Validate exact canonical public encodings, then retain a fixed independent copy.
   let reason = error(nativeValidate(data(input), csize_t(input.len)))
   if reason != BsError.None: return BsResult[BsPublicKey](status: reason)
   var output = default(array[32, byte])
@@ -178,8 +170,8 @@ proc importPublicKey*(input: openArray[byte]): BsResult[BsPublicKey] {.raises: [
   for i in 0..<32: output[i] = input[i]
   BsResult[BsPublicKey](status: BsError.None, completed: BsPublicKey(output))
 
-# Copy a bounded member sequence with the existing explicit invalid-encoding padding policy.
 proc normalizeRing*(input: openArray[byte]): BsResult[seq[byte]] {.raises: [], gcsafe.} =
+  ## Copy a bounded member sequence with the existing explicit invalid-encoding padding policy.
   # Complete encoded members and a bounded count are required before allocating/copying.
   if input.len == 0 or input.len mod 32 != 0 or input.len > 1023*32:
     return BsResult[seq[byte]](status: BsError.InvalidLength)
@@ -199,16 +191,16 @@ proc normalizeRing*(input: openArray[byte]): BsResult[seq[byte]] {.raises: [], g
       else: output[index+i] = padding[i]
   BsResult[seq[byte]](status: BsError.None, completed: output)
 
-# Derive one owned canonical public key from a live opaque scalar.
 proc publicKey*(key: BsKey): BsResult[BsPublicKey] {.raises: [], gcsafe.} =
+  ## Derive one owned canonical public key from a live opaque scalar.
   var output = default(array[32, byte])
   let reason = error(nativePublic(handle(key), addr output[0]))
   # Failed native operations have no public scratch/default value to use.
   if reason != BsError.None: return BsResult[BsPublicKey](status: reason)
   BsResult[BsPublicKey](status: BsError.None, completed: BsPublicKey(output))
 
-# Sign exact raw context and additional bytes separately; output owns the full historical 96-byte signature.
 proc sign*(key: BsKey, context, additional: openArray[byte]): BsResult[BsSignature] {.raises: [], gcsafe.} =
+  ## Sign exact raw context and additional bytes separately; output owns the full historical 96-byte signature.
   var output = default(array[96, byte])
   let reason = error(nativeSign(handle(key), data(context), csize_t(context.len), data(additional),
       csize_t(additional.len), addr output[0]))
@@ -216,9 +208,9 @@ proc sign*(key: BsKey, context, additional: openArray[byte]): BsResult[BsSignatu
   if reason != BsError.None: return BsResult[BsSignature](status: reason)
   BsResult[BsSignature](status: BsError.None, completed: BsSignature(output))
 
-# Verify a complete typed proof; only success carries the extracted 32-byte output hash.
 proc verify*(key: BsPublicKey, signature: BsSignature, context, additional: openArray[
     byte]): BsResult[BsOutput] {.raises: [], gcsafe.} =
+  ## Verify a complete typed proof; only success carries the extracted 32-byte output hash.
   var public = array[32, byte](key)
   var proof = array[96, byte](signature)
   var output = default(array[32, byte])
@@ -228,8 +220,8 @@ proc verify*(key: BsPublicKey, signature: BsSignature, context, additional: open
   if reason != BsError.None: return BsResult[BsOutput](status: reason)
   BsResult[BsOutput](status: BsError.None, completed: BsOutput(output))
 
-# Commit the complete normalized ordered membership under a live setup.
 proc commitRing*(setup: BsSetup, members: openArray[byte]): BsResult[BsRingRoot] {.raises: [], gcsafe.} =
+  ## Commit the complete normalized ordered membership under a live setup.
   let normalized = normalizeRing(members)
   # Ring syntax/setup policy must succeed before selecting member bytes.
   if normalized.error != BsError.None: return BsResult[BsRingRoot](status: normalized.error)
@@ -240,9 +232,9 @@ proc commitRing*(setup: BsSetup, members: openArray[byte]): BsResult[BsRingRoot]
   if reason != BsError.None: return BsResult[BsRingRoot](status: reason)
   BsResult[BsRingRoot](status: BsError.None, completed: BsRingRoot(output))
 
-# Prove membership only for a valid matching index and live secret; Rust borrows all buffers synchronously.
 proc signRing*(setup: BsSetup, key: BsKey, index: int, members, context, additional: openArray[
     byte]): BsResult[BsRingProof] {.raises: [], gcsafe.} =
+  ## Prove membership only for a valid matching index and live secret; Rust borrows all buffers synchronously.
   let normalized = normalizeRing(members)
   # Ring syntax/setup policy must succeed before selecting member bytes.
   if normalized.error != BsError.None: return BsResult[BsRingProof](status: normalized.error)
@@ -256,9 +248,9 @@ proc signRing*(setup: BsSetup, key: BsKey, index: int, members, context, additio
   if reason != BsError.None: return BsResult[BsRingProof](status: reason)
   BsResult[BsRingProof](status: BsError.None, completed: BsRingProof(output))
 
-# Verify root-bound ring proof using explicit domain/SRS parameters; failed proofs expose no output hash.
 proc verifyRing*(setup: BsSetup, root: BsRingRoot, signature: BsRingProof, context,
     additional: openArray[byte]): BsResult[BsOutput] {.raises: [], gcsafe.} =
+  ## Verify root-bound ring proof using explicit domain/SRS parameters; failed proofs expose no output hash.
   var commitment = array[144, byte](root)
   var proof = array[784, byte](signature)
   var output = default(array[32, byte])
@@ -268,8 +260,8 @@ proc verifyRing*(setup: BsSetup, root: BsRingRoot, signature: BsRingProof, conte
   if reason != BsError.None: return BsResult[BsOutput](status: reason)
   BsResult[BsOutput](status: BsError.None, completed: BsOutput(output))
 
-# Import exact ordinary proof width as fixed bytes; verification establishes validity separately.
 proc importSignature*(input: openArray[byte]): BsResult[BsSignature] {.raises: [], gcsafe.} =
+  ## Import exact ordinary proof width as fixed bytes; verification establishes validity separately.
   # Wrong widths fail before constructing a typed default or truncating trailing bytes.
   if input.len != 96: return BsResult[BsSignature](status: BsError.InvalidLength)
   var output = default(array[96, byte])
@@ -277,8 +269,8 @@ proc importSignature*(input: openArray[byte]): BsResult[BsSignature] {.raises: [
   for i in 0..<96: output[i] = input[i]
   BsResult[BsSignature](status: BsError.None, completed: BsSignature(output))
 
-# Import the complete fixed ring-proof bundle without truncation or implied verification.
 proc importRingProof*(input: openArray[byte]): BsResult[BsRingProof] {.raises: [], gcsafe.} =
+  ## Import the complete fixed ring-proof bundle without truncation or implied verification.
   # Wrong widths fail before constructing a typed default or truncating trailing bytes.
   if input.len != 784: return BsResult[BsRingProof](status: BsError.InvalidLength)
   var output = default(array[784, byte])
@@ -286,8 +278,8 @@ proc importRingProof*(input: openArray[byte]): BsResult[BsRingProof] {.raises: [
   for i in 0..<784: output[i] = input[i]
   BsResult[BsRingProof](status: BsError.None, completed: BsRingProof(output))
 
-# Import one fixed commitment encoding; setup/root validity remains a verification responsibility.
 proc importRingRoot*(input: openArray[byte]): BsResult[BsRingRoot] {.raises: [], gcsafe.} =
+  ## Import one fixed commitment encoding; setup/root validity remains a verification responsibility.
   # Wrong widths fail before constructing a typed default or truncating trailing bytes.
   if input.len != 144: return BsResult[BsRingRoot](status: BsError.InvalidLength)
   var output = default(array[144, byte])
