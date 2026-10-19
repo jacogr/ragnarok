@@ -190,6 +190,19 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                                           params=dict(subscription=value_id, result={**expected_head, 'value': stored_value}))
                     send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceValue', params=[value_id], id=70)))
                     assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=70, result=True)
+                assert 'subscribeServicePreimage' in result['result']['rpc']['methods']
+                preimage_hash = expected_genesis['preimage_hash'] if service_queries else 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServicePreimage', params=[42, preimage_hash, False], id=71)))
+                preimage_subscription = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert preimage_subscription['error']['code'] == 0 # Missing chain cannot imply missing preimage.
+                else:
+                    preimage_id = 5 if service_queries else 4
+                    assert preimage_subscription == dict(jsonrpc='2.0', id=71, result=preimage_id)
+                    expected_preimage = expected_genesis['preimage'] if service_queries else None
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', method='subscribeServicePreimage', params=dict(subscription=preimage_id, result={**expected_head, 'value': expected_preimage}))
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServicePreimage', params=[preimage_id], id=72)))
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=72, result=True) # Cancellation releases the matching family only.
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])

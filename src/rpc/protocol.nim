@@ -41,13 +41,14 @@ type
   ## Connection-local subscription identity; zero is reserved for an unused fixed table entry.
   SubscriptionId = distinct uint32
   ## Supported chain subscriptions share capacity and IDs, but use their own cancellation method.
-  SubscriptionKind {.pure.} = enum BestBlock, Statistics, ServiceData, ServiceValue
+  SubscriptionKind {.pure.} = enum BestBlock, Statistics, ServiceData, ServiceValue, ServicePreimage
   ## One active subscription; zero identity marks a vacant entry regardless of its default kind.
   Subscription = object
     identity: SubscriptionId
     kind: SubscriptionKind
-    service: ServiceIndex # Nominal account selector, used by service subscription families.
-    key: seq[byte]        # Private immutable storage key, bounded to 4096 bytes; empty for other families.
+    service: ServiceIndex     # Nominal account selector, used by service subscription families.
+    hash: ServicePreimageHash # Fixed nominal preimage identity; unused for other families.
+    key: seq[byte]            # Private immutable storage key, bounded to 4096 bytes; empty for other families.
   ## One owned notification, kept separately from the transport's possibly partly written frame.
   SubscriptionUpdate = object
     identity: SubscriptionId
@@ -350,7 +351,8 @@ proc error(id: string, code: int, message: string): string =
 proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure: string): string =
   let methodName = if kind == SubscriptionKind.BestBlock: "subscribeBestBlock"
     elif kind == SubscriptionKind.Statistics: "subscribeStatistics"
-    elif kind == SubscriptionKind.ServiceData: "subscribeServiceData" else: "subscribeServiceValue"
+    elif kind == SubscriptionKind.ServiceData: "subscribeServiceData" elif kind ==
+        SubscriptionKind.ServiceValue: "subscribeServiceValue" else: "subscribeServicePreimage"
   let payload = if failure.len == 0: "\"result\":" & value else: "\"error\":" & quote(failure)
   "{\"jsonrpc\":\"2.0\",\"method\":" & quote(methodName) & ",\"params\":{\"subscription\":" &
     $uint32(identity) & "," & payload & "}}"
@@ -363,14 +365,17 @@ proc statisticsUpdate(head: BlockSnapshot): string =
   let blockInfo = descriptor(head)
   blockInfo[0..^2] & ",\"value\":" & quote(base64.encode(found.value.bytes)) & "}"
 
-## Encode a validated account or bounded storage value; missing is null, while present empty remains a Blob.
+## Encode a validated account, storage value or hash-verified preimage; missing is null, while present empty remains a Blob.
 ## The private key is borrowed only for the synchronous read; no state map or value owner is retained.
 proc serviceUpdate(head: BlockSnapshot, service: ServiceIndex, kind: SubscriptionKind,
-    key: openArray[byte]): string =
+    key: openArray[byte], hash: ServicePreimageHash): string =
   let found = if kind == SubscriptionKind.ServiceValue:
     services.serviceValue(head, service, key, ByteLimit(MaxBlobReplyBytes))
+    elif kind == SubscriptionKind.ServicePreimage:
+      services.servicePreimage(head, service, hash, ByteLimit(
+          MaxBlobReplyBytes)) # Verify bounded bytes against their identity.
     else: services.serviceData(head, service, ByteLimit(
-        MaxBlobReplyBytes)) # Both readers validate account metadata.
+        MaxBlobReplyBytes))   # All readers validate account metadata.
   var value = "null"
   if found.error == ServiceReadError.None:
     value = quote(base64.encode(found.value.bytes)) # Exact bytes use the existing query validators and size ceiling.
@@ -411,13 +416,15 @@ proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): boo
   for index, item in session.active:
     if uint32(item.identity) != 0:
       let value = if item.kind == SubscriptionKind.Statistics: activity
-        elif item.kind in [SubscriptionKind.ServiceData, SubscriptionKind.ServiceValue]:
-          serviceUpdate(head.value, item.service, item.kind, item.key)
+        elif item.kind in [SubscriptionKind.ServiceData, SubscriptionKind.ServiceValue,
+            SubscriptionKind.ServicePreimage]:
+          serviceUpdate(head.value, item.service, item.kind, item.key, item.hash)
         else: blockInfo # Account selectors are independent; each bounded subscription reads its own service.
       failed[index] = value.len == 0
       let failure = if not failed[index]: ""
         elif item.kind == SubscriptionKind.ServiceData: "Invalid or unavailable service data"
         elif item.kind == SubscriptionKind.ServiceValue: "Invalid, unavailable or oversized service value"
+        elif item.kind == SubscriptionKind.ServicePreimage: "Invalid, unavailable or oversized service preimage"
         else: "Invalid, unavailable or oversized activity statistics"
       messages[index] = updateText(item.identity, item.kind, value, failure)
       if messages[index].len > MaxSubscriptionQueueBytes - bytes:
@@ -452,23 +459,35 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
       "unsubscribeStatistics"]: SubscriptionKind.Statistics
     elif methodName in ["subscribeServiceData", "unsubscribeServiceData"]: SubscriptionKind.ServiceData
     elif methodName in ["subscribeServiceValue", "unsubscribeServiceValue"]: SubscriptionKind.ServiceValue
+    elif methodName in ["subscribeServicePreimage",
+        "unsubscribeServicePreimage"]: SubscriptionKind.ServicePreimage
     else: SubscriptionKind.BestBlock # Dispatch admits only the explicitly supported method families.
   if methodName in ["subscribeBestBlock", "subscribeStatistics", "subscribeServiceData",
-      "subscribeServiceValue"]:
+      "subscribeServiceValue", "subscribeServicePreimage"]:
     var service = 0'u32
+    var hash = default(ServicePreimageHash) # Only preimage selectors populate this fixed identity.
     var key: seq[byte] = @[] # Initialized for all kinds, and populated only after bounded canonical decoding.
     if kind != SubscriptionKind.BestBlock:
-      let count = if kind == SubscriptionKind.ServiceValue: 3
+      let count = if kind in [SubscriptionKind.ServiceValue, SubscriptionKind.ServicePreimage]: 3
         elif kind == SubscriptionKind.ServiceData: 2 else: 1
       if parameters < 0 or values[parameters].next != parameters + count + 1:
         return error(id, -32602, "Expected positional subscription arguments") # All selectors and flags are explicit.
-      if kind in [SubscriptionKind.ServiceData, SubscriptionKind.ServiceValue] and
-          not serviceNumber(values[parameters + 1], service):
-        return error(id, -32602, "Expected uint32 service ID") # Reject narrowing, floats and nonnumeric selectors.
+      if kind in [SubscriptionKind.ServiceData, SubscriptionKind.ServiceValue,
+          SubscriptionKind.ServicePreimage]:
+        if not serviceNumber(values[parameters + 1], service):
+          return error(id, -32602, "Expected uint32 service ID") # Reject narrowing, floats and nonnumeric selectors.
       if kind == SubscriptionKind.ServiceValue:
         if values[parameters + 2].kind != stringValue or not decodeBlob(values[parameters + 2].text,
             MaxServiceKeyBytes, key):
           return error(id, -32602, "Expected padded Base64 key up to 4096 bytes") # Bound decoding before retaining caller-controlled bytes.
+      if kind == SubscriptionKind.ServicePreimage:
+        if values[parameters + 2].kind != stringValue or not validHash(values[parameters + 2].text):
+          return error(id, -32602, "Expected padded Base64 preimage hash") # Validate canonical width before decoding.
+        let raw = base64.decode(values[parameters + 2].text)
+        var identity = default(array[32, byte])
+        for index in 0..<32:
+          identity[index] = byte(raw[index]) # Canonical validation established exactly 32 bytes.
+        hash = ServicePreimageHash(identity)
       let flag = values[parameters + count]
       if flag.kind != literalValue or flag.text notin ["true", "false"]:
         return error(id, -32602, "Expected finalized boolean") # Never interpret numbers, null or containers as flags.
@@ -487,12 +506,14 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
     if free < 0 or session.pendingCount == MaxSubscriptionUpdates or session.lastId == high(uint32):
       return error(id, 0, "Subscription capacity exhausted") # Never wrap IDs or overrun bounded slots.
     let value = if kind == SubscriptionKind.Statistics: statisticsUpdate(head.value)
-      elif kind in [SubscriptionKind.ServiceData, SubscriptionKind.ServiceValue]:
-        serviceUpdate(head.value, ServiceIndex(service), kind, key)
+      elif kind in [SubscriptionKind.ServiceData, SubscriptionKind.ServiceValue,
+          SubscriptionKind.ServicePreimage]:
+        serviceUpdate(head.value, ServiceIndex(service), kind, key, hash)
       else: descriptor(head.value) # Initial values use the same validation as publication updates.
     if value.len == 0:
       let failure = if kind == SubscriptionKind.ServiceData: "Invalid or unavailable service data"
         elif kind == SubscriptionKind.ServiceValue: "Invalid, unavailable or oversized service value"
+        elif kind == SubscriptionKind.ServicePreimage: "Invalid, unavailable or oversized service preimage"
         else: "Invalid, unavailable or oversized activity statistics"
       return error(id, 0, failure) # No initial success without a valid value.
     let identity = SubscriptionId(session.lastId + 1)
@@ -501,7 +522,7 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
       return error(id, 0, "Subscription capacity exhausted") # Byte refusal cannot consume an ID or discard older updates.
     inc session.lastId
     session.active[free] = Subscription(identity: identity, kind: kind, service: ServiceIndex(
-        service), key: key)
+        service), key: key, hash: hash)
     session.enqueueUpdate(identity, message)
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $session.lastId & "}"
   var number = 0'u32
@@ -540,7 +561,7 @@ proc clientInfo(info: ClientInfo, stateful: bool): string =
       GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
   result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
-      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\",\"subscribeServiceValue\",\"unsubscribeServiceValue\"" else: "") & "]")
+      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\",\"subscribeServiceValue\",\"unsubscribeServiceValue\",\"subscribeServicePreimage\",\"unsubscribeServicePreimage\"" else: "") & "]")
   result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -574,7 +595,8 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if stateful and methodName in ["subscribeBestBlock", "unsubscribeBestBlock",
       "subscribeStatistics", "unsubscribeStatistics", "subscribeServiceData",
-      "unsubscribeServiceData", "subscribeServiceValue", "unsubscribeServiceValue"]:
+      "unsubscribeServiceData", "subscribeServiceValue", "unsubscribeServiceValue",
+      "subscribeServicePreimage", "unsubscribeServicePreimage"]:
     let response = chainSubscription(values, parameters, methodName, id, info, session)
     return if hasId: response else: "" # Notifications execute but never receive a JSON-RPC reply.
   if not hasId: return "" # All remaining methods are read-only and have no notification side effects.

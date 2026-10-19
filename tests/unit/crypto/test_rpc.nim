@@ -11,7 +11,8 @@ import std/[assertions, syncio, base64]
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../../src/codec/state_trie import StateEntry
 from ../../../src/codec/state_layout import chapterKey, chapterServiceKey, StateChapter
-from ../../../src/codec/state_service_values import serviceStorageKey, ServiceValueError, error, value
+from ../../../src/codec/state_service_values import serviceStorageKey, servicePreimageKey,
+    ServiceValueError, error, value
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
 
@@ -1393,6 +1394,90 @@ for iteration in 0..<20:
   retireValueKeys() # Decoder, array copies, FIFO strings and key owners all retire on close.
 assert getOccupiedMem() <= valueKeyBaseline + 256
 
+# Preimage subscriptions validate fixed hashes and verify bytes before reporting successful updates.
+const PreimageHashText = "ozvvs2aASJ8rCJyozanvt6/zrATgh54DpzsAAMMnzOQ="
+const EmptyPreimageHashText = "DldRwCblQ7Loqy6wYJnaodHl30d3j3eH+qtFzfEv46g="
+let subscribePreimage = SubscribeValue.replace("subscribeServiceValue",
+    "subscribeServicePreimage").replace("a2V5", PreimageHashText)
+let unsubscribePreimage = unsubscribeValue.replace("unsubscribeServiceValue",
+    "unsubscribeServicePreimage")
+let absentPreimageUpdate = absentValueUpdate.replace("subscribeServiceValue",
+    "subscribeServicePreimage")
+let presentPreimageUpdate = absentPreimageUpdate.replace("\"value\":null",
+    "\"value\":\"cHJlaW1hZ2UA\"")
+let preimageFailure = valueFailure.replace("subscribeServiceValue",
+    "subscribeServicePreimage").replace("service value", "service preimage")
+var preimageSession = default(RpcSession)
+assert "-32601" in respond(subscribePreimage, serviceInfo)
+assert "\"code\":0" in respond(subscribePreimage, info, preimageSession)
+assert "Finalized chain view unavailable" in respond(subscribePreimage.replace("false", "true"),
+    serviceInfo, preimageSession)
+assert "\"code\":0" in respond(subscribePreimage.replace("[42,", "[43,"), serviceInfo, preimageSession)
+assert "\"code\":0" in respond(subscribePreimage.replace(PreimageHashText, repeat("A", 43) & "="),
+    serviceInfo, preimageSession)
+for bad in ["", "a2V5", repeat("A", 43), repeat("A", 42) & "B=", base64.encode(repeat("x", 33))]:
+  assert "-32602" in respond(subscribePreimage.replace(PreimageHashText, bad), serviceInfo,
+      preimageSession) # Reject malformed width/padding before retaining a selector.
+for bad in ["-1", "4294967296", "1.0", "null", "true"]:
+  assert "-32602" in respond(subscribePreimage.replace("[42,", "[" & bad & ","), serviceInfo,
+      preimageSession) # Service IDs must be exact uint32 values.
+assert respond(subscribePreimage, serviceInfo, preimageSession) == SubscribedBest
+assert preimageSession.nextUpdate() == presentPreimageUpdate
+assert respond(subscribePreimage.replace(PreimageHashText, EmptyPreimageHashText), serviceInfo,
+    preimageSession) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+assert preimageSession.nextUpdate() == absentPreimageUpdate.replace("\"subscription\":1",
+    "\"subscription\":2").replace("\"value\":null", "\"value\":\"\"")
+assert preimageSession.queueChainUpdates(serviceInfo.chain.bestBlock)
+assert preimageSession.nextUpdate() == presentPreimageUpdate
+assert "\"value\":\"\"" in preimageSession.nextUpdate() # Independent fixed hashes cannot retarget one another.
+assert respond(unsubscribeValue, serviceInfo, preimageSession) == UnsubscribedBest.replace("true", "false")
+assert respond(unsubscribePreimage, serviceInfo, preimageSession) == UnsubscribedBest
+assert preimageSession.queueChainUpdates(withGenesis.chain.bestBlock)
+assert preimageSession.nextUpdate() == absentPreimageUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert preimageSession.nextUpdate() == ""
+var preimageBatch = default(RpcSession)
+assert respond("[" & subscribePreimage & "," & unsubscribePreimage & "]", serviceInfo,
+    preimageBatch) == "[" & SubscribedBest & "," & UnsubscribedBest & "]"
+assert preimageBatch.nextUpdate() == ""
+assert respond(subscribePreimage.replace(",\"id\":61", ""), serviceInfo, preimageBatch) == ""
+assert preimageBatch.nextUpdate() == presentPreimageUpdate.replace("\"subscription\":1", "\"subscription\":2")
+
+# A frozen independent digest exercises the exact subscription value ceiling and queue byte budget.
+let maximumPreimageHash = "IFlHddS/py+3sJJA8dQVA2Nv0+HOU+dP7lg1weDQN54="
+var maximumIdentity = default(array[32, byte])
+let maximumRawHash = base64.decode(maximumPreimageHash)
+for index in 0..<32:
+  maximumIdentity[index] = byte(maximumRawHash[index]) # Exactly 32 independently computed digest bytes.
+let maximumPreimageKey = servicePreimageKey(ServiceIndex(42), ServicePreimageHash(maximumIdentity),
+    ByteLimit(32))
+assert maximumPreimageKey.error == ServiceValueError.None
+var maximumPreimageBytes = newSeq[byte](32768)
+for index in 0..<maximumPreimageBytes.len:
+  maximumPreimageBytes[index] = byte('x') # The digest fixture commits to exactly 32 KiB of x bytes.
+let maximumPreimageHead = childSnapshot(serviceInfo.chain.bestBlock.value, 8,
+  genesisParameters.value, accounts = @[
+  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](89)),
+  StateEntry(key: maximumPreimageKey.value, value: maximumPreimageBytes)])
+let maximumPreimageInfo = ClientInfo(chain: genesisView(maximumPreimageHead))
+var boundedPreimages = default(RpcSession)
+let maximumPreimageCall = subscribePreimage.replace(PreimageHashText, maximumPreimageHash)
+assert respond(maximumPreimageCall, maximumPreimageInfo, boundedPreimages) == SubscribedBest
+assert "\"code\":0" in respond(maximumPreimageCall, maximumPreimageInfo,
+    boundedPreimages) # A second large update cannot exceed the shared serialized byte budget.
+let maximumUpdate = boundedPreimages.nextUpdate()
+assert base64.encode(repeat("x", 32768)) in maximumUpdate
+maximumPreimageBytes.add(byte('x'))
+let oversizedPreimageHead = childSnapshot(maximumPreimageHead.value, 9, genesisParameters.value,
+  accounts = @[
+  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](89)),
+  StateEntry(key: maximumPreimageKey.value, value: maximumPreimageBytes)])
+assert boundedPreimages.queueChainUpdates(oversizedPreimageHead)
+assert boundedPreimages.nextUpdate() == preimageFailure # Oversize takes the same terminal path without copying or hashing it.
+let oversizedPreimageInfo = ClientInfo(chain: genesisView(oversizedPreimageHead))
+assert "\"code\":0" in respond(maximumPreimageCall, oversizedPreimageInfo, boundedPreimages)
+assert respond(subscribePreimage, serviceInfo, boundedPreimages) == SubscribedBest.replace(
+    "\"result\":1", "\"result\":2") # Rejected creations consume no IDs.
+
 ## Repeated connection retirement must release queued notifications and copied tentative session storage.
 proc retireSubscriptions() =
   var retired = default(Connection)
@@ -1661,6 +1746,46 @@ proc publicationLifecycle() =
         base64.encode(array[32, byte](storageHead.value.blockHash))).replace("\"slot\":7",
             "\"slot\":" & $atSlot).replace("\"value\":null", "\"value\":" & value)
       assert publicationReply(survivor[1]) == frame(expected)
+  assert owner.connections[1].opened
+  var preimageIdentity = default(array[32, byte])
+  let decodedPreimageHash = base64.decode(PreimageHashText)
+  for index in 0..<32:
+    preimageIdentity[index] = byte(decodedPreimageHash[index]) # Fixture identity is independently frozen above.
+  let preimageKey = servicePreimageKey(ServiceIndex(42), ServicePreimageHash(preimageIdentity),
+      ByteLimit(32))
+  assert preimageKey.error == ServiceValueError.None
+  var preimagePacket = masked(subscribePreimage)
+  assert sendBytes(survivor[1], preimagePacket.toCString(), csize_t(preimagePacket.len), 0) ==
+      preimagePacket.len
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+      "\"result\":4"))
+  owner.tick(0)
+  discard publicationReply(survivor[1]) # The current account has no preimage; subsequent heads check exact envelopes.
+  for atSlot in 41'u32..43'u32:
+    var entries = @[accountEntry]
+    var value = "null"
+    if atSlot == 41:
+      entries.add(StateEntry(key: preimageKey.value, value: @[byte('p'), byte('r'), byte('e'), byte(
+          'i'), byte('m'), byte('a'), byte('g'), byte('e'), 0'u8])) # Valid binary bytes match the retained hash.
+      value = "\"cHJlaW1hZ2UA\""
+    elif atSlot == 43:
+      entries.add(StateEntry(key: preimageKey.value, value: @[
+          1'u8])) # Imported bytes with the wrong hash must terminate only this subscription.
+    let preimageHead = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value,
+        accounts = entries)
+    assert owner.publishBlock(preimageHead) == ViewAdvanceError.None
+    owner.tick(0)
+    if atSlot == 43:
+      assert publicationReply(survivor[1]) == frame(preimageFailure.replace("\"subscription\":1",
+          "\"subscription\":4")) # Corruption is an error, never absence.
+    else:
+      let expected = absentPreimageUpdate.replace("\"subscription\":1",
+          "\"subscription\":4").replace(genesisHash, base64.encode(array[32, byte](
+          preimageHead.value.blockHash))).replace("\"slot\":7", "\"slot\":" & $atSlot).replace(
+          "\"value\":null", "\"value\":" & value)
+      assert publicationReply(survivor[1]) == frame(
+          expected) # Valid addition and subsequent deletion both preserve the subscription.
   assert owner.connections[1].opened
   owner.close()
   assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
