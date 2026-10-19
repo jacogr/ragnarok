@@ -1,0 +1,13 @@
+{
+  "source": "tests/native/accumulation_continuation_invocation_results.nim",
+  "build_name": "accumulation-continuation-invocation-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-continuation-invocation-default", "diagnostic": "outcome.status == None", "description": "Continuation invocation default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-continuation-invocation-refused", "diagnostic": "outcome.status == None", "description": "Continuation invocation refused extraction guard"},
+    {"identity": {"reason": "projection"}, "arguments": ["projection"], "name": "accumulation-continuation-invocation-projection", "diagnostic": "outcome.status == None", "description": "Continuation invocation projection extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-continuation-invocation-source", "diagnostic": "outcome.status == None", "description": "Continuation invocation source extraction guard"},
+    {"identity": {"reason": "wrong-service"}, "arguments": ["wrong-service"], "name": "accumulation-continuation-invocation-wrong-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Continuation invocation wrong-service extraction guard"},
+    {"identity": {"reason": "wrong-invocation"}, "arguments": ["wrong-invocation"], "name": "accumulation-continuation-invocation-wrong-invocation", "diagnostic": "outcome.status == InvocationFailure", "description": "Continuation invocation wrong-invocation extraction guard"}
+  ]
+}
