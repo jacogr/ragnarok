@@ -308,6 +308,17 @@
         "origin": "solicit"
       },
       "name": "accumulation-effect-solicit"
+    },
+    {
+      "arguments": [
+        "forget"
+      ],
+      "description": "Accumulation forget selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "forget"
+      },
+      "name": "accumulation-effect-forget"
     }
   ],
   "crypto_library": "crypto",

@@ -1204,3 +1204,91 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
         exceptional: data.exceptional)))
+
+proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreimageHash,
+    length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
+  ## Forget the exact current-self request using invocation time; NotRequested is HUH for missing or insufficiently aged histories.
+  ## Pinned vector preimage_len_bound-3 resolves empty requests as immediate deletion. No funding check or balance debit applies.
+  ## Replacement needs one write; removal atomically updates footprint and deletes request/preimage in at most three writes.
+  # No partial history, footprint or account successor escapes any refusal.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationEffects](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # Defaults supply no account or invocation provenance.
+  if not parameters.valid:
+    fail(AccumulationEffectError.InvalidParameters) # Expunge age requires genuine validated parameters.
+  let previous = data.regular.data
+  assert previous != nil # Published pairs retain initialized current contexts.
+  let prior = data.regular.effectRequestHistory(hash, length)
+  if prior.error != AccumulationEffectError.None:
+    fail(prior.error) # Preserve HUH absence, malformed canonical state and namespace backend failures.
+  let time = uint32(previous.initial.contextInvocation.value.bootstrapInfo.value.slot)
+  let history = prior.value
+  var replacement = requestedHistory()
+  var remove = false
+  case history.state
+  of RequestState.Requested:
+    remove = true # Pinned service-0 slot-45 witness deletes [] immediately despite the GP's unbound y condition.
+  of RequestState.Available:
+    replacement = unavailableHistory(history.since, RequestSlot(
+        time)) # One slot always appends actual invocation time, with no age/funding condition.
+  of RequestState.Unavailable:
+    if uint64(uint32(history.unavailableFrom))+parameters.get(maxLookupAnchorAge)+4800 >= uint64(time):
+      fail(AccumulationEffectError.NotRequested) # Strict widened expiry also handles nonpositive cutoffs without underflow.
+    remove = true
+  of RequestState.Reavailable:
+    if uint64(uint32(history.removedAt))+parameters.get(maxLookupAnchorAge)+4800 >= uint64(time):
+      fail(AccumulationEffectError.NotRequested) # Expiry uses the second slot, never the later restoration time.
+    replacement = unavailableHistory(history.restoredAt, RequestSlot(
+        time)) # Retain latest availability and append current removal time.
+  let self = previous.initial.contextInfo.value.service
+  var writes: seq[StateWrite] = @[]
+  if remove:
+    let accountKey = chapterServiceKey(StateChapter(255), self)
+    let found = previous.accounts.lookup(accountKey)
+    if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
+      fail(AccumulationEffectError.MalformedState) # Real current metadata must authorize exact footprint subtraction.
+    let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+    if decoded.error != ServiceMetadataError.None:
+      fail(AccumulationEffectError.MalformedState) # No repair or default metadata while forgetting.
+    var metadata = decoded.value.metadata
+    let removed = 81'u64+uint64(uint32(length)) # Complete E4 length plus fixed overhead fits below 2^33.
+    if uint32(metadata.storageItems) < 2 or uint64(metadata.storageBytes) < removed:
+      fail(AccumulationEffectError.MalformedState) # Inconsistent stored counters cannot underflow into a fabricated footprint.
+    metadata.storageItems = AccountStorageItems(uint32(metadata.storageItems)-2)
+    metadata.storageBytes = AccountStorageBytes(uint64(metadata.storageBytes)-removed)
+    let encoded = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
+    let request = serviceRequestKey(self, hash, length, ByteLimit(32))
+    if request.error != RequestError.None:
+      fail(AccumulationEffectError.BackendFailure) # Stop on failed request derivation without more namespace work.
+    let preimage = servicePreimageKey(self, hash, ByteLimit(32))
+    if preimage.error != ServiceValueError.None:
+      fail(AccumulationEffectError.BackendFailure) # Namespace failure leaves all original account components valid.
+    writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put, value: encoded.value))
+    writes.add(StateWrite(key: request.value, kind: StateWriteKind.Delete))
+    if array[31, byte](request.value) != array[31, byte](preimage.value):
+      writes.add(StateWrite(key: preimage.value, kind: StateWriteKind.Delete)) # One shared pinned physical key requires one deletion.
+  else:
+    let request = serviceRequestEntry(self, hash, length, replacement,
+      RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
+          3), maxBytes: ByteLimit(13))))
+    if request.error != RequestError.None:
+      fail(AccumulationEffectError.BackendFailure) # Failed canonical replacement has no request payload to publish.
+    writes.add(StateWrite(key: request.value.key, kind: StateWriteKind.Put,
+        value: request.value.value)) # Replacement changes no metadata or preimage.
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply(writes)
+  case changed.error
+  of StateStoreError.None:
+    discard # History, metadata and removed preimage are one complete immutable successor.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Inherited store policy is separate from protocol HUH.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # Previous maps survive even late candidate hashing failure.
+  else:
+    fail(AccumulationEffectError.InvalidState) # No partial effects escape other store invariants.
+  let current = AccumulationEffectContext(data: successorData(previous, changed.value))
+  AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+    completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
+        exceptional: data.exceptional)))
