@@ -45,7 +45,7 @@ refusal, and a compiler guard enforces the nominal encoding limit. Existing fetc
 summary, raw-package, host-failure and codec suites remain regression controls.
 
 Implemented package fetch scope is now selectors 7–13. Remaining fetch families:
-constants (0), external extrinsics/imports (3–6), and accumulation inputs (14–15).
+constants (0) and accumulation inputs (14–15). External inputs (3–6) are now covered
+by [external-input capture](pvm-fetch-inputs.md).
 Complete invocation assembly and the documented positive gas-domain gate remain
-open. Next bounded increment: explicit bounded external-input capture and indexed
-fetch selection, including current-work-item selection.
+open. Next bounded increment: protocol-parameter fetch selector 0.

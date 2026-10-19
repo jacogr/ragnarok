@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Evaluate fetch for optional entropy, trace and package values, or directly borrowed values.
-## Exposes FetchContext capture, bounded withFetchPackage attachment and selector responses.
+## Evaluate fetch for optional entropy, trace, package and external-input values, or directly borrowed values.
+## Exposes FetchContext capture, bounded package/input attachment and selector responses.
 ## FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
 ## Capture owns bounded immutable context; responses own memory copies. See spec/pvm-fetch-context.md.
 
@@ -35,6 +35,24 @@ type
   FetchPackageLimit* = distinct uint64
   # Separate local cap on the complete canonical package encoding, including framing and manifests.
   FetchEncodingLimit* = distinct uint64
+  # Index of the invocation's current work item, separate from guest-supplied register indices.
+  FetchItemIndex* = distinct uint64
+  # GP 0.8.0 data segments have exactly 4104 bytes, unlike arbitrary extrinsic preimages.
+  FetchSegment* = distinct array[4104, byte]
+  # Aggregate selected extrinsic and import bytes; metadata has separate fixed protocol bounds.
+  FetchInputLimit* = distinct uint64
+  # Borrowed capture description. Absent fields are ignored; present tables preserve item order.
+  # Caller must supply authenticated preimages/segments matching the invocation's manifests.
+  FetchInputs* = object
+    extrinsicsPresence*: FetchPresence
+    importsPresence*: FetchPresence
+    currentPresence*: FetchPresence
+    current*: FetchItemIndex
+    extrinsics*: seq[seq[seq[byte]]]
+    imports*: seq[seq[FetchSegment]]
+  # Private acyclic snapshot owns deep copies; no reference to the mutable capture description escapes.
+  FetchInputData = ref object
+    values: FetchInputs
   # Private package snapshot owns raw blobs and fixed bounded encoded metadata.
   # The fixed item table is bounded by the validated C.2 package limit of sixteen items.
   FetchPackageData = ref object
@@ -56,6 +74,7 @@ type
   FetchContext* = object
     data: nil FetchContextData
     packageData: nil FetchPackageData
+    inputData: nil FetchInputData
   # Capture failures carry only the local reason, never a partial owner or borrowed input span.
   FetchContextResult* = object
     case status: FetchError
@@ -93,7 +112,80 @@ proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
   let owner = FetchContextData(entropyPresence: entropyPresence, entropy: selectedEntropy,
     tracePresence: tracePresence, trace: copied)
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner,
-      packageData: nil))
+      packageData: nil, inputData: nil))
+
+# Replace both external-input selections while retaining package, entropy and trace snapshots.
+# Preflight all counts, current-item indices and aggregate bytes before any variable allocation.
+# The caller keeps source storage stable until return; absent table arguments are never inspected.
+proc withFetchInputs*(context: FetchContext, source: FetchInputs,
+    limit: FetchInputLimit): FetchContextResult =
+  if context.data == nil:
+    # A default base cannot be repaired by attaching external inputs.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  var remaining = uint64(limit)
+  var extrinsicCount = 0
+  var importCount = 0
+  if source.extrinsicsPresence == FetchPresence.Present:
+    # A package contains at most sixteen work items, even when every row is empty.
+    if source.extrinsics.len > 16:
+      return FetchContextResult(status: FetchError.LimitExceeded)
+    if source.currentPresence == FetchPresence.Present and
+        uint64(source.current) >= uint64(source.extrinsics.len):
+      # Invocation indices must be valid before the current-item selector can be evaluated.
+      return FetchContextResult(status: FetchError.InvalidContext)
+    for row in source.extrinsics:
+      # The package-wide commitment cap bounds metadata for zero-byte preimages as well.
+      if row.len > 128 - extrinsicCount:
+        return FetchContextResult(status: FetchError.LimitExceeded)
+      extrinsicCount += row.len
+      for blob in row:
+        # Subtract only after comparison, avoiding overflow in aggregate length arithmetic.
+        if uint64(blob.len) > remaining:
+          return FetchContextResult(status: FetchError.LimitExceeded)
+        remaining -= uint64(blob.len)
+  if source.importsPresence == FetchPresence.Present:
+    # Independently selected import tables have the same work-item bound.
+    if source.imports.len > 16:
+      return FetchContextResult(status: FetchError.LimitExceeded)
+    if source.currentPresence == FetchPresence.Present and
+        uint64(source.current) >= uint64(source.imports.len):
+      # Do not silently turn an invalid caller-supplied current item into protocol absence.
+      return FetchContextResult(status: FetchError.InvalidContext)
+    for row in source.imports:
+      # Fixed segment width makes the byte product safe after the package-wide count check.
+      if row.len > 3072 - importCount:
+        return FetchContextResult(status: FetchError.LimitExceeded)
+      importCount += row.len
+      let bytes = uint64(row.len) * 4104
+      if bytes > remaining:
+        return FetchContextResult(status: FetchError.LimitExceeded)
+      remaining -= bytes
+  var copied = FetchInputs(extrinsicsPresence: source.extrinsicsPresence,
+    importsPresence: source.importsPresence, currentPresence: source.currentPresence,
+    current: source.current)
+  if source.extrinsicsPresence == FetchPresence.Present:
+    # Deep-copy each descriptor and blob only after the entire capture passed its resource checks.
+    copied.extrinsics = newSeq[seq[seq[byte]]](source.extrinsics.len)
+    for i in 0..<source.extrinsics.len:
+      # Empty rows are retained to preserve work-item indices.
+      copied.extrinsics[i] = newSeq[seq[byte]](source.extrinsics[i].len)
+      for j in 0..<source.extrinsics[i].len:
+        # Empty blobs remain present values, distinct from missing rows or indices.
+        copied.extrinsics[i][j] = newSeq[byte](source.extrinsics[i][j].len)
+        for k in 0..<source.extrinsics[i][j].len:
+          # No mutable source byte storage is retained in the private owner.
+          copied.extrinsics[i][j][k] = source.extrinsics[i][j][k]
+  if source.importsPresence == FetchPresence.Present:
+    # Segment arrays copy by value, while both descriptor levels require independent storage.
+    copied.imports = newSeq[seq[FetchSegment]](source.imports.len)
+    for i in 0..<source.imports.len:
+      # Preserve even empty rows without allocating any segment bytes for them.
+      copied.imports[i] = newSeq[FetchSegment](source.imports[i].len)
+      for j in 0..<source.imports[i].len:
+        # Fixed arrays cannot retain references into caller-owned sequences.
+        copied.imports[i][j] = source.imports[i][j]
+  FetchContextResult(status: FetchError.None, completed: FetchContext(data: context.data,
+    packageData: context.packageData, inputData: FetchInputData(values: copied)))
 
 # Write one bounded fixed-width summary field using the canonical scalar codec.
 # Private callers pass disjoint fields inside a fixed 62-byte summary; failure publishes no owner.
@@ -141,7 +233,7 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
   if presence == FetchPresence.Absent:
     # Clearing only the package selection preserves the original immutable entropy/trace owner.
     return FetchContextResult(status: FetchError.None,
-      completed: FetchContext(data: context.data, packageData: nil))
+      completed: FetchContext(data: context.data, packageData: nil, inputData: context.inputData))
   let described = workPackageInfo(package)
   if described.error != PackageError.None:
     # Default codec handles are local misuse, not an absent protocol package.
@@ -218,7 +310,8 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
       # The unpublished owner and all earlier copied bytes are released on refusal.
       return FetchContextResult(status: FetchError.InvalidContext)
   FetchContextResult(status: FetchError.None,
-    completed: FetchContext(data: context.data, packageData: captured))
+    completed: FetchContext(data: context.data, packageData: captured,
+        inputData: context.inputData))
 
 # Inspect a result without exposing mutable variant storage.
 func error*(r: FetchResult): FetchError = r.status
@@ -311,6 +404,39 @@ proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: Re
     # Trace absence still charges the requested length at selector 2's rate.
     fetchValue(gas, registers, memory, owner.trace,
       owner.tracePresence == FetchPresence.Present, 2, 80, 96, limit)
+  of 3, 4, 5, 6:
+    # Any-item selectors use r11/r12; current-item selectors use the captured item and r11.
+    let inputs = context.inputData
+    let extrinsic = selector == 3 or selector == 4
+    let current = selector == 4 or selector == 6
+    let base = (if extrinsic: 85'u64 else: 171'u64)
+    let rate = (if extrinsic: 96'u64 else: 0'u64)
+    if inputs == nil:
+      # No captured inputs is a valid absent invocation context, retaining the selected price.
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    let presence = (if extrinsic: inputs.values.extrinsicsPresence else: inputs.values.importsPresence)
+    if presence == FetchPresence.Absent or
+        (current and inputs.values.currentPresence == FetchPresence.Absent):
+      # Missing current-item identity affects only selectors 4/6, not arbitrary item selection.
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    let item = (if current: uint64(inputs.values.current) else: uint64(registers[11]))
+    let index = (if current: uint64(registers[11]) else: uint64(registers[12]))
+    if extrinsic:
+      # Compare both guest indices at full width before narrowing or accessing a nested descriptor.
+      if item >= uint64(inputs.values.extrinsics.len):
+        return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+      if index >= uint64(inputs.values.extrinsics[int(item)].len):
+        return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+      return fetchValue(gas, registers, memory, inputs.values.extrinsics[int(item)][int(index)],
+        true, selector, base, rate, limit)
+    # Imported segments are returned raw, without their commitment, proof or a length prefix.
+    if item >= uint64(inputs.values.imports.len):
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    if index >= uint64(inputs.values.imports[int(item)].len):
+      return fetchValue(gas, registers, memory, [], false, selector, base, rate, limit)
+    fetchValue(gas, registers, memory,
+      array[4104, byte](inputs.values.imports[int(item)][int(index)]),
+      true, selector, base, rate, limit)
   of 7:
     # The package is encoded once during capture; item registers do not select or alter it.
     let package = context.packageData
