@@ -372,15 +372,24 @@ def unit_authorization_fixture(folder):
 
 
 # Describe freshly generated certificates and independent CE fixtures without committing private keys.
-def unit_runtime_fixtures(certificates, original, reload):
-    transport = {'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
-                 'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
-    integration = {'RAGNAROK_TEST_WIRES': original, 'RAGNAROK_TEST_RELOAD': reload}
-    # Every referenced input is hashed and rechecked before the native process, including later siblings.
-    cert_files = tuple((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in transport.values())
-    wires = tuple((folder/(str(index)+'.bin'), hashlib.sha256((folder/(str(index)+'.bin')).read_bytes()).hexdigest())
-                  for folder in (original, reload) for index in range(8))
-    return {'quic_transport': (None, transport, cert_files), 'quic_integration': (None, integration, wires)}
+def unit_runtime_fixtures(certificates, original, reload, suite=None):
+    if suite not in (None, 'quic_transport', 'quic_integration'):
+        # Unknown selections cannot silently produce an empty successful manifest.
+        raise ValueError('Unknown QUIC fixture suite: '+suite)
+    fixtures = {}
+    if suite in (None, 'quic_transport'):
+        # Hash fresh certificate inputs only for a consumer that needs transport setup.
+        transport = {'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
+                     'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
+        cert_files = tuple((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in transport.values())
+        fixtures['quic_transport'] = (None, transport, cert_files)
+    if suite in (None, 'quic_integration'):
+        # Every CE child remains hashed and checked, including later original/reload siblings.
+        integration = {'RAGNAROK_TEST_WIRES': original, 'RAGNAROK_TEST_RELOAD': reload}
+        wires = tuple((folder/(str(index)+'.bin'), hashlib.sha256((folder/(str(index)+'.bin')).read_bytes()).hexdigest())
+                      for folder in (original, reload) for index in range(8))
+        fixtures['quic_integration'] = (None, integration, wires)
+    return fixtures
 
 
 # Generate gas inputs under the caller's ignored build directory from pinned submodule witnesses.

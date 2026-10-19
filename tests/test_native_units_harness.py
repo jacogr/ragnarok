@@ -197,6 +197,65 @@ class NativeUnitHarness(unittest.TestCase):
             run.assert_called_once_with(Path('/fixture/nimony'), {}, {}, 'natural')
             prepare.assert_not_called()
 
+    # Linked selection prepares only its declared libraries and never invokes aggregate fixtures or CE setup.
+    def test_selected_linked_entrypoint(self):
+        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
+                sys, 'argv', ['native_tests.py', '--suite', 'state_layout']), patch(
+                'setup_nimony.installed', return_value=(Path('/fixture/nimony'), None)), patch.object(
+                native_tests, 'run_units') as run, patch('native_preparation.prepare_libraries',
+                return_value=({'observer': 'library'}, None, {})) as libraries, patch(
+                'native_preparation.prepare_integration') as integration, patch(
+                'native_preparation.prepare_unit_fixtures') as fixtures, patch(
+                'native_preparation.prepare_selected_fixture') as selected:
+            native_tests.main()
+            self.assertEqual(libraries.call_args.kwargs, {'required': ['observer']})
+            run.assert_called_once_with(Path('/fixture/nimony'), {'observer': 'library'}, {}, 'state_layout')
+            for unused in (integration, fixtures, selected):
+                # A linked but unprepared suite must not generate any unrelated fixture.
+                unused.assert_not_called()
+
+    # Generated PVM fixtures need their provider even though their native library list is empty.
+    def test_selected_prepared_entrypoint(self):
+        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
+                sys, 'argv', ['native_tests.py', '--suite', 'pvm_gas']), patch(
+                'setup_nimony.installed', return_value=(Path('/fixture/nimony'), None)), patch.object(
+                native_tests, 'run_units') as run, patch('native_preparation.prepare_libraries',
+                return_value=({}, None, {})) as libraries, patch('native_preparation.prepare_selected_fixture',
+                return_value=({'pvm_gas': 'fresh'}, {})) as selected, patch(
+                'native_preparation.prepare_unit_fixtures') as aggregate:
+            native_tests.main()
+            self.assertEqual(libraries.call_args.kwargs, {'required': []})
+            self.assertEqual(selected.call_args.args[:3], (folder/'build/tests/native/preparation', 'pvm_gas', None))
+            run.assert_called_once_with(Path('/fixture/nimony'), {}, {'pvm_gas': 'fresh'}, 'pvm_gas')
+            aggregate.assert_not_called()
+
+    # Full discovery preserves aggregate preparation and records both PVM fixture stages before execution.
+    def test_complete_entrypoint_evidence(self):
+        def libraries(folder, record):
+            # Full runs retain the original provider signature and their immediate evidence callback.
+            record('crypto_native', {'crypto': True})
+            return {'crypto': 'library'}, 'certs', {}
+        def fixtures(folder, certificates, wires, reload, record):
+            # These previously omitted names must not raise KeyError in the standalone launcher.
+            record('pvm_step_fixture', {'step': True})
+            record('pvm_gas_fixture', {'gas': True})
+            return {'pvm_step': 'step', 'pvm_gas': 'gas'}, {}
+        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
+                sys, 'argv', ['native_tests.py']), patch('setup_nimony.installed',
+                return_value=(Path('/fixture/nimony'), None)), patch.object(native_tests, 'run_units') as run, patch(
+                'native_preparation.prepare_libraries', side_effect=libraries), patch(
+                'native_preparation.prepare_integration', return_value=('wires', 'reload', {})) as integration, patch(
+                'native_preparation.prepare_unit_fixtures', side_effect=fixtures), patch(
+                'native_preparation.prepare_selected_fixture') as selected:
+            native_tests.main()
+            integration.assert_called_once_with(folder/'build/tests/native/preparation')
+            run.assert_called_once_with(Path('/fixture/nimony'), {'crypto': 'library'},
+                {'pvm_step': 'step', 'pvm_gas': 'gas'}, None)
+            selected.assert_not_called()
+            evidence = folder/'build/tests/native/preparation'
+            self.assertEqual(json.loads((evidence/'pvm-step-preparation.json').read_text()), {'step': True})
+            self.assertEqual(json.loads((evidence/'pvm-gas-preparation.json').read_text()), {'gas': True})
+
     # Misspellings must fail before provisioning rather than silently selecting every test.
     def test_unknown_selected_suite(self):
         with patch.object(sys, 'argv', ['native_tests.py', '--suite', 'no-such-suite']), patch(
