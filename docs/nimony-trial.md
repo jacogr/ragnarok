@@ -27,7 +27,7 @@ remains open.
 This branch targets Nimony directly, without dual-compiler source support. Nim 2.2.12 is retained
 only as the historical performance control.
 Protocol/dependency pins are unchanged. At the maintainer's request, the existing
-`.github/workflows/linux.yml` is now the single Linux workflow and uses the pinned Nimony nightly
+`.github/workflows/ci.yml` is now the single Linux workflow and uses the pinned Nimony nightly
 on every push, PR and manual run. The separate trial workflow has been removed. The maintainer reports an earlier pushed snapshot passed PR CI; the expanded offload profile
 awaits its own Linux result. CI consolidation alone is not a complete migration claim.
 
@@ -950,7 +950,7 @@ remain unverified.
 ## Twenty-second bounded increment: branch Linux CI
 
 The maintainer requested Linux CI before further codec ports. The separate
-[Linux workflow](../.github/workflows/linux.yml) targets pushes to `nimony`, PRs whose head
+[CI workflow](../.github/workflows/ci.yml) targets pushes to `nimony`, PRs whose head
 branch is `nimony`, and manual dispatch. The historical Nim 2 Linux job skips this branch/PR;
 main-branch CI remains unchanged. This is trial infrastructure, not a completed compiler migration.
 
@@ -2318,7 +2318,7 @@ separate gates.
 ## Linux workflow consolidation
 
 The maintainer explicitly requests converting the existing Linux workflow rather than keeping a
-parallel trial workflow. `.github/workflows/linux.yml` now installs the pinned Nimony nightly and
+parallel trial workflow. `.github/workflows/ci.yml` now installs the pinned Nimony nightly and
 formatter and runs the migrated runtime suite plus the independent strict all-source audit. Pushes,
 PRs and manual runs use this workflow on every branch, including after merge; neither job has a
 branch-name condition. `.github/workflows/nimony-linux.yml` is removed. No Nim 2 runtime CI job is

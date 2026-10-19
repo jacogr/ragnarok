@@ -43,13 +43,12 @@ def network_report(**workloads):
 
 # Rejection paths prevent archive substitution, source omissions and misleading green migration summaries.
 class NimonyCISafeguards(unittest.TestCase):
-    # Merging the compiler migration must not leave duplicate Linux workflows or branch-specific skipped gates.
-    def test_single_canonical_linux_workflow(self):
+    # Merging the compiler migration must not leave duplicate CI workflows or branch-specific skipped gates.
+    def test_single_canonical_ci_workflow(self):
         folder = ROOT/'.github/workflows'
-        names = sorted(path.name for path in folder.iterdir() if 'linux' in path.name.lower()
-                       and path.suffix in ('.yml', '.yaml'))
-        self.assertEqual(names, ['linux.yml'])
-        text = (folder/'linux.yml').read_text()
+        names = sorted(path.name for path in folder.iterdir() if path.suffix in ('.yml', '.yaml'))
+        self.assertEqual(names, ['ci.yml'])
+        text = (folder/'ci.yml').read_text()
         self.assertNotIn('github.head_ref', text)
         self.assertNotIn('github.ref_name', text)
         # Pushes check master once; PR updates retain their independent, unfiltered gate.
@@ -69,7 +68,7 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):
-        text = (ROOT/'.github/workflows/linux.yml').read_text()
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
         definition = text.split('      - &inventory\n', 1)[1].split('      - ', 1)[0]
         self.assertEqual(definition.strip(),
                          'name: Validate verification inventory\n        run: make check-inventory')

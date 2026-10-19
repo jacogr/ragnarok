@@ -184,6 +184,6 @@ Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
 Next: same-process endpoint soak and remaining admission/resilience coverage. Linux confirmation and normative
 policy gates remain separate.
 
-The canonical [Linux workflow](../.github/workflows/linux.yml) now runs the
+The canonical [CI workflow](../.github/workflows/ci.yml) now runs the
 migrated runtime slice and a strict all-source semantic compilation gate independently. Linux
 execution is pending CI; passing the migrated slice does not establish full M1/M2/M3 parity.
