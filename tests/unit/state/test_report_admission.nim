@@ -23,7 +23,7 @@ import ../../support/[report_context, arc_evidence]
 ## Controlled backend refusal never replaces successful verification.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 
-import ../../support/[report_admission_context, core_activity_context]
+import ../../support/[report_admission_context, core_activity_context, validator_activity_context]
 
 ## Compare canonical state root and every known byte after pure planning, not just C(10).
 proc unchanged(before, after: StateStoreSnapshot) =
@@ -38,6 +38,8 @@ proc cycle(context: Context, expected: ReportAdmissionError) =
 
 ## Compose every report check, retain exact block/source owners and reject cross-context substitutes by API design.
 proc boundaries(base: OwnedReport) =
+  checkValidatorProjection()
+  checkValidatorSource(base)
   checkCoreProjection(base)
   checkCoreSource(base)
   let context = authored(base)
