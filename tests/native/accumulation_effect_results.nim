@@ -6,7 +6,8 @@
 
 import std/cmdline
 import ../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation]
-import ../../src/codec/[state_outputs, bounded, composite, state_privileges, state_authorization, state_safrole]
+import ../../src/codec/[state_outputs, state_accounts, bounded, composite, state_privileges,
+    state_authorization, state_safrole]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 
@@ -37,6 +38,8 @@ of "designate": discard recordAccumulationDesignate(pair, [], default(
     ValidatorStateConfig)).value # Failed mutation has no successor.
 of "new": discard recordAccumulationNew(pair, default(AccumulationNewService), default(Parameters),
     ServiceProbeLimit(0)).value # Failed creation has no successor or service ID.
+of "upgrade": discard recordAccumulationUpgrade(pair, default(CodeHash), Gas(0), Gas(
+    0)).value # Failed upgrade has no successor metadata/effects.
 of "bless": discard recordAccumulationBless(pair, default(PrivilegeState), default(
     PrivilegeConfig)).value # Default pairs cannot publish roles.
 of "info": discard context.effectInfo.value # No default metadata/effects.

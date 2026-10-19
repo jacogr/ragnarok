@@ -220,6 +220,17 @@
         "origin": "new"
       },
       "name": "accumulation-effect-new"
+    },
+    {
+      "arguments": [
+        "upgrade"
+      ],
+      "description": "Accumulation upgrade selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "upgrade"
+      },
+      "name": "accumulation-effect-upgrade"
     }
   ],
   "crypto_library": "crypto",

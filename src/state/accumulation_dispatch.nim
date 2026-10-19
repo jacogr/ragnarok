@@ -662,6 +662,46 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     return hostFailure(AccumulationDispatchError.InvalidContext) # No partial state on other invariant failures.
   hostSuccess[AccumulationDispatchError](response)
 
+# Upgrade changes future service metadata while this invocation continues executing its original code.
+proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 1028, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve exact charge/debt handling from the common host boundary.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # Affordability precedes memory capture and all state changes.
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # The complete raw hash is readable before any successor may publish.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Preserve full-width pointer and both implication versions.
+    return hostSuccess[AccumulationDispatchError](response)
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture policy is not guest panic.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no code hash.
+  var hash = default(array[32, byte])
+  for i in 0..<32:
+    hash[i] = captured.value[i] # Exact fixed capture proves every source index.
+  let changed = recordAccumulationUpgrade(context.effects, CodeHash(hash),
+    Gas(uint64(cpu.registers[8])), Gas(uint64(cpu.registers[9])))
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value # One complete current account version owns all three metadata changes.
+    response.registers[7] = RegisterValue(0) # OK even for zero hash or zero/full-width minimum gas.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Inherited store policy remains an explicit local refusal.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No partially upgraded metadata survives Merklization failure.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Self metadata cannot be silently reconstructed.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Other invariant failures publish no effects.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -700,9 +740,11 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
   of 19:
     newResponse(context, cpu, memory) # Atomic account creation and versioned allocation cursor.
+  of 20:
+    upgradeResponse(context, cpu, memory) # Replace self metadata while retaining current code execution.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 20..25:
+  of 1, 21..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:

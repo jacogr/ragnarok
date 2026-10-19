@@ -859,3 +859,49 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   AccumulationEffectResult[AccumulationServiceChange](status: AccumulationEffectError.None,
     completed: AccumulationServiceChange(service: selected, effects: AccumulationEffects(data:
     PairData(source: data.source, regular: current, exceptional: data.exceptional))))
+
+proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash,
+    accumulationGas, transferGas: Gas): AccumulationEffectResult[AccumulationEffects] =
+  ## Replace only self's current code hash and minimum gas fields, preserving every other implication and checkpoint.
+  ## Inputs are copied nominal values; no offered preimage, privilege or funding condition is required.
+  ## Canonical metadata and inherited store policy are checked before one complete successor can escape.
+  # Refusals expose neither a partial account map nor an alternative effect version.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationEffects](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # Default effects cannot select a target account.
+  let previous = data.regular.data
+  assert previous != nil # Private pairs retain complete current versions.
+  let self = previous.initial.contextInfo.value.service
+  let key = chapterServiceKey(StateChapter(255), self)
+  let found = previous.accounts.lookup(key)
+  if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # Never fabricate or repair the actual caller's metadata.
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if decoded.error != ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # Only canonical complete metadata may be changed.
+  var metadata = decoded.value.metadata
+  metadata.codeHash = codeHash
+  metadata.minimumAccumulationGas = accumulationGas
+  metadata.minimumTransferGas = transferGas
+  let encoded = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply([StateWrite(key: key, kind: StateWriteKind.Put,
+      value: encoded.value)])
+  case changed.error
+  of StateStoreError.None:
+    discard # All three fields share one fully Merklized metadata replacement.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Local policy cannot fabricate a guest resource code.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # Existing accounts and every retained owner survive hashing refusal.
+  else:
+    fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
+  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
+    accounts: changed.value, nextService: previous.nextService, staging: previous.staging,
+    queues: previous.queues, privileges: previous.privileges, output: previous.output,
+    provisions: previous.provisions))
+  AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+    completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
+      exceptional: data.exceptional)))
