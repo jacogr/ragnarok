@@ -1,0 +1,11 @@
+{
+  "source": "tests/native/validator_projection_results.nim",
+  "build_name": "validator-projection-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "validator-projection-default", "diagnostic": "outcome.status == None", "description": "Validator activity default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "validator-projection-refused", "diagnostic": "outcome.status == None", "description": "Validator activity refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "validator-projection-info", "diagnostic": "outcome.status == None", "description": "Validator activity info extraction guard"},
+    {"identity": {"reason": "row"}, "arguments": ["row"], "name": "validator-projection-row", "diagnostic": "outcome.status == None", "description": "Validator activity row extraction guard"}
+  ]
+}
