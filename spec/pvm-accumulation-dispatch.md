@@ -59,8 +59,10 @@ These are authored equation witnesses, not published complete Psi_A vectors.
 
 Remaining work includes grow_heap's documented semantic decision, other account and
 accumulation calls, terminal regular/exceptional selection, result normalization and
-state publication. The existing signed gas-domain gate remains open. Next bounded
-work is normalizing actual terminal outcomes with retained checkpoint effects.
+state publication. The existing signed gas-domain gate remains open.
+[Terminal normalization](pvm-accumulation-outcome.md) now selects the retained
+regular/exceptional effects, applies the halt-return rule and caps gas usage.
+Remaining host calls and persistent publication are subsequent work.
 
 
 ## Local verification (2026-10-19)

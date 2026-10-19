@@ -173,6 +173,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_dispatch')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_fetch')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_machine')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_outcome')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
     # Optional fetch capture and dispatch failures expose no partial owner or response.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_accumulation')
