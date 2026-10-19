@@ -15,10 +15,11 @@ from native_checks import NativeChecks, ROOT, announce
 BUILD = ROOT/'build/tests/python'
 
 
-# Discovery uses only Python/reference infrastructure; native application assertions belong to other groups.
+# Allow five minutes for the full Python suite on busy CI hosts; native command limits stay unchanged.
 def python_tests():
     return NativeChecks(BUILD).command(
-        [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], 'python-tests')
+        [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'],
+        'python-tests', timeout=300)
 
 
 # A fresh failed or empty discovery cannot reuse an earlier green report.

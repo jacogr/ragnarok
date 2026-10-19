@@ -23,10 +23,10 @@ class NativeChecks:
         self.folder = Path(folder)
 
     # Retain exact arguments, elapsed time, exit status and diagnostics, including expected failures.
-    def command(self, arguments, name, environment=None, cwd=ROOT):
+    def command(self, arguments, name, environment=None, cwd=ROOT, timeout=180):
         started = time.monotonic()
         result = subprocess.run([str(arg) for arg in arguments], cwd=cwd,
-                                capture_output=True, text=True, timeout=180, env=environment)
+                                capture_output=True, text=True, timeout=timeout, env=environment)
         output = result.stdout+result.stderr
         log = self.folder/(name+'.log')
         log.write_text(output)
