@@ -75,3 +75,7 @@ Evidence is retained under ignored `build/accumulation-finalization/`. These are
 results, separate from exact-head Linux CI. Queue/statistics/history coordination and final block
 publication remain open alongside the existing transfer/account/privilege gates. M1 framing
 remains complete; full state serialization and accumulation parity remain open.
+
+[Accumulation statistics](accumulation-statistics.md) now derive work-item counts and actual
+service gas from this finalized history without writes; combining them with other C(13) activity
+and updating account timestamps remain subsequent work.

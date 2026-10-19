@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/accumulation_statistics_results.nim",
+  "build_name": "accumulation-statistics-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-statistics-default", "diagnostic": "outcome.status == None", "description": "Accumulation statistics default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-statistics-refused", "diagnostic": "outcome.status == None", "description": "Accumulation statistics refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-statistics-info", "diagnostic": "outcome.status == None", "description": "Accumulation statistics info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-statistics-source", "diagnostic": "outcome.status == None", "description": "Accumulation statistics source extraction guard"},
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-statistics-index", "diagnostic": "outcome.status == None", "description": "Accumulation statistics index extraction guard"}
+  ]
+}
