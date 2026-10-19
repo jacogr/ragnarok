@@ -3,7 +3,7 @@
 
 ## Execute a prepared accumulation CPU with its own fetch environment and implemented host calls.
 ## Guarded results separate guest outcomes, engine refusals and unavailable host functionality.
-## Retains checkpoint/yield/provide implications beside guest outcomes.
+## Retains storage/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
 import ../chain/parameters
@@ -26,6 +26,7 @@ type
       discard                               # Other failures contain only the outer reason.
   ## Callback-local immutable fetch ownership cannot be substituted by the guest or caller.
   DispatchContext = object
+    parameters: Parameters
     fetch: FetchContext
     copyLimit: MemoryByteLimit
     effects: AccumulationEffects
@@ -183,18 +184,21 @@ proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Corrupt account/request state is not WHO or HUH.
   hostSuccess[AccumulationDispatchError](response)
 
-## Compute both independently rounded read terms in bounded base-2^32 limbs.
+## Compute both independently rounded read/write terms in bounded base-2^32 limbs.
 ## The key rate exceeds 1024, so a full-width cost must retain its upper limb.
-proc readCharge(cpu: MachineInfo, memory: Memory): HostResult[
+proc storageCharge(cpu: MachineInfo, memory: Memory, writing: bool): HostResult[
     AccumulationDispatchError] {.raises: [].} =
-  let size = uint64(cpu.registers[9])
-  let requested = uint64(cpu.registers[12])
+  let size = uint64(cpu.registers[if writing: 8 else: 9])
+  let requested = uint64(cpu.registers[if writing: 10 else: 12])
+  let keyRate = (if writing: 3358'u64 else: 1736'u64)
+  let valueRate = (if writing: 216'u64 else: 248'u64)
+  let base = (if writing: 2442'u64 else: 2407'u64)
   let units = size div 1024
-  let valueCost = (requested div 1024)*248+((requested mod 1024)*248+1023) div 1024
-  let tail = 2407'u64+((size mod 1024)*1736+1023) div 1024
-  let lowProduct = (units and 0xffffffff'u64)*1736+tail+(valueCost and 0xffffffff'u64)
-  # Each product is below 2^43; adding the bounded low value limb and base cannot overflow uint64.
-  let highProduct = (units shr 32)*1736+(lowProduct shr 32)+(valueCost shr 32)
+  let valueCost = (requested div 1024)*valueRate+((requested mod 1024)*valueRate+1023) div 1024
+  let tail = base+((size mod 1024)*keyRate+1023) div 1024
+  let lowProduct = (units and 0xffffffff'u64)*keyRate+tail+(valueCost and 0xffffffff'u64)
+  # Each product is below 2^44; adding the bounded low value limb and base cannot overflow uint64.
+  let highProduct = (units shr 32)*keyRate+(lowProduct shr 32)+(valueCost shr 32)
   # The complete high product is below 2^34, including both carries; retain all bits above uint64.
   let low = ((highProduct and 0xffffffff'u64) shl 32) or (lowProduct and 0xffffffff'u64)
   chargedResponse(cpu, memory, low, highProduct shr 32)
@@ -207,7 +211,7 @@ proc accountReadResponse(context: var DispatchContext, cpu: MachineInfo, memory:
   let requested = uint64(cpu.registers[if storage: 12 else: 11])
   var charged = hostFailure(AccumulationDispatchError.Uninitialized)
   if storage:
-    charged = readCharge(cpu, memory) # Both full-width read extents contribute before accessibility checks.
+    charged = storageCharge(cpu, memory, false) # Both full-width read extents contribute before accessibility checks.
   else:
     # Lookup's rate<1024 proves the full cost fits below 2^63 for every uint64 request.
     let cost = 600'u64+(requested div 1024)*248+((requested mod 1024)*248+1023) div 1024
@@ -240,7 +244,7 @@ proc accountReadResponse(context: var DispatchContext, cpu: MachineInfo, memory:
       response.registers[7] = RegisterValue(high(uint64)) # NONE; an out-of-domain service cannot alias its low bits.
       return hostSuccess[AccumulationDispatchError](response)
     target = ServiceIndex(uint32(rawTarget)) # An explicit self ID follows the same current complete-map backing.
-  let state = initial.contextAccounts.value
+  let state = context.effects.effectContext(AccumulationDimension.Regular).value.effectAccounts.value
   let account = state.lookup(chapterServiceKey(StateChapter(255), target))
   if account.error == StateStoreError.MissingKey:
     response.registers[7] = RegisterValue(high(uint64)) # NONE has zero cardinality; the output interval is empty.
@@ -292,6 +296,52 @@ proc accountReadResponse(context: var DispatchContext, cpu: MachineInfo, memory:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory ownership cannot become a protocol response.
   hostSuccess[AccumulationDispatchError](response)
 
+## Charge and capture write inputs before planning any private account change.
+proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = storageCharge(cpu, memory, true)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve unrepresentable signed debt as a local refusal.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No memory checks or storage hashing before affordability.
+  let key = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])),
+    MemoryLength(uint64(cpu.registers[8])), context.copyLimit)
+  if key.error in {MachineError.Fault, MachineError.InvalidRange}:
+    response.action = HostAction.Panic # Charged panic preserves r7 and all prior account versions.
+    return hostSuccess[AccumulationDispatchError](response)
+  if key.error == MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture budget is not guest panic.
+  if key.error != MachineError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Require authentic readable memory.
+  let value = readBytes(memory, MemoryAddress(uint64(cpu.registers[9])),
+    MemoryLength(uint64(cpu.registers[10])), context.copyLimit)
+  if value.error in {MachineError.Fault, MachineError.InvalidRange}:
+    response.action = HostAction.Panic # Zero length accepts every pointer; nonempty invalid ranges panic.
+    return hostSuccess[AccumulationDispatchError](response)
+  if value.error == MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # No state change on partial capture.
+  if value.error != MachineError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners never authorize state writes.
+  let changed = recordAccumulationStorage(context.effects, key.value, value.value,
+    context.parameters, ByteLimit(uint64(context.copyLimit)))
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value.effects # Publish only a complete metadata/storage successor.
+    response.registers[7] = RegisterValue(if changed.value.hadValue:
+      uint64(changed.value.previousBytes) else: high(uint64))
+  of AccumulationEffectError.StorageFull:
+    response.registers[7] = RegisterValue(high(uint64)-4) # FULL preserves the prior pair.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Store ceilings remain local refusals.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No partial state on failed hashing.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Corrupt footprint/metadata never becomes FULL.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid domains expose no successor.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -316,11 +366,13 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     accountReadResponse(context, cpu, memory, false) # Account preimages remain separate from deferred provide effects.
   of 4:
     accountReadResponse(context, cpu, memory, true) # Storage keys use the distinct canonical raw-key namespace.
+  of 5:
+    writeResponse(context, cpu, memory) # Self-only storage changes retain private implication versions.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 5..6, 15..17, 19..25:
+  of 1, 6, 15..17, 19..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
@@ -361,7 +413,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
   let initialized = prepareAccumulationEffects(initial.value)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
-  var context = DispatchContext(fetch: captured.value, copyLimit: copyLimit,
+  var context = DispatchContext(parameters: parameters, fetch: captured.value, copyLimit: copyLimit,
       effects: initialized.value, provisionLimits: provisionLimits)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
     steps, calls, cycles)

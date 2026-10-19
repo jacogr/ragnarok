@@ -35,9 +35,11 @@ proc pvmContextConfig*(): AccumulationContextConfig =
 proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     operandCount = 0, serviceId = 42'u32,
     entropy: StateEntropyWord = default(StateEntropyWord),
-    precedingService = false, includeContexts = false, extra: seq[StateEntry] = @[]): PreparedAccumulationInvocation =
+    precedingService = false, includeContexts = false, extra: seq[StateEntry] = @[],
+        account = default(ServiceMetadata), spareEntries = 0): PreparedAccumulationInvocation =
   ## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
   ## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
+  ## account supplies copied metadata; the code hash is derived from code. spareEntries (0..64) bounds extra map capacity.
   assert operandCount >= 0 and operandCount <= 16
   var reports: seq[OwnedReport] = @[]
   if operandCount > 0:
@@ -76,7 +78,9 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
   for octet in code:
     preimage.add(octet) # Zero-length service metadata precedes the entire JAM code envelope.
   let hash = array[32, byte](blake2b256(preimage).value)
-  var entries = @[serviceMetadataEntry(ServiceIndex(serviceId), ServiceMetadata(codeHash: CodeHash(hash)),
+  var metadata = account
+  metadata.codeHash = CodeHash(hash)
+  var entries = @[serviceMetadataEntry(ServiceIndex(serviceId), metadata,
     ByteLimit(89)).value,
     servicePreimageEntry(ServiceIndex(serviceId), ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(preimage.len))).value]
@@ -89,11 +93,12 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
         config.staging).value)
     entries.add(privilegeStateEntry(PrivilegeState(assigners: @[ServiceIndex(0), ServiceIndex(0)]),
       config.privileges).value)
+  assert spareEntries >= 0 and spareEntries <= 64
   assert extra.len <= 64 # Keep all test-only extent additions below native and trie policy ceilings.
   for entry in extra:
     entries.add(entry) # Capture requests/other targets into the same complete map before preparing the bootstrap.
   let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(
-      5+extra.len),
+      5+extra.len+spareEntries),
     perValue: ByteLimit(10000), totalValueBytes: ByteLimit(20000), nodes: TrieNodeLimit(1000)),
     writes: ElementLimit(2), writeValueBytes: ByteLimit(20000))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(

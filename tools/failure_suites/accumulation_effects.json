@@ -110,6 +110,28 @@
         "origin": "checkpoint"
       },
       "name": "accumulation-effect-checkpoint"
+    },
+    {
+      "arguments": [
+        "accounts"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "accounts"
+      },
+      "name": "accumulation-effect-accounts"
+    },
+    {
+      "arguments": [
+        "storage"
+      ],
+      "description": "Accumulation effect selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "storage"
+      },
+      "name": "accumulation-effect-storage"
     }
   ],
   "crypto_library": "crypto",

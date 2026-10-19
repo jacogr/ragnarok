@@ -6,7 +6,8 @@
 
 import std/cmdline
 import ../../src/state/[accumulation_effects, accumulation_context]
-import ../../src/codec/state_outputs
+import ../../src/codec/[state_outputs, bounded]
+import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 
 # Only absent-yield extraction needs a genuinely prepared initialized owner as its negative control.
@@ -22,6 +23,9 @@ of "refused": discard outcome.value # Invalid initial contexts expose no pair.
 of "dimension": discard pair.effectContext(AccumulationDimension.Regular).value # No default dimension child.
 of "source": discard pair.effectsSource.value # No fabricated initial preparation.
 of "initial": discard context.effectInitialContext.value # No substituted account backing.
+of "accounts": discard context.effectAccounts.value # Default contexts cannot fabricate current accounts.
+of "storage": discard recordAccumulationStorage(pair, [], [], default(Parameters), ByteLimit(
+    0)).value # Failed changes contain no successor.
 of "info": discard context.effectInfo.value # No default metadata/effects.
 of "yield": discard context.effectYield.value # No default hash.
 of "absent": discard pair.effectContext(AccumulationDimension.Regular).value.effectYield.value # Absence is not zero bytes.
