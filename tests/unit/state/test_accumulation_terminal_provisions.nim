@@ -3,7 +3,7 @@
 # @@Verification={"arc": "accumulation_terminal_provisions_arc_release"}
 
 ## Actual terminal selection binds bounded provision union and timestamps to invocation provenance.
-## Covers atomic fulfillment, normalization gates, copied ownership, guarded refusals and ARC release.
+## Covers atomic fulfillment, normalization preflight, copied ownership, guarded refusals and ARC release.
 
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_terminal_provisions, accumulation_dispatch,
@@ -24,10 +24,10 @@ proc root(state: StateStore): array[32, byte] = array[32, byte](
     state.snapshot.value.commitment.root)
 
 # Independently construct exact singleton timestamp bytes and full expected-map commitments.
-proc expectedEntries(second: bool): seq[StateEntry] =
+proc expectedEntries(second: bool, first = true): seq[StateEntry] =
   result = terminalPosteriorEntries()
   for service in [42'u32, 99'u32]:
-    if service == 42 or second:
+    if (service == 42 and first) or (service == 99 and second):
       let bytes = (if service == 42: @[73'u8] else: @[81'u8])
       let key = provisionRequest(service, bytes).key
       for index in 0..<result.len:
@@ -43,13 +43,14 @@ let panicked = terminalProvisionExecution(TerminalProvisionEnding.Panic)
 let faulted = terminalProvisionExecution(TerminalProvisionEnding.Fault)
 let exhausted = terminalProvisionExecution(TerminalProvisionEnding.OutOfGas)
 let uncheckpointed = terminalProvisionExecution(TerminalProvisionEnding.Panic, checkpoint = false)
-let ambiguous = terminalProvisionExecution(TerminalProvisionEnding.Ambiguous)
+let hashReturn = terminalProvisionExecution(TerminalProvisionEnding.HashReturn)
+let invalidExecution = default(AccumulationDispatchResult)
 assert halted.error == AccumulationDispatchError.None and halted.value.exit == StepExit.Halt
 assert panicked.value.exit == StepExit.Panic and faulted.value.exit == StepExit.Fault
 assert exhausted.value.exit == StepExit.OutOfGas
 let slot = HeaderSlot(128)
 let policy = integrationPolicy(contexts = 3, items = 5, perBlob = 1, total = 5, encoded = 13)
-let executions = @[halted, panicked, halted]
+let executions = @[hashReturn, panicked, hashReturn]
 let plan = prepareTerminalAccumulationProvisions(executions, slot, policy).value
 let info = plan.terminalProvisionInfo.value
 assert uint32(info.slot) == 128
@@ -97,9 +98,9 @@ let invalid = prepareTerminalAccumulationProvisions([halted, default(Accumulatio
     slot, policy)
 assert invalid.error == AccumulationTerminalProvisionError.NormalizationFailure
 assert invalid.normalizationError == AccumulationOutcomeError.InvalidExecution
-let gated = prepareTerminalAccumulationProvisions([halted, ambiguous], slot, policy)
-assert gated.error == AccumulationTerminalProvisionError.NormalizationFailure
-assert gated.normalizationError == AccumulationOutcomeError.AmbiguousProvisions
+let lateInvalid = prepareTerminalAccumulationProvisions([hashReturn, invalidExecution], slot, policy)
+assert lateInvalid.error == AccumulationTerminalProvisionError.NormalizationFailure
+assert lateInvalid.normalizationError == AccumulationOutcomeError.InvalidExecution
 assert hashCalls() == 0
 let backend = prepareTerminalAccumulationProvisions([halted], slot, policy)
 assert backend.error == AccumulationTerminalProvisionError.ProvisionFailure
@@ -108,7 +109,7 @@ failHash(0)
 let expectedBoth = newStateStore(expectedEntries(true), integrationStoreLimits()).value
 let expectedCheckpoint = newStateStore(expectedEntries(false), integrationStoreLimits()).value
 let posterior = newStateStore(terminalPosteriorEntries(), integrationStoreLimits()).value
-for index, execution in [halted, panicked, faulted, exhausted, uncheckpointed]:
+for index, execution in [halted, panicked, faulted, exhausted, uncheckpointed, hashReturn]:
   let selectedPlan = prepareTerminalAccumulationProvisions([execution], slot, policy).value
   let selected = selectedPlan.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(0)).value
   let facts = selected.outcomeInfo.value
@@ -116,11 +117,58 @@ for index, execution in [halted, panicked, faulted, exhausted, uncheckpointed]:
   let before = root(state)
   assert integrateTerminalAccumulationProvisions(state, selectedPlan).error ==
       AccumulationTerminalProvisionError.None
-  let expected = (if index == 0: root(expectedBoth)
+  let expected = (if index == 0 or index == 5: root(expectedBoth)
     elif index == 4: before else: root(expectedCheckpoint))
   assert root(state) == expected # Only the independently expected normalized dimension reaches fnprovide.
-  let expectedCount = (if index == 0: 2 elif index == 4: 0 else: 1)
+  let expectedCount = (if index == 0 or index == 5: 2 elif index == 4: 0 else: 1)
   assert facts.provisions == expectedCount
+# Reachable X/Y combinations distinguish the adopted regular projection from checkpoint selection.
+for first in [false, true]:
+  for second in [false, true]:
+    for checkpoint in [false, true]:
+      let execution = terminalProvisionExecution(TerminalProvisionEnding.HashReturn,
+        checkpoint = checkpoint, second = second, first = first)
+      let count = (if first: 1 else: 0)+(if second: 1 else: 0)
+      failHash(1)
+      let normalized = normalizeAccumulationOutcome(execution).value
+      let context = normalized.outcomeContext.value
+      let facts = normalized.outcomeInfo.value
+      assert facts.dimension == AccumulationDimension.Regular and facts.provisions == count and
+          facts.hasYield,
+        "hash return retains exactly X's provisions for empty, equal and divergent checkpoint histories"
+      let commitment = array[32, byte](context.effectYield.value)
+      assert commitment[0] == 73
+      for index in 1..<32:
+        assert commitment[index] == 0, "readable RO return is an exact independently authored 32-byte commitment"
+      var services: seq[uint32] = @[]
+      var octets: seq[byte] = @[]
+      if first:
+        services.add(42)
+        octets.add(73) # First provided byte and its real target are independent expected observations.
+      if second:
+        services.add(99)
+        octets.add(81) # The newer regular contribution must not disappear when Y retained only the first.
+      for index in 0..<count:
+        let provision = context.effectProvisionAt(AccumulationProvisionIndex(uint64(index))).value
+        assert uint32(provision.provisionInfo.value.service) == services[index]
+        assert provision.copyProvisionBytes.value == @[octets[index]]
+      let regular = execution.effects.effectContext(
+          AccumulationDimension.Regular).value.effectInfo.value
+      let exceptional = execution.effects.effectContext(
+          AccumulationDimension.Exceptional).value.effectInfo.value
+      assert regular.provisions == count and not regular.hasYield,
+        "yield override leaves the original regular effects immutable"
+      assert exceptional.provisions == (if first and checkpoint: 1 else: 0) and
+          not exceptional.hasYield,
+        "normalization never mutates or substitutes checkpoint provisions"
+      assert hashCalls() == 0, "provision-preserving hash-return normalization performs no hashing"
+      failHash(0)
+      let selected = prepareTerminalAccumulationProvisions([execution], slot, policy).value
+      let expected = newStateStore(expectedEntries(second, first), integrationStoreLimits()).value
+      var state = posterior
+      discard integrateTerminalAccumulationProvisions(state, selected).value
+      assert root(state) == root(expected),
+        "complete independent map contains exactly the selected regular provision timestamps and preimages"
 # Caller sequence replacement and copied metadata edits cannot retarget outcomes or timestamps.
 var retained: PreparedTerminalAccumulationProvisions
 block:
@@ -173,13 +221,14 @@ assert integrateTerminalAccumulationProvisions(applied, defaultPlan).error ==
     AccumulationTerminalProvisionError.Uninitialized
 let before = getOccupiedMem()
 for iteration in 0..<1000:
-  # Candidate owners release after backend refusal, normalizer gate, successful fulfillment and no-hash replay.
+  # Candidate owners release after backend refusal, normalizer refusal, successful fulfillment and no-hash replay.
   failHash(1)
   let refused = prepareTerminalAccumulationProvisions([halted], slot, policy)
   assert refused.provisionError == AccumulationProvisionError.BackendFailure
   failHash(0)
-  assert prepareTerminalAccumulationProvisions([ambiguous], slot, policy).normalizationError ==
-    AccumulationOutcomeError.AmbiguousProvisions
+  assert prepareTerminalAccumulationProvisions([hashReturn, invalidExecution],
+      slot, policy).normalizationError ==
+    AccumulationOutcomeError.InvalidExecution
   let prepared = prepareTerminalAccumulationProvisions(executions, slot, policy).value
   var state = posterior
   failHash(1)

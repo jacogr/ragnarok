@@ -156,12 +156,27 @@ let trapped = run(guestProgram([registerImmediate(7, 42), registerImmediate(8, 6
 let rollback = normalizeAccumulationOutcome(trapped).value
 assert rollback.outcomeInfo.value.provisions == 1
 checkProvision(rollback.outcomeContext.value, 0, 42, blob(1, 73))
-# A readable exactly-32-byte return with retained provisions reaches the existing explicit specification gate.
-let ambiguous = run(guestProgram([registerImmediate(7, 42), registerImmediate(8, 65536),
-    registerImmediate(9, 1),
-  provideCall, registerImmediate(7, 65536), registerImmediate(8, 32), halt], 100000,
-      extra = fixture))
-assert normalizeAccumulationOutcome(ambiguous).error == AccumulationOutcomeError.AmbiguousProvisions
+# Actual regular provisions survive readable hash-return override and all other return boundaries.
+for length in [31'u64, 32, 33]:
+  for address in [0'u64, 65536, 196609, high(uint64)]:
+    let execution = run(guestProgram([registerImmediate(7, 196608), @[10'u8, 26],
+      registerImmediate(7, 42), registerImmediate(8, 65536), registerImmediate(9, 1),
+      provideCall, registerImmediate(7, address), registerImmediate(8, length), halt],
+      100000, extra = fixture))
+    let selected = normalizeAccumulationOutcome(execution).value
+    let context = selected.outcomeContext.value
+    assert selected.outcomeInfo.value.provisions == 1 and selected.outcomeInfo.value.hasYield
+    checkProvision(context, 0, 42, blob(1, 73))
+    let commitment = array[32, byte](context.effectYield.value)
+    let expected = if length == 32 and address == 65536: 73'u8
+      elif length == 32 and address == 196609: 0'u8 else: 81'u8
+    assert commitment[0] == expected,
+      "only an accessible exactly-32-byte return overrides the prior yield beside retained X provisions"
+    for index in 1..<32:
+      assert commitment[index] == 0, "zero bytes are retained even for a present all-zero override hash"
+    let original = execution.effects.effectContext(AccumulationDimension.Regular).value
+    assert array[32, byte](original.effectYield.value)[0] == 81,
+      "returned-hash normalization does not replace the original execution's yield"
 for witness in [(0'u64, 3980'u64), (1'u64, 3983'u64), (1023'u64, 6242'u64),
     (1024'u64, 6244'u64), (1025'u64, 6247'u64), (4294967295'u64, 9495908234'u64),
     (4294967296'u64, 9495908236'u64)]:

@@ -21,7 +21,7 @@ type
   BatchEnding* {.pure.} = enum ## Literal final instructions distinguish normal halt from exceptional rollback.
     Halt,                  ## Normal termination retains both regular provision contributions.
     Panic,                 ## A trap discards the later regular provision and retains the first checkpoint.
-    Ambiguous,             ## A readable 32-byte return exercises the nonempty-provisions gate.
+    HashReturn,            ## A readable 32-byte return overrides yield and retains regular provisions.
     StorageHalt,           ## The sibling PVM API retains a regular storage write at halt.
     StoragePanic,          ## Panic discards a storage write made after the original checkpoint.
     StorageCheckpointPanic ## A second checkpoint retains the storage write before panic.
@@ -49,9 +49,9 @@ proc batchEnvelope*(ending: BatchEnding): seq[byte] =
     discard # r8 remains an address rather than the exactly-32-byte halt-return length.
   of BatchEnding.Panic, BatchEnding.StoragePanic, BatchEnding.StorageCheckpointPanic:
     instructions.add(@[0'u8]) # Completed guest trap selects the exceptional checkpoint.
-  of BatchEnding.Ambiguous:
+  of BatchEnding.HashReturn:
     instructions.add(registerImmediate(7, 65536))
-    instructions.add(registerImmediate(8, 32)) # Preserve the established nonempty-provisions return gate.
+    instructions.add(registerImmediate(8, 32)) # Hash-return normalization retains this service's regular provisions.
   instructions.add(@[50'u8, 0])
   var code = @[0'u8, 0, 0, 0, 0]
   var starts = @[0, 1, 2, 3, 4]

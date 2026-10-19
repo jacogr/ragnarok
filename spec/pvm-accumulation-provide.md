@@ -26,9 +26,10 @@ Completion witnesses use real guest execution for funded/underfunded charges,
 rounding boundaries, invalid lengths, high-bit/self targets, memory precedence,
 empty/nonempty requested bytes, duplicate status, source/backend failures, local
 limits, checkpoint/termination histories, normalized provision extraction, the
-existing nonempty hash-return gate, ownership and 1,000 release cycles.
+adopted nonempty hash-return projection, ownership and 1,000 release cycles.
 This slice neither fulfills requests nor publishes preimages/state. The existing
-32-byte-return/nonempty-provision and grow_heap specification gates remain open.
+32-byte-return/nonempty-provision gate is removed by the [scoped X projection](pvm-hash-return-provisions.md);
+[heap integration](pvm-accumulation-heap.md) separately adopts merged #533/#538 fixes.
 
 
 ## Implementation and ownership

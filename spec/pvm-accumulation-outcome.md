@@ -12,11 +12,12 @@ return replaces the selected yield; other lengths and unreadable return ranges
 retain the regular yield. Bound that copy to 32 bytes without materializing other
 return blobs. Preserve post-credit account/provenance owners and do not publish state.
 
-The pinned hash-return branch names `imXY`'s provisions, although `imXY` is a pair
-and provisions belong to its individual dimensions. Do not infer which dimension
-was intended. The hash-return branch requires both provision sets to be empty,
-returning a typed `AmbiguousProvisions` gate otherwise. A focused pending specification test records
-that nonempty-provision semantics remain unresolved; no pin upgrade is implied.
+The pinned hash-return branch names `imXY`'s provisions even though `imXY` is a
+pair. [GP #533](https://github.com/gavofyork/graypaper/pull/533) corrects that
+projection to regular X. The maintainer's next-layer request on 2026-10-19 adopts
+that correction without changing base pins; see [the scoped contract](pvm-hash-return-provisions.md).
+Nonempty regular provisions now survive readable 32-byte halt returns and their
+yield override. AmbiguousProvisions is retained only as a historical enum value.
 
 Completion tests exercise actual guest halt/panic/fault/OOG histories, checkpoint
 selection, empty/31/32/33-byte returns, zero/nonzero override commitments, unreadable
@@ -63,19 +64,19 @@ This completes normalization for the dispatcher's currently implemented host sco
 not full Psi_A, authenticated block execution or persistent publication.
 The [provide host tranche](pvm-accumulation-provide.md) connects call 27 to existing
 requested-provision effects. Actual nonempty sets can be normalized on other return
-branches; the hash-return gate remains until its specification decision. Remaining
-account/accumulation host calls, grow_heap and selected-provision publication remain
-separate work.
+branches; the hash-return branch now uses the adopted X projection. Existing
+[heap integration](pvm-accumulation-heap.md) and terminal-selected provision
+publication compose with this normalization. Complete accpar and block publication
+remain separate work.
 
 
 ## Reviewed upstream disposition
 
 On 2026-10-19, review confirmed [GP #533](https://github.com/gavofyork/graypaper/pull/533)
 merged on 2026-07-22 at `0c0664eb52ba92afd8d21cef96c0e1da506eddfe`.
-Its C hash-return branch explicitly projects provisions from X. Thus this is
-resolved upstream, pending scoped adoption here; the pinned 0.8.0 source and
-AmbiguousProvisions refusal remain unchanged in the grow_heap layer. The next
-bounded increment should adopt that projection and test divergent X/Y provision
-sets with genuine hash-return execution and terminal publication. The maintainer's
-current adoption decision covers grow_heap gas and stack fixes only; see
-[the heap authority record](pvm-accumulation-heap.md).
+Its C hash-return branch explicitly projects provisions from X. The grow_heap
+layer recorded this as resolved upstream and pending scoped local adoption.
+[The next stacked layer](pvm-hash-return-provisions.md) now adopts the projection
+with unchanged GP/vector pins and genuine divergent X/Y publication witnesses.
+Other #533 host changes are outside this adoption; the preceding heap layer's
+scoped gas/address decisions remain as recorded.

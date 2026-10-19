@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Keep the pinned accumulation return/provision ambiguity explicit without guessing a pair projection."""
+"""Keep original GP source evidence distinct from scoped adoption of the merged regular projection."""
 
 import hashlib
 import json
@@ -11,11 +11,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class OutcomeSpecificationGate(unittest.TestCase):
-    """Verify pinned source identity and retain the unresolved nonempty-provision decision."""
+class OutcomeSpecificationAdoption(unittest.TestCase):
+    """Verify unchanged base authority and the exact reviewed #533 X-projection adoption."""
 
     def test_pinned_collapse_reference(self):
-        """The hash-return branch refers to a pair where the other branches project X or Y."""
+        """The original hash branch names a pair; the adopted correction is recorded separately."""
         pins = json.loads((ROOT / 'spec/pins.json').read_text())['graypaper']
         source = ROOT / 'vendor/graypaper/text/pvm_invocations.tex'
         self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),
@@ -33,7 +33,23 @@ class OutcomeSpecificationGate(unittest.TestCase):
                          pins['source_sha256']['text/pvm.tex'])
         self.assertIn(r"u = \gascounter - \max(\gascounter', 0)", source.read_text())
 
-    @unittest.skip('Merged GP #533 resolves C to X; scoped local provision-projection adoption remains pending')
     def test_nonempty_hash_return_provisions(self):
-        """Adopt the reviewed X projection and verify divergent X/Y provisions before claiming parity."""
-        self.fail('Adopt the merged #533 X projection under a scoped decision and test divergent X/Y provision sets')
+        """The reviewed merge fixes C to X without changing the GP/vector repository pins."""
+        adoption = json.loads((ROOT / 'spec/pvm-hash-return-adoption.json').read_text())
+        pins = json.loads((ROOT / 'spec/pins.json').read_text())
+        self.assertEqual(adoption['pr'], 533)
+        self.assertEqual(adoption['commit'], '0c0664eb52ba92afd8d21cef96c0e1da506eddfe')
+        self.assertEqual(adoption['source_sha256'],
+                         'e36d6aaf4b84f06632cd427e5d9a04cff082b47cb4bc1e37a34ad68bec3ea6fd')
+        self.assertEqual(adoption['base_graypaper_commit'], pins['graypaper']['commit'])
+        self.assertEqual(adoption['vectors_commit'], pins['vectors']['commit'])
+        self.assertIn('regular X', adoption['scope'])
+
+    def test_divergent_checkpoint_witness(self):
+        """Append-only effects admit strict X supersets; using Y would omit a literal target/blob pair."""
+        checkpoint = frozenset({(42, b'I')})
+        regular = checkpoint | {(99, b'Q')}
+        self.assertEqual(regular - checkpoint, {(99, b'Q')})
+        self.assertTrue(checkpoint < regular)
+        self.assertEqual(len(regular), 2)
+        self.assertEqual(checkpoint, {(42, b'I')})
