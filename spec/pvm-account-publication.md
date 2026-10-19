@@ -85,3 +85,10 @@ mutable global inputs and an explicitly initialized fixed-array result required 
 the pinned compiler. Final checks cover affected consumers; no dependency setup or
 unrelated suite/whole-source sweep was repeated. PR #190 remains the unchanged
 parent, with this layer registered through the native stack workflow.
+
+## Bounded self-entry extension
+
+[Self account writes](pvm-self-account-writes.md) adds explicitly bounded key provenance
+for storage, solicit and forget. It preserves this layer's upgrade support and keeps
+zero-policy callers on the original conservative publication boundary. Creation/deletion,
+outgoing transfers, privilege changes and grow_heap remain gated.

@@ -127,10 +127,11 @@ proc batchParameters(): Parameters =
   decodeParameters(wire).value
 
 proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128),
-    copyLimit = MemoryByteLimit(32), parameters = batchParameters(), transferLimit = ElementLimit(0)):
+    copyLimit = MemoryByteLimit(32), parameters = batchParameters(), transferLimit = ElementLimit(0),
+    accountWriteKeys = ElementLimit(0)):
     AccumulationDispatchResult =
   ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
-  ## Explicit copy/profile/outgoing policies support new integrations; defaults retain the earlier supported path.
+  ## Explicit copy/profile/outgoing/self-key policies support new integrations; defaults retain the earlier supported path.
   let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(index),
     fixture.state.snapshot.value, slot, AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512),
         preimageBytes: ByteLimit(1024))).value
@@ -142,9 +143,12 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
     FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512),
       operand: OperandLimits(maxBytes: ByteLimit(512))), copyLimit,
     ExecutionStepLimit(200), HostCallLimit(32), GasCycleLimit(10000), pvmContextConfig(),
-    provisionPolicy(items = 2, perBlob = 1, total = 2), transferLimit = transferLimit)
+    provisionPolicy(items = 2, perBlob = 1, total = 2), transferLimit = transferLimit,
+    accountWriteKeys = accountWriteKeys)
 
-proc batchPolicy*(accounts = 2'u64): AccumulationBatchLimits =
+proc batchPolicy*(accounts = 2'u64, selfWrites = 0'u64,
+    selfValueBytes = 0'u64): AccumulationBatchLimits =
   ## Account and union ceilings remain independent, with the latter including duplicate contributions from both services.
-  AccumulationBatchLimits(accounts: ElementLimit(accounts),
+  AccumulationBatchLimits(accounts: ElementLimit(accounts), selfWrites: ElementLimit(selfWrites),
+    selfValueBytes: ByteLimit(selfValueBytes),
     provisions: integrationPolicy(contexts = 2, items = 4, perBlob = 1, total = 4, encoded = 13))

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Merge common-source credits, proven selected self-metadata upgrades and provisions on a private complete-map fork.
+## Merge common-source credits, proven selected self account writes and provisions on a private complete-map fork.
 ## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
@@ -14,6 +14,8 @@ import ./[accumulation_inputs, accumulation_service, accumulation_invocation, ac
 type
   AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
     accounts*: ElementLimit ## Maximum self-metadata records copied for credits or supported selected upgrades.
+    selfWrites*: ElementLimit ## Maximum unique nonmetadata self keys copied across all selected executions; zero preserves the gate.
+    selfValueBytes*: ByteLimit ## Aggregate copied final self values; deletions consume a key but no value bytes.
     provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
   AccumulationBatchError* {.pure.} = enum ## Refusals expose only their reasons; no earlier credit, candidate root or partial terminal set escapes.
     Uninitialized,      ## Default result or plan without initialized ownership.
@@ -28,7 +30,7 @@ type
     DuplicateService,   ## A service occurs more than once across executions and skips.
     InvalidIndex,       ## The plan-owned execution ordinal is outside the retained outcomes.
     StaleState,         ## The publication store no longer retains this plan's exact prior version.
-    UnsupportedAccountEffects, ## Selected changes exceed the proven self-metadata-only publication scope.
+    UnsupportedAccountEffects, ## Selected changes exceed proven self scope or produce conflicting physical keys.
     LimitExceeded,      ## Batch descriptors or account writes exceed local preparation ceilings.
     TerminalFailure,    ## Terminal preparation or provision fulfillment refused; inspect its nested reason.
     StoreFailure        ## The private account-write phase refused; inspect storeError.
@@ -37,12 +39,16 @@ type
     skipped*: int         ## Unique services with certified non-executing outcomes.
     completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
     accountWrites*: int   ## Self-metadata records prepared for incoming credits or selected upgrades.
+    selfWrites*: int      ## Unique nonmetadata keys prepared from selected self-write provenance.
+    selfValueBytes*: uint64 ## Copied final self values, excluding fixed metadata and terminal provisions.
     terminal*: AccumulationTerminalProvisionInfo ## Checked invocation slot and selected-provision accounting.
   # Acyclic owner retains exact input/prior provenance, private metadata writes and normalized terminal effects.
   BatchData = ref object
     inputs: PreparedAccumulationInputs
     prior: StateStoreSnapshot
     writes: seq[StateWrite]
+    metadataWrites: int
+    selfBytes: uint64
     terminal: PreparedTerminalAccumulationProvisions
     skipped: int
     completeInputs: bool
@@ -106,6 +112,15 @@ func compareService(left, right: ServiceIndex): int =
   if uint32(left) > uint32(right): return 1
   0
 
+# Compare only fixed physical keys; caller execution order never chooses a conflicting winner.
+func compareAccountKey(left, right: StateKey): int =
+  let a = array[31, byte](left)
+  let b = array[31, byte](right)
+  for index in 0..<31:
+    if a[index] < b[index]: return -1 # Full serialized keys, not only service or logical raw key, identify conflicts.
+    if a[index] > b[index]: return 1
+  0
+
 proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[AccumulationBatchInfo] =
   ## Copy observations without granting mutable metadata, arrays or replaceable publication provenance.
   let data = plan.data
@@ -115,7 +130,8 @@ proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[Accumu
   AccumulationBatchResult[AccumulationBatchInfo](status: AccumulationBatchError.None,
     completed: AccumulationBatchInfo(executions: data.terminal.terminalProvisionInfo.value.provisions.contexts,
       skipped: data.skipped, completeInputs: data.completeInputs,
-      accountWrites: data.writes.len, terminal: data.terminal.terminalProvisionInfo.value))
+      accountWrites: data.metadataWrites, selfWrites: data.writes.len-data.metadataWrites,
+      selfValueBytes: data.selfBytes, terminal: data.terminal.terminalProvisionInfo.value))
 
 proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisionSourceIndex):
     AccumulationBatchResult[AccumulationOutcome] =
@@ -196,6 +212,9 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   if selected.error != AccumulationTerminalProvisionError.None:
     return terminalRefusal[PreparedAccumulationBatch, PreparedTerminalAccumulationProvisions](selected)
   var writes: seq[StateWrite] = @[]
+  var metadataWrites = 0
+  var selfWrites = 0'u64
+  var selfBytes = 0'u64
   for index, service in services:
     # Skips retain their credited initial map; executions must use one terminal-selected scope/account owner.
     var accounts = service.serviceState.value
@@ -208,18 +227,47 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
           scope.value == AccumulationAccountScope.Unsupported:
         fail(AccumulationBatchError.UnsupportedAccountEffects) # Restored equal bytes cannot erase unsupported mutation ancestry.
       accounts = context.effectAccounts.value
+      let count = context.effectAccountWriteCount.value
+      if uint64(count) > uint64(limits.selfWrites)-selfWrites:
+        fail(AccumulationBatchError.LimitExceeded) # Bound the entire selected trace before value copying or descriptor growth.
+      for ordinal in 0..<count:
+        if writes.len >= high(int) div sizeof(StateWrite):
+          fail(AccumulationBatchError.LimitExceeded) # Prove the combined native descriptor extent before append.
+        let key = context.effectAccountWriteKeyAt(AccumulationAccountWriteIndex(uint64(
+            ordinal))).value
+        let found = accounts.lookup(key)
+        if found.error == StateStoreError.MissingKey:
+          writes.add(StateWrite(key: key, kind: StateWriteKind.Delete)) # A selected deletion remains explicit even if it restored prior bytes.
+        elif found.error == StateStoreError.None:
+          let size = uint64(found.value.byteLength)
+          if size > uint64(limits.selfValueBytes)-selfBytes:
+            fail(AccumulationBatchError.LimitExceeded) # Bound exact aggregate payload before copying it from its retained owner.
+          writes.add(StateWrite(key: key, kind: StateWriteKind.Put, value: found.value.bytes))
+          selfBytes += size
+        else:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # No invalid current account owner supplies a fabricated deletion.
+        inc selfWrites
     if not sameStateSnapshot(accounts, prior):
       # Common-source uniqueness makes these self keys disjoint; never copy a sibling's complete local map.
-      if uint64(writes.len) >= uint64(limits.accounts):
+      if uint64(metadataWrites) >= uint64(limits.accounts) or writes.len >= high(int) div sizeof(StateWrite):
         fail(AccumulationBatchError.LimitExceeded) # Bound the fixed record before copying its bytes.
       let key = chapterServiceKey(StateChapter(255), service.serviceInfo.value.service)
       let record = accounts.lookup(key)
       if record.error != StateStoreError.None or record.value.byteLength != ServiceMetadataBytes:
         fail(AccumulationBatchError.UnsupportedAccountEffects) # No missing/incomplete self record authorizes publication.
       writes.add(StateWrite(key: key, kind: StateWriteKind.Put, value: record.value.bytes))
+      inc metadataWrites
+  var keys = newSeq[StateKey](writes.len)
+  for index, write in writes:
+    keys[index] = write.key # Fixed-key scratch detects cross-service or namespace conflicts without copying payloads.
+  keys.sort(compareAccountKey)
+  for index in 1..<keys.len:
+    if compareAccountKey(keys[index-1], keys[index]) == 0:
+      fail(AccumulationBatchError.UnsupportedAccountEffects) # No implicit winner for colliding physical account writes.
   AccumulationBatchResult[PreparedAccumulationBatch](status: AccumulationBatchError.None,
     completed: PreparedAccumulationBatch(data: BatchData(inputs: inputs, prior: prior,
-      writes: writes, terminal: selected.value, skipped: skipped.len,
+      writes: writes, metadataWrites: metadataWrites, selfBytes: selfBytes,
+      terminal: selected.value, skipped: skipped.len,
       completeInputs: serviceCount == count.value)))
 
 proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
