@@ -66,3 +66,7 @@ reused with fresh execution/output/ARC checks.
 Checkpoint witnesses use their own invocation metadata because each authored
 program has its own initial code hash. Existing fixture and shared-type contracts
 remain unchanged. Next bounded host: transfer (21).
+
+## Self-metadata publication extension
+
+[Terminal-selected batch publication](pvm-account-publication.md) now supports proven upgrade-only self-metadata lineages. This extends the original invocation-local scope; broader account mutations and grow_heap remain gated.

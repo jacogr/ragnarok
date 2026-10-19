@@ -25,6 +25,7 @@ of "refused": discard outcome.value # Invalid initial contexts expose no pair.
 of "dimension": discard pair.effectContext(AccumulationDimension.Regular).value # No default dimension child.
 of "source": discard pair.effectsSource.value # No fabricated initial preparation.
 of "initial": discard context.effectInitialContext.value # No substituted account backing.
+of "account-scope": discard context.effectAccountScope.value # A default context cannot fabricate mutation provenance.
 of "accounts": discard context.effectAccounts.value # Default contexts cannot fabricate current accounts.
 of "storage": discard recordAccumulationStorage(pair, [], [], default(Parameters), ByteLimit(
     0)).value # Failed changes contain no successor.

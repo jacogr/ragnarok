@@ -1,11 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Merge supported common-source execution credits and terminal-selected provisions on a private complete-map fork.
+## Merge common-source credits, proven selected self-metadata upgrades and provisions on a private complete-map fork.
 ## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
-import ../codec/[bounded, composite, header, state_accounts, state_trie]
+import ../codec/[bounded, composite, header, state_accounts, state_layout, state_trie]
 import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_context,
   accumulation_effects, accumulation_dispatch, accumulation_outcome, accumulation_provisions,
   accumulation_skip,
@@ -13,7 +13,7 @@ import ./[accumulation_inputs, accumulation_service, accumulation_invocation, ac
 
 type
   AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
-    accounts*: ElementLimit ## Maximum changed self-metadata records encoded for incoming credits.
+    accounts*: ElementLimit ## Maximum self-metadata records copied for credits or supported selected upgrades.
     provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
   AccumulationBatchError* {.pure.} = enum ## Refusals expose only their reasons; no earlier credit, candidate root or partial terminal set escapes.
     Uninitialized,      ## Default result or plan without initialized ownership.
@@ -28,7 +28,7 @@ type
     DuplicateService,   ## A service occurs more than once across executions and skips.
     InvalidIndex,       ## The plan-owned execution ordinal is outside the retained outcomes.
     StaleState,         ## The publication store no longer retains this plan's exact prior version.
-    UnsupportedAccountEffects, ## Selected account changes need a merger beyond incoming-credit metadata.
+    UnsupportedAccountEffects, ## Selected changes exceed the proven self-metadata-only publication scope.
     LimitExceeded,      ## Batch descriptors or account writes exceed local preparation ceilings.
     TerminalFailure,    ## Terminal preparation or provision fulfillment refused; inspect its nested reason.
     StoreFailure        ## The private account-write phase refused; inspect storeError.
@@ -36,7 +36,7 @@ type
     executions*: int      ## Unique services with genuine completed executions.
     skipped*: int         ## Unique services with certified non-executing outcomes.
     completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
-    accountWrites*: int   ## Changed self-metadata records prepared for incoming credits.
+    accountWrites*: int   ## Self-metadata records prepared for incoming credits or selected upgrades.
     terminal*: AccumulationTerminalProvisionInfo ## Checked invocation slot and selected-provision accounting.
   # Acyclic owner retains exact input/prior provenance, private metadata writes and normalized terminal effects.
   BatchData = ref object
@@ -185,31 +185,38 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   for index in 1..<ids.len:
     if uint32(ids[index-1]) == uint32(ids[index]):
       fail(AccumulationBatchError.DuplicateService) # An execution or skip may represent each service only once.
-  var writes: seq[StateWrite] = @[]
+  var creditWrites = 0'u64
   for service in services:
-    # Current preparation changes this private branch only when incoming credit changed self metadata.
+    # Preserve the original pre-hash refusal for the minimum metadata work already proved by incoming credits.
     if not sameStateSnapshot(service.serviceState.value, prior):
-      if uint64(writes.len) >= uint64(limits.accounts):
-        fail(AccumulationBatchError.LimitExceeded) # Check fixed metadata work before encoding/copying it.
-      let info = service.serviceInfo.value
-      let entry = serviceMetadataEntry(info.service, info.account, ByteLimit(
-          ServiceMetadataBytes)).value
-      writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put, value: entry.value))
+      if creditWrites >= uint64(limits.accounts):
+        fail(AccumulationBatchError.LimitExceeded) # No union hashing is authorized by an insufficient credit budget.
+      inc creditWrites
   let selected = prepareTerminalAccumulationProvisions(executions, slot, limits.provisions)
   if selected.error != AccumulationTerminalProvisionError.None:
     return terminalRefusal[PreparedAccumulationBatch, PreparedTerminalAccumulationProvisions](selected)
-  when declared(effectAccounts):
-    # PVM storage-write integration exposes versioned accounts separately from immutable initial provenance.
-    # This bounded merger must refuse a selected mutation instead of silently replacing it with initial credit.
-    for index in 0..<executions.len:
-      let service = services[index]
+  var writes: seq[StateWrite] = @[]
+  for index, service in services:
+    # Skips retain their credited initial map; executions must use one terminal-selected scope/account owner.
+    var accounts = service.serviceState.value
+    if index < executions.len:
       let outcome = selected.value.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(
-          uint64(index))).value
-      let current = outcome.outcomeContext.value.effectAccounts
-      if current.error != AccumulationEffectError.None:
-        fail(AccumulationBatchError.UnsupportedAccountEffects) # No missing current-account owner can authorize a merge.
-      if not sameStateSnapshot(current.value, service.serviceState.value):
-        fail(AccumulationBatchError.UnsupportedAccountEffects) # Rolled-back regular writes do not affect the selected checkpoint.
+        uint64(index))).value
+      let context = outcome.outcomeContext.value
+      let scope = context.effectAccountScope
+      if scope.error != AccumulationEffectError.None or
+          scope.value == AccumulationAccountScope.Unsupported:
+        fail(AccumulationBatchError.UnsupportedAccountEffects) # Restored equal bytes cannot erase unsupported mutation ancestry.
+      accounts = context.effectAccounts.value
+    if not sameStateSnapshot(accounts, prior):
+      # Common-source uniqueness makes these self keys disjoint; never copy a sibling's complete local map.
+      if uint64(writes.len) >= uint64(limits.accounts):
+        fail(AccumulationBatchError.LimitExceeded) # Bound the fixed record before copying its bytes.
+      let key = chapterServiceKey(StateChapter(255), service.serviceInfo.value.service)
+      let record = accounts.lookup(key)
+      if record.error != StateStoreError.None or record.value.byteLength != ServiceMetadataBytes:
+        fail(AccumulationBatchError.UnsupportedAccountEffects) # No missing/incomplete self record authorizes publication.
+      writes.add(StateWrite(key: key, kind: StateWriteKind.Put, value: record.value.bytes))
   AccumulationBatchResult[PreparedAccumulationBatch](status: AccumulationBatchError.None,
     completed: PreparedAccumulationBatch(data: BatchData(inputs: inputs, prior: prior,
       writes: writes, terminal: selected.value, skipped: skipped.len,
@@ -228,13 +235,13 @@ proc prepareCompleteAccumulationBatch*(inputs: PreparedAccumulationInputs,
     slot: HeaderSlot, limits: AccumulationBatchLimits): AccumulationBatchResult[
         PreparedAccumulationBatch] =
   ## Require exactly one real execution or certified skip per prepared input service, from the exact prior and slot.
-  ## Merge all incoming credits atomically with selected provisions; no admitted-round provenance is implied.
+  ## Merge incoming credits and proven selected self metadata atomically with provisions; no admitted-round provenance is implied.
   ## Borrowed arrays remain stable during preparation; the plan retains only immutable owners and copied writes.
   prepareBatch(inputs, prior, executions, skipped, slot, limits, true)
 
 proc applyAccumulationBatch*(state: var StateStore, plan: PreparedAccumulationBatch):
     AccumulationBatchResult[StateStoreSnapshot] =
-  ## Apply credit merge then fnprovide privately; only complete success publishes the caller's store.
+  ## Apply selected self metadata/credits then fnprovide privately; only complete success publishes the caller's store.
   ## Exact prior identity prevents lost updates and duplicate incoming credit; phase-local store limits are inherited.
   let data = plan.data
   if data == nil:

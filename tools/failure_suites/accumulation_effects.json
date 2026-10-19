@@ -3,6 +3,17 @@
   "cases": [
     {
       "arguments": [
+        "account-scope"
+      ],
+      "description": "Accumulation effect mutation-scope extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "account-scope"
+      },
+      "name": "accumulation-effect-account-scope"
+    },
+    {
+      "arguments": [
         "default"
       ],
       "description": "Accumulation effect selected-success guard",

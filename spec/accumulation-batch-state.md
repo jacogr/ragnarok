@@ -108,3 +108,7 @@ rolled back to an unchanged exceptional checkpoint succeeds with the full expect
 The `when declared(effectAccounts)` capability check supports both this layer's current parent
 and that concrete PVM API without changing the PVM branch. Integration logs and source overlays
 are retained under `build/accumulation-batch/`; the temporary checkout was removed.
+
+## Self-metadata publication extension
+
+The self-metadata extension in [PVM account publication](pvm-account-publication.md) now permits terminal-selected upgrade-only lineages. The coordinator copies each invoking service's own credited metadata, while broader mutations remain UnsupportedAccountEffects. It retains exact common-source provenance, unique service keys and atomic provision integration.
