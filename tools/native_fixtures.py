@@ -131,7 +131,7 @@ def unit_accumulation_service_fixture(folder):
     fixture = (None, {'RAGNAROK_ACCUMULATION_SERVICE': path, 'RAGNAROK_STATE_REPORT': template},
                ((path, evidence['fixture_sha256']),
                 (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
-    return {'accumulation_service': fixture}, evidence
+    return {'accumulation_service': fixture, 'accumulation_skip': fixture}, evidence
 
 
 # Prepare independent compact invocation bytes, ID witnesses and the signed-report template identity.
