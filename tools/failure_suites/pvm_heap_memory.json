@@ -1,0 +1,63 @@
+{
+  "source": "tests/native/pvm_heap_memory_results.nim",
+  "build_name": "pvm-heap-memory-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "reason": "count-owner"
+      },
+      "arguments": [
+        "count-owner"
+      ],
+      "name": "pvm-heap-memory-count-owner",
+      "diagnostic": "r.status == None",
+      "description": "PVM heap memory extraction guard count-owner"
+    },
+    {
+      "identity": {
+        "reason": "count-range"
+      },
+      "arguments": [
+        "count-range"
+      ],
+      "name": "pvm-heap-memory-count-range",
+      "diagnostic": "r.status == None",
+      "description": "PVM heap memory extraction guard count-range"
+    },
+    {
+      "identity": {
+        "reason": "map-owner"
+      },
+      "arguments": [
+        "map-owner"
+      ],
+      "name": "pvm-heap-memory-map-owner",
+      "diagnostic": "r.status == None",
+      "description": "PVM heap memory extraction guard map-owner"
+    },
+    {
+      "identity": {
+        "reason": "map-range"
+      },
+      "arguments": [
+        "map-range"
+      ],
+      "name": "pvm-heap-memory-map-range",
+      "diagnostic": "r.status == None",
+      "description": "PVM heap memory extraction guard map-range"
+    },
+    {
+      "identity": {
+        "reason": "map-limit"
+      },
+      "arguments": [
+        "map-limit"
+      ],
+      "name": "pvm-heap-memory-map-limit",
+      "diagnostic": "r.status == None",
+      "description": "PVM heap memory extraction guard map-limit"
+    }
+  ]
+}

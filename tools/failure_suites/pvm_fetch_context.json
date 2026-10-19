@@ -1,0 +1,50 @@
+{
+  "source": "tests/native/pvm_fetch_context_results.nim",
+  "build_name": "pvm-fetch-context-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-fetch-context-default",
+      "diagnostic": "r.status == None",
+      "description": "Fetch context failure payload default"
+    },
+    {
+      "identity": {
+        "reason": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-fetch-context-limit",
+      "diagnostic": "r.status == None",
+      "description": "Fetch context failure payload limit"
+    },
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-fetch-context-context",
+      "diagnostic": "r.status == None",
+      "description": "Fetch context failure payload context"
+    },
+    {
+      "identity": {
+        "reason": "selector"
+      },
+      "arguments": [
+        "selector"
+      ],
+      "name": "pvm-fetch-context-selector",
+      "diagnostic": "r.status == None",
+      "description": "Fetch context failure payload selector"
+    }
+  ]
+}

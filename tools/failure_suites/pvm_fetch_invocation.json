@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/pvm_fetch_invocation_results.nim",
+  "build_name": "pvm-fetch-invocation-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-fetch-invocation-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Invocation fetch default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-fetch-invocation-context",
+      "diagnostic": "outcome.status == None",
+      "description": "Invocation fetch context extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "inputs"
+      },
+      "arguments": [
+        "inputs"
+      ],
+      "name": "pvm-fetch-invocation-inputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Invocation fetch inputs extraction guard"
+    }
+  ]
+}

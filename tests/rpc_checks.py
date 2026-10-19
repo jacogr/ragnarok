@@ -126,6 +126,115 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 expected_head = None if expected_genesis is None else {k: expected_genesis[k] for k in ('header_hash', 'slot')}
                 assert result['result']['bestBlock'] == expected_head
                 assert 'parameters' in result['result']['rpc']['methods']
+                assert result['result']['rpc']['subscriptionState'] == dict(active=0, best=0, finalized=0, pendingUpdates=0, pendingBytes=0)
+                for name, limit in dict(maxReplyBytes=65535, maxBlobReplyBytes=32768, maxSubscriptions=8, maxPendingUpdates=16, maxPendingBytes=65535).items():
+                    assert result['result']['rpc'][name] == limit # Advertised limits match the enforced production constants.
+                assert result['result']['rpc']['subscriptions'] is True
+                assert 'subscribeBestBlock' in result['result']['rpc']['methods']
+                assert 'unsubscribeBestBlock' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeBestBlock', params=[], id=60)))
+                subscribed = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert subscribed['error']['code'] == 0 # No chain source means no successful subscription.
+                else:
+                    # Initial snapshot follows the numeric-ID response on the same live connection.
+                    assert subscribed == dict(jsonrpc='2.0', id=60, result=1)
+                    update = json.loads(receive(connection)[1])
+                    assert update == dict(jsonrpc='2.0', method='subscribeBestBlock',
+                                          params=dict(subscription=1, result=expected_head))
+                    for expected in (True, False):
+                        # First cancellation owns the subscription; a repeated cancellation reports absence.
+                        send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeBestBlock', params=[1], id=61)))
+                        assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=61, result=expected)
+                assert 'subscribeStatistics' in result['result']['rpc']['methods']
+                for finalized in (True, False):
+                    # Finalized tracking is unavailable; best-chain tracking requires a valid C(13) source.
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeStatistics', params=[finalized], id=63)))
+                    statistics_subscription = json.loads(receive(connection)[1])
+                    if finalized or not service_queries:
+                        assert statistics_subscription['error']['code'] == 0
+                    else:
+                        assert statistics_subscription == dict(jsonrpc='2.0', id=63, result=2)
+                        update = json.loads(receive(connection)[1])
+                        assert update == dict(jsonrpc='2.0', method='subscribeStatistics',
+                                              params=dict(subscription=2, result={**expected_head, 'value': expected_genesis['statistics']}))
+                        send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeStatistics', params=[2], id=64)))
+                        assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=64, result=True)
+                assert 'subscribeServiceData' in result['result']['rpc']['methods']
+                assert 'unsubscribeServiceData' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceData', params=[42, True], id=65)))
+                assert json.loads(receive(connection)[1])['error']['code'] == 0
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceData', params=[42, False], id=66)))
+                account_subscription = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert account_subscription['error']['code'] == 0 # An absent chain cannot be treated as an absent service.
+                else:
+                    account_id = 3 if service_queries else 2
+                    assert account_subscription == dict(jsonrpc='2.0', id=66, result=account_id)
+                    update = json.loads(receive(connection)[1])
+                    account_value = expected_genesis['metadata'] if service_queries else None
+                    assert update == dict(jsonrpc='2.0', method='subscribeServiceData',
+                                          params=dict(subscription=account_id, result={**expected_head, 'value': account_value}))
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceData', params=[account_id], id=67)))
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=67, result=True)
+                assert 'subscribeServiceValue' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceValue', params=[42, 'a2V5', True], id=68)))
+                assert json.loads(receive(connection)[1])['error']['code'] == 0
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceValue', params=[42, 'a2V5', False], id=69)))
+                value_subscription = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert value_subscription['error']['code'] == 0 # Missing chain state cannot be reported as a missing key.
+                else:
+                    value_id = 4 if service_queries else 3
+                    assert value_subscription == dict(jsonrpc='2.0', id=69, result=value_id)
+                    update = json.loads(receive(connection)[1])
+                    stored_value = expected_genesis['value'] if service_queries else None
+                    assert update == dict(jsonrpc='2.0', method='subscribeServiceValue',
+                                          params=dict(subscription=value_id, result={**expected_head, 'value': stored_value}))
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceValue', params=[value_id], id=70)))
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=70, result=True)
+                assert 'subscribeServicePreimage' in result['result']['rpc']['methods']
+                preimage_hash = expected_genesis['preimage_hash'] if service_queries else 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServicePreimage', params=[42, preimage_hash, False], id=71)))
+                preimage_subscription = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert preimage_subscription['error']['code'] == 0 # Missing chain cannot imply missing preimage.
+                else:
+                    preimage_id = 5 if service_queries else 4
+                    assert preimage_subscription == dict(jsonrpc='2.0', id=71, result=preimage_id)
+                    expected_preimage = expected_genesis['preimage'] if service_queries else None
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', method='subscribeServicePreimage', params=dict(subscription=preimage_id, result={**expected_head, 'value': expected_preimage}))
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServicePreimage', params=[preimage_id], id=72)))
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=72, result=True) # Cancellation releases the matching family only.
+                assert 'subscribeServiceRequest' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeServiceRequest', params=[42, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0, False], id=73)))
+                request_subscription = json.loads(receive(connection)[1])
+                if expected_head is None:
+                    assert request_subscription['error']['code'] == 0 # Unavailable chain cannot prove absence.
+                else:
+                    request_id = 6 if service_queries else 5
+                    assert request_subscription == dict(jsonrpc='2.0', id=73, result=request_id)
+                    expected_request = [] if service_queries else None
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', method='subscribeServiceRequest', params=dict(subscription=request_id, result={**expected_head, 'value': expected_request}))
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeServiceRequest', params=[request_id], id=74)))
+                    assert json.loads(receive(connection)[1]) == dict(jsonrpc='2.0', id=74, result=True) # Family-specific cancellation succeeds.
+                assert 'finalizedBlock' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='finalizedBlock', params=[], id=75)))
+                assert json.loads(receive(connection)[1])['error']['code'] == 0 # Startup has no certified finality, even with configured genesis.
+                assert 'subscribeFinalizedBlock' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeFinalizedBlock', params=[], id=76)))
+                assert json.loads(receive(connection)[1])['error']['code'] == 0 # Startup has no finality source, so no subscription ID is allocated.
+                if expected_head is not None:
+                    send(connection, json.dumps([dict(jsonrpc='2.0', method='subscribeBestBlock', params=[], id=77), request]))
+                    diagnosed = json.loads(receive(connection)[1])
+                    diagnostic_id = diagnosed[0]['result']
+                    diagnostic_state = diagnosed[1]['result']['rpc']['subscriptionState']
+                    assert diagnostic_state['active'] == diagnostic_state['best'] == diagnostic_state['pendingUpdates'] == 1
+                    assert diagnostic_state['finalized'] == 0
+                    update_payload = receive(connection)[1]
+                    assert diagnostic_state['pendingBytes'] == len(update_payload) # Batch reply observes the FIFO before transport drains it.
+                    send(connection, json.dumps(dict(jsonrpc='2.0', method='unsubscribeBestBlock', params=[diagnostic_id], id=78)))
+                    assert json.loads(receive(connection)[1])['result'] is True
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])
@@ -136,6 +245,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     if expected_genesis is not None:
                         # Both frozen genesis fixtures contain six active validators, despite four cores.
                         expected['V1']['val_count'] = 6
+                        # Six active validators give three original shards, hence 6-byte pieces.
+                        expected['V1']['basic_piece_len'] = 6
+                        expected['V1']['segment_piece_count'] = 684
                         # Only the service fixture has complete C(4), with nine pending validators.
                         expected['V1']['tickets_attempts_number'] = expected_genesis.get('tickets_attempts_number', 0)
                     assert parameters == dict(jsonrpc='2.0', id=19, result=expected)

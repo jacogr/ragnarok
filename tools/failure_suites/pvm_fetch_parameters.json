@@ -1,0 +1,50 @@
+{
+  "source": "tests/native/pvm_fetch_parameters_results.nim",
+  "build_name": "pvm-fetch-parameters-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-fetch-parameters-context",
+      "diagnostic": "r.status == None",
+      "description": "Parameter fetch refusal context"
+    },
+    {
+      "identity": {
+        "reason": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-fetch-parameters-parameters",
+      "diagnostic": "r.status == None",
+      "description": "Parameter fetch refusal parameters"
+    },
+    {
+      "identity": {
+        "reason": "missing"
+      },
+      "arguments": [
+        "missing"
+      ],
+      "name": "pvm-fetch-parameters-missing",
+      "diagnostic": "r.status == None",
+      "description": "Parameter fetch refusal missing"
+    },
+    {
+      "identity": {
+        "reason": "encode"
+      },
+      "arguments": [
+        "encode"
+      ],
+      "name": "pvm-fetch-parameters-encode",
+      "diagnostic": "valid(parameters)",
+      "description": "Parameter fetch refusal encode"
+    }
+  ]
+}

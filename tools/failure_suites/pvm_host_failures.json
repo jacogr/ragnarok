@@ -1,0 +1,94 @@
+{
+  "source": "tests/native/pvm_host_failures_results.nim",
+  "build_name": "pvm-host-failures-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "reply-value"
+      },
+      "arguments": [
+        "reply-value"
+      ],
+      "name": "pvm-host-failures-reply-value",
+      "diagnostic": "r.selection == Response",
+      "description": "Fallible host result guard reply-value"
+    },
+    {
+      "identity": {
+        "reason": "reply-reason"
+      },
+      "arguments": [
+        "reply-reason"
+      ],
+      "name": "pvm-host-failures-reply-reason",
+      "diagnostic": "r.selection == Failure",
+      "description": "Fallible host result guard reply-reason"
+    },
+    {
+      "identity": {
+        "reason": "reply-default"
+      },
+      "arguments": [
+        "reply-default"
+      ],
+      "name": "pvm-host-failures-reply-default",
+      "diagnostic": "r.selection == Response",
+      "description": "Fallible host result guard reply-default"
+    },
+    {
+      "identity": {
+        "reason": "host-value"
+      },
+      "arguments": [
+        "host-value"
+      ],
+      "name": "pvm-host-failures-host-value",
+      "diagnostic": "r.status == None",
+      "description": "Fallible host result guard host-value"
+    },
+    {
+      "identity": {
+        "reason": "engine-value"
+      },
+      "arguments": [
+        "engine-value"
+      ],
+      "name": "pvm-host-failures-engine-value",
+      "diagnostic": "r.status == None",
+      "description": "Fallible host result guard engine-value"
+    },
+    {
+      "identity": {
+        "reason": "host-engine"
+      },
+      "arguments": [
+        "host-engine"
+      ],
+      "name": "pvm-host-failures-host-engine",
+      "diagnostic": "r.status == ExecutionFailure",
+      "description": "Fallible host result guard host-engine"
+    },
+    {
+      "identity": {
+        "reason": "engine-host"
+      },
+      "arguments": [
+        "engine-host"
+      ],
+      "name": "pvm-host-failures-engine-host",
+      "diagnostic": "r.status == HostFailure",
+      "description": "Fallible host result guard engine-host"
+    },
+    {
+      "identity": {
+        "reason": "execution-default"
+      },
+      "arguments": [
+        "execution-default"
+      ],
+      "name": "pvm-host-failures-execution-default",
+      "diagnostic": "r.status == None",
+      "description": "Fallible host result guard execution-default"
+    }
+  ]
+}

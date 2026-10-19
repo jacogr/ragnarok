@@ -5,7 +5,7 @@
 ## it does not initialize genesis state or infer validator-dependent settings.
 ##
 ## Exposes Parameter field identifiers, immutable Parameters and guarded ParameterResult accessors,
-## plus fixed-width byte/hex decoders and an explicit unavailable-result constructor.
+## plus fixed-width encoding, byte/hex decoders and an explicit unavailable-result constructor.
 
 # Field order and widths follow Appendix B's fetch(0) tuple exactly.
 type
@@ -46,6 +46,27 @@ func error*(decoded: ParameterResult): ParameterError {.requires: not decoded.su
 func get*(parameters: Parameters, field: Parameter): uint64 =
   parameters.numbers[ord(field)]
 
+# Check the existing population/clock invariants, including rejection of a default snapshot.
+# Other fields retain the exact configured values; this is not full chain-profile validation.
+func valid*(parameters: Parameters): bool =
+  parameters.get(coreCount) >= 2 and parameters.get(epochPeriod) != 0 and
+    parameters.get(slotPeriodSec) != 0 and parameters.get(rotationPeriod) != 0 and
+    parameters.get(epochTailStart) <= parameters.get(epochPeriod)
+
+# Re-emit a validated immutable snapshot in fetch(0) field order, without allocating or borrowing.
+# Private scalar storage can only originate from width-checked decoding; no narrowing is possible.
+proc encodeParameters*(parameters: Parameters): array[ParameterBytes, byte]
+    {.requires: parameters.valid.} =
+  result = default(array[ParameterBytes, byte])
+  var offset = 0
+  for field in low(Parameter)..high(Parameter):
+    # Every field uses its declared fixed little-endian width, never compact encoding.
+    let number = parameters.get(field)
+    for i in 0..<Widths[field]:
+      # Widths are at most eight and sum to the fixed 122-byte output extent.
+      result[offset + i] = byte((number shr (8 * i)) and 255)
+    offset += Widths[field]
+
 # Decode the exact GP tuple; reject every truncated or extended record before reading a byte.
 proc decodeParameters*(bytes: openArray[byte]): ParameterResult =
   if bytes.len != ParameterBytes: return ParameterResult(success: false)
@@ -60,9 +81,7 @@ proc decodeParameters*(bytes: openArray[byte]): ParameterResult =
     parameters.numbers[ord(field)] = number
     offset += Widths[field]
   # Reject unusable population/clock settings; do not substitute a canonical network profile.
-  if parameters.get(coreCount) < 2 or parameters.get(epochPeriod) == 0 or
-      parameters.get(slotPeriodSec) == 0 or parameters.get(rotationPeriod) == 0 or
-      parameters.get(epochTailStart) > parameters.get(epochPeriod):
+  if not parameters.valid:
     return ParameterResult(success: false, reason: invalidConfiguration)
   ParameterResult(success: true, snapshot: parameters)
 
