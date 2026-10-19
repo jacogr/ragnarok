@@ -86,8 +86,10 @@ proc batchInputSet*(incoming = true): PreparedAccumulationInputs =
         services: ElementLimit(2))).value
 
 proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
-    writes = 64'u64, incoming = true): BatchFixture =
+    writes = 64'u64, incoming = true, firstEnvelope: seq[byte] = @[],
+    secondEnvelope: seq[byte] = @[], extra: seq[StateEntry] = @[]): BatchFixture =
   ## Capture both ready-code services and independent canonical requests in the same complete immutable prior.
+  ## Optional copied envelopes/extra entries authorize cross-host witnesses without changing default callers.
   let config = pvmContextConfig()
   var entries = @[
     authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
@@ -99,11 +101,14 @@ proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
     serviceStorageEntry(ServiceIndex(42), @[1'u8], @[2'u8], ServiceEntryLimits(keyBytes: ByteLimit(
         1), valueBytes: ByteLimit(1))).value,
     provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
+  for entry in extra:
+    entries.add(entry) # Extra integration witnesses enter the same immutable complete source map.
   for index, ending in [first, second]:
     let service = ServiceIndex(if index == 0: 42 else: 99)
     var preimage = @[0'u8]
-    for octet in batchEnvelope(ending): preimage.add(
-        octet) # Empty metadata framing precedes the entire code envelope.
+    let supplied = (if index == 0: firstEnvelope else: secondEnvelope)
+    let envelope = (if supplied.len == 0: batchEnvelope(ending) else: supplied)
+    for octet in envelope: preimage.add(octet) # Empty metadata framing precedes the entire code envelope.
     let hash = array[32, byte](blake2b256(preimage).value)
     entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
       balance: AccountBalance(if index == 0: 10 else: 20), lastAccumulation: AccountSlot(5)),
@@ -114,9 +119,18 @@ proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
   result = BatchFixture(inputs: batchInputSet(incoming), entries: entries,
     state: newStateStore(entries, limits).value)
 
-proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128)):
+# Preserve the exact original execution profile for default callers, including its independently encoded zero deposits.
+proc batchParameters(): Parameters =
+  var wire = encodeParameters(pvmParameters())
+  for index in 0..<24:
+    wire[index] = 0 # Existing tiny-balance fixtures require no deposit funding.
+  decodeParameters(wire).value
+
+proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128),
+    copyLimit = MemoryByteLimit(32), parameters = batchParameters(), transferLimit = ElementLimit(0)):
     AccumulationDispatchResult =
   ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
+  ## Explicit copy/profile/outgoing policies support new integrations; defaults retain the earlier supported path.
   let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(index),
     fixture.state.snapshot.value, slot, AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512),
         preimageBytes: ByteLimit(1024))).value
@@ -124,15 +138,11 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
   let prepared = initializeAccumulationMachine(invoked, InitializationLimits(
       envelope: InitializationByteLimit(512),
     program: ProgramByteLimit(256), jumps: JumpCountLimit(0), pages: PageLimit(5))).value
-  var wire = encodeParameters(pvmParameters())
-  for index in 0..<24:
-    wire[index] = 0 # An independently encoded zero deposit schedule permits storage integration witnesses at small balances.
-  let parameters = decodeParameters(wire).value
   executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512),
-      operand: OperandLimits(maxBytes: ByteLimit(512))), MemoryByteLimit(32),
+      operand: OperandLimits(maxBytes: ByteLimit(512))), copyLimit,
     ExecutionStepLimit(200), HostCallLimit(32), GasCycleLimit(10000), pvmContextConfig(),
-    provisionPolicy(items = 2, perBlob = 1, total = 2))
+    provisionPolicy(items = 2, perBlob = 1, total = 2), transferLimit = transferLimit)
 
 proc batchPolicy*(accounts = 2'u64): AccumulationBatchLimits =
   ## Account and union ceilings remain independent, with the latter including duplicate contributions from both services.
