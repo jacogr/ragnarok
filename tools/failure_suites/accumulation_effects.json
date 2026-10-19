@@ -275,6 +275,28 @@
         "origin": "eject"
       },
       "name": "accumulation-effect-eject"
+    },
+    {
+      "arguments": [
+        "request"
+      ],
+      "description": "Accumulation request history selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "request"
+      },
+      "name": "accumulation-effect-request"
+    },
+    {
+      "arguments": [
+        "request-absent"
+      ],
+      "description": "Accumulation request history selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "request-absent"
+      },
+      "name": "accumulation-effect-request-absent"
     }
   ],
   "crypto_library": "crypto",

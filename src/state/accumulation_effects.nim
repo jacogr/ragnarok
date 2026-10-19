@@ -1105,3 +1105,29 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
+
+proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePreimageHash,
+    length: RequestLength): AccumulationEffectResult[RequestHistory] =
+  ## Copy the invoking service's current exact request history; NotRequested distinguishes absence from a present empty history.
+  ## Captures at most thirteen canonical bytes; malformed/trailing state and namespace backend failures expose no history.
+  # Default and failed reads carry only their reason, never a fabricated requested state.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[RequestHistory](status: reason)
+  let data = context.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # No default context can supply a service identity or account backing.
+  let service = data.initial.contextInfo.value.service
+  let key = serviceRequestKey(service, hash, length, ByteLimit(32))
+  if key.error != RequestError.None:
+    fail(AccumulationEffectError.BackendFailure) # Namespace hashing refusal cannot turn into NONE.
+  let found = data.accounts.lookup(key.value)
+  if found.error == StateStoreError.MissingKey:
+    fail(AccumulationEffectError.NotRequested) # A missing pair has no requested/available history payload.
+  if found.error != StateStoreError.None or found.value.byteLength > 13:
+    fail(AccumulationEffectError.MalformedState) # Bound the copied record before decoding.
+  let decoded = decodeRequestHistory(found.value.bytes,
+    RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))
+  if decoded.error != RequestError.None or decoded.value.consumed != found.value.byteLength:
+    fail(AccumulationEffectError.MalformedState) # Prefix acceptance cannot hide trailing or malformed canonical state.
+  AccumulationEffectResult[RequestHistory](status: AccumulationEffectError.None,
+    completed: decoded.value.history)

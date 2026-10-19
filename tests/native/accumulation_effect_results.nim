@@ -7,12 +7,13 @@
 import std/cmdline
 import ../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation]
 import ../../src/codec/[state_outputs, state_accounts, bounded, composite, state_privileges,
-    state_authorization, state_safrole, c2_records, state_service_values]
+    state_authorization, state_safrole, c2_records, state_service_values, state_requests]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 
-# Only absent-yield extraction needs a genuinely prepared initialized owner as its negative control.
-let pair = if paramStr(1) == "absent": prepareAccumulationEffects(preparedEffectContexts()).value
+# Absent-yield and absent-request extraction need a genuinely prepared initialized owner as its negative control.
+let pair = if paramStr(1) == "absent" or paramStr(1) ==
+    "request-absent": prepareAccumulationEffects(preparedEffectContexts()).value
 else: default(AccumulationEffects) # Other modes intentionally retain no initialized provenance.
 
 # Dynamic origins keep the default/refused extraction checks in the runtime harness rather than static evaluation.
@@ -38,6 +39,10 @@ of "designate": discard recordAccumulationDesignate(pair, [], default(
     ValidatorStateConfig)).value # Failed mutation has no successor.
 of "new": discard recordAccumulationNew(pair, default(AccumulationNewService), default(Parameters),
     ServiceProbeLimit(0)).value # Failed creation has no successor or service ID.
+of "request": discard context.effectRequestHistory(default(ServicePreimageHash),
+  RequestLength(0)).value # Default owners expose no request-history payload.
+of "request-absent": discard pair.effectContext(AccumulationDimension.Regular).value.effectRequestHistory(
+  default(ServicePreimageHash), RequestLength(1)).value # Absence cannot fabricate an empty requested history.
 of "eject": discard recordAccumulationEject(pair, AccumulationEjectTarget(99),
   default(ServicePreimageHash), default(Parameters)).value # Failed eject cannot expose a credited successor.
 of "transfer": discard context.effectTransferAt(AccumulationTransferIndex(
