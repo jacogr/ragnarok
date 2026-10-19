@@ -32,7 +32,7 @@ proc run(source: PreparedAccumulationMachine, steps = 2'u64, calls = 1'u64,
   executeAccumulationMachine(source, pvmParameters(), limits(), MemoryByteLimit(0),
     ExecutionStepLimit(steps), HostCallLimit(calls), GasCycleLimit(cycles), pvmContextConfig())
 
-for id in [1'u8, 16, 17, 19, 20, 21, 22, 23, 24, 25]:
+for id in [1'u8, 17, 19, 20, 21, 22, 23, 24, 25]:
   # Every known unavailable accumulation call refuses locally instead of charging WHAT.
   assert run(prepared(id)).error == AccumulationDispatchError.UnsupportedHostCall
 for id in [7'u8, 8, 9, 10, 11, 12, 13, 14, 28, 127, 255]:

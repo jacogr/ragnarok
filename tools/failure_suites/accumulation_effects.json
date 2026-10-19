@@ -165,6 +165,28 @@
         "origin": "bless"
       },
       "name": "accumulation-effect-bless"
+    },
+    {
+      "arguments": [
+        "queues"
+      ],
+      "description": "Accumulation assign selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "queues"
+      },
+      "name": "accumulation-effect-queues"
+    },
+    {
+      "arguments": [
+        "assign"
+      ],
+      "description": "Accumulation assign selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "assign"
+      },
+      "name": "accumulation-effect-assign"
     }
   ],
   "crypto_library": "crypto",

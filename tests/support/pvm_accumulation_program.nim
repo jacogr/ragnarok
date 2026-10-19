@@ -12,11 +12,11 @@ import ../../src/codec/[state_trie, state_accounts]
 
 proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
     includeContexts = true, extra: seq[StateEntry] = @[], account = default(ServiceMetadata),
-        spareEntries = 0, manager = 0'u32, writable: seq[byte] = @[
+        spareEntries = 0, manager = 0'u32, assigner = 0'u32, writable: seq[byte] = @[
             81'u8]): PreparedAccumulationMachine =
   ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
   ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
-  ## Forward account metadata, initial manager, bounded writable inputs and explicit spare map capacity.
+  ## Forward account metadata, initial manager/assigner, bounded writable inputs and explicit spare map capacity.
   ## The 160-byte raw-program budget includes framing/mask for the independently bounded (<128-byte) code.
   var code = @[0'u8, 0, 0, 0, 0]
   var starts = @[true, true, true, true, true]
@@ -38,8 +38,8 @@ proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
     raw.add(octet) # Padding bits remain canonical zero.
   initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw, writable), credit,
     includeContexts = includeContexts, extra = extra, account = account,
-        spareEntries = spareEntries, manager = manager),
-    InitializationLimits(envelope: InitializationByteLimit(256), program: ProgramByteLimit(160),
+        spareEntries = spareEntries, manager = manager, assigner = assigner),
+    InitializationLimits(envelope: InitializationByteLimit(4096), program: ProgramByteLimit(160),
       jumps: JumpCountLimit(0), pages: PageLimit(5))).value
 
 proc registerImmediate*(index: byte, address: uint64): seq[byte] =
