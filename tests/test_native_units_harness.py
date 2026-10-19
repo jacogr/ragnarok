@@ -8,6 +8,8 @@ Exposes NativeUnitHarness for unittest discovery; test methods exercise the stat
 from pathlib import Path
 import json
 import hashlib
+import io
+import subprocess
 import sys
 import unittest
 from harness_fixtures import temporary_folder, native_libraries
@@ -132,6 +134,77 @@ class NativeUnitHarness(unittest.TestCase):
                 # Every linked identity is scheduled once with its required library, never included in pure discovery.
                 self.assertEqual(arguments, native_tests.unit_command(folder/'nimony', name, libraries))
                 self.assertEqual(arguments[-1], str(native_tests.unit_source(name)))
+
+    # Omitting selection preserves complete batching and all existing ARC evidence checks.
+    def test_complete_run_scope(self):
+        with temporary_folder() as folder, patch.object(native_tests, 'unit_plan',
+                return_value=[['hastur', 'codecs'], ['hastur', 'linked']]) as plan, patch.object(
+                native_tests, 'unit_environment', return_value={}) as environment, patch.object(
+                native_tests, 'unit_work_directory', return_value=folder), patch.object(
+                native_tests.subprocess, 'run') as run, patch.object(
+                native_tests, 'unit_evidence', return_value={'cycles': 1000}) as evidence, patch('sys.stdout', new_callable=io.StringIO):
+            compiler = folder/'nimony'
+            native_tests.run_units(compiler, {}, {})
+            plan.assert_called_once_with(compiler, {})
+            environment.assert_called_once_with(compiler, fixtures={})
+            self.assertEqual([call.args[0] for call in run.call_args_list], [['hastur', 'codecs'], ['hastur', 'linked']])
+            self.assertEqual([call.args[1] for call in evidence.call_args_list], list(native_tests.ARC_SUITES))
+
+    # Selection executes exactly one suite and reads only its fresh ARC observation.
+    def test_selected_suite_scope(self):
+        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
+                native_tests, 'unit_command', return_value=['hastur', 'bits']) as command, patch.object(
+                native_tests, 'unit_environment', return_value={'fixture': 'checked'}) as environment, patch.object(
+                native_tests, 'unit_work_directory', return_value=folder), patch.object(
+                native_tests.subprocess, 'run') as run, patch.object(
+                native_tests, 'unit_evidence', return_value={'cycles': 1000}) as evidence, patch('sys.stdout', new_callable=io.StringIO):
+            compiler = folder/'nimony'
+            native_tests.run_units(compiler, {}, {}, 'bits')
+            command.assert_called_once_with(compiler, 'bits', {})
+            environment.assert_called_once_with(compiler, name='bits', fixtures={})
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_args.args[0], ['hastur', 'bits'])
+            self.assertTrue(run.call_args.kwargs['check'])
+            self.assertEqual(run.call_args.kwargs['env'], {'fixture': 'checked'})
+            evidence.assert_called_once_with(compiler, 'bits')
+            self.assertTrue((folder/'build/tests/native/selected/bits.log').is_file())
+
+    # Quiet output must preserve a failing child status and retain diagnostics beyond its excerpt.
+    def test_selected_suite_failure(self):
+        # A real output stream records all lines even though the agent sees only the last forty.
+        def fail(arguments, **kwargs):
+            kwargs['stdout'].write(''.join('diagnostic-'+str(index)+'\n' for index in range(60)))
+            raise subprocess.CalledProcessError(7, arguments)
+        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
+                native_tests, 'unit_command', return_value=['hastur', 'natural']), patch.object(
+                native_tests, 'unit_environment', return_value={}), patch.object(
+                native_tests, 'unit_work_directory', return_value=folder), patch.object(
+                native_tests.subprocess, 'run', side_effect=fail), patch('sys.stdout', new_callable=io.StringIO) as output:
+            with self.assertRaises(subprocess.CalledProcessError) as raised:
+                native_tests.run_units(folder/'nimony', {}, {}, 'natural')
+            self.assertEqual(raised.exception.returncode, 7)
+            self.assertIn('diagnostic-59', output.getvalue())
+            self.assertNotIn('diagnostic-0\n', output.getvalue())
+            self.assertNotIn('PASS natural', output.getvalue())
+            self.assertEqual(len((folder/'build/tests/native/selected/natural.log').read_text().splitlines()), 60)
+
+    # Pure selected suites bypass unrelated native and integration preparation entirely.
+    def test_selected_pure_entrypoint(self):
+        with patch.object(sys, 'argv', ['native_tests.py', '--suite', 'natural']), patch(
+                'setup_nimony.installed', return_value=(Path('/fixture/nimony'), None)), patch.object(
+                native_tests, 'run_units') as run, patch('native_preparation.prepare_libraries') as prepare:
+            native_tests.main()
+            run.assert_called_once_with(Path('/fixture/nimony'), {}, {}, 'natural')
+            prepare.assert_not_called()
+
+    # Misspellings must fail before provisioning rather than silently selecting every test.
+    def test_unknown_selected_suite(self):
+        with patch.object(sys, 'argv', ['native_tests.py', '--suite', 'no-such-suite']), patch(
+                'setup_nimony.installed') as installed, patch('sys.stderr', new_callable=io.StringIO):
+            with self.assertRaises(SystemExit) as raised:
+                native_tests.main()
+            self.assertEqual(raised.exception.code, 2)
+            installed.assert_not_called()
 
     # Missing linked profiles must fail before a stale native executable can satisfy a positive test.
     def test_linked_library_required(self):

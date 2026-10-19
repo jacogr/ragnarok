@@ -26,6 +26,22 @@ Each group writes `results.json` and diagnostic logs in its evidence directory. 
 `make summary-modules` or `make summary-e2e` to summarize completed reports. A missing report
 is a failure, not evidence of coverage.
 
+## Focused local verification
+
+Use `make unit SUITE=natural` (substitute any registered suite name) to execute just that native
+suite with the same pinned compiler, linking, fixture validation and selected-suite ARC checks.
+Focused output is summarized; full runner diagnostics remain in
+`build/tests/native/selected/<suite>.log`, with a bounded excerpt on failure. An unknown suite is
+an error. `make unit` without `SUITE` retains complete native discovery. Shared setup still runs;
+linked/prepared suites currently retain shared native/fixture preparation, but unrelated tests
+and unrelated ARC observations are not executed or retired. Pure unprepared suites skip native
+library and integration-fixture preparation entirely.
+
+Choose checks from the changed behavior and affected consumers. Registry-only conflicts usually
+need `make check-inventory` and the affected inventory/provenance tooling tests. History-only
+reconciliation with an identical tree can reuse the explicitly recorded previous results.
+CI continues complete verification; focused local results must never be reported as a full pass.
+
 ## Coverage and adding tests
 
 Current expected identities and per-family counts live in
