@@ -352,11 +352,13 @@ proc funded(metadata: ServiceMetadata, parameters: Parameters): bool =
     low = balance+gratis # Proven representable before addition.
   consumeAccountDeposit(metadata, parameters, low, upper)
 
-## Encode this version's complete account into the fixed Omega_I wire record.
-## Refused/default queries contain only a reason; no caller-selected account or fabricated bytes escape.
 proc effectAccountInfo*(context: AccumulationEffectContext, service: ServiceIndex,
     parameters: Parameters): AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]] =
-  ## Retain no partial record on invalid provenance, missing accounts or malformed dependent values.
+  ## Encode this version's complete account into the fixed Omega_I wire record.
+  ## Refused/default queries contain only a reason; no caller-selected account or fabricated bytes escape.
+  ## The fixed record includes computed minimum balance and has no metadata version byte.
+  ## UnknownService, invalid parameters and unencodable/malformed fields remain explicit guarded failures.
+  # Retain no partial record on invalid provenance, missing accounts or malformed dependent values.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]](status: reason)
   let data = context.data
