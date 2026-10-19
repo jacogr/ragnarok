@@ -42,8 +42,9 @@ copies. Explicit `outputsRoot` reuses the existing root algorithm and guarded ba
 
 An output history may be a prefix of supported accumulation: this API does not certify final
 accseq termination or publish C(16), recent history, service state or the block. Transfer execution,
-account/privilege effect merging and whole-block coordination remain open. M1 framing is complete;
-full state serialization and accumulation parity remain open.
+account/privilege effect merging and whole-block coordination remain open. [Terminal finalization](accumulation-finalization.md) now requires a genuine stopped completion
+and writes the log on a private full-state candidate; whole-block publication remains separate.
+M1 framing is complete; full state serialization and accumulation parity remain open.
 
 ## Completion tests
 

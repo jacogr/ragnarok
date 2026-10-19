@@ -1,0 +1,15 @@
+{
+  "source": "tests/native/accumulation_finalization_results.nim",
+  "build_name": "accumulation-finalization-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-finalization-default", "diagnostic": "outcome.status == None", "description": "Accumulation finalization default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-finalization-refused", "diagnostic": "outcome.status == None", "description": "Accumulation finalization refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-finalization-info", "diagnostic": "outcome.status == None", "description": "Accumulation finalization info extraction guard"},
+    {"identity": {"reason": "outputs"}, "arguments": ["outputs"], "name": "accumulation-finalization-outputs", "diagnostic": "outcome.status == None", "description": "Accumulation finalization outputs extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-finalization-state", "diagnostic": "outcome.status == None", "description": "Accumulation finalization state extraction guard"},
+    {"identity": {"reason": "wrong-output"}, "arguments": ["wrong-output"], "name": "accumulation-finalization-wrong-output", "diagnostic": "outcome.status == OutputFailure", "description": "Accumulation finalization wrong-output extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-finalization-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation finalization wrong-state extraction guard"},
+    {"identity": {"reason": "continuation"}, "arguments": ["continuation"], "name": "accumulation-finalization-continuation", "diagnostic": "outcome.status == None", "description": "Accumulation finalization continuation extraction guard"}
+  ]
+}
