@@ -50,7 +50,8 @@ for case in ('state_availability', 'state_availability_private', 'state_workqueu
              'accumulation_outputs',
              'accumulation_continuation', 'accumulation_continuation_execution',
              'accumulation_continuation_inputs',
-             'accumulation_continuation_invocation', 'accumulation_ready', 'accumulation_reentry',
+             'accumulation_continuation_invocation', 'accumulation_ready', 'accumulation_recent',
+             'accumulation_reentry',
              'accumulation_reentry_cycle', 'accumulation_reentry_execution',
              'accumulation_reentry_outputs', 'accumulation_statistics'):
     # Every consumer verifies the same exact source bytes before its native assertions execute.

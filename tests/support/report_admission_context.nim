@@ -142,10 +142,11 @@ type Context* = object
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
     withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
         byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[],
-            poolCopies = 1, refinementGas = high(uint64)): Context =
+            poolCopies = 1, refinementGas = high(uint64),
+    historyPeaks: seq[HistoryPeak] = @[]): Context =
   ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
-  ## Optional ready rows enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
+  ## Optional ready rows and belt peaks enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()
@@ -186,7 +187,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   entries[0] = authorizationEntry(AuthorizationKind.Pools, pools, cfg.policy.pools).value
   let history = HistoryState(blocks: @[HistoryBlock(header: HistoryHeaderHash(parentHash),
     state: default(HistoryStateRoot), superPeak: default(HistorySuperPeak), slot: HistorySlot(1),
-        packages: @[])], peaks: @[])
+        packages: @[])], peaks: historyPeaks)
   if mode != 9: entries.add(historyStateEntry(history,
       cfg.anchors.history).value) # Missing history must not be synthesized.
   if mode == 10: entries[^1].value.add(0) # An exact parent value cannot carry a suffix.
