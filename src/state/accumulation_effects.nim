@@ -11,26 +11,21 @@ import ../crypto/primitives
 import ./[accumulation_context, store, preimages]
 
 type
-  ## No refused/default operation exposes a partial context, fabricated hash or successful empty owner.
-  AccumulationEffectError* {.pure.} = enum
+  AccumulationEffectError* {.pure.} = enum ## No refused/default operation exposes a partial context, fabricated hash or successful empty owner.
     Uninitialized, None, InvalidContexts, InvalidDimension, YieldAbsent, UnknownService,
     NotRequested, AlreadyProvided, InvalidLength, InvalidState, MalformedState, LimitExceeded,
       BackendFailure, InvalidIndex
-  ## A provision ordinal is neither its target service nor a byte count.
-  AccumulationProvisionIndex* = distinct uint64
-  ## Independent ceilings bound retained records, individual hash/copy work and aggregate payload bytes.
-  AccumulationProvisionLimits* = object
+  AccumulationProvisionIndex* = distinct uint64 ## A provision ordinal is neither its target service nor a byte count.
+  AccumulationProvisionLimits* = object ## Independent ceilings bound retained records, individual hash/copy work and aggregate payload bytes.
     items*: ElementLimit
     perBlob*, totalBlobBytes*: ByteLimit
   ## Immutable provision backing binds the exact target to its independent raw-byte payload.
   ProvisionData = ref object
     service: ServiceIndex
     bytes: seq[byte]
-  ## Retained provision owns its original bytes and target; no detached span or caller-selected buffer is accepted.
-  AccumulationProvision* = object
+  AccumulationProvision* = object ## Retained provision owns its original bytes and target; no detached span or caller-selected buffer is accepted.
     data: nil ProvisionData
-  ## Copied fixed facts never expose the provision's mutable backing sequence.
-  AccumulationProvisionInfo* = object
+  AccumulationProvisionInfo* = object ## Copied fixed facts never expose the provision's mutable backing sequence.
     service*: ServiceIndex
     bytes*: int
   ## Immutable set owner lets yield/checkpoint share provision membership without copying its sequence.
@@ -49,38 +44,36 @@ type
     initial: InitialAccumulationContext
     output: YieldValue
     provisions: ProvisionSetData
-  ## Read-only acyclic context; copies retain a version independently of later effect operations.
-  AccumulationEffectContext* = object
+  AccumulationEffectContext* = object ## Read-only acyclic context; copies retain a version independently of later effect operations.
     data: nil EffectData
   ## Private pair retains exact initial provenance; neither child refers back to this owner or older pairs.
   PairData = ref object
     source: PreparedAccumulationContexts
     regular, exceptional: AccumulationEffectContext
-  ## Only prepared initial contexts create a pair; mutations preserve their service/input identity.
-  AccumulationEffects* = object
+  AccumulationEffects* = object ## Only prepared initial contexts create a pair; mutations preserve their service/input identity.
     data: nil PairData
-  ## Copied current facts report retained provisions and the still-empty outgoing transfer sequence.
-  AccumulationEffectInfo* = object
+  AccumulationEffectInfo* = object ## Copied current facts report retained provisions and the still-empty outgoing transfer sequence.
     service*, nextService*: ServiceIndex
     transfers*, provisions*: int
     hasYield*: bool
-  ## Successful alternatives alone carry complete retained handles, facts or a present yield value.
-  AccumulationEffectResult*[T] = object
+  AccumulationEffectResult*[T] = object ## Successful alternatives alone carry complete retained handles, facts or a present yield value.
     case status: AccumulationEffectError
     of None:
       completed: T # Contract-guarded extraction is the only public payload access.
     else:
       discard      # Refusals/defaults carry only their reason.
 
-## Inspect success/failure without permitting retagging or mutable access.
-func error*[T](outcome: AccumulationEffectResult[T]): AccumulationEffectError = outcome.status
-## Extract selected success under compiler/runtime contracts, including optimized execution.
+func error*[T](outcome: AccumulationEffectResult[T]): AccumulationEffectError =
+  ## Inspect success/failure without permitting retagging or mutable access.
+  outcome.status
 func value*[T](outcome: AccumulationEffectResult[T]): T {.inline,
-    requires: outcome.status == AccumulationEffectError.None.} = outcome.completed
+    requires: outcome.status == AccumulationEffectError.None.} =
+  ## Extract selected success under compiler/runtime contracts, including optimized execution.
+  outcome.completed
 
-## Retain the exact initial context backing this version's accounts, roles, next-ID and input provenance.
 proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffectResult[
     InitialAccumulationContext] =
+  ## Retain the exact initial context backing this version's accounts, roles, next-ID and input provenance.
   let data = context.data
   if data == nil:
     # A default effect cannot supply another context as a substitute source.
@@ -89,9 +82,9 @@ proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffe
   AccumulationEffectResult[InitialAccumulationContext](status: AccumulationEffectError.None,
     completed: data.initial)
 
-## Copy current yield-presence and retained service facts, never mutable implication storage.
 proc effectInfo*(context: AccumulationEffectContext): AccumulationEffectResult[
     AccumulationEffectInfo] =
+  ## Copy current yield-presence and retained service facts, never mutable implication storage.
   let data = context.data
   if data == nil:
     # Missing owners cannot masquerade as valid services with zero effects.
@@ -103,8 +96,8 @@ proc effectInfo*(context: AccumulationEffectContext): AccumulationEffectResult[
       transfers: source.transfers, provisions: data.provisions.values.len,
       hasYield: data.output.present))
 
-## Read a present yield by value; default and absent alternatives never return a fake zero commitment.
 proc effectYield*(context: AccumulationEffectContext): AccumulationEffectResult[OutputCommitment] =
+  ## Read a present yield by value; default and absent alternatives never return a fake zero commitment.
   let data = context.data
   if data == nil:
     # Default contexts have no selected yield state.
@@ -115,9 +108,9 @@ proc effectYield*(context: AccumulationEffectContext): AccumulationEffectResult[
   AccumulationEffectResult[OutputCommitment](status: AccumulationEffectError.None,
     completed: data.output.commitment)
 
-## Select one exact version; invalid enum casts cannot silently alias the exceptional dimension.
 proc effectContext*(effects: AccumulationEffects, dimension: AccumulationDimension):
     AccumulationEffectResult[AccumulationEffectContext] =
+  ## Select one exact version; invalid enum casts cannot silently alias the exceptional dimension.
   if ord(dimension) < ord(AccumulationDimension.Regular) or ord(dimension) > ord(
       AccumulationDimension.Exceptional):
     # Reject unsupported dimensions before selecting any retained child.
@@ -133,9 +126,9 @@ proc effectContext*(effects: AccumulationEffects, dimension: AccumulationDimensi
   AccumulationEffectResult[AccumulationEffectContext](status: AccumulationEffectError.None,
     completed: selected)
 
-## Retain original prepared provenance independently of effect versions and checkpoint lifetimes.
 proc effectsSource*(effects: AccumulationEffects): AccumulationEffectResult[
     PreparedAccumulationContexts] =
+  ## Retain original prepared provenance independently of effect versions and checkpoint lifetimes.
   let data = effects.data
   if data == nil:
     # No default pair may grant an initialized preparation certificate.
@@ -144,9 +137,9 @@ proc effectsSource*(effects: AccumulationEffects): AccumulationEffectResult[
   AccumulationEffectResult[PreparedAccumulationContexts](status: AccumulationEffectError.None,
     completed: data.source)
 
-## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
 proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): AccumulationEffectResult[
     AccumulationEffects] =
+  ## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
   let initial = contexts.initialContext(AccumulationDimension.Regular)
   if initial.error != AccumulationContextError.None:
     # Only successfully prepared immutable contexts can authorize host state effects.
@@ -158,10 +151,10 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): Accumu
     completed: AccumulationEffects(data: PairData(source: contexts, regular: current,
         exceptional: current)))
 
-## Apply only the state part of a validated yield call: replace regular yield, preserving the checkpoint.
-## The host dispatcher must first charge gas/read guest memory; failures there must not call this operation.
 proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCommitment):
     AccumulationEffectResult[AccumulationEffects] =
+  ## Apply only the state part of a validated yield call: replace regular yield, preserving the checkpoint.
+  ## The host dispatcher must first charge gas/read guest memory; failures there must not call this operation.
   let data = effects.data
   if data == nil:
     # Refuse before constructing a partially initialized regular context.
@@ -175,10 +168,10 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
 
-## Apply only checkpoint's implication assignment Y'=X; later regular changes cannot alter the retained snapshot.
-## Guest gas/r7 handling is outside this state-only operation; no implicit checkpoint occurs on yield.
 proc checkpointAccumulationEffects*(effects: AccumulationEffects): AccumulationEffectResult[
     AccumulationEffects] =
+  ## Apply only checkpoint's implication assignment Y'=X; later regular changes cannot alter the retained snapshot.
+  ## Guest gas/r7 handling is outside this state-only operation; no implicit checkpoint occurs on yield.
   let data = effects.data
   if data == nil:
     # A checkpoint cannot turn an uninitialized pair into successful empty implications.
@@ -188,9 +181,9 @@ proc checkpointAccumulationEffects*(effects: AccumulationEffects): AccumulationE
     completed: AccumulationEffects(data: PairData(source: data.source, regular: data.regular,
       exceptional: data.regular)))
 
-## Retain one provision only after checking its ordinal against this exact immutable context.
 proc effectProvisionAt*(context: AccumulationEffectContext, index: AccumulationProvisionIndex):
     AccumulationEffectResult[AccumulationProvision] =
+  ## Retain one provision only after checking its ordinal against this exact immutable context.
   let data = context.data
   if data == nil:
     # Default contexts contain no validated provision sequence.
@@ -203,9 +196,9 @@ proc effectProvisionAt*(context: AccumulationEffectContext, index: AccumulationP
   AccumulationEffectResult[AccumulationProvision](status: AccumulationEffectError.None,
     completed: data.provisions.values[int(uint64(index))])
 
-## Copy the exact target and length from one owner-bound provision; default handles are not empty blobs.
 proc provisionInfo*(provision: AccumulationProvision): AccumulationEffectResult[
     AccumulationProvisionInfo] =
+  ## Copy the exact target and length from one owner-bound provision; default handles are not empty blobs.
   let data = provision.data
   if data == nil:
     # A default provision cannot fabricate target zero or a valid zero-byte payload.
@@ -214,8 +207,8 @@ proc provisionInfo*(provision: AccumulationProvision): AccumulationEffectResult[
   AccumulationEffectResult[AccumulationProvisionInfo](status: AccumulationEffectError.None,
     completed: AccumulationProvisionInfo(service: data.service, bytes: data.bytes.len))
 
-## Return independent bytes from the retained provision; caller mutations never affect later extraction/checkpoints.
 proc copyProvisionBytes*(provision: AccumulationProvision): AccumulationEffectResult[seq[byte]] =
+  ## Return independent bytes from the retained provision; caller mutations never affect later extraction/checkpoints.
   let data = provision.data
   if data == nil:
     # Empty successful payloads require an actual validated owner.
@@ -225,11 +218,11 @@ proc copyProvisionBytes*(provision: AccumulationProvision): AccumulationEffectRe
   for i, octet in data.bytes: bytes[i] = octet
   AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.None, completed: bytes)
 
-## Retain a requested target/blob pair in regular implications only, with WHO/HUH-style protocol refusals.
-## Stable bytes are borrowed during the call; accepted bytes are independently owned. Guest gas/memory checks precede this API.
 proc recordAccumulationProvision*(effects: AccumulationEffects, service: ServiceIndex,
     bytes: openArray[byte], limits: AccumulationProvisionLimits): AccumulationEffectResult[
         AccumulationEffects] =
+  ## Retain a requested target/blob pair in regular implications only, with WHO/HUH-style protocol refusals.
+  ## Stable bytes are borrowed during the call; accepted bytes are independently owned. Guest gas/memory checks precede this API.
   ## All refusals preserve the caller's pair and expose no partially captured provision.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationEffects](status: reason)

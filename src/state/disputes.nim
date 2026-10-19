@@ -15,15 +15,13 @@ import ../crypto/primitives
 import ./store
 
 type
-  ## Independent limits bound full parent chapters, roster copies and posterior judgment sets.
-  DisputesConfig* = object
+  DisputesConfig* = object ## Independent limits bound full parent chapters, roster copies and posterior judgment sets.
     rosters*: ValidatorStateConfig
     state*: DisputeStateConfig
     availability*: AvailabilityConfig
     epochSlots*: EpochSlots
     maxExtrinsicBytes*: ByteLimit
-  ## Failures carry only their class; no partially verified judgments, markers or candidate map.
-  DisputesError* {.pure.} = enum
+  DisputesError* {.pure.} = enum ## Failures carry only their class; no partially verified judgments, markers or candidate map.
     Uninitialized, None, InvalidConfig, MissingState, InvalidState, InvalidInput,
     InvalidEpoch, InvalidQuorum, InvalidSplit, AlreadyJudged, InvalidKey,
     InvalidSignature, InvalidEvidence, MissingFault, InvalidMarker, InvalidIndex,
@@ -35,39 +33,39 @@ type
     assignments: AvailabilitySnapshot
     entries: array[2, StateEntry]
     marker: seq[OffenderKey]
-  ## An opaque copied handle retains one validated plan; callers cannot forge or mutate it.
-  DisputesPlan* = object
+  DisputesPlan* = object ## An opaque copied handle retains one validated plan; callers cannot forge or mutate it.
     data: nil PlanData
-  ## Only selected success contains its complete payload; default is a failure.
-  DisputesResult*[T] = object
+  DisputesResult*[T] = object ## Only selected success contains its complete payload; default is a failure.
     case status: DisputesError
     of None:
       completed: T
     else:
       discard # No refused plan, entry or snapshot exists.
 
-## Observe a read-only reason without permitting result retagging.
-func error*[T](outcome: DisputesResult[T]): DisputesError = outcome.status
-## Access a completed operation only after selecting success, including in optimized builds.
+func error*[T](outcome: DisputesResult[T]): DisputesError =
+  ## Observe a read-only reason without permitting result retagging.
+  outcome.status
 func value*[T](outcome: DisputesResult[T]): T {.inline,
-    requires: outcome.status == DisputesError.None.} = outcome.completed
-## Retain the immutable posterior report/offender sets without exporting mutable sequences.
+    requires: outcome.status == DisputesError.None.} =
+  ## Access a completed operation only after selecting success, including in optimized builds.
+  outcome.completed
 proc disputeJudgments*(plan: DisputesPlan): DisputeStateSnapshot {.requires: plan.data != nil.} =
+  ## Retain the immutable posterior report/offender sets without exporting mutable sequences.
   let data = plan.data
   assert data != nil # Retain the owner while copying its child handle.
   data.judgments
-## Retain the complete assignment sequence after bad/wonky reports have been cleared.
 proc disputeAssignments*(plan: DisputesPlan): AvailabilitySnapshot {.requires: plan.data != nil.} =
+  ## Retain the complete assignment sequence after bad/wonky reports have been cleared.
   let data = plan.data
   assert data != nil # A default plan is not an empty assignment sequence.
   data.assignments
-## Observe exact culprit-then-fault marker cardinality, preserving cross-section repeated keys.
 proc newOffenderCount*(plan: DisputesPlan): int {.requires: plan.data != nil.} =
+  ## Observe exact culprit-then-fault marker cardinality, preserving cross-section repeated keys.
   let data = plan.data
   assert data != nil # No fabricated empty marker for a failed/default owner.
   data.marker.len
-## Copy one marker identity with explicit ordinal validation and no detached backing span.
 proc newOffenderAt*(plan: DisputesPlan, index: int): DisputesResult[OffenderKey] =
+  ## Copy one marker identity with explicit ordinal validation and no detached backing span.
   let data = plan.data
   if data == nil: return DisputesResult[OffenderKey](status: DisputesError.Uninitialized) # No owner.
   if index < 0 or index >= data.marker.len:
@@ -115,10 +113,10 @@ proc eligible(key: OffenderKey, active, previous: ValidatorStateSnapshot,
       if array[32, byte](record.ed25519) == array[32, byte](key): return true # Exact Ed25519 role.
   false
 
-## Validate against the retained parent, derive report sets/offenders and clear bad/wonky assignments.
-## No canonical state is written; failed signatures or late serialization leave the parent untouched.
 proc planDisputes*(parent: StateStoreSnapshot, input: OwnedDisputes,
     config: DisputesConfig): DisputesResult[DisputesPlan] =
+  ## Validate against the retained parent, derive report sets/offenders and clear bad/wonky assignments.
+  ## No canonical state is written; failed signatures or late serialization leave the parent untouched.
   template fail(reason: DisputesError) =
     return DisputesResult[DisputesPlan](status: reason)
   let cores = uint64(config.rosters.cores)
@@ -279,8 +277,8 @@ proc planDisputes*(parent: StateStoreSnapshot, input: OwnedDisputes,
     entries: [chapter.value, availability.value], marker: marker)
   DisputesResult[DisputesPlan](status: DisputesError.None, completed: DisputesPlan(data: data))
 
-## Check the literal header sequence, not a sorted/deduplicated cumulative offender set.
 proc checkDisputeMarker*(plan: DisputesPlan, candidate: OwnedHeader): DisputesError =
+  ## Check the literal header sequence, not a sorted/deduplicated cumulative offender set.
   let data = plan.data
   if data == nil: return DisputesError.Uninitialized # No fabricated empty marker.
   let part = unsignedPart(candidate)
@@ -292,9 +290,9 @@ proc checkDisputeMarker*(plan: DisputesPlan, candidate: OwnedHeader): DisputesEr
       return DisputesError.InvalidMarker # Preserve culprit-then-fault order byte for byte.
   DisputesError.None
 
-## Publish only C(5)/C(10), bound to the exact retained parent root; later callers may stage privately.
 proc publishDisputes*(state: var StateStore, plan: DisputesPlan): DisputesResult[
     StateStoreSnapshot] =
+  ## Publish only C(5)/C(10), bound to the exact retained parent root; later callers may stage privately.
   let data = plan.data
   if data == nil: return DisputesResult[StateStoreSnapshot](status: DisputesError.Uninitialized) # No plan.
   let parent = state.snapshot

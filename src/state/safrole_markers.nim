@@ -9,36 +9,36 @@
 import ../codec/[state_safrole, state_consensus, header, bounded, natural, assurances]
 
 type
-  ## Independent chapter and marker ceilings; chain epoch/tail parameters are explicit.
-  SafroleMarkerConfig* = object
+  SafroleMarkerConfig* = object ## Independent chapter and marker ceilings; chain epoch/tail parameters are explicit.
     state*: SafroleStateConfig
     tailStart*: EpochSlots
     maxMarkerBytes*: ByteLimit
-  ## Refusals carry no partial markers; mismatches distinguish epoch and winning-ticket fields.
-  SafroleMarkerError* {.pure.} = enum
+  SafroleMarkerError* {.pure.} = enum ## Refusals carry no partial markers; mismatches distinguish epoch and winning-ticket fields.
     Uninitialized, None, MissingState, InvalidConfig, InvalidSlot, InvalidState,
     LimitExceeded, LengthOverflow, InvalidHeader, InvalidEpochMarker, InvalidWinnersMarker
-  ## Two immutable codec owners retain their exact marker bytes independently of supplied state.
-  SafroleMarkers* = object
+  SafroleMarkers* = object ## Two immutable codec owners retain their exact marker bytes independently of supplied state.
     epochValue: OwnedEpochMarker
     winnersValue: OwnedWinnersMarker
-  ## Only successful derivation contains a complete pair; raw discriminator/payload remain private.
-  SafroleMarkerResult* = object
+  SafroleMarkerResult* = object ## Only successful derivation contains a complete pair; raw discriminator/payload remain private.
     case status: SafroleMarkerError
     of None:
       completed: SafroleMarkers # Acyclic owned wire snapshots outlive all borrowed input chapters.
     else:
       discard                   # Default/refused operations expose only their reason.
 
-## Inspect the reason without retagging the result.
-func error*(outcome: SafroleMarkerResult): SafroleMarkerError = outcome.status
-## Extract both complete markers only after selecting successful derivation.
+func error*(outcome: SafroleMarkerResult): SafroleMarkerError =
+  ## Inspect the reason without retagging the result.
+  outcome.status
 func value*(outcome: SafroleMarkerResult): SafroleMarkers {.inline,
-    requires: outcome.status == SafroleMarkerError.None.} = outcome.completed
-## Return an immutable epoch owner; a default pair returns a default owner that codec access rejects.
-func epochMarker*(markers: SafroleMarkers): OwnedEpochMarker = markers.epochValue
-## Return an immutable winners owner without exposing mutable tickets or detached coordinates.
-func winnersMarker*(markers: SafroleMarkers): OwnedWinnersMarker = markers.winnersValue
+    requires: outcome.status == SafroleMarkerError.None.} =
+  ## Extract both complete markers only after selecting successful derivation.
+  outcome.completed
+func epochMarker*(markers: SafroleMarkers): OwnedEpochMarker =
+  ## Return an immutable epoch owner; a default pair returns a default owner that codec access rejects.
+  markers.epochValue
+func winnersMarker*(markers: SafroleMarkers): OwnedWinnersMarker =
+  ## Return an immutable winners owner without exposing mutable tickets or detached coordinates.
+  markers.winnersValue
 
 ## Preserve policy/extent failures; other codec failures identify invalid exact serialized state.
 func stateError(reason: StateComponentError): SafroleMarkerError =
@@ -62,11 +62,11 @@ proc canonical(owner: SafroleStateSnapshot, count: int): bool =
     if not lower: return false # Equal identifiers remain duplicates regardless of attempt.
   true
 
-## Derive markers from exact parent/posterior C(4), retained parent entropy and advancing slots.
-## Epoch markers use parent eta[0]/eta[1] and posterior pending keys; winners use the parent contest.
-## No entropy VRF, seal authentication, state writes or cryptographic hashing is performed here.
 proc deriveSafroleMarkers*(parent, staged: openArray[byte], previous, target: StateTime,
     entropy: StateEntropy, config: SafroleMarkerConfig): SafroleMarkerResult =
+  ## Derive markers from exact parent/posterior C(4), retained parent entropy and advancing slots.
+  ## Epoch markers use parent eta[0]/eta[1] and posterior pending keys; winners use the parent contest.
+  ## No entropy VRF, seal authentication, state writes or cryptographic hashing is performed here.
   let epoch = uint64(config.state.epochSlots)
   if epoch == 0 or uint64(config.tailStart) == 0 or uint64(config.tailStart) >= epoch:
     return SafroleMarkerResult(status: SafroleMarkerError.InvalidConfig) # Both submission and tail periods must exist.
@@ -138,10 +138,10 @@ proc deriveSafroleMarkers*(parent, staged: openArray[byte], previous, target: St
   SafroleMarkerResult(status: SafroleMarkerError.None, completed: SafroleMarkers(
     epochValue: capturedEpoch.value.owner, winnersValue: capturedWinners.value.owner))
 
-## Compare initialized owners without copying full wire buffers or ignoring attempts/key ordering.
-## Supplied marker owners can come directly from a structurally decoded unsigned header.
 proc validateSafroleMarkers*(expected: SafroleMarkers, epoch: OwnedEpochMarker,
     winners: OwnedWinnersMarker): SafroleMarkerError =
+  ## Compare initialized owners without copying full wire buffers or ignoring attempts/key ordering.
+  ## Supplied marker owners can come directly from a structurally decoded unsigned header.
   let wantedEpoch = epochMarkerInfo(expected.epochMarker)
   let wantedWinners = winnersMarkerInfo(expected.winnersMarker)
   if wantedEpoch.error != HeaderError.None or wantedWinners.error != HeaderError.None:

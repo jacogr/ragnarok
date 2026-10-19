@@ -13,21 +13,17 @@ import std/[algorithm, assertions]
 import ../codec/[state_trie, state_layout, bounded]
 
 type
-  ## Independent batch ceilings supplement the existing complete-map Merklization limits.
-  StateStoreLimits* = object
+  StateStoreLimits* = object ## Independent batch ceilings supplement the existing complete-map Merklization limits.
     trie*: StateTrieLimits
     writes*: ElementLimit
     writeValueBytes*: ByteLimit
-  ## Put inserts or replaces; Delete removes an existing key and is a no-op for an absent key.
-  StateWriteKind* {.pure.} = enum
+  StateWriteKind* {.pure.} = enum ## Put inserts or replaces; Delete removes an existing key and is a no-op for an absent key.
     Put, Delete
-  ## A synchronous borrowed mutation. Delete requires an empty value; batch keys must be unique.
-  StateWrite* = object
+  StateWrite* = object ## A synchronous borrowed mutation. Delete requires an empty value; batch keys must be unique.
     key*: StateKey
     kind*: StateWriteKind
     value*: seq[byte]
-  ## Failure alternatives expose no snapshots, values, counts or partially computed roots.
-  StateStoreError* {.pure.} = enum
+  StateStoreError* {.pure.} = enum ## Failure alternatives expose no snapshots, values, counts or partially computed roots.
     Uninitialized, None, MissingKey, InvalidWrite, LimitExceeded, DuplicateKey,
     LengthOverflow, BackendFailure, InvalidRange
   ## Acyclic ARC-owned map. Values become immutable before this owner is published.
@@ -35,19 +31,15 @@ type
     entries: seq[StateEntry]
     commitment: StateTrieCommitment
     limits: StateStoreLimits
-  ## Read-only retained map identity; copies preserve the same immutable historical state.
-  StateStoreSnapshot* = object
+  StateStoreSnapshot* = object ## Read-only retained map identity; copies preserve the same immutable historical state.
     data: nil SnapshotData
-  ## An independently updateable handle; copying it shares only immutable prior snapshots.
-  StateStore* = object
+  StateStore* = object ## An independently updateable handle; copying it shares only immutable prior snapshots.
     head: nil SnapshotData
     limits: StateStoreLimits
-  ## Retained lookup view binds its position to the exact snapshot, including a present-empty value.
-  StateValue* = object
+  StateValue* = object ## Retained lookup view binds its position to the exact snapshot, including a present-empty value.
     owner: StateStoreSnapshot
     position: int
-  ## Select success explicitly before reading its private, contract-guarded payload.
-  StateStoreResult*[T] = object
+  StateStoreResult*[T] = object ## Select success explicitly before reading its private, contract-guarded payload.
     case status: StateStoreError
     of None:
       completed: T # Only complete operations expose payloads.
@@ -58,12 +50,14 @@ type
     key: StateKey
     position: int
 
-## Read an operation's reason without exposing its payload or granting mutation access.
-func error*[T](outcome: StateStoreResult[T]): StateStoreError = outcome.status
+func error*[T](outcome: StateStoreResult[T]): StateStoreError =
+  ## Read an operation's reason without exposing its payload or granting mutation access.
+  outcome.status
 
-## Extract a successful payload only; failed/default results have no readable payload.
 func value*[T](outcome: StateStoreResult[T]): T {.inline,
-    requires: outcome.status == StateStoreError.None.} = outcome.completed
+    requires: outcome.status == StateStoreError.None.} =
+  ## Extract a successful payload only; failed/default results have no readable payload.
+  outcome.completed
 
 ## Compare full serialized key identities in the same lexicographic/MSB order as the trie.
 func compareKey(left, right: StateKey): int =
@@ -97,9 +91,9 @@ func storeError(reason: StateTrieError): StateStoreError =
   of StateTrieError.LengthOverflow: StateStoreError.LengthOverflow # Keep addressing failures distinct.
   of StateTrieError.BackendFailure: StateStoreError.BackendFailure # Native primitive refusal is an error.
 
-## Initialize from a borrowed mapping after complete root/resource validation. Duplicates reject.
-## Allocation exhaustion follows the project's fail-stop policy; the store owns all published bytes.
 proc newStateStore*(entries: openArray[StateEntry], limits: StateStoreLimits): StateStoreResult[StateStore] =
+  ## Initialize from a borrowed mapping after complete root/resource validation. Duplicates reject.
+  ## Allocation exhaustion follows the project's fail-stop policy; the store owns all published bytes.
   let committed = stateTrieRoot(entries, limits.trie)
   if committed.error != StateTrieError.None:
     # Reject limits/duplicates/backend failures before retaining or copying any caller value.
@@ -113,17 +107,17 @@ proc newStateStore*(entries: openArray[StateEntry], limits: StateStoreLimits): S
   StateStoreResult[StateStore](status: StateStoreError.None,
     completed: StateStore(head: data, limits: limits))
 
-## Retain the current immutable version independently of future store updates or handle destruction.
 proc snapshot*(store: StateStore): StateStoreResult[StateStoreSnapshot] =
+  ## Retain the current immutable version independently of future store updates or handle destruction.
   if store.head == nil:
     # A default handle cannot masquerade as an initialized empty map.
     return StateStoreResult[StateStoreSnapshot](status: StateStoreError.Uninitialized)
   StateStoreResult[StateStoreSnapshot](status: StateStoreError.None,
     completed: StateStoreSnapshot(data: store.head))
 
-## Start an independently updateable complete-map branch from this retained version, without hashing.
-## Inherit its original resource policy; future writes cannot mutate the source or loosen its ceilings.
 proc forkStateStore*(source: StateStoreSnapshot): StateStoreResult[StateStore] =
+  ## Start an independently updateable complete-map branch from this retained version, without hashing.
+  ## Inherit its original resource policy; future writes cannot mutate the source or loosen its ceilings.
   let data = source.data
   if data == nil:
     # Default snapshots cannot authorize a store with a fabricated empty map or default policy.
@@ -131,14 +125,14 @@ proc forkStateStore*(source: StateStoreSnapshot): StateStoreResult[StateStore] =
   StateStoreResult[StateStore](status: StateStoreError.None,
     completed: StateStore(head: data, limits: data.limits))
 
-## Return copied root/count metadata, never a mutable reference into the retained map.
 proc commitment*(snapshot: StateStoreSnapshot): StateTrieCommitment {.requires: snapshot.data != nil.} =
+  ## Return copied root/count metadata, never a mutable reference into the retained map.
   let data = snapshot.data
   assert data != nil # Retain one stable owner for the contract-proved access.
   data.commitment
 
-## Find a full key in a published sorted map. Missing and present-empty values are distinct.
 proc lookup*(snapshot: StateStoreSnapshot, key: StateKey): StateStoreResult[StateValue] =
+  ## Find a full key in a published sorted map. Missing and present-empty values are distinct.
   let data = snapshot.data
   if data == nil:
     # A default snapshot cannot supply an absent/present verdict.
@@ -159,23 +153,23 @@ proc lookup*(snapshot: StateStoreSnapshot, key: StateKey): StateStoreResult[Stat
         completed: StateValue(owner: snapshot, position: middle))
   StateStoreResult[StateValue](status: StateStoreError.MissingKey)
 
-## Read the exact retained value length, including zero; default views are not valid values.
 proc byteLength*(view: StateValue): int {.requires: view.owner.data != nil.} =
+  ## Read the exact retained value length, including zero; default views are not valid values.
   let data = view.owner.data
   assert data != nil # Bind the validated view owner once before accessing its immutable storage.
   data.entries[view.position].value.len
 
-## Copy bytes out of the retained view; callers can mutate the copy without changing any snapshot.
 proc bytes*(view: StateValue): seq[byte] {.requires: view.owner.data != nil.} =
+  ## Copy bytes out of the retained view; callers can mutate the copy without changing any snapshot.
   let data = view.owner.data
   assert data != nil # Bind the validated view owner once before copying its immutable storage.
   copyBytes(data.entries[view.position].value)
 
-## Copy exactly one owner-bound raw byte interval without materializing the remaining value.
-## Generic storage coordinates are uint64; validate by subtraction before narrowing or allocation.
-## Default owners, invalid ranges and policy refusal expose no bytes or partial progress.
 proc copySlice*(view: StateValue, offset, length: uint64,
     limit: ByteLimit): StateStoreResult[seq[byte]] =
+  ## Copy exactly one owner-bound raw byte interval without materializing the remaining value.
+  ## Generic storage coordinates are uint64; validate by subtraction before narrowing or allocation.
+  ## Default owners, invalid ranges and policy refusal expose no bytes or partial progress.
   let data = view.owner.data
   if data == nil:
     return StateStoreResult[seq[byte]](status: StateStoreError.Uninitialized) # Empty copies still need an owner.
@@ -189,10 +183,10 @@ proc copySlice*(view: StateValue, offset, length: uint64,
     copied[i] = data.entries[view.position].value[int(offset)+i] # offset+length<=size proves every native index.
   StateStoreResult[seq[byte]](status: StateStoreError.None, completed: copied)
 
-## Merge unique sorted mutations into a private candidate, then publish only after the root succeeds.
-## Empty batches retain the existing version. Failure leaves the store and every old snapshot unchanged.
 proc apply*(store: var StateStore, writes: openArray[StateWrite]): StateStoreResult[
     StateStoreSnapshot] =
+  ## Merge unique sorted mutations into a private candidate, then publish only after the root succeeds.
+  ## Empty batches retain the existing version. Failure leaves the store and every old snapshot unchanged.
   let head = store.head
   if head == nil:
     # Initialization is required even for a no-op batch.

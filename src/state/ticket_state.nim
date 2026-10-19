@@ -11,19 +11,20 @@ import ../codec/[state_safrole, state_consensus, state_layout, state_trie, ticke
 import ./[ticket_admission, store]
 
 type
-  ## Only successful publication contains a complete immutable working-store snapshot.
-  TicketStateResult* = object
+  TicketStateResult* = object ## Only successful publication contains a complete immutable working-store snapshot.
     case status: TicketAdmissionError
     of None:
       completed: StateStoreSnapshot # Retained history cannot be mutated through this result.
     else:
       discard                       # Failed/default publications contain their reason alone.
 
-## Inspect a reason without allowing payload access or result retagging.
-func error*(outcome: TicketStateResult): TicketAdmissionError = outcome.status
-## Extract only a fully published immutable snapshot after selecting successful admission.
+func error*(outcome: TicketStateResult): TicketAdmissionError =
+  ## Inspect a reason without allowing payload access or result retagging.
+  outcome.status
 func value*(outcome: TicketStateResult): StateStoreSnapshot {.inline,
-    requires: outcome.status == TicketAdmissionError.None.} = outcome.completed
+    requires: outcome.status == TicketAdmissionError.None.} =
+  ## Extract only a fully published immutable snapshot after selecting successful admission.
+  outcome.completed
 
 ## Preserve store resource/backend failures and distinguish absent required chapters from default stores.
 func storeError(reason: StateStoreError): TicketAdmissionError =
@@ -59,11 +60,11 @@ proc candidateEntry(owner: SafroleStateSnapshot, policy: SafroleStateConfig): Sa
     source.schedule = keySchedule(values)
   safroleStateEntry(source, policy)
 
-## Admit against staged C(4)/C(6)/C(11), then atomically replace only C(4), or retain an unchanged snapshot.
-## previous is the retained parent slot; C(11) must already equal target after entropy/time advancement.
-## This substep neither authenticates prior stages nor publishes a canonical complete block transition.
 proc admitSafroleTicketsState*(state: var StateStore, previous, target: StateTime,
     submitted: openArray[Ticket], config: TicketAdmissionConfig): TicketStateResult =
+  ## Admit against staged C(4)/C(6)/C(11), then atomically replace only C(4), or retain an unchanged snapshot.
+  ## previous is the retained parent slot; C(11) must already equal target after entropy/time advancement.
+  ## This substep neither authenticates prior stages nor publishes a canonical complete block transition.
   if uint32(target) <= uint32(previous):
     return TicketStateResult(status: TicketAdmissionError.InvalidSlot) # No repeated/backward/wrapped slots.
   let before = state.snapshot

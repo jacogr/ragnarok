@@ -12,18 +12,14 @@ import ../codec/[state_authorization, state_layout, state_trie, bounded]
 import ./store
 
 type
-  ## Header timeslot domain, distinct from core/row positions and other arbitrary integers.
-  AuthorizationSlot* = distinct uint32
-  ## Exactly the guarantee fields used by this subsystem, not a signature or membership validation result.
-  CoreAuthorizer* = object
+  AuthorizationSlot* = distinct uint32 ## Header timeslot domain, distinct from core/row positions and other arbitrary integers.
+  CoreAuthorizer* = object ## Exactly the guarantee fields used by this subsystem, not a signature or membership validation result.
     core*: AuthorizationCoreIndex
     authorizer*: AuthorizerHash
-  ## Transition failures expose no proposed entry, root or progress.
-  AuthorizationTransitionError* {.pure.} = enum
+  AuthorizationTransitionError* {.pure.} = enum ## Transition failures expose no proposed entry, root or progress.
     Uninitialized, None, InvalidConfig, InvalidState, InvalidCore, DuplicateCore,
     LimitExceeded, LengthOverflow, MissingState, BackendFailure
-  ## Success alone exposes a complete serialized entry or committed store snapshot.
-  AuthorizationTransitionResult*[T] = object
+  AuthorizationTransitionResult*[T] = object ## Success alone exposes a complete serialized entry or committed store snapshot.
     case status: AuthorizationTransitionError
     of None:
       completed: T # Result access remains guarded in optimized builds.
@@ -35,13 +31,15 @@ type
     removed: int
     count: int
 
-## Inspect a failure without granting payload or discriminator mutation access.
 func error*[T](outcome: AuthorizationTransitionResult[
-    T]): AuthorizationTransitionError = outcome.status
+    T]): AuthorizationTransitionError =
+  ## Inspect a failure without granting payload or discriminator mutation access.
+  outcome.status
 
-## Extract only complete success; failure/default payloads do not exist.
 func value*[T](outcome: AuthorizationTransitionResult[T]): T {.inline,
-    requires: outcome.status == AuthorizationTransitionError.None.} = outcome.completed
+    requires: outcome.status == AuthorizationTransitionError.None.} =
+  ## Extract only complete success; failure/default payloads do not exist.
+  outcome.completed
 
 ## Preserve policy and native-extent failures; other codec failures identify invalid supplied state.
 func codecError(reason: AuthorizationError): AuthorizationTransitionError =
@@ -63,12 +61,12 @@ func storeError(reason: StateStoreError): AuthorizationTransitionError =
   of StateStoreError.BackendFailure: AuthorizationTransitionError.BackendFailure # Hash failure cannot become a root.
   else: AuthorizationTransitionError.InvalidState # No other store failure is valid transition input/output.
 
-## Compute C(1) after removing one oldest used hash, appending the post-accumulation queue item,
-## and retaining the newest eight entries. Inputs are immutable retained snapshots, never borrowed rows.
-## Guarantees are already validated by the caller; duplicate core projections reject instead of choosing one.
 proc advanceAuthorization*(pools, postQueues: AuthorizationSnapshot,
     uses: openArray[CoreAuthorizer], slot: AuthorizationSlot,
     config: AuthorizationConfig): AuthorizationTransitionResult[StateEntry] =
+  ## Compute C(1) after removing one oldest used hash, appending the post-accumulation queue item,
+  ## and retaining the newest eight entries. Inputs are immutable retained snapshots, never borrowed rows.
+  ## Guarantees are already validated by the caller; duplicate core projections reject instead of choosing one.
   if uint64(config.cores) < 2:
     # Match the codec's explicit configured population instead of guessing tiny/full from inputs.
     return AuthorizationTransitionResult[StateEntry](
@@ -190,11 +188,11 @@ proc advanceAuthorization*(pools, postQueues: AuthorizationSnapshot,
   AuthorizationTransitionResult[StateEntry](status: AuthorizationTransitionError.None,
       completed: encoded.value)
 
-## Read complete C(1)/C(2) values from a full-state working store after accumulation and atomically
-## publish C(1) only. C(2) is already posterior and is neither rotated nor rewritten by this subsystem.
 proc advanceAuthorizationState*(state: var StateStore, uses: openArray[CoreAuthorizer],
     slot: AuthorizationSlot, config: AuthorizationConfig): AuthorizationTransitionResult[
         StateStoreSnapshot] =
+  ## Read complete C(1)/C(2) values from a full-state working store after accumulation and atomically
+  ## publish C(1) only. C(2) is already posterior and is neither rotated nor rewritten by this subsystem.
   let before = state.snapshot
   if before.error != StateStoreError.None:
     return AuthorizationTransitionResult[StateStoreSnapshot](status: storeError(

@@ -13,17 +13,14 @@ import ../crypto/[primitives, guarantee]
 import ./guarantors
 
 type
-  ## One assignment profile, aggregate canonical extrinsic byte budget and distinct reporter-key ceiling.
-  GuaranteeCredentialConfig* = object
+  GuaranteeCredentialConfig* = object ## One assignment profile, aggregate canonical extrinsic byte budget and distinct reporter-key ceiling.
     assignments*: GuarantorConfig
     maxBytes*: ByteLimit
     reporters*: ElementLimit
-  ## Failure alternatives have no successfully certified records, reporter keys or partial counts.
-  GuaranteeCredentialError* {.pure.} = enum
+  GuaranteeCredentialError* {.pure.} = enum ## Failure alternatives have no successfully certified records, reporter keys or partial counts.
     Uninitialized, None, StructureFailure, AssignmentFailure, InactiveCore, WrongErasureShards,
     WrongAssignment, InvalidSignature, BackendFailure, LimitExceeded, InvalidIndex
-  ## Copied candidate context belongs to the completed verification, including an empty guarantee batch.
-  VerifiedGuaranteeContext* = object
+  VerifiedGuaranteeContext* = object ## Copied candidate context belongs to the completed verification, including an empty guarantee batch.
     slot*: StateTime
     population*: ValidatorCount
   ## Private acyclic storage keeps copied guarantees/report handles and the exact assignment context together.
@@ -32,11 +29,9 @@ type
     context: VerifiedGuaranteeContext
     guarantees: seq[Guarantee]
     reporters: seq[StateEdKey]
-  ## Immutable success handle cannot be forged by substituting a key table or mutable report buffer.
-  VerifiedGuaranteeCredentials* = object
+  VerifiedGuaranteeCredentials* = object ## Immutable success handle cannot be forged by substituting a key table or mutable report buffer.
     data: nil CredentialData
-  ## Selected success alone carries application data; selected child failures alone carry their exact cause.
-  GuaranteeCredentialResult*[T] = object
+  GuaranteeCredentialResult*[T] = object ## Selected success alone carries application data; selected child failures alone carry their exact cause.
     case status: GuaranteeCredentialError
     of None:
       completed: T
@@ -47,29 +42,33 @@ type
     else:
       discard # Defaults and other failures carry their reason only.
 
-## Expose the status without permitting external retagging.
-func error*[T](outcome: GuaranteeCredentialResult[T]): GuaranteeCredentialError = outcome.status
-## Extract only a completed operation under supported optimized-build contracts.
+func error*[T](outcome: GuaranteeCredentialResult[T]): GuaranteeCredentialError =
+  ## Expose the status without permitting external retagging.
+  outcome.status
 func value*[T](outcome: GuaranteeCredentialResult[T]): T {.inline,
-    requires: outcome.status == GuaranteeCredentialError.None.} = outcome.completed
-## Inspect the codec's precise refusal only when the structure-failure alternative is selected.
+    requires: outcome.status == GuaranteeCredentialError.None.} =
+  ## Extract only a completed operation under supported optimized-build contracts.
+  outcome.completed
 func structureError*[T](outcome: GuaranteeCredentialResult[T]): GuaranteeError {.inline,
-    requires: outcome.status == GuaranteeCredentialError.StructureFailure.} = outcome.structureReason
-## Inspect rotation/profile/index/slot failures only when the assignment-failure alternative is selected.
+    requires: outcome.status == GuaranteeCredentialError.StructureFailure.} =
+  ## Inspect the codec's precise refusal only when the structure-failure alternative is selected.
+  outcome.structureReason
 func assignmentError*[T](outcome: GuaranteeCredentialResult[T]): GuarantorError {.inline,
-    requires: outcome.status == GuaranteeCredentialError.AssignmentFailure.} = outcome.assignmentReason
+    requires: outcome.status == GuaranteeCredentialError.AssignmentFailure.} =
+  ## Inspect rotation/profile/index/slot failures only when the assignment-failure alternative is selected.
+  outcome.assignmentReason
 
-## Count completed guarantees without treating a default owner as a successfully verified empty extrinsic.
 proc verifiedGuaranteeCount*(owner: VerifiedGuaranteeCredentials): GuaranteeCredentialResult[int] =
+  ## Count completed guarantees without treating a default owner as a successfully verified empty extrinsic.
   let data = owner.data
   if data == nil:
     return GuaranteeCredentialResult[int](status: GuaranteeCredentialError.Uninitialized) # No owner.
   GuaranteeCredentialResult[int](status: GuaranteeCredentialError.None,
       completed: data.guarantees.len)
 
-## Retain candidate time and current active population from the exact completed verification context.
 proc verifiedGuaranteeContext*(owner: VerifiedGuaranteeCredentials): GuaranteeCredentialResult[
     VerifiedGuaranteeContext] =
+  ## Retain candidate time and current active population from the exact completed verification context.
   let data = owner.data
   if data == nil:
     return GuaranteeCredentialResult[VerifiedGuaranteeContext](
@@ -77,9 +76,9 @@ proc verifiedGuaranteeContext*(owner: VerifiedGuaranteeCredentials): GuaranteeCr
   GuaranteeCredentialResult[VerifiedGuaranteeContext](status: GuaranteeCredentialError.None,
       completed: data.context)
 
-## Return one copied record retaining its immutable report; modifying the copy cannot change this verified owner.
 proc verifiedGuaranteeAt*(owner: VerifiedGuaranteeCredentials,
     index: int): GuaranteeCredentialResult[Guarantee] =
+  ## Return one copied record retaining its immutable report; modifying the copy cannot change this verified owner.
   let data = owner.data
   if data == nil:
     return GuaranteeCredentialResult[Guarantee](status: GuaranteeCredentialError.Uninitialized) # No records.
@@ -88,17 +87,17 @@ proc verifiedGuaranteeAt*(owner: VerifiedGuaranteeCredentials,
   GuaranteeCredentialResult[Guarantee](status: GuaranteeCredentialError.None,
       completed: data.guarantees[index])
 
-## Count distinct signing Ed25519 keys, not credential indices or signature occurrences.
 proc verifiedReporterCount*(owner: VerifiedGuaranteeCredentials): GuaranteeCredentialResult[int] =
+  ## Count distinct signing Ed25519 keys, not credential indices or signature occurrences.
   let data = owner.data
   if data == nil:
     return GuaranteeCredentialResult[int](status: GuaranteeCredentialError.Uninitialized) # No fabricated empty set.
   GuaranteeCredentialResult[int](status: GuaranteeCredentialError.None,
       completed: data.reporters.len)
 
-## Extract a copied reporter identity in deterministic lexicographic order, bound to its successful owner.
 proc verifiedReporterAt*(owner: VerifiedGuaranteeCredentials,
     index: int): GuaranteeCredentialResult[StateEdKey] =
+  ## Extract a copied reporter identity in deterministic lexicographic order, bound to its successful owner.
   let data = owner.data
   if data == nil:
     return GuaranteeCredentialResult[StateEdKey](status: GuaranteeCredentialError.Uninitialized) # No key set.
@@ -138,12 +137,12 @@ proc includeReporter(keys: var seq[StateEdKey], key: StateEdKey, ceiling: Elemen
   keys[first] = key
   true
 
-## Verify one stable borrowed batch against completed posterior context, retaining only complete success.
-## Canonical source preflight bounds all scratch before hashing. Context authentication and full admission are external.
 proc verifyGuaranteeCredentials*(values: openArray[Guarantee], active,
     previous: ValidatorStateSnapshot, entropy: StateEntropy, slot: StateTime, offenders: openArray[
         OffenderKey],
     config: GuaranteeCredentialConfig): GuaranteeCredentialResult[VerifiedGuaranteeCredentials] =
+  ## Verify one stable borrowed batch against completed posterior context, retaining only complete success.
+  ## Canonical source preflight bounds all scratch before hashing. Context authentication and full admission are external.
   let wire = GuaranteeConfig(cores: config.assignments.roster.cores,
     validators: ValidatorCount(uint64(config.assignments.roster.validators)),
         maxBytes: config.maxBytes)

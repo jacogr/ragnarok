@@ -11,19 +11,14 @@ import ../codec/[bounded, natural, composite, work_digest, report_owned, owned, 
 import ./accumulation_queue
 
 type
-  ## A caller-selected prefix is not an executed-report count or a byte/digest ordinal.
-  AccumulationReportPrefix* = distinct uint64
-  ## A service-group ordinal is not the protocol service identifier stored at that position.
-  OperandServiceIndex* = distinct uint64
-  ## A per-service operand ordinal cannot address a service group or report queue.
-  ServiceOperandIndex* = distinct uint64
-  ## Independent local ceilings bound traversal, descriptors, copied payloads and retained operand wire.
-  AccumulationOperandConfig* = object
+  AccumulationReportPrefix* = distinct uint64 ## A caller-selected prefix is not an executed-report count or a byte/digest ordinal.
+  OperandServiceIndex* = distinct uint64 ## A service-group ordinal is not the protocol service identifier stored at that position.
+  ServiceOperandIndex* = distinct uint64 ## A per-service operand ordinal cannot address a service group or report queue.
+  AccumulationOperandConfig* = object ## Independent local ceilings bound traversal, descriptors, copied payloads and retained operand wire.
     reports*, operands*, services*: ElementLimit
     totalBlobBytes*, totalBytes*: ByteLimit
     operand*: OperandLimits
-  ## Default/refused alternatives expose no partial service group, input sequence or copied progress.
-  AccumulationOperandError* {.pure.} = enum
+  AccumulationOperandError* {.pure.} = enum ## Default/refused alternatives expose no partial service group, input sequence or copied progress.
     Uninitialized, None, InvalidConfig, InvalidQueue, InvalidPrefix, LimitExceeded,
     InvalidOperand, InvalidIndex
   ## Private preflight descriptor retains its exact report and stable report/digest traversal order.
@@ -40,33 +35,31 @@ type
     source: AccumulationQueuePlan
     prefix: AccumulationReportPrefix
     groups: seq[ServiceGroup]
-  ## Projection preparation is not a complete service invocation or accumulation certificate.
-  PreparedAccumulationOperands* = object
+  PreparedAccumulationOperands* = object ## Projection preparation is not a complete service invocation or accumulation certificate.
     data: nil OperandData
-  ## Copied metadata exposes a protocol identity and count without mutable group storage.
-  OperandServiceInfo* = object
+  OperandServiceInfo* = object ## Copied metadata exposes a protocol identity and count without mutable group storage.
     service*: ServiceIndex
     operands*: int
   ## Bound storage retains the actual admitted-block queue separately from the pure projection.
   BlockOperandData = ref object
     queue: BlockAccumulationQueue
     projection: PreparedAccumulationOperands
-  ## Only preparation from a genuine bound queue can construct this immutable handle.
-  BlockAccumulationOperands* = object
+  BlockAccumulationOperands* = object ## Only preparation from a genuine bound queue can construct this immutable handle.
     data: nil BlockOperandData
-  ## Success alone carries a complete typed handle/member under checked-build contracts.
-  AccumulationOperandResult*[T] = object
+  AccumulationOperandResult*[T] = object ## Success alone carries a complete typed handle/member under checked-build contracts.
     case status: AccumulationOperandError
     of None:
       completed: T # Successful extraction retains the requested owner or copied metadata.
     else:
       discard      # No fabricated empty success or accepted prefix after refusal.
 
-## Inspect a reason without permitting external retagging.
-func error*[T](outcome: AccumulationOperandResult[T]): AccumulationOperandError = outcome.status
-## Extract complete selected success only; callers must inspect error first.
+func error*[T](outcome: AccumulationOperandResult[T]): AccumulationOperandError =
+  ## Inspect a reason without permitting external retagging.
+  outcome.status
 func value*[T](outcome: AccumulationOperandResult[T]): T {.inline,
-    requires: outcome.status == AccumulationOperandError.None.} = outcome.completed
+    requires: outcome.status == AccumulationOperandError.None.} =
+  ## Extract complete selected success only; callers must inspect error first.
+  outcome.completed
 
 ## Prove each sum against its ceiling before addition; integer wrapping is never a size proof.
 func charge(total: var uint64, amount, maximum: uint64): bool =
@@ -82,34 +75,34 @@ func compareDescriptor(a, b: Descriptor): int =
   if a.order > b.order: return 1 # Sorting stability is not assumed.
   0
 
-## Count groups; a missing owner is different from a successfully prepared empty prefix.
 proc operandServiceCount*(plan: PreparedAccumulationOperands): AccumulationOperandResult[int] =
+  ## Count groups; a missing owner is different from a successfully prepared empty prefix.
   let data = plan.data
   if data == nil: return AccumulationOperandResult[int](
       status: AccumulationOperandError.Uninitialized) # No validated groups.
   AccumulationOperandResult[int](status: AccumulationOperandError.None, completed: data.groups.len)
 
-## Retain the exact priority projection independently of every caller handle.
 proc operandQueue*(plan: PreparedAccumulationOperands): AccumulationOperandResult[
     AccumulationQueuePlan] =
+  ## Retain the exact priority projection independently of every caller handle.
   let data = plan.data
   if data == nil: return AccumulationOperandResult[AccumulationQueuePlan](
       status: AccumulationOperandError.Uninitialized) # No default source.
   AccumulationOperandResult[AccumulationQueuePlan](status: AccumulationOperandError.None,
       completed: data.source)
 
-## Report the selected prefix; preparation does not claim that any reports executed.
 proc operandReportPrefix*(plan: PreparedAccumulationOperands): AccumulationOperandResult[
     AccumulationReportPrefix] =
+  ## Report the selected prefix; preparation does not claim that any reports executed.
   let data = plan.data
   if data == nil: return AccumulationOperandResult[AccumulationReportPrefix](
       status: AccumulationOperandError.Uninitialized) # No default prefix.
   AccumulationOperandResult[AccumulationReportPrefix](status: AccumulationOperandError.None,
       completed: data.prefix)
 
-## Copy a group's service/count after checking its nominal ordinal before narrowing.
 proc operandServiceAt*(plan: PreparedAccumulationOperands,
     index: OperandServiceIndex): AccumulationOperandResult[OperandServiceInfo] =
+  ## Copy a group's service/count after checking its nominal ordinal before narrowing.
   let data = plan.data
   if data == nil: return AccumulationOperandResult[OperandServiceInfo](
       status: AccumulationOperandError.Uninitialized) # No storage.
@@ -120,9 +113,9 @@ proc operandServiceAt*(plan: PreparedAccumulationOperands,
   AccumulationOperandResult[OperandServiceInfo](status: AccumulationOperandError.None,
     completed: OperandServiceInfo(service: group.service, operands: group.operands.len))
 
-## Retain a complete C.2 operand after source reports, groups and prepared-plan handles leave scope.
 proc serviceOperandAt*(plan: PreparedAccumulationOperands, service: OperandServiceIndex,
     index: ServiceOperandIndex): AccumulationOperandResult[OwnedOperand] =
+  ## Retain a complete C.2 operand after source reports, groups and prepared-plan handles leave scope.
   let data = plan.data
   if data == nil: return AccumulationOperandResult[OwnedOperand](
       status: AccumulationOperandError.Uninitialized) # No default operand.
@@ -136,11 +129,11 @@ proc serviceOperandAt*(plan: PreparedAccumulationOperands, service: OperandServi
   AccumulationOperandResult[OwnedOperand](status: AccumulationOperandError.None,
     completed: group.operands[int(uint64(index))])
 
-## Prepare i^U only for an explicit prefix of Q's priority sequence; unavailable/deferred queue rows stay excluded.
-## Borrow the immutable plan during the call and retain it on success. Preflight every bound before copying blobs.
-## This neither chooses a gas-dependent prefix nor adds transfer/free-allowance-only services or writes state.
 proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: AccumulationReportPrefix,
     config: AccumulationOperandConfig): AccumulationOperandResult[PreparedAccumulationOperands] =
+  ## Prepare i^U only for an explicit prefix of Q's priority sequence; unavailable/deferred queue rows stay excluded.
+  ## Borrow the immutable plan during the call and retain it on success. Preflight every bound before copying blobs.
+  ## This neither chooses a gas-dependent prefix nor adds transfer/free-allowance-only services or writes state.
   ## Refuse the entire projection without publishing partially materialized groups.
   template fail(reason: AccumulationOperandError) =
     return AccumulationOperandResult[PreparedAccumulationOperands](status: reason)
@@ -235,10 +228,10 @@ proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: Accumula
     completed: PreparedAccumulationOperands(data: OperandData(source: queue, prefix: prefix,
         groups: groups)))
 
-## Bind preparation to a genuine admitted-block queue while keeping the chosen prefix explicitly caller supplied.
 proc prepareBlockAccumulationOperands*(queue: BlockAccumulationQueue,
     prefix: AccumulationReportPrefix, config: AccumulationOperandConfig): AccumulationOperandResult[
         BlockAccumulationOperands] =
+  ## Bind preparation to a genuine admitted-block queue while keeping the chosen prefix explicitly caller supplied.
   let projection = queue.accumulationProjection
   if projection.error != AccumulationQueueError.None:
     return AccumulationOperandResult[BlockAccumulationOperands](
@@ -250,18 +243,18 @@ proc prepareBlockAccumulationOperands*(queue: BlockAccumulationQueue,
     completed: BlockAccumulationOperands(data: BlockOperandData(queue: queue,
         projection: prepared.value)))
 
-## Retain the genuine block queue independently of the original binding handle's lifetime.
 proc operandBlockQueue*(bound: BlockAccumulationOperands): AccumulationOperandResult[
     BlockAccumulationQueue] =
+  ## Retain the genuine block queue independently of the original binding handle's lifetime.
   let data = bound.data
   if data == nil: return AccumulationOperandResult[BlockAccumulationQueue](
       status: AccumulationOperandError.Uninitialized) # No default certificate.
   AccumulationOperandResult[BlockAccumulationQueue](status: AccumulationOperandError.None,
       completed: data.queue)
 
-## Retain the derived report-input projection without claiming service invocation/execution.
 proc operandProjection*(bound: BlockAccumulationOperands): AccumulationOperandResult[
     PreparedAccumulationOperands] =
+  ## Retain the derived report-input projection without claiming service invocation/execution.
   let data = bound.data
   if data == nil: return AccumulationOperandResult[PreparedAccumulationOperands](
       status: AccumulationOperandError.Uninitialized) # No default projection.

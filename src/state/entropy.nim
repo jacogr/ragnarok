@@ -14,29 +14,27 @@ import ../crypto/primitives
 import ./store
 
 type
-  ## Already supplied VRF output bytes, distinct from stored entropy; this constructor proves no signature.
-  EntropyInput* = distinct array[32, byte]
-  ## Complete fixed posterior values, which must be published together when updating a working store.
-  EntropyTimeUpdate* = object
+  EntropyInput* = distinct array[32, byte] ## Already supplied VRF output bytes, distinct from stored entropy; this constructor proves no signature.
+  EntropyTimeUpdate* = object ## Complete fixed posterior values, which must be published together when updating a working store.
     entropy*: StateEntropy
     time*: StateTime
-  ## Failure alternatives contain no updated words, timeslot or proposed commitment.
-  EntropyTransitionError* {.pure.} = enum
+  EntropyTransitionError* {.pure.} = enum ## Failure alternatives contain no updated words, timeslot or proposed commitment.
     Uninitialized, None, InvalidConfig, InvalidSlot, InvalidState, MissingState,
     LimitExceeded, LengthOverflow, BackendFailure
-  ## Success payload and discriminator remain private; defaults are uninitialized failures.
-  EntropyTransitionResult*[T] = object
+  EntropyTransitionResult*[T] = object ## Success payload and discriminator remain private; defaults are uninitialized failures.
     case status: EntropyTransitionError
     of None:
       completed: T # Extract only after checking the supported success predicate.
     else:
       discard      # Failed alternatives have their reason only.
 
-## Read a failure reason without exposing payload storage or permitting retagging.
-func error*[T](outcome: EntropyTransitionResult[T]): EntropyTransitionError = outcome.status
-## Require selected success before returning fixed values or an immutable committed snapshot.
+func error*[T](outcome: EntropyTransitionResult[T]): EntropyTransitionError =
+  ## Read a failure reason without exposing payload storage or permitting retagging.
+  outcome.status
 func value*[T](outcome: EntropyTransitionResult[T]): T {.inline,
-    requires: outcome.status == EntropyTransitionError.None.} = outcome.completed
+    requires: outcome.status == EntropyTransitionError.None.} =
+  ## Require selected success before returning fixed values or an immutable committed snapshot.
+  outcome.completed
 
 ## Preserve atomic-store reasons; no missing/default state can become fabricated entropy.
 func storeError(reason: StateStoreError): EntropyTransitionError =
@@ -49,10 +47,10 @@ func storeError(reason: StateStoreError): EntropyTransitionError =
   of StateStoreError.BackendFailure: EntropyTransitionError.BackendFailure # Primitive refusal yields no root.
   else: EntropyTransitionError.InvalidState # Other store failures do not describe valid transition state.
 
-## Advance one block using BLAKE2b-256(old accumulator || entropy VRF output), not proof bytes.
-## History rotates once when target/epochSlots exceeds previous/epochSlots, irrespective of skipped epochs.
 proc advanceEntropyTime*(prior: StateEntropy, previous, target: StateTime,
     randomness: EntropyInput, epochSlots: EpochSlots): EntropyTransitionResult[EntropyTimeUpdate] =
+  ## Advance one block using BLAKE2b-256(old accumulator || entropy VRF output), not proof bytes.
+  ## History rotates once when target/epochSlots exceeds previous/epochSlots, irrespective of skipped epochs.
   if uint64(epochSlots) == 0:
     return EntropyTransitionResult[EntropyTimeUpdate](
         status: EntropyTransitionError.InvalidConfig) # Reject before unsigned division.
@@ -83,10 +81,10 @@ proc advanceEntropyTime*(prior: StateEntropy, previous, target: StateTime,
   EntropyTransitionResult[EntropyTimeUpdate](status: EntropyTransitionError.None,
       completed: advanced)
 
-## Decode exact fixed C(6)/C(11), compute privately and atomically publish both entries in one batch.
-## Unrelated values and retained historical snapshots remain immutable; this is not full Safrole execution.
 proc advanceEntropyTimeState*(state: var StateStore, target: StateTime,
     randomness: EntropyInput, epochSlots: EpochSlots): EntropyTransitionResult[StateStoreSnapshot] =
+  ## Decode exact fixed C(6)/C(11), compute privately and atomically publish both entries in one batch.
+  ## Unrelated values and retained historical snapshots remain immutable; this is not full Safrole execution.
   let before = state.snapshot
   if before.error != StateStoreError.None:
     return EntropyTransitionResult[StateStoreSnapshot](status: storeError(before.error)) # No default store.

@@ -13,14 +13,11 @@ import ../codec/[bounded, state_workqueues, report_owned, owned, work_report, he
 import ./[report_admission, block_transition, block_admission, availability, store]
 
 type
-  ## Independent aggregate bounds cover parent plus incoming descriptors before scratch allocation.
-  AccumulationQueueConfig* = object
+  AccumulationQueueConfig* = object ## Independent aggregate bounds cover parent plus incoming descriptors before scratch allocation.
     queues*: WorkQueueConfig
     items*, dependencies*: ElementLimit
-  ## Nominal priority/queue ordinal cannot be confused with a ring slot or package hash index.
-  AccumulationIndex* = distinct uint64
-  ## Default/refused outcomes contain no partial priority sequence or mutable queue.
-  AccumulationQueueError* {.pure.} = enum
+  AccumulationIndex* = distinct uint64 ## Nominal priority/queue ordinal cannot be confused with a ring slot or package hash index.
+  AccumulationQueueError* {.pure.} = enum ## Default/refused outcomes contain no partial priority sequence or mutable queue.
     Uninitialized, None, InvalidConfig, InvalidState, InvalidReport, InvalidAdmission,
     MissingState, LimitExceeded, InvalidIndex
   ## Private acyclic storage retains decoded parent owners and the original complete report handles.
@@ -30,18 +27,15 @@ type
     queue: ReadyRow
     priority: seq[OwnedReport]
     immediate: int
-  ## A pure projection plan is deliberately not an admitted-block or execution certificate.
-  AccumulationQueuePlan* = object
+  AccumulationQueuePlan* = object ## A pure projection plan is deliberately not an admitted-block or execution certificate.
     data: nil QueueData
   ## Private binding retains the genuine completed report-admission owner and its derived projection.
   BlockQueueData = ref object
     reports: AdmittedReports
     plan: AccumulationQueuePlan
-  ## Only the state-backed entry point can create this block-bound handle.
-  BlockAccumulationQueue* = object
+  BlockAccumulationQueue* = object ## Only the state-backed entry point can create this block-bound handle.
     data: nil BlockQueueData
-  ## Only selected complete success exposes a value under checked-build contracts.
-  AccumulationQueueResult*[T] = object
+  AccumulationQueueResult*[T] = object ## Only selected complete success exposes a value under checked-build contracts.
     # Select payload storage only for a completed plan/member.
     case status: AccumulationQueueError
     of None:
@@ -49,11 +43,13 @@ type
     else:
       discard      # No partial progress or fabricated empty success.
 
-## Inspect a reason without exposing writable variant state.
-func error*[T](outcome: AccumulationQueueResult[T]): AccumulationQueueError = outcome.status
-## Extract only a successful immutable handle or copied member.
+func error*[T](outcome: AccumulationQueueResult[T]): AccumulationQueueError =
+  ## Inspect a reason without exposing writable variant state.
+  outcome.status
 func value*[T](outcome: AccumulationQueueResult[T]): T {.inline,
-    requires: outcome.status == AccumulationQueueError.None.} = outcome.completed
+    requires: outcome.status == AccumulationQueueError.None.} =
+  ## Extract only a successful immutable handle or copied member.
+  outcome.completed
 
 ## Fixed octets order identities without exchanging their nominal hash domain.
 func compareHash(a, b: PackageHash): int =
@@ -91,22 +87,22 @@ proc edit(rows: ReadyRow, hashes: seq[PackageHash]): ReadyRow =
         retained.dependencies.add(dependency) # Only still-unfulfilled identities survive E.
     result.add(retained)
 
-## Count copied priority reports; default owners are not valid empty plans.
 proc accumulationCount*(plan: AccumulationQueuePlan): AccumulationQueueResult[int] =
+  ## Count copied priority reports; default owners are not valid empty plans.
   let data = plan.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[int](status: AccumulationQueueError.Uninitialized)
   AccumulationQueueResult[int](status: AccumulationQueueError.None, completed: data.priority.len)
 
-## Return the immediate prefix length, before dependency-wave selection.
 proc accumulationImmediateCount*(plan: AccumulationQueuePlan): AccumulationQueueResult[int] =
+  ## Return the immediate prefix length, before dependency-wave selection.
   let data = plan.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[int](status: AccumulationQueueError.Uninitialized)
   AccumulationQueueResult[int](status: AccumulationQueueError.None, completed: data.immediate)
 
-## Retain an exact complete report after plan/caller storage leaves scope.
 proc accumulationAt*(plan: AccumulationQueuePlan, index: AccumulationIndex): AccumulationQueueResult[OwnedReport] =
+  ## Retain an exact complete report after plan/caller storage leaves scope.
   let data = plan.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[OwnedReport](
@@ -116,16 +112,16 @@ proc accumulationAt*(plan: AccumulationQueuePlan, index: AccumulationIndex): Acc
   AccumulationQueueResult[OwnedReport](status: AccumulationQueueError.None,
     completed: data.priority[int(uint64(index))])
 
-## Count q before Q; this is planning evidence, never the execution-dependent posterior ready ring.
 proc accumulationQueuedCount*(plan: AccumulationQueuePlan): AccumulationQueueResult[int] =
+  ## Count q before Q; this is planning evidence, never the execution-dependent posterior ready ring.
   let data = plan.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[int](status: AccumulationQueueError.Uninitialized)
   AccumulationQueueResult[int](status: AccumulationQueueError.None, completed: data.queue.len)
 
-## Inspect q's retained report and dependency count without exporting its mutable set storage.
 proc accumulationQueuedAt*(plan: AccumulationQueuePlan,
     index: AccumulationIndex): AccumulationQueueResult[ReadyItemInfo] =
+  ## Inspect q's retained report and dependency count without exporting its mutable set storage.
   let data = plan.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[ReadyItemInfo](
@@ -136,9 +132,9 @@ proc accumulationQueuedAt*(plan: AccumulationQueuePlan,
   AccumulationQueueResult[ReadyItemInfo](status: AccumulationQueueError.None,
     completed: ReadyItemInfo(report: row.report, dependencies: row.dependencies.len))
 
-## Copy one dependency under its exact queue owner and nominal parent/member indices.
 proc accumulationDependencyAt*(plan: AccumulationQueuePlan, index: AccumulationIndex,
     dependency: WorkQueueHashIndex): AccumulationQueueResult[PackageHash] =
+  ## Copy one dependency under its exact queue owner and nominal parent/member indices.
   let data = plan.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[PackageHash](
@@ -151,12 +147,12 @@ proc accumulationDependencyAt*(plan: AccumulationQueuePlan, index: AccumulationI
   AccumulationQueueResult[PackageHash](status: AccumulationQueueError.None,
     completed: row.dependencies[int(uint64(dependency))])
 
-## Pure projection from complete serialized parent C(14)/C(15), available reports and candidate time.
-## Byte inputs are borrowed stably during this call, decoded/captured before use; no hashing or writes occur.
-## Parent and incoming descriptors share explicit ceilings. Iterative Q bounds stack depth; unresolved cycles stop normally.
 proc planAccumulationQueues*(available: openArray[OwnedReport],
     readyBytes: openArray[byte], accumulatedBytes: openArray[byte], slot: HeaderSlot,
     config: AccumulationQueueConfig): AccumulationQueueResult[AccumulationQueuePlan] =
+  ## Pure projection from complete serialized parent C(14)/C(15), available reports and candidate time.
+  ## Byte inputs are borrowed stably during this call, decoded/captured before use; no hashing or writes occur.
+  ## Parent and incoming descriptors share explicit ceilings. Iterative Q bounds stack depth; unresolved cycles stop normally.
   template fail(reason: AccumulationQueueError) =
     return AccumulationQueueResult[AccumulationQueuePlan](status: reason)
   if uint64(config.queues.epochSlots) == 0 or uint64(config.queues.cores) < 2 or
@@ -282,10 +278,10 @@ proc planAccumulationQueues*(available: openArray[OwnedReport],
   AccumulationQueueResult[AccumulationQueuePlan](status: AccumulationQueueError.None,
     completed: AccumulationQueuePlan(data: data))
 
-## Derive exact parent chapters, availability output and candidate slot from genuine complete report admission.
-## This read-only adapter cannot substitute loose reports or publish posterior history/queue state.
 proc planBlockAccumulationQueue*(reports: AdmittedReports,
     config: AccumulationQueueConfig): AccumulationQueueResult[BlockAccumulationQueue] =
+  ## Derive exact parent chapters, availability output and candidate slot from genuine complete report admission.
+  ## This read-only adapter cannot substitute loose reports or publish posterior history/queue state.
   template fail(reason: AccumulationQueueError) =
     return AccumulationQueueResult[BlockAccumulationQueue](status: reason)
   let stage = reports.reportBlockStage
@@ -319,9 +315,9 @@ proc planBlockAccumulationQueue*(reports: AdmittedReports,
   AccumulationQueueResult[BlockAccumulationQueue](status: AccumulationQueueError.None,
     completed: BlockAccumulationQueue(data: BlockQueueData(reports: reports, plan: planned.value)))
 
-## Retain the exact completed admission source independently of caller scope.
 proc accumulationAdmission*(bound: BlockAccumulationQueue): AccumulationQueueResult[
     AdmittedReports] =
+  ## Retain the exact completed admission source independently of caller scope.
   let data = bound.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[AdmittedReports](
@@ -329,9 +325,9 @@ proc accumulationAdmission*(bound: BlockAccumulationQueue): AccumulationQueueRes
   AccumulationQueueResult[AdmittedReports](status: AccumulationQueueError.None,
       completed: data.reports)
 
-## Retain the derived pure priority projection; it does not certify report execution.
 proc accumulationProjection*(bound: BlockAccumulationQueue): AccumulationQueueResult[
     AccumulationQueuePlan] =
+  ## Retain the derived pure priority projection; it does not certify report execution.
   let data = bound.data
   # A default handle owns no validated storage, even for an empty-looking extraction.
   if data == nil: return AccumulationQueueResult[AccumulationQueuePlan](

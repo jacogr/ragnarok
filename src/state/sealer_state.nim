@@ -10,19 +10,20 @@ import ../codec/[state_safrole, state_consensus, state_layout, state_trie, ticke
 import ./[sealer_schedule, store]
 
 type
-  ## Success alone owns a complete immutable published map; defaults/refusals expose no payload.
-  SealerStateResult* = object
+  SealerStateResult* = object ## Success alone owns a complete immutable published map; defaults/refusals expose no payload.
     case status: SealerScheduleError
     of None:
       completed: StateStoreSnapshot # Acyclic shared history remains immutable after later writes.
     else:
       discard                       # No partial schedule or root escapes a failed publication.
 
-## Read the publication reason without permitting result retagging.
-func error*(outcome: SealerStateResult): SealerScheduleError = outcome.status
-## Extract the immutable map only after selecting successful publication.
+func error*(outcome: SealerStateResult): SealerScheduleError =
+  ## Read the publication reason without permitting result retagging.
+  outcome.status
 func value*(outcome: SealerStateResult): StateStoreSnapshot {.inline,
-    requires: outcome.status == SealerScheduleError.None.} = outcome.completed
+    requires: outcome.status == SealerScheduleError.None.} =
+  ## Extract the immutable map only after selecting successful publication.
+  outcome.completed
 
 ## Preserve store resource/backend reasons and distinguish absent chapters from default handles.
 func storeError(reason: StateStoreError): SealerScheduleError =
@@ -58,11 +59,11 @@ proc candidateEntry(owner: SafroleStateSnapshot, policy: SafroleStateConfig): Sa
     source.schedule = keySchedule(values)
   safroleStateEntry(source, policy)
 
-## Read parent C(4)/C(11) and staged C(4)/C(6)/C(8)/C(11) from immutable snapshots.
-## Caller stages rotation, entropy/time and admission first; this does not authenticate their lineage.
-## Refusal preserves the working map at entry, not the entire earlier multi-stage transition.
 proc selectSafroleScheduleState*(state: var StateStore, parent: StateStoreSnapshot,
     target: StateTime, config: SealerScheduleConfig): SealerStateResult =
+  ## Read parent C(4)/C(11) and staged C(4)/C(6)/C(8)/C(11) from immutable snapshots.
+  ## Caller stages rotation, entropy/time and admission first; this does not authenticate their lineage.
+  ## Refusal preserves the working map at entry, not the entire earlier multi-stage transition.
   let oldTime = parent.lookup(chapterKey(StateChapter(11)))
   if oldTime.error != StateStoreError.None:
     return SealerStateResult(status: storeError(oldTime.error)) # No default/missing parent slot.

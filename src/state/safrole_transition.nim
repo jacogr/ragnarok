@@ -14,25 +14,21 @@ import ./[store, validator_state, ticket_admission, sealer_schedule, safrole_mar
   safrole_authentication, entropy]
 
 type
-  ## One shared chain profile prevents incompatible epoch/roster parameters between substeps.
-  SafroleTransitionConfig* = object
+  SafroleTransitionConfig* = object ## One shared chain profile prevents incompatible epoch/roster parameters between substeps.
     state*: SafroleStateConfig
     tailStart*: EpochSlots
     blockTickets*: TicketLimit
     offenders*: ElementLimit
     maxHeaderBytes*: ByteLimit
     maxMarkerBytes*: ByteLimit
-  ## Preflight errors and typed substep refusals; failures contain reasons, never intermediate state.
-  SafroleTransitionError* {.pure.} = enum
+  SafroleTransitionError* {.pure.} = enum ## Preflight errors and typed substep refusals; failures contain reasons, never intermediate state.
     Uninitialized, None, InvalidConfig, InvalidHeader, InvalidState, MissingState,
     InvalidSlot, LimitExceeded, RotationFailure, AdmissionFailure, ScheduleFailure,
     MarkerFailure, AuthenticationFailure, EntropyFailure, PublicationFailure
-  ## Success retains the canonical immutable map and the exact authenticated signed header.
-  SafroleTransition* = object
+  SafroleTransition* = object ## Success retains the canonical immutable map and the exact authenticated signed header.
     snapshot*: StateStoreSnapshot
     authentication*: SafroleAuthentication
-  ## Private tagged payloads protect both successful extraction and stage-specific failure reasons.
-  SafroleTransitionResult* = object
+  SafroleTransitionResult* = object ## Private tagged payloads protect both successful extraction and stage-specific failure reasons.
     case status: SafroleTransitionError
     of None:
       completed: SafroleTransition           # No mutable working handle or transient snapshot escapes.
@@ -53,39 +49,48 @@ type
     else:
       discard                                # Default/preflight failures have no payload.
 
-## Read the status without permitting retagging or access to unsuccessful payloads.
-func error*(outcome: SafroleTransitionResult): SafroleTransitionError = outcome.status
-## Extract complete success only; defaults/refusals cannot expose a working map or header.
+func error*(outcome: SafroleTransitionResult): SafroleTransitionError =
+  ## Read the status without permitting retagging or access to unsuccessful payloads.
+  outcome.status
 func value*(outcome: SafroleTransitionResult): SafroleTransition {.inline,
-    requires: outcome.status == SafroleTransitionError.None.} = outcome.completed
+    requires: outcome.status == SafroleTransitionError.None.} =
+  ## Extract complete success only; defaults/refusals cannot expose a working map or header.
+  outcome.completed
 
-## Inspect the precise rotation refusal only after selecting that failed substep.
 func rotationError*(outcome: SafroleTransitionResult): ValidatorStateError {.inline,
-    requires: outcome.status == SafroleTransitionError.RotationFailure.} = outcome.rotationReason
+    requires: outcome.status == SafroleTransitionError.RotationFailure.} =
+  ## Inspect the precise rotation refusal only after selecting that failed substep.
+  outcome.rotationReason
 
-## Inspect the precise admission refusal only after selecting that failed substep.
 func admissionError*(outcome: SafroleTransitionResult): TicketAdmissionError {.inline,
-    requires: outcome.status == SafroleTransitionError.AdmissionFailure.} = outcome.admissionReason
+    requires: outcome.status == SafroleTransitionError.AdmissionFailure.} =
+  ## Inspect the precise admission refusal only after selecting that failed substep.
+  outcome.admissionReason
 
-## Inspect the precise schedule refusal only after selecting that failed substep.
 func scheduleError*(outcome: SafroleTransitionResult): SealerScheduleError {.inline,
-    requires: outcome.status == SafroleTransitionError.ScheduleFailure.} = outcome.scheduleReason
+    requires: outcome.status == SafroleTransitionError.ScheduleFailure.} =
+  ## Inspect the precise schedule refusal only after selecting that failed substep.
+  outcome.scheduleReason
 
-## Inspect the precise marker refusal only after selecting that failed substep.
 func markerError*(outcome: SafroleTransitionResult): SafroleMarkerError {.inline,
-    requires: outcome.status == SafroleTransitionError.MarkerFailure.} = outcome.markerReason
+    requires: outcome.status == SafroleTransitionError.MarkerFailure.} =
+  ## Inspect the precise marker refusal only after selecting that failed substep.
+  outcome.markerReason
 
-## Inspect the precise authentication refusal only after selecting that failed substep.
 func authenticationError*(outcome: SafroleTransitionResult): SafroleAuthError {.inline,
-    requires: outcome.status == SafroleTransitionError.AuthenticationFailure.} = outcome.authenticationReason
+    requires: outcome.status == SafroleTransitionError.AuthenticationFailure.} =
+  ## Inspect the precise authentication refusal only after selecting that failed substep.
+  outcome.authenticationReason
 
-## Inspect the precise entropy refusal only after selecting that failed substep.
 func entropyError*(outcome: SafroleTransitionResult): EntropyTransitionError {.inline,
-    requires: outcome.status == SafroleTransitionError.EntropyFailure.} = outcome.entropyReason
+    requires: outcome.status == SafroleTransitionError.EntropyFailure.} =
+  ## Inspect the precise entropy refusal only after selecting that failed substep.
+  outcome.entropyReason
 
-## Inspect the precise publication refusal only after selecting that failed substep.
 func publicationError*(outcome: SafroleTransitionResult): StateStoreError {.inline,
-    requires: outcome.status == SafroleTransitionError.PublicationFailure.} = outcome.publicationReason
+    requires: outcome.status == SafroleTransitionError.PublicationFailure.} =
+  ## Inspect the precise publication refusal only after selecting that failed substep.
+  outcome.publicationReason
 
 ## Re-encode an already bounded immutable C(4), retaining its complete pending/root/schedule/contest.
 proc chapterEntry(owner: SafroleStateSnapshot, policy: SafroleStateConfig): SafroleStateResult[StateEntry] =
@@ -113,13 +118,13 @@ proc chapterEntry(owner: SafroleStateSnapshot, policy: SafroleStateConfig): Safr
     source.schedule = keySchedule(values)
   safroleStateEntry(source, policy)
 
-## Execute rotation, ticket admission, schedule/markers, seal/entropy and one final atomic write batch.
-## candidate/submitted are structurally decoded header/tickets; their block commitment is checked elsewhere.
-## Borrow offenders synchronously from validated posterior disputes; C(5)/C(7) and unrelated entries are preserved.
-## Private rotation may hash its candidate; no intermediate state is assigned to the canonical store.
 proc advanceSafroleState*(state: var StateStore, candidate: OwnedHeader,
     submitted: openArray[Ticket], offenders: openArray[OffenderKey],
     config: SafroleTransitionConfig): SafroleTransitionResult =
+  ## Execute rotation, ticket admission, schedule/markers, seal/entropy and one final atomic write batch.
+  ## candidate/submitted are structurally decoded header/tickets; their block commitment is checked elsewhere.
+  ## Borrow offenders synchronously from validated posterior disputes; C(5)/C(7) and unrelated entries are preserved.
+  ## Private rotation may hash its candidate; no intermediate state is assigned to the canonical store.
   let epoch = uint64(config.state.epochSlots)
   if epoch == 0 or uint64(config.tailStart) == 0 or uint64(config.tailStart) >= epoch:
     return SafroleTransitionResult(status: SafroleTransitionError.InvalidConfig) # No division or work under an invalid chain profile.

@@ -18,11 +18,11 @@ func stateError(reason: StateStoreError): SafroleAuthError =
   of StateStoreError.LengthOverflow: SafroleAuthError.LengthOverflow # Preserve checked native extent refusal.
   else: SafroleAuthError.InvalidState # Lookup does no backend work and cannot legitimately report other successful state.
 
-## Authenticate against parent C(6)/C(11), and already selected posterior C(4)/C(8), without modifying either map.
-## Staged C(6)/C(11) are intentionally not read: authentication yields entropy needed to advance them.
-## Earlier rotation/schedule lineage and marker/commitment/clock checks remain caller responsibilities.
 proc authenticateSafroleHeaderState*(parent, staged: StateStoreSnapshot, candidate: OwnedHeader,
     config: SafroleAuthConfig): SafroleAuthResult =
+  ## Authenticate against parent C(6)/C(11), and already selected posterior C(4)/C(8), without modifying either map.
+  ## Staged C(6)/C(11) are intentionally not read: authentication yields entropy needed to advance them.
+  ## Earlier rotation/schedule lineage and marker/commitment/clock checks remain caller responsibilities.
   let entropy = parent.lookup(chapterKey(StateChapter(6)))
   if entropy.error != StateStoreError.None:
     return safroleAuthFailure(stateError(entropy.error)) # Parent history is required before any dynamic copy or verification.

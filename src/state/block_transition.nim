@@ -14,19 +14,16 @@ from ../crypto/assurance_context import AssuranceParent
 import ./[store, block_admission, disputes, safrole_transition, availability]
 
 type
-  ## Failures select their precise stage cause without carrying staged state or a usable block.
-  BlockTransitionError* {.pure.} = enum
+  BlockTransitionError* {.pure.} = enum ## Failures select their precise stage cause without carrying staged state or a usable block.
     Uninitialized, None, AdmissionFailure, DisputesFailure, SafroleFailure, AvailabilityFailure
-  ## Success retains the original block binding, complete disputes plan and authenticated posterior state.
-  BlockTransition* = object
+  BlockTransition* = object ## Success retains the original block binding, complete disputes plan and authenticated posterior state.
     profile: FrameConfig          # Retain the exact decoding/transition chain domains for later report binding.
     admitted*: BoundBlock
     disputes*: DisputesPlan
     safrole*: SafroleTransition   # Intermediate state before assurance-driven C(10) changes.
     availability*: AvailabilityPlan
     snapshot*: StateStoreSnapshot # Post-assurance prefix, before report admission/publication.
-  ## Stage-specific reasons and success are mutually exclusive and private.
-  BlockTransitionResult* = object
+  BlockTransitionResult* = object ## Stage-specific reasons and success are mutually exclusive and private.
     case status: BlockTransitionError
     of None:
       completed: BlockTransition
@@ -41,23 +38,29 @@ type
     else:
       discard # Default carries no candidate, snapshot or reason payload.
 
-## Observe the stage without granting safe-code access to its discriminator.
-func error*(outcome: BlockTransitionResult): BlockTransitionError = outcome.status
-## Read complete success only after all staged work has been accepted.
+func error*(outcome: BlockTransitionResult): BlockTransitionError =
+  ## Observe the stage without granting safe-code access to its discriminator.
+  outcome.status
 func value*(outcome: BlockTransitionResult): BlockTransition {.inline,
-    requires: outcome.status == BlockTransitionError.None.} = outcome.completed
-## Copy the profile from a completed coordinator result; callers cannot attach a different chain domain.
+    requires: outcome.status == BlockTransitionError.None.} =
+  ## Read complete success only after all staged work has been accepted.
+  outcome.completed
 func blockTransitionProfile*(outcome: BlockTransitionResult): FrameConfig {.inline,
-    requires: outcome.status == BlockTransitionError.None.} = outcome.completed.profile
-## Inspect only an admission failure's cause.
+    requires: outcome.status == BlockTransitionError.None.} =
+  ## Copy the profile from a completed coordinator result; callers cannot attach a different chain domain.
+  outcome.completed.profile
 func admissionError*(outcome: BlockTransitionResult): BlockAdmissionError {.inline,
-    requires: outcome.status == BlockTransitionError.AdmissionFailure.} = outcome.admissionReason
-## Inspect only a disputes failure's cause.
+    requires: outcome.status == BlockTransitionError.AdmissionFailure.} =
+  ## Inspect only an admission failure's cause.
+  outcome.admissionReason
 func disputesError*(outcome: BlockTransitionResult): DisputesError {.inline,
-    requires: outcome.status == BlockTransitionError.DisputesFailure.} = outcome.disputesReason
-## Inspect only a Safrole failure's selected typed stage result.
+    requires: outcome.status == BlockTransitionError.DisputesFailure.} =
+  ## Inspect only a disputes failure's cause.
+  outcome.disputesReason
 func safroleError*(outcome: BlockTransitionResult): SafroleTransitionResult {.inline,
-    requires: outcome.status == BlockTransitionError.SafroleFailure.} = outcome.safroleReason
+    requires: outcome.status == BlockTransitionError.SafroleFailure.} =
+  ## Inspect only a Safrole failure's selected typed stage result.
+  outcome.safroleReason
 
 ## Inspect only the selected availability failure; its nested refusal contains no update or available reports.
 func availabilityError*(outcome: BlockTransitionResult): AvailabilityTransitionResult[
@@ -65,11 +68,11 @@ func availabilityError*(outcome: BlockTransitionResult): AvailabilityTransitionR
 
 requires: outcome.status == BlockTransitionError.AvailabilityFailure.} = outcome.availabilityReason
 
-## Derive all offenders from this block and the parent C(5), never from a separately supplied projection.
-## Work on a private store handle and replace the caller's handle once, after complete success.
 proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     admission: BlockAdmissionConfig, policy: DisputesConfig,
     safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig): BlockTransitionResult =
+  ## Derive all offenders from this block and the parent C(5), never from a separately supplied projection.
+  ## Work on a private store handle and replace the caller's handle once, after complete success.
   if uint64(availability.assignments.guarantee.cores) != uint64(policy.rosters.cores) or
       uint64(availability.assignments.guarantee.validators) != uint64(policy.rosters.validators) or
       uint64(availability.rosters.cores) != uint64(policy.rosters.cores) or

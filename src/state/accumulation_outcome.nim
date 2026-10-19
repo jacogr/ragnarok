@@ -11,14 +11,11 @@ import ./[accumulation_dispatch, accumulation_context, accumulation_effects,
   accumulation_invocation, accumulation_service]
 
 type
-  ## Normalized protocol termination; a physical fault follows Psi_M's panic branch.
-  AccumulationTermination* {.pure.} = enum
+  AccumulationTermination* {.pure.} = enum ## Normalized protocol termination; a physical fault follows Psi_M's panic branch.
     Halt, Panic, OutOfGas
-  ## Local refusals contain no selected state, gas usage or output commitment.
-  AccumulationOutcomeError* {.pure.} = enum
+  AccumulationOutcomeError* {.pure.} = enum ## Local refusals contain no selected state, gas usage or output commitment.
     Uninitialized, None, InvalidExecution, InvalidContext, AmbiguousProvisions
-  ## Copied final metadata is inseparable from its selected immutable implication context.
-  AccumulationOutcomeInfo* = object
+  AccumulationOutcomeInfo* = object ## Copied final metadata is inseparable from its selected immutable implication context.
     service*: ServiceIndex
     termination*: AccumulationTermination
     dimension*: AccumulationDimension
@@ -29,45 +26,45 @@ type
   OutcomeData = ref object
     context: AccumulationEffectContext
     info: AccumulationOutcomeInfo
-  ## Read-only completed outcome; a default handle is not a successful empty accumulation.
-  AccumulationOutcome* = object
+  AccumulationOutcome* = object ## Read-only completed outcome; a default handle is not a successful empty accumulation.
     data: nil OutcomeData
-  ## Only selected success carries a handle, context or metadata; default/refused alternatives carry a reason.
-  AccumulationOutcomeResult*[T] = object
+  AccumulationOutcomeResult*[T] = object ## Only selected success carries a handle, context or metadata; default/refused alternatives carry a reason.
     case status: AccumulationOutcomeError
     of None:
       completed: T # Extract only after selecting successful normalization or retained-owner access.
     else:
       discard      # No partial outcome accompanies a refusal.
 
-## Inspect status without granting mutation or result retagging.
-func error*[T](outcome: AccumulationOutcomeResult[T]): AccumulationOutcomeError = outcome.status
-## Retain complete selected success under checked optimized result contracts.
+func error*[T](outcome: AccumulationOutcomeResult[T]): AccumulationOutcomeError =
+  ## Inspect status without granting mutation or result retagging.
+  outcome.status
 func value*[T](outcome: AccumulationOutcomeResult[T]): T {.inline,
-    requires: outcome.status == AccumulationOutcomeError.None.} = outcome.completed
+    requires: outcome.status == AccumulationOutcomeError.None.} =
+  ## Retain complete selected success under checked optimized result contracts.
+  outcome.completed
 
-## Retain final selected effects, including any 32-byte halt-return override already applied to the yield.
 proc outcomeContext*(outcome: AccumulationOutcome): AccumulationOutcomeResult[
     AccumulationEffectContext] =
+  ## Retain final selected effects, including any 32-byte halt-return override already applied to the yield.
   if outcome.data == nil:
     return AccumulationOutcomeResult[AccumulationEffectContext](status:
       AccumulationOutcomeError.Uninitialized) # No fabricated initial or posterior context.
   AccumulationOutcomeResult[AccumulationEffectContext](status: AccumulationOutcomeError.None,
     completed: outcome.data.context)
 
-## Copy protocol metadata; immutable context extraction carries all state/input/chapter ownership.
 proc outcomeInfo*(outcome: AccumulationOutcome): AccumulationOutcomeResult[
     AccumulationOutcomeInfo] =
+  ## Copy protocol metadata; immutable context extraction carries all state/input/chapter ownership.
   if outcome.data == nil:
     return AccumulationOutcomeResult[AccumulationOutcomeInfo](status:
       AccumulationOutcomeError.Uninitialized) # No fabricated zero gas usage.
   AccumulationOutcomeResult[AccumulationOutcomeInfo](status: AccumulationOutcomeError.None,
     completed: outcome.data.info)
 
-## Normalize only a complete adapter result; callers cannot supply substitute CPU/effect/source triples.
-## Reads at most 32 guest bytes, retains immutable owners and never hashes or writes persistent state.
 proc normalizeAccumulationOutcome*(execution: AccumulationDispatchResult):
     AccumulationOutcomeResult[AccumulationOutcome] =
+  ## Normalize only a complete adapter result; callers cannot supply substitute CPU/effect/source triples.
+  ## Reads at most 32 guest bytes, retains immutable owners and never hashes or writes persistent state.
   ## Refuse atomically, releasing any locally retained candidate contexts.
   template fail(reason: AccumulationOutcomeError) =
     return AccumulationOutcomeResult[AccumulationOutcome](status: reason)

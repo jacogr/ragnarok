@@ -14,16 +14,14 @@ import ./[store, block_transition, block_admission, guarantee_credentials, repor
   report_anchors, report_packages, report_assignments, availability, history]
 
 type
-  ## Explicit chain/resource policies for credentials, parent state, ancestors and complete C(10) candidates.
-  ReportAdmissionConfig* = object
+  ReportAdmissionConfig* = object ## Explicit chain/resource policies for credentials, parent state, ancestors and complete C(10) candidates.
     credentials*: GuaranteeCredentialConfig
     policy*: ReportPolicyConfig
     anchors*: ReportAnchorConfig
     ancestors*: AncestorConfig
     packages*: ReportPackageConfig
     judgments*: DisputeStateConfig
-  ## No default/refused alternative carries a certificate, assignment candidate or staged map.
-  ReportAdmissionError* {.pure.} = enum
+  ReportAdmissionError* {.pure.} = enum ## No default/refused alternative carries a certificate, assignment candidate or staged map.
     Uninitialized, None, InvalidTransition, InvalidConfig, MissingState, InvalidState,
     LimitExceeded, CredentialFailure, PolicyFailure, HistoryFailure, AnchorFailure,
     PackageFailure, AssignmentFailure
@@ -34,11 +32,9 @@ type
     anchors: AnchoredReports
     packages: PackageCheckedReports
     assignments: ReportAssignmentPlan
-  ## Opaque complete report-stage plan; this is neither a published block nor full JAM execution.
-  AdmittedReports* = object
+  AdmittedReports* = object ## Opaque complete report-stage plan; this is neither a published block nor full JAM execution.
     data: nil AdmissionData
-  ## Exact child failures are available only from their selected alternative; ordinary errors carry reason alone.
-  ReportAdmissionResult*[T] = object
+  ReportAdmissionResult*[T] = object ## Exact child failures are available only from their selected alternative; ordinary errors carry reason alone.
     case status: ReportAdmissionError
     of None:
       completed: T
@@ -57,33 +53,41 @@ type
     else:
       discard # Failed stages never retain an accepted prefix or a proposed write.
 
-## Observe status without granting discriminator mutation.
-func error*[T](outcome: ReportAdmissionResult[T]): ReportAdmissionError = outcome.status
-## Extract only completely selected success under the supported checked-build contract.
+func error*[T](outcome: ReportAdmissionResult[T]): ReportAdmissionError =
+  ## Observe status without granting discriminator mutation.
+  outcome.status
 func value*[T](outcome: ReportAdmissionResult[T]): T {.inline,
-    requires: outcome.status == ReportAdmissionError.None.} = outcome.completed
-## Inspect the original credential refusal, including its codec/assignment subreason.
+    requires: outcome.status == ReportAdmissionError.None.} =
+  ## Extract only completely selected success under the supported checked-build contract.
+  outcome.completed
 func credentialError*[T](outcome: ReportAdmissionResult[T]): GuaranteeCredentialResult[
     VerifiedGuaranteeCredentials] {.inline,
-    requires: outcome.status == ReportAdmissionError.CredentialFailure.} = outcome.credentialReason
-## Inspect the selected parent authorization/service/gas failure.
+    requires: outcome.status == ReportAdmissionError.CredentialFailure.} =
+  ## Inspect the original credential refusal, including its codec/assignment subreason.
+  outcome.credentialReason
 func policyError*[T](outcome: ReportAdmissionResult[T]): ReportPolicyError {.inline,
-    requires: outcome.status == ReportAdmissionError.PolicyFailure.} = outcome.policyReason
-## Inspect the selected parent-history correction failure.
+    requires: outcome.status == ReportAdmissionError.PolicyFailure.} =
+  ## Inspect the selected parent authorization/service/gas failure.
+  outcome.policyReason
 func historyError*[T](outcome: ReportAdmissionResult[T]): HistoryTransitionError {.inline,
-    requires: outcome.status == ReportAdmissionError.HistoryFailure.} = outcome.historyReason
-## Inspect the selected recent/lookup ancestor failure.
+    requires: outcome.status == ReportAdmissionError.HistoryFailure.} =
+  ## Inspect the selected parent-history correction failure.
+  outcome.historyReason
 func anchorError*[T](outcome: ReportAdmissionResult[T]): ReportAnchorError {.inline,
-    requires: outcome.status == ReportAdmissionError.AnchorFailure.} = outcome.anchorReason
-## Inspect the selected prior-pipeline/dependency/root failure.
+    requires: outcome.status == ReportAdmissionError.AnchorFailure.} =
+  ## Inspect the selected recent/lookup ancestor failure.
+  outcome.anchorReason
 func packageError*[T](outcome: ReportAdmissionResult[T]): ReportPackageError {.inline,
-    requires: outcome.status == ReportAdmissionError.PackageFailure.} = outcome.packageReason
-## Inspect the selected post-assurance vacancy/encoding failure.
+    requires: outcome.status == ReportAdmissionError.PackageFailure.} =
+  ## Inspect the selected prior-pipeline/dependency/root failure.
+  outcome.packageReason
 func assignmentError*[T](outcome: ReportAdmissionResult[T]): ReportAssignmentError {.inline,
-    requires: outcome.status == ReportAdmissionError.AssignmentFailure.} = outcome.assignmentReason
+    requires: outcome.status == ReportAdmissionError.AssignmentFailure.} =
+  ## Inspect the selected post-assurance vacancy/encoding failure.
+  outcome.assignmentReason
 
-## Retain the exact complete block-stage result; no mutable working-store handle is exported.
 proc reportBlockStage*(owner: AdmittedReports): ReportAdmissionResult[BlockTransitionResult] =
+  ## Retain the exact complete block-stage result; no mutable working-store handle is exported.
   let data = owner.data
   if data == nil:
     return ReportAdmissionResult[BlockTransitionResult](
@@ -91,9 +95,9 @@ proc reportBlockStage*(owner: AdmittedReports): ReportAdmissionResult[BlockTrans
   ReportAdmissionResult[BlockTransitionResult](status: ReportAdmissionError.None,
       completed: data.staged)
 
-## Retain only the credentials reverified from this block's exact guarantee extrinsic and posterior context.
 proc reportCredentials*(owner: AdmittedReports): ReportAdmissionResult[
     VerifiedGuaranteeCredentials] =
+  ## Retain only the credentials reverified from this block's exact guarantee extrinsic and posterior context.
   let data = owner.data
   if data == nil:
     return ReportAdmissionResult[VerifiedGuaranteeCredentials](
@@ -101,8 +105,8 @@ proc reportCredentials*(owner: AdmittedReports): ReportAdmissionResult[
   ReportAdmissionResult[VerifiedGuaranteeCredentials](status: ReportAdmissionError.None,
       completed: data.credentials)
 
-## Retain the proposed immutable C(10) plan; its existing byte accessor returns a detached copy.
 proc reportAssignments*(owner: AdmittedReports): ReportAdmissionResult[ReportAssignmentPlan] =
+  ## Retain the proposed immutable C(10) plan; its existing byte accessor returns a detached copy.
   let data = owner.data
   if data == nil:
     return ReportAdmissionResult[ReportAssignmentPlan](
@@ -121,11 +125,11 @@ proc chapter(source: StateStoreSnapshot, number: byte, limit: ByteLimit): Report
     return ReportAdmissionResult[seq[byte]](status: ReportAdmissionError.LimitExceeded) # Check before copying retained bytes.
   ReportAdmissionResult[seq[byte]](status: ReportAdmissionError.None, completed: found.value.bytes)
 
-## Accept only the coordinator's private successful result, never a detached public BlockTransition value.
-## Parent policy/pipeline/history come from admission; rosters/entropy/offenders/C(10) come from its completed stage.
-## No caller-supplied reports, clock, corrected history, signatures or independently minted certificates are accepted.
 proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHeader],
     config: ReportAdmissionConfig): ReportAdmissionResult[AdmittedReports] =
+  ## Accept only the coordinator's private successful result, never a detached public BlockTransition value.
+  ## Parent policy/pipeline/history come from admission; rosters/entropy/offenders/C(10) come from its completed stage.
+  ## No caller-supplied reports, clock, corrected history, signatures or independently minted certificates are accepted.
   template fail(reason: ReportAdmissionError) =
     return ReportAdmissionResult[AdmittedReports](status: reason)
   if staged.error != BlockTransitionError.None:

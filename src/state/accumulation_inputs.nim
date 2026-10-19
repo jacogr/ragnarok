@@ -10,26 +10,20 @@ import ../codec/[bounded, composite, work_digest, c2_records, state_privileges]
 import ./accumulation_operands
 
 type
-  ## Invocation service position is distinct from protocol service IDs and operand-group ordinals.
-  InvocationServiceIndex* = distinct uint64
-  ## Input position addresses one service's transfer/operand concatenation only.
-  InvocationInputIndex* = distinct uint64
-  ## Independent local ceilings bound input descriptors, allowance traversal and resulting services.
-  AccumulationInputConfig* = object
+  InvocationServiceIndex* = distinct uint64 ## Invocation service position is distinct from protocol service IDs and operand-group ordinals.
+  InvocationInputIndex* = distinct uint64 ## Input position addresses one service's transfer/operand concatenation only.
+  AccumulationInputConfig* = object ## Independent local ceilings bound input descriptors, allowance traversal and resulting services.
     inputs*, allowances*, services*: ElementLimit
-  ## Failed/default results expose no partially prepared services or gas budget.
-  AccumulationInputError* {.pure.} = enum
+  AccumulationInputError* {.pure.} = enum ## Failed/default results expose no partially prepared services or gas budget.
     Uninitialized, None, InvalidConfig, InvalidOperands, InvalidAllowances, LimitExceeded,
     GasOverflow, InvalidIndex
-  ## Private selected input carries only its active copied transfer or immutable operand owner.
-  InvocationInput* = object
+  InvocationInput* = object ## Private selected input carries only its active copied transfer or immutable operand owner.
     case inputKind: AccumulationKind
     of Transfer:
       transferValue: DeferredTransfer # Fixed fields are independent of the caller's array.
     of Operand:
       operandValue: OwnedOperand      # Immutable acyclic owner retains its payload bytes.
-  ## Copied service metadata includes the complete mathematical gas sum and both input counts.
-  InvocationServiceInfo* = object
+  InvocationServiceInfo* = object ## Copied service metadata includes the complete mathematical gas sum and both input counts.
     service*: ServiceIndex
     gas*: Gas
     transfers*, operands*: int
@@ -46,30 +40,33 @@ type
   InputData = ref object
     source: PreparedAccumulationOperands
     groups: seq[InvocationGroup]
-  ## A prepared round is not evidence of execution, consumed gas or posterior state publication.
-  PreparedAccumulationInputs* = object
+  PreparedAccumulationInputs* = object ## A prepared round is not evidence of execution, consumed gas or posterior state publication.
     data: nil InputData
-  ## Only successful results carry complete payloads, protected by selected-success contracts.
-  AccumulationInputResult*[T] = object
+  AccumulationInputResult*[T] = object ## Only successful results carry complete payloads, protected by selected-success contracts.
     case status: AccumulationInputError
     of None:
       completed: T # No externally writable discriminator or payload.
     else:
       discard      # A failure never carries default success metadata.
 
-## Inspect failure without exposing writable result storage.
-func error*[T](outcome: AccumulationInputResult[T]): AccumulationInputError = outcome.status
-## Extract only selected success, preserving runtime and compiler guard enforcement.
+func error*[T](outcome: AccumulationInputResult[T]): AccumulationInputError =
+  ## Inspect failure without exposing writable result storage.
+  outcome.status
 func value*[T](outcome: AccumulationInputResult[T]): T {.inline,
-    requires: outcome.status == AccumulationInputError.None.} = outcome.completed
-## Inspect the actual C.2 alternative before accessing its payload.
-func kind*(input: InvocationInput): AccumulationKind = input.inputKind
-## Copy a transfer only after selecting the transfer alternative.
+    requires: outcome.status == AccumulationInputError.None.} =
+  ## Extract only selected success, preserving runtime and compiler guard enforcement.
+  outcome.completed
+func kind*(input: InvocationInput): AccumulationKind =
+  ## Inspect the actual C.2 alternative before accessing its payload.
+  input.inputKind
 func transfer*(input: InvocationInput): DeferredTransfer {.requires: input.inputKind ==
-    AccumulationKind.Transfer.} = input.transferValue
-## Retain an operand only after selecting the operand alternative.
+    AccumulationKind.Transfer.} =
+  ## Copy a transfer only after selecting the transfer alternative.
+  input.transferValue
 func operand*(input: InvocationInput): OwnedOperand {.requires: input.inputKind ==
-    AccumulationKind.Operand.} = input.operandValue
+    AccumulationKind.Operand.} =
+  ## Retain an operand only after selecting the operand alternative.
+  input.operandValue
 
 ## Sort numeric service IDs, then transfers, operands and allowance rows, retaining source ordinals.
 func compareRow(a, b: InputRow): int =
@@ -81,25 +78,25 @@ func compareRow(a, b: InputRow): int =
   if a.order > b.order: return 1 # Do not rely on sorting stability.
   0
 
-## Count complete invocation groups; default handles cannot masquerade as valid empty rounds.
 proc invocationServiceCount*(plan: PreparedAccumulationInputs): AccumulationInputResult[int] =
+  ## Count complete invocation groups; default handles cannot masquerade as valid empty rounds.
   let data = plan.data
   if data == nil: return AccumulationInputResult[int](
       status: AccumulationInputError.Uninitialized) # No validated storage.
   AccumulationInputResult[int](status: AccumulationInputError.None, completed: data.groups.len)
 
-## Retain the exact report-prefix source independently of the invocation handle.
 proc invocationOperands*(plan: PreparedAccumulationInputs): AccumulationInputResult[
     PreparedAccumulationOperands] =
+  ## Retain the exact report-prefix source independently of the invocation handle.
   let data = plan.data
   if data == nil: return AccumulationInputResult[PreparedAccumulationOperands](
       status: AccumulationInputError.Uninitialized) # No fabricated report prefix.
   AccumulationInputResult[PreparedAccumulationOperands](status: AccumulationInputError.None,
     completed: data.source)
 
-## Read copied service gas/counts after proving its ordinal fits before native conversion.
 proc invocationServiceAt*(plan: PreparedAccumulationInputs,
     index: InvocationServiceIndex): AccumulationInputResult[InvocationServiceInfo] =
+  ## Read copied service gas/counts after proving its ordinal fits before native conversion.
   let data = plan.data
   if data == nil: return AccumulationInputResult[InvocationServiceInfo](
       status: AccumulationInputError.Uninitialized) # No default metadata.
@@ -108,9 +105,9 @@ proc invocationServiceAt*(plan: PreparedAccumulationInputs,
   AccumulationInputResult[InvocationServiceInfo](status: AccumulationInputError.None,
     completed: data.groups[int(uint64(index))].info)
 
-## Copy or retain one selected input; neither its parent handle nor caller arrays must stay alive.
 proc invocationInputAt*(plan: PreparedAccumulationInputs, service: InvocationServiceIndex,
     index: InvocationInputIndex): AccumulationInputResult[InvocationInput] =
+  ## Copy or retain one selected input; neither its parent handle nor caller arrays must stay alive.
   let data = plan.data
   if data == nil: return AccumulationInputResult[InvocationInput](
       status: AccumulationInputError.Uninitialized) # No fabricated input.
@@ -122,12 +119,12 @@ proc invocationInputAt*(plan: PreparedAccumulationInputs, service: InvocationSer
   AccumulationInputResult[InvocationInput](status: AccumulationInputError.None,
     completed: group.inputs[int(uint64(index))])
 
-## Prepare one explicit round's accone inputs. Allowances must be a numeric sorted unique dictionary;
-## pass C(12)'s always pairs for the initial round and an empty array for subsequent accseq rounds.
-## Borrow arrays synchronously, copy transfers, retain operand owners; reject gas sums outside GP gas=N_64.
 proc prepareAccumulationInputs*(source: PreparedAccumulationOperands,
     transfers: openArray[DeferredTransfer], allowances: openArray[AlwaysAccumulate],
     config: AccumulationInputConfig): AccumulationInputResult[PreparedAccumulationInputs] =
+  ## Prepare one explicit round's accone inputs. Allowances must be a numeric sorted unique dictionary;
+  ## pass C(12)'s always pairs for the initial round and an empty array for subsequent accseq rounds.
+  ## Borrow arrays synchronously, copy transfers, retain operand owners; reject gas sums outside GP gas=N_64.
   ## Refuse atomically without returning partially accumulated gas or earlier services.
   template fail(reason: AccumulationInputError) =
     return AccumulationInputResult[PreparedAccumulationInputs](status: reason)
