@@ -45,6 +45,7 @@
   "src/rpc/server.nim",
   "src/rpc/wire.nim",
   "src/state/accumulation_context.nim",
+  "src/state/accumulation_dispatch.nim",
   "src/state/accumulation_inputs.nim",
   "src/state/accumulation_invocation.nim",
   "src/state/accumulation_operands.nim",
