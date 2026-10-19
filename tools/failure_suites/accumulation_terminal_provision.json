@@ -1,0 +1,16 @@
+{
+  "source": "tests/native/accumulation_terminal_provision_results.nim",
+  "build_name": "accumulation-terminal-provision-results",
+  "crypto_library": "observer",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-terminal-provision-default", "diagnostic": "outcome.status == None", "description": "Terminal provision default extraction guard"},
+    {"identity": {"reason": "normalization"}, "arguments": ["normalization"], "name": "accumulation-terminal-provision-normalization", "diagnostic": "outcome.status == None", "description": "Terminal provision normalization extraction guard"},
+    {"identity": {"reason": "provision"}, "arguments": ["provision"], "name": "accumulation-terminal-provision-provision", "diagnostic": "outcome.status == None", "description": "Terminal provision provision extraction guard"},
+    {"identity": {"reason": "slot"}, "arguments": ["slot"], "name": "accumulation-terminal-provision-slot", "diagnostic": "outcome.status == None", "description": "Terminal provision slot extraction guard"},
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-terminal-provision-index", "diagnostic": "outcome.status == None", "description": "Terminal provision index extraction guard"},
+    {"identity": {"reason": "wrong-normalization"}, "arguments": ["wrong-normalization"], "name": "accumulation-terminal-provision-wrong-normalization", "diagnostic": "outcome.status == NormalizationFailure", "description": "Terminal provision wrong-normalization extraction guard"},
+    {"identity": {"reason": "wrong-provision"}, "arguments": ["wrong-provision"], "name": "accumulation-terminal-provision-wrong-provision", "diagnostic": "outcome.status == ProvisionFailure", "description": "Terminal provision wrong-provision extraction guard"},
+    {"identity": {"reason": "apply-default"}, "arguments": ["apply-default"], "name": "accumulation-terminal-provision-apply-default", "diagnostic": "outcome.status == None", "description": "Terminal provision apply-default extraction guard"},
+    {"identity": {"reason": "apply-malformed"}, "arguments": ["apply-malformed"], "name": "accumulation-terminal-provision-apply-malformed", "diagnostic": "outcome.status == None", "description": "Terminal provision apply-malformed extraction guard"}
+  ]
+}
