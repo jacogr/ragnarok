@@ -42,4 +42,5 @@ coverage. This is independent implementation evidence, not full host-function pa
 [Optional entropy/trace capture](pvm-fetch-context.md) now supplies the context boundary and
 resolves fetch absence using pinned notation. Remaining: complete invocation context selection,
 additional selectors, staged service state, gas-used accounting and end-to-end invocation policy.
-Next bounded chunk: fetch work-item payloads from validated work-package context.
+[Package blob capture](pvm-fetch-package.md) now provides validated package selectors.
+Next bounded chunk: encoded refinement context and work-item summaries.

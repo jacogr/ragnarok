@@ -1,8 +1,8 @@
 # Optional entropy and trace fetch context
 
 Scope: immutable context selection for fetch selectors 1 (entropy) and 2 (authorizer trace),
-including absent values, plus the unknown-selector branch for r10 >= 16. Known selectors 0 and
-3–15 remain explicit UnsupportedSelector errors, not fabricated absent values. This module
+including absent values, plus the unknown-selector branch for r10 >= 16. Selectors 8, 9 and 13 are now supplied by [package blob capture](pvm-fetch-package.md).
+Other known selectors remain explicit UnsupportedSelector errors, not fabricated absent values. This module
 handles host identifier 2 only; selecting a host identifier remains the dispatcher's job.
 
 Normative source: Gray Paper 0.8.0 gitlink `07f041dabd073f9018b418e9ee72e79dd2185401`:
@@ -39,6 +39,6 @@ and refused result guards, privacy/nominal compilation checks and 1,000 fresh na
 The present fetch and host-failure suites retain clipping, memory and dispatch regression coverage.
 No upstream code or fixture is copied. These witnesses establish this subset only.
 
-Remaining: other selector families, service invocation context assembly and complete invocation/gas
-accounting. The positive gas-domain gate in pvm-host-gas.md is unchanged. Next bounded chunk:
-fetch the work-item payload family from a validated work-package context.
+Remaining: encoded/summary and external-input selector families, service invocation context
+assembly and complete invocation/gas accounting. The positive gas-domain gate in pvm-host-gas.md is unchanged. Next bounded chunk:
+encoded refinement context and work-item summaries.
