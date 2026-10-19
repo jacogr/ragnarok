@@ -34,7 +34,13 @@ and startup capture wrapper. Each successful append uses a fresh private sequenc
 oldest snapshot when full; existing readers continue to own their previous snapshots. Retention
 is bounded per view, not across arbitrarily many caller-held views. The server exposes `publishBlock`
 for same-dispatcher handoff between ticks; it installs a successful append without changing queued replies or transport ownership. Future validated block-import
-integration must call this boundary; no live importer, fork choice or finality is provided here. Retained-report lookup still searches only the selected head.
+integration must call this boundary; no live importer, fork choice or consensus finality verification is provided here. Retained-report lookup still searches only the selected head.
+
+`finalizeView` records caller-certified finality for a known retained chain block, refusing regressions.
+`publishFinalized` installs that immutable selection between dispatcher ticks. One additional snapshot
+owner preserves finalized-state lookup after rolling-history eviction. Neither genesis nor best-head
+publication establishes finality; the consensus source must explicitly supply it. `finalizedBlock()`
+and client information read this selection, while finalized subscription routing remains separate.
 
 Each WS connection owns a private `RpcSession` with a fixed subscription table and bounded FIFO
 of serialized best-block, statistics, service-data, service-value, service-preimage and service-request notifications, limited by message count and bytes. Request dispatch commits subscription changes only when

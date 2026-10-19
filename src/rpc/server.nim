@@ -3,7 +3,7 @@
 
 ## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
 ##
-## Exposes the Server owner, publishBlock handoff and start/tick/close lifecycle.
+## Exposes the Server owner, publishBlock/publishFinalized handoffs and start/tick/close lifecycle.
 ## The caller services bounded connection slots and per-connection chain subscription queues.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
@@ -160,6 +160,18 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
       if not slot.session.queueChainUpdates(child):
         slot.close() # Disconnect only the overflowing consumer; never drop updates or reject the chain head.
   ViewAdvanceError.None
+
+## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.
+## Requires a known retained chain block; failures leave the view intact. No finality proof is verified.
+## This query-only handoff emits no subscription events and never changes the selected best head.
+proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
+  if not server.opened:
+    return ViewFinalizeError.Uninitialized # Closed listeners cannot receive state publications.
+  let update = server.chain.finalizeView(hash)
+  if update.error != ViewFinalizeError.None:
+    return update.error # Preserve the entire view on a rejected selection.
+  server.chain = update.value
+  ViewFinalizeError.None
 
 # Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
 proc reject(slot: var Connection, code: int, now: int64) =
