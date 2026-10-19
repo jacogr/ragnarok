@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored test-only program assembly for accumulation dispatch and outcome witnesses.
-## Exposes guestProgram and registerImmediate; no production execution or verdict is replaced.
+## Exposes guestEnvelope, guestProgram and registerImmediate; no production execution or verdict is replaced.
 
 import std/assertions
 import ../../src/state/accumulation_machine
@@ -10,18 +10,9 @@ import ../../src/pvm/[initialize, machine, program]
 import ./pvm_accumulation_context
 import ../../src/codec/[state_trie, state_accounts, header]
 
-proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
-    includeContexts = true, extra: seq[StateEntry] = @[], account = default(ServiceMetadata),
-        spareEntries = 0, manager = 0'u32, assigner = 0'u32, delegator = 0'u32, registrar = 0'u32,
-            cores = 2'u64, writes = 2'u64, probes = 1'u64, slot = HeaderSlot(128),
-
-writable: seq[byte] = @[81'u8], service = ServiceIndex(42)): PreparedAccumulationMachine =
-  ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
-  ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
-  ## service selects the nominal invoking identity; the default preserves existing authored programs.
-  ## slot forwards the nominal invocation header time; existing callers retain the same default.
-  ## Forward initial roles, account metadata, bounded inputs/profile, store/probe policy and spare map capacity.
-  ## The 160-byte raw-program budget includes framing/mask for the independently bounded (<128-byte) code.
+proc guestEnvelope*(instructions: openArray[seq[byte]], writable: seq[byte] = @[81'u8]): seq[byte] =
+  ## Copy authored instructions into the bounded entry-5 envelope; exact opcode masks and framing match guestProgram.
+  ## Code remains below 128 bytes, retaining the existing raw-program budget and default writable input.
   var code = @[0'u8, 0, 0, 0, 0]
   var starts = @[true, true, true, true, true]
   for instruction in instructions:
@@ -40,7 +31,21 @@ writable: seq[byte] = @[81'u8], service = ServiceIndex(42)): PreparedAccumulatio
       mask[i div 8] = mask[i div 8] or byte(1 shl (i mod 8)) # Only true opcode positions are set.
   for octet in mask:
     raw.add(octet) # Padding bits remain canonical zero.
-  initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw, writable), credit,
+  pvmEnvelope(raw, writable)
+
+proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
+    includeContexts = true, extra: seq[StateEntry] = @[], account = default(ServiceMetadata),
+        spareEntries = 0, manager = 0'u32, assigner = 0'u32, delegator = 0'u32, registrar = 0'u32,
+            cores = 2'u64, writes = 2'u64, probes = 1'u64, slot = HeaderSlot(128),
+
+writable: seq[byte] = @[81'u8], service = ServiceIndex(42)): PreparedAccumulationMachine =
+  ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
+  ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
+  ## service selects the nominal invoking identity; the default preserves existing authored programs.
+  ## slot forwards the nominal invocation header time; existing callers retain the same default.
+  ## Forward initial roles, account metadata, bounded inputs/profile, store/probe policy and spare map capacity.
+  ## The 160-byte raw-program budget includes framing/mask for the independently bounded (<128-byte) code.
+  initializeAccumulationMachine(pvmBootstrap(guestEnvelope(instructions, writable), credit,
     includeContexts = includeContexts, extra = extra, account = account, serviceId = uint32(
         service), spareEntries = spareEntries, manager = manager, assigner = assigner,
             delegator = delegator, cores = cores, writes = writes, probes = probes,
