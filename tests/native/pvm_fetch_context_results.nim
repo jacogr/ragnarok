@@ -21,7 +21,7 @@ of "context":
   discard fetchContextResponse(default(FetchContext), MachineGas(1000), default(RegisterFile),
     captureMemory([], PageLimit(0)).value, MemoryByteLimit(0)).value
 else:
-  # A recognized but unsupported selector exposes no fabricated NONE response.
+  # Unconfigured selector zero exposes no fabricated parameter tuple or NONE response.
   let context = captureFetchContext(FetchPresence.Absent, entropy, FetchPresence.Absent, [],
     FetchTraceLimit(0)).value
   discard fetchContextResponse(context, MachineGas(1000), default(RegisterFile),

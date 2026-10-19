@@ -57,11 +57,6 @@ for selector in [1'u64, 2'u64, 16'u64, 17'u64, high(uint64)]:
             assert uint64(response.registers[i]) == (if i == 7 and credit >= price: high(uint64)
               else: uint64(regs[i]))
 
-for selector in [14'u64, 15'u64]:
-  # Recognized selectors without implemented context must not fall into the unknown/NONE branch.
-  assert fetchContextResponse(absent, MachineGas(10000), arguments(selector, 0, 0, 0),
-    original, MemoryByteLimit(0)).error == FetchError.UnsupportedSelector
-
 for entropyPresence in [FetchPresence.Absent, FetchPresence.Present]:
   for tracePresence in [FetchPresence.Absent, FetchPresence.Present]:
     # Every presence combination is independent, including present empty trace with absent entropy.

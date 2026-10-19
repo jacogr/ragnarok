@@ -43,7 +43,7 @@ and invalid encoder calls; a compiler guard protects the parameter owner. Existi
 RPC parameter tests exercise the shared decoder's consumers. No upstream source or
 vectors are copied.
 
-Fetch selectors 0–13 are implemented with explicit configuration where required.
-Remaining: accumulation-input selectors 14–15, complete invocation assembly and the
-existing positive gas-domain gate. Next bounded increment: accumulation-input capture
-and canonical fetch encoding, using the existing accumulation operand types.
+All fetch selectors now have implementations, including [accumulation inputs](pvm-fetch-accumulation.md),
+with explicit invocation data and configuration where required. Full invocation assembly,
+remaining host functions and the existing positive gas-domain gate remain open. Next bounded
+increment: bind accumulation fetch context to prepared service invocation inputs.

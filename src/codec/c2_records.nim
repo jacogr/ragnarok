@@ -5,7 +5,7 @@
 ## spec/c2-records.md.
 ##
 ## Exposes availability specifications, deferred transfers and accumulation operands with source
-## constructors, codecs and copied payload access.
+## constructors, allocation-free input sizing, codecs and copied payload access.
 
 import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite, work_digest, work_report, assurances]
@@ -579,20 +579,27 @@ proc decodeAccumulationInput*(input: openArray[byte], limits: OperandLimits): Re
     # No undefined outer accumulation input alternative is accepted.
     RecordResult[AccumulationRead](status: RecordError.InvalidTag)
 
+# Validate and measure a selected accumulation input without allocating or writing any bytes.
+# This is the encoder's shared preflight; limits include tags, framing and the selected record.
+proc accumulationInputSize*(value: AccumulationSource, limits: OperandLimits): RecordResult[int] =
+  case value.kind
+  of Operand:
+    # Operand measurement checks each variable blob and the complete canonical record extent.
+    measure(value.operandValue, limits)
+  of Transfer:
+    # Fixed transfers do not consume an operand blob budget, but still need their complete wire cap.
+    if uint64(limits.maxBytes) < 153:
+      return RecordResult[int](status: RecordError.LimitExceeded)
+    RecordResult[int](status: RecordError.None, completed: 153)
+
 # Encode an independently selected accumulation source, protecting the whole union descriptor before child writes.
 proc encodeAccumulationInput*(value: AccumulationSource, limits: OperandLimits,
     output: var openArray[byte]): RecordResult[int] =
-  var total = 153
-  # Validate selected sources before output capacity and whole-union descriptor aliases.
-  case value.kind
-  of Operand:
-    # An operand's final payload policy may fail before any destination byte is inspected.
-    let measured = measure(value.operandValue, limits)
-    if measured.error != RecordError.None: return measured # Failed source contains no usable complete extent.
-    total = measured.value
-  of Transfer:
-    # Fixed transfers consume no operand blob budget and have no input-derived source lengths.
-    if uint64(limits.maxBytes) < 153: return RecordResult[int](status: RecordError.LimitExceeded)
+  let measured = accumulationInputSize(value, limits)
+  if measured.error != RecordError.None:
+    # Source validation precedes output capacity and whole-union descriptor aliases.
+    return measured
+  let total = measured.value
   if output.len < total: return RecordResult[int](
       status: RecordError.OutputTooSmall) # Whole selected record must fit.
   if overlaps(unsafeAddr value, sizeof(value), addr output[0], total):
