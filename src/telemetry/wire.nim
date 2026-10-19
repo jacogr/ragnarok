@@ -28,16 +28,12 @@ const DisconnectedEvent = 27'u8 # JIP-3 event 27: an authenticated peer connecti
 const UnknownConnectionSide = 0'u8 # JIP-3 Option<Connection Side>: absent terminator attribution.
 
 type
-  # Microseconds since the JAM Common Era, deliberately distinct from Unix time.
-  Timestamp* = distinct uint64
-  # Implicit position in the telemetry event stream, preserved across collector reconnects.
-  EventId* = distinct uint64
-  # Operator-supplied network parameters, genesis, identity and advertised address.
-  Metadata* = object
+  Timestamp* = distinct uint64 ## Microseconds since the JAM Common Era, deliberately distinct from Unix time.
+  EventId* = distinct uint64 ## Implicit position in the telemetry event stream, preserved across collector reconnects.
+  Metadata* = object ## Operator-supplied network parameters, genesis, identity and advertised address.
     bytes: array[MetadataSize, byte]
     cores: uint16
-  # Invalid metadata carries only a reason, never a usable registration snapshot.
-  MetadataError* = enum
+  MetadataError* = enum ## Invalid metadata carries only a reason, never a usable registration snapshot.
     wrongSize, invalidCoreCount, invalidChain, hashFailed
   MetadataResult* = object
     case success: bool
@@ -46,17 +42,21 @@ type
     of false:
       reason: MetadataError
 
-# Discriminators are read-only; callers must establish success before extraction.
-func ok*(value: MetadataResult): bool = value.success
-# Copy an immutable fixed-sized snapshot only after successful validation.
-func value*(value: MetadataResult): Metadata {.requires: value.success.} = value.snapshot
-# Explain rejection without exposing default metadata as a success.
-func error*(value: MetadataResult): MetadataError {.requires: not value.success.} = value.reason
-# Return the validated number of cores needed for the fixed-size guarantee array.
-func coreCount*(value: Metadata): uint16 = value.cores
+func ok*(value: MetadataResult): bool =
+  ## Discriminators are read-only; callers must establish success before extraction.
+  value.success
+func value*(value: MetadataResult): Metadata {.requires: value.success.} =
+  ## Copy an immutable fixed-sized snapshot only after successful validation.
+  value.snapshot
+func error*(value: MetadataResult): MetadataError {.requires: not value.success.} =
+  ## Explain rejection without exposing default metadata as a success.
+  value.reason
+func coreCount*(value: Metadata): uint16 =
+  ## Return the validated number of cores needed for the fixed-size guarantee array.
+  value.cores
 
-# Validate before copying; parameters are externally supplied, never inferred from a test profile.
 proc metadata*(input: openArray[byte]): MetadataResult =
+  ## Validate before copying; parameters are externally supplied, never inferred from a test profile.
   # The pinned fetch-parameter layout plus genesis/identity/address has an exact extent.
   if input.len != MetadataSize: return MetadataResult(success: false, reason: wrongSize)
   let cores = uint16(input[24]) or (uint16(input[25]) shl 8)
@@ -87,8 +87,8 @@ proc frame(output: var seq[byte]) =
   # Prefix length excludes its own four bytes, including on the registration message.
   for i in 0..<4: output[i] = byte((size shr (8 * i)) and 255)
 
-# Produce a complete registration frame; zero flags and note explicitly describe the proof peer.
 proc registration*(value: Metadata): seq[byte] {.requires: value.cores > 0.} =
+  ## Produce a complete registration frame; zero flags and note explicitly describe the proof peer.
   result = @[0'u8, 0, 0, 0, ProtocolVersion]
   # Parameters, genesis, identity and IPv6/port bytes are already in their pinned wire order.
   for item in value.bytes: result.add(item)
@@ -99,9 +99,9 @@ proc registration*(value: Metadata): seq[byte] {.requires: value.cores > 0.} =
   result.text("Proof peer; no PVM, chain execution or validator operation")
   result.frame()
 
-# Report currently connected peers and empty unimplemented pools; no chain/sync claims are emitted.
 proc status*(value: Metadata, timestamp: Timestamp, peers: uint32): seq[
     byte] {.requires: value.cores > 0.} =
+  ## Report currently connected peers and empty unimplemented pools; no chain/sync claims are emitted.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(StatusEvent)
@@ -116,8 +116,8 @@ proc status*(value: Metadata, timestamp: Timestamp, peers: uint32): seq[
   result.fixed(0, 4)
   result.frame()
 
-# Replace contiguous unsent event observations with the normative two-timestamp dropped event.
 proc dropped*(first, last: Timestamp, count: uint64): seq[byte] =
+  ## Replace contiguous unsent event observations with the normative two-timestamp dropped event.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(first), 8)
   result.add(DroppedEvent)
@@ -125,13 +125,13 @@ proc dropped*(first, last: Timestamp, count: uint64): seq[byte] =
   result.fixed(count, 8)
   result.frame()
 
-# Publish a typed configuration failure without exposing partially parsed metadata.
 func invalidMetadata*(reason: MetadataError): MetadataResult =
+  ## Publish a typed configuration failure without exposing partially parsed metadata.
   MetadataResult(success: false, reason: reason)
 
-# Record a real outgoing dial using its pinned identity and copied IPv6-format destination.
 proc connectingOut*(timestamp: Timestamp, identity: array[32, byte], address: array[16, byte],
     port: uint16): seq[byte] =
+  ## Record a real outgoing dial using its pinned identity and copied IPv6-format destination.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(ConnectingOutEvent)
@@ -141,16 +141,16 @@ proc connectingOut*(timestamp: Timestamp, identity: array[32, byte], address: ar
   result.fixed(port, 2)
   result.frame()
 
-# Link authentication success to the original attempt, never to a status observation.
 proc connectedOut*(timestamp: Timestamp, attempt: EventId): seq[byte] =
+  ## Link authentication success to the original attempt, never to a status observation.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(ConnectedOutEvent)
   result.fixed(uint64(attempt), 8)
   result.frame()
 
-# Link failure to its attempt; an empty normative Reason avoids inventing a native TLS diagnosis.
 proc connectOutFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
+  ## Link failure to its attempt; an empty normative Reason avoids inventing a native TLS diagnosis.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(ConnectOutFailedEvent)
@@ -158,8 +158,8 @@ proc connectOutFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
   result.text("")
   result.frame()
 
-# Record an observed authenticated connection close without guessing its initiator or native reason.
 proc disconnected*(timestamp: Timestamp, identity: array[32, byte]): seq[byte] =
+  ## Record an observed authenticated connection close without guessing its initiator or native reason.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(DisconnectedEvent)
@@ -169,8 +169,8 @@ proc disconnected*(timestamp: Timestamp, identity: array[32, byte]): seq[byte] =
   result.text("") # The transport does not expose a reliable diagnostic for this close.
   result.frame()
 
-# Capture the incoming remote address before TLS authentication completes.
 proc connectingIn*(timestamp: Timestamp, address: array[16, byte], port: uint16): seq[byte] =
+  ## Capture the incoming remote address before TLS authentication completes.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(ConnectingInEvent)
@@ -178,8 +178,8 @@ proc connectingIn*(timestamp: Timestamp, address: array[16, byte], port: uint16)
   result.fixed(port, 2)
   result.frame()
 
-# Link an authenticated incoming identity to its pre-handshake observation.
 proc connectedIn*(timestamp: Timestamp, attempt: EventId, identity: array[32, byte]): seq[byte] =
+  ## Link an authenticated incoming identity to its pre-handshake observation.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(ConnectedInEvent)
@@ -187,8 +187,8 @@ proc connectedIn*(timestamp: Timestamp, attempt: EventId, identity: array[32, by
   for item in identity: result.add(item) # Public identity is copied only after native authentication.
   result.frame()
 
-# Settle an unfinished incoming handshake without inventing a diagnostic string.
 proc connectInFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
+  ## Settle an unfinished incoming handshake without inventing a diagnostic string.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(ConnectInFailedEvent)
@@ -196,8 +196,8 @@ proc connectInFailed*(timestamp: Timestamp, attempt: EventId): seq[byte] =
   result.text("")
   result.frame()
 
-# Report an explicit admission refusal with only its copied remote endpoint, as required by JIP-3.
 proc connectionRefused*(timestamp: Timestamp, address: array[16, byte], port: uint16): seq[byte] =
+  ## Report an explicit admission refusal with only its copied remote endpoint, as required by JIP-3.
   result = @[0'u8, 0, 0, 0]
   result.fixed(uint64(timestamp), 8)
   result.add(ConnectionRefusedEvent)
