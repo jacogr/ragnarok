@@ -7,6 +7,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "registration"}
+
 import ../../../src/codec/[state_availability, state_trie]
 let value = default(AvailabilityAssignment)
 discard value.registration

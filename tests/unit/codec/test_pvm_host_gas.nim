@@ -4,6 +4,8 @@
 ## Independent gas-host and unknown-call charge witnesses, including exact signed deficits.
 ## Covers terminal capture invariants, attempted debt resumption, host dispatch and ARC release.
 
+## Verification: {"arc": "pvm_host_gas_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step, host_gas, output]
 import ../../support/arc_evidence

@@ -3,6 +3,8 @@
 
 ## Fetch response storage must remain private to prevent unchecked payload extraction.
 
+## Verification: {"group": "privacy", "expected": "completed"}
+
 import ../../../src/pvm/host_fetch
 let reply = default(FetchResult)
 discard reply.completed

@@ -4,6 +4,8 @@
 ## Negative compilation fixture protecting private non-executing outcomes and source/result storage.
 ## Direct field access must fail before a caller can forge state or retag a failed outcome.
 
+## Verification: {"group": "privacy", "expected": "data"}
+
 import ../../../src/state/accumulation_skip
 let owner = default(BlockSkippedAccumulation)
 discard owner.data # Successful storage remains private.

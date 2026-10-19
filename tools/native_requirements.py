@@ -3,20 +3,20 @@
 
 """Validate per-suite native requirements before any dependency preparation or execution.
 
-Exposes NATIVE_REQUIREMENTS and validate_requirements for declarative linking, ARC and fixture
-profiles.
+Exposes NATIVE_REQUIREMENTS, derived UNIT_LINKS and validate_requirements for declarative
+linking and fixture profiles. ARC declarations live in their unit source headers.
 """
 import json
 import re
 from pathlib import Path
-from verification_inventory import UNIT_SUITES, UNIT_LINKS, unique_object
+from verification_inventory import UNIT_SOURCES, UNIT_SUITES, unique_object
 
 
 # Require complete, typed records so misspelled fields cannot silently weaken a native profile.
 def validate_requirements(records):
     if not isinstance(records, dict) or set(records) != set(UNIT_SUITES):
-        # Coverage remains checked against the independently maintained execution inventory.
-        raise ValueError('Native requirements must cover exactly the registered suites')
+        # Every discovered source keeps its explicit execution profile; stale profiles also fail.
+        raise ValueError('Native requirements must cover exactly the discovered suites')
     fields = {'directory', 'libraries', 'includes', 'observers', 'defines', 'prepared'}
     allowed = {
         'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic'},
@@ -30,17 +30,17 @@ def validate_requirements(records):
             raise ValueError('Invalid native requirement fields: '+name)
         if record['directory'] not in ('codec', 'state', 'crypto', 'quic') or type(record['prepared']) is not bool:
             raise ValueError('Invalid native source or fixture requirement: '+name)
+        if record['directory'] != UNIT_SOURCES[name].parent.name:
+            # Metadata describes the discovered source, never redirects execution to another family.
+            raise ValueError('Native source directory mismatch: '+name)
         for field, choices in allowed.items():
             # Reject arbitrary compiler arguments and duplicate settings, retaining declared order.
             values = record[field]
             if not isinstance(values, list) or any(not isinstance(value, str) or value not in choices for value in values) or len(values) != len(set(values)):
                 raise ValueError('Invalid native '+field+': '+name)
-        primary = UNIT_LINKS.get(name)
-        if (record['libraries'][-1] if record['libraries'] else None) != primary:
-            # The last library is the established primary profile; supplementary libraries precede it.
-            raise ValueError('Native primary library mismatch: '+name)
-        if (record['directory'] == 'codec') != (name not in UNIT_LINKS):
-            # Only the existing dependency-free codec group may use directory discovery.
+        primary = record['libraries'][-1] if record['libraries'] else None
+        if record['directory'] == 'codec' and primary:
+            # The shared codec directory invocation has no per-file native linking profile.
             raise ValueError('Native batch directory mismatch: '+name)
         if bool(record['includes']) != bool(primary) or (record['observers'] and 'bandersnatch_observer' not in record['libraries']):
             # Header and observer configuration must have corresponding prepared native libraries.
@@ -72,5 +72,12 @@ def load_requirements(folder):
     return validate_requirements(records)
 
 
-# Exact inventory coverage, schema and primary-library checks still run before setup or execution.
+# Exact discovered-source coverage and profile checks run before setup or execution.
 NATIVE_REQUIREMENTS = load_requirements(Path(__file__).with_suffix(''))
+
+
+# Non-codec suites retain isolated execution, including profiles with no native libraries.
+# The last ordered library remains the primary profile; no second registration is needed.
+UNIT_LINKS = {name: record['libraries'][-1] if record['libraries'] else None
+              for name, record in sorted(NATIVE_REQUIREMENTS.items())
+              if record['directory'] != 'codec'}

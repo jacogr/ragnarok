@@ -6,6 +6,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+## Verification: {"arc": "store_arc_release"}
+
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/state/store

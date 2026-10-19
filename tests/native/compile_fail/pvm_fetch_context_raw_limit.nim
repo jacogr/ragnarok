@@ -3,6 +3,8 @@
 
 ## Reject implicit raw integer assignment to the trace capture budget.
 
+## Verification: {"group": "nominal", "expected": "got: uint64 but wanted: FetchTraceLimit"}
+
 import ../../../src/pvm/host_fetch
 
 # Isolate the nominal capture budget from unrelated procedure overload diagnostics.

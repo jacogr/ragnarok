@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "restoredAt"}
+
 import ../../../src/codec/state_requests
 var history = default(RequestHistory)
 history.restoredAt = RequestSlot(0)

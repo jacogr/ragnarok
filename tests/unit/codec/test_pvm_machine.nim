@@ -6,6 +6,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+## Verification: {"arc": "pvm_machine_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine]
 import ../../support/arc_evidence

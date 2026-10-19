@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "completed"}
+
 import ../../../src/state/report_assignments
 let owner = default(ReportAssignmentResult[ReportAssignmentPlan])
 discard owner.completed # Must fail before lowering.

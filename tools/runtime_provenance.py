@@ -6,7 +6,8 @@
 Exposes runtime_sources and validate_coverage for complete verification input tracking.
 """
 from pathlib import Path
-from verification_inventory import RUNTIME_SOURCES, UNIT_SUITES, PRIVATE, NOMINAL, CONTRACTS
+from verification_inventory import RUNTIME_SOURCES, UNIT_SUITES
+from compiler_fixtures import COMPILER_FIXTURES
 
 ROOT = Path(__file__).resolve().parents[1]
 # Historical measurement tooling is not part of the supported verification path.
@@ -35,7 +36,7 @@ def runtime_sources():
     sources += unit_fixture_sources()
     sources += list((ROOT/'tests').glob('report_*.py')) + list((ROOT/'tests').glob('guarantees_*.py'))
     sources += list((ROOT/'tests/native').glob('nimony_*.nim'))
-    sources += [ROOT/f'tests/native/compile_fail/{name}.nim' for name in (*PRIVATE, *NOMINAL, *CONTRACTS)]
+    sources += [ROOT/f'tests/native/compile_fail/{name}.nim' for name in COMPILER_FIXTURES]
     sources += [ROOT/'tools/test_runtime.py']
     return sources
 

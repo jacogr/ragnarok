@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "contextReason"}
+
 import ../../../src/state/availability
 var outcome = default(AvailabilityTransitionResult[AvailabilityPlan])
 discard outcome.contextReason # Must fail before native generation.

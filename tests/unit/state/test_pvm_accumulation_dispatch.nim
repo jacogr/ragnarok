@@ -4,6 +4,8 @@
 ## Authored accumulation dispatch witnesses exercise identifier classification and real engine execution.
 ## Tests preserve local refusals, exact gas outcomes, preparation ownership and ARC release.
 
+## Verification: {"arc": "pvm_accumulation_dispatch_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_machine, accumulation_dispatch]
 import ../../../src/chain/parameters

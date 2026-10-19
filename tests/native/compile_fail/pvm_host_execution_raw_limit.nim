@@ -3,6 +3,8 @@
 
 ## Compilation must reject a raw integer in the nominal host-dispatch budget field.
 
+## Verification: {"group": "nominal", "expected": "got: uint64 but wanted: HostCallLimit"}
+
 import ../../../src/pvm/step
 # A typed budget holder tests the distinct domain without unrelated callback instantiation failures.
 type Policy = object

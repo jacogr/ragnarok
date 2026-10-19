@@ -37,15 +37,13 @@ def validate_registration(suites, source):
 def validate_inventory():
     from failure_checks import FAILURE_SUITES
     from native_tests import unit_source
-    from verification_inventory import UNIT_SUITES, UNIT_LINKS, PRIVATE, NOMINAL, CONTRACTS, RUNTIME_SOURCES
+    from native_requirements import UNIT_LINKS
+    from verification_inventory import UNIT_SUITES, RUNTIME_SOURCES
+    from compiler_fixtures import COMPILER_FIXTURES
     from runtime_provenance import runtime_sources, validate_coverage
     validate_coverage(ROOT, runtime_sources())
     validate_registration(FAILURE_SUITES, (ROOT/'tools/test_runtime.py').read_text())
     expected = {unit_source(name) for name in UNIT_SUITES}
-    actual = set((ROOT/'tests/unit').rglob('*.nim'))
-    if expected != actual:
-        # A newly added or removed native source must not silently disappear from the verification plan.
-        raise ValueError('Native source inventory mismatch: '+str(sorted(str(p.relative_to(ROOT)) for p in expected ^ actual)))
     for source in expected:
         # Each positive native source requires its own checked-in output contract.
         if not source.with_suffix('.output').is_file():
@@ -54,11 +52,6 @@ def validate_inventory():
                for profile in UNIT_LINKS.values()):
         # Reject names for which native setup cannot supply a prepared library.
         raise ValueError('Unknown native unit linking profile')
-    for inventory in (PRIVATE, NOMINAL, CONTRACTS):
-        # Rejection registries must point at real fixtures and retain nonempty expected diagnostics.
-        for name, diagnostic in inventory.items():
-            if not isinstance(diagnostic, str) or not diagnostic.strip() or not (ROOT/f'tests/native/compile_fail/{name}.nim').is_file():
-                raise ValueError('Invalid compiler rejection entry: '+name)
     for name in RUNTIME_SOURCES:
         # Submodules may be absent in a fresh checkout; their pinned bytes are verified after setup.
         if not name.startswith('vendor/') and not (ROOT/name).is_file():

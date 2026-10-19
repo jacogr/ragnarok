@@ -7,6 +7,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "success"}
+
 import ../../../src/codec/[natural, fixed_unsigned]
 var value = default(FixedDecodeResult)
 value.success = true

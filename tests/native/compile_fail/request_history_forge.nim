@@ -6,5 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "mode"}
+
 import ../../../src/codec/state_requests
 discard RequestHistory(mode: RequestState.Available, sinceSlot: RequestSlot(1))

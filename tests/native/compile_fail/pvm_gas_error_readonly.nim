@@ -4,6 +4,8 @@
 ## Negative compiler fixture for gas-result privacy or nominal simulation boundaries.
 ## This test intentionally fails compilation at the forbidden access or mismatched call below.
 
+## Verification: {"group": "privacy", "expected": "error"}
+
 import ../../../src/pvm/[program, gas]
 var r = default(GasResult)
 r.error = GasError.None

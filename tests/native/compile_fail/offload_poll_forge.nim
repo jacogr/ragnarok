@@ -6,5 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "hasCompletion"}
+
 import ../../../src/quic/offload
 discard OffloadPollResult(hasCompletion: true)

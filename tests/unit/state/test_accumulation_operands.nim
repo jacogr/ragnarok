@@ -6,6 +6,8 @@
 ## Hastur main replays 146 independently derived cases, literal service/order/error boundaries,
 ## a genuinely bound block queue and repeated ARC release; this file defines no production APIs.
 
+## Verification: {"arc": "accumulation_operands_arc_release"}
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../../src/state/[accumulation_operands, accumulation_queue, report_admission,
   block_transition, store]

@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "nominal", "expected": "got: HeaderSeal but wanted: HeaderEntropyProof"}
+
 import ../../../src/codec/[header]
 
 var value: UnsignedHeader

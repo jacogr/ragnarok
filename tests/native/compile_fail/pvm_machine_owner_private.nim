@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "data"}
+
 import ../../../src/pvm/machine
 let owner = default(Machine)
 discard owner.data

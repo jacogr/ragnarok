@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "completed"}
+
 import ../../../src/state/disputes
 var outcome = default(DisputesResult[DisputesPlan])
 discard outcome.completed # Must fail privacy checking before generating native code.

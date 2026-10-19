@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "ownership_compile", "expected": "'=dup' is not available for type <OffloadPool>", "build_name": "offload-pool-copy", "offload": true}
+
 import ../../../src/quic/offload
 var original = default(OffloadPool)
 var duplicate = original

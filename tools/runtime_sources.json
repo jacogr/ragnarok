@@ -381,6 +381,7 @@
   "tools/build_crypto.py",
   "tools/build_quic.py",
   "tools/check_inventory.py",
+  "tools/compiler_fixtures.py",
   "tools/corpus_checks.py",
   "tools/corpus_codec.py",
   "tools/corpus_crypto.py",

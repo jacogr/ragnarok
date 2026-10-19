@@ -7,6 +7,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+## Verification: {"arc": "safrole_transition_arc_release"}
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[safrole_transition, store, validator_state, ticket_admission,
   sealer_schedule, safrole_markers, safrole_authentication, entropy]

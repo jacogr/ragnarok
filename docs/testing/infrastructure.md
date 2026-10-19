@@ -1,24 +1,42 @@
 # Verification infrastructure
 
-`tools/verification_inventory.json` owns the ordinary native suite identities, link profiles,
-ARC evidence names, independent corpus names and compiler/runtime rejection inventories.
-Each case or mapping occupies one line so concurrent additions produce small, reviewable diffs.
-Keep independent names alphabetical within their inventory section; counts are coverage requirements
-and
-must match the runtime probes. `tools/verification_inventory.py` loads this data, rejects duplicate
-object keys and cases, and preserves the consumers' tuple/list interfaces. Missing sections fail
-at import; native discovery still checks checked-in suites and their expected-output files, and
-verification still checks complete corpus/failure coverage. Both the loader and JSON data are
-included in report provenance. Compiler guards do not import the runtime executor.
+Native suite identities come from `tests/unit/<source-family>/test_<suite>.nim`, sorted by suite
+name. Discovery rejects duplicate names, misplaced Nim files, empty trees and missing `.output`
+contracts. `tools/verification_inventory.json` retains runtime misuse members, independent corpus
+names and failure-family budgets. Independent names remain alphabetical within each JSON section;
+missing sections, duplicate keys/cases and incomplete execution remain errors. The inventory loader
+and JSON data are included in report provenance. Compiler guards do not import the runtime executor.
+
+ARC requirements live in the owning unit source header, after its purpose/API documentation:
+
+```nim
+## Verification: {"arc": "example_arc_release"}
+```
+
+The declared report key preserves historical report names. Suites without ARC observations need
+no declaration. Duplicate, malformed, late and unknown declarations fail preflight. The launcher
+still clears selected evidence before execution and requires fresh numeric observations with the
+original cycle/schema counts and allocation-baseline checks; absence never counts as success.
+
+Compiler-rejection fixtures are discovered under `tests/native/compile_fail/`. Each source owns
+one required header declaration identifying its group and exact expected diagnostic. The validated
+category views retain the existing privacy, nominal, contract, schema and ownership predicates.
+Nominal declarations may include the ordered `early` call/positional diagnostic pair. Ownership
+checks retain explicit lowering build names and the proof pool's enabled native profile. Missing
+metadata and unsupported fields/profiles fail before setup; discovering a file never substitutes
+a generic compiler error for its intended rejection. Fixture sources and their loader are hashed
+in guard and runtime provenance.
 
 `tools/native_requirements/<source-family>/<suite>.json` declares one suite's source directory,
 ordered libraries, headers, observer call-site renames, compiler defines and fresh-fixture
 requirement.
-Source-family directories match `tests/unit/`; suite filenames use the same feature prefix as the
-execution inventory. The loader discovers paths alphabetically, rejects duplicate suite identities,
-misplaced files, unordered independent fields and unknown settings, and requires exact inventory
-coverage and the existing primary link profile. Library/include/observer arrays preserve their
-explicit order. Discovery does not schedule suites: execution remains owned by the inventory.
+Source-family directories match `tests/unit/`; suite filenames match the discovered test identity.
+The loader discovers paths alphabetically, rejects duplicate suite identities, misplaced files,
+unordered independent fields and unknown settings, and requires exact discovered-source coverage
+and source-family ownership. Library/include/observer arrays preserve their explicit order; the
+last library supplies the primary profile. Non-codec suites retain isolated execution, including
+those without native libraries. Codec directory batches retain their dependency-free profile.
+Metadata describes discovered suites; it does not select which source files execute.
 `make check-inventory` loads these profiles before provisioning. New suites add their own file;
 no shared manifest entry or central provenance-path addition is needed.
 

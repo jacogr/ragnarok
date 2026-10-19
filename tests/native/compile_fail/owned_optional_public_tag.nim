@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "present"}
+
 import ../../../src/codec/[owned, composite]
 var value = default(OwnedOptionalInfo)
 value.present = true

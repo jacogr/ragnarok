@@ -6,5 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "schemas", "expected": "-1"}
+
 import ../../../src/codec/collections
 discard scalarMinimum(CollectionUInt[-1])

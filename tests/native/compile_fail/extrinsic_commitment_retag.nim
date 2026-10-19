@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "status"}
+
 import ../../../src/crypto/extrinsic_commitment
 import ../../../src/codec/header
 var hidden = default(ExtrinsicCommitmentResult[ExtrinsicRoot])

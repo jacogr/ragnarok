@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "error"}
+
 import ../../../src/crypto/[primitives, guarantee]
 var parsed = default(GuaranteeMessageResult)
 parsed.error = CryptoError.None

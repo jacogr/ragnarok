@@ -4,6 +4,8 @@
 ## Original raw-package fetch witnesses for blob selection, prices, ownership and bounded capture.
 ## Exercises validated codec owners and fallible execution with fresh ARC evidence.
 
+## Verification: {"arc": "pvm_fetch_package_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/codec/[work_package, bounded, work_digest]
 import ../../../src/pvm/[program, machine, gas, step, host_fetch]

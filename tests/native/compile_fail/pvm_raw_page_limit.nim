@@ -6,5 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "nominal", "expected": "[2] expected: PageLimit but got: uint32", "early": ["captureMemory(", "[2] expected: PageLimit but got: uint32"]}
+
 import ../../../src/pvm/machine
 discard captureMemory([], 1'u32)

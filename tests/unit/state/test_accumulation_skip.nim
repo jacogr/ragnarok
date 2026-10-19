@@ -4,6 +4,8 @@
 ## Native non-executing Psi_A outcomes: independent envelope gates, exact unchanged state and zero/empty effects.
 ## Hastur entry point checks signed provenance, source replacement, strict refusal and complete ARC release.
 
+## Verification: {"arc": "accumulation_skip_arc_release"}
+
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[accumulation_skip, accumulation_service, accumulation_round,
   accumulation_inputs,

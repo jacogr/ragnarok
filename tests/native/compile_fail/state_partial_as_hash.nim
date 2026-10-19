@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "nominal", "expected": "LeftChildCommitment"}
+
 import ../../../src/codec/state_layout
 let wrong = default(LeftChildCommitment)
 let right = default(StateNodeHash)

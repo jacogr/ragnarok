@@ -4,7 +4,7 @@
 """Launch native application tests through the Hastur shipped with the pinned Nimony archive.
 
 Exposes native suite planning, compiler commands, environments and evidence paths; main runs the
-standalone native test launcher, optionally selecting one registered suite with bounded log output.
+standalone native test launcher, optionally selecting one discovered suite with bounded log output.
 """
 from pathlib import Path
 import json
@@ -15,15 +15,12 @@ import platform
 import argparse
 from setup_nimony import ROOT, cache_directory
 
-# Preserve the existing cumulative suite identities while moving implementation assertions to native discovery.
-from verification_inventory import UNIT_SUITES, ARC_SUITES, UNIT_LINKS
-from native_requirements import NATIVE_REQUIREMENTS
+# Share directory-discovered suite identities with selection, cumulative reports and provenance.
+from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
+from native_requirements import NATIVE_REQUIREMENTS, UNIT_LINKS
 # Keep the runtime-fixture helper available to existing launcher consumers.
 from native_fixtures import unit_runtime_fixtures
 UNIT_ROOT = ROOT/'tests/unit/codec'
-STATE_ROOT = ROOT/'tests/unit/state'
-CRYPTO_ROOT = ROOT/'tests/unit/crypto'
-QUIC_ROOT = ROOT/'tests/unit/quic'
 # Fixture targets may be files or directories; each entry lists every byte source that must match its pin.
 GUARANTEE_FIXTURE = ROOT/'tests/fixtures/guarantee-report.bin'
 BLOCK_FIXTURES = ROOT/'tests/fixtures/block-tiny'
@@ -57,13 +54,12 @@ UNIT_FIXTURES['state_composition_private'] = ('RAGNAROK_COMPOSITION_FIXTURE', CO
     ((COMPOSITION_FIXTURE, '3d45577099002c493cb7dc6fa4b3ee2f7ebfa389952a0c4cae3c7c382db7265b'),))
 
 
-# Resolve a migrated suite without introducing a second copy or a fallback to its old native path.
+# Resolve a discovered suite directly from its source path, independently of linking metadata.
 def unit_source(name):
     if name not in UNIT_SUITES:
-        # Unknown names belong to later migration chunks, never a silently omitted native case.
-        raise ValueError('Unknown migrated unit suite: '+name)
-    directories = {'codec': UNIT_ROOT, 'state': STATE_ROOT, 'crypto': CRYPTO_ROOT, 'quic': QUIC_ROOT}
-    return directories[NATIVE_REQUIREMENTS[name]['directory']]/('test_'+name+'.nim')
+        # Unknown selections fail before native preparation rather than silently running no tests.
+        raise ValueError('Unknown native unit suite: '+name)
+    return UNIT_SOURCES[name]
 
 
 # Bound independent test workers explicitly; callers can request serial controls without changing semantics.
@@ -197,7 +193,7 @@ def unit_batches():
     actual = set(UNIT_ROOT.glob('*.nim'))
     if actual != {unit_source(name) for name in pure}:
         # Extra/missing directory members cannot silently change the group covered by one verdict.
-        raise ValueError('Native codec discovery differs from the suite registry')
+        raise ValueError('Native codec directory changed after suite discovery')
     return [('codec', pure, None)]+[(name, (name,), name) for name in UNIT_LINKS]
 
 
@@ -239,10 +235,10 @@ def run_units(compiler, libraries, fixtures, suite=None):
         print('ARC '+name+': '+json.dumps(unit_evidence(compiler, name), sort_keys=True), flush=True)
 
 
-# Select a registered suite before provisioning; full discovery remains the default supported behavior.
+# Select a discovered suite before provisioning; full discovery remains the default supported behavior.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=UNIT_SUITES, help='Run one registered native suite only')
+    parser.add_argument('--suite', choices=UNIT_SUITES, help='Run one discovered native suite only')
     arguments = parser.parse_args()
     from setup_nimony import installed
     compiler, _ = installed()

@@ -6,5 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "nominal", "expected": "RequestLength"}
+
 import ../../../src/codec/[state_requests, bounded]
 discard serviceRequestKey(ServiceIndex(0), default(ServicePreimageHash), RequestSlot(0), ByteLimit(32))

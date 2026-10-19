@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "ownership_compile", "expected": "'=dup' is not available for type <UdpEndpoint>", "build_name": "quic-endpoint-copy"}
+
 import ../../../src/quic/io
 var original = default(UdpEndpoint)
 var duplicate = original

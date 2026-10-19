@@ -4,6 +4,8 @@
 ## Independent standard-initialization witnesses for envelope framing, page layout and CPU entry.
 ## Tests padding, permissions, limits, immutable ownership, executable initialization and ARC release.
 
+## Verification: {"arc": "pvm_initialization_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, initialize, gas, step]
 import ../../support/arc_evidence

@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "nominal", "expected": "got: StateEntry but wanted: StateChapterSnapshot"}
+
 import ../../../src/codec/[state_composition, state_trie]
 let part: StateChapterSnapshot = default(StateEntry)
 discard part

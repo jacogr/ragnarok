@@ -3,6 +3,8 @@
 
 ## Raw byte counts cannot silently become encoded-package snapshot resource budgets.
 
+## Verification: {"group": "nominal", "expected": "got: uint64 but wanted: FetchEncodingLimit"}
+
 import ../../../src/pvm/host_fetch
 
 # Test-only holder isolates nominal budget assignment from callback/procedure overload checking.

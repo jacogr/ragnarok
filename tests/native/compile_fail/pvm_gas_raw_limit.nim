@@ -4,5 +4,7 @@
 ## Negative compiler fixture for gas-result privacy or nominal simulation boundaries.
 ## This test intentionally fails compilation at the forbidden access or mismatched call below.
 
+## Verification: {"group": "nominal", "expected": "[3] expected: GasCycleLimit but got: uint64", "early": ["blockGas(", "[3] expected: GasCycleLimit but got: uint64"]}
+
 import ../../../src/pvm/[program, gas]
 discard blockGas(default(Program), CodeAddress(0), 100'u64)

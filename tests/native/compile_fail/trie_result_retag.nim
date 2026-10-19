@@ -7,6 +7,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "status"}
+
 import ../../../src/codec/[state_trie, state_layout]
 var value = default(StateTrieResult[StateTrieCommitment])
 value.status = StateTrieError.None

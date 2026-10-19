@@ -7,6 +7,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+## Verification: {"arc": "guarantee_credentials_arc_release"}
+
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[guarantee_credentials, guarantors]
 import ../../../src/codec/[guarantees, assurances, bounded, state_safrole, header, disputes,

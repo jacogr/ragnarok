@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "completed"}
+
 import ../../../src/state/guarantors
 let owner = default(GuarantorResult[GuarantorPlan])
 discard owner.completed # Must fail during semantic compilation.

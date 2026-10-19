@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "data"}
+
 import ../../../src/codec/[work_package, work_report]
 var value = default(OwnedWorkPackage)
 discard OwnedWorkPackage(data: nil)

@@ -4,6 +4,8 @@
 ## Negative compiler fixture for initialization result privacy and nominal allocation policy.
 ## The forbidden field access or raw limit below must fail compilation.
 
+## Verification: {"group": "privacy", "expected": "status"}
+
 import ../../../src/pvm/[initialize]
 var r = default(InitializationResult)
 r.status = InitializationError.None

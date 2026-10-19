@@ -4,6 +4,8 @@
 ## External-input fetch witnesses for presence, two-level indexing, prices and capture bounds.
 ## Exercises independent byte expectations, immutable handles, host dispatch and ARC release.
 
+## Verification: {"arc": "pvm_fetch_inputs_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/codec/[work_package, bounded]
 import ../../../src/pvm/[program, machine, gas, step, host_fetch]

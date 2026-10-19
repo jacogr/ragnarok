@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "nominal", "expected": "[1] expected: ReadySnapshot but got: AccumulatedSnapshot"}
+
 import ../../../src/codec/state_workqueues
 let owner = default(AccumulatedSnapshot)
 discard readySlotCount(owner, WorkQueueSlot(0))

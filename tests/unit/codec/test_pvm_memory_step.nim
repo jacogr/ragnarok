@@ -4,6 +4,8 @@
 ## Native witnesses for all charged PVM load/store instructions and memory exception ordering.
 ## Exercises stepMemory, fault-page selection, immutable snapshots and repaired-fault retries.
 
+## Verification: {"arc": "pvm_memory_step_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step]
 import ../../support/arc_evidence

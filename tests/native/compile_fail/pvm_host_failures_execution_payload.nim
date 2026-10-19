@@ -3,6 +3,8 @@
 
 ## Reject direct access to private fallible host result storage.
 
+## Verification: {"group": "privacy", "expected": "completed"}
+
 import ../../../src/pvm/step
 
 # Test-local failure domain supplies the generic enum parameter.

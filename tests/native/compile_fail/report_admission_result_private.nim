@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "completed"}
+
 import ../../../src/state/report_admission
 let value = default(ReportAdmissionResult[AdmittedReports])
 discard value.completed # Private storage must be rejected before lowering.

@@ -4,5 +4,7 @@
 ## Negative compiler fixture for host-response gas and action domains.
 ## Raw integers and guest exit reasons cannot stand in for explicit typed host replies.
 
+## Verification: {"group": "nominal", "expected": "got: StepExit but wanted: HostAction"}
+
 import ../../../src/pvm/[machine, step]
 discard HostResponse(action: StepExit.Halt)

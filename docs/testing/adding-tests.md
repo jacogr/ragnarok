@@ -1,24 +1,39 @@
 # Adding and changing verification
 
-Feature PRs own their test sources, inventory entries and feature specification. Avoid adding
-rolling global totals or feature-by-feature progress notes to the shared testing index. Record
+Feature PRs own their test sources, required execution metadata and feature specification.
+Avoid adding rolling global totals or feature-by-feature progress notes to the shared testing index. Record
 coverage details and reproduction commands in the feature's `spec/` document instead.
 
 ## Native suites and compiler rejections
 
-Add native application assertions under the appropriate `tests/unit/` directory with an explicit
-`.output` contract. Register the suite in `tools/verification_inventory.json` and declare its
-source directory, library order, observer flags and fixture requirements in
-`tools/native_requirements/<source-family>/<suite>.json`. Keep independent inventory identities
-and profile fields alphabetical, using the existing feature prefix; retain ordered link options.
-Fixtures use the feature
-adapters and shared preparation described in [infrastructure](infrastructure.md).
+Add native application assertions as `tests/unit/<source-family>/test_<suite>.nim` with an explicit
+`.output` contract. Suite identities are discovered from these files in alphabetical order; do not
+add a suite list to `tools/verification_inventory.json`. Helpers belong in `tests/support/` and
+rejection fixtures in `tests/native/compile_fail/`. Duplicate identities, misplaced Nim files,
+empty discovery and missing output contracts fail before setup.
 
-Register compiler rejection sources under `tests/native/compile_fail/` in the appropriate
-`PRIVATE`, `NOMINAL` or `CONTRACTS` inventory, including their expected diagnostics. The compiler
-coverage test compares registered identities with the actual fixture files, including the
-explicit schema and ownership-lowering probes. Missing or duplicate registrations fail without
-maintaining a second aggregate count.
+Declare the suite's source directory, library order, observer flags and fixture requirements in
+`tools/native_requirements/<source-family>/<suite>.json`. Linking profiles are derived from these
+existing requirements; no central unit/link registration is needed. Keep independent profile fields
+alphabetical and retain ordered link options. If the suite must produce ARC evidence, declare its
+report key in the source header with `## Verification: {"arc": "example_arc_release"}`. The existing
+ARC helper and fresh-evidence checks remain required. Fixtures use the feature adapters and shared
+preparation described in [infrastructure](infrastructure.md).
+
+Compiler rejection sources belong under `tests/native/compile_fail/`, with one source-local header:
+
+```nim
+## Verification: {"group": "privacy", "expected": "privateField"}
+```
+
+Groups are `privacy`, `nominal`, `contracts`, `schemas` and `ownership_compile`. Expected diagnostics
+keep the runner's group-specific meaning: private member, nominal mismatch, violated precondition,
+unsupported schema domain, or exact ownership-lowering error. Nominal `early` pairs retain the call
+and positional diagnostic. Ownership declarations require a unique `build_name`; `offload: true`
+retains the enabled proof-pool ABI/define. New rejection behavior may need an explicit predicate
+in the guard runner; declaring a filename alone never makes an arbitrary compilation error pass.
+Do not add fixture identities to a central registry or a new sidecar file. Discovery rejects missing
+or invalid declarations before setup, and report checks reject missing, duplicate or failed results.
 
 ## Runtime failures and independent corpora
 

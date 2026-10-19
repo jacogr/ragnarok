@@ -7,6 +7,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "value"}
+
 import ../../../src/codec/[state_consensus, state_safrole, state_trie]
 var value = default(SafroleStateResult[SafroleStateInfo])
 value.value = default(SafroleStateInfo)

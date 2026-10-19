@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "nominal", "expected": "got: TransferBalance but wanted: Gas"}
+
 import ../../../src/codec/c2_records
 let value = DeferredTransfer(gas: TransferBalance(1))
 discard value

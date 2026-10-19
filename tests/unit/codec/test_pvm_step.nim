@@ -4,6 +4,8 @@
 ## Native tests replay charged execution traces and check out-of-gas ordering and ARC lifetimes.
 ## The executable reads RAGNAROK_PVM_STEP, tests all stepping entry points and records pvm_step ARC evidence.
 
+## Verification: {"arc": "pvm_step_arc_release"}
+
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, machine, registers, gas, step]
 import ../../support/arc_evidence

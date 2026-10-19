@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+## Verification: {"group": "privacy", "expected": "value"}
+
 import ../../../src/codec/state_service_values
 var parsed = default(ServiceValueResult[int])
 parsed.value = 0
