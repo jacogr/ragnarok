@@ -14,8 +14,8 @@ import ./[accumulation_inputs, accumulation_service, accumulation_invocation, ac
 type
   AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
     accounts*: ElementLimit ## Maximum invoking metadata records copied for credits or supported selected changes.
-    deletedAccounts*: ElementLimit ## Maximum selected eligible targets outside represented service work; zero preserves the gate.
-    createdAccounts*: ElementLimit ## Maximum genuine children copied as fixed metadata plus empty request; zero preserves the gate.
+    deletedAccounts*: ElementLimit ## Maximum captured ejection facts inspected; participating targets remain gated.
+    createdAccounts*: ElementLimit ## Maximum captured creation facts inspected, including prior-ID recreations.
     selfWrites*: ElementLimit ## Maximum unique nonmetadata self keys copied across all selected executions; zero preserves the gate.
     selfValueBytes*: ByteLimit ## Aggregate copied final self values; deletions consume a key but no value bytes.
     provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
@@ -41,8 +41,8 @@ type
     skipped*: int         ## Unique services with certified non-executing outcomes.
     completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
     accountWrites*: int   ## Invoking metadata records prepared for credits or supported selected changes.
-    deletedAccounts*: int ## Existing accounts removed together with the selected beneficiary credit.
-    createdAccounts*: int ## New foreign accounts published with the selected creator debit.
+    deletedAccounts*: int ## Prior accounts absent from selected final domains and actually removed.
+    createdAccounts*: int ## Prior-absent foreign accounts actually published with the selected creator debit.
     selfWrites*: int      ## Unique nonmetadata keys prepared from selected self-write provenance.
     selfValueBytes*: uint64 ## Copied final self values, excluding fixed metadata and terminal provisions.
     terminal*: AccumulationTerminalProvisionInfo ## Checked invocation slot and selected-provision accounting.
@@ -154,6 +154,24 @@ proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisi
   AccumulationBatchResult[AccumulationOutcome](status: AccumulationBatchError.None,
       completed: retained.value)
 
+# Inspect bounded immutable creation facts only after the caller has checked aggregate trace ceilings.
+proc hasCreatedAccount(context: AccumulationEffectContext, service: ServiceIndex): bool =
+  for ordinal in 0..<context.effectCreatedAccountCount.value:
+    # Exact service identity proves that a retained prior ID was genuinely recreated.
+    let child = context.effectCreatedAccountAt(AccumulationCreatedAccountIndex(uint64(
+        ordinal))).value
+    if uint32(child.service) == uint32(service): return true
+  false
+
+# An ignored prior-present creation must be paired with genuine selected ejection provenance.
+proc hasDeletedAccount(context: AccumulationEffectContext, service: ServiceIndex): bool =
+  for ordinal in 0..<context.effectDeletedAccountCount.value:
+    # A matching successful eject explains how registrar creation obtained the occupied prior ID.
+    let target = context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(uint64(
+        ordinal))).value
+    if uint32(target.service) == uint32(service): return true
+  false
+
 # Shared preparation proves source ownership before retaining credits or normalizing genuine executions.
 proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
     executions: openArray[AccumulationDispatchResult], skipped: openArray[SkippedAccumulation],
@@ -224,6 +242,8 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   var selfBytes = 0'u64
   var createdCount = 0'u64
   var deletedCount = 0'u64
+  var createdProofs = 0'u64
+  var deletedProofs = 0'u64
   for index, service in services:
     # Skips retain their credited initial map; executions must use one terminal-selected scope/account owner.
     var accounts = service.serviceState.value
@@ -237,8 +257,12 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
         fail(AccumulationBatchError.UnsupportedAccountEffects) # Restored equal bytes cannot erase unsupported mutation ancestry.
       accounts = context.effectAccounts.value
       let removed = context.effectDeletedAccountCount.value
-      if uint64(removed) > uint64(limits.deletedAccounts)-deletedCount:
-        fail(AccumulationBatchError.LimitExceeded) # Bound fixed deletion work before descriptor growth.
+      let children = context.effectCreatedAccountCount.value
+      if uint64(removed) > uint64(limits.deletedAccounts)-deletedProofs or
+          uint64(children) > uint64(limits.createdAccounts)-createdProofs:
+        fail(AccumulationBatchError.LimitExceeded) # Bound all inspected facts, including ignored recreation traces.
+      deletedProofs += uint64(removed)
+      createdProofs += uint64(children)
       for ordinal in 0..<removed:
         if writes.len > high(int) div sizeof(StateWrite)-3:
           fail(AccumulationBatchError.LimitExceeded) # At most metadata/request/preimage deletions accompany one target.
@@ -250,38 +274,54 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
         let key = chapterServiceKey(StateChapter(255), target.service)
         if prior.lookup(key).error != StateStoreError.None:
           fail(AccumulationBatchError.UnsupportedAccountEffects) # New-and-removed accounts are outside this existing-account deletion contract.
-        for deletedKey in [key, target.requestKey, target.preimageKey]:
-          if accounts.lookup(deletedKey).error != StateStoreError.MissingKey:
-            fail(AccumulationBatchError.UnsupportedAccountEffects) # Recreated metadata or rewritten components cannot be silently discarded.
-        writes.add(StateWrite(key: key, kind: StateWriteKind.Delete))
-        writes.add(StateWrite(key: target.requestKey, kind: StateWriteKind.Delete))
-        if compareAccountKey(target.requestKey, target.preimageKey) != 0:
-          writes.add(StateWrite(key: target.preimageKey,
-              kind: StateWriteKind.Delete)) # Preserve the parked namespace alias without duplicate descriptors.
-        inc deletedCount
-      let children = context.effectCreatedAccountCount.value
-      if uint64(children) > uint64(limits.createdAccounts)-createdCount:
-        fail(AccumulationBatchError.LimitExceeded) # Bound all fixed child records before any copied payloads.
+        let finalRecord = accounts.lookup(key)
+        if finalRecord.error == StateStoreError.None:
+          if finalRecord.value.byteLength != ServiceMetadataBytes or
+              not hasCreatedAccount(context, target.service):
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # Only genuine selected recreation can cancel a captured removal.
+          # Present-final prior IDs are outside m; their foreign replacement is also excluded from n.
+        elif finalRecord.error == StateStoreError.MissingKey:
+          for deletedKey in [target.requestKey, target.preimageKey]:
+            if accounts.lookup(deletedKey).error != StateStoreError.MissingKey:
+              fail(AccumulationBatchError.UnsupportedAccountEffects) # No leftover foreign component may escape an actual removal.
+          writes.add(StateWrite(key: key, kind: StateWriteKind.Delete))
+          writes.add(StateWrite(key: target.requestKey, kind: StateWriteKind.Delete))
+          if compareAccountKey(target.requestKey, target.preimageKey) != 0:
+            writes.add(StateWrite(key: target.preimageKey,
+                kind: StateWriteKind.Delete)) # Preserve the parked namespace alias without duplicate descriptors.
+          inc deletedCount
+        else:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # An invalid final map cannot prove either presence or absence.
       for ordinal in 0..<children:
         if writes.len > high(int) div sizeof(StateWrite)-2:
           fail(AccumulationBatchError.LimitExceeded) # Each child adds exactly two fully bounded descriptors.
         let child = context.effectCreatedAccountAt(AccumulationCreatedAccountIndex(uint64(
             ordinal))).value
         let key = chapterServiceKey(StateChapter(255), child.service)
-        if prior.lookup(key).error != StateStoreError.MissingKey:
-          fail(AccumulationBatchError.UnsupportedAccountEffects) # Only accounts absent from the common prior belong to the supported new-account set.
-        let record = accounts.lookup(key)
-        let request = accounts.lookup(child.requestKey)
-        if record.error != StateStoreError.None or record.value.byteLength != ServiceMetadataBytes:
-          fail(AccumulationBatchError.UnsupportedAccountEffects) # A created child must retain complete metadata.
-        if request.error != StateStoreError.None or request.value.byteLength != 1:
-          fail(AccumulationBatchError.UnsupportedAccountEffects) # A captured child request must remain present and empty.
-        let bytes = request.value.bytes
-        if bytes[0] != 0:
-          fail(AccumulationBatchError.UnsupportedAccountEffects) # The captured code request remains genuinely empty until fnprovide.
-        writes.add(StateWrite(key: key, kind: StateWriteKind.Put, value: record.value.bytes))
-        writes.add(StateWrite(key: child.requestKey, kind: StateWriteKind.Put, value: bytes))
-        inc createdCount
+        let original = prior.lookup(key)
+        if original.error == StateStoreError.None:
+          let finalRecord = accounts.lookup(key)
+          if not hasDeletedAccount(context, child.service) or
+              finalRecord.error != StateStoreError.None:
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # Prior-present creation requires matched eject provenance and final presence.
+          if finalRecord.value.byteLength != ServiceMetadataBytes:
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # No malformed replacement supplies valid selected membership.
+          # accpar's n excludes foreign IDs present in the prior; preserve all original target records.
+        elif original.error == StateStoreError.MissingKey:
+          let record = accounts.lookup(key)
+          let request = accounts.lookup(child.requestKey)
+          if record.error != StateStoreError.None or record.value.byteLength != ServiceMetadataBytes:
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # A created child must retain complete metadata.
+          if request.error != StateStoreError.None or request.value.byteLength != 1:
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # A captured child request must remain present and empty.
+          let bytes = request.value.bytes
+          if bytes[0] != 0:
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # The captured code request remains genuinely empty until fnprovide.
+          writes.add(StateWrite(key: key, kind: StateWriteKind.Put, value: record.value.bytes))
+          writes.add(StateWrite(key: child.requestKey, kind: StateWriteKind.Put, value: bytes))
+          inc createdCount
+        else:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # Default/invalid prior maps cannot authorize creation projection.
       let count = context.effectAccountWriteCount.value
       if uint64(count) > uint64(limits.selfWrites)-selfWrites:
         fail(AccumulationBatchError.LimitExceeded) # Bound the entire selected trace before value copying or descriptor growth.

@@ -36,10 +36,12 @@ proc profile(): Parameters =
 
 # The exact request hash occupies the first 32 guest bytes; a separate byte supports self-storage witnesses.
 proc guestInput(): seq[byte] =
-  result = newSeq[byte](33)
+  result = newSeq[byte](65)
   for index, octet in array[32, byte](hash):
     result[index] = octet
   result[32] = 81
+  for index, octet in array[32, byte](blake2b256([73'u8]).value):
+    result[33+index] = octet # A separate one-byte code hash tests the existing provision-copy budget.
 let input = guestInput()
 
 # Owned target metadata names the invoker by raw E32 identity and has exactly one expired request/preimage.
@@ -60,37 +62,50 @@ proc append(code: var seq[seq[byte]], instructions: seq[seq[byte]]) =
   for instruction in instructions:
     code.add(instruction) # Preserve authored opcode boundaries without replacing the production engine.
 
+# Authored four-byte signed immediates keep combined recreation/self-effect programs below 128 bytes.
+proc compactImmediate(index: byte, value: uint64): seq[byte] =
+  assert value <= 0x7fffffff'u64 or value == high(uint64), "fixture immediates fit signed E4 or minus one"
+  result = @[51'u8, index]
+  for offset in 0..<4:
+    # Full-width minus one is represented by four 0xff bytes and sign-extended by load_imm.
+    result.add(byte((value shr (offset*8)) and 255))
+
 proc envelope(checkpoint = false, panic = false, repeat = false, target = 77'u64,
     storage = false, upgrade = false, create = false, provide = false,
-    beforeStorage = false, recreate = false, beforeCreate = false): seq[byte] =
+    beforeStorage = false, recreate = false, beforeCreate = false,
+    provideRecreated = false): seq[byte] =
   var code: seq[seq[byte]] = @[]
-  let write = @[registerImmediate(7, 65536), registerImmediate(8, 1),
-    registerImmediate(9, 196640), registerImmediate(10, 1), @[10'u8, 5]]
+  let write = @[compactImmediate(7, 65536), compactImmediate(8, 1),
+    compactImmediate(9, 196640), compactImmediate(10, 1), @[10'u8, 5]]
   if beforeCreate:
-    append(code, @[registerImmediate(7, 196608), registerImmediate(8, 3),
-      registerImmediate(9, 7), registerImmediate(10, 9), registerImmediate(11, 0),
-      registerImmediate(12, high(uint64)), @[10'u8,
+    append(code, @[compactImmediate(7, 196608), compactImmediate(8, 3),
+      compactImmediate(9, 7), compactImmediate(10, 9), compactImmediate(11, 0),
+      compactImmediate(12, high(uint64)), @[10'u8,
           19]]) # Eject must retain a child created earlier in this same invocation.
   if beforeStorage:
     append(code, write) # A disabled earlier self trace must remain unsupported even after a traced eject.
-  append(code, @[registerImmediate(7, target), registerImmediate(8, 196608), @[10'u8, 22]])
+  append(code, @[compactImmediate(7, target), compactImmediate(8, 196608), @[10'u8, 22]])
   if checkpoint:
     code.add(@[10'u8, 18]) # Retain the first removal and its beneficiary credit together.
   if repeat:
-    append(code, @[registerImmediate(7, 78), @[10'u8, 22]]) # r8 still holds the exact request-hash pointer.
+    append(code, @[compactImmediate(7, 78), @[10'u8, 22]]) # r8 still holds the exact request-hash pointer.
   if storage:
     append(code, write) # Supported self-key mutation must retain deletion membership.
   if upgrade:
-    append(code, @[registerImmediate(7, 196608), registerImmediate(8, 17),
-      registerImmediate(9, 19), @[10'u8, 20]])
+    append(code, @[compactImmediate(7, 196608), compactImmediate(8, 17),
+      compactImmediate(9, 19), @[10'u8, 20]])
   if create or recreate:
-    append(code, @[registerImmediate(7, 196608), registerImmediate(8, 3),
-      registerImmediate(9, 7), registerImmediate(10, 9), registerImmediate(11, 0),
-      registerImmediate(12, if recreate: 77'u64 else: high(uint64)), @[10'u8,
-          19]]) # Recreating a prior ID is a separate explicit batch gate.
+    append(code, @[compactImmediate(7, if provideRecreated: 196641'u64 else: 196608'u64),
+      compactImmediate(8, if provideRecreated: 1'u64 else: 3'u64),
+      compactImmediate(9, 7), compactImmediate(10, 9), compactImmediate(11, 0),
+      compactImmediate(12, if recreate: 77'u64 else: high(uint64)), @[10'u8,
+          19]]) # Registrar recreation changes final membership without making the foreign replacement part of n.
+  if provideRecreated:
+    append(code, @[compactImmediate(7, 77), compactImmediate(8, 65536),
+      compactImmediate(9, 1), @[10'u8, 27]]) # The local empty replacement request is absent from the preserved prior account.
   if provide:
-    append(code, @[registerImmediate(7, 42), registerImmediate(8, 65536),
-      registerImmediate(9, 1), @[10'u8, 27]]) # Unrelated requested provision must survive the account-removal phase.
+    append(code, @[compactImmediate(7, 42), compactImmediate(8, 65536),
+      compactImmediate(9, 1), @[10'u8, 27]]) # Unrelated requested provision must survive the account-removal phase.
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(code, input)
 
@@ -102,6 +117,17 @@ proc setup(code: seq[byte], two = false, incoming = true): BatchFixture =
       extra.add(entry) # A second distinct target makes per-execution/aggregate count boundaries observable.
   batchFixture(firstEnvelope = code, secondEnvelope = guestEnvelope([@[50'u8, 0]]), extra = extra,
       incoming = incoming)
+
+# Genuine registrar authority allows the occupied prior ID only after a successful local eject.
+proc registrarSetup(code: seq[byte]): BatchFixture =
+  result = setup(code)
+  let roles = privilegeStateEntry(PrivilegeState(registrar: ServiceIndex(42), assigners: @[
+      ServiceIndex(0), ServiceIndex(0)]), pvmContextConfig().privileges).value
+  for index in 0..<result.entries.len:
+    # Change only the authored privilege row before capturing a new complete immutable prior.
+    if array[31, byte](result.entries[index].key) == array[31, byte](roles.key):
+      result.entries[index] = roles
+  result.state = newStateStore(result.entries, integrationStoreLimits()).value
 
 proc execute(fixture: BatchFixture, index = 0'u64, removed = 2'u64,
     keys = 1'u64): AccumulationDispatchResult =
@@ -118,8 +144,8 @@ proc prepare(fixture: BatchFixture, first, second: AccumulationDispatchResult,
 
 # Construct an independent full map by dropping exactly the seeded target records and applying literal credits.
 proc expected(fixture: BatchFixture, removed: seq[uint32], incoming = true, storage = false,
-    upgrade = false, created = false, provided = false): seq[StateEntry] =
-  var reclaimed = 0'u64
+    upgrade = false, created = false, provided = false, recreated = false): seq[StateEntry] =
+  var reclaimed = if recreated: 5'u64 else: 0'u64
   var removedKeys: seq[StateKey] = @[]
   for service in removed:
     let balance = if service == 77: 5'u64 elif service == 78: 6'u64 else: 20'u64
@@ -139,7 +165,8 @@ proc expected(fixture: BatchFixture, removed: seq[uint32], incoming = true, stor
             ServiceIndex(service))):
           var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
           account.balance = AccountBalance(if ordinal == 0: (
-              if incoming: 17'u64 else: 10'u64)+reclaimed-(if created: 1'u64 else: 0'u64) else: (
+              if incoming: 17'u64 else: 10'u64)+reclaimed-(if created or
+                  recreated: 1'u64 else: 0'u64) else: (
               if incoming: 31'u64 else: 20'u64))
           if ordinal == 0 and storage:
             account.storageItems = AccountStorageItems(1)
@@ -297,18 +324,89 @@ block participating_skip_conflict:
     sameRoot(state, expected(fixture, @[99'u32], incoming = incoming)) # Omitted target receives no extra credit; its prior twenty-unit balance is reclaimed exactly once.
 
 block recreate_prior_target:
-  var fixture = setup(envelope(recreate = true))
-  let roles = privilegeStateEntry(PrivilegeState(registrar: ServiceIndex(42), assigners: @[
-      ServiceIndex(0), ServiceIndex(0)]), pvmContextConfig().privileges).value
-  for index in 0..<fixture.entries.len:
-    if array[31, byte](fixture.entries[index].key) == array[31, byte](roles.key):
-      fixture.entries[index] = roles # Genuine current registrar authority permits the reserved-ID recreation locally.
-  fixture.state = newStateStore(fixture.entries, integrationStoreLimits()).value
-  let first = execute(fixture)
-  assert uint64(machineInfo(first.value.machine).value.registers[7]) == 77, "guest really recreated the ejected reserved target"
-  assert prepare(fixture, first, execute(fixture, 1)).error ==
-      AccumulationBatchError.UnsupportedAccountEffects,
-    "prior-present delete/recreate needs separate n/m conflict handling and cannot silently replace its old record"
+  for checkpoint in [false, true]:
+    for panic in [false, true]:
+      # Checkpoint precedes recreation: panic selects a real removal only when that checkpoint exists.
+      let fixture = registrarSetup(envelope(checkpoint = checkpoint, panic = panic,
+          recreate = true))
+      let first = execute(fixture)
+      let second = execute(fixture, 1)
+      assert uint64(machineInfo(first.value.machine).value.registers[7]) == 77,
+        "guest really recreated the ejected reserved target before terminal selection"
+      let recreated = not panic
+      let removed = if panic and checkpoint: @[77'u32] else: newSeq[uint32](0)
+      let plan = prepare(fixture, first, second).value
+      assert plan.batchInfo.value.deletedAccounts == removed.len and
+          plan.batchInfo.value.createdAccounts == 0,
+        "batch membership counts describe final projection rather than historical host calls"
+      let selected = plan.batchOutcomeAt(AccumulationProvisionSourceIndex(
+          0)).value.outcomeContext.value
+      assert selected.effectCreatedAccountCount.value == (if recreated: 1 else: 0),
+        "retained selected outcome still exposes exact creation provenance"
+      for reverse in [false, true]:
+        # Submission order cannot choose a different survivor or redistribute reclaimed balances.
+        let ordered = if reverse: prepare(fixture, second, first).value else: plan
+        var state = fixture.state
+        discard applyAccumulationBatch(state, ordered).value
+        sameRoot(state, expected(fixture, removed, recreated = recreated))
+
+  for variant in 0..<4:
+    # Other supported self effects must retain the same n/m membership projection.
+    let fixture = registrarSetup(envelope(recreate = true, storage = variant == 0,
+      upgrade = variant == 1, provide = variant == 2, provideRecreated = variant == 3))
+    let first = execute(fixture)
+    let second = execute(fixture, 1)
+    let plan = prepare(fixture, first, second).value
+    if variant == 3:
+      # Distinguish local provision acceptance from the later preserved-prior request check.
+      assert uint64(machineInfo(first.value.machine).value.registers[7]) == 0,
+        "provide into the recreated target really succeeds against its local empty request"
+    var state = fixture.state
+    discard applyAccumulationBatch(state, plan).value
+    sameRoot(state, expected(fixture, @[], recreated = true, storage = variant == 0,
+      upgrade = variant == 1, provided = variant == 2))
+    assert prepare(fixture, first, second, removed = 0).error ==
+        AccumulationBatchError.LimitExceeded,
+      "ignored removal facts still consume aggregate traversal capacity"
+    let shortCreation = prepareCompleteAccumulationBatch(fixture.inputs,
+      fixture.state.snapshot.value,
+      [first, second], [], slot, batchPolicy(selfWrites = 2, selfValueBytes = 2,
+        createdAccounts = 0, deletedAccounts = 1))
+    assert shortCreation.error == AccumulationBatchError.LimitExceeded,
+      "ignored recreation facts still consume aggregate creation capacity"
+
+block recreated_owner_and_failures:
+  var owned = default(PreparedAccumulationBatch)
+  var state = default(StateStore)
+  var rows: seq[StateEntry] = @[]
+  var accountRows: seq[StateEntry] = @[]
+  block sources:
+    # Drop every external execution owner before applying or injecting private-phase failures.
+    let fixture = registrarSetup(envelope(recreate = true, provide = true))
+    owned = prepare(fixture, execute(fixture), execute(fixture, 1)).value
+    rows = expected(fixture, @[], recreated = true, provided = true)
+    accountRows = expected(fixture, @[], recreated = true)
+    state = fixture.state
+  let prior = state.snapshot.value
+  failHash(1)
+  assert applyAccumulationBatch(state, owned).storeError == StateStoreError.BackendFailure,
+    "recreation projection refuses an early account-root backend failure"
+  failHash(0)
+  assert sameStateSnapshot(prior, state.snapshot.value), "early refusal preserves the exact prior"
+  discard newStateStore(accountRows, integrationStoreLimits()).value
+  let hashes = hashCalls()
+  hashAfter(hashes)
+  assert applyAccumulationBatch(state, owned).provisionError ==
+      AccumulationProvisionError.BackendFailure,
+    "late provision failure discards even a completed recreation projection"
+  failHash(0)
+  assert sameStateSnapshot(prior, state.snapshot.value), "late refusal preserves all original target entries"
+  discard applyAccumulationBatch(state, owned).value
+  sameRoot(state, rows)
+  let published = state.snapshot.value
+  assert applyAccumulationBatch(state, owned).error == AccumulationBatchError.StaleState,
+    "detached recreation plan cannot reclaim or debit a second time"
+  assert sameStateSnapshot(published, state.snapshot.value), "stale refusal preserves publication ownership"
 
 let fixture = setup(envelope(provide = true))
 let first = execute(fixture)
@@ -359,6 +457,8 @@ block detached_owner:
   assert state.snapshot.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       77))).error == StateStoreError.MissingKey, "plan retains target deletion after caller sources leave scope"
 
+let recreatedFixture = registrarSetup(envelope(recreate = true))
+let recreatedSecond = execute(recreatedFixture, 1)
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let owned = prepare(fixture, execute(fixture), second).value
@@ -366,6 +466,11 @@ for iteration in 0..<1000:
   discard applyAccumulationBatch(state, owned).value
   assert state.snapshot.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       77))).error == StateStoreError.MissingKey, "fresh execution, deletion proof and private publication owners release each cycle"
+  let recreated = prepare(recreatedFixture, execute(recreatedFixture), recreatedSecond).value
+  var retained = recreatedFixture.state
+  discard applyAccumulationBatch(retained, recreated).value
+  assert retained.snapshot.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
+      77))).error == StateStoreError.None, "fresh final-domain projection retains prior target and releases all temporary owners"
 let after = getOccupiedMem()
 assert before == after, "deleted-account publication has stable ARC ownership"
 recordArcRelease("pvm_deleted_accounts", 1000, before, after)
