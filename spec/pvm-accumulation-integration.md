@@ -32,6 +32,11 @@ These are local integration witnesses, not complete Psi_A, block publication,
 transfer-aware recursion or whole-STF parity. M1 framing is complete; full state
 serialization/accumulation parity remains open.
 
+[Outgoing collection](pvm-outgoing-collection.md) now retains terminal-selected
+transfer sequences under independent source, transfer and memo-byte ceilings.
+It preserves ordered duplicates and source ownership; account projection and
+recursive transfer execution retain their existing gates.
+
 Next bounded work: define service-scoped account-effect publication/provenance
 before removing UnsupportedAccountEffects; see the later heap adoption extension.
 
