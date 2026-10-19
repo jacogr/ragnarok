@@ -113,3 +113,16 @@ E2E behavior is unchanged and that group was not rerun locally for this state-on
 
 Incoming transfer credit before invocation. Full C(13) assembly and block-level preimage publication
 follow the complete execution pipeline; PVM integration remains independently developed.
+
+
+## Shared prepared-value application
+
+[Accumulation provision fulfillment](accumulation-provision-integration.md) reuses the exact
+`fnprovide` write kernel. `prepareProvidedPreimages` captures a canonical ordered/unique owned
+service/blob frame under the same limits and computes immutable content/request identities once.
+Its distinct `PreparedPreimageValues` owner makes no prior-solicitation or extrinsic-statistics claim
+and cannot substitute for `AdmittedPreimages`. `integrateProvidedPreimages` rechecks current requests
+and publishes the shared atomic batch. Repeated or entirely disregarded application needs no new
+hashing. Extrinsic admission still requires prior solicitation with its original error ordering,
+retained source/prior views and provided statistics. The existing published-vector replay remains
+the regression check for that path.

@@ -85,8 +85,8 @@ No E2E networking behavior changed; that independent group was not rerun locally
 
 ## Next bounded work
 
-[Provide host dispatch](pvm-accumulation-provide.md) now captures these effects from
-actual guest buffers with gas and memory ordering. Terminal normalization selects
-the retained provision set; a readable 32-byte halt return with nonempty provisions
-keeps the documented specification gate. Fulfilling selected requests and publishing
-preimages/state after accumulation remain separate work.
+[Provide host dispatch](pvm-accumulation-provide.md) captures effects from actual guest buffers.
+Terminal normalization retains its documented readable-32-byte-halt/provisions specification gate.
+The [union/fulfillment planner](accumulation-provision-integration.md) applies explicitly selected
+context sets to an explicit posterior map. Binding terminal outcomes, per-service account merges,
+later rounds and complete block publication remain subsequent work.
