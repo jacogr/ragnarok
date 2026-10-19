@@ -54,7 +54,6 @@ maximum imports, real host dispatch and fresh 1,000-cycle ARC evidence. Runtime 
 reject failed capture payload extraction; compiler guards enforce private snapshot
 storage and nominal index/limit inputs. No upstream code or vectors are copied.
 
-Fetch selectors 1–13 are implemented. Constants (0), accumulation inputs (14–15),
-complete invocation assembly and the positive gas-domain gate remain open. Next
-bounded increment: protocol-parameter fetch selector 0 with independent byte-layout
-witnesses against pinned constants.
+Fetch selectors 0–13 are implemented, with [explicit parameter configuration](pvm-fetch-parameters.md)
+for selector 0. Accumulation inputs (14–15), complete invocation assembly and the
+positive gas-domain gate remain open. Next bounded increment: accumulation-input fetch.
