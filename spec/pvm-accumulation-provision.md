@@ -16,8 +16,8 @@ retained regular effects. Inaccessible memory panics without changing r7 or eith
 Local copy/retention budgets, malformed state and backend failures remain typed local refusals.
 Checkpoint/yield retain existing semantics; no preimage fulfillment or state publication occurs.
 
-Full-width requested lengths can imply a cost larger than uint64. Charge by quotient/remainder
-subtraction before multiplication, preserving exact representable deficits even in that case.
+Full-width requested lengths can imply a cost larger than uint64. The merged dispatcher computes the full cost with bounded base-2^32 limbs and subtracts
+available gas exactly, preserving representable deficits even in that case.
 The existing machine represents terminal deficits only through `2^63`; an actual larger deficit
 must remain an explicit `GasRangeExceeded` local gate, not wrap, clamp or invent a guest outcome.
 This is an implementation boundary inherited from the signed terminal gas contract, not a new
@@ -38,16 +38,16 @@ are not full accumulation STF evidence.
 
 `executeAccumulationMachine` accepts an optional trailing `AccumulationProvisionLimits`.
 The default allows no retained items; callers accepting provisions supply finite item, per-blob
-and total-byte budgets explicitly. The general-only API retains its unsupported-call behavior.
-The effects API recognizes provide even at zero capacity; protocol refusals may still complete
+and total-byte budgets explicitly. The dispatcher requires the invoking machine’s own context
+configuration and recognizes provide even at zero capacity; protocol refusals may still complete
 without requiring another retained record. Guest-copy work is bounded by the smaller of the
 existing copy ceiling and provision per-blob ceiling. The state-effect operation independently
 checks current/new membership and aggregate bytes, reusing the existing canonical request query.
 
 `BackendFailure`, `MalformedState` and `GasRangeExceeded` remain distinct dispatcher refusals;
-none exposes CPU progress or effects. The full-width gas algorithm splits the length at 1024,
-charges the small rounded remainder, then subtracts affordable whole units before multiplication.
-It proves any positive product fits its remaining credit or representable terminal debt.
+none exposes CPU progress or effects. The full-width gas algorithm splits the cost into bounded limbs before multiplication, then
+subtracts credit with an explicit borrow. It checks the resulting debt against the signed terminal
+domain before exposing an out-of-gas response.
 The exact signed negative endpoint is accepted. A mathematical charge above uint64 still produces
 an exact guest out-of-gas result when its difference from available credit fits the machine domain.
 No modulo charge, saturation or alternate representation is accepted.
