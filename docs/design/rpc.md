@@ -3,6 +3,11 @@
 [Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
 update their feature contract rather than appending progress here.
 
+An independent `src/ui/` static HTTP listener shares the peer dispatcher and owns bounded
+connections plus an optional pinned development root. Release assets are embedded in the binary;
+`--dev-ui-dir` explicitly selects disk serving. UI activation enables RPC; RPC's
+WebSocket upgrade policy admits the enabled UI's exact loopback origins. See [UI scope](../../spec/ui.md).
+
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
 at most eight nonblocking loopback connections and bounded input/output buffers. The first
 method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Other chain queries

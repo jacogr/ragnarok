@@ -14,6 +14,7 @@ import ./integration
 import ./offload
 import ../telemetry/options
 import ../rpc/server
+import ../ui/server
 
 template progress*() {.varargs.} =
   ## Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.
@@ -46,6 +47,7 @@ type
   Peer = object
     transport: Transport
     rpc: nil ptr Server
+    ui: nil ptr UiServer
     telemetry: nil ptr Client
     incoming: IncomingAttempts
     incomingPeers: IncomingPeers
@@ -521,6 +523,11 @@ proc runPeer*(): bool {.raises.} =
     peer.expected = newSeq[byte](32)
     for i in 0..<32: peer.expected[i] = byte(text[i]) # Copy public identity bytes, not PEM strings.
   if not server and peer.expected.len != 32: return false # Every dialer pins the server identity.
+  var ui = default(UiServer)
+  defer: ui.close() # Static listener and file descriptors retire with the peer session.
+  if not ui.start(uiPort(), devUiDirectory()):
+    stderr.writeLine("Invalid UI listener or --dev-ui-dir")
+    return false
   var rpc = default(Server)
   defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
   let chainText = loadChainText() # One bounded startup snapshot feeds both optional services.
@@ -591,6 +598,7 @@ proc runPeer*(): bool {.raises.} =
         peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
     telemetry.observe(telemetryPeers)
     rpc.tick(telemetryPeers) # Each turn performs bounded, nonblocking RPC work.
+    ui.tick() # A separate HTTP listener shares the bounded dispatcher cadence.
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
     if peer.service:
@@ -828,6 +836,8 @@ proc meshPoll(incoming, outgoing: var Peer): bool =
         0: 1'u32 else: 0'u32
     let rpcServer = incoming.rpc
     if rpcServer != nil: rpcServer[].tick(peers) # Re-establish the borrow after mutable transport queries.
+  let uiServer = incoming.ui # Re-establish a stable borrow for Nimony nil checking.
+  if uiServer != nil: uiServer[].tick() # One static HTTP owner serves the retained pair.
   observeMesh(incoming, outgoing) # Final counter changes remain observable even if polling reports failure.
 
 proc runMesh*(): bool {.raises.} =
@@ -854,6 +864,11 @@ proc runMesh*(): bool {.raises.} =
   defer: dispatcher.close() # Both borrowed endpoint registrations retire first, in reverse defer order.
   var incoming = Peer(server: true, mesh: true, expected: expected, attack: "valid")
   var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
+  var ui = default(UiServer)
+  defer: ui.close() # Static listener and file descriptors retire with the peer session.
+  if not ui.start(uiPort(), devUiDirectory()):
+    stderr.writeLine("Invalid UI listener or --dev-ui-dir")
+    return false
   var rpc = default(Server)
   defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
   let chainText = loadChainText() # One bounded startup snapshot feeds both optional services.
@@ -890,6 +905,7 @@ proc runMesh*(): bool {.raises.} =
     if not observeHandshakes(incoming.transport, onHandshake) or
         not observePeers(incoming.transport, onPeer): return false # Defer retires partial observer setup.
     telemetry.observe(0) # Registration precedes queued lifecycle events from either engine.
+  incoming.ui = addr ui # Same stable local lifetime as the RPC owner.
   incoming.rpc = addr rpc # Borrow ends with the local mesh dispatcher; no callback retains it.
   progress "MESH_READY ", int(initiator)
   var authenticatedIn, authenticatedOut = 0'u64

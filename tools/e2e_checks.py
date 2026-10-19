@@ -106,7 +106,9 @@ def rpc(context):
     if compiled['exit_code'] == 0:
         from rpc_checks import run as rpc_checks, parameter_checks
         try:
-            observed = rpc_checks(binary, quic_fixtures, BUILD/'rpc')
+            observed = rpc_checks(binary, quic_fixtures, BUILD/'rpc', ui=True)
+            observed['development_ui'] = rpc_checks(binary, quic_fixtures, BUILD/'rpc-dev-ui', ui=True, dev_ui=True)
+            observed['passed'] &= observed['development_ui']['passed']
             observed['parameters'] = parameter_checks(binary, quic_fixtures, BUILD/'rpc-parameters')
             observed['passed'] &= observed['parameters']['passed']
         except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:

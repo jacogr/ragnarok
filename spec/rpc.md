@@ -6,9 +6,11 @@ sections 4â€“6; [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455), sections 4â€
 
 ## Usage and implemented scope
 
-Append `--rpc-port 19800` to an existing `build/ragnarok server`, `client`, or `mesh` invocation.
-The endpoint is `ws://127.0.0.1:19800/`. RPC is disabled when the flag is absent; an invalid port,
-duplicate flag, or failed listener bind fails startup. It is independent of `--telemetry` / `--chain`.
+Append `--with-rpc --rpc-port 19800` to an existing `build/ragnarok server`, `client`, or `mesh` invocation.
+The endpoint is `ws://127.0.0.1:19800/`. RPC is disabled unless `--with-rpc` or `--with-ui`
+is present; an invalid port, duplicate flag, or failed listener bind fails startup. The enabled
+default port is 19800. Port configuration alone does not enable RPC.
+Telemetry has its own `--with-telemetry` switch.
 The endpoint lives for the lifetime of the existing proof-peer session. It adds no standalone
 node daemon or chain execution. An explicit genesis pair initializes the read-only view below.
 
@@ -44,7 +46,7 @@ validated importer calls that boundary. Finalized queries require a finality sou
 
 ## `parameters()` and startup configuration
 
-Append `--chain /path/to/chain.json` alongside `--rpc-port 19800`. `--chain` may serve RPC
+Append `--chain /path/to/chain.json` alongside `--with-rpc --rpc-port 19800`. `--chain` may serve RPC
 without telemetry; telemetry still requires it. Startup reads one bounded file snapshot for both
 services. RPC requires one `protocol_parameters` string with exactly 244 unprefixed hexadecimal
 characters, decoding the 122-byte GP 0.8.0 `fetch(0)` tuple. Both hex letter cases are accepted.
@@ -272,8 +274,9 @@ service map after startup file mutation. A `rpc_` compiler probe protects the pr
 ## Protocol and bounds
 
 Only WebSocket version 13 is supported; HTTP is used solely for the RFC 6455 upgrade handshake.
-POST bodies are never dispatched as RPC. The endpoint accepts local non-browser tooling:
-Origin-bearing requests are rejected. TLS, remote binding, browser Origin configuration,
+POST bodies are never dispatched as RPC. Non-browser tooling may omit Origin. With `--with-ui`,
+only the enabled UI origins described in [UI scope](ui.md) are accepted for browser upgrades.
+Other Origin-bearing requests are rejected. TLS, remote binding, arbitrary browser origins,
 compression, binary messages and subprotocol negotiation are outside this increment.
 
 Input JSON is validated strictly before dispatch, including number spelling, object keys,
