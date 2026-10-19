@@ -1,0 +1,16 @@
+{
+  "source": "tests/native/accumulation_driver_results.nim",
+  "build_name": "accumulation-driver-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-driver-default", "diagnostic": "outcome.status == None", "description": "Driver default selected extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-driver-refused", "diagnostic": "outcome.status == None", "description": "Driver refused selected extraction guard"},
+    {"identity": {"reason": "selection"}, "arguments": ["selection"], "name": "accumulation-driver-selection", "diagnostic": "outcome.status == SelectionFailure", "description": "Driver selection selected extraction guard"},
+    {"identity": {"reason": "input"}, "arguments": ["input"], "name": "accumulation-driver-input", "diagnostic": "outcome.status == InputFailure", "description": "Driver input selected extraction guard"},
+    {"identity": {"reason": "continuation"}, "arguments": ["continuation"], "name": "accumulation-driver-continuation", "diagnostic": "outcome.status == ContinuationFailure", "description": "Driver continuation selected extraction guard"},
+    {"identity": {"reason": "preparation"}, "arguments": ["preparation"], "name": "accumulation-driver-preparation", "diagnostic": "outcome.status == ReentryPreparationFailure", "description": "Driver preparation selected extraction guard"},
+    {"identity": {"reason": "execution"}, "arguments": ["execution"], "name": "accumulation-driver-execution", "diagnostic": "outcome.status == ReentryExecutionFailure", "description": "Driver execution selected extraction guard"},
+    {"identity": {"reason": "stopped-continuation"}, "arguments": ["stopped-continuation"], "name": "accumulation-driver-stopped-continuation", "diagnostic": "source.selection == Continuation", "description": "Driver stopped-continuation extraction guard"},
+    {"identity": {"reason": "stopped-reentry"}, "arguments": ["stopped-reentry"], "name": "accumulation-driver-stopped-reentry", "diagnostic": "source.selection == Reentry", "description": "Driver stopped-reentry extraction guard"}
+  ]
+}
