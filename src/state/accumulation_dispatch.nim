@@ -936,6 +936,53 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Includes nonrepresentable footprint counters.
   hostSuccess[AccumulationDispatchError](response)
 
+# Forget charges before full-width length validation, fixed hash capture and current-self mutation.
+proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 3250, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve the shared signed-debt representation contract.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No validation, memory, namespace or expiry work before affordability.
+  let length = uint64(cpu.registers[8])
+  if length > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-8)
+    return hostSuccess[AccumulationDispatchError](response) # HUH precedes memory/copy policy and retains r8.
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # Complete fixed hash capture authorizes exact current-self lookup only.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic
+    return hostSuccess[AccumulationDispatchError](
+        response) # Charged memory panic leaves both original registers and effects unchanged.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Explicit capture policy cannot impersonate guest panic or HUH.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no hash.
+  var hash = default(array[32, byte])
+  for i in 0..<32:
+    hash[i] = captured.value[i] # Fixed independent input cannot alias guest memory in a published owner.
+  let changed = recordAccumulationForget(context.effects, ServicePreimageHash(hash), RequestLength(
+      uint32(length)), context.parameters)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value
+    response.registers[7] = RegisterValue(0) # OK publishes complete removal or replacement.
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH covers missing or insufficiently aged requests.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Malformed histories/footprints have no fabricated guest verdict.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Inherited store capacity is a local refusal.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No partially forgotten account survives hashing failure.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Other invariant failures expose no effects.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -984,9 +1031,11 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     queryResponse(context, cpu, memory) # Exact current-self request history packed into two registers.
   of 24:
     solicitResponse(context, cpu, memory) # Create or restore a funded request under exact current invocation provenance.
+  of 25:
+    forgetResponse(context, cpu, memory) # Forget or retire a current request under exact invocation-time rules.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 25:
+  of 1:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
