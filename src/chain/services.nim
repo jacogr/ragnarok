@@ -18,36 +18,37 @@ export RequestHistory, RequestLength, RequestState, state, since, availableFrom,
 const MaxServiceKeyBytes* = 4096 ## Bound raw storage-key hashing independently of JSON input limits.
 
 type
-  ## Missing data is distinct from a malformed account, resource limit or native hash failure.
-  ServiceReadError* {.pure.} = enum
+  ServiceReadError* {.pure.} = enum ## Missing data is distinct from a malformed account, resource limit or native hash failure.
     Uninitialized, None, Missing, Malformed, LimitExceeded, BackendFailure, AmbiguousNamespace
-  ## Only complete success contains an owner-bound immutable value view.
-  ServiceReadResult* = object
+  ServiceReadResult* = object ## Only complete success contains an owner-bound immutable value view.
     case status: ServiceReadError
     of None:
       completed: StateValue
     else:
-      discard # A missing or failed lookup cannot masquerade as a present empty blob.
+      discard                 # A missing or failed lookup cannot masquerade as a present empty blob.
 
-  ## Request histories contain only fixed copied timestamps; absence is never a default empty history.
-  ServiceRequestResult* = object
+  ServiceRequestResult* = object ## Request histories contain only fixed copied timestamps; absence is never a default empty history.
     case status: ServiceReadError
     of None:
       completed: RequestHistory
     else:
       discard # Failure/absence carries no history payload.
 
-## Inspect request lookup status without permitting result retagging.
-func error*(value: ServiceRequestResult): ServiceReadError = value.status
-## Return a fixed independent history only after successful lookup and complete decoding.
+func error*(value: ServiceRequestResult): ServiceReadError =
+  ## Inspect request lookup status without permitting result retagging.
+  value.status
 func value*(value: ServiceRequestResult): RequestHistory {.requires: value.status ==
-    ServiceReadError.None.} = value.completed
+    ServiceReadError.None.} =
+  ## Return a fixed independent history only after successful lookup and complete decoding.
+  value.completed
 
-## Inspect the read reason without granting mutation or access to a failed payload.
-func error*(value: ServiceReadResult): ServiceReadError = value.status
-## Extract only a successful immutable view; bytes() returns an independent copy.
+func error*(value: ServiceReadResult): ServiceReadError =
+  ## Inspect the read reason without granting mutation or access to a failed payload.
+  value.status
 func value*(value: ServiceReadResult): StateValue {.requires: value.status ==
-    ServiceReadError.None.} = value.completed
+    ServiceReadError.None.} =
+  ## Extract only a successful immutable view; bytes() returns an independent copy.
+  value.completed
 
 ## Find one serialized entry and check its size before any value copy or Base64 allocation.
 proc read(view: Genesis, key: StateKey, limit: ByteLimit): ServiceReadResult =
@@ -62,8 +63,8 @@ proc read(view: Genesis, key: StateKey, limit: ByteLimit): ServiceReadResult =
     return ServiceReadResult(status: ServiceReadError.LimitExceeded) # Apply caller's response budget before copying.
   ServiceReadResult(status: ServiceReadError.None, completed: found.value)
 
-## Read the exact version-zero C(255, service) account record, rejecting malformed imported metadata.
 proc serviceData*(view: Genesis, service: ServiceIndex, limit: ByteLimit): ServiceReadResult =
+  ## Read the exact version-zero C(255, service) account record, rejecting malformed imported metadata.
   let found = read(view, chapterServiceKey(StateChapter(255), service), ByteLimit(ServiceMetadataBytes))
   if found.error != ServiceReadError.None:
     return found # An absent account is null; oversized or otherwise unreadable metadata is an error.
@@ -75,9 +76,9 @@ proc serviceData*(view: Genesis, service: ServiceIndex, limit: ByteLimit): Servi
     return ServiceReadResult(status: ServiceReadError.LimitExceeded) # The account also obeys the per-response allowance.
   found
 
-## Read a raw storage value using the maintained E4(uint32-max) namespace constructor.
 proc serviceValue*(view: Genesis, service: ServiceIndex, key: openArray[byte],
     limit: ByteLimit): ServiceReadResult =
+  ## Read a raw storage value using the maintained E4(uint32-max) namespace constructor.
   let account = serviceData(view, service, ByteLimit(ServiceMetadataBytes))
   if account.error != ServiceReadError.None: return account # An orphan keyed entry does not establish a service.
   if key.len > MaxServiceKeyBytes: return ServiceReadResult(
@@ -87,9 +88,9 @@ proc serviceValue*(view: Genesis, service: ServiceIndex, key: openArray[byte],
     return ServiceReadResult(status: ServiceReadError.BackendFailure) # No guessed key after native hashing failure.
   read(view, derived.value, limit)
 
-## Read and verify a bounded preimage from the E4(uint32-max-1) namespace.
 proc servicePreimage*(view: Genesis, service: ServiceIndex, hash: ServicePreimageHash,
     limit: ByteLimit): ServiceReadResult =
+  ## Read and verify a bounded preimage from the E4(uint32-max-1) namespace.
   let account = serviceData(view, service, ByteLimit(ServiceMetadataBytes))
   if account.error != ServiceReadError.None: return account # Only an existing structurally valid account can supply data.
   let derived = servicePreimageKey(service, hash, ByteLimit(32))
@@ -104,10 +105,10 @@ proc servicePreimage*(view: Genesis, service: ServiceIndex, hash: ServicePreimag
     return ServiceReadResult(status: ServiceReadError.Malformed) # Imported opaque maps may contain inconsistent preimages.
   found
 
-## Read a fixed request history from the maintained full-E4 request namespace, without length-sized allocation.
-## GP 0.8.0 marker lengths remain valid inputs, but present colliding keys cannot be classified safely.
 proc serviceRequest*(view: Genesis, service: ServiceIndex, hash: ServicePreimageHash,
     length: RequestLength): ServiceRequestResult =
+  ## Read a fixed request history from the maintained full-E4 request namespace, without length-sized allocation.
+  ## GP 0.8.0 marker lengths remain valid inputs, but present colliding keys cannot be classified safely.
   let account = serviceData(view, service, ByteLimit(ServiceMetadataBytes))
   if account.error != ServiceReadError.None:
     return ServiceRequestResult(status: account.error) # An absent account cannot supply request state.
