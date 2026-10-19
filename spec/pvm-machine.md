@@ -133,4 +133,6 @@ No standalone official PVM execution corpus is claimed by these tests. The pinne
 execution-vector gap described in `pvm-program.md` remains. The separate
 [single-step executor](pvm-step.md) now integrates memory instructions, gas charging
 and fault repair/retry while preserving the explicit wrapping-access gate.
-Standard initialization, host functions and complete JAM invocation remain open.
+[Host byte-range access](pvm-host-memory.md) separately provides bounded natural-interval
+reads and atomic writes; it preserves scalar instruction semantics. Standard initialization
+and host dispatch have separate contracts; concrete host functions and complete JAM invocation remain open.
