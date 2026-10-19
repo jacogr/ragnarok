@@ -7,10 +7,10 @@
 import std/assertions
 import ../../src/chain/parameters
 import ../../src/state/[accumulation_invocation, accumulation_service, accumulation_inputs,
-  accumulation_operands, accumulation_queue, store]
+  accumulation_operands, accumulation_queue, accumulation_context, store]
 import ../../src/codec/[bounded, composite, header, state_safrole, state_privileges,
   state_workqueues, state_accounts, state_service_values, state_trie, work_report, report_owned,
-  work_digest, c2_records]
+  work_digest, c2_records, assurances, state_authorization, state_layout]
 import ../../src/crypto/primitives
 
 ## Build a small envelope with one RO byte, one RW byte, extra heap page and one-byte stack request.
@@ -22,12 +22,22 @@ proc pvmEnvelope*(raw: openArray[byte] = [0'u8, 0, 7, 0, 0, 0, 0, 0, 50, 0, 63])
   for octet in raw:
     result.add(octet) # Raw program bytes include their own framing and opcode mask.
 
+## Coherent tiny-profile chapter and aggregate ceilings for the accumulation dispatcher.
+proc pvmContextConfig*(): AccumulationContextConfig =
+  AccumulationContextConfig(validators: ValidatorCount(6),
+    queues: AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
+      maxBytes: ByteLimit(5120)),
+    staging: ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
+      maxBytes: ByteLimit(2017)),
+    privileges: PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(0),
+      maxBytes: ByteLimit(100)), totalBytes: ByteLimit(10000))
+
 ## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
 ## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
 proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     operandCount = 0, serviceId = 42'u32,
     entropy: StateEntropyWord = default(StateEntropyWord),
-    precedingService = false): PreparedAccumulationInvocation =
+    precedingService = false, includeContexts = false): PreparedAccumulationInvocation =
   assert operandCount >= 0 and operandCount <= 16
   var reports: seq[OwnedReport] = @[]
   if operandCount > 0:
@@ -66,11 +76,20 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
   for octet in code:
     preimage.add(octet) # Zero-length service metadata precedes the entire JAM code envelope.
   let hash = array[32, byte](blake2b256(preimage).value)
-  let entries = [serviceMetadataEntry(ServiceIndex(serviceId), ServiceMetadata(codeHash: CodeHash(hash)),
+  var entries = @[serviceMetadataEntry(ServiceIndex(serviceId), ServiceMetadata(codeHash: CodeHash(hash)),
     ByteLimit(89)).value,
     servicePreimageEntry(ServiceIndex(serviceId), ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(preimage.len))).value]
-  let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(2),
+  if includeContexts:
+    # Actual canonical chapters authorize initial I; missing state must never be silently substituted.
+    let config = pvmContextConfig()
+    entries.add(authorizationEntry(AuthorizationKind.Queues,
+      @[newSeq[AuthorizerHash](80), newSeq[AuthorizerHash](80)], config.queues).value)
+    entries.add(validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6),
+        config.staging).value)
+    entries.add(privilegeStateEntry(PrivilegeState(assigners: @[ServiceIndex(0), ServiceIndex(0)]),
+      config.privileges).value)
+  let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(5),
     perValue: ByteLimit(10000), totalValueBytes: ByteLimit(20000), nodes: TrieNodeLimit(1000)),
     writes: ElementLimit(2), writeValueBytes: ByteLimit(20000))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(
