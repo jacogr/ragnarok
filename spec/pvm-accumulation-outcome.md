@@ -14,9 +14,8 @@ return blobs. Preserve post-credit account/provenance owners and do not publish 
 
 The pinned hash-return branch names `imXY`'s provisions, although `imXY` is a pair
 and provisions belong to its individual dimensions. Do not infer which dimension
-was intended. Current dispatch cannot add provisions; both dimensions have empty
-sets. Require both sets empty for this branch, returning a typed
-`AmbiguousProvisions` gate otherwise. A focused pending specification test records
+was intended. The hash-return branch requires both provision sets to be empty,
+returning a typed `AmbiguousProvisions` gate otherwise. A focused pending specification test records
 that nonempty-provision semantics remain unresolved; no pin upgrade is implied.
 
 Completion tests exercise actual guest halt/panic/fault/OOG histories, checkpoint
@@ -61,7 +60,9 @@ six-group local verification and Linux CI are not claimed.
 ## Remaining boundary
 
 This completes normalization for the dispatcher's currently implemented host scope,
-not full Psi_A, authenticated block execution or persistent publication. The next
-bounded host tranche can connect provide (27) to existing requested-provision state
-effects, retaining the nonempty hash-return gate until its specification decision.
-Grow-heap and the remaining account/accumulation host calls stay separate.
+not full Psi_A, authenticated block execution or persistent publication.
+The [provide host tranche](pvm-accumulation-provide.md) connects call 27 to existing
+requested-provision effects. Actual nonempty sets can be normalized on other return
+branches; the hash-return gate remains until its specification decision. Remaining
+account/accumulation host calls, grow_heap and selected-provision publication remain
+separate work.

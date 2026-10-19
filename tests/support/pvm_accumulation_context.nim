@@ -37,7 +37,7 @@ proc pvmContextConfig*(): AccumulationContextConfig =
 proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     operandCount = 0, serviceId = 42'u32,
     entropy: StateEntropyWord = default(StateEntropyWord),
-    precedingService = false, includeContexts = false): PreparedAccumulationInvocation =
+    precedingService = false, includeContexts = false, extra: seq[StateEntry] = @[]): PreparedAccumulationInvocation =
   assert operandCount >= 0 and operandCount <= 16
   var reports: seq[OwnedReport] = @[]
   if operandCount > 0:
@@ -89,7 +89,11 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
         config.staging).value)
     entries.add(privilegeStateEntry(PrivilegeState(assigners: @[ServiceIndex(0), ServiceIndex(0)]),
       config.privileges).value)
-  let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(5),
+  assert extra.len <= 64 # Keep all test-only extent additions below native and trie policy ceilings.
+  for entry in extra:
+    entries.add(entry) # Capture requests/other targets into the same complete map before preparing the bootstrap.
+  let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(
+      5+extra.len),
     perValue: ByteLimit(10000), totalValueBytes: ByteLimit(20000), nodes: TrieNodeLimit(1000)),
     writes: ElementLimit(2), writeValueBytes: ByteLimit(20000))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(
