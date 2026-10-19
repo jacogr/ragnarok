@@ -107,5 +107,6 @@ binary fixtures are copied.
 Opcode execution is implemented within the existing explicit specification gates.
 This is not complete JAM invocation or a claim of unrestricted PVM conformance.
 Standard program/memory initialization is implemented by the separate
-[initialization adapter](pvm-initialization.md); host functions and JAM-specific
+[initialization adapter](pvm-initialization.md), and trusted posterior host state can be
+applied through [host-response application](pvm-host-response.md); host functions and JAM-specific
 invocation wrappers remain separate work.

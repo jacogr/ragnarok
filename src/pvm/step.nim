@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 charged single steps and bounded execution; see spec/pvm-step.md.
-## Exposes scoped stepRegisters/stepControl/stepMemory, complete stepOnce and bounded execute.
+## Exposes scoped stepRegisters/stepControl/stepMemory, complete stepOnce, bounded execute,
+## and applyHostResponse for trusted nonnegative-gas host transitions.
 ## Guarded StepResult snapshots expose read-only exit and selected faultPage/hostCall metadata.
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
 
@@ -26,13 +27,25 @@ type
     of Host:
       # The sign-extended instruction immediate retains its complete register-width bit pattern.
       callNumber: HostCallId
+      # Bind the suspension to its causing PC, including adjacent identical host calls.
+      callAddress: CodeAddress
     else:
       # Normal, terminal and gas outcomes have no fault metadata.
       discard
+  # Host continuations and terminal requests are separate from guest fault/host suspension reasons.
+  HostAction* {.pure.} = enum
+    Uninitialized, Continue, Halt, Panic, OutOfGas
+  # A trusted host supplies posterior gas/registers/memory; it cannot choose PC, code or charged flag.
+  # Memory remains an immutable retained owner, while registers are copied by value.
+  HostResponse* = object
+    action*: HostAction
+    gas*: MachineGas
+    registers*: RegisterFile
+    memory*: Memory
   # Local scope/resource/specification failures are distinct from guest execution outcomes.
   StepError* {.pure.} = enum
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
-    NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded
+    NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension, InvalidHostResponse
   # Failed/default alternatives carry only their reason; no partial machine or charge escapes.
   StepResult* = object
     case status: StepError
@@ -58,7 +71,56 @@ func faultPage*(outcome: StepOutcome): PageAddress {.requires: outcome.kind == S
 func hostCall*(outcome: StepOutcome): HostCallId {.requires: outcome.kind == StepExit.Host.} =
   outcome.callNumber
 
-# Exact load/store instruction set; host calls remain outside this increment.
+# Apply Psi_H's posterior host state to a recursive execute suspension at its causing ecalli.
+# The host has already selected its action and gas; this function invokes no host or guest work.
+proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepResult =
+  # Only recursive Host suspensions are valid inputs, never fault repair or terminal normalization.
+  if suspension.exit != StepExit.Host:
+    return StepResult(status: StepError.InvalidHostSuspension)
+  let original = machineInfo(suspension.machine)
+  let program = programOf(suspension.machine)
+  if original.error != MachineError.None or program.error != MachineError.None:
+    # Public outcome handles may be replaced by callers; never dereference invalid machine roots.
+    return StepResult(status: StepError.InvalidMachine)
+  if uint64(original.value.pc) != uint64(suspension.callAddress):
+    # Single-step Host carries the following PC, even when it names an identical ecalli.
+    return StepResult(status: StepError.InvalidHostSuspension)
+  let item = instruction(program.value, original.value.pc)
+  if item.error != ProgramError.None:
+    # A terminal/import PC outside executable code cannot authorize a host response.
+    return StepResult(status: StepError.InvalidHostSuspension)
+  if item.value.opcode != 10 or uint64(item.value.x) != uint64(suspension.hostCall):
+    # Keep the causing instruction and its full-width host identifier consistent.
+    return StepResult(status: StepError.InvalidHostSuspension)
+  var info = original.value
+  info.gas = response.gas
+  info.registers = response.registers
+  var exit = StepExit.Continued
+  case response.action
+  of HostAction.Continue:
+    # The validated instruction bounds PC and skip; retain the existing block's charged flag.
+    info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.value.skip))
+  of HostAction.Halt:
+    # A host terminal exit retains the ecalli PC, unlike a guest halt normalized by execute.
+    exit = StepExit.Halt
+  of HostAction.Panic:
+    # Host panic likewise retains all posterior state and the causing host-call PC.
+    exit = StepExit.Panic
+  of HostAction.OutOfGas:
+    # The trusted host supplies its posterior unsigned gas; do not fabricate a charge or clamp it.
+    exit = StepExit.OutOfGas
+  of HostAction.Uninitialized:
+    # A default response is not an implicit continuation with zeroed registers or gas.
+    return StepResult(status: StepError.InvalidHostResponse)
+  let captured = (if exit == StepExit.Continued:
+    captureMachine(program.value, response.memory, info)
+    else: captureTerminalMachine(program.value, response.memory, info))
+  if captured.error != MachineError.None:
+    # Invalid response memory publishes no partially applied host mutation.
+    return StepResult(status: StepError.InvalidHostResponse)
+  StepResult(status: StepError.None, completed: StepOutcome(kind: exit, machine: captured.value))
+
+# Exact scalar load/store instruction set; host response application executes no instruction.
 func memoryOpcode(opcode: byte): bool =
   opcode in {30'u8..33'u8, 52'u8..62'u8, 70'u8..73'u8, 120'u8..130'u8}
 
@@ -336,7 +398,7 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   if outcome == StepExit.Host:
     # Keep the full decoded immediate, including negative compact encodings, in its nominal domain.
     return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.Host,
-      machine: updated.value, callNumber: HostCallId(uint64(item.x))))
+      machine: updated.value, callNumber: HostCallId(uint64(item.x)), callAddress: item.address))
   StepResult(status: StepError.None,
     completed: StepOutcome(kind: outcome, machine: updated.value))
 
