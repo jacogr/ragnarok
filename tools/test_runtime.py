@@ -168,6 +168,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_memory_step')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_execution')
+    # Fetch local refusals must not expose a completed host response.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
     # Host dispatch and shared instruction budgets never expose failed execution payloads.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_execution')
     # Terminal gas deficits cannot bypass canonical state or success selection.

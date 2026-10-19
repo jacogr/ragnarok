@@ -1,0 +1,50 @@
+{
+  "source": "tests/native/pvm_fetch_results.nim",
+  "build_name": "pvm-fetch-results",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-fetch-default",
+      "diagnostic": "r.status == None",
+      "description": "Fetch failure payload default"
+    },
+    {
+      "identity": {
+        "reason": "selector"
+      },
+      "arguments": [
+        "selector"
+      ],
+      "name": "pvm-fetch-selector",
+      "diagnostic": "r.status == None",
+      "description": "Fetch failure payload selector"
+    },
+    {
+      "identity": {
+        "reason": "memory"
+      },
+      "arguments": [
+        "memory"
+      ],
+      "name": "pvm-fetch-memory",
+      "diagnostic": "r.status == None",
+      "description": "Fetch failure payload memory"
+    },
+    {
+      "identity": {
+        "reason": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-fetch-limit",
+      "diagnostic": "r.status == None",
+      "description": "Fetch failure payload limit"
+    }
+  ]
+}
