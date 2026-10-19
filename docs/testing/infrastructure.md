@@ -21,6 +21,17 @@ coverage and the existing primary link profile. Library/include/observer arrays 
 explicit order. Discovery does not schedule suites: execution remains owned by the inventory.
 `make check-inventory` loads these profiles before provisioning. New suites add their own file;
 no shared manifest entry or central provenance-path addition is needed.
+
+For `make unit SUITE=<name>`, the native launcher selects those requirements before preparing
+libraries or generated fixtures. Only requested library-provider families run; shared production/
+observer outputs still come from their existing provider. Static fixtures retain their checked-in
+hash contracts. Prepared suites use their existing feature provider and keep only the selected
+manifest, including every required byte source. QUIC transport prepares certificate inputs;
+QUIC integration prepares CE/reload inputs independently. Missing selected providers or manifests
+fail before execution. With no suite selected, aggregate provider order, nested fixture evidence
+and full-suite execution remain unchanged. Make still provisions the pinned toolchain and sources.
+Standalone preparation records both PVM gas and stepping evidence, including in full runs.
+
 `tools/native_fixtures.py` separates schedule, markers, authentication, transition, commitment,
 admission, disputes and availability preparation. Its aggregate entry point preserves the
 historical preparation order and nested sealer evidence schema; each feature can also be

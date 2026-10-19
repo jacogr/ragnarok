@@ -252,7 +252,7 @@ def main():
         if not profile['libraries'] and not profile['prepared']:
             run_units(compiler, {}, {}, arguments.suite)
             return
-    from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures
+    from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures, prepare_selected_fixture
     folder = ROOT/'build/tests/native/preparation'
     folder.mkdir(parents=True, exist_ok=True)
     # Preserve filenames and immediate progress logs when a later preparation stage fails.
@@ -260,6 +260,8 @@ def main():
         'crypto_native': 'preparation',
         'bandersnatch_native': 'bandersnatch-preparation',
         'quic_native': 'quic-preparation',
+        'pvm_gas_fixture': 'pvm-gas-preparation',
+        'pvm_step_fixture': 'pvm-step-preparation',
         'store_replay_fixture': 'store-preparation',
         'authorization_stf_fixture': 'authorization-preparation',
         'history_stf_fixture': 'history-preparation',
@@ -269,9 +271,21 @@ def main():
         'sealer_stf_fixture': 'sealer-preparation',
         'validator_stf_fixture': 'validator-preparation',
     }
+    if arguments.suite is not None:
+        # Selection is validated by argparse and may own fresh evidence without overwriting sibling observations.
+        evidence_files['selected_unit_fixture'] = 'selected-'+arguments.suite+'-preparation'
     # Write each completed stage before shared preparation starts the next potentially failing one.
     def record(name, evidence):
         (folder/(evidence_files[name]+'.json')).write_text(json.dumps(evidence, indent=2)+'\n')
+    if arguments.suite is not None:
+        # Library and fixture requirements are selected before any provider or integration corpus runs.
+        libraries, certificates, _ = prepare_libraries(folder, record, required=profile['libraries'])
+        fixtures = {}
+        if profile['prepared']:
+            # Checked-in static fixtures still come from UNIT_FIXTURES; generate only declared fresh inputs.
+            fixtures, _ = prepare_selected_fixture(folder, arguments.suite, certificates, record)
+        run_units(compiler, libraries, fixtures, arguments.suite)
+        return
     libraries, certificates, _ = prepare_libraries(folder, record)
     wires, reload, _ = prepare_integration(folder)
     fixtures, _ = prepare_unit_fixtures(folder, certificates, wires, reload, record)

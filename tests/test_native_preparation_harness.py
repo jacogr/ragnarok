@@ -103,6 +103,96 @@ class NativePreparationHarness(unittest.TestCase):
         self.assertEqual(list(fixtures), ['runtime', *names])
         self.assertEqual(evidence, {key: {'fixture_sha256': name} for key, name in zip(keys, names)})
 
+    # Required profiles select provider families before native builds and expose only requested library names.
+    def test_selected_library_providers(self):
+        cases = [([], (), {}), (['observer'], ('crypto',), {'observer': 'observed'}),
+                 (['bandersnatch'], ('bs',), {'bandersnatch': 'bs'}),
+                 (['quic'], ('quic',), {'quic': 'quic'}),
+                 (['bandersnatch_observer', 'crypto'], ('crypto', 'bs'),
+                  {'bandersnatch_observer': 'bs-observed', 'crypto': 'crypto'})]
+        for required, expected, wanted in cases:
+            # Provider calls and retained evidence independently reveal accidental unrelated setup.
+            with self.subTest(required=required), patch('nimony_crypto.prepare',
+                    return_value=('crypto', 'observed', {'id': 'crypto'})) as crypto, patch(
+                    'bandersnatch_native.prepare', return_value=('bs', 'bs-observed', {'id': 'bs'})) as bs, patch(
+                    'nimony_quic.prepare', return_value=('quic', 'certs', {'id': 'quic'})) as quic:
+                recorded = []
+                libraries, certificates, evidence = native_preparation.prepare_libraries(
+                    Path('/fixture'), lambda name, value: recorded.append((name, value)), required=required)
+                self.assertEqual(libraries, wanted)
+                self.assertEqual(tuple(name for name, mock in [('crypto', crypto), ('bs', bs), ('quic', quic)] if mock.called), expected)
+                self.assertEqual(certificates, 'certs' if 'quic' in expected else None)
+                self.assertEqual(dict(recorded), evidence)
+                self.assertEqual(len(evidence), len(expected))
+
+    # Bad dependency names fail before providers can publish evidence or create foreign resources.
+    def test_unknown_library_provider(self):
+        with patch('nimony_crypto.prepare') as crypto, patch('bandersnatch_native.prepare') as bs, patch('nimony_quic.prepare') as quic:
+            with self.assertRaisesRegex(ValueError, 'Unknown native library'):
+                native_preparation.prepare_libraries(Path('/fixture'), required=['typo'])
+            for provider in (crypto, bs, quic):
+                # One provider must not run merely because a different name was valid.
+                provider.assert_not_called()
+
+    # Every prepared suite has exactly one selection, independently checked against the suite requirements.
+    def test_selected_fixture_coverage_and_isolation(self):
+        import native_fixtures
+        from native_requirements import NATIVE_REQUIREMENTS
+        actual = [suite for suites in native_preparation.SELECTED_FIXTURE_GROUPS.values() for suite in suites]
+        expected = {suite for suite, profile in NATIVE_REQUIREMENTS.items() if profile['prepared']}
+        self.assertEqual(len(actual), len(set(actual)))
+        self.assertEqual(set(actual) | {'quic_transport', 'quic_integration'}, expected)
+        for group, suites in native_preparation.SELECTED_FIXTURE_GROUPS.items():
+            for suite in suites:
+                # The chosen provider may share sibling fixtures but only the requested manifest escapes.
+                with self.subTest(suite=suite), ExitStack() as stack:
+                    providers = {name: stack.enter_context(patch.object(native_fixtures, 'unit_'+name+'_fixture'))
+                                 for name in native_preparation.SELECTED_FIXTURE_GROUPS}
+                    manifests = {name: ('env', Path('/fixture')/name, ()) for name in suites}
+                    providers[group].return_value = manifests, {'sha': suite}
+                    recorded = []
+                    fixtures, evidence = native_preparation.prepare_selected_fixture(Path('/fixture'), suite,
+                        record=lambda name, value: recorded.append((name, value)))
+                    self.assertEqual(fixtures, {suite: manifests[suite]})
+                    self.assertEqual(evidence, {'sha': suite})
+                    self.assertEqual(recorded, [('selected_unit_fixture', evidence)])
+                    self.assertEqual([name for name, provider in providers.items() if provider.called], [group])
+
+    # Omitted providers and missing returned manifests cannot reuse an unrelated or stale fixture.
+    def test_selected_fixture_refusal(self):
+        import native_fixtures
+        with self.assertRaisesRegex(ValueError, 'No selected fixture provider'):
+            native_preparation.prepare_selected_fixture(Path('/fixture'), 'no-such-suite')
+        with patch.object(native_fixtures, 'unit_pvm_gas_fixture', return_value=({}, {})):
+            with self.assertRaisesRegex(ValueError, 'Missing selected fixture manifest'):
+                native_preparation.prepare_selected_fixture(Path('/fixture'), 'pvm_gas')
+        with patch.object(native_fixtures, 'unit_pvm_gas_fixture', side_effect=RuntimeError('fixture refused')):
+            with self.assertRaisesRegex(RuntimeError, 'fixture refused'):
+                native_preparation.prepare_selected_fixture(Path('/fixture'), 'pvm_gas')
+
+    # QUIC transport hashes only certificates, while integration hashes all original/reload children without certificates.
+    def test_selected_quic_fixture_isolation(self):
+        with temporary_folder() as folder:
+            for name in ('a.cert.pem', 'a.key.pem'):
+                # Distinct literal bytes expose omitted or substituted inputs in the returned manifest.
+                (folder/name).write_bytes(name.encode())
+            fixtures, evidence = native_preparation.prepare_selected_fixture(folder, 'quic_transport', folder)
+            self.assertEqual(set(fixtures), {'quic_transport'})
+            self.assertEqual(len(fixtures['quic_transport'][2]), 2)
+            self.assertEqual(len(evidence['files']), 2)
+            original, reload = folder/'original', folder/'reload'
+            original.mkdir(); reload.mkdir()
+            for index in range(8):
+                # Later CE siblings remain covered rather than just the first file in each directory.
+                (original/f'{index}.bin').write_bytes(bytes([index]))
+                (reload/f'{index}.bin').write_bytes(bytes([index+1]))
+            with patch.object(native_preparation, 'prepare_integration', return_value=(original, reload, {'fresh': True})) as prepare:
+                selected, evidence = native_preparation.prepare_selected_fixture(folder, 'quic_integration')
+            prepare.assert_called_once_with(folder)
+            self.assertEqual(set(selected), {'quic_integration'})
+            self.assertEqual(len(selected['quic_integration'][2]), 16)
+            self.assertEqual(evidence, {'fresh': True})
+
 
 # Direct execution shares the discovery test cases.
 if __name__ == '__main__':
