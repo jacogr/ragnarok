@@ -1,0 +1,16 @@
+{
+  "source": "tests/native/accumulation_authorization_results.nim",
+  "build_name": "accumulation-authorization-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-authorization-default", "diagnostic": "outcome.status == None", "description": "Accumulation authorization default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-authorization-refused", "diagnostic": "outcome.status == None", "description": "Accumulation authorization refused extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-authorization-source", "diagnostic": "outcome.status == None", "description": "Accumulation authorization source extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-authorization-info", "diagnostic": "outcome.status == None", "description": "Accumulation authorization info extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "accumulation-authorization-entry", "diagnostic": "outcome.status == None", "description": "Accumulation authorization entry extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-authorization-state", "diagnostic": "outcome.status == None", "description": "Accumulation authorization state extraction guard"},
+    {"identity": {"reason": "wrong-codec"}, "arguments": ["wrong-codec"], "name": "accumulation-authorization-wrong-codec", "diagnostic": "outcome.status == CodecFailure", "description": "Accumulation authorization wrong-codec extraction guard"},
+    {"identity": {"reason": "wrong-authorization"}, "arguments": ["wrong-authorization"], "name": "accumulation-authorization-wrong-authorization", "diagnostic": "outcome.status == AuthorizationFailure", "description": "Accumulation authorization wrong-authorization extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-authorization-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation authorization wrong-state extraction guard"}
+  ]
+}

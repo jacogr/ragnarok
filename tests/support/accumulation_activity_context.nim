@@ -12,7 +12,7 @@ import ../../src/state/[accumulation_validators, validator_projection, accumulat
   accumulation_dispatch,
   accumulation_effects]
 import ../../src/codec/[bounded, composite, header, report_owned, work_digest, state_statistics,
-  state_outputs, state_workqueues, state_history, state_trie]
+  state_outputs, state_workqueues, state_history, state_trie, state_authorization]
 import ./[accumulation_execution_context, accumulation_provision_integration,
   accumulation_batch_context, pvm_accumulation_provision]
 
@@ -53,7 +53,8 @@ proc queuePolicy(): AccumulationReadyConfig =
 
 proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
-    hugeRefinement = false, executed = false, provided = false): ActivityFixture =
+    hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
+    authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false): ActivityFixture =
   ## Actual parent commitments, signatures, availability, skipped executions and C(3/14/15/16)/timestamps precede activity.
   var entries = @[activityParentEntry()]
   var body: seq[byte] = @[]
@@ -81,7 +82,9 @@ proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blob
   let fixture = executionFixture(base, first = ending,
     second = ending, empty = not (executed or provided), firstProgram = program,
     report = available, incomingReports = guarantees,
-    extra = entries, preimageWire = body, targetSlot = slot, refinement = loads)
+    extra = entries, preimageWire = body, targetSlot = slot, refinement = loads,
+    parentPools = parentPools, authorizationQueue = authorizationQueue,
+    omitAuthorizationQueue = omitAuthorizationQueue)
   let initial = fixture.round
   var skips: seq[SkippedAccumulation] = @[]
   var runs: seq[AccumulationDispatchResult] = @[]
