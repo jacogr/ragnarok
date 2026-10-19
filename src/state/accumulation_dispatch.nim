@@ -9,8 +9,9 @@
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_fetch]
 import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
-    state_privileges, state_authorization, work_report, state_safrole, assurances, bounded]
-import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects, store]
+    state_requests, state_privileges, state_authorization, work_report, state_safrole, assurances, bounded]
+import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects,
+    accumulation_invocation, store]
 
 type
   AccumulationDispatchError* {.pure.} = enum ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
@@ -36,6 +37,7 @@ type
     copyLimit: MemoryByteLimit
     effects: AccumulationEffects
     provisionLimits: AccumulationProvisionLimits
+    serviceProbes: ServiceProbeLimit
 
 func error*(outcome: AccumulationDispatchResult): AccumulationDispatchError =
   ## Inspect the selected alternative without granting mutable access to its discriminator.
@@ -606,6 +608,60 @@ proc designateResponse(context: var DispatchContext, cpu: MachineInfo, memory: M
     return hostFailure(AccumulationDispatchError.InvalidContext) # State-boundary validation must agree with the host.
   hostSuccess[AccumulationDispatchError](response)
 
+# New captures its code hash and length before current authority, funding and reserved-ID checks.
+proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 3855, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve the general exact gas-charge contract.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No input capture or state work before affordability.
+  if uint64(cpu.registers[8]) > uint64(high(uint32)):
+    response.action = HostAction.Panic # Code request length must fit E4; never truncate high bits.
+    return hostSuccess[AccumulationDispatchError](response)
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # A full raw offered hash is captured before all row refusals.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Preserve full-width pointer and both implication dimensions.
+    return hostSuccess[AccumulationDispatchError](response)
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local copy policy is not guest panic.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no hash.
+  var hash = default(array[32, byte])
+  for i in 0..<32:
+    hash[i] = captured.value[i] # Successful fixed capture proves every index.
+  let proposal = AccumulationNewService(codeHash: CodeHash(hash),
+    length: RequestLength(uint32(uint64(cpu.registers[8]))),
+    accumulationGas: Gas(uint64(cpu.registers[9])), transferGas: Gas(uint64(cpu.registers[10])),
+    gratis: AccountBalance(uint64(cpu.registers[11])), desired: AccumulationDesiredService(uint64(
+        cpu.registers[12])))
+  let changed = recordAccumulationNew(context.effects, proposal, context.parameters,
+      context.serviceProbes)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value.effects # Account batch and next-ID cursor advance as one version.
+    response.registers[7] = RegisterValue(uint32(changed.value.service)) # Actual reserved or automatic ID.
+  of AccumulationEffectError.NotManager:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes funding and reserved collisions.
+  of AccumulationEffectError.InsufficientCash:
+    response.registers[7] = RegisterValue(high(uint64)-6) # CASH precedes registrar FULL.
+  of AccumulationEffectError.ServiceExists:
+    response.registers[7] = RegisterValue(high(uint64)-4) # FULL applies only to occupied reserved IDs.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Probe/store policy never fabricates a guest error code.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No account, request or cursor on hash refusal.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Existing self metadata must be canonical.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No partial state on other invariant failures.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -642,9 +698,11 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     designateResponse(context, cpu, memory) # Current delegator replaces the ordered staging roster.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
+  of 19:
+    newResponse(context, cpu, memory) # Atomic account creation and versioned allocation cursor.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 19..25:
+  of 1, 20..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
@@ -655,9 +713,11 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
     fetchLimits: FetchAccumulationLimits, copyLimit: MemoryByteLimit,
     steps: ExecutionStepLimit, calls: HostCallLimit,
     cycles: GasCycleLimit, contextConfig: AccumulationContextConfig,
-    provisionLimits = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
+    provisionLimits = default(AccumulationProvisionLimits),
+    serviceProbes = ServiceProbeLimit(0)): AccumulationDispatchResult =
   ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
   ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
+  ## Omitted serviceProbes permits no automatic successor probing; reserved creation needs no probes.
   ## Omitted provision limits give zero retained capacity; no default authorizes unbounded capture.
   ## Each call prepares I from this machine's own bootstrap and starts from its immutable initial CPU.
   ## No caller-supplied replacement effects, persistent writes or partial results escape.
@@ -689,7 +749,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
       queues: contextConfig.queues, privileges: contextConfig.privileges, fetch: captured.value,
           copyLimit: copyLimit,
 
-effects: initialized.value, provisionLimits: provisionLimits)
+effects: initialized.value, provisionLimits: provisionLimits, serviceProbes: serviceProbes)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
     steps, calls, cycles)
   case evaluated.error

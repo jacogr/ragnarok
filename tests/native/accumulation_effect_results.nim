@@ -5,7 +5,7 @@
 ## Dynamic modes require the intended contract, including successful contexts with absent yield.
 
 import std/cmdline
-import ../../src/state/[accumulation_effects, accumulation_context]
+import ../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation]
 import ../../src/codec/[state_outputs, bounded, composite, state_privileges, state_authorization, state_safrole]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
@@ -35,6 +35,8 @@ of "assign": discard recordAccumulationAssign(pair, AuthorizationCoreIndex(0), [
 of "staging": discard context.effectStaging.value # Default contexts expose no current roster.
 of "designate": discard recordAccumulationDesignate(pair, [], default(
     ValidatorStateConfig)).value # Failed mutation has no successor.
+of "new": discard recordAccumulationNew(pair, default(AccumulationNewService), default(Parameters),
+    ServiceProbeLimit(0)).value # Failed creation has no successor or service ID.
 of "bless": discard recordAccumulationBless(pair, default(PrivilegeState), default(
     PrivilegeConfig)).value # Default pairs cannot publish roles.
 of "info": discard context.effectInfo.value # No default metadata/effects.
