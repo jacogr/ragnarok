@@ -1,0 +1,18 @@
+{
+  "source": "tests/native/accumulation_reentry_results.nim",
+  "build_name": "accumulation-reentry-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-reentry-default", "diagnostic": "outcome.status == None", "description": "Accumulation reentry default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-reentry-refused", "diagnostic": "outcome.status == None", "description": "Accumulation reentry refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-reentry-info", "diagnostic": "outcome.status == None", "description": "Accumulation reentry info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-reentry-source", "diagnostic": "outcome.status == None", "description": "Accumulation reentry source extraction guard"},
+    {"identity": {"reason": "inputs"}, "arguments": ["inputs"], "name": "accumulation-reentry-inputs", "diagnostic": "outcome.status == None", "description": "Accumulation reentry inputs extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-reentry-state", "diagnostic": "outcome.status == None", "description": "Accumulation reentry state extraction guard"},
+    {"identity": {"reason": "report"}, "arguments": ["report"], "name": "accumulation-reentry-report", "diagnostic": "outcome.status == None", "description": "Accumulation reentry report extraction guard"},
+    {"identity": {"reason": "wrong-operand"}, "arguments": ["wrong-operand"], "name": "accumulation-reentry-wrong-operand", "diagnostic": "outcome.status == OperandFailure", "description": "Accumulation reentry wrong-operand extraction guard"},
+    {"identity": {"reason": "wrong-input"}, "arguments": ["wrong-input"], "name": "accumulation-reentry-wrong-input", "diagnostic": "outcome.status == InputFailure", "description": "Accumulation reentry wrong-input extraction guard"},
+    {"identity": {"reason": "wrong-service"}, "arguments": ["wrong-service"], "name": "accumulation-reentry-wrong-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Accumulation reentry wrong-service extraction guard"},
+    {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-reentry-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Accumulation reentry wrong-batch extraction guard"}
+  ]
+}
