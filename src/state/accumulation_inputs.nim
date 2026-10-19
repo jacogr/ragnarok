@@ -78,6 +78,11 @@ func compareRow(a, b: InputRow): int =
   if a.order > b.order: return 1 # Do not rely on sorting stability.
   0
 
+func sameAccumulationInputs*(left, right: PreparedAccumulationInputs): bool =
+  ## Compare initialized preparation owners without traversing their input contents.
+  ## Copies match; defaults and independently prepared equal contents do not.
+  left.data != nil and left.data == right.data
+
 proc invocationServiceCount*(plan: PreparedAccumulationInputs): AccumulationInputResult[int] =
   ## Count complete invocation groups; default handles cannot masquerade as valid empty rounds.
   let data = plan.data

@@ -107,6 +107,11 @@ proc newStateStore*(entries: openArray[StateEntry], limits: StateStoreLimits): S
   StateStoreResult[StateStore](status: StateStoreError.None,
     completed: StateStore(head: data, limits: limits))
 
+func sameStateSnapshot*(left, right: StateStoreSnapshot): bool =
+  ## Compare initialized immutable versions by owner identity without hashing or copying.
+  ## Copied handles match; defaults and independently built equal roots do not.
+  left.data != nil and left.data == right.data
+
 proc snapshot*(store: StateStore): StateStoreResult[StateStoreSnapshot] =
   ## Retain the current immutable version independently of future store updates or handle destruction.
   if store.head == nil:
