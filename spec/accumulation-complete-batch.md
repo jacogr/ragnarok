@@ -56,8 +56,9 @@ explicit executed subset that happens to cover every prepared service. `batchOut
 to index only the execution array, in caller order. Skips cannot impersonate terminal sources.
 Copied observations expose no mutable owner, metadata buffer or replacement publication source.
 
-The next bounded state layer is actual service-indexed gas accounting and round binding, followed
-by later-round scheduling. PVM read/write/info work remains in its own stack; selected mutable
+The [admitted execution layer](accumulation-execution.md) now binds initial-round source and
+posterior entropy with actual service-indexed gas accounting. Round output collection and
+later-round scheduling remain subsequent work. PVM read/write/info work remains in its own stack; selected mutable
 account effects still require a subsequent bounded merger.
 
 ## Local verification

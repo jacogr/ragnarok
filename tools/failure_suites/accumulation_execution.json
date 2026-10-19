@@ -1,0 +1,14 @@
+{
+  "source": "tests/native/accumulation_execution_results.nim",
+  "build_name": "accumulation-execution-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-execution-default", "diagnostic": "outcome.status == None", "description": "Accumulation execution default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-execution-refused", "diagnostic": "outcome.status == None", "description": "Accumulation execution refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-execution-info", "diagnostic": "outcome.status == None", "description": "Accumulation execution info extraction guard"},
+    {"identity": {"reason": "gas"}, "arguments": ["gas"], "name": "accumulation-execution-gas", "diagnostic": "outcome.status == None", "description": "Accumulation execution gas extraction guard"},
+    {"identity": {"reason": "batch"}, "arguments": ["batch"], "name": "accumulation-execution-batch", "diagnostic": "outcome.status == None", "description": "Accumulation execution batch extraction guard"},
+    {"identity": {"reason": "round"}, "arguments": ["round"], "name": "accumulation-execution-round", "diagnostic": "outcome.status == None", "description": "Accumulation execution round extraction guard"},
+    {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-execution-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Accumulation execution wrong-batch extraction guard"}
+  ]
+}
