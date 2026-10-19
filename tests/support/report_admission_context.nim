@@ -20,8 +20,8 @@ import ./report_context
 from ../../src/codec/disputes import Disputes, Culprit, DisputeSignature, DisputeConfig,
     encodeDisputes, DisputeError
 
-## Keep all stage domains equal while independently bounding each chapter and ancestor chain.
 proc config*(): ReportAdmissionConfig =
+  ## Keep all stage domains equal while independently bounding each chapter and ancestor chain.
   let cfg = credentialConfig(2)
   let availability = AvailabilityConfig(guarantee: GuaranteeConfig(cores: CoreCount(2),
     validators: ValidatorCount(6), maxBytes: ByteLimit(100000)), maxPresent: ElementLimit(2),
@@ -44,8 +44,8 @@ proc config*(): ReportAdmissionConfig =
     judgments: DisputeStateConfig(perSet: ElementLimit(10000), totalItems: ElementLimit(40000),
         maxBytes: ByteLimit(2000000)))
 
-## The same finite profile applies to both block commitments and stage execution.
 proc frame*(): BlockAdmissionConfig =
+  ## The same finite profile applies to both block commitments and stage execution.
   BlockAdmissionConfig(frame: FrameConfig(cores: CoreCount(2), validators: ValidatorCount(6),
       epochSlots: EpochSlots(12),
     ticketLimit: TicketLimit(3), maxBytes: ByteLimit(2000000), preimages: PreimageLimits(
@@ -53,16 +53,16 @@ proc frame*(): BlockAdmissionConfig =
       perBlob: ByteLimit(100000), totalBlobBytes: ByteLimit(100000))),
           maxParentHeaderBytes: ByteLimit(100000))
 
-## Full coordinator policy keeps non-epoch authored fixtures free of unnecessary ring setup.
 proc safrole*(): SafroleTransitionConfig =
+  ## Full coordinator policy keeps non-epoch authored fixtures free of unnecessary ring setup.
   SafroleTransitionConfig(state: SafroleStateConfig(validators: credentialConfig(
       2).assignments.roster,
     epochSlots: EpochSlots(12), maxAccumulator: ElementLimit(12), maxBytes: ByteLimit(2000000)),
     tailStart: EpochSlots(10), blockTickets: TicketLimit(3), offenders: ElementLimit(10000),
     maxHeaderBytes: ByteLimit(2000000), maxMarkerBytes: ByteLimit(2000000))
 
-## Collect the same finite policies for the atomic publication entry point.
 proc transitionConfig*(): BlockReportConfig =
+  ## Collect the same finite policies for the atomic publication entry point.
   let cfg = config()
   BlockReportConfig(admission: frame(), safrole: safrole(), reports: cfg,
     disputes: DisputesConfig(rosters: cfg.credentials.assignments.roster, epochSlots: EpochSlots(12),
@@ -71,9 +71,9 @@ proc transitionConfig*(): BlockReportConfig =
     availability: AvailabilityTransitionConfig(rosters: cfg.credentials.assignments.roster,
       assignments: cfg.packages.availability, availableReports: ElementLimit(2)))
 
-## Execute only real coordinator entry points; no forged successful stage value enters report admission.
 proc stage*(state: var StateStore, candidate: OwnedBlock,
     parent: OwnedHeader): BlockTransitionResult =
+  ## Execute only real coordinator entry points; no forged successful stage value enters report admission.
   let cfg = transitionConfig()
   advanceBlockState(state, candidate, parent, cfg.admission, cfg.disputes, cfg.safrole,
       cfg.availability)
@@ -138,11 +138,11 @@ type Context* = object
   parent*: OwnedHeader
   source*: seq[StateEntry]
 
-## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
-## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
     withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
         byte] = @[]): Context =
+  ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
+  ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()

@@ -11,8 +11,8 @@ import ../../src/codec/[bounded, assurances, composite, header, work_digest, c2_
   state_service_values, state_trie, state_layout]
 import ../../src/crypto/primitives
 
-## Construct a real credited account and exact tiny-profile components; this is not a published whole-chain state.
 proc preparedEffectContexts*(extra: seq[StateEntry] = @[]): PreparedAccumulationContexts =
+  ## Construct a real credited account and exact tiny-profile components; this is not a published whole-chain state.
   let queue = planAccumulationQueues([], [0'u8], [0'u8], HeaderSlot(0),
     AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(2), epochSlots: EpochSlots(1),
       maxBytes: ByteLimit(1000)))).value
