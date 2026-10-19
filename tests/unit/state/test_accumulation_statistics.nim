@@ -5,7 +5,8 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[recent_history, ready_reconciliation, accumulation_publication,
+import ../../../src/state/[block_preimages, preimages, recent_history, ready_reconciliation,
+  accumulation_publication,
   block_activity,
   service_activity,
   accumulation_accounts,
@@ -14,11 +15,11 @@ import ../../../src/state/[recent_history, ready_reconciliation, accumulation_pu
   accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
   accumulation_execution,
   accumulation_inputs, accumulation_service, accumulation_dispatch, accumulation_skip, store]
-import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics]
+import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics, state_trie]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_account_timestamps,
   service_activity_context, block_activity_context, accumulation_publication_context,
-  ready_reconciliation_context, recent_history_context, arc_evidence]
+  ready_reconciliation_context, recent_history_context, block_preimage_context, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -239,6 +240,44 @@ proc main() {.raises.} =
   assert publishedRecent.publishedRecentSource.value.recentHistoryInfo.value.outputs == 4
   assert publishedRecent.publishedRecentState.value.commitment.entries >
       0 # Detached recent owner retains its complete exact source graph.
+  var detachedPreimages = default(PublishedBlockPreimages)
+  for mode in 0..<8:
+    # Empty, requested, already provided, unsolicited, duplicate and malformed original requests enter genuinely signed blocks.
+    let provided = mode == 2
+    let empty = mode == 0
+    var wire = if empty: newSeq[byte]() else: blockPreimageWire(provided)
+    var requests = if empty or provided or mode == 3: newSeq[StateEntry]() else: preimageRequests()
+    if mode == 4: wire = @[2'u8, 42, 0, 0, 0, 0, 42, 0, 0, 0,
+        0] # Structural framing admits duplicate raw pairs; semantic admission must refuse.
+    if mode == 5: requests[2].value = @[0'u8, 1] # A valid prefix with trailing bytes is malformed, never outstanding.
+    if mode == 6: wire = @[2'u8, 42, 0, 0, 0, 2, 1, 2, 42, 0, 0, 0,
+        0] # Raw blob order must be increasing, never repaired by sorting.
+    if mode == 7: requests[2].value = @[1'u8, 1, 0, 0,
+        0] # A prior supplied timestamp cannot become a newly admitted submission.
+    requests.add(blockPrior())
+    let fixture = reentryFixture(blockTemplate(base), empty = empty, provided = provided,
+      preimageWire = wire, extra = requests)
+    let finalized = finished(fixture)
+    let limits = if empty: policy(rounds = 2, gasRows = 0, reports = 0, digests = 0, services = 0)
+      else: policy()
+    let stats = prepareAccumulationStatistics(finalized, limits).value
+    let activity = prepareBlockActivity(prepareServiceActivity(stats, activityPolicy()).value,
+      blockPolicy()).value
+    let coordinated = publishAccumulation(prepareAccumulationPublication(activity,
+        publicationPolicy()).value).value
+    let ready = publishReadyReconciliation(prepareReadyReconciliation(coordinated, readyPolicy()).value).value
+    let recent = publishRecentHistory(prepareRecentHistory(ready, recentPolicy()).value).value
+    if mode < 3:
+      detachedPreimages = checkBlockPreimages(recent, fixture.initial.entries, empty, provided)
+    else:
+      let refused = prepareBlockPreimages(recent, blockPreimagePolicy())
+      assert refused.error == BlockPreimageError.PreimageFailure
+      let expected = if mode == 3 or mode == 7: PreimageTransitionError.NotRequested
+        elif mode == 4 or mode == 6: PreimageTransitionError.NotOrderedUnique else: PreimageTransitionError.MalformedState
+      assert refused.preimageError == expected
+  assert detachedPreimages.publishedPreimageSource.value.blockPreimageInfo.value.admission.items == 2
+  assert detachedPreimages.publishedPreimageState.value.commitment.entries >
+      0 # Published owner alone retains the complete original and posterior graph.
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))

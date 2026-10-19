@@ -1,0 +1,18 @@
+{
+  "source": "tests/native/block_preimages_results.nim",
+  "build_name": "block-preimages-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "block-preimages-default", "diagnostic": "outcome.status == None", "description": "Block preimages default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "block-preimages-refused", "diagnostic": "outcome.status == None", "description": "Block preimages refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "block-preimages-info", "diagnostic": "outcome.status == None", "description": "Block preimages info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "block-preimages-source", "diagnostic": "outcome.status == None", "description": "Block preimages source extraction guard"},
+    {"identity": {"reason": "admission"}, "arguments": ["admission"], "name": "block-preimages-admission", "diagnostic": "outcome.status == None", "description": "Block preimages admission extraction guard"},
+    {"identity": {"reason": "prior"}, "arguments": ["prior"], "name": "block-preimages-prior", "diagnostic": "outcome.status == None", "description": "Block preimages prior extraction guard"},
+    {"identity": {"reason": "published-source"}, "arguments": ["published-source"], "name": "block-preimages-published-source", "diagnostic": "outcome.status == None", "description": "Block preimages published-source extraction guard"},
+    {"identity": {"reason": "published-state"}, "arguments": ["published-state"], "name": "block-preimages-published-state", "diagnostic": "outcome.status == None", "description": "Block preimages published-state extraction guard"},
+    {"identity": {"reason": "publish"}, "arguments": ["publish"], "name": "block-preimages-publish", "diagnostic": "outcome.status == None", "description": "Block preimages publish extraction guard"},
+    {"identity": {"reason": "advance"}, "arguments": ["advance"], "name": "block-preimages-advance", "diagnostic": "outcome.status == None", "description": "Block preimages advance extraction guard"},
+    {"identity": {"reason": "preimage-error"}, "arguments": ["preimage-error"], "name": "block-preimages-preimage-error", "diagnostic": "outcome.status == PreimageFailure", "description": "Block preimages preimage-error extraction guard"}
+  ]
+}
