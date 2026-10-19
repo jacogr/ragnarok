@@ -8,6 +8,8 @@ Exposes build for deterministic asset staging/embedding. Make invokes main befor
 the pinned Nimony JS backend compiles src/ui/client.nim alongside src/ui/static/ assets.
 """
 from pathlib import Path
+import gzip
+import io
 import os
 import subprocess
 from setup_nimony import installed as native_tools, cache_directory
@@ -32,9 +34,18 @@ def write_changed(path, data):
         path.write_bytes(data)
 
 
+# Fixed metadata keeps rebuilds byte-identical across time and source filenames.
+def compressed(data):
+    """Produce a gzip member without a timestamp or filename; runtime serving never compresses."""
+    output = io.BytesIO()
+    with gzip.GzipFile(filename='', mode='wb', fileobj=output, compresslevel=9, mtime=0) as stream:
+        stream.write(data)
+    return output.getvalue()
+
+
 # Capture source bytes once, before updating output, so each staged file matches its embedded constant.
 def build(source, stage, manifest, generated=None):
-    """Stage one public asset tree and generate a sorted path/data manifest; reject symlink sources."""
+    """Gzip one public asset tree and embed sorted sidecar paths; reject symlink sources."""
     source, stage, manifest = Path(source), Path(stage), Path(manifest)
     if not source.is_dir() or source.is_symlink():
         raise ValueError('Missing or symlinked UI source directory: ' + str(source))
@@ -61,6 +72,9 @@ def build(source, stage, manifest, generated=None):
     assets.sort(key=lambda asset: asset[0]) # Sort URL paths rather than host path components.
     if 'index.html' not in {name for name, _ in assets}:
         raise ValueError('UI distribution requires index.html')
+    # Only gzip representations are staged/embedded; identity bytes are build-time inputs only.
+    assets = sorted(((name+'.gz', compressed(content)) for name, content in assets),
+                    key=lambda asset: asset[0]) # Suffixes can change ordering for prefix-related names.
     # Staging is build-owned output. Replace the tree only when its contents differ, removing stale assets.
     expected = {name for name, _ in assets}
     if stage.exists():

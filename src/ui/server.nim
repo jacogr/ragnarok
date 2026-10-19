@@ -3,7 +3,8 @@
 
 ## Bounded static HTTP server with a separate loopback listener, driven by the peer dispatcher.
 ## UiServer owns eight connections and optional development root/file descriptors; release assets
-## are immutable data embedded by the build. Only GET
+## are immutable gzip data embedded by the build. Requests must accept gzip; no runtime compression
+## or uncompressed fallback is provided. Only GET
 ## and HEAD are supported; paths cannot traverse parents or follow symlinks. No directory listing.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
@@ -188,10 +189,45 @@ proc contentType(path: string): string =
   elif lower.endsWith(".txt"): "text/plain; charset=utf-8"
   else: "application/octet-stream"
 
+# HTTP quality values use integer thousandths, avoiding floats and unchecked numeric parsing.
+proc quality(value: string): int =
+  if value == "0": return 0
+  if value == "1": return 1000
+  if value.len < 2 or value.len > 5 or value[0] notin {'0', '1'} or value[1] != '.': return -1
+  var resultValue = 0
+  var scale = 100
+  for i in 2..<value.len: # At most three decimal digits fit the HTTP qvalue grammar.
+    if value[i] notin {'0'..'9'} or (value[0] == '1' and value[i] != '0'): return -1
+    resultValue += (ord(value[i]) - ord('0')) * scale
+    scale = scale div 10
+  if value[0] == '1': 1000 else: resultValue
+
+# Explicit gzip exclusion wins over wildcard acceptance; missing/empty headers do not opt in.
+proc acceptsGzip(value: string): bool =
+  var explicit = -1
+  var wildcard = -1
+  for item in value.split(','): # The request header budget also bounds this list and its allocations.
+    let parts = item.split(';')
+    let coding = parts[0].strip().toLowerAscii()
+    if coding in ["gzip", "x-gzip", "*"]:
+      var weight = 1000
+      if parts.len > 1: # Malformed or extra parameters cannot grant compression acceptance.
+        weight = 0
+        if parts.len == 2:
+          let parameter = parts[1].split('=')
+          if parameter.len == 2 and parameter[0].strip().toLowerAscii() == "q":
+            weight = max(quality(parameter[1].strip()), 0)
+      if coding == "*": # Conflicting repeated entries are conservatively combined as exclusions.
+        wildcard = if wildcard < 0: weight else: min(wildcard, weight)
+      else:
+        explicit = if explicit < 0: weight else: min(explicit, weight)
+  if explicit >= 0: explicit > 0 else: wildcard > 0
+
 # Every response closes the connection; bounded headers never reflect request data.
-proc response(status, kind: string, length: int64): string =
+proc response(status, kind: string, length: int64, encoded = false): string =
   "HTTP/1.1 " & status & "\r\nContent-Type: " & kind & "\r\nContent-Length: " & $length &
-    "\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n\r\n"
+    "\r\nVary: Accept-Encoding\r\n" & (if encoded: "Content-Encoding: gzip\r\n" else: "") &
+    "Connection: close\r\nX-Content-Type-Options: nosniff\r\n\r\n"
 
 # Lookup returns an internal manifest index or absence; generated paths are immutable build inputs.
 proc embeddedIndex(path: string): int =
@@ -220,6 +256,7 @@ proc process(slot: var Connection, root: cint) =
   if request.len != 3 or request[2] != "HTTP/1.1": return
   var seen: seq[string] = @[]
   var host = false
+  var encoding = ""
   for i in 1..<lines.len: # Duplicate, folded and control-bearing fields are rejected consistently.
     let colon = lines[i].find(':')
     if colon < 1: return
@@ -235,19 +272,23 @@ proc process(slot: var Connection, root: cint) =
     if name == "transfer-encoding" or (name == "content-length" and value != "0"):
       return # Permit the standard empty-body header without accepting request bodies.
     if name == "host": host = value.len > 0
+    if name == "accept-encoding": encoding = value
   if not host: return
   if request[0] notin ["GET", "HEAD"]:
     slot.output = "HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     return
   let path = staticPath(request[1])
   if path.len == 0: return
+  if not acceptsGzip(encoding): # This server offers gzip only, without an identity fallback.
+    slot.output = response("406 Not Acceptable", "text/plain", 0)
+    return
   if root < 0: # Release serving reads embedded constants directly; no extraction or filesystem fallback.
-    let index = embeddedIndex(path)
+    let index = embeddedIndex(path & ".gz")
     if index < 0:
       slot.output = response("404 Not Found", "text/plain", 0)
       return
     let length = EmbeddedData[index].len
-    slot.output = response("200 OK", contentType(path), int64(length))
+    slot.output = response("200 OK", contentType(path), int64(length), true)
     if request[0] == "GET" and length > 0: # HEAD and empty assets need only their metadata response.
       slot.embedded = true
       slot.assetIndex = index
@@ -255,7 +296,7 @@ proc process(slot: var Connection, root: cint) =
       slot.remaining = int64(length)
     slot.input = ""
     return
-  let file = openFile(root, path)
+  let file = openFile(root, path & ".gz")
   if file < 0:
     slot.output = response("404 Not Found", "text/plain", 0)
     return
@@ -264,7 +305,7 @@ proc process(slot: var Connection, root: cint) =
     discard posix.close(file) # FIFOs, sockets, devices and directories never become response streams.
     slot.output = response("404 Not Found", "text/plain", 0)
     return
-  slot.output = response("200 OK", contentType(path), int64(stat.st_size))
+  slot.output = response("200 OK", contentType(path), int64(stat.st_size), true)
   if request[0] == "HEAD" or stat.st_size == 0:
     discard posix.close(file) # HEAD preserves metadata while sending no file bytes.
   else:

@@ -22,6 +22,9 @@ const browser = await chromium.launch({headless: true, ...(executablePath ? {exe
 const page = await browser.newPage({viewport: {width: 1280, height: 1100}});
 const errors = [];
 const requests = [];
+const assets = [];
+// Browser decoding must execute precompressed HTML, CSS and Nim-generated JavaScript.
+page.on('response', response => assets.push({path: new URL(response.url()).pathname, headers: response.headers()}));
 page.on('pageerror', error => errors.push(error.message));
 page.on('websocket', socket => {
   socket.on('framesent', ({payload}) => requests.push(JSON.parse(payload.toString())));
@@ -67,8 +70,14 @@ try {
   await responseCount(4);
   assert.equal(requests.length, 4);
   assert(requests.every(request => request.method === 'ragnarok_clientInfo' && request.jsonrpc === '2.0' && request.params.length === 0));
+  for (const asset of ['/', '/style.css', '/app.js']) {
+    const observed = assets.find(response => response.path === asset);
+    assert(observed, `Missing browser asset ${asset}`);
+    assert.equal(observed.headers['content-encoding'], 'gzip');
+    assert.equal(observed.headers.vary, 'Accept-Encoding');
+  }
   assert.deepEqual(errors, []);
-  await writeFile(path.join(folder, 'results.json'), JSON.stringify({passed: true, browser: await browser.version(), requests, errors}, null, 2));
+  await writeFile(path.join(folder, 'results.json'), JSON.stringify({passed: true, browser: await browser.version(), requests, errors, assets}, null, 2));
   console.log('PASS browser DOM, clientInfo, refresh, reconnect, invalid URL and responsive layout');
 } catch (error) {
   await page.screenshot({path: path.join(folder, 'failure.png'), fullPage: true});

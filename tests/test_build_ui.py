@@ -6,6 +6,7 @@
 Exposes unittest discovery cases for the Python build tool; HTTP behavior remains in native/E2E tests.
 """
 import ast
+import gzip
 from pathlib import Path
 import tempfile
 import unittest
@@ -27,7 +28,8 @@ class UiBuild(unittest.TestCase):
             (source/'nested').mkdir()
             expected = {'index.html': b'<h1>UI</h1>', 'empty.bin': b'',
                         'nested/bytes.bin': bytes(range(256))*1024,
-                        'nested/a "quote".js': b'const x = "\\x00";', 'nested.js': b'order'}
+                        'nested/a "quote".js': b'const x = "\\x00";', 'nested.js': b'order',
+                        'a': b'prefix', 'a.css': b'extension'}
             for name, data in expected.items():
                 (source/name).write_bytes(data)
             self.assertEqual(build(source, stage, manifest), len(expected))
@@ -36,10 +38,12 @@ class UiBuild(unittest.TestCase):
             decode = lambda part: [ast.literal_eval(line.strip().rstrip(',')).encode('latin1')
                                    for line in part.splitlines() if line.strip() not in ('', ']')]
             names = [value.decode('utf-8') for value in decode(paths)]
-            self.assertEqual(names, sorted(expected))
-            self.assertEqual(dict(zip(names, decode(data))), expected)
+            self.assertEqual(names, sorted(name+'.gz' for name in expected))
+            bundled = dict(zip(names, decode(data)))
+            self.assertEqual({name[:-3]: gzip.decompress(content) for name, content in bundled.items()}, expected)
             for name, content in expected.items():
-                self.assertEqual((stage/name).read_bytes(), content)
+                self.assertEqual((stage/(name+'.gz')).read_bytes(), bundled[name+'.gz'])
+                self.assertFalse((stage/name).exists())
             modified = manifest.stat().st_mtime_ns
             build(source, stage, manifest)
             self.assertEqual(manifest.stat().st_mtime_ns, modified)
@@ -47,9 +51,25 @@ class UiBuild(unittest.TestCase):
             (source/'empty.bin').unlink()
             (source/'index.html').write_bytes(b'changed')
             build(source, stage, manifest)
-            self.assertFalse((stage/'empty.bin').exists())
+            self.assertFalse((stage/'empty.bin.gz').exists())
             self.assertNotEqual(manifest.read_text(), text)
-            self.assertEqual((stage/'index.html').read_bytes(), b'changed')
+            self.assertEqual(gzip.decompress((stage/'index.html.gz').read_bytes()), b'changed')
+
+    def test_gzip_metadata_and_old_output_removal(self):
+        """Gzip metadata is fixed and stale identity files cannot survive a rebuild."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, stage = root/'source', root/'stage'
+            source.mkdir()
+            stage.mkdir()
+            (source/'index.html').write_bytes(b'index')
+            (stage/'index.html').write_bytes(b'old identity output')
+            build(source, stage, root/'manifest.nim')
+            raw = (stage/'index.html.gz').read_bytes()
+            self.assertEqual(gzip.decompress(raw), b'index')
+            self.assertEqual(raw[3], 0) # No original filename or optional gzip header fields.
+            self.assertEqual(raw[4:8], bytes(4)) # No build timestamp in the gzip member.
+            self.assertFalse((stage/'index.html').exists())
 
     def test_invalid_sources(self):
         """Missing index files and symlinks cannot silently become a release asset bundle."""
@@ -98,7 +118,7 @@ class UiCompiler(unittest.TestCase):
             (source/'index.html').write_bytes(b'index')
             payload = b'code\x00\xff'
             self.assertEqual(build(source, root/'stage', root/'manifest.nim', {'app.js': payload}), 2)
-            self.assertEqual((root/'stage/app.js').read_bytes(), payload)
+            self.assertEqual(gzip.decompress((root/'stage/app.js.gz').read_bytes()), payload)
             (source/'app.js').write_bytes(b'conflict')
             with self.assertRaisesRegex(ValueError, 'collides'):
                 build(source, root/'stage', root/'manifest.nim', {'app.js': payload})

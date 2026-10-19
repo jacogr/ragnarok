@@ -45,7 +45,7 @@ verification, and rerun `make check-ui` on the packaged backend before removing 
 
 `make ui-assets` invokes `nimony j --browser -d:release --mm:arc -d:ragnarokBrowser`, with the
 verified backend on that subprocess's PATH. `src/ui/client.nim` contains the application;
-`src/ui/static/` contains HTML/CSS. The result is `build/ui/{index.html,style.css,app.js}` and
+`src/ui/static/` contains HTML/CSS. The result is `build/ui/{index.html.gz,style.css.gz,app.js.gz}` and
 the existing byte-exact embedded manifest. Ordinary builds and source checks depend on this
 step. The backend executable hash separates JavaScript compiler caches. `make clean` removes
 all generated code, tools, source archives and test dependencies. Build diagnostics remain in
@@ -55,20 +55,22 @@ The exported `ragnarokUiStart` entry selects jorogumo's host-driven runtime life
 deferred classic script initializes once after the DOM exists. Capture-free callbacks and
 thread-owned Nim scalar state bridge browser-owned WebSocket/timer/JSON objects through
 `importjs`. No compatibility claim for Nim 2's JS libraries is made. The current backend emits
-roughly 249 KiB of JavaScript and reserves a 64 MiB linear heap; modern browser BigInt support
-is required. This is a feasibility prototype, not a payload/memory optimization milestone.
+roughly 249 KiB of JavaScript before build-time gzip and reserves a 64 MiB linear heap;
+modern browser BigInt support is required. This is a feasibility prototype, not a payload/memory optimization milestone.
 
 For live development use `--with-ui --dev-ui-dir build/ui` and rerun `make ui-assets` after
 source edits. Development overrides replace the complete asset directory, so HTML/CSS alone
-without generated `app.js` do not run the application. Release binaries need no runtime files.
+without generated `app.js.gz` do not run the application. Every asset is precompressed at build
+time; the server requires gzip acceptance and never serves identity bytes.
+Release binaries need no runtime files.
 
 ## Verification
 
 `make check-ui` builds the production peer and uses a real headless browser against its HTTP
 and WebSocket listeners. It verifies DOM values, initial/refresh requests, disconnect/reconnect,
 invalid URL handling, desktop/mobile layout without horizontal overflow, no uncaught page errors,
-and that every outbound RPC request calls only `ragnarok_clientInfo`. The same browser check
-runs in the owning RPC workload under `make check-e2e`; raw WebSocket/QUIC checks remain there.
+gzip response headers for HTML/CSS/JavaScript, and that every outbound RPC request calls only
+`ragnarok_clientInfo`. The same browser check runs in the owning RPC workload under `make check-e2e`; raw WebSocket/QUIC checks remain there.
 Screenshots, wire requests and diagnostics are retained under
 `build/tests/ui-browser/peer/browser/` locally or `build/tests/e2e/rpc/browser/` in E2E.
 

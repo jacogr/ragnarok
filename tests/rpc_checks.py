@@ -9,6 +9,7 @@ parameters and service queries, shared telemetry startup, immutable configuratio
 import base64
 import hashlib
 import http.client
+import gzip
 import json
 import os
 import socket
@@ -102,9 +103,14 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
     static.mkdir(exist_ok=True)
     (static/'index.html').write_bytes(b'<h1>UI</h1>')
     (static/'app.js').write_bytes(b'const ready = true;')
-    (static/'large.bin').write_bytes(bytes(range(256))*1024)
-    (static/'escape').unlink(missing_ok=True)
-    (static/'escape').symlink_to('../peer.log')
+    # Hash-derived bytes stay incompressible enough to exercise multiple compressed file chunks.
+    large = b''.join(hashlib.sha256(str(i).encode()).digest() for i in range(8192))
+    (static/'large.bin').write_bytes(large)
+    for name in ['index.html', 'app.js', 'large.bin']:
+        (static/(name+'.gz')).write_bytes(gzip.compress((static/name).read_bytes(), mtime=0))
+    assert (static/'large.bin.gz').stat().st_size > 16384
+    (static/'escape.gz').unlink(missing_ok=True)
+    (static/'escape.gz').symlink_to('../peer.log')
     log = folder/'peer.log'
     command = [str(binary), 'server', str(peer_port), str(certificates/'a.cert.pem'),
                str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '30000', 'service',
@@ -164,24 +170,41 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                          ('GET', '/%00', 400, b''), ('POST', '/', 405, b'')]
                 if dev_ui:
                     cases += [('GET', '/app.js?v=1', 200, b'const ready = true;'),
-                              ('GET', '/large.bin', 200, bytes(range(256))*1024),
+                              ('GET', '/large.bin', 200, large),
                               ('GET', '/escape', 404, b'')]
                 else:
                     # Loose development files are ignored unless the explicit override is selected.
-                    cases += [('GET', '/app.js', 200, (Path(__file__).parents[1]/'build/ui/app.js').read_bytes()),
+                    cases += [('GET', '/app.js', 200, gzip.decompress((Path(__file__).parents[1]/'build/ui/app.js.gz').read_bytes())),
                               ('GET', '/large.bin', 404, b'')]
                 for method, target, status, body in cases:
                     client = http.client.HTTPConnection('127.0.0.1', ui_port, timeout=3)
                     try:
-                        client.request(method, target)
+                        client.request(method, target, headers={'Accept-Encoding': 'gzip'})
                         response = client.getresponse()
-                        received = response.read()
+                        wire = response.read()
+                        received = gzip.decompress(wire) if status == 200 and method == 'GET' else wire
+                        if status == 200:
+                            assert response.getheader('Content-Encoding') == 'gzip'
+                            assert response.getheader('Vary') == 'Accept-Encoding'
+                            if method == 'GET':
+                                assert response.getheader('Content-Length') == str(len(wire))
                         assert response.status == status and received == body, (method, target, response.status, len(received), status, len(body))
                         assert response.getheader('Connection') == 'close'
                         if method == 'HEAD':
-                            assert response.getheader('Content-Length') == str(len(index))
+                            assert response.getheader('Content-Length') == str(len((static/'index.html.gz').read_bytes() if dev_ui else (Path(__file__).parents[1]/'build/ui/index.html.gz').read_bytes()))
                         if status == 200 and target.startswith('/app.js'):
                             assert response.getheader('Content-Type') == 'text/javascript; charset=utf-8'
+                    finally:
+                        client.close()
+                for encoding in [None, '', 'br', 'identity', 'gzip;q=0', '*;q=1, gzip;q=0']:
+                    # Requests that do not accept gzip must never receive an identity fallback.
+                    client = http.client.HTTPConnection('127.0.0.1', ui_port, timeout=3)
+                    try:
+                        headers = {} if encoding is None else {'Accept-Encoding': encoding}
+                        client.request('GET', '/', headers=headers)
+                        response = client.getresponse()
+                        assert response.status == 406 and response.read() == b''
+                        assert response.getheader('Vary') == 'Accept-Encoding'
                     finally:
                         client.close()
                 if not dev_ui:
@@ -189,14 +212,16 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 if dev_ui:
                     # Edits are visible immediately, and missing development assets never fall back to the bundle.
                     for replacement, status, body in [(None, 404, b''), (b'live edit', 200, b'live edit')]:
-                        (static/'index.html').unlink(missing_ok=True)
+                        (static/'index.html.gz').unlink(missing_ok=True)
                         if replacement is not None:
-                            (static/'index.html').write_bytes(replacement)
+                            (static/'index.html.gz').write_bytes(gzip.compress(replacement, mtime=0))
                         client = http.client.HTTPConnection('127.0.0.1', ui_port, timeout=3)
                         try:
-                            client.request('GET', '/')
+                            client.request('GET', '/', headers={'Accept-Encoding': 'gzip'})
                             response = client.getresponse()
-                            assert response.status == status and response.read() == body
+                            wire = response.read()
+                            received = gzip.decompress(wire) if status == 200 else wire
+                            assert response.status == status and received == body
                         finally:
                             client.close()
             if browser:
