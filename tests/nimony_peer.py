@@ -60,11 +60,12 @@ def controls(binary, fixtures):
     # UI configuration uses the same strict trailing parser and distinct listener ports.
     for text in ('0', '-1', '65536', 'no', ''):
         cases.append(('ui-port-'+text, [*base, '--with-ui', '--ui-port', text]))
-    cases += [('ui-missing-port', [*base, '--with-ui', '--ui-port']),
+    cases += [('ui-old-directory-option', [*base, '--with-ui', '--ui-dir', 'unused']),
+              ('ui-missing-port', [*base, '--with-ui', '--ui-port']),
               ('ui-duplicate', [*base, '--with-ui', '--with-ui']),
               ('ui-port-collision', [*base, '--with-ui', '--ui-port', '19800']),
               ('ui-selftest', ['--selftest', '--with-ui']),
-              ('ui-dir-missing', [*base, '--with-ui', '--ui-dir']),
+              ('ui-dir-missing', [*base, '--with-ui', '--dev-ui-dir']),
               ('telemetry-enable-missing-config', [*base, '--with-telemetry'])]
     rows = []
     for name, args in cases:

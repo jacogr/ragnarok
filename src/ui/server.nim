@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded static HTTP server with a separate loopback listener, driven by the peer dispatcher.
-## UiServer owns its root directory, eight connections and streamed file descriptors. Only GET
+## UiServer owns eight connections and optional development root/file descriptors; release assets
+## are immutable data embedded by the build. Only GET
 ## and HEAD are supported; paths cannot traverse parents or follow symlinks. No directory listing.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
+
+# Make generates immutable path/data arrays from the staged UI; no runtime asset files are read.
+include ../../build/ui_assets
 
 const
   MaxConnections = 8
@@ -15,10 +19,10 @@ const
 
 type
   Connection = object ## Each slot owns its socket, optional file and bounded write buffer.
-    opened, fileOpened: bool
+    opened, fileOpened, embedded: bool
     fd, file: cint
     input, output: string
-    offset: int
+    offset, assetIndex, position: int
     remaining, deadline: int64
   UiServer* = object ## Non-copyable listener and root owner; disabled instances own no descriptors.
     opened, rootOpened: bool
@@ -93,14 +97,16 @@ proc nonblocking(fd: cint): bool =
         0: return false
   true
 
-proc start*(server: var UiServer, port: uint16, directory: string): bool =
-  ## Port zero disables all IO. Enabled startup pins an existing directory and binds IPv4 loopback.
+proc start*(server: var UiServer, port: uint16, directory = ""): bool =
+  ## Port zero disables IO. Empty directory serves embedded assets; a development root pins disk files.
   if server.opened or server.rootOpened: return false
   if port == 0: return true
-  var path = directory
-  server.root = posix.open(path.toCString(), O_RDONLY or Directory or OpenCloseExec)
-  if server.root < 0: return false
-  server.rootOpened = true
+  server.root = -1 # Embedded mode owns no directory descriptor and never depends on the working directory.
+  if directory.len > 0: # Development mode uses only this root; missing files never fall back to embedded assets.
+    var path = directory
+    server.root = posix.open(path.toCString(), O_RDONLY or Directory or OpenCloseExec)
+    if server.root < 0: return false
+    server.rootOpened = true
   server.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   if server.fd < 0:
     server.close() # Root ownership must also retire on socket creation failure.
@@ -187,6 +193,20 @@ proc response(status, kind: string, length: int64): string =
   "HTTP/1.1 " & status & "\r\nContent-Type: " & kind & "\r\nContent-Length: " & $length &
     "\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n\r\n"
 
+# Lookup returns an internal manifest index or absence; generated paths are immutable build inputs.
+proc embeddedIndex(path: string): int =
+  for i in 0..<EmbeddedPaths.len: # Manifest order is deterministic and contains no duplicate paths.
+    if EmbeddedPaths[i] == path: return i
+  -1
+
+# Copy at most one chunk from immutable program data, avoiding a whole-asset copy per request.
+proc readEmbedded(slot: var Connection) =
+  let count = int(min(slot.remaining, int64(ChunkBytes)))
+  for i in 0..<count: # The manifest length and saved offset bound every access.
+    slot.output.add(EmbeddedData[slot.assetIndex][slot.position + i])
+  slot.position += count
+  slot.remaining -= int64(count)
+
 # Parse only complete, bounded HTTP/1.1 GET/HEAD headers with no body or ambiguous framing.
 proc process(slot: var Connection, root: cint) =
   let ending = slot.input.find("\r\n\r\n")
@@ -221,6 +241,20 @@ proc process(slot: var Connection, root: cint) =
     return
   let path = staticPath(request[1])
   if path.len == 0: return
+  if root < 0: # Release serving reads embedded constants directly; no extraction or filesystem fallback.
+    let index = embeddedIndex(path)
+    if index < 0:
+      slot.output = response("404 Not Found", "text/plain", 0)
+      return
+    let length = EmbeddedData[index].len
+    slot.output = response("200 OK", contentType(path), int64(length))
+    if request[0] == "GET" and length > 0: # HEAD and empty assets need only their metadata response.
+      slot.embedded = true
+      slot.assetIndex = index
+      slot.position = 0
+      slot.remaining = int64(length)
+    slot.input = ""
+    return
   let file = openFile(root, path)
   if file < 0:
     slot.output = response("404 Not Found", "text/plain", 0)
@@ -255,7 +289,7 @@ proc tick*(server: var UiServer) =
       server.connections[free] = Connection(opened: true, fd: accepted, deadline: now + 5000)
   for slot in mitems(server.connections): # Fixed capacity and buffers bound each dispatcher's work.
     if slot.opened and now >= slot.deadline: slot.close()
-    if slot.opened and slot.output.len == 0 and not slot.fileOpened:
+    if slot.opened and slot.output.len == 0 and not slot.fileOpened and not slot.embedded:
       var bytes = default(array[MaxHeader, char])
       let count = receive(slot.fd, addr bytes[0], csize_t(MaxHeader - slot.input.len), 0)
       if count > 0:
@@ -264,6 +298,8 @@ proc tick*(server: var UiServer) =
       elif count == 0: slot.close()
       elif osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK), OSErrorCode(
           EINTR)]: slot.close()
+    if slot.opened and slot.output.len == 0 and slot.embedded:
+      slot.readEmbedded() # Static data uses the same bounded write buffer and partial-send handling.
     if slot.opened and slot.output.len == 0 and slot.fileOpened:
       var bytes = default(array[ChunkBytes, char])
       let count = posix.read(slot.file, addr bytes[0], int(min(slot.remaining, int64(ChunkBytes))))
@@ -281,6 +317,6 @@ proc tick*(server: var UiServer) =
         slot.offset += sent
         if slot.offset == slot.output.len:
           slot.output = ""; slot.offset = 0
-          if not slot.fileOpened or slot.remaining == 0: slot.close() # Last response byte retires both owners.
+          if (not slot.fileOpened and not slot.embedded) or slot.remaining == 0: slot.close() # Last response byte retires both owners.
       elif sent == 0 or osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK),
           OSErrorCode(EINTR)]: slot.close()

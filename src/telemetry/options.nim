@@ -15,7 +15,7 @@ export wire, client
 
 const
   Switches = ["--with-ui", "--with-rpc", "--with-telemetry"]
-  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--ui-dir"]
+  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir"]
 
 # Locate reserved controls without consuming positional peer arguments.
 proc optionStart(): int =
@@ -60,10 +60,9 @@ proc uiPort*(): uint16 =
   if not uiRequested(): return 0
   configuredPort("--ui-port", 8888)
 
-proc uiDirectory*(): string =
-  ## Resolve the static root at startup; relative paths are relative to the process directory.
-  let value = optionValue("--ui-dir")
-  if value.len == 0: "ui" else: value
+proc devUiDirectory*(): string =
+  ## An absent override serves embedded assets; explicit relative roots use the process directory.
+  optionValue("--dev-ui-dir")
 
 proc validTelemetryOption*(): bool =
   ## Validate unique trailing switches/pairs, decimal ports and enabled-service dependencies.

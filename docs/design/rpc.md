@@ -3,8 +3,9 @@
 [Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
 update their feature contract rather than appending progress here.
 
-An independent `src/ui/` static HTTP listener shares the peer dispatcher and owns a pinned
-root directory plus bounded streamed-file connections. UI activation enables RPC; RPC's
+An independent `src/ui/` static HTTP listener shares the peer dispatcher and owns bounded
+connections plus an optional pinned development root. Release assets are embedded in the binary;
+`--dev-ui-dir` explicitly selects disk serving. UI activation enables RPC; RPC's
 WebSocket upgrade policy admits the enabled UI's exact loopback origins. See [UI scope](../../spec/ui.md).
 
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns

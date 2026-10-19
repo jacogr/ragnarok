@@ -121,7 +121,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
     print('deliberate runtime failure')
     sys.exit(7)
 """
-            for name in ('check_inventory', 'setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
+            for name in ('build_ui', 'check_inventory', 'setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
                 # The test exercises Make ordering/status; native behavior has its own application coverage.
                 (folder/'tools'/(name+'.py')).write_text(stub)
             for name in ('test_spec', 'test_nimony_ci'):
@@ -143,6 +143,9 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             calls = (folder/'calls').read_text().splitlines()
             self.assertEqual(calls.count('setup_nimony.py'), 1)
             self.assertEqual(calls.count('check_inventory.py'), 1)
+            self.assertEqual(calls.count('build_ui.py'), 1)
+            self.assertLess(calls.index('build_ui.py'), calls.index('test_modules.py'))
+            self.assertLess(calls.index('build_ui.py'), calls.index('test_runtime.py'))
             self.assertLess(calls.index('check_inventory.py'), calls.index('setup_nimony.py'))
             self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
             self.assertTrue((folder/'build/ci/runtime.log').is_file())

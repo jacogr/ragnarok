@@ -525,8 +525,8 @@ proc runPeer*(): bool {.raises.} =
   if not server and peer.expected.len != 32: return false # Every dialer pins the server identity.
   var ui = default(UiServer)
   defer: ui.close() # Static listener and file descriptors retire with the peer session.
-  if not ui.start(uiPort(), uiDirectory()):
-    stderr.writeLine("Invalid UI listener or --ui-dir")
+  if not ui.start(uiPort(), devUiDirectory()):
+    stderr.writeLine("Invalid UI listener or --dev-ui-dir")
     return false
   var rpc = default(Server)
   defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
@@ -866,8 +866,8 @@ proc runMesh*(): bool {.raises.} =
   var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
   var ui = default(UiServer)
   defer: ui.close() # Static listener and file descriptors retire with the peer session.
-  if not ui.start(uiPort(), uiDirectory()):
-    stderr.writeLine("Invalid UI listener or --ui-dir")
+  if not ui.start(uiPort(), devUiDirectory()):
+    stderr.writeLine("Invalid UI listener or --dev-ui-dir")
     return false
   var rpc = default(Server)
   defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.

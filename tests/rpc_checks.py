@@ -85,7 +85,7 @@ def ready(process, log):
 
 
 # Exercise RPC on a real retained peer while an independent QUIC client completes application work.
-def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False):
+def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False, dev_ui=False):
     folder.mkdir(parents=True, exist_ok=True)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
@@ -111,7 +111,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                '--with-rpc', '--rpc-port', str(rpc_port)]
     if ui:
         command.remove('--with-rpc') # Prove UI alone enables the separate RPC listener.
-        command += ['--with-ui', '--ui-dir', str(static), '--ui-port', str(ui_port)]
+        command += ['--with-ui', '--ui-port', str(ui_port)]
+        if dev_ui:
+            command += ['--dev-ui-dir', str(static)]
     if chain is not None:
         command += ['--chain', str(chain)] # The same CLI supports RPC with and without telemetry.
     if telemetry:
@@ -131,7 +133,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
             occupied.listen()
             port = str(occupied.getsockname()[1])
             inactive = command[:9] + ['--rpc-port', port, '--ui-port', port,
-                                      '--ui-dir', str(folder/'missing'), '--telemetry', 'invalid']
+                                      '--dev-ui-dir', str(folder/'missing'), '--telemetry', 'invalid']
             child = subprocess.Popen(inactive,
                                      env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(disabled_stop)},
                                      stdout=output, stderr=subprocess.STDOUT)
@@ -145,22 +147,29 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 if child.poll() is None:
                     child.kill()
                 child.wait(timeout=5)
+    unrelated = folder/'unrelated'
+    unrelated.mkdir(exist_ok=True) # Release assets must not depend on the process working directory.
     with log.open('wb') as output:
         process = subprocess.Popen(command, env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)},
-                                   stdout=output, stderr=subprocess.STDOUT)
+                                   stdout=output, stderr=subprocess.STDOUT, cwd=unrelated)
         sockets = []
         try:
             ready(process, log)
             if ui:
                 # Static HTTP uses a separate socket and streams beyond its fixed chunk size.
-                for method, target, status, body in [
-                        ('GET', '/', 200, b'<h1>UI</h1>'),
-                        ('HEAD', '/', 200, b''),
-                        ('GET', '/app.js?v=1', 200, b'const ready = true;'),
-                        ('GET', '/large.bin', 200, bytes(range(256))*1024),
-                        ('GET', '/missing', 404, b''), ('GET', '/escape', 404, b''),
-                        ('GET', '/%2e%2e/peer.log', 400, b''),
-                        ('GET', '/%00', 400, b''), ('POST', '/', 405, b'')]:
+                index = (static/'index.html').read_bytes() if dev_ui else (Path(__file__).parents[1]/'ui/index.html').read_bytes()
+                cases = [('GET', '/', 200, index), ('HEAD', '/', 200, b''),
+                         ('GET', '/index.html?v=1', 200, index),
+                         ('GET', '/missing', 404, b''), ('GET', '/%2e%2e/peer.log', 400, b''),
+                         ('GET', '/%00', 400, b''), ('POST', '/', 405, b'')]
+                if dev_ui:
+                    cases += [('GET', '/app.js?v=1', 200, b'const ready = true;'),
+                              ('GET', '/large.bin', 200, bytes(range(256))*1024),
+                              ('GET', '/escape', 404, b'')]
+                else:
+                    # Loose development files are ignored unless the explicit override is selected.
+                    cases += [('GET', '/app.js', 404, b''), ('GET', '/large.bin', 404, b'')]
+                for method, target, status, body in cases:
                     client = http.client.HTTPConnection('127.0.0.1', ui_port, timeout=3)
                     try:
                         client.request(method, target)
@@ -169,11 +178,26 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                         assert response.status == status and received == body, (method, target, response.status, len(received), status, len(body))
                         assert response.getheader('Connection') == 'close'
                         if method == 'HEAD':
-                            assert response.getheader('Content-Length') == '11'
-                        if target.startswith('/app.js'):
+                            assert response.getheader('Content-Length') == str(len(index))
+                        if status == 200 and target.startswith('/app.js'):
                             assert response.getheader('Content-Type') == 'text/javascript; charset=utf-8'
                     finally:
                         client.close()
+                if not dev_ui:
+                    assert not any(unrelated.iterdir()), 'Embedded assets must not be extracted at runtime'
+                if dev_ui:
+                    # Edits are visible immediately, and missing development assets never fall back to the bundle.
+                    for replacement, status, body in [(None, 404, b''), (b'live edit', 200, b'live edit')]:
+                        (static/'index.html').unlink(missing_ok=True)
+                        if replacement is not None:
+                            (static/'index.html').write_bytes(replacement)
+                        client = http.client.HTTPConnection('127.0.0.1', ui_port, timeout=3)
+                        try:
+                            client.request('GET', '/')
+                            response = client.getresponse()
+                            assert response.status == status and response.read() == body
+                        finally:
+                            client.close()
             with connect(rpc_port, f'http://127.0.0.1:{ui_port}' if ui else None) as connection:
                 request = dict(jsonrpc='2.0', method='ragnarok_clientInfo', id='client')
                 text = json.dumps(request)
@@ -403,7 +427,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 process.kill()
             process.wait(timeout=5)
     return dict(passed=True, transport='websocket', quic_progress=True, bounded_admission=True,
-                clean_shutdown=True, static_ui=ui, ui_implies_rpc=ui, log=str(log))
+                clean_shutdown=True, static_ui=ui, embedded_ui=ui and not dev_ui, ui_implies_rpc=ui, log=str(log))
 
 
 # Query frozen service fixtures and prove that large batches remain bounded without losing response IDs.

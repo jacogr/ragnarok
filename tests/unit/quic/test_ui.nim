@@ -16,6 +16,28 @@ disabled.close()
 assert not disabled.start(8888, "missing-static-directory")
 assert not disabled.opened and not disabled.rootOpened
 
+# Embedded GET/HEAD use compiled bytes without opening any file or directory.
+let index = embeddedIndex("index.html")
+assert index >= 0
+for verb in ["GET", "HEAD"]:
+  var embedded = Connection(input: verb & " / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+  embedded.process(-1)
+  assert "200 OK" in embedded.output and not embedded.fileOpened
+  assert embedded.embedded == (verb == "GET")
+  if verb == "GET": # Read successive bounded chunks and compare exact bundled bytes.
+    embedded.output = ""
+    var body = ""
+    while embedded.remaining > 0:
+      embedded.readEmbedded()
+      assert embedded.output.len <= ChunkBytes
+      body.add(embedded.output)
+      embedded.output = ""
+    assert body == EmbeddedData[index]
+  embedded.close()
+var absent = Connection(input: "GET /not-in-bundle HTTP/1.1\r\nHost: localhost\r\n\r\n")
+absent.process(-1)
+assert "404 Not Found" in absent.output and not absent.embedded
+
 # Decode once and reject all traversal representations before touching the filesystem.
 for target in ["", "relative", "//etc/passwd", "/../secret", "/%2e%2e/secret",
     "/a/%2E%2E/secret", "/a/./b", "/a//b", "/%00", "/%0a", "/%7f", "/%5csecret",
