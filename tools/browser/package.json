@@ -1,0 +1,8 @@
+{
+  "name": "ragnarok-browser-checks",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}

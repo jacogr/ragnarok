@@ -85,7 +85,7 @@ def ready(process, log):
 
 
 # Exercise RPC on a real retained peer while an independent QUIC client completes application work.
-def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False, dev_ui=False):
+def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False, dev_ui=False, browser=False):
     folder.mkdir(parents=True, exist_ok=True)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
@@ -168,7 +168,8 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                               ('GET', '/escape', 404, b'')]
                 else:
                     # Loose development files are ignored unless the explicit override is selected.
-                    cases += [('GET', '/app.js', 404, b''), ('GET', '/large.bin', 404, b'')]
+                    cases += [('GET', '/app.js', 200, (Path(__file__).parents[1]/'build/ui/app.js').read_bytes()),
+                              ('GET', '/large.bin', 404, b'')]
                 for method, target, status, body in cases:
                     client = http.client.HTTPConnection('127.0.0.1', ui_port, timeout=3)
                     try:
@@ -198,6 +199,17 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                             assert response.status == status and response.read() == body
                         finally:
                             client.close()
+            if browser:
+                # A real page must use the browser Origin, compiled Nim callbacks and native RPC response.
+                browser_folder = folder/'browser'
+                browser_folder.mkdir(exist_ok=True)
+                root = Path(__file__).parents[1]
+                with (browser_folder/'check.log').open('w') as log_file:
+                    environment = {**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': str(root/'build/browser/browsers')}
+                    subprocess.run(['node', str(root/'tools/ui_browser.mjs'),
+                                    f'http://127.0.0.1:{ui_port}/', f'ws://127.0.0.1:{rpc_port}/',
+                                    str(browser_folder)], cwd=root, env=environment, stdout=log_file,
+                                   stderr=subprocess.STDOUT, check=True, timeout=60)
             with connect(rpc_port, f'http://127.0.0.1:{ui_port}' if ui else None) as connection:
                 request = dict(jsonrpc='2.0', method='ragnarok_clientInfo', id='client')
                 text = json.dumps(request)

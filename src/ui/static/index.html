@@ -2,9 +2,35 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 <!doctype html>
 <html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ragnarök UI</title>
-<h1>Ragnarök UI</h1>
-<p>The static UI server is running.</p>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ragnarök · Client console</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><a class="brand" href="/">RAGNARÖK<span>CLIENT CONSOLE</span></a><span class="badge">Browser prototype</span></header>
+    <section class="intro"><p class="eyebrow">LOCAL NODE / LIVE CONNECTION</p><h1>A window into your client.</h1><p>Connect to your node and read its current runtime information.</p></section>
+    <section class="panel" aria-labelledby="connection-title">
+      <div class="panel-heading"><h2 id="connection-title">RPC connection</h2><span class="status" id="status" role="status">Loading…</span></div>
+      <label for="endpoint">WebSocket endpoint</label>
+      <div class="connection-controls"><input id="endpoint" type="url" spellcheck="false" maxlength="1024" aria-describedby="endpoint-help" value="ws://127.0.0.1:19800/"><button id="connect" type="button">Connect <span aria-hidden="true">↗</span></button><button id="disconnect" class="secondary" type="button">Disconnect</button></div>
+      <p class="hint" id="endpoint-help">The RPC listener must be enabled on the client you want to inspect.</p>
+    </section>
+    <section class="metrics" aria-label="Client overview">
+      <article><span>Implementation</span><strong id="implementation">—</strong></article>
+      <article><span>Connected peers</span><strong id="peers">—</strong></article>
+      <article><span>Client uptime</span><strong id="uptime">—</strong></article>
+      <article><span>Responses received</span><strong id="responses">0</strong></article>
+    </section>
+    <section class="panel response-panel" aria-labelledby="response-title">
+      <div class="panel-heading"><div><p class="eyebrow">JSON-RPC 2.0</p><h2 id="response-title">ragnarok_clientInfo</h2></div><button class="secondary" id="refresh" type="button" disabled>Refresh</button></div>
+      <pre id="response" tabindex="0" aria-label="RPC response">Connect to view the client response.</pre>
+    </section>
+    <footer><span>Nimony → JavaScript</span><span id="app-state" role="status">Starting browser application…</span></footer>
+    <noscript>This console requires JavaScript to connect to the client.</noscript>
+  </main>
+</body>
 </html>

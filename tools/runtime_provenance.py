@@ -18,7 +18,7 @@ SOURCE_SCOPES = {
     'spec': {'.json'},
     'src': {'.nim'},
     'tests': {'.py', '.nim', '.output', '.c', '.cc', '.cpp', '.h', '.hpp'},
-    'tools': {'.py', '.json', '.txt'},
+    'tools': {'.py', '.json', '.txt', '.mjs'},
 }
 DATA_DIRECTORIES = ('src/ui/static', 'tests/fixtures', 'vectors')
 # These upstream documents/corpora were already hashed; never sweep entire dependency checkouts.

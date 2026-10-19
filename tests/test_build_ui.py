@@ -9,6 +9,9 @@ import ast
 from pathlib import Path
 import tempfile
 import unittest
+import subprocess
+from unittest.mock import patch
+import build_ui
 from build_ui import build
 
 
@@ -60,3 +63,42 @@ class UiBuild(unittest.TestCase):
             (source/'escape').symlink_to(root/'outside')
             with self.assertRaisesRegex(ValueError, 'Symlink'):
                 build(source, root/'stage', root/'manifest.nim')
+
+
+class UiCompiler(unittest.TestCase):
+    """Ensure generated JS uses the pinned compiler/backend and cannot reuse stale failure output."""
+
+    def test_browser_command_and_cache(self):
+        """Backend identity selects a separate cache, and the JS command enables browser-only code."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outputs = []
+            def compile(command, **kwargs):
+                # Only model compiler output; the real JS backend is verified by browser E2E.
+                outputs.append((command, kwargs['env']))
+                output = Path(next(value[6:] for value in command if value.startswith('--out:')))
+                output.write_bytes(b'generated browser JavaScript')
+            with patch.object(build_ui, 'ROOT', root), patch.object(build_ui, 'native_tools', return_value=(Path('/tool/nimony'), None)), patch.object(build_ui, 'web_tools', return_value=(Path('/web/bin/jorogumo'), 'a'*64)), patch.object(build_ui.subprocess, 'run', side_effect=compile):
+                self.assertEqual(build_ui.compile_client(), b'generated browser JavaScript')
+            command, environment = outputs[0]
+            self.assertIn('j', command)
+            self.assertIn('--browser', command)
+            self.assertIn('-d:ragnarokBrowser', command)
+            self.assertTrue(environment['PATH'].startswith('/web/bin'))
+            with patch.object(build_ui, 'ROOT', root), patch.object(build_ui, 'native_tools', return_value=(Path('/tool/nimony'), None)), patch.object(build_ui, 'web_tools', return_value=(Path('/web/bin/jorogumo'), 'b'*64)), patch.object(build_ui.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, ['nimony'])):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    build_ui.compile_client() # An old app.js is never returned after failed compilation.
+
+    def test_generated_assets_join_bundle(self):
+        """Compiled binary bytes are staged and embedded, without allowing static-name collisions."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root/'source'
+            source.mkdir()
+            (source/'index.html').write_bytes(b'index')
+            payload = b'code\x00\xff'
+            self.assertEqual(build(source, root/'stage', root/'manifest.nim', {'app.js': payload}), 2)
+            self.assertEqual((root/'stage/app.js').read_bytes(), payload)
+            (source/'app.js').write_bytes(b'conflict')
+            with self.assertRaisesRegex(ValueError, 'collides'):
+                build(source, root/'stage', root/'manifest.nim', {'app.js': payload})

@@ -5,9 +5,13 @@
 """Stage UI distribution files and generate immutable Nim asset arrays in build/.
 
 Exposes build for deterministic asset staging/embedding. Make invokes main before native builds;
-the checked-in src/ui/static/ holds distribution assets until a frontend build replaces it.
+the pinned Nimony JS backend compiles src/ui/client.nim alongside src/ui/static/ assets.
 """
 from pathlib import Path
+import os
+import subprocess
+from setup_nimony import installed as native_tools, cache_directory
+from setup_web import installed as web_tools
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,7 +33,7 @@ def write_changed(path, data):
 
 
 # Capture source bytes once, before updating output, so each staged file matches its embedded constant.
-def build(source, stage, manifest):
+def build(source, stage, manifest, generated=None):
     """Stage one public asset tree and generate a sorted path/data manifest; reject symlink sources."""
     source, stage, manifest = Path(source), Path(stage), Path(manifest)
     if not source.is_dir() or source.is_symlink():
@@ -48,6 +52,12 @@ def build(source, stage, manifest):
             assets.append((name, path.read_bytes()))
         elif not path.is_dir():
             raise ValueError('Non-regular UI asset: ' + str(path))
+    if generated:
+        # Generated application code joins the same byte-exact manifest as static public assets.
+        for name, content in generated.items():
+            if name in {path for path, _ in assets}:
+                raise ValueError('Generated UI asset collides with a static file: '+name)
+            assets.append((name, content))
     assets.sort(key=lambda asset: asset[0]) # Sort URL paths rather than host path components.
     if 'index.html' not in {name for name, _ in assets}:
         raise ValueError('UI distribution requires index.html')
@@ -73,10 +83,28 @@ def build(source, stage, manifest):
     return len(assets)
 
 
-# No JavaScript runtime is needed for the current static placeholder; Make owns future frontend sequencing.
+# The application is compiled by Nimony; bootstrap Nim is used only to build jorogumo itself.
+def compile_client():
+    """Compile the browser-only UI and retain diagnostics; backend identity separates compiler caches."""
+    compiler, _ = native_tools()
+    backend, identity = web_tools()
+    folder = ROOT/'build/ui-client'
+    folder.mkdir(parents=True, exist_ok=True)
+    output = folder/'app.js'
+    cache = cache_directory(compiler, folder, 'browser-'+identity[:16])
+    command = [str(compiler), 'j', '--browser', '-d:release', '--mm:arc', '-d:ragnarokBrowser',
+               '--nimcache:'+str(cache), '--out:'+str(output), str(ROOT/'src/ui/client.nim')]
+    environment = {**os.environ, 'PATH': str(backend.parent)+os.pathsep+os.environ['PATH']}
+    with (folder/'compile.log').open('w') as log:
+        subprocess.run(command, cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, check=True)
+    return output.read_bytes()
+
+
+# Make owns tool preparation; this step emits the complete distribution and embedded manifest.
 def main():
     """Build the repository-owned static distribution and its compile-time manifest."""
-    count = build(ROOT/'src/ui/static', ROOT/'build/ui', ROOT/'build/ui_assets.nim')
+    count = build(ROOT/'src/ui/static', ROOT/'build/ui', ROOT/'build/ui_assets.nim',
+                  {'app.js': compile_client()})
     print(f'Embedded UI manifest: {count} assets; staged in build/ui/')
 
 

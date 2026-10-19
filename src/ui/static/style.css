@@ -1,0 +1,38 @@
+/* Copyright (c) 2026 Ragnarök contributors */
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* Layout and visual states for the small client-info browser prototype. */
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e7ecf7; background: #0b101b; }
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(ellipse at 95% 0, #222441 0, transparent 45%); min-height: 100vh; }
+main { max-width: 1120px; margin: auto; padding: 32px 36px 24px; }
+header, .panel-heading, footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+header { padding-bottom: 28px; border-bottom: 1px solid #242d40; }
+.brand { color: inherit; text-decoration: none; font-size: 19px; font-weight: 750; letter-spacing: .18em; }
+.brand span { display: block; color: #8a96b0; font-size: 9px; letter-spacing: .22em; margin-top: 6px; }
+.badge { border: 1px solid #424562; color: #b5bce1; border-radius: 20px; padding: 7px 12px; font-size: 11px; }
+.intro { padding: 43px 0 22px; }
+.eyebrow { color: #9ba8c6; font-size: 10px; letter-spacing: .17em; font-weight: 600; margin: 0 0 12px; }
+h1 { font-size: clamp(27px, 4vw, 39px); font-weight: 550; letter-spacing: -.04em; margin: 0 0 14px; }
+.intro > p:last-child { color: #99a5bc; font-size: 14px; line-height: 1.7; }
+.panel { background: #111a29; border: 1px solid #28344a; border-radius: 12px; padding: 24px; }
+.panel-heading { margin-bottom: 22px; }
+h2 { font-size: 15px; font-weight: 550; margin: 0; }
+.status { font-size: 12px; color: #a6b5d0; padding: 6px 10px; border-radius: 6px; background: #1c2a40; }
+label { display: block; font-size: 11px; color: #a3afc5; margin-bottom: 10px; }
+.connection-controls { display: flex; gap: 10px; }
+input { flex: 1; min-width: 0; color: #d7e2f6; background: #0a1321; border: 1px solid #34435b; border-radius: 7px; padding: 12px; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+button { font: inherit; font-size: 12px; font-weight: 600; border: 1px solid #acb7ff; border-radius: 7px; padding: 11px 18px; cursor: pointer; background: #b2beff; color: #141c35; white-space: nowrap; }
+button span { padding-left: 12px; }
+button.secondary { background: #1b283c; color: #c6d3e9; border-color: #35445b; }
+button:hover { filter: brightness(1.12); }
+button:disabled { cursor: default; opacity: .4; }
+input:focus-visible, button:focus-visible, pre:focus-visible, a:focus-visible { outline: 2px solid #b2beff; outline-offset: 4px; }
+.hint { margin: 13px 0 0; color: #7f8da5; font-size: 11px; line-height: 1.5; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 18px 0; }
+.metrics article { border: 1px solid #253149; border-radius: 10px; padding: 21px; background: #101827; }
+.metrics span { display: block; color: #8f9eb8; font-size: 11px; margin-bottom: 17px; }
+.metrics strong { font-size: 22px; font-weight: 500; letter-spacing: -.03em; }
+.response-panel .eyebrow { margin-bottom: 7px; font-size: 9px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 460px; min-height: 120px; overflow: auto; margin: 0; padding: 20px; background: #0a1321; border: 1px solid #25334a; border-radius: 8px; color: #b5c6e4; font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; }
+footer { color: #677791; font-size: 10px; padding-top: 22px; letter-spacing: .04em; }
+@media (max-width: 680px) { main { padding: 22px 18px; } .panel { padding: 18px; } .metrics { grid-template-columns: repeat(2, 1fr); } .connection-controls { flex-wrap: wrap; } input { flex-basis: 100%; } .intro { padding-top: 30px; } .badge { font-size: 9px; } }

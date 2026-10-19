@@ -226,6 +226,9 @@ jobs:
             build/tests/e2e/retained-integration/*.log
             build/tests/e2e/retained-integration/resources.json
             build/tests/e2e/peer-cases/**/*.log
+            build/tests/e2e/rpc/browser/*.log
+            build/tests/e2e/rpc/browser/*.json
+            build/tests/e2e/rpc/browser/*.png
             build/crypto/build.log
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
