@@ -8,11 +8,9 @@
 import ./primitives
 
 type
-  # The normative domain plus report hash is distinct from a signature or raw digest.
-  GuaranteeMessage* = distinct array[45, byte]
+  GuaranteeMessage* = distinct array[45, byte] ## The normative domain plus report hash is distinct from a signature or raw digest.
 
-  # This composition owns its checked result; primitive constructors remain private to their module.
-  GuaranteeMessageResult* = object
+  GuaranteeMessageResult* = object ## This composition owns its checked result; primitive constructors remain private to their module.
     case status: CryptoError
     of None:
       # Only a completed hash/domain construction carries signing bytes.
@@ -21,17 +19,18 @@ type
       # Defaults and backend refusals carry no partial or zero message.
       discard
 
-# Preserve primitive failure reasons through a read-only composition outcome.
-func error*(value: GuaranteeMessageResult): CryptoError = value.status
+func error*(value: GuaranteeMessageResult): CryptoError =
+  ## Preserve primitive failure reasons through a read-only composition outcome.
+  value.status
 
-# A fixed message copy is available only after successful domain/hash construction.
 func value*(value: GuaranteeMessageResult): GuaranteeMessage {.inline, requires: value.status ==
     CryptoError.None.} =
+  ## A fixed message copy is available only after successful domain/hash construction.
   value.completed
 
-# Hash exact canonical report bytes and prepend ASCII jam_guarantee, without a timeslot or second hash.
-# This function does not establish validator assignments or resolve the Ed25519 acceptance-policy gate.
 proc guaranteeMessage*(canonicalReport: openArray[byte]): GuaranteeMessageResult {.raises: [].} =
+  ## Hash exact canonical report bytes and prepend ASCII jam_guarantee, without a timeslot or second hash.
+  ## This function does not establish validator assignments or resolve the Ed25519 acceptance-policy gate.
   let hashed = blake2b256(canonicalReport)
   # Failed provider calls expose no partial or all-zero signing message.
   if hashed.error != CryptoError.None: return GuaranteeMessageResult(status: hashed.error)

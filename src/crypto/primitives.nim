@@ -29,19 +29,13 @@ proc nativeVerify(key, signature, data: pointer, length: csize_t): cint {.import
     header: Header, cdecl, raises: [], gcsafe.}
 
 type
-  # Nominal 32-byte Blake2b digest; not interchangeable with a Keccak hash or signing key.
-  Blake2bHash* = distinct array[32, byte]
-  # Nominal Ethereum-style legacy Keccak-256 digest, separate from SHA3-256.
-  KeccakHash* = distinct array[32, byte]
-  # Owned encoded public-key bytes; import checks size, verification checks backend point/signature policy.
-  EdPublicKey* = distinct array[32, byte]
-  # Owned ordinary Ed25519 signature bytes, never an Ed25519ph or contextual signature.
-  EdSignature* = distinct array[64, byte]
-  # Typed failures; default results are failures and contain no payload fields.
-  CryptoError* {.pure.} = enum
+  Blake2bHash* = distinct array[32, byte] ## Nominal 32-byte Blake2b digest; not interchangeable with a Keccak hash or signing key.
+  KeccakHash* = distinct array[32, byte] ## Nominal Ethereum-style legacy Keccak-256 digest, separate from SHA3-256.
+  EdPublicKey* = distinct array[32, byte] ## Owned encoded public-key bytes; import checks size, verification checks backend point/signature policy.
+  EdSignature* = distinct array[64, byte] ## Owned ordinary Ed25519 signature bytes, never an Ed25519ph or contextual signature.
+  CryptoError* {.pure.} = enum ## Typed failures; default results are failures and contain no payload fields.
     Uninitialized, None, InvalidLength, InvalidSeed, AllocationFailure, BackendFailure
-  # Generic checked result: successful fixed bytes/seed owners exist only in the None alternative.
-  CryptoResult*[T] = object
+  CryptoResult*[T] = object ## Generic checked result: successful fixed bytes/seed owners exist only in the None alternative.
     case status: CryptoError
     of None:
       # Only completed operations expose their owned value.
@@ -55,14 +49,14 @@ type
     alive: bool
   # ARC references share one private storage object without copying secret bytes.
   SeedData = ref SeedStorage
-  # Opaque retained seed handle; safe callers cannot inspect or modify secret bytes.
-  EdSeed* = object
+  EdSeed* = object ## Opaque retained seed handle; safe callers cannot inspect or modify secret bytes.
     storage: nil SeedData
 
-# Outcomes are read-only; failed/default imports and backend calls carry no usable value.
-func error*[T](value: CryptoResult[T]): CryptoError = value.status
-# Supported success contracts guard all fixed outputs and opaque seed handles.
+func error*[T](value: CryptoResult[T]): CryptoError =
+  ## Outcomes are read-only; failed/default imports and backend calls carry no usable value.
+  value.status
 func value*[T](value: CryptoResult[T]): T {.inline, requires: value.status == CryptoError.None.} =
+  ## Supported success contracts guard all fixed outputs and opaque seed handles.
   value.completed
 
 # Last-owner destruction explicitly erases retained bytes without depending on ordinary assignment optimization.
@@ -75,8 +69,8 @@ proc dataPointer(input: openArray[byte]): pointer {.raises: [], gcsafe.} =
   if input.len == 0: return nil
   unsafeAddr input[0]
 
-# Retain a private seed copy; no reference to the caller's original array survives this operation.
 proc importSeed*(input: openArray[byte]): CryptoResult[EdSeed] {.raises: [], gcsafe.} =
+  ## Retain a private seed copy; no reference to the caller's original array survives this operation.
   # A seed has exact RFC 8032 width, including when all its bytes are zero.
   if input.len != 32: return CryptoResult[EdSeed](status: CryptoError.InvalidLength)
   let storage = SeedData(bytes: default(array[32, byte]), alive: true)
@@ -84,16 +78,16 @@ proc importSeed*(input: openArray[byte]): CryptoResult[EdSeed] {.raises: [], gcs
   for i in 0..<32: storage.bytes[i] = input[i]
   CryptoResult[EdSeed](status: CryptoError.None, completed: EdSeed(storage: storage))
 
-# Erase and invalidate all retained aliases; ARC frees storage when the last opaque handle is released.
 proc clearSeed*(seed: EdSeed) {.raises: [], gcsafe.} =
+  ## Erase and invalidate all retained aliases; ARC frees storage when the last opaque handle is released.
   let storage = seed.storage
   # Clearing a default owner is harmless and cannot fabricate an initialized zero seed.
   if storage == nil: return
   wipe(addr storage.bytes[0], 32)
   storage.alive = false
 
-# Import fixed encoded public-key bytes; this is a size check, not a claim of subgroup membership.
 proc importPublicKey*(input: openArray[byte]): CryptoResult[EdPublicKey] {.raises: [], gcsafe.} =
+  ## Import fixed encoded public-key bytes; this is a size check, not a claim of subgroup membership.
   # Wrong widths fail before any usable key value is constructed.
   if input.len != 32: return CryptoResult[EdPublicKey](status: CryptoError.InvalidLength)
   var value: array[32, byte] = default(array[32, byte])
@@ -101,8 +95,8 @@ proc importPublicKey*(input: openArray[byte]): CryptoResult[EdPublicKey] {.raise
   for i in 0..<32: value[i] = input[i]
   CryptoResult[EdPublicKey](status: CryptoError.None, completed: EdPublicKey(value))
 
-# Import exact public signature bytes without validating a signature equation or adding padding.
 proc importSignature*(input: openArray[byte]): CryptoResult[EdSignature] {.raises: [], gcsafe.} =
+  ## Import exact public signature bytes without validating a signature equation or adding padding.
   # Failed width checks expose no signature or padding bytes.
   if input.len != 64: return CryptoResult[EdSignature](status: CryptoError.InvalidLength)
   var value: array[64, byte] = default(array[64, byte])
@@ -110,24 +104,24 @@ proc importSignature*(input: openArray[byte]): CryptoResult[EdSignature] {.raise
   for i in 0..<64: value[i] = input[i]
   CryptoResult[EdSignature](status: CryptoError.None, completed: EdSignature(value))
 
-# Hash raw bytes with a 32-byte Blake2b parameter; no implicit codec transform or domain prefix is added.
 proc blake2b256*(input: openArray[byte]): CryptoResult[Blake2bHash] {.raises: [], gcsafe.} =
+  ## Hash raw bytes with a 32-byte Blake2b parameter; no implicit codec transform or domain prefix is added.
   var output: array[32, byte] = default(array[32, byte])
   # Native failure never exposes the temporary default digest.
   if nativeBlake(dataPointer(input), csize_t(input.len), addr output[0]) != 1:
     return CryptoResult[Blake2bHash](status: CryptoError.BackendFailure)
   CryptoResult[Blake2bHash](status: CryptoError.None, completed: Blake2bHash(output))
 
-# Hash raw bytes with legacy Keccak-256 (suffix 0x01), independently of SHA3's 0x06 suffix.
 proc keccak256*(input: openArray[byte]): CryptoResult[KeccakHash] {.raises: [], gcsafe.} =
+  ## Hash raw bytes with legacy Keccak-256 (suffix 0x01), independently of SHA3's 0x06 suffix.
   var output: array[32, byte] = default(array[32, byte])
   # Backend parameter/setup failure produces no usable digest.
   if nativeKeccak(dataPointer(input), csize_t(input.len), addr output[0]) != 1:
     return CryptoResult[KeccakHash](status: CryptoError.BackendFailure)
   CryptoResult[KeccakHash](status: CryptoError.None, completed: KeccakHash(output))
 
-# Derive public bytes using a live retained seed; native expanded key material stays ephemeral.
 proc publicKey*(seed: EdSeed): CryptoResult[EdPublicKey] {.raises: [], gcsafe.} =
+  ## Derive public bytes using a live retained seed; native expanded key material stays ephemeral.
   let storage = seed.storage
   # Default or cleared seed owners are failures, distinct from an explicitly imported all-zero seed.
   if storage == nil or not storage.alive: return CryptoResult[EdPublicKey](
@@ -138,8 +132,8 @@ proc publicKey*(seed: EdSeed): CryptoResult[EdPublicKey] {.raises: [], gcsafe.} 
     return CryptoResult[EdPublicKey](status: CryptoError.BackendFailure)
   CryptoResult[EdPublicKey](status: CryptoError.None, completed: EdPublicKey(output))
 
-# Sign the exact raw message with ordinary deterministic Ed25519; no implicit hash/domain is applied.
 proc sign*(seed: EdSeed, message: openArray[byte]): CryptoResult[EdSignature] {.raises: [], gcsafe.} =
+  ## Sign the exact raw message with ordinary deterministic Ed25519; no implicit hash/domain is applied.
   let storage = seed.storage
   # A missing/cleared handle cannot silently act as an all-zero private key.
   if storage == nil or not storage.alive: return CryptoResult[EdSignature](
@@ -150,8 +144,8 @@ proc sign*(seed: EdSeed, message: openArray[byte]): CryptoResult[EdSignature] {.
     return CryptoResult[EdSignature](status: CryptoError.BackendFailure)
   CryptoResult[EdSignature](status: CryptoError.None, completed: EdSignature(output))
 
-# Return the pinned backend verdict for exact copied key/signature encodings and a borrowed raw message.
 proc verify*(key: EdPublicKey, signature: EdSignature, message: openArray[byte]): bool {.raises: [], gcsafe.} =
+  ## Return the pinned backend verdict for exact copied key/signature encodings and a borrowed raw message.
   var publicBytes = array[32, byte](key)
   var signatureBytes = array[64, byte](signature)
   nativeVerify(addr publicBytes[0], addr signatureBytes[0], dataPointer(message), csize_t(

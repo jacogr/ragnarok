@@ -11,18 +11,13 @@ import ./primitives
 import ../codec/assurances
 
 type
-  # Expected block parent is distinct from an assurance anchor and from a computed digest.
-  AssuranceParent* = distinct array[32, byte]
-  # The normative domain and 32-byte digest form one owned, signature-independent message.
-  AssuranceSigningMessage* = distinct array[45, byte]
-  # Only completed verification may produce a certified count; this is not availability/state approval.
-  VerifiedAssuranceCount* = distinct uint64
-  # Context errors preserve precise configuration, structural, parent and cryptographic failures.
-  AssuranceContextError* {.pure.} = enum
+  AssuranceParent* = distinct array[32, byte] ## Expected block parent is distinct from an assurance anchor and from a computed digest.
+  AssuranceSigningMessage* = distinct array[45, byte] ## The normative domain and 32-byte digest form one owned, signature-independent message.
+  VerifiedAssuranceCount* = distinct uint64 ## Only completed verification may produce a certified count; this is not availability/state approval.
+  AssuranceContextError* {.pure.} = enum ## Context errors preserve precise configuration, structural, parent and cryptographic failures.
     Uninitialized, None, InvalidConfig, InvalidKeySet, LimitExceeded, InvalidValidator,
     NonCanonical, WrongParent, InvalidSignature, BackendFailure
-  # Default and failure alternatives have no transcript, count or partially validated value.
-  AssuranceContextResult*[T] = object
+  AssuranceContextResult*[T] = object ## Default and failure alternatives have no transcript, count or partially validated value.
     case status: AssuranceContextError
     of None:
       # Success alone exposes the fully completed message or verification count.
@@ -31,12 +26,13 @@ type
       # A failed result carries only its reason.
       discard
 
-# Return a read-only failure reason; defaults and errors never publish a transcript or count.
-func error*[T](value: AssuranceContextResult[T]): AssuranceContextError = value.status
+func error*[T](value: AssuranceContextResult[T]): AssuranceContextError =
+  ## Return a read-only failure reason; defaults and errors never publish a transcript or count.
+  value.status
 
-# Fixed outputs are copied only after selecting success; no caller can bypass the supported contract.
 func value*[T](value: AssuranceContextResult[T]): T {.inline, requires: value.status ==
     AssuranceContextError.None.} =
+  ## Fixed outputs are copied only after selecting success; no caller can bypass the supported contract.
   value.completed
 
 # Validate all native bit storage before constructing the protocol's fixed-width transcript.
@@ -52,10 +48,10 @@ proc canonicalBits(bits: AssuranceBits, cores: CoreCount): bool {.raises: [].} =
       return false
   true
 
-# Build exactly jam_available || Blake2b-256(parent || fixed bits), without retaining any input.
 proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
                        cores: CoreCount): AssuranceContextResult[
                            AssuranceSigningMessage] {.raises: [].} =
+  ## Build exactly jam_available || Blake2b-256(parent || fixed bits), without retaining any input.
   # Validate the unsigned profile before narrowing or indexing the final bitfield byte.
   if uint64(cores) < 1 or uint64(cores) > 341:
     return AssuranceContextResult[AssuranceSigningMessage](
@@ -86,10 +82,10 @@ proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
   AssuranceContextResult[AssuranceSigningMessage](status: AssuranceContextError.None,
     completed: AssuranceSigningMessage(message))
 
-# Verify stable borrowed records and key mapping without allocations, mutation or retained pointers.
 proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
                        parent: AssuranceParent, keys: openArray[EdPublicKey]):
                        AssuranceContextResult[VerifiedAssuranceCount] {.raises: [].} =
+  ## Verify stable borrowed records and key mapping without allocations, mutation or retained pointers.
   # Configuration has precedence over empty input and absent validator keys.
   if not validConfig(config):
     return AssuranceContextResult[VerifiedAssuranceCount](

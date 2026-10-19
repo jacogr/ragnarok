@@ -12,22 +12,22 @@ import ../codec/[block_codec, header, owned, report_owned, guarantees, natural, 
 import ./primitives
 
 type
-  ## Default/refused commitments contain no digest, partial family hashes or consumed progress.
-  ExtrinsicCommitmentError* {.pure.} = enum
+  ExtrinsicCommitmentError* {.pure.} = enum ## Default/refused commitments contain no digest, partial family hashes or consumed progress.
     Uninitialized, None, InvalidOwner, LimitExceeded, LengthOverflow, BackendFailure
-  ## Private discriminator/payload guard every successful digest or internal temporary extraction.
-  ExtrinsicCommitmentResult*[T] = object
+  ExtrinsicCommitmentResult*[T] = object ## Private discriminator/payload guard every successful digest or internal temporary extraction.
     case status: ExtrinsicCommitmentError
     of None:
       completed: T # Only fully completed operations can expose bytes or a nominal extrinsic root.
     else:
       discard      # No successful prefix escapes a refusal.
 
-## Inspect failure without permitting result retagging.
-func error*[T](outcome: ExtrinsicCommitmentResult[T]): ExtrinsicCommitmentError = outcome.status
-## Extract only after selecting complete success.
+func error*[T](outcome: ExtrinsicCommitmentResult[T]): ExtrinsicCommitmentError =
+  ## Inspect failure without permitting result retagging.
+  outcome.status
 func value*[T](outcome: ExtrinsicCommitmentResult[T]): T {.inline,
-    requires: outcome.status == ExtrinsicCommitmentError.None.} = outcome.completed
+    requires: outcome.status == ExtrinsicCommitmentError.None.} =
+  ## Extract only after selecting complete success.
+  outcome.completed
 
 ## Copy a schema-bound component only after its complete immutable extent fits the caller's ceiling.
 proc wire[K: static[ComponentKind]](owner: Component[K], limit: ByteLimit):
@@ -66,11 +66,11 @@ proc put(bytes: openArray[byte], destination: var seq[byte], cursor: var int) =
     destination[cursor] = octet # All destination lengths were proved before cryptographic work.
     inc cursor
 
-## Hash exact T, projected P/G, A and D; hash their five ordered 32-byte results without an outer count.
-## maxBytes independently caps original extrinsic wire and the aggregate projected encodings.
-## Preimages become E4(service)||B(blob); guarantees become B(report)||E4(slot)||var(credentials).
 proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
     ExtrinsicCommitmentResult[ExtrinsicRoot] =
+  ## Hash exact T, projected P/G, A and D; hash their five ordered 32-byte results without an outer count.
+  ## maxBytes independently caps original extrinsic wire and the aggregate projected encodings.
+  ## Preimages become E4(service)||B(blob); guarantees become B(report)||E4(slot)||var(credentials).
   let info = extrinsicInfo(owner)
   if info.error != FrameError.None:
     return ExtrinsicCommitmentResult[ExtrinsicRoot](
