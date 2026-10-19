@@ -173,6 +173,7 @@
   "tests/native/pvm_fetch_results.nim",
   "tests/native/pvm_gas_results.nim",
   "tests/native/pvm_host_execution_results.nim",
+  "tests/native/pvm_host_failures_results.nim",
   "tests/native/pvm_host_gas_results.nim",
   "tests/native/pvm_host_memory_results.nim",
   "tests/native/pvm_host_response_results.nim",

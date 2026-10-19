@@ -14,7 +14,9 @@ now preserves negative terminal responses. This is not complete JAM invocation.
 ## Dispatch and budgets
 
 The handler receives the normalized Host suspension and mutable context, and returns
-an explicit `HostResponse`. Guest terminal/fault outcomes return unchanged without
+an explicit `HostResponse`. A [fallible overload](pvm-host-failures.md) also accepts
+`HostResult[Reason]` and preserves enum-valued local refusals in a guarded execution result.
+Both forms share the same guest and dispatch-budget helper. Guest terminal/fault outcomes return unchanged without
 calling it. A continuation is applied through `applyHostResponse` and starts another
 guest segment. Host terminal outcomes return immediately with posterior state at the
 causing PC; they are not normalized again as guest halts or panics.
