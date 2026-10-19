@@ -10,7 +10,7 @@ import ../../src/codec/[header, state_trie]
 import ../support/[accumulation_terminal_provisions, accumulation_provision_integration,
   pvm_accumulation_provision]
 
-## Fail hashing only after the actual completed guest exists.
+# Fail hashing only after the actual completed guest exists.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 let argument = paramStr(1)
 let execution = terminalProvisionExecution()

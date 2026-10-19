@@ -14,16 +14,16 @@ import ../../../src/crypto/primitives
 import ../../support/[accumulation_terminal_provisions, accumulation_provision_integration,
   pvm_accumulation_provision, arc_evidence]
 
-## Disable hashing only after all genuine execution and posterior fixtures exist.
+# Disable hashing only after all genuine execution and posterior fixtures exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
-## Count backend invocations to prove terminal preflight and cached replay perform no hashes.
+# Count backend invocations to prove terminal preflight and cached replay perform no hashes.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
-## Inspect only the complete map's existing commitment, never a partial reconstruction.
+# Inspect only the complete map's existing commitment, never a partial reconstruction.
 proc root(state: StateStore): array[32, byte] = array[32, byte](
     state.snapshot.value.commitment.root)
 
-## Independently construct exact singleton timestamp bytes and full expected-map commitments.
+# Independently construct exact singleton timestamp bytes and full expected-map commitments.
 proc expectedEntries(second: bool): seq[StateEntry] =
   result = terminalPosteriorEntries()
   for service in [42'u32, 99'u32]:

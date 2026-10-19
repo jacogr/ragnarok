@@ -9,23 +9,25 @@ import ./[accumulation_dispatch, accumulation_outcome, accumulation_provisions,
   accumulation_context, accumulation_effects, accumulation_invocation, accumulation_service, store]
 
 type
-  ## Local preparation failures retain no partial selected outcome, union or published map.
-  AccumulationTerminalProvisionError* {.pure.} = enum
-    Uninitialized, None, InvalidSlot, InvalidIndex, LimitExceeded, NormalizationFailure, ProvisionFailure
-  ## Copied observations preserve the checked invocation slot and existing union accounting.
-  AccumulationTerminalProvisionInfo* = object
-    slot*: HeaderSlot
-    provisions*: AccumulationProvisionPlanInfo
-  ## Private acyclic owner retains selected outcomes and their independently prepared provision union.
+  AccumulationTerminalProvisionError* {.pure.} = enum ## Local preparation failures retain no partial selected outcome, union or published map.
+    Uninitialized,        ## Default result or plan without initialized ownership.
+    None,                 ## Complete selected success; guarded value extraction is available.
+    InvalidSlot,          ## A selected execution's original invocation slot differs from the candidate slot.
+    InvalidIndex,         ## A full-width source ordinal is outside this plan's retained outcomes.
+    LimitExceeded,        ## Execution descriptors exceed the context or native allocation ceiling.
+    NormalizationFailure, ## Terminal normalization refused; inspect normalizationError.
+    ProvisionFailure      ## Union preparation or atomic fulfillment refused; inspect provisionError.
+  AccumulationTerminalProvisionInfo* = object ## Copied observations preserve the checked invocation slot and existing union accounting.
+    slot*: HeaderSlot                          ## Checked invocation slot retained for request timestamps.
+    provisions*: AccumulationProvisionPlanInfo ## Copied input-traversal and unique-value accounting.
+  # Private acyclic owner retains selected outcomes and their independently prepared provision union.
   TerminalProvisionData = ref object
     outcomes: seq[AccumulationOutcome]
     plan: PreparedAccumulationProvisions
     slot: HeaderSlot
-  ## Only normalization of completed dispatch results can construct this stronger plan.
-  PreparedTerminalAccumulationProvisions* = object
+  PreparedTerminalAccumulationProvisions* = object ## Only normalization of completed dispatch results can construct this stronger plan.
     data: nil TerminalProvisionData
-  ## Reason-only failures keep normalization gates separate from union/application refusals.
-  AccumulationTerminalProvisionResult*[T] = object
+  AccumulationTerminalProvisionResult*[T] = object ## Reason-only failures keep normalization gates separate from union/application refusals.
     case status: AccumulationTerminalProvisionError
     of None:
       completed: T # Success extraction is guarded even in optimized native builds.
@@ -36,26 +38,30 @@ type
     else:
       discard      # Defaults, slot/index and early extent refusals carry no success storage.
 
-## Inspect only the selected reason; no mutable discriminator escapes.
 func error*[T](outcome: AccumulationTerminalProvisionResult[
-    T]): AccumulationTerminalProvisionError = outcome.status
-## Extract only the successful alternative.
+    T]): AccumulationTerminalProvisionError =
+  ## Inspect only the selected reason; no mutable discriminator escapes.
+  outcome.status
 func value*[T](outcome: AccumulationTerminalProvisionResult[T]): T {.inline,
-    requires: outcome.status == AccumulationTerminalProvisionError.None.} = outcome.completed
-## Preserve the exact terminal normalization refusal, including its parked specification gate.
+    requires: outcome.status == AccumulationTerminalProvisionError.None.} =
+  ## Extract only the successful alternative.
+  outcome.completed
 func normalizationError*[T](outcome: AccumulationTerminalProvisionResult[
     T]): AccumulationOutcomeError {.inline,
 
-requires: outcome.status == AccumulationTerminalProvisionError.NormalizationFailure.} = outcome.normalizationReason
-## Preserve the exact union or atomic application refusal without fabricating terminal failure.
+requires: outcome.status == AccumulationTerminalProvisionError.NormalizationFailure.} =
+  ## Preserve the exact terminal normalization refusal, including its parked specification gate.
+  outcome.normalizationReason
 func provisionError*[T](outcome: AccumulationTerminalProvisionResult[
     T]): AccumulationProvisionError {.inline,
 
-requires: outcome.status == AccumulationTerminalProvisionError.ProvisionFailure.} = outcome.provisionReason
+requires: outcome.status == AccumulationTerminalProvisionError.ProvisionFailure.} =
+  ## Preserve the exact union or atomic application refusal without fabricating terminal failure.
+  outcome.provisionReason
 
-## Copy fixed observations without exposing retained outcome arrays or a replaceable slot.
 proc terminalProvisionInfo*(plan: PreparedTerminalAccumulationProvisions):
     AccumulationTerminalProvisionResult[AccumulationTerminalProvisionInfo] =
+  ## Copy fixed observations without exposing retained outcome arrays or a replaceable slot.
   let data = plan.data
   if data == nil:
     return AccumulationTerminalProvisionResult[AccumulationTerminalProvisionInfo](status:
@@ -64,10 +70,10 @@ proc terminalProvisionInfo*(plan: PreparedTerminalAccumulationProvisions):
     AccumulationTerminalProvisionError.None, completed: AccumulationTerminalProvisionInfo(
       slot: data.slot, provisions: data.plan.provisionPlanInfo.value))
 
-## Retain the exact normalized outcome corresponding to this bounded input ordinal.
 proc terminalProvisionOutcomeAt*(plan: PreparedTerminalAccumulationProvisions,
     index: AccumulationProvisionSourceIndex): AccumulationTerminalProvisionResult[
         AccumulationOutcome] =
+  ## Retain the exact normalized outcome corresponding to this bounded input ordinal.
   let data = plan.data
   if data == nil:
     return AccumulationTerminalProvisionResult[AccumulationOutcome](status:
@@ -78,11 +84,11 @@ proc terminalProvisionOutcomeAt*(plan: PreparedTerminalAccumulationProvisions,
   AccumulationTerminalProvisionResult[AccumulationOutcome](status:
     AccumulationTerminalProvisionError.None, completed: data.outcomes[int(uint64(index))])
 
-## Normalize every completed execution before union hashing; the caller borrows the input stably during this call.
-## Repeated executions consume repeated traversal budgets; no round membership or shared parent is certified.
 proc prepareTerminalAccumulationProvisions*(executions: openArray[AccumulationDispatchResult],
     slot: HeaderSlot, limits: AccumulationProvisionUnionLimits):
     AccumulationTerminalProvisionResult[PreparedTerminalAccumulationProvisions] =
+  ## Normalize every completed execution before union hashing; the caller borrows the input stably during this call.
+  ## Repeated executions consume repeated traversal budgets; no round membership or shared parent is certified.
   if uint64(executions.len) > uint64(limits.contexts) or
       executions.len > high(int) div (sizeof(AccumulationOutcome)+sizeof(
           AccumulationEffectContext)):
@@ -114,11 +120,11 @@ proc prepareTerminalAccumulationProvisions*(executions: openArray[AccumulationDi
     AccumulationTerminalProvisionError.None, completed: PreparedTerminalAccumulationProvisions(
       data: TerminalProvisionData(outcomes: outcomes, plan: prepared.value, slot: slot)))
 
-## Atomically fulfill requests in the explicit posterior complete map using only this plan's checked slot.
-## Cached identities, cancellation filtering and write/root rollback retain the existing fnprovide contracts.
 proc integrateTerminalAccumulationProvisions*(state: var StateStore,
     plan: PreparedTerminalAccumulationProvisions): AccumulationTerminalProvisionResult[
         StateStoreSnapshot] =
+  ## Atomically fulfill requests in the explicit posterior complete map using only this plan's checked slot.
+  ## Cached identities, cancellation filtering and write/root rollback retain the existing fnprovide contracts.
   let data = plan.data
   if data == nil:
     return AccumulationTerminalProvisionResult[StateStoreSnapshot](status:

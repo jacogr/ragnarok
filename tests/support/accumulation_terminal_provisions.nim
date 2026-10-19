@@ -11,19 +11,22 @@ import ./[pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_p
   accumulation_provision_integration]
 
 type
-  ## Test-only terminal instructions drive genuine normalization paths.
-  TerminalProvisionEnding* {.pure.} = enum
-    Halt, Panic, Fault, OutOfGas, Ambiguous
+  TerminalProvisionEnding* {.pure.} = enum ## Test-only terminal instructions drive genuine normalization paths.
+    Halt,     ## Return normally with both regular provision contributions.
+    Panic,    ## Trap after the second provide, selecting the earlier checkpoint.
+    Fault,    ## Access unmapped memory after the second provide.
+    OutOfGas, ## Underfund a final host call after both provides.
+    Ambiguous ## Return 32 readable bytes with nonempty provisions to exercise the specification gate.
 
-## Requests and unrelated complete-map rows deliberately differ from invocation-owned account metadata.
 proc terminalPosteriorEntries*(): seq[StateEntry] =
+  ## Requests and unrelated complete-map rows deliberately differ from invocation-owned account metadata.
   result = integrationEntries()
   result.add(provisionRequest(42, @[73'u8]))
   result.add(provisionRequest(99, @[81'u8]))
 
-## Execute two authored provides around an optional checkpoint, then a real terminal instruction.
 proc terminalProvisionExecution*(ending = TerminalProvisionEnding.Halt,
     checkpoint = true, second = true): AccumulationDispatchResult =
+  ## Execute two authored provides around an optional checkpoint, then a real terminal instruction.
   var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 65536),
     registerImmediate(9, 1), @[10'u8, 27]]
   if checkpoint:
