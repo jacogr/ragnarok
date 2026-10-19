@@ -35,16 +35,13 @@ type
     descriptors: array[2, cint]
     count: int
     closed: bool
-  # Up to two endpoints share one bounded wait; callers retire endpoints before closing it.
-  Dispatcher* = ref DispatcherState
-  # Explicit open flag makes a default endpoint harmless even though descriptor zero is valid.
-  UdpEndpoint* = object
+  Dispatcher* = ref DispatcherState ## Up to two endpoints share one bounded wait; callers retire endpoints before closing it.
+  UdpEndpoint* = object ## Explicit open flag makes a default endpoint harmless even though descriptor zero is valid.
     descriptor: cint
     opened, ipv6: bool
     portValue: uint16
     registration: nil Dispatcher
-  # One copied readiness event; no pointer into poll's temporary storage escapes.
-  Ready* = object
+  Ready* = object ## One copied readiness event; no pointer into poll's temporary storage escapes.
     descriptor*: cint
     failed*: bool
 
@@ -109,21 +106,24 @@ proc address(ipv6: bool, port: uint16): Sockaddr_storage =
 proc addressSize(ipv6: bool): SockLen =
   SockLen(if ipv6: sizeof(Address6) else: sizeof(Sockaddr_in))
 
-# Construct empty dispatcher metadata; it never owns or closes registered sockets.
 proc newDispatcher*(): Dispatcher =
+  ## Construct empty dispatcher metadata; it never owns or closes registered sockets.
   Dispatcher(descriptors: default(array[2, cint]), count: 0, closed: false)
 
-# Closing shared metadata is idempotent; subsequent waits cannot poll reused descriptors.
 proc close*(dispatcher: Dispatcher) =
+  ## Closing shared metadata is idempotent; subsequent waits cannot poll reused descriptors.
   dispatcher.closed = true
   dispatcher.count = 0
 
-# Return the copied assigned port without exporting a mutable native address.
-proc port*(endpoint: UdpEndpoint): uint16 = endpoint.portValue
-# Readiness routing compares copied descriptor identities only during the same synchronous dispatch.
-proc descriptor*(endpoint: UdpEndpoint): cint = endpoint.descriptor
-# Observe whether this endpoint currently owns an OS descriptor.
-proc isOpen*(endpoint: UdpEndpoint): bool = endpoint.opened
+proc port*(endpoint: UdpEndpoint): uint16 =
+  ## Return the copied assigned port without exporting a mutable native address.
+  endpoint.portValue
+proc descriptor*(endpoint: UdpEndpoint): cint =
+  ## Readiness routing compares copied descriptor identities only during the same synchronous dispatch.
+  endpoint.descriptor
+proc isOpen*(endpoint: UdpEndpoint): bool =
+  ## Observe whether this endpoint currently owns an OS descriptor.
+  endpoint.opened
 
 # Remove an exact descriptor before close; no endpoint pointer is retained by the dispatcher.
 proc retire(dispatcher: Dispatcher, fd: cint) =
@@ -137,8 +137,8 @@ proc retire(dispatcher: Dispatcher, fd: cint) =
 # A descriptor has exactly one endpoint owner; explicit moves are allowed, copies are not.
 proc `=copy`*(destination: var UdpEndpoint, source: UdpEndpoint) {.error: "UdpEndpoint owns one descriptor".}
 
-# Scope retirement releases registration first and then the OS resource, including failed setup paths.
 proc `=destroy`*(endpoint: UdpEndpoint) =
+  ## Scope retirement releases registration first and then the OS resource, including failed setup paths.
   if endpoint.opened:
     let dispatcher = endpoint.registration
     if dispatcher != nil: retire(dispatcher, endpoint.descriptor) # Metadata cannot outlive the socket identity.
@@ -146,15 +146,15 @@ proc `=destroy`*(endpoint: UdpEndpoint) =
   # A custom destructor must also release its owned ARC field, including already-closed defaults.
   `=destroy`(endpoint.registration)
 
-# Repeated unregister is safe and cannot remove another dispatcher's endpoint.
 proc unregister*(dispatcher: Dispatcher, endpoint: var UdpEndpoint) =
+  ## Repeated unregister is safe and cannot remove another dispatcher's endpoint.
   let active = endpoint.registration
   if active != nil and active == dispatcher:
     retire(dispatcher, endpoint.descriptor)
     endpoint.registration = nil
 
-# Register one live descriptor once, rejecting exhausted/closed dispatchers without changing them.
 proc register*(dispatcher: Dispatcher, endpoint: var UdpEndpoint): bool =
+  ## Register one live descriptor once, rejecting exhausted/closed dispatchers without changing them.
   if endpoint.registration != nil: return false # One endpoint cannot belong to two dispatchers.
   if dispatcher.closed or not endpoint.opened or dispatcher.count == 2: return false
   # Duplicate registration cannot consume a second slot or route an event twice.
@@ -165,8 +165,8 @@ proc register*(dispatcher: Dispatcher, endpoint: var UdpEndpoint): bool =
   endpoint.registration = dispatcher
   true
 
-# Explicit retirement is ordered by the enclosing transport: unregister, then close the endpoint.
 proc close*(endpoint: var UdpEndpoint) =
+  ## Explicit retirement is ordered by the enclosing transport: unregister, then close the endpoint.
   if endpoint.opened:
     let dispatcher = endpoint.registration
     if dispatcher != nil: dispatcher.unregister(endpoint) # Explicit close shares destructor ordering.
@@ -175,8 +175,8 @@ proc close*(endpoint: var UdpEndpoint) =
     endpoint.opened = false
     endpoint.portValue = 0
 
-# Open/bind one nonblocking UDP endpoint; every failed setup path releases the newly created descriptor.
 proc open*(endpoint: var UdpEndpoint, ipv6: bool, port: uint16): bool =
+  ## Open/bind one nonblocking UDP endpoint; every failed setup path releases the newly created descriptor.
   if endpoint.opened: return false # Never overwrite a live resource.
   let fd = socket(cint(ord(if ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET)),
       cint(ord(nativesocket.SOCK_DGRAM)), cint(ord(nativesocket.IPPROTO_UDP)))
@@ -199,8 +199,8 @@ proc open*(endpoint: var UdpEndpoint, ipv6: bool, port: uint16): bool =
       cast[ptr Sockaddr_in](addr local).sin_port)
   true
 
-# Copy readiness for all registrations or fail before polling if the caller cannot hold every result.
 proc wait*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]): int =
+  ## Copy readiness for all registrations or fail before polling if the caller cannot hold every result.
   if dispatcher.closed or ready.len < dispatcher.count: return -1
   var entries = default(array[2, PollEntry])
   # Each call rebuilds registrations; retired descriptors cannot remain queued in kernel metadata.
@@ -219,8 +219,8 @@ proc wait*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]):
           failed: (entries[i].revents and (PollError or PollHangup or PollInvalid)) != 0)
       inc result
 
-# Send one complete borrowed datagram; -2 means retryable, -1 means failed/invalid input.
 proc send*(endpoint: UdpEndpoint, data: pointer, length: int, port: uint16): int =
+  ## Send one complete borrowed datagram; -2 means retryable, -1 means failed/invalid input.
   if not endpoint.opened or length < 0 or length > 2048: return -1
   var destination = address(endpoint.ipv6, port)
   let sent = sendTo(endpoint.descriptor, data, csize_t(length), 0, addr destination, addressSize(endpoint.ipv6))
@@ -230,8 +230,8 @@ proc send*(endpoint: UdpEndpoint, data: pointer, length: int, port: uint16): int
   if sent != length: return -1 # Partial datagrams cannot count as delivered packets.
   sent
 
-# Receive one copied datagram; -2 means retryable, -1 means error, zero includes rejected source scope.
 proc receive*(endpoint: UdpEndpoint, buffer: var openArray[byte], sourcePort: var uint16): int =
+  ## Receive one copied datagram; -2 means retryable, -1 means error, zero includes rejected source scope.
   sourcePort = 0
   if not endpoint.opened or buffer.len == 0: return -1
   var source = default(Sockaddr_storage)
@@ -257,8 +257,8 @@ proc receive*(endpoint: UdpEndpoint, buffer: var openArray[byte], sourcePort: va
     sourcePort = hostPort(a.sin_port)
   count
 
-# Replay the original idle/ready retirement matrix on both supported controlled-topology families.
 proc retirementSelfTest*(ipv6: bool) =
+  ## Replay the original idle/ready retirement matrix on both supported controlled-topology families.
   let dispatcher = newDispatcher()
   defer: dispatcher.close()
   # Reusing one dispatcher catches stale registrations after descriptors are closed/recycled.

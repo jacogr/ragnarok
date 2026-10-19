@@ -10,40 +10,42 @@
 import ./transport
 
 type
-  # Defaults, incomplete input and protocol failures never carry a successful extent.
-  FrameError* {.pure.} = enum
+  FrameError* {.pure.} = enum ## Defaults, incomplete input and protocol failures never carry a successful extent.
     Uninitialized, None, Pending, InvalidPolicy, Truncated, InvalidKind, InvalidLength, Trailing, Overflow
-  # Only a complete checked E4 length carries a host-sized count.
-  LengthResult* = object
+  LengthResult* = object ## Only a complete checked E4 length carries a host-sized count.
     case status: FrameError
     of None:
       completed: int
     else:
       discard
-  # Only exact bytes followed by FIN carry usable payload size and whole-frame extent.
-  FrameResult* = object
+  FrameResult* = object ## Only exact bytes followed by FIN carry usable payload size and whole-frame extent.
     case status: FrameError
     of None:
       payloadSize, completedExtent: int
     else:
       discard
 
-# Read the reason without allowing callers to retag results or forge successful metadata.
-func error*(value: LengthResult): FrameError = value.status
-# Preserve incomplete versus malformed frame outcomes without exposing partial payload metadata.
-func error*(value: FrameResult): FrameError = value.status
-# Successful bounded lengths are usable only after selecting/checking success.
+func error*(value: LengthResult): FrameError =
+  ## Read the reason without allowing callers to retag results or forge successful metadata.
+  value.status
+func error*(value: FrameResult): FrameError =
+  ## Preserve incomplete versus malformed frame outcomes without exposing partial payload metadata.
+  value.status
 func value*(value: LengthResult): int {.inline, requires: value.status ==
-    FrameError.None.} = value.completed
-# The completed payload size is absent on default, pending and rejected frames.
+    FrameError.None.} =
+  ## Successful bounded lengths are usable only after selecting/checking success.
+  value.completed
 func size*(value: FrameResult): int {.inline, requires: value.status ==
-    FrameError.None.} = value.payloadSize
-# The completed frame extent includes its selector/header and is absent until exact FIN.
+    FrameError.None.} =
+  ## The completed payload size is absent on default, pending and rejected frames.
+  value.payloadSize
 func extent*(value: FrameResult): int {.inline, requires: value.status ==
-    FrameError.None.} = value.completedExtent
+    FrameError.None.} =
+  ## The completed frame extent includes its selector/header and is absent until exact FIN.
+  value.completedExtent
 
-# Literal least-significant-first radix-32 formula from the pinned JAMNP-S specification.
 proc peerName*(key: array[32, byte]): array[54, byte] {.raises: [].} =
+  ## Literal least-significant-first radix-32 formula from the pinned JAMNP-S specification.
   result = default(array[54, byte])
   const alphabet = "$abcdefghijklmnopqrstuvwxyz234567"
   result[0] = byte('$')
@@ -58,8 +60,8 @@ proc peerName*(key: array[32, byte]): array[54, byte] {.raises: [].} =
           1) shl bit) # Only actual key bits contribute.
     result[2 + group] = byte(alphabet[index])
 
-# Validate copied primitive certificate observations and optional expected identity entirely in Nim.
 proc validPeer*(der: nil ptr byte, length: csize_t, expected: openArray[byte]): bool {.raises: [].} =
+  ## Validate copied primitive certificate observations and optional expected identity entirely in Nim.
   # Reject missing/oversized borrows before entering the bounded primitive DER extractor.
   if der == nil or length == 0 or length > 8192: return false
   # The maintained C extractor zeroes the entire output before every parse attempt after this preflight.
@@ -86,8 +88,8 @@ proc validPeer*(der: nil ptr byte, length: csize_t, expected: openArray[byte]): 
       if expected[i] != fields.key[i]: return false # Compare full public keys.
   true
 
-# Validate an exact E4 header before host conversion, allocation or payload indexing.
 proc checkedLength*(header: openArray[byte], maximum: int): LengthResult =
+  ## Validate an exact E4 header before host conversion, allocation or payload indexing.
   if maximum < 0: return LengthResult(status: FrameError.InvalidPolicy) # Invalid local policies cannot widen admission.
   if header.len != 4: return LengthResult(status: FrameError.Truncated) # Partial/oversized headers carry no length.
   var claimed = 0'u64
@@ -97,8 +99,8 @@ proc checkedLength*(header: openArray[byte], maximum: int): LengthResult =
       status: FrameError.InvalidLength) # Prove narrowing before conversion.
   LengthResult(status: FrameError.None, completed: int(claimed))
 
-# Inspect one direction's framing; payload meaning remains the calling peer's policy.
 proc inspectFrame*(wire: openArray[byte], request: bool, maximum: int, fin: bool): FrameResult =
+  ## Inspect one direction's framing; payload meaning remains the calling peer's policy.
   if maximum < 0: return FrameResult(status: FrameError.InvalidPolicy) # A negative ceiling cannot admit bytes.
   let start = if request: 1 else: 0
   if request and wire.len > 0 and wire[0] != 143: return FrameResult(

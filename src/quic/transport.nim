@@ -20,15 +20,13 @@ const IncomingPeerSlots* = 16
 const CertHeader = "cert_fields.h"
 
 type
-  # Explicit proof profiles keep short test deadlines and load admission separate from normal peer settings.
-  Ipv6Profile* = enum
+  Ipv6Profile* = enum ## Explicit proof profiles keep short test deadlines and load admission separate from normal peer settings.
     RetainedPeer = 3, CrashRecovery = 4, SaturatedService = 5
-  # Read-only C byte element makes callback signatures match the shared const uint8_t ABI exactly.
-  ConstByte* {.importc: "const uint8_t", header: BridgeHeader, pure, final.} = object
-  # Opaque LSQUIC stream handle; its lifetime ends at the native close callback.
-  NativeStream* = distinct (nil pointer)
-  # Certificate observations copy bounded primitive fields; JAM identity policy stays in the peer.
-  CertFields* {.importc: "rq_cert_fields", header: CertHeader, bycopy.} = object
+  ConstByte* {.importc: "const uint8_t", header: BridgeHeader, pure,
+      final.} = object ## Read-only C byte element makes callback signatures match the shared const uint8_t ABI exactly.
+  NativeStream* = distinct (nil pointer) ## Opaque LSQUIC stream handle; its lifetime ends at the native close callback.
+  CertFields* {.importc: "rq_cert_fields", header: CertHeader,
+      bycopy.} = object ## Certificate observations copy bounded primitive fields; JAM identity policy stays in the peer.
     edKey* {.importc: "ed_key".}, edSignature* {.importc: "ed_signature".}: cint
     sanExtensions* {.importc: "san_extensions".}, sanCount * {.importc: "san_count".},
         sanDns* {.importc: "san_dns".}: cint
@@ -49,8 +47,7 @@ type
   # The UDP sender consumes a borrowed C packet before returning; zero means retry later.
   SendCallback = proc(user: pointer, bytes: ptr ConstByte, length: csize_t,
       port: uint16): cint {.cdecl, raises: [].}
-  # An endpoint owns UDP/engine and owns or borrows its selector; it has no ARC reference back to its peer.
-  Transport* = object
+  Transport* = object ## An endpoint owns UDP/engine and owns or borrows its selector; it has no ARC reference back to its peer.
     engine: nil pointer
     socket: UdpEndpoint
     selector: nil Dispatcher
@@ -133,8 +130,8 @@ proc readDone*(stream: NativeStream) {.importc: "rq_stream_read_done", header: B
 proc streamAbort*(stream: NativeStream) {.importc: "rq_stream_abort", header: BridgeHeader, cdecl,
     raises: [].}
 
-# Determine request/reply direction per stream, independently of QUIC connection direction.
 proc locallyOpened*(owner: Transport, stream: NativeStream): bool {.raises: [].} =
+  ## Determine request/reply direction per stream, independently of QUIC connection direction.
   nativeLocal(owner.engine, stream) == 1
 
 # Invoke native-language identity policy without retaining a TLS-owned DER pointer.
@@ -167,8 +164,8 @@ proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, port: uint
   if sent == -1: owner.failed = true # Would-block/interrupt remains retryable.
   0
 
-# Retire selector/socket before native destruction; synchronous close callbacks still borrow the live peer/adapter.
 proc closeTransport*(owner: var Transport) =
+  ## Retire selector/socket before native destruction; synchronous close callbacks still borrow the live peer/adapter.
   owner.stopping = true
   # A registered descriptor must be removed before its number can be recycled by the OS.
   if owner.registered:
@@ -186,11 +183,11 @@ proc closeTransport*(owner: var Transport) =
     transportFree(owner.engine)
     owner.engine = nil
 
-# Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
 proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
         multi = false, ipv6 = false, dispatcher: nil Dispatcher = nil,
             profile = RetainedPeer): bool =
+  ## Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
   owner = Transport()
@@ -228,34 +225,34 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     return false
   true
 
-# Report failure without dereferencing an uninitialized engine.
 proc transportStatus*(owner: Transport): int {.raises: [].} =
+  ## Report failure without dereferencing an uninitialized engine.
   # Native authentication status is meaningful only while this owner is active.
   if owner.failed or owner.engine == nil: return -1
   int(nativeStatus(owner.engine))
 
-# Start one outgoing connection after the caller has retained expected identity bytes.
 proc connectTransport*(owner: var Transport, port: uint16): bool {.raises: [].} =
+  ## Start one outgoing connection after the caller has retained expected identity bytes.
   nativeConnect(owner.engine, port) != 0
 
-# Open a bidirectional stream; callbacks populate native-language framing state synchronously.
 proc openStream*(owner: var Transport) {.raises: [].} =
+  ## Open a bidirectional stream; callbacks populate native-language framing state synchronously.
   nativeOpen(owner.engine)
 
-# Close the sole dialed peer without destroying this endpoint or its readiness owner.
 proc disconnectTransport*(owner: var Transport) {.raises: [].} =
+  ## Close the sole dialed peer without destroying this endpoint or its readiness owner.
   nativeDisconnect(owner.engine)
 
-# Copy bounded endpoint counters; no native handle or TLS storage escapes this observation.
 proc peerMetric*(owner: Transport, metric: int): uint64 {.raises: [].} =
+  ## Copy bounded endpoint counters; no native handle or TLS storage escapes this observation.
   nativeMetric(owner.engine, cint(metric))
 
-# Lifetime close callbacks, including unsuccessful attempts; pair with authentication evidence for telemetry.
 proc closedConnections*(owner: Transport): uint64 {.raises: [].} =
+  ## Lifetime close callbacks, including unsuccessful attempts; pair with authentication evidence for telemetry.
   peerMetric(owner, 2) # rq_peer_metric selector 2: retired connection handles.
 
-# Lifetime successful native handshakes; retained even if a connection closes in the same poll.
 proc authenticatedConnections*(owner: Transport): uint64 {.raises: [].} =
+  ## Lifetime successful native handshakes; retained even if a connection closes in the same poll.
   peerMetric(owner, 4) # rq_peer_metric selector 4: completed authentication.
 
 # Drain at most 64 datagrams per ready socket so other endpoints and timers cannot starve.
@@ -275,8 +272,8 @@ proc drain(owner: var Transport): bool =
       process(owner.engine)
   not owner.failed
 
-# Progress one timer/readiness cycle for a standalone endpoint.
 proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
+  ## Progress one timer/readiness cycle for a standalone endpoint.
   # Retired or failed endpoints cannot restart native work.
   if owner.stopping or owner.failed or owner.engine == nil: return false
   let delay = min(clamp(maximumMs, 0, 10), int(clamp((nextTick(owner.engine) + 999) div 1000, 1'i64, 10'i64)))
@@ -292,8 +289,8 @@ proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
   process(owner.engine)
   not owner.failed
 
-# One selector dispatches both retained role engines; endpoint stack addresses must remain stable throughout.
 proc pollPair*(incoming, outgoing: var Transport): bool =
+  ## One selector dispatches both retained role engines; endpoint stack addresses must remain stable throughout.
   # Both sockets must borrow the same live dispatcher; do not silently introduce two blocking loops.
   if incoming.stopping or outgoing.stopping or incoming.failed or outgoing.failed or
       incoming.engine == nil or outgoing.engine == nil or
@@ -314,12 +311,13 @@ proc pollPair*(incoming, outgoing: var Transport): bool =
   process(outgoing.engine)
   not incoming.failed and not outgoing.failed
 
-# Replay readiness retirement without TLS/native callbacks; the isolated suite adds IPv6/shared cases.
 proc ioSelfTest*() =
+  ## Replay readiness retirement without TLS/native callbacks; the isolated suite adds IPv6/shared cases.
   io.retirementSelfTest(false)
 
-# Copy the actual bound UDP port for local telemetry; no socket ownership escapes.
-proc localPort*(owner: Transport): uint16 = owner.socket.port
+proc localPort*(owner: Transport): uint16 =
+  ## Copy the actual bound UDP port for local telemetry; no socket ownership escapes.
+  owner.socket.port
 
 # Public adapter discriminators are imported from the shared ABI, never JIP wire tags.
 let
@@ -342,8 +340,8 @@ proc handshakeForward(user: pointer, slot: cuint, event: cint, address: ptr Cons
   if callback != nil and peer != nil: # Teardown still owns both callback targets.
     callback(peer, slot, event, address, port, der, length)
 
-# Register one optional server observer before the first poll; failure does not change TLS policy.
 proc observeHandshakes*(owner: var Transport, callback: HandshakeCallback): bool =
+  ## Register one optional server observer before the first poll; failure does not change TLS policy.
   if owner.handshake != nil: return false # A failed replacement must preserve the original callback.
   owner.handshake = callback
   if nativeObserve(owner.engine, cuint(IncomingHandshakeSlots), handshakeForward) != 1:
@@ -369,8 +367,8 @@ proc peerForward(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
   if callback != nil and user != nil: # Only initialized observers receive native events.
     callback(user, slot, event, der, length)
 
-# Observe admitted server peer lifetimes; failed setup retains no callback.
 proc observePeers*(owner: var Transport, callback: PeerCallback): bool =
+  ## Observe admitted server peer lifetimes; failed setup retains no callback.
   if owner.peer != nil: return false # Preserve an existing observer after attempted replacement.
   owner.peer = callback
   if nativeObservePeers(owner.engine, cuint(IncomingPeerSlots), peerForward) != 1:
