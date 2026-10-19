@@ -46,15 +46,17 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     precedingService = false, includeContexts = false, extra: seq[StateEntry] = @[],
         account = default(ServiceMetadata), spareEntries = 0,
             manager = 0'u32, assigner = 0'u32, delegator = 0'u32, registrar = 0'u32,
-                cores = 2'u64, writes = 2'u64, probes = 1'u64): PreparedAccumulationInvocation =
+                cores = 2'u64, writes = 2'u64, probes = 1'u64,
+                    slot = HeaderSlot(128)): PreparedAccumulationInvocation =
   ## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
   ## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
   ## manager/assigner/delegator/registrar supply copied initial authority without changing the selected service.
   ## account supplies copied metadata; the code hash is derived from code. spareEntries (0..64) bounds extra map capacity.
   ## cores selects the coherent two/three-core profile; the staging roster initially contains six records.
-  ## writes (0..3) and probes (0..16) explicitly bound store batches and initial membership work.
+  ## slot is the actual invocation header time; its default preserves all existing fixtures.
+  ## writes (0..4) and probes (0..16) explicitly bound store batches and initial membership work.
   assert cores >= 2 and cores <= 3 # Keep optional profiles within the fixture map/memory ceilings.
-  assert writes <= 3 and probes <= 16 # Explicit fixture policy bounds batch width and membership work.
+  assert writes <= 4 and probes <= 16 # Explicit fixture policy bounds batch width and membership work.
   assert operandCount >= 0 and operandCount <= 16
   var reports: seq[OwnedReport] = @[]
   if operandCount > 0:
@@ -123,7 +125,7 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     perValue: ByteLimit(10000), totalValueBytes: ByteLimit(20000), nodes: TrieNodeLimit(1000)),
     writes: ElementLimit(writes), writeValueBytes: ByteLimit(20000))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(
-      if precedingService: 1 else: 0), state, HeaderSlot(128),
+      if precedingService: 1 else: 0), state, slot,
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(code.len),
       preimageBytes: ByteLimit(preimage.len))).value
   prepareAccumulationInvocation(service, entropy, ServiceProbeLimit(probes)).value

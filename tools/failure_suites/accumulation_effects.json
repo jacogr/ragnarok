@@ -264,6 +264,17 @@
         "origin": "transfer-commit"
       },
       "name": "accumulation-effect-transfer-commit"
+    },
+    {
+      "arguments": [
+        "eject"
+      ],
+      "description": "Accumulation eject selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "eject"
+      },
+      "name": "accumulation-effect-eject"
     }
   ],
   "crypto_library": "crypto",

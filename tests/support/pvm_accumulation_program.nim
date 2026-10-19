@@ -8,16 +8,17 @@ import std/assertions
 import ../../src/state/accumulation_machine
 import ../../src/pvm/[initialize, machine, program]
 import ./pvm_accumulation_context
-import ../../src/codec/[state_trie, state_accounts]
+import ../../src/codec/[state_trie, state_accounts, header]
 
 proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
     includeContexts = true, extra: seq[StateEntry] = @[], account = default(ServiceMetadata),
         spareEntries = 0, manager = 0'u32, assigner = 0'u32, delegator = 0'u32, registrar = 0'u32,
-            cores = 2'u64, writes = 2'u64, probes = 1'u64,
+            cores = 2'u64, writes = 2'u64, probes = 1'u64, slot = HeaderSlot(128),
 
 writable: seq[byte] = @[81'u8]): PreparedAccumulationMachine =
   ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
   ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
+  ## slot forwards the nominal invocation header time; existing callers retain the same default.
   ## Forward initial roles, account metadata, bounded inputs/profile, store/probe policy and spare map capacity.
   ## The 160-byte raw-program budget includes framing/mask for the independently bounded (<128-byte) code.
   var code = @[0'u8, 0, 0, 0, 0]
@@ -41,7 +42,7 @@ writable: seq[byte] = @[81'u8]): PreparedAccumulationMachine =
   initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw, writable), credit,
     includeContexts = includeContexts, extra = extra, account = account,
         spareEntries = spareEntries, manager = manager, assigner = assigner, delegator = delegator,
-            cores = cores, writes = writes, probes = probes, registrar = registrar),
+            cores = cores, writes = writes, probes = probes, registrar = registrar, slot = slot),
     InitializationLimits(envelope: InitializationByteLimit(4096), program: ProgramByteLimit(160),
       jumps: JumpCountLimit(0), pages: PageLimit(5))).value
 
