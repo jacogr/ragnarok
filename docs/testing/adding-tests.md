@@ -50,7 +50,9 @@ All files are independently discovered by the existing Python verification comma
 
 ## Before opening a PR
 
-Run `make check-inventory` and the affected verification group. Run `make check-python` when
-changing Python tooling, reference code or harnesses. Add new tooling/test sources to runtime
+Run `make check-inventory` for registration changes and the selected native suite or affected
+Python harness/reference tests for local behavior changes. Broaden to an entire verification group
+for cross-cutting changes or failures; CI retains complete verification. Documentation-only edits
+need relevant lint/link checks, not a native rebuild. Add new tooling/test sources to runtime
 provenance; the preflight catches omissions. Keep retained historical counts unchanged, and
 report actual local results separately from CI status.
