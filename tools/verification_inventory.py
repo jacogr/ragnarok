@@ -1,10 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Load merge-friendly verification data while retaining the harness's public value types.
+"""Discover native suite identities and read strict source-local verification declarations.
 
-Exposes directory-discovered native suites, source-local ARC declarations, runtime/corpus
-identities and per-family budgets. validate_order enforces alphabetical entries within JSON sections.
+Exposes UNIT_SOURCES, UNIT_SUITES, ARC_SUITES and shared duplicate/metadata validation helpers.
 """
 import json
 import re
@@ -20,28 +19,6 @@ def unique_object(pairs):
             raise ValueError('Duplicate verification inventory key: '+key)
         result[key] = value
     return result
-
-
-# Keep each case unique while restoring tuple records used by runtime probe generation.
-def cases(values):
-    result = tuple(tuple(value) if isinstance(value, list) else value for value in values)
-    if len(result) != len(set(result)):
-        # Duplicate cases can otherwise inflate totals while masking missing coverage.
-        raise ValueError('Duplicate verification inventory case')
-    return result
-
-
-# Require stable insertion points per prefix without changing positional diagnostic records.
-def validate_order(data):
-    for section, entries in data.items():
-        # Sections contain named mappings or independent case identities, never ordered steps.
-        names = list(entries)
-        if names != sorted(names):
-            # Fail rather than silently sorting: source order is what avoids shared merge hotspots.
-            expected = next(want for have, want in zip(names, sorted(names)) if have != want)
-            raise ValueError('Verification inventory section '+section+
-                             ' must be alphabetical; expected '+str(expected)+
-                             ' earlier. Insert entries beside their feature prefix.')
 
 
 # Read one optional JSON declaration from the leading comments without interpreting Nim source.
@@ -117,16 +94,7 @@ def discover_unit_sources(folder):
     return dict(sorted(sources.items()))
 
 
-_DATA = json.loads(Path(__file__).with_suffix('.json').read_text(), object_pairs_hook=unique_object)
-validate_order(_DATA)
-
-# Explicit exports keep missing sections fatal and preserve existing consumer interfaces.
+# Discovery owns native suite identities and source-local evidence declarations.
 UNIT_SOURCES = discover_unit_sources(Path(__file__).resolve().parents[1]/'tests/unit')
 UNIT_SUITES = tuple(UNIT_SOURCES)
-AVAILABILITY_MEMBERS = cases(_DATA['AVAILABILITY_MEMBERS'])
-WORKQUEUES_MEMBERS = cases(_DATA['WORKQUEUES_MEMBERS'])
-COMPOSITION_MEMBERS = cases(_DATA['COMPOSITION_MEMBERS'])
-BS_MEMBERS = cases(_DATA['BS_MEMBERS'])
-FAILURE_COUNTS = _DATA['FAILURE_COUNTS']
-CORPUS_NAMES = cases(_DATA['CORPUS_NAMES'])
 ARC_SUITES = discover_arc_suites(UNIT_SOURCES)

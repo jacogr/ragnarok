@@ -15,16 +15,10 @@ import platform
 from pathlib import Path
 import sys
 from native_checks import NativeChecks, announce
-from corpus_codec import run_codecs
-from corpus_state import run_state
-from corpus_services import run_services
-from corpus_crypto import run_bandersnatch, run_crypto
-from corpus_network import run_network
+from corpus_catalog import CORPUS_NAMES, run_corpora
 from failure_checks import probe_failure, run_failure_suite
-from verification_inventory import (
-    AVAILABILITY_MEMBERS, BS_MEMBERS, COMPOSITION_MEMBERS,
-    CORPUS_NAMES, FAILURE_COUNTS, WORKQUEUES_MEMBERS,
-)
+from failure_plans import (FAILURE_PLANS, FAILURE_COUNTS, SPECIAL_CASES, SPECIAL_DRIVERS,
+                           check_driver_modes)
 from native_tests import UNIT_SUITES, unit_batches, unit_work_directory, unit_command, unit_environment, unit_evidence, ARC_SUITES
 from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures
 
@@ -48,15 +42,20 @@ def unit_passed(report):
 
 # Missing, duplicate or failed contract probes cannot be masked by successful sibling families.
 def failures_passed(report):
-    for family, count in FAILURE_COUNTS.items():
+    for family, expected in FAILURE_PLANS.items():
         # Each historical workload must produce exactly its original ordered set of distinct records.
         rows = report.get(family, [])
         identities = [json.dumps({key: value for key, value in row.items()
                                  if key not in ('run', 'check', 'passed')}, sort_keys=True) for row in rows]
-        if len(rows) != count or len(set(identities)) != count or not all(row.get('passed') is True for row in rows):
+        wanted = {json.dumps(identity, sort_keys=True) for identity in expected}
+        if (len(rows) != len(expected) or set(identities) != wanted
+                or not all(row.get('passed') is True for row in rows)):
             # Incomplete evidence remains a failing job even when all emitted rows happened to pass.
             return False
-    return (report.get('store_controls', {}).get('passed') is True and 'suites' not in report
+    return (report.get('store_controls', {}).get('passed') is True
+            and set(report.get('probe_cases', {})) == set(SPECIAL_DRIVERS)
+            and all(row.get('passed') is True for row in report['probe_cases'].values())
+            and 'suites' not in report
             and not any(key.endswith('_corpus') for key in report))
 
 
@@ -85,12 +84,7 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
             report['suites'].append(row)
             announce(name+' (Hastur)', row['passed'])
     # Feature calls retain the original order, including shared driver-build dependencies.
-    run_codecs(compiler, report, checks, libraries)
-    run_state(compiler, report, checks, libraries)
-    run_services(compiler, report, checks, libraries)
-    run_bandersnatch(compiler, report, checks, libraries)
-    run_network(compiler, report, checks, libraries, quic_fixtures, integration_wires)
-    run_crypto(compiler, report, checks, libraries)
+    run_corpora(compiler, report, checks, libraries, quic_fixtures, integration_wires)
 
 
 # Execute strict crash/contract probes separately; compilation alone cannot prove these preconditions.
@@ -107,12 +101,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     report['store_controls'] = dict(passed=False)
     if compiled['exit_code'] == 0:
         # Actual and default failures cover every public generic payload family.
-        cases = [(member, origin, 'outcome.status == None')
-                 for member in ('store', 'snapshot', 'lookup') for origin in ('default', 'error')]
-        cases += [('fork', 'default', 'outcome.status == None'),
-                  ('metadata', 'default', 'not snapshot.data == nil'),
-                  ('length', 'default', 'not view.owner.data == nil'),
-                  ('bytes', 'default', 'not view.owner.data == nil')]
+        cases = SPECIAL_CASES['store']
         for member, origin, sentinel in cases:
             # Match the supported precondition and exit status, never an unrelated crash or fixture error.
             probe_failure(command, report['store'], [binary, member, origin],
@@ -219,16 +208,17 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
     run_failure_suite(compiler, report, libraries, build, command, 'guarantee_message')
     # Actual/default result access must reject for every fixed proof/output, sequence and opaque native owner.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_bandersnatch_results.nim', 'bandersnatch-results',
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['bandersnatch'], 'bandersnatch-results',
                              native_libraries=bs_libraries, cflags=OWNER_DEFINES)
     report['bandersnatch_build'] = compiled
     if compiled['exit_code'] == 0:
         # Separate processes prevent prior contract failures or test-observer flags from concealing later checks.
-        for origin in ('default', 'error'):
-            for member in BS_MEMBERS:
-                probe_failure(command, report['bandersnatch'], [binary, member, origin],
-                              'bs-' + origin + '-' + member, 'value.status == None',
-                              origin + ' Bandersnatch ' + member + ' runtime guard', origin=origin, member=member)
+        check_driver_modes(command, binary, 'bandersnatch', report)
+        for member, origin, sentinel in SPECIAL_CASES['bandersnatch']:
+            # Each declared mode and failure origin retains its own process and supported diagnostic.
+            probe_failure(command, report['bandersnatch'], [binary, member, origin],
+                          'bs-' + origin + '-' + member, sentinel,
+                          origin + ' Bandersnatch ' + member + ' runtime guard', origin=origin, member=member)
     # Default/failed/pending frame metadata and default/failed E4 lengths cannot bypass result access contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'quic_protocol')
     # Completion guards need only their public fixture, not the E2E network/soak workloads.
@@ -242,7 +232,10 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         report['offload_results_'+str(enabled)] = compiled
         if compiled['exit_code'] == 0:
             # Enabled empty-poll probes start and join their own workers before attempting the invalid read.
-            for origin in ('default', 'empty'):
+            for selected, origin in SPECIAL_CASES['offload']:
+                # Each enabled/disabled build executes only its own planned origins.
+                if selected != enabled:
+                    continue
                 environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(offload_wire),
                                'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': ''}
                 probe_failure(command, report['offload'], [binary, origin],
@@ -255,10 +248,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     report['runtime_build'] = compiled
     if compiled['exit_code'] == 0:
         # Every observation is separate so a prior assertion failure cannot conceal wrapping behavior.
-        for mode, sentinel in (('assertion', 'trial assertion sentinel'), ('bounds', '[AssertionDefect]'),
-                               ('wrapping', '-9223372036854775808')):
+        for mode, sentinel, expected_exit in SPECIAL_CASES['runtime']:
             result = command([binary, mode], mode+'-runtime')
-            expected_exit = 0 if mode == 'wrapping' else 1
             passed = result['exit_code'] == expected_exit and sentinel in result['output']
             report['runtime'].append(dict(name=mode, passed=passed, run=result))
             announce(mode+' behavior', passed)
@@ -308,12 +299,12 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # Public/private results and runtime-selected absent peak copies require exact supported contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'history')
     # Every public/private result and each inactive assignment field must retain its exact contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_availability_results.nim', 'availability-results', crypto_library)
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['availability'], 'availability-results', crypto_library)
     report['availability_build'] = compiled
     if compiled['exit_code'] == 0:
         # Actual/default failures and dynamic absence origins execute independently, retaining their own diagnostics.
-        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in AVAILABILITY_MEMBERS]
-        cases += [('absent-'+field, origin, 'assignment.isPresent') for origin in ('default', 'source', 'decoded') for field in ('guarantee', 'registered')]
+        check_driver_modes(command, binary, 'availability', report)
+        cases = SPECIAL_CASES['availability']
         for member, origin, sentinel in cases:
             probe_failure(command, report['availability'], [binary, member, origin, availability_fixture],
                           'availability-' + origin + '-' + member, sentinel,
@@ -323,15 +314,16 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # All public and internal tuple/natural/layout payloads require exact successful selection.
     run_failure_suite(compiler, report, libraries, build, command, 'statistics')
     # Both queue domains and internal count/layout proofs require successful payload selection.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_workqueues_results.nim', 'workqueues-results', crypto_library)
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['workqueues'], 'workqueues-results', crypto_library)
     report['workqueues_build'] = compiled
     if compiled['exit_code'] == 0:
         # Actual/default failures execute separately so one rejected access cannot conceal another.
-        for origin in ('default', 'error'):
-            for member in WORKQUEUES_MEMBERS:
-                probe_failure(command, report['workqueues'], [binary, member, origin, availability_fixture],
-                              'workqueues-' + origin + '-' + member, 'value.status == None',
-                              origin + ' workqueues ' + member + ' runtime guard', origin=origin, member=member)
+        check_driver_modes(command, binary, 'workqueues', report)
+        for member, origin, sentinel in SPECIAL_CASES['workqueues']:
+            # Execute every declared access in its own process with the original failure expectation.
+            probe_failure(command, report['workqueues'], [binary, member, origin, availability_fixture],
+                          'workqueues-' + origin + '-' + member, sentinel,
+                          origin + ' workqueues ' + member + ' runtime guard', origin=origin, member=member)
     # Public entry/read/count/pair payloads and internal extent proofs retain exact success contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'outputs')
     # Fixed metadata and encoded entries require exact success, even though records need no retained heap owner.
@@ -341,15 +333,16 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # Result payloads and every inactive timestamp require supported success/shape contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'requests')
     # Complete composition payloads require exact success, including backend and association failures.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_composition_results.nim', 'composition-results', crypto_observer)
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['composition'], 'composition-results', crypto_observer)
     report['composition_build'] = compiled
     if compiled['exit_code'] == 0:
         # Actual and default failures execute separately so one protected read never conceals another.
-        for origin in ('default', 'error'):
-            for member in COMPOSITION_MEMBERS:
-                probe_failure(command, report['composition'], [binary, member, origin, composition_fixture],
-                              'composition-' + origin + '-' + member, 'value.status == None',
-                              origin + ' composition ' + member + ' runtime guard', origin=origin, member=member)
+        check_driver_modes(command, binary, 'composition', report)
+        for member, origin, sentinel in SPECIAL_CASES['composition']:
+            # Execute every declared access in its own process with the original failure expectation.
+            probe_failure(command, report['composition'], [binary, member, origin, composition_fixture],
+                          'composition-' + origin + '-' + member, sentinel,
+                          origin + ' composition ' + member + ' runtime guard', origin=origin, member=member)
 
 
 # Select one independent workload and invalidate stale evidence before any setup or compilation.

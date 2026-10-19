@@ -23,12 +23,9 @@ class VerificationFailures(unittest.TestCase):
         for name, suite in FAILURE_SUITES.items():
             # A changed case list must match its separately declared family requirement.
             self.assertEqual(len(suite['cases']), test_runtime.FAILURE_COUNTS[name], name)
-        self.assertEqual({name: count for name, count in test_runtime.FAILURE_COUNTS.items()
-                          if name not in FAILURE_SUITES},
-                         {'store': 10, 'runtime': 3, 'bandersnatch': 32, 'offload': 4,
-                          'composition': 36, 'workqueues': 86, 'availability': 52})
-        report = {key: [dict(name=str(index), passed=True) for index in range(count)]
-                  for key, count in test_runtime.FAILURE_COUNTS.items()}
+        report = {key: [dict(identity, passed=True) for identity in cases]
+                  for key, cases in test_runtime.FAILURE_PLANS.items()}
+        report['probe_cases'] = {family: dict(passed=True) for family in test_runtime.SPECIAL_DRIVERS}
         report['store_controls'] = dict(passed=True)
         self.assertTrue(test_runtime.failures_passed(report))
         for key in test_runtime.FAILURE_COUNTS:
@@ -37,7 +34,11 @@ class VerificationFailures(unittest.TestCase):
                 self.assertFalse(test_runtime.failures_passed({**report, key: report[key][1:]}))
                 self.assertFalse(test_runtime.failures_passed({**report, key: [report[key][0]]*len(report[key])}))
                 self.assertFalse(test_runtime.failures_passed({**report, key: [dict(row, passed=False) for row in report[key]]}))
+                replaced = [dict(row) for row in report[key]]
+                replaced[0] = dict(name='unexpected-replacement', passed=True)
+                self.assertFalse(test_runtime.failures_passed({**report, key: replaced}))
         self.assertFalse(test_runtime.failures_passed({**report, 'store_controls': dict(passed=False)}))
+        self.assertFalse(test_runtime.failures_passed({**report, 'probe_cases': {}}))
         self.assertFalse(test_runtime.failures_passed({**report, 'suites': []}))
         self.assertFalse(test_runtime.failures_passed({**report, 'extra_corpus': dict(passed=True)}))
 

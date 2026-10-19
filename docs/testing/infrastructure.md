@@ -2,10 +2,10 @@
 
 Native suite identities come from `tests/unit/<source-family>/test_<suite>.nim`, sorted by suite
 name. Discovery rejects duplicate names, misplaced Nim files, empty trees and missing `.output`
-contracts. `tools/verification_inventory.json` retains runtime misuse members, independent corpus
-names and failure-family budgets. Independent names remain alphabetical within each JSON section;
-missing sections, duplicate keys/cases and incomplete execution remain errors. The inventory loader
-and JSON data are included in report provenance. Compiler guards do not import the runtime executor.
+contracts. No central verification manifest is maintained. Runtime failure expectations come from
+existing family declarations and source-owned specialized plans; corpus function registrations own
+both scheduling and expected result keys. Duplicate identities and incomplete execution remain errors.
+Compiler guards do not import the runtime executor.
 
 ARC requirements live in the owning unit source header, after its purpose/API documentation.
 Use a plain Nim comment so metadata stays out of generated documentation:
@@ -70,8 +70,8 @@ previously retained after build failure remain opt-in so failed reports preserve
 `tools/failure_checks.py` preserves the exact exit-code-1, expected-diagnostic and
 `[AssertionDefect]` predicate for ordinary runtime guard probes, including complete command logs
 and identity fields. `tools/failure_suites/<family>.json` lists fixed state-result builds and cases, one
-case per line. The loader rejects duplicate keys, identities or log names, missing cases and empty
-diagnostics against the separate coverage counts. Native linking, case order and subprocess
+case per line. The loader rejects duplicate keys, identities or log names, empty families and empty diagnostics.
+Expected identities are expanded before execution and compared exactly with the observed rows. Native linking, case order and subprocess
 isolation remain unchanged. Wrapping behavior, positive controls, conditional variant diagnostics
 and fixture-dependent case generation remain explicit in the runtime runner. Both the helper and
 case data are included in report provenance.
@@ -84,8 +84,7 @@ compiler flags, locked/offline Cargo builds and release adapter tests are unchan
 
 Runtime failure suites keep ordinary case identities in `tools/failure_suites/<family>.json`, one case per
 line. Suite defaults specify argument fields, labels and diagnostics; exceptional cases override
-those values explicitly. The loader expands and validates the exact counts, distinct identities
-and log names before running any probes. Fixture-dependent probes, offload completion checks,
+those values explicitly. The loader expands and validates expected identities and distinct log names before any probes run. Fixture-dependent probes, offload completion checks,
 language-policy observations and store positive controls remain explicit in the runner.
 
 Runtime provenance is discovered by `tools/runtime_provenance.py`, using source-family extension
@@ -105,9 +104,9 @@ also exposes it as a separate required step before its workload. A failed invent
 that job before native setup. Vendor input bytes
 remain the responsibility of the existing pinned-submodule setup and runtime provenance checks.
 
-Add a failure family as `tools/failure_suites/<family>.json`, retaining one case per line, its
-independent count in `verification_inventory.json` and an explicit `run_failure_suite` call at
-the intended position. Alphabetical file loading does not change execution order. All family
+Add a failure family as `tools/failure_suites/<family>.json`, retaining one case per line and
+an explicit `run_failure_suite` call at the intended position. The declaration itself owns the
+expected identity plan; no separate count registration is needed. Alphabetical file loading does not change execution order. All family
 files are automatically included in runtime provenance; no central list of JSON files is needed.
 
 Provenance preflight checks the discovered project input families against the exact expansion
@@ -128,3 +127,19 @@ independent expected-value generation in `tests/`, separate from these process/r
 assembly between the standalone Hastur entry point and cumulative runtime verification.
 Feature adapters live in `native_fixtures.py`; callers own their output directories and report
 serialization. Preparation failures propagate before any dependent suite is scheduled.
+
+Specialized runtime drivers declare their command names once in a `VerificationProbe` enum tagged
+with `# @@ProbeCases`. Python reads this strict declaration before execution; the compiled driver
+also exposes `--list-cases` before fixture preparation, and the harness checks both enumerations
+agree. Dispatch uses the enum values without a catch-all branch, so Nimony checks exhaustiveness.
+`failure_plans.py` expands default/error/absence and enabled/disabled variants while preserving
+specialized diagnostics, positive controls and language-policy observations. Verdicts reject
+missing, duplicate, replaced and failed cases, even when a replacement preserves the row count.
+
+Each independent corpus is a named callable registered in its owning module's `CorpusGroup`.
+The function name supplies its single report identity; the scheduler publishes its returned
+verdict. `corpus_catalog.py` composes groups in the existing shared-build dependency order.
+Registration runs no oracle or native process. Expected corpus identities exist before execution;
+missing/duplicate verdicts and duplicate task/report keys are errors. All independent expected
+values, trace coverage predicates, build refusals and exact output/hash comparisons remain in
+the owning corpus task.

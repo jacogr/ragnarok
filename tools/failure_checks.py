@@ -10,7 +10,7 @@ import json
 import re
 from pathlib import Path
 from native_checks import ROOT, announce
-from verification_inventory import FAILURE_COUNTS, unique_object
+from verification_inventory import unique_object
 
 
 # Expand shared labels and argument fields without evaluating code from inventory data.
@@ -41,9 +41,6 @@ def validate_suite(group, suite, root=ROOT):
     check_fields(suite, {'source', 'build_name', 'crypto_library', 'native_libraries', 'quic_library',
                         'defines', 'name_template', 'description_template', 'diagnostic',
                         'argument_fields', 'cases'}, {'source', 'build_name', 'cases'}, group)
-    if group not in FAILURE_COUNTS:
-        # Coverage counts remain independently declared, including the explicit specialized families.
-        raise ValueError('Unknown failure family: '+group)
     for field in ('name_template', 'description_template', 'diagnostic'):
         # Optional defaults must be meaningful strings even when current cases override them.
         if field in suite and (not isinstance(suite[field], str) or not suite[field].strip()):
@@ -71,8 +68,8 @@ def validate_suite(group, suite, root=ROOT):
         # Defines are compiler symbols, not arbitrary command-line options.
         raise ValueError('Invalid defines in '+group)
     raw = suite['cases']
-    if not isinstance(raw, list) or len(raw) != FAILURE_COUNTS[group]:
-        # A missing or vacuous family must fail before a successful sibling can mask lost coverage.
+    if not isinstance(raw, list) or not raw:
+        # A missing or vacuous declaration cannot define a complete execution plan.
         raise ValueError('Invalid case count in '+group)
     expanded = []
     for index, case in enumerate(raw):

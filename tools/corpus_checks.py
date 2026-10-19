@@ -42,3 +42,32 @@ def run_corpus(build, command, compiler, driver, build_name, source, lines, expe
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
     compare_corpus(corpus, command, [binary, source], run_name, expected, complete=complete)
     return corpus
+
+
+class CorpusGroup:
+    """Own ordered named callables; one function declaration supplies scheduling and expected report identity."""
+
+    def __init__(self):
+        """Create an empty feature-owned plan without executing or preparing any corpus."""
+        self.tasks = {}
+
+    def case(self, function):
+        """Register one corpus by its function name, refusing repeated or malformed identities."""
+        name = function.__name__
+        if not name.endswith('_corpus') or name in self.tasks:
+            # Duplicate registration could overwrite required coverage before scheduling.
+            raise ValueError('Invalid or duplicate corpus task: '+name)
+        self.tasks[name] = function
+        return function
+
+    def run(self, compiler, report, checks, libraries, *fixtures):
+        """Execute the declared order and publish each returned verdict under its single registered key."""
+        for name, function in self.tasks.items():
+            # A report key is owned by exactly one task, including across feature groups.
+            if name in report:
+                raise ValueError('Duplicate corpus report: '+name)
+            observed = function(compiler, report, checks, libraries, *fixtures)
+            if not isinstance(observed, dict) or type(observed.get('passed')) is not bool:
+                # A missing verdict must never be interpreted as an empty successful corpus.
+                raise ValueError('Missing corpus verdict: '+name)
+            report[name] = observed

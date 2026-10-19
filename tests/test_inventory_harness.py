@@ -190,3 +190,22 @@ class InventoryPreflight(unittest.TestCase):
             makefile.unlink()
             with self.assertRaisesRegex(ValueError, 'Missing runtime provenance'):
                 validate_coverage(root, [makefile], {})
+
+
+# The typed declaration is the case owner; parsing must never silently omit an unsupported value.
+class ProbeCaseDeclarations(unittest.TestCase):
+    def test_declarations(self):
+        """Read the bounded enum format and reject malformed or duplicate case identities."""
+        from failure_plans import driver_modes
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)/'driver.nim'
+            header = '# @@ProbeCases\ntype VerificationProbe = enum\n'
+            source.write_text(header+'  vpFirst = "first"\n  vpSecond = "second"\n\n')
+            self.assertEqual(driver_modes(source), ('first', 'second'))
+            for body in ('', '  vpFirst = "same"\n  vpSecond = "same"',
+                         '  vpSame = "first"\n  vpSame = "second"',
+                         '  vpBad = computedValue', '  vpSecond = "second"\n  vpFirst = "first"'):
+                # Unsupported syntax and order cannot change the scheduled workload unnoticed.
+                source.write_text(header+body+'\n\n')
+                with self.subTest(body=body), self.assertRaises(ValueError):
+                    driver_modes(source)

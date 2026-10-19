@@ -78,12 +78,12 @@ class FailureHarness(unittest.TestCase):
                                   for row in report[group]], [case['identity'] for case in cases])
                 self.assertTrue(all(row['passed'] for row in report[group]))
 
-    # Data edits cannot silently drop cases, duplicate identities/log names or weaken required diagnostics.
+    # Declarations must remain nonempty and unique; report omissions are checked against their exact plan.
     def test_invalid_fixed_cases_rejected(self):
         valid = {'validator_rotation': copy.deepcopy(FAILURE_SUITES['validator_rotation'])}
         variants = []
         missing = copy.deepcopy(valid)
-        missing['validator_rotation']['cases'].pop()
+        missing['validator_rotation']['cases'].clear()
         variants.append(missing)
         for field, value in (('identity', {'origin': 'default'}),
                              ('name', valid['validator_rotation']['cases'][0]['name']), ('diagnostic', '')):

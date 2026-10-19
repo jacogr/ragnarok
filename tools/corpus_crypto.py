@@ -14,8 +14,14 @@ from native_checks import announce
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# Run the bandersnatch corpora with explicit process, workspace and library inputs.
-def run_bandersnatch(compiler, report, checks, libraries):
+
+from corpus_checks import CorpusGroup
+BANDERSNATCH = CorpusGroup()
+CRYPTO = CorpusGroup()
+
+# Preserve this native corpus and all original independent reference checks.
+@BANDERSNATCH.case
+def bandersnatch_corpus(compiler, report, checks, libraries):
     BUILD = checks.folder
     build, command = checks.build, checks.command
     bs_library = libraries['bandersnatch']
@@ -47,12 +53,13 @@ def run_bandersnatch(compiler, report, checks, libraries):
         except (AssertionError, subprocess.SubprocessError) as error:
             corpus['failure'] = repr(error)
     corpus['requests'] = len(corpus['observations'])
-    report['bandersnatch_corpus'] = corpus
     announce('contextual Bandersnatch vectors/native ABI', corpus['passed'])
+    return corpus
 
 
-# Run the crypto corpora with explicit process, workspace and library inputs.
-def run_crypto(compiler, report, checks, libraries):
+# Preserve this native corpus and all original independent reference checks.
+@CRYPTO.case
+def crypto_corpus(compiler, report, checks, libraries):
     BUILD = checks.folder
     build, command = checks.build, checks.command
     crypto_library = libraries['crypto']
@@ -66,5 +73,10 @@ def run_crypto(compiler, report, checks, libraries):
         if corpus['passed']:
             # Retain structured independent equation/thread counts alongside the exact reproduction command.
             corpus['counts'] = json.loads(corpus['run']['output'])
-    report['crypto_corpus'] = corpus
     announce('crypto corpus', corpus['passed'])
+    return corpus
+
+
+# Keep existing standalone entry points backed by the same declared task plans.
+run_bandersnatch = BANDERSNATCH.run
+run_crypto = CRYPTO.run

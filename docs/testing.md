@@ -46,9 +46,9 @@ CI continues complete verification; focused local results must never be reported
 
 Native suite identities are discovered from `tests/unit/`, with ARC declarations in their source
 headers. Compiler rejections own their expectations in `tests/native/compile_fail/` headers.
-Linking comes from native requirements; remaining runtime identities and budgets live in
-[`verification_inventory.json`](../tools/verification_inventory.json), native requirements and
-failure-family files. The preflight checks source/output coverage and registration; report
+Linking comes from native requirements. Runtime expectations come from existing failure-family
+files and [specialized plans](../tools/failure_plans.py); [named corpus tasks](../tools/corpus_catalog.py)
+supply both execution and expected report identities. The preflight checks source/output coverage and registration; report
 verdicts reject missing, duplicate and failed observations. Completed reports and their summaries
 provide observed totals for the exact revision under test. This guide deliberately does not
 repeat rolling grand totals that unrelated feature PRs would all have to update.

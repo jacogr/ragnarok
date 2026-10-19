@@ -32,7 +32,7 @@ and [infrastructure](../docs/testing/infrastructure.md) when changing the harnes
   compiler guards own all contract/privacy/nominal/schema/ownership rejection checks.
 
 - Keep rolling suite/probe totals out of `README.md`, `AGENTS.md` and shared testing guides.
-  Maintain coverage in the verification inventories and report observed totals in verification
+  Maintain coverage in source-owned verification plans and report observed totals in verification
   results; adding a feature should not require updating counts in shared prose.
 
 Run only affected local checks; `make unit SUITE=<name>` selects one native suite. Preserve

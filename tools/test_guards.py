@@ -230,7 +230,7 @@ def main():
         metadata = compiler.parent.parent/'NIGHTLY.txt'
         report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
         report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
-        sources = [Path(__file__), ROOT/'tools/compiler_fixtures.py', ROOT/'tools/verification_inventory.py', ROOT/'tools/verification_inventory.json', ROOT/'tools/native_checks.py', ROOT/'tools/native_dependencies.py', ROOT/'tools/build_crypto.py', ROOT/'tools/build_bandersnatch.py', ROOT/'tools/build_quic.py',
+        sources = [Path(__file__), ROOT/'tools/compiler_fixtures.py', ROOT/'tools/verification_inventory.py', ROOT/'tools/native_checks.py', ROOT/'tools/native_dependencies.py', ROOT/'tools/build_crypto.py', ROOT/'tools/build_bandersnatch.py', ROOT/'tools/build_quic.py',
                    ROOT/'spec/toolchain.json', ROOT/'spec/bandersnatch-pins.json',
                    *sorted((ROOT/'tests/native/compile_fail').glob('*.nim'))]
         report['sources'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()

@@ -10,37 +10,72 @@ from functools import partial
 from pathlib import Path
 import hashlib
 import sys
-from corpus_checks import run_corpus
+from corpus_checks import run_corpus, CorpusGroup
 from native_checks import announce
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# Run the codecs corpora with explicit process, workspace and library inputs.
-def run_codecs(compiler, report, checks, libraries):
+
+CORPORA = CorpusGroup()
+
+
+# Replay the early independent request families with their original adapters and expected bytes.
+def early_corpus(family, adapter, observations, compiler, checks):
+    build, command = checks.build, checks.command
+    lines, expected, *anchors = observations
+    source = checks.folder/(family+'-requests.txt')
+    corpus = run_corpus(build, command, compiler, ROOT/f'tests/native/{adapter}.nim',
+                      'early-'+family, source, lines, expected, 'early-'+family+'-corpus',
+                      metadata=dict(published_checks=anchors[0]), expected_hash=True)
+    announce('unchanged independent '+family+' corpus', corpus['passed'])
+    return corpus
+
+# Preserve the independent natural corpus and its original native adapter.
+@CORPORA.case
+def natural_corpus(compiler, report, checks, libraries):
+    from test_codec import natural_requests
+    return early_corpus('natural', 'driver', natural_requests(), compiler, checks)
+
+
+# Preserve the independent fixed corpus and its original native adapter.
+@CORPORA.case
+def fixed_corpus(compiler, report, checks, libraries):
+    from test_codec import fixed_requests
+    return early_corpus('fixed', 'fixed_driver', fixed_requests(), compiler, checks)
+
+
+# Preserve the independent bounded corpus and its original native adapter.
+@CORPORA.case
+def bounded_corpus(compiler, report, checks, libraries):
+    from bounded_checks import batch_requests
+    from test_codec import reference_encode, reference_decode
+    return early_corpus('bounded', 'bounded_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
+
+
+# Preserve the independent composite corpus and its original native adapter.
+@CORPORA.case
+def composite_corpus(compiler, report, checks, libraries):
+    from composite_checks import batch_requests
+    from test_codec import reference_encode, reference_decode
+    return early_corpus('composite', 'composite_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
+
+
+# Preserve the independent digest corpus and its original native adapter.
+@CORPORA.case
+def digest_corpus(compiler, report, checks, libraries):
+    from digest_checks import batch_requests
+    from test_codec import reference_encode, reference_decode
+    return early_corpus('digest', 'digest_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def report_corpus(compiler, report, checks, libraries):
     BUILD = checks.folder
     build, command = checks.build, checks.command
     execute_corpus = partial(run_corpus, build, command, compiler)
     crypto_library = libraries['crypto']
-    # Replay all five early independent corpora, preserving original requests before any adapter execution.
-    from test_codec import natural_requests, fixed_requests, reference_encode, reference_decode
-    from bounded_checks import batch_requests as bounded_requests
-    from composite_checks import batch_requests as composite_requests
-    from digest_checks import batch_requests as digest_requests
-    # File suffixes preserve the existing driver identities; all use this runner's checked LTO build profile.
-    early = (('natural', 'driver', natural_requests()), ('fixed', 'fixed_driver', fixed_requests()),
-             ('bounded', 'bounded_driver', bounded_requests(reference_encode, reference_decode)),
-             ('composite', 'composite_driver', composite_requests(reference_encode, reference_decode)),
-             ('digest', 'digest_driver', digest_requests(reference_encode, reference_decode)))
-    for family, adapter, observations in early:
-        lines, expected, *anchors = observations
-        source = BUILD/(family+'-requests.txt')
-        # Compare complete byte/field/error observations; adapters retain atomicity and owned-copy assertions.
-        corpus = execute_corpus(ROOT / f'tests/native/{adapter}.nim', 'early-' + family,
-                            source, lines, expected, 'early-' + family + '-corpus',
-                            metadata=dict(published_checks=anchors[0]), expected_hash=True)
-        report[family+'_corpus'] = corpus
-        announce('unchanged independent '+family+' corpus', corpus['passed'])
     # The full report driver retains the unchanged codec batch and exposes credential composition separately.
     sys.path.insert(0, str(ROOT/'tests'))
     from report_oracle import requests
@@ -50,8 +85,17 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = execute_corpus(ROOT / 'tests/native/report_driver.nim', 'report-codec',
                         source, lines, expected, 'report-corpus',
                         crypto_library=crypto_library)
-    report['report_corpus'] = corpus
     announce('independent report corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def report_signature_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Independently signed full-report fixtures retain all original key/signature/domain/new-field mutations.
     from report_fixtures import fixtures as signed_report_fixtures, composition_cases
     provider, values = signed_report_fixtures()
@@ -79,8 +123,17 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = dict(build=compiled, provider=provider, requests=len(cases), fixtures=len(values), checks=checks,
                   passed=len(cases) == len(checks) == 63 and all(row['passed'] for row in checks),
                   scope='full canonical report bytes and ordinary Ed25519 credential bindings; no assignment or point-policy decision')
-    report['report_signature_corpus'] = corpus
     announce('independent full-report guarantee signature composition corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def assurance_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve the full independent assurance corpus and derive capacity-free inspection expectations separately.
     from assurances_oracle import requests as assurance_requests, decode as assurance_decode
     lines, expected = assurance_requests()
@@ -101,8 +154,17 @@ def run_codecs(compiler, report, checks, libraries):
                         source, lines, expected, 'assurances-corpus',
                         metadata=dict(codec_requests=codec_count,
                                       inspection_requests=len(lines)-codec_count))
-    report['assurance_corpus'] = corpus
     announce('independent assurance codec/inspection corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def assurance_context_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve the complete independently signed assurance-context corpus and frozen source/expected identities.
     from assurance_crypto_oracle import requests as assurance_context_requests
     provider, lines, expected = assurance_context_requests()
@@ -113,8 +175,17 @@ def run_codecs(compiler, report, checks, libraries):
                         metadata=dict(provider=provider,
                                       scope='fixed transcript and stateless validator-key/parent checks; no state eligibility or point-policy change'), expected_hash=True, complete=len(lines) == 2087,
                         crypto_library=crypto_library)
-    report['assurance_context_corpus'] = corpus
     announce('independent assurance transcript/context/signature corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def guarantee_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Keep the original guarantee corpus intact and independently check inspection and standalone APIs.
     from guarantees_checks import requests as guarantee_requests
     lines, expected, counts = guarantee_requests()
@@ -123,8 +194,17 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = execute_corpus(ROOT / 'tests/native/guarantees_driver.nim', 'guarantees-codec',
                         source, lines, expected, 'guarantees-corpus',
                         metadata=dict(request_groups=counts))
-    report['guarantee_corpus'] = corpus
     announce('independent guarantee extrinsic/inspection/standalone corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def ticket_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Keep every original ticket request and add unsigned policy extremes before direct inspections.
     from tickets_oracle import requests as ticket_requests, decode as ticket_decode, encode as ticket_encode
     from tickets_oracle import record as ticket_record, wire as ticket_wire
@@ -158,8 +238,18 @@ def run_codecs(compiler, report, checks, libraries):
                         metadata=dict(original_requests=original_count,
                                       codec_requests=codec_count,
                                       inspection_requests=len(lines)-codec_count))
-    report['ticket_corpus'] = corpus
     announce('independent ticket codec/inspection corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def dispute_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
+    from test_codec import reference_encode as ticket_natural
     # Preserve original dispute semantics, including published ordering rejections, plus unsigned policy extremes.
     from disputes_oracle import requests as dispute_requests, decode as dispute_decode, encode as dispute_encode
     from disputes_oracle import fields as dispute_fields, example as dispute_example
@@ -207,8 +297,17 @@ def run_codecs(compiler, report, checks, libraries):
                         metadata=dict(original_requests=original_count,
                                       codec_requests=codec_count,
                                       inspection_requests=len(lines)-codec_count))
-    report['dispute_corpus'] = corpus
     announce('independent dispute codec/inspection corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def package_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # The unchanged package oracle covers context, import, commitment, standalone item and complete package APIs.
     from package_oracle import requests as package_requests
     lines, expected = package_requests()
@@ -218,8 +317,17 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = execute_corpus(ROOT / 'tests/native/package_driver.nim', 'package-codec',
                         source, lines, expected, 'package-corpus',
                         metadata=dict(request_groups=groups))
-    report['package_corpus'] = corpus
     announce('independent context/import/commitment/item/package corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def header_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Retain the complete five-family header corpus and add direct full-header inspection expectations.
     from header_oracle import requests as header_requests, decode as header_decode
     lines, expected = header_requests()
@@ -263,8 +371,17 @@ def run_codecs(compiler, report, checks, libraries):
                         metadata=dict(original_requests=original_count,
                                       request_groups=groups,
                                       inspection_requests=len(lines)-original_count))
-    report['header_corpus'] = corpus
     announce('independent ticket/epoch/winner/unsigned/full-header corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def block_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve every independent whole-block/extrinsic expectation, including actual published policy failures.
     from block_oracle import requests as block_requests
     lines, expected = block_requests()
@@ -275,8 +392,17 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = execute_corpus(ROOT / 'tests/native/block_driver.nim', 'block-codec',
                         source, lines, expected, 'block-corpus',
                         metadata=dict(request_groups=groups))
-    report['block_corpus'] = corpus
     announce('independent complete extrinsic/block corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def bits_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve all exhaustive Boolean/padding cases and pinned profile-field checks from the independent oracle.
     from bits_oracle import requests as bits_requests
     lines, expected = bits_requests()
@@ -287,8 +413,17 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = execute_corpus(ROOT / 'tests/native/bits_driver.nim', 'bits-codec',
                         source, lines, expected, 'bits-corpus',
                         metadata=dict(request_groups=groups))
-    report['bits_corpus'] = corpus
     announce('independent Boolean/fixed/variable bitstring corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def collection_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve the unchanged collection oracle: numeric/byte ordering, pairing and zero-width singleton domains.
     from collections_oracle import requests as collection_requests
     lines, expected = collection_requests()
@@ -299,8 +434,17 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = execute_corpus(ROOT / 'tests/native/collections_driver.nim', 'collection-codec',
                         source, lines, expected, 'collection-corpus',
                         metadata=dict(request_groups=groups))
-    report['collection_corpus'] = corpus
     announce('independent canonical fixed/variable set/dictionary corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def c2_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Independent C.2 references retain exact availability/transfer/operand framing and tagged-union agreement.
     from c2_oracle import requests as c2_requests
     lines, expected = c2_requests()
@@ -316,5 +460,9 @@ def run_codecs(compiler, report, checks, libraries):
     corpus = execute_corpus(ROOT / 'tests/native/c2_driver.nim', 'c2-codec',
                         source, lines, expected, 'c2-corpus',
                         metadata=dict(request_groups=groups))
-    report['c2_corpus'] = corpus
     announce('independent availability/transfer/operand/accumulation corpus', corpus['passed'])
+    return corpus
+
+
+# Existing callers use the same entry point; the declared tasks own its complete plan.
+run_codecs = CORPORA.run

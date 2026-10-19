@@ -8,7 +8,7 @@ coverage details and reproduction commands in the feature's `spec/` document ins
 
 Add native application assertions as `tests/unit/<source-family>/test_<suite>.nim` with an explicit
 `.output` contract. Suite identities are discovered from these files in alphabetical order; do not
-add a suite list to `tools/verification_inventory.json`. Helpers belong in `tests/support/` and
+maintain a separate suite list. Helpers belong in `tests/support/` and
 rejection fixtures in `tests/native/compile_fail/`. Duplicate identities, misplaced Nim files,
 empty discovery and missing output contracts fail before setup.
 
@@ -37,15 +37,19 @@ or invalid declarations before setup, and report checks reject missing, duplicat
 
 ## Runtime failures and independent corpora
 
-Add ordinary runtime probes to `tools/failure_suites/<family>.json`, one case per line. Preserve
-an independently declared family count in `FAILURE_COUNTS` and one explicit scheduler call in
-`tools/test_runtime.py`. The family loader validates that count against the cases, and the
-preflight checks scheduler/file agreement. Specialized families retain their explicit budgets
-and code paths. Never derive a family's required count from the number of results it produced.
+Add ordinary runtime probes to `tools/failure_suites/<family>.json`, one case per line, with
+one explicit scheduler call in `tools/test_runtime.py`. Preflight checks scheduler/file agreement.
+The declared cases supply expected identities before execution; never infer expectations from
+observed results. Specialized drivers own typed enum cases tagged with `# @@ProbeCases` and expose
+`--list-cases`; add their origin/diagnostic combinations to the specialized source-owned plan.
+Preserve positive controls and intentional language-policy cases.
 
 Independent expected values remain in `tests/` oracles. Corpus orchestration belongs in the
 appropriate `tools/corpus_*.py` module; preserve request hashes, build profiles, complete output
-comparison and explicit scheduling. Register new corpus identities in `CORPUS_NAMES`.
+comparison and explicit scheduling. Register a named `<feature>_corpus` callable with the owning
+module's `@CORPORA.case`; return its verdict instead of separately assigning a report key. The
+registration supplies both scheduling and completeness expectations. Preserve shared-build
+dependencies in the feature/task order.
 
 ## Harness ownership
 

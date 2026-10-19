@@ -25,13 +25,11 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
   under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
   be faster on warm local repeats. Record timings without weakening test workloads or verdicts.
 
-- Keep entries within every section of `tools/verification_inventory.json` in lexicographic
-  (Python `sorted`) order. Use consistent feature prefixes, such as `pvm_`, and insert beside
-  existing entries for that feature; never prepend or append an unrelated registration.
-  Keep one entry per line, including diagnostic pairs. Preserve positional values inside records
-  and the existing top-level section layout. The inventory loader rejects unordered sections;
-  run `make check-inventory` before committing. Any genuinely order-dependent future section
-  needs an explicit documented validator exception and a regression test, not silent reordering.
+- Keep source-owned verification plans deterministic and feature-grouped. Ordinary failure-family
+  files own expected identities; specialized drivers own typed mode declarations and variant plans.
+  Named corpus callables own scheduling/report identities. Do not recreate a central name/count
+  registry. Preserve genuinely ordered build options and dependency/task execution order; run
+  `make check-inventory` for changes to these declarations.
 
 - Native test requirements belong in `tools/native_requirements/<source-family>/<suite>.json`,
   one file per suite, named with the suite's consistent feature prefix. Keep independent JSON fields

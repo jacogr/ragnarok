@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from verification_inventory import (cases, unique_object, validate_order,
+from verification_inventory import (unique_object,
                                     discover_unit_sources, discover_arc_suites, source_metadata)
 
 
@@ -21,47 +21,11 @@ from verification_inventory import (cases, unique_object, validate_order,
 class VerificationInventory(unittest.TestCase):
     # Apply rejection to nested cases and top-level sections alike.
     def test_duplicate_keys_rejected(self):
-        for source in ('{"FAILURE_COUNTS": {}, "FAILURE_COUNTS": {}}',
+        for source in ('{"expected": "a", "expected": "b"}',
                        '{"FAILURE_COUNTS": {"guard": 1, "guard": 2}}'):
             # Both shapes would otherwise parse successfully with silently discarded data.
             with self.subTest(source=source), self.assertRaisesRegex(ValueError, 'Duplicate'):
                 json.loads(source, object_pairs_hook=unique_object)
-
-    # Repeated simple or structured cases must not inflate the apparent coverage count.
-    def test_duplicate_cases_rejected(self):
-        for values in (['suite', 'suite'], [['kind', 'field'], ['kind', 'field']]):
-            # Compound records are compared by value after tuple restoration.
-            with self.subTest(values=values), self.assertRaisesRegex(ValueError, 'Duplicate'):
-                cases(values)
-
-    # Distinct case records retain their order and the existing tuple-based call contract.
-    def test_order_and_record_types_preserved(self):
-        self.assertEqual(cases(['second', 'first']), ('second', 'first'))
-        self.assertEqual(cases([['kind', 'one'], ['kind', 'two']]),
-                         (('kind', 'one'), ('kind', 'two')))
-        self.assertEqual(list(json.loads('{"second": 2, "first": 1}',
-                                       object_pairs_hook=unique_object)), ['second', 'first'])
-
-    # Prefix grouping gives unrelated features separate insertion points in every named registry.
-    def test_alphabetical_sections(self):
-        ordered = {'CORPUS_NAMES': ['accumulation_queue', 'pvm_gas', 'pvm_step', 'rpc'],
-                   'FAILURE_COUNTS': {'pvm_raw': 2, 'rpc_raw': 3}}
-        before = json.dumps(ordered)
-        validate_order(ordered)
-        self.assertEqual(json.dumps(ordered), before)
-
-    # Both prepended suites and prepended guard/profile keys must fail before native setup.
-    def test_prepended_entries_rejected(self):
-        for section in ('FAILURE_COUNTS', 'CORPUS_NAMES',
-                        'AVAILABILITY_MEMBERS', 'WORKQUEUES_MEMBERS', 'COMPOSITION_MEMBERS',
-                        'BS_MEMBERS'):
-            # Exercise lists and mappings independently so newly added sections inherit the rule.
-            for entries in (['pvm_step', 'accumulation_queue', 'pvm_gas'],
-                            {'pvm_step': 'status', 'accumulation_queue': 'data', 'pvm_gas': 'error'}):
-                with self.subTest(section=section, entries=entries):
-                    with self.assertRaisesRegex(ValueError, section+' must be alphabetical'):
-                        validate_order({section: entries})
-
 
 # Discovery includes new unit sources without a second list, retaining strict file contracts.
 class NativeUnitDiscovery(unittest.TestCase):
