@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Merge supported common-source execution credits and terminal-selected provisions on a private complete-map fork.
-## Publishes only after both phases succeed; no complete round, mutable-account host or block certificate is claimed.
+## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
 import ../codec/[bounded, composite, header, state_accounts, state_trie]
 import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_context,
   accumulation_effects, accumulation_dispatch, accumulation_outcome, accumulation_provisions,
+  accumulation_skip,
   accumulation_terminal_provisions, store]
 
 type
@@ -15,22 +16,27 @@ type
     accounts*: ElementLimit ## Maximum changed self-metadata records encoded for incoming credits.
     provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
   AccumulationBatchError* {.pure.} = enum ## Refusals expose only their reasons; no earlier credit, candidate root or partial terminal set escapes.
-    Uninitialized,    ## Default result or plan without initialized ownership.
-    None,             ## Complete selected success; guarded value extraction is available.
-    InvalidInputs,    ## The expected prepared input owner is uninitialized.
-    InvalidState,     ## The expected prior snapshot or publication store is uninitialized.
-    InvalidExecution, ## A local dispatch refusal supplied no completed execution source.
-    SourceMismatch,   ## An execution belongs to a different input owner or prior snapshot.
-    DuplicateService, ## More than one execution invokes the same service in this subset.
-    InvalidIndex,     ## The plan-owned execution ordinal is outside the retained outcomes.
-    StaleState,       ## The publication store no longer retains this plan's exact prior version.
+    Uninitialized,      ## Default result or plan without initialized ownership.
+    None,               ## Complete selected success; guarded value extraction is available.
+    InvalidInputs,      ## The expected prepared input owner is uninitialized.
+    InvalidState,       ## The expected prior snapshot or publication store is uninitialized.
+    InvalidExecution,   ## A local dispatch refusal supplied no completed execution source.
+    SourceMismatch,     ## An execution or skip belongs to a different input owner or prior snapshot.
+    InvalidSkip,        ## A default skip supplies no certified non-executing service.
+    IncompleteCoverage, ## Executions and skips do not cover the expected input service count.
+    InvalidSlot,        ## A certified skip belongs to a different candidate slot.
+    DuplicateService,   ## A service occurs more than once across executions and skips.
+    InvalidIndex,       ## The plan-owned execution ordinal is outside the retained outcomes.
+    StaleState,         ## The publication store no longer retains this plan's exact prior version.
     UnsupportedAccountEffects, ## Selected account changes need a merger beyond incoming-credit metadata.
-    LimitExceeded,    ## Batch descriptors or account writes exceed local preparation ceilings.
-    TerminalFailure,  ## Terminal preparation or provision fulfillment refused; inspect its nested reason.
-    StoreFailure      ## The private account-write phase refused; inspect storeError.
-  AccumulationBatchInfo* = object ## Copied batch observations describe the explicit executed subset, never complete-round coverage.
-    executions*: int    ## Unique services in the explicit executed subset.
-    accountWrites*: int ## Changed self-metadata records prepared for incoming credits.
+    LimitExceeded,      ## Batch descriptors or account writes exceed local preparation ceilings.
+    TerminalFailure,    ## Terminal preparation or provision fulfillment refused; inspect its nested reason.
+    StoreFailure        ## The private account-write phase refused; inspect storeError.
+  AccumulationBatchInfo* = object ## Copied observations distinguish complete input coverage from an explicit subset; neither certifies a round.
+    executions*: int      ## Unique services with genuine completed executions.
+    skipped*: int         ## Unique services with certified non-executing outcomes.
+    completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
+    accountWrites*: int   ## Changed self-metadata records prepared for incoming credits.
     terminal*: AccumulationTerminalProvisionInfo ## Checked invocation slot and selected-provision accounting.
   # Acyclic owner retains exact input/prior provenance, private metadata writes and normalized terminal effects.
   BatchData = ref object
@@ -38,7 +44,9 @@ type
     prior: StateStoreSnapshot
     writes: seq[StateWrite]
     terminal: PreparedTerminalAccumulationProvisions
-  PreparedAccumulationBatch* = object ## Only verified common-source, unique-service executions produce a batch plan.
+    skipped: int
+    completeInputs: bool
+  PreparedAccumulationBatch* = object ## Only verified common-source, unique-service outcomes produce a batch plan.
     data: nil BatchData
   AccumulationBatchResult*[T] = object ## Nested failure alternatives retain enums alone, with guarded extraction of the selected reason.
     case status: AccumulationBatchError
@@ -106,6 +114,7 @@ proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[Accumu
         status: AccumulationBatchError.Uninitialized) # Defaults are not empty batches.
   AccumulationBatchResult[AccumulationBatchInfo](status: AccumulationBatchError.None,
     completed: AccumulationBatchInfo(executions: data.terminal.terminalProvisionInfo.value.provisions.contexts,
+      skipped: data.skipped, completeInputs: data.completeInputs,
       accountWrites: data.writes.len, terminal: data.terminal.terminalProvisionInfo.value))
 
 proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisionSourceIndex):
@@ -122,24 +131,32 @@ proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisi
   AccumulationBatchResult[AccumulationOutcome](status: AccumulationBatchError.None,
       completed: retained.value)
 
-proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
-    executions: openArray[AccumulationDispatchResult], slot: HeaderSlot,
-    limits: AccumulationBatchLimits): AccumulationBatchResult[PreparedAccumulationBatch] =
-  ## Prepare an explicit unique-service subset from one input owner and exact prior complete-map version.
-  ## Source/uniqueness checks precede terminal normalization and union hashing; inputs stay stable during this call.
+# Shared preparation proves source ownership before retaining credits or normalizing genuine executions.
+proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
+    executions: openArray[AccumulationDispatchResult], skipped: openArray[SkippedAccumulation],
+    slot: HeaderSlot, limits: AccumulationBatchLimits, requireComplete: bool):
+    AccumulationBatchResult[PreparedAccumulationBatch] =
   # Refuse without exposing partially retained service rows or encoded account writes.
   template fail(reason: AccumulationBatchError) =
     return AccumulationBatchResult[PreparedAccumulationBatch](status: reason)
-  if inputs.invocationServiceCount.error != AccumulationInputError.None:
+  let count = inputs.invocationServiceCount
+  if count.error != AccumulationInputError.None:
     fail(AccumulationBatchError.InvalidInputs) # A default input owner is not an initialized empty set.
   if not sameStateSnapshot(prior, prior):
     fail(AccumulationBatchError.InvalidState) # Defaults cannot authorize a complete-map candidate.
+  # The prepared owner bounds coverage; subtraction proves the combined descriptor extent before addition.
+  if requireComplete and (executions.len > count.value or skipped.len != count.value -
+      executions.len):
+    fail(AccumulationBatchError.IncompleteCoverage)
+  if skipped.len > high(int) - executions.len:
+    fail(AccumulationBatchError.LimitExceeded)
+  let serviceCount = executions.len + skipped.len
   if uint64(executions.len) > uint64(limits.provisions.contexts) or
-      executions.len > high(int) div (sizeof(PreparedAccumulationService)+sizeof(
+      serviceCount > high(int) div (sizeof(PreparedAccumulationService)+sizeof(
           ServiceIndex)+sizeof(StateWrite)+ServiceMetadataBytes):
     fail(AccumulationBatchError.LimitExceeded) # Bound all descriptors and fixed account bytes before allocation.
-  var services = newSeq[PreparedAccumulationService](executions.len)
-  var ids = newSeq[ServiceIndex](executions.len)
+  var services = newSeq[PreparedAccumulationService](serviceCount)
+  var ids = newSeq[ServiceIndex](serviceCount)
   for index, execution in executions:
     # A local execution refusal exposes no source and can never be treated as guest panic/rollback.
     if execution.error != AccumulationDispatchError.None:
@@ -151,10 +168,23 @@ proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateS
       fail(AccumulationBatchError.SourceMismatch) # Equal metadata, gas, roots or slot do not replace actual owner provenance.
     services[index] = service
     ids[index] = service.serviceInfo.value.service
+  for index, outcome in skipped:
+    # Only the real code-resolution gate supplies a service; defaults cannot impersonate zero-gas outcomes.
+    let source = outcome.skipService
+    if source.error != AccumulationSkipError.None:
+      fail(AccumulationBatchError.InvalidSkip)
+    let service = source.value
+    if not serviceSourceMatches(service, inputs, prior):
+      fail(AccumulationBatchError.SourceMismatch)
+    let info = service.serviceInfo.value
+    if uint32(info.slot) != uint32(slot):
+      fail(AccumulationBatchError.InvalidSlot)
+    services[executions.len + index] = service
+    ids[executions.len + index] = info.service
   ids.sort(compareService)
   for index in 1..<ids.len:
     if uint32(ids[index-1]) == uint32(ids[index]):
-      fail(AccumulationBatchError.DuplicateService) # Retry/replay of a service is not another parallel invocation.
+      fail(AccumulationBatchError.DuplicateService) # An execution or skip may represent each service only once.
   var writes: seq[StateWrite] = @[]
   for service in services:
     # Current preparation changes this private branch only when incoming credit changed self metadata.
@@ -171,7 +201,8 @@ proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateS
   when declared(effectAccounts):
     # PVM storage-write integration exposes versioned accounts separately from immutable initial provenance.
     # This bounded merger must refuse a selected mutation instead of silently replacing it with initial credit.
-    for index, service in services:
+    for index in 0..<executions.len:
+      let service = services[index]
       let outcome = selected.value.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(
           uint64(index))).value
       let current = outcome.outcomeContext.value.effectAccounts
@@ -181,7 +212,25 @@ proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateS
         fail(AccumulationBatchError.UnsupportedAccountEffects) # Rolled-back regular writes do not affect the selected checkpoint.
   AccumulationBatchResult[PreparedAccumulationBatch](status: AccumulationBatchError.None,
     completed: PreparedAccumulationBatch(data: BatchData(inputs: inputs, prior: prior,
-      writes: writes, terminal: selected.value)))
+      writes: writes, terminal: selected.value, skipped: skipped.len,
+      completeInputs: serviceCount == count.value)))
+
+proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
+    executions: openArray[AccumulationDispatchResult], slot: HeaderSlot,
+    limits: AccumulationBatchLimits): AccumulationBatchResult[PreparedAccumulationBatch] =
+  ## Prepare an explicit unique-service executed subset from one input owner and exact prior version.
+  ## Inputs remain stable during this call; omissions receive no incoming credit from this subset.
+  prepareBatch(inputs, prior, executions, [], slot, limits, false)
+
+proc prepareCompleteAccumulationBatch*(inputs: PreparedAccumulationInputs,
+    prior: StateStoreSnapshot, executions: openArray[AccumulationDispatchResult],
+        skipped: openArray[SkippedAccumulation],
+    slot: HeaderSlot, limits: AccumulationBatchLimits): AccumulationBatchResult[
+        PreparedAccumulationBatch] =
+  ## Require exactly one real execution or certified skip per prepared input service, from the exact prior and slot.
+  ## Merge all incoming credits atomically with selected provisions; no admitted-round provenance is implied.
+  ## Borrowed arrays remain stable during preparation; the plan retains only immutable owners and copied writes.
+  prepareBatch(inputs, prior, executions, skipped, slot, limits, true)
 
 proc applyAccumulationBatch*(state: var StateStore, plan: PreparedAccumulationBatch):
     AccumulationBatchResult[StateStoreSnapshot] =
