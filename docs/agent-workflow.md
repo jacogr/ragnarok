@@ -40,9 +40,12 @@ gh stack rebase --remote origin
 # Resolve only the files and worktree named by the native operation, then stage those files.
 gh stack rebase --continue
 gh stack push --remote origin
-# For new stack layers, create semantic commits before submitting draft PRs.
-gh stack submit --auto --remote origin
+# For new stack layers, create semantic commits before submitting PRs ready for review.
+gh stack submit --auto --open --remote origin
 ```
+
+Regular PRs are the default; use drafts only when the maintainer requests them. The `--open`
+flag also marks existing PRs in the submitted stack ready for review.
 
 These are separate steps, not a script to run blindly. Use `--upstack` when updating only the
 layers above an edited branch. If sync restores a conflicted stack, start native rebase to resolve
