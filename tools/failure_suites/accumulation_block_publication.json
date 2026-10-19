@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/accumulation_block_publication_results.nim",
+  "build_name": "accumulation-block-publication-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-block-publication-default", "diagnostic": "outcome.status == None", "description": "Accumulation publication default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-block-publication-refused", "diagnostic": "outcome.status == None", "description": "Accumulation publication refused extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-block-publication-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation publication wrong-state extraction guard"}
+  ]
+}

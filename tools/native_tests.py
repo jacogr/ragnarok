@@ -49,7 +49,7 @@ for case in ('state_availability', 'state_availability_private', 'state_workqueu
              'accumulation_consensus', 'accumulation_execution',
              'accumulation_finalization',
              'accumulation_history',
-             'accumulation_outputs', 'accumulation_preimages',
+             'accumulation_outputs', 'accumulation_preimages', 'accumulation_block_publication',
              'accumulation_continuation', 'accumulation_continuation_execution',
              'accumulation_continuation_inputs',
              'accumulation_continuation_invocation', 'accumulation_ready', 'accumulation_recent',
