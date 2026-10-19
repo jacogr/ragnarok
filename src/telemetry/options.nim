@@ -19,8 +19,8 @@ proc optionStart(): int =
     if paramStr(i) in ["--telemetry", "--chain", "--rpc-port"]: return i # Reserve both names even in malformed input.
   paramCount() + 1
 
-# Validate unique trailing pairs; telemetry still requires an explicit chain, RPC is independently optional.
 proc validTelemetryOption*(): bool =
+  ## Validate unique trailing pairs; telemetry still requires an explicit chain, RPC is independently optional.
   let first = optionStart()
   if (paramCount() - first + 1) mod 2 != 0: return false # Every option requires one value.
   var seen: seq[string] = @[]
@@ -51,19 +51,21 @@ proc optionValue(name: string): string =
     i += 2
   ""
 
-# Telemetry remains independent of RPC, including its early clock/syscall shortcuts.
-proc requested*(): bool = optionValue("--telemetry").len > 0
+proc requested*(): bool =
+  ## Telemetry remains independent of RPC, including its early clock/syscall shortcuts.
+  optionValue("--telemetry").len > 0
 
-# Zero means disabled; syntax validation proves any present decimal value fits uint16.
 proc rpcPort*(): uint16 =
+  ## Zero means disabled; syntax validation proves any present decimal value fits uint16.
   let value = optionValue("--rpc-port")
   if value.len == 0: return 0 # Default peer invocations do not listen for RPC.
   var port = 0
   for c in value: port = port * 10 + ord(c) - ord('0') # Startup already validated every digit and the range.
   uint16(port)
 
-# Keep the existing positional command parsing independent of trailing option order.
-proc peerParamCount*(): int = optionStart() - 1
+proc peerParamCount*(): int =
+  ## Keep the existing positional command parsing independent of trailing option order.
+  optionStart() - 1
 
 # Read at most limit+1 bytes; empty output means missing, empty or oversized configuration.
 proc boundedFile(path: string, limit: int): string {.raises.} =
@@ -79,11 +81,12 @@ proc boundedFile(path: string, limit: int): string {.raises.} =
   text.setLen(count)
   result = move(text)
 
-# Read one startup snapshot for both RPC and telemetry so they cannot observe different file revisions.
-proc loadChainText*(): string {.raises.} = boundedFile(optionValue("--chain"), MaxChainBytes)
+proc loadChainText*(): string {.raises.} =
+  ## Read one startup snapshot for both RPC and telemetry so they cannot observe different file revisions.
+  boundedFile(optionValue("--chain"), MaxChainBytes)
 
-# An explicit RPC chain must validate before opening the listener; missing configuration remains unavailable.
 proc setupRpc*(rpc: var Server, role: string, text: string): bool =
+  ## An explicit RPC chain must validate before opening the listener; missing configuration remains unavailable.
   var parameters = default(ParameterResult)
   var genesis = unavailableGenesis()
   if rpcPort() != 0 and optionValue("--chain").len > 0:
@@ -93,9 +96,9 @@ proc setupRpc*(rpc: var Server, role: string, text: string): bool =
     if genesis.error == GenesisError.Invalid: return false # Reject an incomplete or malformed explicit genesis.
   rpc.start(rpcPort(), role, parameters, genesis)
 
-# Build registration from explicit JIP-4 configuration and the actual local certificate/socket.
 proc setup*(client: var Client, certificate: string, port: uint16, ipv6: bool,
     text: string): bool {.raises.} =
+  ## Build registration from explicit JIP-4 configuration and the actual local certificate/socket.
   if not requested(): return true # Absence is the default and requires no configuration.
   if text.len == 0: return false # Never invent a chain or use an implicit development network.
   let pem = boundedFile(certificate, 16384).strip()
@@ -140,13 +143,13 @@ proc eventTimestamp(): Timestamp =
     return Timestamp(0) # Do not narrow or wrap an unrepresentable local timestamp.
   Timestamp(uint64(seconds) * 1_000_000 + uint64(wall.nanosecond div 1000))
 
-# Translate wall time for wire timestamps and monotonic time for retry/status deadlines.
 proc observe*(client: var Client, peers: uint32) =
+  ## Translate wall time for wire timestamps and monotonic time for retry/status deadlines.
   if not requested(): return # Default runs do not even query telemetry clocks.
   client.tick(getMonoTime().ticks div 1_000_000, eventTimestamp(), peers)
 
-# The bounded proof dialer knows its pinned public identity and exact loopback destination before dialing.
 proc startDial*(client: var Client, identity: openArray[byte], port: uint16, ipv6: bool): EventId =
+  ## The bounded proof dialer knows its pinned public identity and exact loopback destination before dialing.
   if not requested() or identity.len != 32: return EventId(0) # No instrumentation for disabled/invalid peers.
   var key = default(array[32, byte])
   for i in 0..<32: key[i] = identity[i] # Copy caller storage; no peer owner is retained.
@@ -160,26 +163,25 @@ proc startDial*(client: var Client, identity: openArray[byte], port: uint16, ipv
     address[15] = 1
   client.dialing(getMonoTime().ticks div 1_000_000, eventTimestamp(), key, address, port)
 
-# Settle an outgoing attempt exactly once; callers use native authentication evidence, not application success.
 proc finishDial*(client: var Client, attempt: EventId, authenticated: bool) =
+  ## Settle an outgoing attempt exactly once; callers use native authentication evidence, not application success.
   if not requested(): return # Disabled telemetry does not query clocks or encode frames.
   client.dialOutcome(getMonoTime().ticks div 1_000_000, eventTimestamp(), attempt, authenticated)
 
-# Copy the authenticated outgoing identity only after the caller observes a native connection close.
 proc finishConnection*(client: var Client, identity: openArray[byte]) =
+  ## Copy the authenticated outgoing identity only after the caller observes a native connection close.
   if not requested() or identity.len != 32: return # Invalid or disabled peers cannot emit a closure.
   var key = default(array[32, byte])
   for i in 0..<32: key[i] = identity[i] # No caller storage is retained by the bounded exporter.
   client.peerDisconnected(getMonoTime().ticks div 1_000_000, eventTimestamp(), key)
 
-# Fixed correlation storage belongs to the peer and outlives native SSL destruction callbacks.
-type IncomingAttempts* = object
+type IncomingAttempts* = object ## Fixed correlation storage belongs to the peer and outlives native SSL destruction callbacks.
   active: array[IncomingHandshakeSlots, bool]
   ids: array[IncomingHandshakeSlots, EventId]
 
-# Copy callback data immediately; only bounded frames are queued here, never socket operations.
 proc observeIncoming*(client: var Client, attempts: var IncomingAttempts, slot: cuint,
     event: cint, address: ptr ConstByte, port: uint16, der: ptr ConstByte, length: csize_t) =
+  ## Copy callback data immediately; only bounded frames are queued here, never socket operations.
   let stamp = eventTimestamp()
   if event == AdmissionRefused:
     if address == nil:
@@ -225,9 +227,9 @@ type IncomingPeers* = object
   active, known: array[IncomingPeerSlots, bool]
   identities: array[IncomingPeerSlots, array[32, byte]]
 
-# Admission only retains identity; a separately observed close produces JIP-3 event 27 exactly once.
 proc observePeer*(client: var Client, peers: var IncomingPeers, slot: cuint,
     event: cint, der: ptr ConstByte, length: csize_t) =
+  ## Admission only retains identity; a separately observed close produces JIP-3 event 27 exactly once.
   if slot >= cuint(IncomingPeerSlots): return # Native registration proves this bound; reject invalid callbacks.
   let index = int(slot)
   if event == PeerAccepted:

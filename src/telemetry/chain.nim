@@ -29,9 +29,9 @@ proc hexBytes(text: string, maximum: int): seq[byte] =
     bytes[i] = value # Two validated digits fit exactly in a byte; no overflow or truncation is possible.
   result = move(bytes)
 
-# Parse complete bounded JSON and hash its serialized genesis header using the maintained primitive.
 proc chainMetadata*(text: string, identity: array[32, byte], address: array[16, byte],
     port: uint16): MetadataResult =
+  ## Parse complete bounded JSON and hash its serialized genesis header using the maintained primitive.
   # Limit input before the standard token parser creates any strings or parser states.
   if text.len == 0 or text.len > MaxChainBytes: return invalidMetadata(invalidChain)
   var parser = default(JsonParser)
