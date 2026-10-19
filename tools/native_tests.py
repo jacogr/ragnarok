@@ -55,7 +55,7 @@ for case in ('state_availability', 'state_availability_private', 'state_workqueu
              'accumulation_continuation_invocation', 'accumulation_ready', 'accumulation_recent',
              'accumulation_reentry',
              'accumulation_reentry_cycle', 'accumulation_reentry_execution',
-             'accumulation_reentry_outputs', 'accumulation_statistics', 'accumulation_times',
+             'accumulation_reentry_outputs', 'accumulation_runner', 'accumulation_statistics', 'accumulation_times',
              'accumulation_validators'):
     # Every consumer verifies the same exact source bytes before its native assertions execute.
     UNIT_FIXTURES[case] = ('RAGNAROK_STATE_REPORT', STATE_REPORT, ((STATE_REPORT, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'),))
