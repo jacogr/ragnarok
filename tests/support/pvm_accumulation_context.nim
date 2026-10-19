@@ -17,9 +17,11 @@ proc pvmEnvelope*(raw: openArray[byte] = [0'u8, 0, 7, 0, 0, 0, 0, 0, 50, 0, 63],
     byte] = @[81'u8]): seq[byte] =
   ## Build a small envelope with one RO byte, a bounded RW payload, extra heap page and one-byte stack request.
   ## The default raw program has five traps followed by jump_ind r0 at the accumulation entry.
-  ## writable supplies up to 64 authored data bytes; the default preserves the original one-byte fixture.
-  assert writable.len <= 64 # Small authored payloads retain the original two-page RW fixture layout.
-  result = @[1'u8, 0, 0, byte(writable.len), 0, 0, 1, 0, 1, 0, 0, 73]
+  ## writable supplies up to 4096 authored data bytes; the default preserves the original one-byte fixture.
+  assert writable.len <= 4096 # Small authored payloads retain the original two-page RW fixture layout.
+  result = @[1'u8, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 73]
+  for i in 0..<3:
+    result[3+i] = byte((writable.len shr (8*i)) and 255) # Validated E3 extent preserves the two-page RW layout.
   for octet in writable:
     result.add(octet) # Capture custom fixed host inputs without replacing real memory stores or reads.
   for i in 0..<4:
@@ -42,9 +44,10 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     entropy: StateEntropyWord = default(StateEntropyWord),
     precedingService = false, includeContexts = false, extra: seq[StateEntry] = @[],
         account = default(ServiceMetadata), spareEntries = 0,
-            manager = 0'u32): PreparedAccumulationInvocation =
+            manager = 0'u32, assigner = 0'u32): PreparedAccumulationInvocation =
   ## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
   ## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
+  ## manager/assigner supply copied initial authority; neither changes the selected service.
   ## account supplies copied metadata; the code hash is derived from code. spareEntries (0..64) bounds extra map capacity.
   ## manager sets the initial C(12) authority independently of the selected invocation allowance.
   assert operandCount >= 0 and operandCount <= 16
@@ -99,7 +102,7 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     entries.add(validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6),
         config.staging).value)
     entries.add(privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager), assigners: @[
-        ServiceIndex(0), ServiceIndex(0)]),
+        ServiceIndex(assigner), ServiceIndex(assigner)]),
       config.privileges).value)
   assert spareEntries >= 0 and spareEntries <= 64
   assert extra.len <= 64 # Keep all test-only extent additions below native and trie policy ceilings.

@@ -3,13 +3,13 @@
 
 ## Execute a prepared accumulation CPU with its own fetch environment and implemented host calls.
 ## Guarded results separate guest outcomes, engine refusals and unavailable host functionality.
-## Retains storage/privilege/checkpoint/yield/provide implications beside guest outcomes.
+## Retains storage/queue/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_fetch]
 import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
-    state_privileges, bounded]
+    state_privileges, state_authorization, work_report, bounded]
 import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects, store]
 
 type
@@ -29,6 +29,7 @@ type
   ## Callback-local immutable fetch ownership cannot be substituted by the guest or caller.
   DispatchContext = object
     parameters: Parameters
+    queues: AuthorizationConfig
     privileges: PrivilegeConfig
     fetch: FetchContext
     copyLimit: MemoryByteLimit
@@ -477,6 +478,63 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.InvalidContext) # No inconsistent state/authority may publish.
   hostSuccess[AccumulationDispatchError](response)
 
+# Assign captures its entire ordered queue before core, authority and proposed-ID checks.
+proc assignResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 1818, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve the general charge helper's explicit representation refusal.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # Affordability precedes all input and state work.
+  if context.parameters.get(coreCount) != uint64(context.queues.cores) or
+      context.parameters.get(coreCount) != uint64(context.privileges.cores) or
+      context.parameters.get(authQueueLen) != 80:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Prepared and protocol profiles must agree.
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(2560),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # Every hash byte is readable before any guest-visible validation.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Preserve original registers and both implication versions.
+    return hostSuccess[AccumulationDispatchError](response)
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local work limits are not guest panic.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners grant no memory.
+  let core = uint64(cpu.registers[7])
+  if core >= context.parameters.get(coreCount):
+    response.registers[7] = RegisterValue(high(uint64)-5) # CORE precedes authority and proposed-ID checks.
+    return hostSuccess[AccumulationDispatchError](response)
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let assigner = current.effectPrivileges.value.privilegeAssignerAt(PrivilegeCoreIndex(core)).value
+  if uint32(current.effectInfo.value.service) != uint32(assigner):
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes proposed assigner validation.
+    return hostSuccess[AccumulationDispatchError](response)
+  if uint64(cpu.registers[9]) > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO rejects every out-of-domain high bit.
+    return hostSuccess[AccumulationDispatchError](response)
+  var queue = default(array[80, AuthorizerHash])
+  for i in 0..<80:
+    var hash = default(array[32, byte])
+    for j in 0..<32:
+      hash[j] = captured.value[i*32+j] # Fixed captured extent proves every source index.
+    queue[i] = AuthorizerHash(bytes: hash)
+  let changed = recordAccumulationAssign(context.effects, AuthorizationCoreIndex(core), queue,
+    ServiceIndex(uint32(uint64(cpu.registers[9]))), context.queues, context.privileges)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value # Queue and assigner publish as one immutable version.
+    response.registers[7] = RegisterValue(0) # OK, even for zero hashes or an absent proposed service.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Preserve explicit component/store refusal.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # Never expose one updated chapter.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Repeated state-boundary validation must agree.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -507,11 +565,13 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     infoResponse(context, cpu, memory) # Fixed account facts observe the current regular map.
   of 15:
     blessResponse(context, cpu, memory) # Manager-authorized immutable role and allowance replacement.
+  of 16:
+    assignResponse(context, cpu, memory) # Current assigner replaces its ordered queue and authority together.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 16..17, 19..25:
+  of 1, 17, 19..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
@@ -552,8 +612,8 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
   let initialized = prepareAccumulationEffects(initial.value)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
-  var context = DispatchContext(parameters: parameters, privileges: contextConfig.privileges,
-      fetch: captured.value, copyLimit: copyLimit,
+  var context = DispatchContext(parameters: parameters, queues: contextConfig.queues,
+      privileges: contextConfig.privileges, fetch: captured.value, copyLimit: copyLimit,
 
 effects: initialized.value, provisionLimits: provisionLimits)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
