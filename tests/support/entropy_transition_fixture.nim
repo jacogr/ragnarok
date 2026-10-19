@@ -9,8 +9,8 @@ import ../../src/codec/state_safrole
 from ../../src/codec/header import EpochSlots
 export state_safrole, EpochSlots
 
-## Distinct word identities make one-step historical rotation and input ownership observable.
 proc entropyWords*(): StateEntropy =
+  ## Distinct word identities make one-step historical rotation and input ownership observable.
   result = default(StateEntropy)
   for word in 0..<4:
     var bytes = default(array[32, byte])

@@ -10,10 +10,10 @@ import ../../src/pvm/[initialize, machine, program]
 import ./pvm_accumulation_context
 import ../../src/codec/state_trie
 
-## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
-## No upstream assembler runs, and each single-byte code count is proven before narrowing.
 proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
     includeContexts = true, extra: seq[StateEntry] = @[]): PreparedAccumulationMachine =
+  ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
+  ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
   var code = @[0'u8, 0, 0, 0, 0]
   var starts = @[true, true, true, true, true]
   for instruction in instructions:
@@ -37,8 +37,8 @@ proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
     InitializationLimits(envelope: InitializationByteLimit(256), program: ProgramByteLimit(128),
       jumps: JumpCountLimit(0), pages: PageLimit(5))).value
 
-## Load a full 64-bit pointer; extended immediates avoid sign-extension aliases in address witnesses.
 proc registerImmediate*(index: byte, address: uint64): seq[byte] =
+  ## Load a full 64-bit pointer; extended immediates avoid sign-extension aliases in address witnesses.
   result = @[20'u8, index]
   for i in 0..<8:
     result.add(byte((address shr (8*i)) and 255)) # Independent LE encoding at every register bit.

@@ -12,14 +12,14 @@ from ../../src/codec/disputes import OffenderKey
 from ../../src/codec/header import EpochSlots
 export state_safrole, assurances, bounded, OffenderKey, EpochSlots
 
-## Finite explicit chain policy; each input and posterior roster is bounded independently.
 proc rotationRosterConfig*(cores = 341): ValidatorStateConfig =
+  ## Finite explicit chain policy; each input and posterior roster is bounded independently.
   assert cores >= 2 and cores <= 341
   ValidatorStateConfig(cores: CoreCount(uint64(cores)), validators: ElementLimit(uint64(cores)*3),
       maxBytes: ByteLimit(uint64(cores)*1008+9))
 
-## Distinct nonzero fields expose wrong-key matching and incomplete record nulling.
 proc rotationRecords*(count: int, offset: byte): seq[StateValidator] =
+  ## Distinct nonzero fields expose wrong-key matching and incomplete record nulling.
   assert count >= 6 and count <= 1023
   result = newSeq[StateValidator](count)
   for i in 0..<count:
@@ -34,8 +34,8 @@ proc rotationRecords*(count: int, offset: byte): seq[StateValidator] =
     result[i] = StateValidator(bandersnatch: StateBsKey(bs), ed25519: StateEdKey(ed),
         bls: StateBlsKey(bls), metadata: StateValidatorMetadata(metadata))
 
-## Capture independent immutable owners from valid structural rows using broad fixture policy.
 proc rotationOwner*(records: seq[StateValidator]): ValidatorStateSnapshot =
+  ## Capture independent immutable owners from valid structural rows using broad fixture policy.
   let encoded = validatorEntry(ValidatorChapter.Staging, records, rotationRosterConfig())
   assert encoded.error == StateComponentError.None
   let decoded = decodeStateValidators(encoded.value.value, rotationRosterConfig())
@@ -43,8 +43,8 @@ proc rotationOwner*(records: seq[StateValidator]): ValidatorStateSnapshot =
       encoded.value.value.len
   decoded.value.value
 
-## Read copied rows back into exact canonical framing, never exposing the owner's mutable storage.
 proc rotationBytes*(owner: ValidatorStateSnapshot): seq[byte] =
+  ## Read copied rows back into exact canonical framing, never exposing the owner's mutable storage.
   let count = validatorCount(owner)
   assert count.error == StateComponentError.None
   var records = newSeq[StateValidator](count.value)

@@ -9,6 +9,7 @@
 
 import std/[assertions, syncio, base64]
 import ../../../src/chain/[services, statistics, beefy, reports]
+from ../../support/report_context import unhex
 from ../../../src/codec/state_requests import serviceRequestKey, RequestError, error, value
 from ../../../src/codec/state_trie import StateEntry
 from ../../../src/codec/state_layout import chapterKey, chapterServiceKey, StateChapter
@@ -145,6 +146,30 @@ assert genesisParameters.ok
 var genesisInput = genesisText
 let capturedGenesis = configuredGenesis(genesisInput, genesisParameters.value)
 assert capturedGenesis.error == GenesisError.None
+
+block snapshotContextExtents:
+  # Exercise the typed capture boundary directly, independently of the chainspec JSON size limits.
+  let header = unhex(genesisWire)
+  var roster = newSeq[byte](2017)
+  roster[0] = 6 # Literal six-validator C(8) framing; all encoded public fields are zero.
+  let rosterKey = chapterKey(StateChapter(8))
+  let timeKey = chapterKey(StateChapter(11))
+  let clock = @[7'u8, 0, 0, 0]
+  let valid = [StateEntry(key: rosterKey, value: roster), StateEntry(key: timeKey, value: clock)]
+  assert captureBlockSnapshot(header, valid, genesisParameters.value).error == GenesisError.None
+  for malformed in [newSeq[byte](0), @[7'u8, 0, 0], @[7'u8, 0, 0, 0, 0]]:
+    # A missing, truncated or extended C(11) cannot publish a partially captured snapshot.
+    let entries = [valid[0], StateEntry(key: timeKey, value: malformed)]
+    assert captureBlockSnapshot(header, entries, genesisParameters.value).error ==
+        GenesisError.Invalid
+  let oversized = newSeq[byte](1024 * 1024 + 1)
+  let entries = [StateEntry(key: rosterKey, value: oversized), valid[1]]
+  assert captureBlockSnapshot(header, entries, genesisParameters.value).error ==
+      GenesisError.Invalid
+  # Refusal does not mutate caller-owned context bytes or invalidate a previously usable snapshot.
+  assert roster.len == 2017 and roster[0] == 6 and clock == @[7'u8, 0, 0, 0]
+  assert captureBlockSnapshot(header, valid, genesisParameters.value).error == GenesisError.None
+
 genesisInput = "{}" # Mutating source JSON cannot alter the retained owner.
 let withGenesis = ClientInfo(chain: genesisView(capturedGenesis))
 let bestRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":1}"

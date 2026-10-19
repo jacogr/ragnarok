@@ -13,17 +13,17 @@ import ../../src/codec/[bounded, composite, header, state_safrole, state_privile
   work_digest, c2_records, assurances, state_authorization, state_layout]
 import ../../src/crypto/primitives
 
-## Build a small envelope with one RO byte, one RW byte, extra heap page and one-byte stack request.
-## The default raw program has five traps followed by jump_ind r0 at the accumulation entry.
 proc pvmEnvelope*(raw: openArray[byte] = [0'u8, 0, 7, 0, 0, 0, 0, 0, 50, 0, 63]): seq[byte] =
+  ## Build a small envelope with one RO byte, one RW byte, extra heap page and one-byte stack request.
+  ## The default raw program has five traps followed by jump_ind r0 at the accumulation entry.
   result = @[1'u8, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 73, 81]
   for i in 0..<4:
     result.add(byte((uint64(raw.len) shr (8*i)) and 255)) # Independent fixed E4 program extent.
   for octet in raw:
     result.add(octet) # Raw program bytes include their own framing and opcode mask.
 
-## Coherent tiny-profile chapter and aggregate ceilings for the accumulation dispatcher.
 proc pvmContextConfig*(): AccumulationContextConfig =
+  ## Coherent tiny-profile chapter and aggregate ceilings for the accumulation dispatcher.
   AccumulationContextConfig(validators: ValidatorCount(6),
     queues: AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
       maxBytes: ByteLimit(5120)),
@@ -32,12 +32,12 @@ proc pvmContextConfig*(): AccumulationContextConfig =
     privileges: PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(0),
       maxBytes: ByteLimit(100)), totalBytes: ByteLimit(10000))
 
-## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
-## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
 proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     operandCount = 0, serviceId = 42'u32,
     entropy: StateEntropyWord = default(StateEntropyWord),
     precedingService = false, includeContexts = false, extra: seq[StateEntry] = @[]): PreparedAccumulationInvocation =
+  ## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
+  ## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
   assert operandCount >= 0 and operandCount <= 16
   var reports: seq[OwnedReport] = @[]
   if operandCount > 0:
@@ -102,8 +102,8 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
       preimageBytes: ByteLimit(preimage.len))).value
   prepareAccumulationInvocation(service, entropy, ServiceProbeLimit(1)).value
 
-## Maximal fixed-width fields form a valid immutable parameter fixture with equal epoch/tail bounds.
 proc pvmParameters*(): Parameters =
+  ## Maximal fixed-width fields form a valid immutable parameter fixture with equal epoch/tail bounds.
   var wire = default(array[122, byte])
   for i in 0..<wire.len:
     wire[i] = 255 # Independent literal octets are reused by fetch tests and refusal probes.

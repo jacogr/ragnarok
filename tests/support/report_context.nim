@@ -15,8 +15,8 @@ import ../../src/codec/[guarantees, assurances, bounded, state_safrole, header,
 import ../../src/crypto/[primitives, guarantee]
 from ../../src/codec/disputes import OffenderKey
 
-## Decode trusted fixture transport exactly; a dash denotes an empty sequence only.
 proc unhex*(text: string): seq[byte] =
+  ## Decode trusted fixture transport exactly; a dash denotes an empty sequence only.
   if text == "-": return @[] # Empty transport is distinct from a fabricated state value.
   assert text.len mod 2 == 0
   result = newSeq[byte](text.len div 2)
@@ -24,8 +24,8 @@ proc unhex*(text: string): seq[byte] =
     assert parseHex(text[i*2..i*2+1], result[i]) == 2 # Require complete octets.
 
 
-## Configure both published populations without conflating roster size and active core count.
 proc credentialConfig*(cores: uint64): GuaranteeCredentialConfig =
+  ## Configure both published populations without conflating roster size and active core count.
   GuaranteeCredentialConfig(assignments: GuarantorConfig(roster: ValidatorStateConfig(
     cores: CoreCount(cores), validators: ElementLimit(cores*3), maxBytes: ByteLimit(400000)),
     epochSlots: EpochSlots(if cores == 341: 600 else: 12),
@@ -34,35 +34,35 @@ proc credentialConfig*(cores: uint64): GuaranteeCredentialConfig =
     maxBytes: ByteLimit(10000000), reporters: ElementLimit(cores*3))
 
 
-## Keep gas limits per report, with independent pool/account byte ceilings.
 proc policy*(cores: uint64, gas = 10000000'u64): ReportPolicyConfig =
+  ## Keep gas limits per report, with independent pool/account byte ceilings.
   ReportPolicyConfig(pools: AuthorizationConfig(cores: CoreCount(cores), maxHashes: ElementLimit(cores*8),
     maxBytes: ByteLimit(100000)), accountBytes: ByteLimit(89), reportGas: ReportGasLimit(gas))
 
 
-## Bound sparse authored/projection maps used by tests; these are not a full-chain parent-state claim.
 proc limits*(): StateStoreLimits =
+  ## Bound sparse authored/projection maps used by tests; these are not a full-chain parent-state claim.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1000), perValue: ByteLimit(100000),
     totalValueBytes: ByteLimit(1000000), nodes: TrieNodeLimit(100000)),
     writes: ElementLimit(1000), writeValueBytes: ByteLimit(1000000))
 
 
-## Preserve each owned report when recovering a completely decoded extrinsic.
 proc records*(owner: GuaranteesRead): seq[Guarantee] =
+  ## Preserve each owned report when recovering a completely decoded extrinsic.
   result = newSeq[Guarantee](owner.count)
   for i in 0..<result.len:
     result[i] = guaranteeAt(owner.owner, i).value # Child retains its original bytes.
 
 
-## Copy canonical bytes while the original report owner remains alive.
 proc reportBytes*(owner: OwnedReport): seq[byte] =
+  ## Copy canonical bytes while the original report owner remains alive.
   result = newSeq[byte](ownedReportInfo(owner).value.consumed)
   assert encodeOwnedReport(owner, result).error == OwnershipError.None
 
 
-## Alter only copied report metadata, then re-encode against the unchanged original payload pool.
 proc reportFor*(base: OwnedReport, core: int, gases: openArray[uint64], service = 42'u32,
     failed = false): OwnedReport =
+  ## Alter only copied report metadata, then re-encode against the unchanged original payload pool.
   let raw = reportBytes(base)
   var report = decodeReportBorrowed(raw, 341).value
   report.core = CoreIndex(core)
@@ -83,8 +83,8 @@ proc reportFor*(base: OwnedReport, core: int, gases: openArray[uint64], service 
   decodeOwnedReport(output.toOpenArray(0, encoded.written-1), 2).value
 
 
-## Sign authored reports with deterministic test keys and real assignments/transcripts, excluding supplied offenders.
 proc certify*(reports: openArray[OwnedReport], slot = 12'u32, offenders: openArray[OffenderKey] = []): VerifiedGuaranteeCredentials =
+  ## Sign authored reports with deterministic test keys and real assignments/transcripts, excluding supplied offenders.
   let config = credentialConfig(2)
   var keys = newSeq[EdSeed](6)
   var values = newSeq[StateValidator](6)
@@ -119,8 +119,8 @@ proc certify*(reports: openArray[OwnedReport], slot = 12'u32, offenders: openArr
       offenders, config).value
 
 
-## Construct exact parent pool and independently keyed service metadata for authored reports.
 proc entriesFor*(reports: openArray[OwnedReport], minimum = 10'u64): seq[StateEntry] =
+  ## Construct exact parent pool and independently keyed service metadata for authored reports.
   var rows = newSeq[AuthorizerRow](2)
   # Each report retains independent core identity and complete owned bytes.
   for report in reports:

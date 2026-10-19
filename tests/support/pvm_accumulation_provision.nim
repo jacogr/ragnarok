@@ -13,13 +13,12 @@ import ../../src/pvm/[initialize, machine, program, host_fetch, step, gas]
 import ./pvm_accumulation_context
 
 type
-  ## Test-only call descriptors expose all register bits; only provide/yield load their relevant arguments.
-  ProvisionGuestCall* = object
+  ProvisionGuestCall* = object ## Test-only call descriptors expose all register bits; only provide/yield load their relevant arguments.
     id*: byte
     r7*, r8*, r9*: uint64
 
-## Exact tiny-profile chapter ceilings are independent from provision retention and guest-memory limits.
 proc provisionConfig*(): AccumulationContextConfig =
+  ## Exact tiny-profile chapter ceilings are independent from provision retention and guest-memory limits.
   AccumulationContextConfig(validators: ValidatorCount(6),
     queues: AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
         maxBytes: ByteLimit(5120)),
@@ -29,23 +28,23 @@ proc provisionConfig*(): AccumulationContextConfig =
         maxBytes: ByteLimit(100)),
     totalBytes: ByteLimit(10000))
 
-## Explicit small finite budgets admit exact-boundary tests without allocating hostile guest lengths.
 proc provisionPolicy*(items = 8'u64, perBlob = 4096'u64,
     total = 8192'u64): AccumulationProvisionLimits =
+  ## Explicit small finite budgets admit exact-boundary tests without allocating hostile guest lengths.
   AccumulationProvisionLimits(items: ElementLimit(items), perBlob: ByteLimit(perBlob),
       totalBlobBytes: ByteLimit(total))
 
-## Use the maintained namespace primitive to prepare real canonical outstanding/history records.
 proc provisionRequest*(service: uint32, bytes: seq[byte], history: seq[byte] = @[
     0'u8]): StateEntry =
+  ## Use the maintained namespace primitive to prepare real canonical outstanding/history records.
   let digest = ServicePreimageHash(array[32, byte](blake2b256(bytes).value))
   StateEntry(key: serviceRequestKey(ServiceIndex(service), digest, RequestLength(uint32(bytes.len)),
     ByteLimit(32)).value, value: history)
 
-## Prepare real account/code/request backing and a literal guest program with fixed accumulation entry PC 5.
 proc provisionMachine*(calls: openArray[ProvisionGuestCall], data: seq[byte] = @[9'u8, 8, 7],
     credit = 100000'u64, history: seq[byte] = @[0'u8], requested = true,
     malformedAccount = false, extra: seq[StateEntry] = @[]): PreparedAccumulationMachine =
+  ## Prepare real account/code/request backing and a literal guest program with fixed accumulation entry PC 5.
   assert calls.len <= 32 and data.len <= 4096 # Authored fixture sizes stay within fixed helper framing and page policies.
   var code = @[0'u8, 0, 0, 0, 0]
   var starts = @[0, 1, 2, 3, 4]
@@ -103,10 +102,10 @@ proc provisionMachine*(calls: openArray[ProvisionGuestCall], data: seq[byte] = @
     InitializationLimits(envelope: InitializationByteLimit(10000), program: ProgramByteLimit(4096),
       jumps: JumpCountLimit(0), pages: PageLimit(5))).value
 
-## Start fresh implications for one prepared CPU; the helper never substitutes account/input provenance.
 proc runProvision*(prepared: PreparedAccumulationMachine,
     policy: AccumulationProvisionLimits = provisionPolicy(), copyBytes = 4096'u64,
     steps = 200'u64, calls = 32'u64): AccumulationDispatchResult =
+  ## Start fresh implications for one prepared CPU; the helper never substitutes account/input provenance.
   executeAccumulationMachine(prepared, pvmParameters(),
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1)),
     MemoryByteLimit(copyBytes), ExecutionStepLimit(steps), HostCallLimit(calls), GasCycleLimit(

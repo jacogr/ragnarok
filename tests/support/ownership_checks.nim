@@ -31,15 +31,15 @@ proc verifySnapshot(frame: OwnedFrame, wire: openArray[byte], consumed: int,
     # Compare the complete payload against its validated wire location.
     for i, value in payload: assert value == wire[span.offset + i]
 
-# Check the owned byte-string path against successful shared vectors and random requests.
 proc checkOwnedBytes*(wire: openArray[byte], limit: ByteLimit, expected: BlobResult) =
+  ## Check the owned byte-string path against successful shared vectors and random requests.
   let parsed = decodeOwnedBytes(wire, limit)
   assert parsed.error == OwnershipError.None
   verifySnapshot(parsed.value, wire, expected.consumed,
       [BlobSpan(offset: expected.offset, length: expected.length)])
 
-# Check both optional alternatives, including empty present blobs and payload-free absence.
 proc checkOwnedOptional*(wire: openArray[byte], limit: ByteLimit, expected: OptionalResult) =
+  ## Check both optional alternatives, including empty present blobs and payload-free absence.
   let parsed = decodeOwnedOptional(wire, limit)
   assert parsed.error == OwnershipError.None
   let info = ownedOptionalInfo(parsed.value)
@@ -52,8 +52,8 @@ proc checkOwnedOptional*(wire: openArray[byte], limit: ByteLimit, expected: Opti
     # Absence has no copyable payload or length metadata.
     verifySnapshot(parsed.value, wire, expected.consumed, [])
 
-# Check successful work blobs and each payload-free work error against conformance results.
 proc checkOwnedWork*(wire: openArray[byte], limit: ByteLimit, expected: WorkResult) =
+  ## Check successful work blobs and each payload-free work error against conformance results.
   let parsed = decodeOwnedWork(wire, limit)
   assert parsed.error == OwnershipError.None
   let info = ownedWorkInfo(parsed.value)
@@ -66,9 +66,9 @@ proc checkOwnedWork*(wire: openArray[byte], limit: ByteLimit, expected: WorkResu
     # Work errors remain successful frame values without payloads.
     verifySnapshot(parsed.value, wire, expected.consumed, [])
 
-# Check all preimage service IDs and nested payloads from the official/full conformance requests.
 proc checkOwnedPreimages*(wire: openArray[byte], limits: PreimageLimits,
                          expected: PreimageResult, records: openArray[Preimage]) =
+  ## Check all preimage service IDs and nested payloads from the official/full conformance requests.
   let parsed = decodeOwnedPreimages(wire, limits)
   assert parsed.error == OwnershipError.None
   var spans = newSeq[BlobSpan](expected.count)
@@ -79,8 +79,8 @@ proc checkOwnedPreimages*(wire: openArray[byte], limits: PreimageLimits,
     assert service.error == OwnershipError.None and uint32(service.value) == uint32(records[i].service)
   verifySnapshot(parsed.value, wire, expected.consumed, spans)
 
-# Check every digest fixed field/metric and its nested work alternative against full official vectors.
 proc checkOwnedDigest*(wire: openArray[byte], limit: ByteLimit, expected: DigestResult) =
+  ## Check every digest fixed field/metric and its nested work alternative against full official vectors.
   let parsed = decodeOwnedDigest(wire, limit)
   assert parsed.error == OwnershipError.None
   let info = ownedDigestInfo(parsed.value)

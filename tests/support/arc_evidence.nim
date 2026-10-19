@@ -8,9 +8,9 @@
 
 import std/[envvars, syncio, assertions]
 
-# Write copied live-allocation measurements after the caller's isolated release workload.
-# A bare Hastur invocation may omit the evidence directory; the supported launcher supplies it.
 proc recordArcRelease*(name: string, cycles, before, after: int, schemas = 0) =
+  ## Write copied live-allocation measurements after the caller's isolated release workload.
+  ## A bare Hastur invocation may omit the evidence directory; the supported launcher supplies it.
   let directory = getEnv("RAGNAROK_TEST_EVIDENCE")
   if directory.len > 0:
     # Only trusted test labels select a filename; no protocol or foreign input reaches this helper.
