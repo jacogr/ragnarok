@@ -27,6 +27,7 @@ memory atomicity and real dispatch; the adapter reuses that implementation uncha
 
 This is a pure projection adapter, not evidence of block admission, account eligibility,
 transfer credit, PVM invocation or posterior-state publication. All fetch selectors exist;
-full invocation assembly and remaining host functions are still open. Next bounded chunk:
-initialize a PVM machine from a prepared accumulation invocation, using its existing
-arguments and service code gate.
+full invocation assembly and remaining host functions are still open. The
+[machine adapter](pvm-accumulation-machine.md) now initializes a PVM machine from the
+existing bootstrap arguments and service code gate. Complete accumulation
+host-context assembly remains open.
