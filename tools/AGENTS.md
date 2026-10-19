@@ -1,0 +1,49 @@
+# Tooling and registry instructions
+
+Read [verification infrastructure](../docs/testing/infrastructure.md) for harness changes and
+[registration guidance](../docs/testing/adding-tests.md) for new suites/probes.
+
+- Use `make setup` for pinned tools/dependencies, `make` for the current proof-peer build and
+  `make check` (alias `make test`) for complete verification. Make owns setup dependencies and
+  command sequencing; `make clean` removes all of `build/`.
+  `make check` must provision tools/sources/native dependencies without project-specific pre-steps.
+  CI runs `check-modules`, `check-python`, `check-unit`, `check-failures`, `check-guards` and
+  `check-e2e` as independent parallel jobs; use the affected group locally and `make check` for
+  all six. Nim 2 is a historical measurement control, never a second production target. Keep compiler and dependency sources pristine. Follow [the compiler record](../docs/nimony-trial.md) for limitations/evidence.
+  Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
+
+- Format project Rust code with the pinned `rustfmt` defaults (four spaces, 100-column target).
+  The shared formatting command invokes `cargo fmt --manifest-path native/bandersnatch/Cargo.toml`
+  with the pinned Rust toolchain (`-- --check` in check mode). Keep C sources and headers at four-space
+  indentation, matching `.editorconfig` and the existing bridges.
+
+- Use one `COMPILE_CHECK_JOBS` setting (default 4) for compatible codec directory runs and
+  all-source semantic compilation and independent contract/privacy/nominal compiler checks.
+  Accept 1–4 workers;
+  retain serial overrides, private caches/logs, ordered diagnostics and fresh per-suite ARC evidence.
+  Keep linked profiles and network/resource scenarios sequential. Hastur scheduling artifacts belong
+  under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
+  be faster on warm local repeats. Record timings without weakening test workloads or verdicts.
+
+- Keep entries within every section of `tools/verification_inventory.json` in lexicographic
+  (Python `sorted`) order. Use consistent feature prefixes, such as `pvm_`, and insert beside
+  existing entries for that feature; never prepend or append an unrelated registration.
+  Keep one entry per line, including diagnostic pairs. Preserve positional values inside records
+  and the existing top-level section layout. The inventory loader rejects unordered sections;
+  run `make check-inventory` before committing. Any genuinely order-dependent future section
+  needs an explicit documented validator exception and a regression test, not silent reordering.
+
+- Native test requirements belong in `tools/native_requirements/<source-family>/<suite>.json`,
+  one file per suite, named with the suite's consistent feature prefix. Keep independent JSON fields
+  alphabetical; discovery groups source families and suite names lexicographically and rejects
+  duplicate/misplaced profiles. Do not recreate a shared append-only requirement manifest.
+
+- Apply module/feature grouping and lexicographic insertion to other unordered requirement/source
+  registries too. `tools/runtime_sources.json` is alphabetical by repository-relative path; new
+  per-suite requirement files and existing failure-family files are discovered automatically.
+  Preserve genuinely ordered values, including native library/link/include order, positional
+  diagnostic records and runtime scenario steps. Document and test any new ordering exception.
+
+Keep independent Python references and orchestration; application assertions stay in native Nim.
+Preserve standalone setup, strict failure status, group separation and fresh provenance/evidence.
+Do not add duplicate build entry points or launch Python discovery from native/E2E groups.
