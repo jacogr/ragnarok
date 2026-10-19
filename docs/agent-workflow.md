@@ -3,6 +3,14 @@
 Keep routine work small: inspect the diff, run affected checks, and return concise evidence.
 Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
 
+## Resume existing work
+
+Before broad source exploration, inspect the current branch, working-tree changes, recent commits,
+remote heads and relevant branch history. A checkout on an older master may coexist with later
+feature work or squash-merged equivalents. Fetch current heads, identify the actual continuation
+point and preserve unpublished changes before selecting a branch. Start source reading from that
+point instead of rediscovering work already completed on another branch.
+
 ## GitHub
 
 Use authenticated `gh`; no custom credential extraction, repeated API clients or browser navigation
