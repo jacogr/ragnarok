@@ -25,6 +25,7 @@ type
     None,          ## Complete selected success permits extraction.
     InvalidSource, ## No genuine finalization, or certified totals cannot satisfy checked aggregation.
     InvalidIndex,  ## Full-width dictionary ordinal is outside the retained rows.
+    UnsupportedTransfers, ## Processed transfers need bounded counters and refunded-gas reconciliation before publication.
     LimitExceeded  ## Traversal, retained dictionary or native scratch extent exceeds policy.
   # Private acyclic ownership retains finalization and fixed independent activity deltas.
   StatisticsData = ref object
@@ -136,6 +137,11 @@ proc prepareAccumulationStatistics*(source: PreparedFinalAccumulation,
       completed[index] = current # Retain only already bounded genuine graph nodes, never caller-supplied batches.
       if index < reentries-1:
         current = current.executionReentry.value.reentryPrevious.value
+  if continuation.executionInfo.value.round.transfers != 0:
+    fail(AccumulationStatisticsError.UnsupportedTransfers) # Report-only activity must not silently omit even zero-gas processed transfers.
+  for round in completed:
+    if round.executionInfo.value.round.transfers != 0:
+      fail(AccumulationStatisticsError.UnsupportedTransfers) # Later transfer histories also require their own bounded processed-count accounting.
   var gasRows = 0
   if not charge(gasRows, initial.executionInfo.value.services, limits.gasRows) or
       not charge(gasRows, continuation.executionInfo.value.services, limits.gasRows):

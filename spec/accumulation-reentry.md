@@ -1,4 +1,10 @@
-# Report-only accumulation reentry
+# Accumulation reentry
+
+Current transfer support is specified in [transfer-aware reentry](pvm-transfer-reentry.md).
+It replaces the outgoing-transfer gate below with bounded canonical collection, paid-gas
+restoration and combined transfer/report inputs for first and repeated rounds. The
+report-only implementation and verification record below is historical; queue, depth,
+state ownership and stopped-source contracts remain applicable.
 
 ## Scope and authority
 

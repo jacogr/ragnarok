@@ -9,8 +9,11 @@ Derive the accumulation statistics mapping S(s)=(N(s),T(s),G(s)) from a genuine
 `accumulationstatisticsdef`. N counts every work-digest in the processed original report prefix,
 including services whose code could not execute. G sums actual certified service gas across initial,
 continuation and repeated reentry rounds, including allowance-only executions. For the supported
-report-only finalization T is zero: the source's continuation gates already excluded outgoing
-transfers and no transfer inputs were introduced. Omit exactly the all-zero tuples, not zero-gas
+report-only finalization T is zero. Transfer-aware continuation and
+[reentry](pvm-transfer-reentry.md) now permit transfer inputs, so statistics explicitly
+returns `UnsupportedTransfers` if any completed continuation/reentry processed transfers,
+including zero-gas records. This is a local scope refusal until processed-transfer
+counts and refunded-gas reconciliation are implemented. Omit exactly the all-zero tuples, not zero-gas
 services which accumulated work-items. Order the resulting dictionary by numeric service.
 
 ## API and ownership

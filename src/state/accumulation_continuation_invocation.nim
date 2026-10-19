@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bind report-only continuation service bootstraps to actual posterior accounts and authenticated block entropy.
+## Bind transfer/report continuation service bootstraps to actual posterior accounts and authenticated block entropy.
 ## Retains immutable source/projection certificates; execution and recursive completion remain separate.
 
 import ../codec/[composite, state_safrole, state_layout]

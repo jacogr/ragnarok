@@ -13,7 +13,7 @@ import ../../../src/state/[accumulation_reentry, accumulation_reentry_execution,
   accumulation_batch, store]
 import ../../../src/codec/[bounded, report_owned, work_digest, state_trie]
 import ../../support/[accumulation_reentry_context, accumulation_continuation_execution_context,
-  accumulation_execution_context, arc_evidence]
+  accumulation_execution_context, accumulation_transfer_reentry, arc_evidence]
 
 # Verify shared selection/materialization/application performs no hidden hashes for no-op batches.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -45,6 +45,7 @@ proc main() {.raises.} =
   for index in 0..<raw.len: bytes[index] = byte(raw[
       index]) # Preserve checksum-verified transport before genuine signing.
   let base = decodeOwnedReport(bytes, 2).value
+  checkTransferReentry(base) # Genuine transfer-only cycles preserve gas, credit and source/depth ownership.
   let tail = @[reentryReady(base, 68, [100000'u64, 100000]),
     reentryReady(base, 69, [100000'u64, 100000]), reentryReady(base, 70, [0'u64])]
   let fixture = reentryFixture(base, firstGas = 100000, secondGas = 100000, tail = tail)
