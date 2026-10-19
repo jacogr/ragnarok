@@ -48,5 +48,6 @@ Compiler probes enforce nominal gas/action types and private causing-PC metadata
 isolated runtime probes enforce failed-result and exit-metadata selection.
 
 This composes initialization, bounded execution, host-response application and output
-capture. Host dispatch/context, complete invocation wrappers and signed gas accounting
-remain separate bounded work, along with the existing PVM specification gates.
+capture. A [bounded host dispatcher](pvm-host-execution.md) composes trusted handlers
+and caller-owned context. Concrete host functions, complete invocation wrappers and
+signed gas accounting remain separate work, along with the existing PVM specification gates.

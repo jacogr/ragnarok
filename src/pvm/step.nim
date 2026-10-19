@@ -3,7 +3,7 @@
 
 ## GP 0.8.0 charged single steps and bounded execution; see spec/pvm-step.md.
 ## Exposes scoped stepRegisters/stepControl/stepMemory, complete stepOnce, bounded execute,
-## and applyHostResponse for trusted nonnegative-gas host transitions.
+## applyHostResponse and executeWithHost for bounded trusted nonnegative-gas host transitions.
 ## Guarded StepResult snapshots expose read-only exit and selected faultPage/hostCall metadata.
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
 
@@ -14,6 +14,8 @@ type
   HostCallId* = distinct uint64
   # Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   ExecutionStepLimit* = distinct uint64
+  # Local dispatch budget, independent of attempted guest instructions and guest gas.
+  HostCallLimit* = distinct uint64
   # Guest outcomes shared by single-step and bounded recursive execution.
   StepExit* {.pure.} = enum
     Continued, OutOfGas, Panic, Halt, Fault, Host
@@ -45,7 +47,8 @@ type
   # Local scope/resource/specification failures are distinct from guest execution outcomes.
   StepError* {.pure.} = enum
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
-    NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension, InvalidHostResponse
+    NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension,
+      InvalidHostResponse, HostCallLimitExceeded
   # Failed/default alternatives carry only their reason; no partial machine or charge escapes.
   StepResult* = object
     case status: StepError
@@ -422,9 +425,9 @@ proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
   stepImpl(source, limit, true, true, true)
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
-# stepLimit counts attempted instructions, including the exiting instruction; zero performs no work.
+# The shared remaining budget counts attempted instructions, including the exiting instruction.
 # Each gas simulation is independently bounded by gasLimit. Local failures expose no partial progress.
-proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =
+proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLimit): StepResult =
   let original = machineInfo(source)
   let owner = programOf(source)
   let originalMemory = memoryOf(source)
@@ -434,11 +437,10 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
     return StepResult(status: StepError.InvalidMachine)
   let program = owner.value
   var current = source
-  var attempted = 0'u64
   # Retain only the current immutable root; no host recursion or growing state history is required.
-  while attempted < uint64(stepLimit):
-    # Increment only after the strict bound proves the counter cannot overflow, even at UINT64_MAX.
-    inc attempted
+  while remaining > 0:
+    # Consume each attempted instruction once, even when a Host exit returns to the dispatcher.
+    dec remaining
     let prior = machineInfo(current).value
     let priorMemory = memoryOf(current).value
     if instruction(program, prior.pc).error != ProgramError.None:
@@ -479,3 +481,41 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
       return StepResult(status: StepError.None, completed: outcome)
   # Exhaustion is a local policy refusal, never OutOfGas, a host call, or a resumable guest outcome.
   StepResult(status: StepError.StepLimitExceeded)
+
+# Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.
+proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =
+  var remaining = uint64(stepLimit)
+  executeBudget(source, remaining, gasLimit)
+
+# Run Psi_H* with a synchronous trusted handler and caller-owned context borrowed for this call only.
+# One instruction budget spans every continuation. Callback effects persist on later local errors;
+# callers requiring atomic external effects must supply their own staged context. No callback is retained.
+proc executeWithHost*[Context](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
+  var remaining = uint64(stepLimit)
+  var calls = uint64(hostLimit)
+  var current = source
+  while true:
+    # This is iterative; neither guest continuations nor callbacks build an invocation history.
+    let evaluated = executeBudget(current, remaining, gasLimit)
+    if evaluated.error != StepError.None:
+      # Local refusal exposes no machine progress; already-completed context mutations remain visible.
+      return evaluated
+    let stopped = evaluated.value
+    if stopped.exit != StepExit.Host:
+      # Guest terminal and fault exits pass through unchanged and never invoke the handler.
+      return evaluated
+    if calls == 0:
+      # Refuse before invoking external code; this is local policy, never guest OutOfGas.
+      return StepResult(status: StepError.HostCallLimitExceeded)
+    dec calls
+    let response = handler(context, stopped)
+    let applied = applyHostResponse(stopped, response)
+    if applied.error != StepError.None:
+      # Malformed host replies are local failures, not fabricated guest panics or rollbacks.
+      return applied
+    if applied.value.exit != StepExit.Continued:
+      # Host terminal responses retain posterior state at the causing PC, without another guest attempt.
+      return applied
+    current = applied.value.machine
