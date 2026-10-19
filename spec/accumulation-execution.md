@@ -88,5 +88,5 @@ Public documentation follows the Nim API/doc-comment conventions; rendered Nim 2
 unavailable for the pinned Nimony dialect as recorded in the earlier API cleanup.
 
 Logs and diagnostics are retained under `build/accumulation-execution/`. These are local macOS
-results; exact-head Linux CI remains separate. Next work collects round outputs and plans later
-rounds, while selected mutable account/privilege merging remains a separate bounded integration.
+results; exact-head Linux CI remains separate. The [output projection](accumulation-outputs.md) now collects terminal-selected round commitments.
+Later-round planning and selected mutable account/privilege merging remain subsequent bounded work.

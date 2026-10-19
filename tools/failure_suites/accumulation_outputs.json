@@ -1,0 +1,15 @@
+{
+  "source": "tests/native/accumulation_outputs_results.nim",
+  "build_name": "accumulation-outputs-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-outputs-default", "diagnostic": "outcome.status == None", "description": "Accumulation outputs default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-outputs-refused", "diagnostic": "outcome.status == None", "description": "Accumulation outputs refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-outputs-info", "diagnostic": "outcome.status == None", "description": "Accumulation outputs info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-outputs-source", "diagnostic": "outcome.status == None", "description": "Accumulation outputs source extraction guard"},
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-outputs-index", "diagnostic": "outcome.status == None", "description": "Accumulation outputs index extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "accumulation-outputs-entry", "diagnostic": "outcome.status == None", "description": "Accumulation outputs entry extraction guard"},
+    {"identity": {"reason": "root"}, "arguments": ["root"], "name": "accumulation-outputs-root", "diagnostic": "outcome.status == None", "description": "Accumulation outputs root extraction guard"},
+    {"identity": {"reason": "wrong-history"}, "arguments": ["wrong-history"], "name": "accumulation-outputs-wrong-history", "diagnostic": "outcome.status == HistoryFailure", "description": "Accumulation outputs wrong-history extraction guard"}
+  ]
+}
