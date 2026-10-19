@@ -162,6 +162,9 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_dispatch')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_fetch')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_machine')
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_outcome')
+    # Actual provide resource/backend/state/gas failures must expose no charged CPU or partial implications.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_provision')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
     # Optional fetch capture and dispatch failures expose no partial owner or response.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_accumulation')
@@ -193,6 +196,8 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_queue')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_operands')
     # Requested provision owners and refusal results retain strict selected-success extraction.
+    # Union preparation and posterior fulfillment preserve guarded success and private ownership.
+    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_provision_integration')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_provisions')
     run_failure_suite(compiler, report, libraries, build, command, 'accumulation_context')
     # Default, absent-yield and refused state effects must reject through selected-success extraction.
@@ -296,6 +301,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     run_failure_suite(compiler, report, libraries, build, command, 'consensus')
     # All public result shapes and private scan layouts require success before payload access.
     run_failure_suite(compiler, report, libraries, build, command, 'state_disputes')
+    run_failure_suite(compiler, report, libraries, build, command, 'state_store_slice')
     # Public/private results and runtime-selected absent peak copies require exact supported contracts.
     run_failure_suite(compiler, report, libraries, build, command, 'history')
     # Every public/private result and each inactive assignment field must retain its exact contract.

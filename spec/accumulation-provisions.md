@@ -85,5 +85,8 @@ No E2E networking behavior changed; that independent group was not rerun locally
 
 ## Next bounded work
 
-Connect the retained state effects to accumulation host dispatch as its dependencies land, then
-normalize actual terminal outcomes and integrate selected provision sets after accumulation.
+[Provide host dispatch](pvm-accumulation-provide.md) captures effects from actual guest buffers.
+Terminal normalization retains its documented readable-32-byte-halt/provisions specification gate.
+The [union/fulfillment planner](accumulation-provision-integration.md) applies explicitly selected
+context sets to an explicit posterior map. Binding terminal outcomes, per-service account merges,
+later rounds and complete block publication remain subsequent work.

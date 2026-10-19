@@ -87,5 +87,9 @@ networking behavior is unchanged and was not rerun locally. Linux CI verifies th
 
 ## Next bounded work
 
-Connect checkpoint/yield state effects to the PVM accumulation dispatcher after its general host
-path lands, then select regular/exceptional outcomes from actual terminal execution results.
+Checkpoint/yield host handling now uses these state effects through the
+[PVM accumulation dispatcher](pvm-accumulation-dispatch.md), retaining both dimensions
+with actual terminal execution results.
+[Terminal normalization](pvm-accumulation-outcome.md) now selects the final dimension
+and applies the halt-return rule. Remaining host mutations and terminal state
+publication remain separate.

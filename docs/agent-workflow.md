@@ -3,6 +3,14 @@
 Keep routine work small: inspect the diff, run affected checks, and return concise evidence.
 Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
 
+## Resume existing work
+
+Before broad source exploration, inspect the current branch, working-tree changes, recent commits,
+remote heads and relevant branch history. A checkout on an older master may coexist with later
+feature work or squash-merged equivalents. Fetch current heads, identify the actual continuation
+point and preserve unpublished changes before selecting a branch. Start source reading from that
+point instead of rediscovering work already completed on another branch.
+
 ## GitHub
 
 Use authenticated `gh`; no custom credential extraction, repeated API clients or browser navigation
@@ -32,9 +40,12 @@ gh stack rebase --remote origin
 # Resolve only the files and worktree named by the native operation, then stage those files.
 gh stack rebase --continue
 gh stack push --remote origin
-# For new stack layers, create semantic commits before submitting draft PRs.
-gh stack submit --auto --remote origin
+# For new stack layers, create semantic commits before submitting PRs ready for review.
+gh stack submit --auto --open --remote origin
 ```
+
+Regular PRs are the default; use drafts only when the maintainer requests them. The `--open`
+flag also marks existing PRs in the submitted stack ready for review.
 
 These are separate steps, not a script to run blindly. Use `--upstack` when updating only the
 layers above an edited branch. If sync restores a conflicted stack, start native rebase to resolve

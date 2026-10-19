@@ -16,6 +16,17 @@
     },
     {
       "identity": {
+        "reason": "default-effects"
+      },
+      "arguments": [
+        "default-effects"
+      ],
+      "name": "pvm-accumulation-dispatch-default-effects",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation dispatch default-effects extraction guard"
+    },
+    {
+      "identity": {
         "reason": "engine"
       },
       "arguments": [
@@ -35,6 +46,17 @@
       "name": "pvm-accumulation-dispatch-failed",
       "diagnostic": "outcome.status == None",
       "description": "Accumulation dispatch failed extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "failed-effects"
+      },
+      "arguments": [
+        "failed-effects"
+      ],
+      "name": "pvm-accumulation-dispatch-failed-effects",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation dispatch failed-effects extraction guard"
     }
   ]
 }

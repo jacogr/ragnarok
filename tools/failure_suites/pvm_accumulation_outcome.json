@@ -1,0 +1,51 @@
+{
+  "source": "tests/native/pvm_accumulation_outcome_results.nim",
+  "build_name": "pvm-accumulation-outcome-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-accumulation-outcome-context",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation outcome context extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-accumulation-outcome-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation outcome default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "failed"
+      },
+      "arguments": [
+        "failed"
+      ],
+      "name": "pvm-accumulation-outcome-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation outcome failed extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-accumulation-outcome-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation outcome info extraction guard"
+    }
+  ]
+}

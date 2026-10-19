@@ -1,0 +1,84 @@
+{
+  "source": "tests/native/accumulation_provision_integration_results.nim",
+  "build_name": "accumulation-provision-integration-results",
+  "crypto_library": "observer",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-provision-integration-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Provision union default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "accumulation-provision-integration-invalid",
+      "diagnostic": "outcome.status == None",
+      "description": "Provision union invalid extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "accumulation-provision-integration-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Provision union index extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "accumulation-provision-integration-backend",
+      "diagnostic": "outcome.status == None",
+      "description": "Provision union backend extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "apply-default"
+      },
+      "arguments": [
+        "apply-default"
+      ],
+      "name": "accumulation-provision-integration-apply-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Provision union apply-default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "apply-malformed"
+      },
+      "arguments": [
+        "apply-malformed"
+      ],
+      "name": "accumulation-provision-integration-apply-malformed",
+      "diagnostic": "outcome.status == None",
+      "description": "Provision union apply-malformed extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "provided-default"
+      },
+      "arguments": [
+        "provided-default"
+      ],
+      "name": "accumulation-provision-integration-provided-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Provision union provided-default extraction guard"
+    }
+  ]
+}

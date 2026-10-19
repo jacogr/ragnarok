@@ -1,0 +1,51 @@
+{
+  "source": "tests/native/pvm_accumulation_provision_results.nim",
+  "build_name": "pvm-accumulation-provision-results",
+  "crypto_library": "observer",
+  "cases": [
+    {
+      "identity": {
+        "reason": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "pvm-accumulation-provision-backend",
+      "diagnostic": "outcome.status == None",
+      "description": "Provide backend failed-result extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "gas"
+      },
+      "arguments": [
+        "gas"
+      ],
+      "name": "pvm-accumulation-provision-gas",
+      "diagnostic": "outcome.status == None",
+      "description": "Provide gas failed-result extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "local"
+      },
+      "arguments": [
+        "local"
+      ],
+      "name": "pvm-accumulation-provision-local",
+      "diagnostic": "outcome.status == None",
+      "description": "Provide local failed-result extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "malformed"
+      },
+      "arguments": [
+        "malformed"
+      ],
+      "name": "pvm-accumulation-provision-malformed",
+      "diagnostic": "outcome.status == None",
+      "description": "Provide malformed failed-result extraction guard"
+    }
+  ]
+}
