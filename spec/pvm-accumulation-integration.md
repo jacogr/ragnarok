@@ -42,7 +42,9 @@ now binds outgoing values and gas to initial recursive preparation.
 [Repeated reentry](pvm-transfer-reentry.md) extends the same canonical collection,
 paid-gas restoration and transfer-first inputs across later rounds.
 
-Next bounded work: processed-transfer statistics and refunded-gas reconciliation.
+Processed-transfer counts and gross-gas reconciliation are now implemented in
+[statistics](pvm-transfer-statistics.md). Next bounded work: account
+last-accumulation updates from that genuine activity mapping.
 Unsupported account ancestry and participating-target deletion conflicts retain their existing local gates.
 
 ## Remaining boundaries after the merge
@@ -51,7 +53,7 @@ Unsupported account ancestry and participating-target deletion conflicts retain 
 | --- | --- |
 | grow_heap (1) | Implemented under the maintainer-adopted merged #533/#538 fixes; see [heap integration](pvm-accumulation-heap.md). |
 | Selected account effects | Bounded self metadata/entries, creation/deletion proofs and [transfer debits](pvm-transfer-publication.md) publish through common-source batches. Unsupported ancestry and participating-target deletion conflicts remain gated; equal roots alone do not permit substitution. |
-| Transfer-aware recursion | [Initial completed-round collection and recursive input/gas preparation](pvm-transfer-continuation.md) are implemented under explicit transfer/memo limits. [Repeated reentry](pvm-transfer-reentry.md) also supports new outgoing effects. Statistics explicitly refuses processed-transfer histories pending its own bounded extension. |
+| Transfer-aware recursion | [Initial completed-round collection and recursive input/gas preparation](pvm-transfer-continuation.md) are implemented under explicit transfer/memo limits. [Repeated reentry](pvm-transfer-reentry.md) also supports new outgoing effects. [Statistics](pvm-transfer-statistics.md) derives destination counts and gross actual gas under independent local limits. |
 | Conflicting bless allowances | AmbiguousPrivileges; pinned set-to-dictionary semantics remain unresolved. |
 | 32-byte halt return with provisions | Implemented using the adopted [regular X projection](pvm-hash-return-provisions.md); the historical AmbiguousProvisions value is no longer emitted. |
 | Negative host-gas debt outside the signed domain | GasRangeExceeded; no truncation or clamping. |

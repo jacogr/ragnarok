@@ -1,32 +1,35 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Derive report-only accumulation activity from one genuine finalized history, without hashing or writes.
+## Derive transfer/report accumulation activity from one genuine finalized history, without hashing or writes.
 ## Exposes immutable accumulation deltas in existing service-statistics records; other activity remains separate.
 
 import std/algorithm
 import ../codec/[bounded, owned, report_owned, state_statistics, work_digest]
 import ./[accumulation_finalization, accumulation_outputs, accumulation_reentry,
-  accumulation_continuation_execution, accumulation_execution, accumulation_inputs,
+  accumulation_continuation_execution, accumulation_continuation_inputs, accumulation_execution,
+  accumulation_inputs,
   accumulation_round, accumulation_queue]
 
 type
   AccumulationStatisticsLimits* = object ## Independent ceilings distinguish inspected history from retained nonzero services.
     rounds*: ElementLimit   ## Completed rounds, including idle terminal entries.
     gasRows*: ElementLimit  ## All certified service gas rows, including skips and zeros.
+    transfers*: ElementLimit ## All processed records, including duplicate, skipped and zero-gas transfers.
     reports*: ElementLimit  ## Processed original-queue reports inspected for work-items.
     digests*: ElementLimit  ## Total work-digests inspected in that processed prefix.
     services*: ElementLimit ## Retained nonzero accumulation-statistics dictionary entries.
   AccumulationStatisticsInfo* = object ## Copied work and result observations describe exactly one finalized accumulation sequence.
-    rounds*, gasRows*, reports*, digests*, services*: int ## Independent traversed populations and retained dictionary cardinality.
-    gasUsed*: Gas ## Total actual consumption across every retained completed round.
+    rounds*, gasRows*, transfers*: int ## Completed history, service rows and processed transfers.
+    reports*, digests*, services*: int ## Processed work populations and retained dictionary cardinality.
+    gasUsed*: Gas                      ## Gross actual consumption across all completed rounds, bounded by uint64.
   AccumulationStatisticsError* {.pure.} = enum ## Refusals expose no partial rows, source owner or gas totals.
     Uninitialized, ## Default result or statistics owner.
     None,          ## Complete selected success permits extraction.
     InvalidSource, ## No genuine finalization, or certified totals cannot satisfy checked aggregation.
     InvalidIndex,  ## Full-width dictionary ordinal is outside the retained rows.
-    UnsupportedTransfers, ## Processed transfers need bounded counters and refunded-gas reconciliation before publication.
-    LimitExceeded  ## Traversal, retained dictionary or native scratch extent exceeds policy.
+    UnsupportedTransfers, ## Reserved historical refusal; processed transfers now require an explicit count policy.
+    LimitExceeded  ## Traversal, retained dictionary, native scratch or gross Gas representation exceeds policy.
   # Private acyclic ownership retains finalization and fixed independent activity deltas.
   StatisticsData = ref object
     source: PreparedFinalAccumulation
@@ -83,23 +86,25 @@ proc statisticsAt*(plan: PreparedAccumulationStatistics, index: StatisticsServic
   AccumulationStatisticsResult[ServiceStatisticsEntry](status: AccumulationStatisticsError.None,
       completed: data.values[int(uint64(index))])
 
-# Bound count arithmetic and worst-case typed candidate storage before any candidate allocation.
-proc charge(total: var int, count: int, limit: ElementLimit): bool =
-  if uint64(count) > uint64(limit)-uint64(total) or count > high(int) div sizeof(
-      ServiceStatisticsEntry)-total:
+# Bound counts and native extents before allocation; rowBytes=1 proves count-only transfer accounting.
+proc charge(total: var int, count: int, limit: ElementLimit, rowBytes = sizeof(
+    ServiceStatisticsEntry)): bool =
+  if uint64(count) > uint64(limit)-uint64(total) or count > high(int) div rowBytes-total:
     return false # Earlier successful charges establish both subtraction preconditions.
   total += count
   true
 
-# Append one genuine fixed gas observation into already preflighted private candidate storage.
+# Append one genuine service gas row and its bound destination transfer count into preflighted scratch.
 proc appendGas(usage: AccumulationGasUsage, rows: var seq[ServiceStatisticsEntry],
-    cursor: var int, total: var uint64, budget: uint64): bool =
+    cursor: var int, total: var uint64, budget: uint64, group: InvocationServiceInfo): bool =
   let gas = uint64(usage.gasUsed)
-  if gas > budget-total:
+  if usage.service != group.service or gas > budget-total:
     return false # Prove aggregate arithmetic against actual certified consumption.
   total += gas
-  rows[cursor] = ServiceStatisticsEntry(service: usage.service,
-    statistics: ServiceActivity(accumulationGas: ActivityGas(gas)))
+  # Complete source coverage pairs each sorted gas row with one exact input group; counts partition the preflighted total.
+  var activity = ServiceActivity(accumulationGas: ActivityGas(gas))
+  activity.counters[ServiceMeasure.TransferCount] = ActivityNatural(uint64(group.transfers))
+  rows[cursor] = ServiceStatisticsEntry(service: usage.service, statistics: activity)
   inc cursor # Complete history preflight proved candidate storage.
   true
 
@@ -112,7 +117,7 @@ func compareService(left, right: ServiceStatisticsEntry): int =
 proc prepareAccumulationStatistics*(source: PreparedFinalAccumulation,
     limits: AccumulationStatisticsLimits): AccumulationStatisticsResult[
         PreparedAccumulationStatistics] =
-  ## Aggregate processed work-items and actual history gas into bounded service activity deltas; report-only transfers are zero.
+  ## Aggregate processed work-items/transfers and gross actual history gas into bounded service activity deltas.
   template fail(reason: AccumulationStatisticsError) =
     return AccumulationStatisticsResult[PreparedAccumulationStatistics](status: reason)
   let finalized = source.finalAccumulationInfo
@@ -137,11 +142,12 @@ proc prepareAccumulationStatistics*(source: PreparedFinalAccumulation,
       completed[index] = current # Retain only already bounded genuine graph nodes, never caller-supplied batches.
       if index < reentries-1:
         current = current.executionReentry.value.reentryPrevious.value
-  if continuation.executionInfo.value.round.transfers != 0:
-    fail(AccumulationStatisticsError.UnsupportedTransfers) # Report-only activity must not silently omit even zero-gas processed transfers.
+  var transfers = 0
+  if not charge(transfers, continuation.executionInfo.value.round.transfers, limits.transfers, 1):
+    fail(AccumulationStatisticsError.LimitExceeded) # Preflight processed records, including zero-gas duplicates.
   for round in completed:
-    if round.executionInfo.value.round.transfers != 0:
-      fail(AccumulationStatisticsError.UnsupportedTransfers) # Later transfer histories also require their own bounded processed-count accounting.
+    if not charge(transfers, round.executionInfo.value.round.transfers, limits.transfers, 1):
+      fail(AccumulationStatisticsError.LimitExceeded) # Later-only transfers consume the same independent population ceiling.
   var gasRows = 0
   if not charge(gasRows, initial.executionInfo.value.services, limits.gasRows) or
       not charge(gasRows, continuation.executionInfo.value.services, limits.gasRows):
@@ -156,25 +162,43 @@ proc prepareAccumulationStatistics*(source: PreparedFinalAccumulation,
       fail(AccumulationStatisticsError.LimitExceeded) # Unprocessed reports and their digest counts are never traversed.
   if digests > high(int) div sizeof(ServiceStatisticsEntry)-gasRows:
     fail(AccumulationStatisticsError.LimitExceeded) # Prove combined native row bytes before addition/allocation.
+  let initialBudget = uint64(initial.executionInfo.value.round.budget)
+  if uint64(facts.remainingGas) > initialBudget:
+    fail(AccumulationStatisticsError.InvalidSource) # Genuine paid refunds cannot increase a recursive budget past its initial value.
+  var budget = initialBudget-uint64(facts.remainingGas)
+  let firstRefund = uint64(continuation.executionInfo.value.round.transferGas)
+  if firstRefund > high(uint64)-budget:
+    fail(AccumulationStatisticsError.LimitExceeded) # The public aggregate Gas must represent gross usage, not wrapped net consumption.
+  budget += firstRefund
+  for round in completed:
+    let refund = uint64(round.executionInfo.value.round.transferGas)
+    if refund > high(uint64)-budget:
+      fail(AccumulationStatisticsError.LimitExceeded) # Repeated refunds can exceed uint64 in a valid history; refuse the local representation.
+    budget += refund
   var rows = newSeq[ServiceStatisticsEntry](gasRows+digests)
   var cursor = 0
   var total = 0'u64
-  let budget = uint64(initial.executionInfo.value.round.budget)-uint64(facts.remainingGas)
+  let initialInputs = initial.executionRound.value.roundProjection.value.roundInputs.value
+  let continuationInputs = continuation.executionContinuation.value.continuationInputs.value
   for index in 0..<initial.executionInfo.value.services:
     if not appendGas(initial.executionGasAt(InvocationServiceIndex(uint64(index))).value,
-        rows, cursor, total, budget):
+        rows, cursor, total, budget, initialInputs.invocationServiceAt(InvocationServiceIndex(
+            uint64(index))).value):
       fail(AccumulationStatisticsError.InvalidSource) # Initial certified rows consume actual gas once.
   for index in 0..<continuation.executionInfo.value.services:
     if not appendGas(continuation.executionGasAt(InvocationServiceIndex(uint64(index))).value,
-        rows, cursor, total, budget):
+        rows, cursor, total, budget, continuationInputs.invocationServiceAt(InvocationServiceIndex(
+            uint64(index))).value):
       fail(AccumulationStatisticsError.InvalidSource) # First-continuation rows use the same checked sum.
   for round in completed:
+    let inputs = round.executionReentry.value.reentryInputs.value
     for index in 0..<round.executionInfo.value.services:
       if not appendGas(round.executionGasAt(InvocationServiceIndex(uint64(index))).value,
-          rows, cursor, total, budget):
+          rows, cursor, total, budget, inputs.invocationServiceAt(InvocationServiceIndex(uint64(
+              index))).value):
         fail(AccumulationStatisticsError.InvalidSource) # Each genuine reentry contributes exactly once.
   if total != budget:
-    fail(AccumulationStatisticsError.InvalidSource) # Actual round gas must reconcile to terminal remaining budget.
+    fail(AccumulationStatisticsError.InvalidSource) # Actual round gas must reconcile to net consumption plus every paid outgoing refund.
   for index in 0..<int(processed):
     let report = queue.accumulationAt(AccumulationIndex(uint64(index))).value
     for digest in 0..<report.ownedReportInfo.value.digestCount:
@@ -194,14 +218,18 @@ proc prepareAccumulationStatistics*(source: PreparedFinalAccumulation,
       var combined = rows[groups-1]
       let count = uint64(combined.statistics.counters[ServiceMeasure.AccumulationCount]) +
         uint64(row.statistics.counters[ServiceMeasure.AccumulationCount])
+      let transferred = uint64(combined.statistics.counters[ServiceMeasure.TransferCount]) +
+        uint64(row.statistics.counters[ServiceMeasure.TransferCount])
       let gas = uint64(combined.statistics.accumulationGas) + uint64(row.statistics.accumulationGas)
       combined.statistics.counters[ServiceMeasure.AccumulationCount] = ActivityNatural(count)
+      combined.statistics.counters[ServiceMeasure.TransferCount] = ActivityNatural(transferred)
       combined.statistics.accumulationGas = ActivityGas(gas)
-      rows[groups-1] = combined # Counts/gas are nonnegative subsets of bounded digest count/checked total gas.
+      rows[groups-1] = combined # Counts/gas are nonnegative subsets of preflighted digests/transfers and checked gross gas.
   var retained = 0
   for index in 0..<groups:
     let row = rows[index]
-    if uint64(row.statistics.counters[ServiceMeasure.AccumulationCount]) != 0 or uint64(
+    if uint64(row.statistics.counters[ServiceMeasure.AccumulationCount]) != 0 or
+        uint64(row.statistics.counters[ServiceMeasure.TransferCount]) != 0 or uint64(
         row.statistics.accumulationGas) != 0:
       if uint64(retained) >= uint64(limits.services):
         fail(AccumulationStatisticsError.LimitExceeded) # Only all-zero S(s) is omitted, after complete aggregation.
@@ -212,5 +240,6 @@ proc prepareAccumulationStatistics*(source: PreparedFinalAccumulation,
   AccumulationStatisticsResult[PreparedAccumulationStatistics](
     status: AccumulationStatisticsError.None,
     completed: PreparedAccumulationStatistics(data: StatisticsData(source: source, values: values,
-      info: AccumulationStatisticsInfo(rounds: rounds, gasRows: gasRows, reports: int(processed),
+      info: AccumulationStatisticsInfo(rounds: rounds, gasRows: gasRows, transfers: transfers,
+          reports: int(processed),
         digests: digests, services: retained, gasUsed: Gas(total)))))
