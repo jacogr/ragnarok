@@ -111,3 +111,10 @@ no journal value copies or full-map traversal. Two compile corrections involved
 retaining an explicit nonnil owner for the new accessors and using uint64 register
 constants/the existing LimitExceeded dispatch reason in the new fixture. No
 compiler/dependency setup or unrelated whole-source/native sweep was repeated.
+
+## Created-account extension
+
+[Created-account publication](pvm-created-accounts.md) adds a separate bounded proof
+and publication count for genuine new-service additions. Existing self-key/value
+ceilings remain independent; zero creation policy preserves the earlier gate.
+Ejection, transfers, privilege changes and grow_heap remain gated.

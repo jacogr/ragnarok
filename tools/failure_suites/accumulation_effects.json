@@ -47,6 +47,39 @@
     },
     {
       "arguments": [
+        "created-count"
+      ],
+      "description": "Accumulation effect created-count extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "created-count"
+      },
+      "name": "accumulation-effect-created-count"
+    },
+    {
+      "arguments": [
+        "created-at"
+      ],
+      "description": "Accumulation effect created-at extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "created-at"
+      },
+      "name": "accumulation-effect-created-at"
+    },
+    {
+      "arguments": [
+        "created-index"
+      ],
+      "description": "Accumulation effect created-index extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "created-index"
+      },
+      "name": "accumulation-effect-created-index"
+    },
+    {
+      "arguments": [
         "default"
       ],
       "description": "Accumulation effect selected-success guard",
