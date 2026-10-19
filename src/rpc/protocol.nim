@@ -8,13 +8,16 @@
 ## responses. configuredParameters and configuredGenesis validate bounded chainspec text into
 ## owned parameter and genesis snapshots;
 ## parameters() derives active-roster erasure geometry and pending-roster ticket limits;
-## missing state uses zero.
+## missing state uses zero. RpcSession owns bounded best-block subscriptions and serialized updates.
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]
 import ../state/store
+
+const MaxBestSubscriptions* = 8 # Per WebSocket connection; IDs are never reused within a session.
+const MaxBestUpdates* = 16 # Bounded FIFO of serialized descriptors, not retained state snapshots.
 
 const MaxReplyBytes = 65535 # One canonical medium-length WS frame, including batch punctuation.
 const MaxBlobReplyBytes = 32768 # Bound each raw value copy/hash before Base64 encoding.
@@ -34,7 +37,19 @@ type
   Container = object
     index: int
     children: int
-  # Caller supplies only observed public runtime information, copied synchronously during dispatch.
+  ## Connection-local subscription identity; zero is reserved for an unused fixed table entry.
+  BestSubscriptionId = distinct uint32
+  ## One owned notification, kept separately from the transport's possibly partly written frame.
+  BestUpdate = object
+    identity: BestSubscriptionId
+    text: string
+  ## Private bounded subscription table and FIFO; no callbacks, pointers or state-map owners escape.
+  RpcSession* = object
+    lastId: uint32
+    active: array[MaxBestSubscriptions, BestSubscriptionId]
+    pending: array[MaxBestUpdates, BestUpdate]
+    pendingCount: int
+  ## Caller supplies only observed runtime information, copied synchronously during dispatch.
   ClientInfo* = object
     uptimeMs*: int64
     peers*: uint32
@@ -322,8 +337,87 @@ proc error(id: string, code: int, message: string): string =
   "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":" & $code & ",\"message\":" & quote(
       message) & "}}"
 
+## Append a descriptor notification after the caller has reserved one FIFO slot.
+proc enqueueBest(session: var RpcSession, identity: BestSubscriptionId, value: string) =
+  session.pending[session.pendingCount] = BestUpdate(identity: identity,
+    text: "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":{\"subscription\":" &
+      $uint32(identity) & ",\"result\":" & value & "}}")
+  inc session.pendingCount
+
+## Queue every active subscriber's update atomically, or return false without changing this FIFO.
+## The server closes an overflowing consumer; no head update is silently coalesced or dropped.
+proc queueBestBlock*(session: var RpcSession, head: BlockSnapshotResult): bool =
+  if head.error != GenesisError.None:
+    return false # Failed captures never expose a descriptor or mutate pending updates.
+  var count = 0
+  for identity in session.active:
+    if uint32(identity) != 0:
+      inc count # Reserve capacity before serializing or appending any subscriber's notification.
+  if count > MaxBestUpdates - session.pendingCount:
+    return false # Caller owns the slow-client policy; accepted chain publication is independent.
+  if count == 0:
+    return true # Unsubscribed connections retain neither descriptors nor state snapshots.
+  let value = descriptor(head.value)
+  for identity in session.active:
+    if uint32(identity) != 0:
+      session.enqueueBest(identity, value) # Publication order and table order define FIFO ordering.
+  true
+
+## Consume one pending notification only when transport output is empty; default sessions return empty.
+proc nextBestUpdate*(session: var RpcSession): string =
+  if session.pendingCount == 0:
+    return "" # No allocation or descriptor work for ordinary RPC connections.
+  result = session.pending[0].text
+  dec session.pendingCount
+  for index in 0..<session.pendingCount:
+    session.pending[index] = session.pending[index + 1] # Shift at most fifteen owned string handles.
+  session.pending[session.pendingCount] = default(BestUpdate) # Release the vacated tail's ownership.
+
+## Validate and execute the two connection-local subscription methods; errors carry no partial mutation.
+## Initial snapshots and boolean cancellation results are local policies where JIP-2 is unspecified.
+proc bestSubscription(values: seq[Value], parameters: int, methodName, id: string,
+    info: ClientInfo, session: var RpcSession): string =
+  if parameters >= 0 and values[parameters].kind != arrayValue:
+    return error(id, -32602, "Expected positional params") # Named arguments are not JIP-2 calls.
+  if methodName == "subscribeBestBlock":
+    if parameters >= 0 and values[parameters].next != parameters + 1:
+      return error(id, -32602, "Expected no parameters") # The best-block subscription has no finalized flag.
+    let head = info.chain.bestBlock
+    if head.error != GenesisError.None:
+      return error(id, 0, "Chain view unavailable") # Do not accept a subscription without a chain source.
+    var free = -1
+    for index in 0..<MaxBestSubscriptions:
+      if uint32(session.active[index]) == 0:
+        free = index # Use the first vacant entry; IDs remain monotonically increasing after cancellation.
+        break
+    if free < 0 or session.pendingCount == MaxBestUpdates or session.lastId == high(uint32):
+      return error(id, 0, "Subscription capacity exhausted") # Never wrap IDs or overrun a bounded queue.
+    inc session.lastId
+    let identity = BestSubscriptionId(session.lastId)
+    session.active[free] = identity
+    session.enqueueBest(identity, descriptor(head.value))
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $session.lastId & "}"
+  var number = 0'u32
+  if parameters < 0 or values[parameters].next != parameters + 2 or
+      not serviceNumber(values[parameters + 1], number):
+    return error(id, -32602, "Expected uint32 subscription ID") # Reject malformed IDs before touching tables.
+  var found = false
+  for index in 0..<MaxBestSubscriptions:
+    if number != 0 and uint32(session.active[index]) == number:
+      session.active[index] = BestSubscriptionId(0) # Only IDs owned by this connection can be canceled.
+      found = true
+  var kept = 0
+  for index in 0..<session.pendingCount:
+    if uint32(session.pending[index].identity) != number:
+      session.pending[kept] = session.pending[index] # Preserve FIFO order for other subscribers.
+      inc kept
+  for index in kept..<session.pendingCount:
+    session.pending[index] = default(BestUpdate) # Cancellation releases undelivered serialized updates.
+  session.pendingCount = kept
+  "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $found & "}"
+
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
-proc clientInfo(info: ClientInfo): string =
+proc clientInfo(info: ClientInfo, stateful: bool): string =
   result = "{\"name\":\"Ragnarok\",\"version\":\"development\",\"implementation\":\"Nimony\""
   result.add(",\"compilerVersion\":\"0.6.3\",\"grayPaperVersion\":\"0.8.0\"")
   result.add(",\"os\":" & quote(Platform) & ",\"architecture\":" & quote(Architecture))
@@ -334,11 +428,13 @@ proc clientInfo(info: ClientInfo): string =
   result.add(",\"chain\":null,\"bestBlock\":" & (if info.chain.bestBlock.error ==
       GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"]")
-  result.add(",\"subscriptions\":false,\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
+  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
+      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\"" else: "") & "]")
+  result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
-proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: int): string =
+proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: int,
+    session: var RpcSession, stateful: bool): string =
   if values[start].kind != objectValue: return error("null", -32600, "Invalid Request")
   var id = "null"
   var hasId, version, methodFound, invalid = false
@@ -365,7 +461,10 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     else: discard # JSON-RPC permits additional envelope members.
     i = token.next
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
-  if not hasId: return "" # This read-only dispatch has no notification side effects.
+  if stateful and methodName in ["subscribeBestBlock", "unsubscribeBestBlock"]:
+    let response = bestSubscription(values, parameters, methodName, id, info, session)
+    return if hasId: response else: "" # Notifications execute but never receive a JSON-RPC reply.
+  if not hasId: return "" # All remaining methods are read-only and have no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
   if methodName == "ragnarok_stateKeys":
     if parameters < 0: return error(id, -32602, "Expected hash, cursor and count") # All pagination arguments are explicit.
@@ -619,7 +718,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
       if not info.parameters.ok: return error(id, 0, "Chain parameters unavailable; configure --chain")
       return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & parameterObject(
           info.parameters.value, info.chain.bestBlock) & "}"
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info) & "}"
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info, stateful) & "}"
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 
 # Determine the exact encoded ID length for output reservation; invalid envelopes may reserve excess.
@@ -638,17 +737,21 @@ proc requestId(values: seq[Value], start: int): string =
     i = values[i].next
 
 # Bound every method's final response, including fixed methods appearing after large blob results.
-proc dispatch(values: seq[Value], start: int, info: ClientInfo, allowance = MaxReplyBytes): string =
-  result = dispatchImpl(values, start, info, allowance)
+proc dispatch(values: seq[Value], start: int, info: ClientInfo, session: var RpcSession,
+    stateful: bool, allowance = MaxReplyBytes): string =
+  var candidate = session # Fixed arrays and immutable strings isolate tentative subscription changes.
+  result = dispatchImpl(values, start, info, allowance, candidate, stateful)
   if result.len > allowance:
     result = error(requestId(values, start), 0, ReplyBudgetError) # Preserve the request ID in a bounded fallback.
+  else:
+    session = candidate # Commit only after the subscription reply fits; no inaccessible phantom IDs.
 
 # Parse and execute one whole message atomically; empty output means a notification-only message.
-proc respond*(text: string, info: ClientInfo): string =
+proc respondImpl(text: string, info: ClientInfo, session: var RpcSession, stateful: bool): string =
   if text.len == 0 or text.len > MaxMessage or not validUtf8(text): return error("null", -32700, "Parse error")
   var values: seq[Value] = @[]
   if not parseValues(text, values): return error("null", -32700, "Parse error")
-  if values[0].kind != arrayValue: return dispatch(values, 0, info)
+  if values[0].kind != arrayValue: return dispatch(values, 0, info, session, stateful)
   var starts: seq[int] = @[]
   var reserves: seq[int] = @[]
   var available = MaxReplyBytes - 2
@@ -667,9 +770,18 @@ proc respond*(text: string, info: ClientInfo): string =
   # Each reply can spend only free space plus its own reservation; later request IDs stay representable.
   for index, start in starts:
     let allowance = available + reserves[index]
-    let response = dispatch(values, start, info, allowance)
+    let response = dispatch(values, start, info, session, stateful, allowance)
     available = allowance - response.len
     if response.len > 0:
       if result.len > 0: result.add(',') # Notifications contribute neither a reply nor a separator.
       result.add(response)
   if result.len > 0: result = "[" & result & "]" # Notification-only batches produce no frame.
+
+## Dispatch with a connection-owned session; notifications may mutate subscriptions without replying.
+proc respond*(text: string, info: ClientInfo, session: var RpcSession): string =
+  respondImpl(text, info, session, true)
+
+## Stateless query adapter: subscription methods remain unavailable without an owned connection session.
+proc respond*(text: string, info: ClientInfo): string =
+  var unused = default(RpcSession)
+  respondImpl(text, info, unused, false)

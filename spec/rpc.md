@@ -24,7 +24,7 @@ Send a WebSocket text message:
   target OS and architecture, and peer command role (`server`, `client`, or `mesh`).
 - Milliseconds since RPC startup, observed connected peer count, and occupied/reserved ARC
   allocator bytes (not process RSS). Mesh counts its logical remote once across two role engines.
-- `bestBlock`: the configured genesis descriptor when imported, otherwise null.
+- `bestBlock`: the selected head descriptor when available, initially configured genesis; otherwise null.
 - `chain` and `finalizedBlock`: null; no network identity or finalization view is published yet.
 - RPC transport, loopback address, port, available method names, subscription availability,
   maximum message bytes and batch size.
@@ -32,12 +32,14 @@ Send a WebSocket text message:
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
 unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
-and subscriptions remain unavailable and return JSON-RPC `-32601` for identified requests.
+remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block subscriptions
+are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
 
-Queries use an immutable genesis snapshot imported independently of telemetry metadata.
-Advancing heads, finalized queries and subscriptions still require block import and update events.
+Queries use immutable snapshots initialized independently of telemetry metadata. The dispatcher
+can publish a direct child and emit best-block updates, but the CLI remains genesis-only until a
+validated importer calls that boundary. Finalized queries require a finality source.
 
 ## `parameters()` and startup configuration
 
@@ -125,7 +127,8 @@ its existing metadata extraction contract.
 
 Both hash methods require exactly one canonical padded Base64 string decoding to 32 bytes.
 Malformed hashes or argument lists return `-32602`. `bestBlock` takes no arguments. Existing
-batch and notification behavior applies. Finalized queries and all subscriptions remain unsupported.
+batch and notification behavior applies. Finalized queries remain unsupported; best-block
+subscriptions are described below.
 The active validator count also uses this retained state; other parameter gaps are described above.
 
 The genesis loader checks strict bounded JSON, exact 31-byte hex keys, hex values, duplicate decoded
@@ -258,7 +261,7 @@ The private list contains copied scalar IDs and retains no source aliases. It is
 existing 16,384-entry genesis map limit; duplicate map keys are rejected before discovery.
 Requests do not scan the map or decode metadata. Rendering shares the 65,535-byte reply budget:
 a list too large for its single/batch allowance returns error `0`, never a silently truncated list.
-The protocol has no pagination parameter, and subscriptions remain unavailable.
+The protocol has no pagination parameter, and service-list subscriptions remain unavailable.
 
 Native tests cover numeric versus serialized-key ordering, zero/uint32-max IDs, exact key shape,
 malformed records, orphan keys, empty lists, unknown blocks, immutable extraction, notifications,
@@ -591,14 +594,69 @@ No JIP-2 wire method or result shape changes.
 Default, disabled, closed and unseeded servers return `ViewAdvanceError.Uninitialized`. Other
 rejections forward the provider's reason and leave the selected view intact. Successful publication
 copies at most eight snapshot handles, replaces the server's chain view and preserves listener,
-connections, startup parameters and queued response bytes/offsets. Each following tick captures
+connections, startup parameters and queued response bytes/offsets, except when the subscription
+queue overflow policy below disconnects a slow consumer. Each following tick captures
 the new view once for all its request contexts. Already serialized replies keep their original
 bytes; incomplete incoming requests use the view of the tick that completes their processing.
-There are no cross-thread calls, locks, callbacks or subscription events.
+There are no cross-thread calls, locks or callbacks. Best-block subscription delivery is described below.
 
 Native tests use a real ephemeral listener and connected nonblocking sockets carrying masked WS
 frames to check publication while a reply is partly written, subsequent batch queries on the same
 connection, historical lookup, old-context lifetime, all append rejection reasons, repeated
 publication, incomplete input across an update and default/disabled/unseeded/closed lifecycle behavior.
 The complete importer must still call this boundary after successful execution and head selection; CLI startup remains
-genesis-only until that integration exists. Finality, reorgs and subscriptions remain separate work.
+genesis-only until that integration exists. Finality and reorgs remain separate work.
+
+
+## Best-block WebSocket subscriptions
+
+`subscribeBestBlock()` and `unsubscribeBestBlock(id)` implement the pinned JIP-2 Protocol /
+Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
+Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
+`{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
+Only these best-block methods are enabled; finalized and service subscriptions remain unavailable.
+`ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
+The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
+`respond(text, info, session)` with its connection-owned `RpcSession`.
+
+Each connection owns at most eight subscriptions. IDs are increasing uint32 integers starting at
+one, never reused within that connection; exhaustion returns JIP-2 error 0 without wrapping.
+Unsubscribe accepts exactly one nonnegative integer lexeme within uint32 range, returns `true` if
+that connection owned the ID and `false` otherwise. Default/unconfigured chain views cannot be
+subscribed to and return error 0. Invalid positional arguments return `-32602`. A connection with
+configured genesis can subscribe immediately, even though the current CLI has no live importer.
+
+JIP-2 does not specify an initial update or unsubscribe result. This implementation queues the
+current head immediately after subscription, and uses the boolean cancellation result above.
+The subscription response (or whole batch response) is written before its initial update. Batch
+members execute in order, so subscribe followed by unsubscribe can cancel that initial update.
+Valid JSON-RPC notifications execute subscription/cancellation changes without replying; a
+notification-form subscribe identifies its subscription through the initial update. Invalid JSON,
+oversized batches and malformed envelopes cannot create subscriptions. Changes are committed only
+if their response fits the existing aggregate output budget.
+
+Successful `publishBlock` enqueues the new descriptor for every active subscriber. Rejected
+publication emits nothing. Each connection owns a FIFO of at most sixteen serialized updates;
+these retain no state maps or views. One dispatcher tick still writes at most one frame per slot,
+servicing request replies before queued updates. Already queued transport bytes and partial-write
+offsets remain intact. Cancellation removes pending updates for that ID but cannot retract a frame
+already handed to the transport buffer. Closing/reusing a connection releases its subscriptions,
+notifications and ID namespace. Each notification frame gets the existing five-second write
+budget without extending an earlier partial-input deadline.
+
+Publication preflights queue capacity per connection. A consumer that cannot hold all its updates
+is disconnected immediately, releasing its FIFO; publication and other connections continue.
+No updates are silently coalesced or dropped on a surviving connection. Immediate socket closure
+also avoids splicing an error/close frame into a partly written response. Capacity exhaustion when
+creating an additional subscription instead returns error 0 and preserves existing subscriptions.
+These limits are local resource policies, not JIP-2 constants or claims of finality.
+
+Native tests cover exact envelopes, initial/current-head updates, per-connection ID isolation,
+monotonic reuse prevention, invalid arguments/envelopes, parse/batch atomicity, notification-form
+calls, cancellation ordering, eight-subscription and sixteen-update boundaries, overflow preserving
+queued events, ARC retirement and private-table rejection. Connected socket tests exercise reply-
+before-update ordering, live publication, rejected-publication silence, cancellation and slow-client
+disconnection while another client and the listener/head continue, plus partial-input deadline
+preservation during notification delivery. Live process tests cover configured and absent
+chain sources and cancellation over actual loopback WS. Full import, fork selection, finalized
+views and other subscription families remain separate bounded work.

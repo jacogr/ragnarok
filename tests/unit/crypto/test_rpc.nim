@@ -278,7 +278,8 @@ assert slot.output == frame("hello", 10)
 slot.output = ""
 slot.input = masked(request[20..^1], 0)
 slot.process(info, 2)
-assert not slot.fragmented and slot.output == frame(answer)
+var framedSession = default(RpcSession)
+assert not slot.fragmented and slot.output == frame(respond(request, info, framedSession))
 slot.output = ""
 slot.input = masked("", 0)
 slot.process(info, 3)
@@ -1088,6 +1089,87 @@ assert respond(rootRequest, historicalInfo) == respond(rootRequest, withGenesis)
 assert respond("[" & rootRequest & "," & rootRequest & "]", historicalInfo) ==
   "[" & respond(rootRequest, withGenesis) & "," & respond(rootRequest, withGenesis) & "]"
 
+# Independent expected JIP-2 envelopes bind subscription identities to the existing block descriptors.
+const SubscribeBest = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":[],\"id\":61}"
+const UnsubscribeBest = "{\"jsonrpc\":\"2.0\",\"method\":\"unsubscribeBestBlock\",\"params\":[1],\"id\":62}"
+const SubscribedBest = "{\"jsonrpc\":\"2.0\",\"id\":61,\"result\":1}"
+const UnsubscribedBest = "{\"jsonrpc\":\"2.0\",\"id\":62,\"result\":true}"
+let initialBestUpdate = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":{\"subscription\":1,\"result\":{\"header_hash\":\"" &
+  genesisHash & "\",\"slot\":7}}}"
+var subscriptions = default(RpcSession)
+assert subscriptions.nextBestUpdate() == ""
+assert not subscriptions.queueBestBlock(unavailableGenesis())
+assert "\"code\":0" in respond(SubscribeBest, info, subscriptions)
+assert "\"code\":-32601" in respond(SubscribeBest, withGenesis)
+assert "\"code\":-32602" in respond(SubscribeBest.replace("[]", "[false]"), withGenesis, subscriptions)
+assert "\"code\":-32602" in respond(SubscribeBest.replace("[]", "{}"), withGenesis, subscriptions)
+assert "\"code\":-32600" in respond(SubscribeBest.replace("\"id\":61", "\"id\":61,\"id\":62"),
+    withGenesis, subscriptions)
+assert respond(SubscribeBest, withGenesis, subscriptions) == SubscribedBest
+assert subscriptions.nextBestUpdate() == initialBestUpdate
+assert subscriptions.nextBestUpdate() == ""
+assert subscriptions.queueBestBlock(historyChild)
+assert subscriptions.nextBestUpdate() == initialBestUpdate.replace(genesisHash,
+    childHashText).replace("\"slot\":7", "\"slot\":9")
+for malformed in ["-1", "1.0", "1e0", "4294967296", "true", "null", "\"1\"", "[]", "1,2", ""]:
+  assert "\"code\":-32602" in respond(UnsubscribeBest.replace("[1]", "[" & malformed & "]"),
+    withGenesis, subscriptions) # Invalid cancellation must leave the active ID intact.
+assert subscriptions.queueBestBlock(historyChild)
+var otherSession = default(RpcSession)
+assert respond(UnsubscribeBest, withGenesis, otherSession) == UnsubscribedBest.replace("true", "false")
+assert respond(UnsubscribeBest, withGenesis, subscriptions) == UnsubscribedBest
+assert subscriptions.nextBestUpdate() == "" # Cancellation removes this ID's undelivered events.
+assert respond(UnsubscribeBest, withGenesis, subscriptions) == UnsubscribedBest.replace("true", "false")
+assert respond(SubscribeBest, withGenesis, subscriptions) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+assert subscriptions.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert respond(UnsubscribeBest.replace("[1]", "[2]").replace(",\"id\":62", ""), withGenesis,
+    subscriptions) == ""
+assert subscriptions.queueBestBlock(historyChild)
+assert subscriptions.nextBestUpdate() == "" # Notification-form cancellation executes without a reply.
+var batchSession = default(RpcSession)
+assert respond("[" & SubscribeBest & "," & UnsubscribeBest & "]", withGenesis, batchSession) ==
+  "[" & SubscribedBest & "," & UnsubscribedBest & "]"
+assert batchSession.nextBestUpdate() == "" # Sequential batch cancellation removes the initial event too.
+assert respond(SubscribeBest.replace(",\"id\":61", ""), withGenesis, batchSession) == ""
+assert batchSession.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1",
+    "\"subscription\":2")
+var rejectedBatch = default(RpcSession)
+assert "-32600" in respond("[" & repeat(SubscribeBest & ",", 16) & SubscribeBest & "]", withGenesis, rejectedBatch)
+assert "-32700" in respond("[" & SubscribeBest & ",", withGenesis, rejectedBatch)
+assert respond(SubscribeBest, withGenesis, rejectedBatch) ==
+    SubscribedBest # Failed whole-message parsing has no effects.
+var capacitySession = default(RpcSession)
+for identity in 1..MaxBestSubscriptions:
+  assert respond(SubscribeBest, withGenesis, capacitySession) == SubscribedBest.replace(
+    "\"result\":1", "\"result\":" & $identity) # Eight independent IDs share one connection-local FIFO.
+assert "\"code\":0" in respond(SubscribeBest, withGenesis, capacitySession)
+assert capacitySession.queueBestBlock(historyChild) # Eight initial plus eight published events exactly fill the FIFO.
+assert not capacitySession.queueBestBlock(historyChild) # Overflow leaves the previously queued sequence intact.
+for identity in 1..MaxBestSubscriptions:
+  assert capacitySession.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1",
+      "\"subscription\":" & $identity)
+for identity in 1..MaxBestSubscriptions:
+  assert capacitySession.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1",
+      "\"subscription\":" & $identity).replace(
+    genesisHash, childHashText).replace("\"slot\":7", "\"slot\":9")
+assert capacitySession.nextBestUpdate() == ""
+
+## Repeated connection retirement must release queued notifications and copied tentative session storage.
+proc retireSubscriptions() =
+  var retired = default(Connection)
+  for identity in 1..MaxBestSubscriptions:
+    discard respond(SubscribeBest, withGenesis, retired.session) # Each call adds an owned initial descriptor.
+  assert retired.session.queueBestBlock(historyChild)
+  retired.close()
+  assert retired.session.nextBestUpdate() == ""
+  assert respond(SubscribeBest, withGenesis, retired.session) ==
+      SubscribedBest # Slot reuse starts a new ID namespace.
+retireSubscriptions()
+let subscriptionBaseline = getOccupiedMem()
+for iteration in 0..<20:
+  retireSubscriptions() # Warmed ARC accounting catches notification ownership retained across disconnects.
+assert getOccupiedMem() <= subscriptionBaseline + 256
+
 ## Native connected sockets exercise actual tick IO without reserving a fixed TCP port.
 proc rpcSocketPair(domain, kind, protocol: cint, pair: pointer): cint {.
   importc: "socketpair", header: "<sys/socket.h>".}
@@ -1177,6 +1259,56 @@ proc publicationLifecycle() =
   let current = ClientInfo(parameters: genesisParameters, chain: owner.chain)
   assert publicationReply(pair[1]) == frame(respond(bestRequest,
       current)) # An incomplete input observes the view when processing completes.
+  var subscribePacket = masked(SubscribeBest)
+  assert sendBytes(pair[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
+      subscribePacket.len
+  owner.tick(0)
+  assert publicationReply(pair[1]) == frame(SubscribedBest) # The response precedes the initial notification.
+  owner.tick(0)
+  let initial = initialBestUpdate.replace(genesisHash, base64.encode(array[32, byte](
+      next.value.blockHash))).replace("\"slot\":7", "\"slot\":10")
+  assert publicationReply(pair[1]) == frame(initial)
+  assert owner.publishBlock(next) == ViewAdvanceError.Duplicate
+  assert owner.connections[0].session.nextBestUpdate() == "" # Rejected publication emits no event.
+  owner.connections[0].input = "\x81" # Retain a partial client frame while delivering an unrelated update.
+  let partialDeadline = getMonoTime().ticks div 1_000_000 + 2000
+  owner.connections[0].deadline = partialDeadline
+  let published = childSnapshot(next.value, 11, genesisParameters.value)
+  assert owner.publishBlock(published) == ViewAdvanceError.None
+  owner.tick(0)
+  assert publicationReply(pair[1]) == frame(initialBestUpdate.replace(genesisHash,
+    base64.encode(array[32, byte](published.value.blockHash))).replace("\"slot\":7", "\"slot\":11"))
+  assert owner.connections[0].deadline == partialDeadline # Event delivery cannot extend partial-input lifetime.
+  owner.connections[0].input = "" # Retire the synthetic partial-frame fixture before sending cancellation.
+  var cancelPacket = masked(UnsubscribeBest)
+  assert sendBytes(pair[1], cancelPacket.toCString(), csize_t(cancelPacket.len), 0) ==
+      cancelPacket.len
+  owner.tick(0)
+  assert publicationReply(pair[1]) == frame(UnsubscribedBest)
+  assert respond(SubscribeBest, ClientInfo(chain: owner.chain, parameters: genesisParameters),
+    owner.connections[0].session) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+  var survivor = default(array[2, cint])
+  assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+    0, addr survivor[0]) == 0
+  owner.connections[1].fd = survivor[0]
+  owner.connections[1].opened = true
+  defer: discard posix.close(survivor[1])
+  assert nonblocking(survivor[0]) and nonblocking(survivor[1])
+  owner.connections[1].upgraded = true
+  owner.connections[1].deadline = getMonoTime().ticks div 1_000_000 + 30000
+  for atSlot in 12'u32..27'u32:
+    let child = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value)
+    assert owner.publishBlock(child) == ViewAdvanceError.None # A stalled consumer cannot stall head publication.
+  assert owner.opened and owner.chain.bestBlock.value.slot == 27
+  assert not owner.connections[0].opened # Initial plus sixteen undelivered updates exceeds the bounded FIFO.
+  assert owner.connections[0].session.nextBestUpdate() == ""
+  var survivorRequest = masked(bestRequest)
+  assert sendBytes(survivor[1], survivorRequest.toCString(), csize_t(survivorRequest.len), 0) ==
+      survivorRequest.len
+  owner.tick(0)
+  let survivingInfo = ClientInfo(chain: owner.chain, parameters: genesisParameters)
+  assert publicationReply(survivor[1]) == frame(respond(bestRequest, survivingInfo))
+  assert owner.connections[1].opened # The overflowing subscriber cannot disconnect another client.
   owner.close()
   assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
   owner.tick(0)
