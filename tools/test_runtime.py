@@ -188,6 +188,7 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     # Terminal gas deficits cannot bypass canonical state or success selection.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_gas')
     # Failed host range copies never expose partial buffers or memory owners.
+    run_failure_suite(compiler, report, libraries, build, command, 'pvm_heap_memory')
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_memory')
     # Host replies publish only valid posterior snapshots and no stale suspension metadata.
     run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_response')

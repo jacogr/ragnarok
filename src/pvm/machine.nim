@@ -6,7 +6,7 @@
 ##
 ## Exposes immutable Memory/Machine snapshots, page capture/replacement, checked scalar
 ## load/store, bounded host readBytes/writeBytes, programOf/memoryOf child access, copied state
-## updates and terminal-state capture.
+## updates, writable-page range counting/mapping and terminal-state capture.
 
 import ./program
 
@@ -15,8 +15,10 @@ type
   MemoryAddress* = distinct uint64
   # Fault reasons contain a physical aligned byte address, not a page ordinal.
   PageAddress* = distinct uint32
-  # Page ordinals must be below 2^20; construction validates before indexing or allocation.
+  # Page ordinals are below 2^20; validated exclusive range endpoints may equal 2^20.
   PageIndex* = distinct uint32
+  ## A count of pages is distinct from an ordinal, byte length and local allocation policy.
+  PageCount* = distinct uint32
   # Local allocation policy bounds materialized pages, including inaccessible retained pages.
   PageLimit* = distinct uint32
   # Supported scalar access sizes are 1, 2, 4 and 8; other values return InvalidWidth.
@@ -171,6 +173,76 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   # Insertion shifts the suffix; replacement leaves its positions unchanged.
   for i in at + int(replacing)..<data.pages.len:
     pages.add(data.pages[i])
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+
+## Count writable pages in [first, past), with an exclusive endpoint up to 2^20.
+## Walk only retained pages; missing pages are inaccessible. This does not infer heap bounds.
+proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[PageCount] =
+  let data = memory.data
+  if data == nil:
+    # Default owners must not masquerade as an empty, valid address space.
+    return MachineResult[PageCount](status: MachineError.InvalidOwner)
+  if uint32(first) > uint32(past) or uint32(past) > 0x100000'u32:
+    # Ordered endpoints prove both are in range before any lookup or subtraction.
+    return MachineResult[PageCount](status: MachineError.InvalidRange)
+  let start = lowerBound(data, uint32(first))
+  let stop = lowerBound(data, uint32(past))
+  var count = 0'u32
+  for i in start..<stop:
+    # Only writable retained pages contribute; read-only and inaccessible pages do not.
+    if data.pages[i].image.access == PageAccess.ReadWrite:
+      inc count # Unique ordinals bound the count by the physical page domain.
+  MachineResult[PageCount](status: MachineError.None, completed: PageCount(count))
+
+## Atomically map [first, past) writable, preserving all retained bytes and outside permissions.
+## Preflight the owner's complete page policy before allocation. Absent pages become zero-filled;
+## unchanged page owners are shared. Callers must separately enforce host-call region/gas rules.
+proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[Memory] =
+  let data = memory.data
+  if data == nil:
+    # No partial allocation or default empty address space is produced on invalid ownership.
+    return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if uint32(first) > uint32(past) or uint32(past) > 0x100000'u32:
+    # Validate the exclusive endpoint before subtraction and native-int conversion.
+    return MachineResult[Memory](status: MachineError.InvalidRange)
+  let start = lowerBound(data, uint32(first))
+  let stop = lowerBound(data, uint32(past))
+  let added = uint64(uint32(past)-uint32(first)) - uint64(stop-start)
+  let total = uint64(data.pages.len) + added
+  if total > uint64(uint32(data.limit)) or total > uint64(high(int) div sizeof(PageData)):
+    # Count inaccessible retained pages too; only truly absent ordinals require new slots.
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
+  var changed = added != 0
+  for i in start..<stop:
+    # Permission-only changes still need a successor, even when no page is added.
+    if data.pages[i].image.access != PageAccess.ReadWrite:
+      changed = true
+  if not changed:
+    # Empty and already-writable intervals retain the original immutable owner without allocation.
+    return MachineResult[Memory](status: MachineError.None, completed: memory)
+  var pages = newSeqOfCap[PageData](int(total))
+  for i in 0..<start:
+    pages.add(data.pages[i]) # Retain the untouched prefix, including permissions and nonzero bytes.
+  var at = start
+  var ordinal = uint32(first)
+  while ordinal < uint32(past):
+    # Merge the validated interval with the sorted retained vector exactly once.
+    if at < stop and uint32(data.pages[at].image.index) == ordinal:
+      if data.pages[at].image.access == PageAccess.ReadWrite:
+        pages.add(data.pages[at]) # Already-writable page storage stays shared and immutable.
+      else:
+        var page = data.pages[at].image # Retain inaccessible/read-only bytes when changing access.
+        page.access = PageAccess.ReadWrite
+        pages.add(PageData(image: page))
+      inc at
+    else:
+      # An absent page has implicit zero storage; materialization must preserve those bytes.
+      pages.add(PageData(image: PageImage(index: PageIndex(ordinal), access: PageAccess.ReadWrite,
+        bytes: default(array[4096, byte]))))
+    inc ordinal
+  for i in stop..<data.pages.len:
+    pages.add(data.pages[i]) # The exclusive endpoint and entire suffix remain untouched.
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 

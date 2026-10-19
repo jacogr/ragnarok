@@ -308,6 +308,7 @@
   "tests/test_nimony_crypto.py",
   "tests/test_package_harness.py",
   "tests/test_pvm_gas_reference.py",
+  "tests/test_pvm_heap_spec.py",
   "tests/test_pvm_register_reference.py",
   "tests/test_pvm_step_reference.py",
   "tests/test_quic.py",
