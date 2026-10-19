@@ -8,10 +8,11 @@ import std/assertions
 import ../../src/state/accumulation_machine
 import ../../src/pvm/[initialize, machine, program]
 import ./pvm_accumulation_context
-import ../../src/codec/state_trie
+import ../../src/codec/[state_trie, state_accounts]
 
 proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
-    includeContexts = true, extra: seq[StateEntry] = @[]): PreparedAccumulationMachine =
+    includeContexts = true, extra: seq[StateEntry] = @[], account = default(ServiceMetadata),
+        spareEntries = 0): PreparedAccumulationMachine =
   ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
   ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
   var code = @[0'u8, 0, 0, 0, 0]
@@ -33,7 +34,8 @@ proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
   for octet in mask:
     raw.add(octet) # Padding bits remain canonical zero.
   initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw), credit,
-    includeContexts = includeContexts, extra = extra),
+    includeContexts = includeContexts, extra = extra, account = account,
+        spareEntries = spareEntries),
     InitializationLimits(envelope: InitializationByteLimit(256), program: ProgramByteLimit(128),
       jumps: JumpCountLimit(0), pages: PageLimit(5))).value
 

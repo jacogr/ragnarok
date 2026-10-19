@@ -1,12 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 implications: immutable yields, requested provisions and exceptional checkpoints.
-## Exposes prepared effect pairs, yield/checkpoint/provision mutations and retained provision extraction.
+## GP 0.8.0 implications: immutable account writes, yields, provisions and exceptional checkpoints.
+## Exposes prepared pairs, guarded current accounts, storage/yield/checkpoint/provision mutations and extraction.
 ## Guest memory, gas, registers, execution verdicts and publication belong to their caller's PVM layer.
 
 import std/assertions
 import ../codec/[bounded, composite, state_outputs, state_accounts, state_layout, state_requests, state_service_values]
+import ../chain/parameters
 import ../crypto/primitives
 import ./[accumulation_context, store, preimages]
 
@@ -14,7 +15,7 @@ type
   AccumulationEffectError* {.pure.} = enum ## No refused/default operation exposes a partial context, fabricated hash or successful empty owner.
     Uninitialized, None, InvalidContexts, InvalidDimension, YieldAbsent, UnknownService,
     NotRequested, AlreadyProvided, InvalidLength, InvalidState, MalformedState, LimitExceeded,
-      BackendFailure, InvalidIndex
+      BackendFailure, InvalidIndex, StorageFull, InvalidParameters
   AccumulationProvisionIndex* = distinct uint64 ## A provision ordinal is neither its target service nor a byte count.
   AccumulationProvisionLimits* = object ## Independent ceilings bound retained records, individual hash/copy work and aggregate payload bytes.
     items*: ElementLimit
@@ -39,9 +40,10 @@ type
       commitment: OutputCommitment # Zero bytes remain a present protocol value.
     of false:
       discard                      # Absence carries no commitment payload.
-  ## Current implications retain initial accounts/roles/next-ID with versioned yield and provisions.
+  ## Current implications retain separate initial provenance and versioned accounts, yield and provisions.
   EffectData = ref object
     initial: InitialAccumulationContext
+    accounts: StateStoreSnapshot
     output: YieldValue
     provisions: ProvisionSetData
   AccumulationEffectContext* = object ## Read-only acyclic context; copies retain a version independently of later effect operations.
@@ -52,6 +54,10 @@ type
     regular, exceptional: AccumulationEffectContext
   AccumulationEffects* = object ## Only prepared initial contexts create a pair; mutations preserve their service/input identity.
     data: nil PairData
+  AccumulationStorageChange* = object ## A completed storage mutation owns its successor pair and copied prior-value facts.
+    effects*: AccumulationEffects ## Independently retained successor; prior regular/checkpoint owners remain unchanged.
+    hadValue*: bool ## Distinguish an absent key from a present value whose previous length was zero.
+    previousBytes*: int ## Previous raw value length; meaningful only when hadValue is true.
   AccumulationEffectInfo* = object ## Copied current facts report retained provisions and the still-empty outgoing transfer sequence.
     service*, nextService*: ServiceIndex
     transfers*, provisions*: int
@@ -73,7 +79,7 @@ func value*[T](outcome: AccumulationEffectResult[T]): T {.inline,
 
 proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffectResult[
     InitialAccumulationContext] =
-  ## Retain the exact initial context backing this version's accounts, roles, next-ID and input provenance.
+  ## Retain immutable initial roles, next-ID and input provenance; current accounts use effectAccounts.
   let data = context.data
   if data == nil:
     # A default effect cannot supply another context as a substitute source.
@@ -81,6 +87,15 @@ proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffe
         status: AccumulationEffectError.Uninitialized)
   AccumulationEffectResult[InitialAccumulationContext](status: AccumulationEffectError.None,
     completed: data.initial)
+
+proc effectAccounts*(context: AccumulationEffectContext): AccumulationEffectResult[
+    StateStoreSnapshot] =
+  ## Retain this exact version's current complete account map, independently of initial provenance.
+  if context.data == nil:
+    return AccumulationEffectResult[StateStoreSnapshot](status:
+      AccumulationEffectError.Uninitialized) # No default owner grants a fabricated map.
+  AccumulationEffectResult[StateStoreSnapshot](status: AccumulationEffectError.None,
+    completed: context.data.accounts)
 
 proc effectInfo*(context: AccumulationEffectContext): AccumulationEffectResult[
     AccumulationEffectInfo] =
@@ -146,7 +161,8 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): Accumu
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.InvalidContexts)
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
-    output: YieldValue(present: false), provisions: ProvisionSetData(values: @[], bytes: 0, largest: 0)))
+    accounts: initial.value.contextAccounts.value, output: YieldValue(present: false),
+        provisions: ProvisionSetData(values: @[], bytes: 0, largest: 0)))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: contexts, regular: current,
         exceptional: current)))
@@ -163,7 +179,8 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
   let previous = data.regular.data
   assert previous != nil # Private construction preserves initialized children for every published pair.
   let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    output: YieldValue(present: true, commitment: commitment), provisions: previous.provisions))
+    accounts: previous.accounts, output: YieldValue(present: true, commitment: commitment),
+        provisions: previous.provisions))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
@@ -238,7 +255,7 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
       previous.provisions.bytes > uint64(limits.totalBlobBytes) or
       uint64(previous.provisions.values.len) > uint64(limits.items):
     fail(AccumulationEffectError.LimitExceeded) # Bound hash/scan work and validate retained-prefix policy before new work.
-  let state = previous.initial.contextAccounts.value
+  let state = previous.accounts
   let account = state.lookup(chapterServiceKey(StateChapter(255), service))
   if account.error == StateStoreError.MissingKey:
     fail(AccumulationEffectError.UnknownService) # Orphan request records do not create a target account.
@@ -277,9 +294,133 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   provisions[previous.provisions.values.len] = AccumulationProvision(data: ProvisionData(
       service: service, bytes: owned))
   let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    output: previous.output, provisions: ProvisionSetData(values: provisions,
+    accounts: previous.accounts, output: previous.output, provisions: ProvisionSetData(
+      values: provisions,
       bytes: previous.provisions.bytes+size,
       largest: max(previous.provisions.largest, size))))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
+
+## Subtract an exact 128-bit product from a budget of at most 2^65-2 tokens.
+## Limb products and their carry sums are bounded before arithmetic; no saturation impersonates equality.
+proc consumeDeposit(low, upper: var uint64, count, rate: uint64): bool =
+  let mask = 0xffffffff'u64
+  let p0 = (count and mask)*(rate and mask)
+  let p1 = (count and mask)*(rate shr 32)
+  let p2 = (count shr 32)*(rate and mask)
+  let p3 = (count shr 32)*(rate shr 32)
+  let middle = (p0 shr 32)+(p1 and mask)+(p2 and mask) # Below 3*2^32.
+  let productLow = ((middle and mask) shl 32) or (p0 and mask)
+  let productHigh = p3+(p1 shr 32)+(p2 shr 32)+(middle shr 32) # Exact high half of a uint64 product.
+  if productHigh > upper or (productHigh == upper and productLow > low):
+    return false # The mathematical deposit exceeds the remaining balance plus gratis.
+  if productLow > low:
+    upper = upper-productHigh-1 # Comparison proves the borrow exists.
+    low = high(uint64)-productLow+low+1 # productLow>low proves no intermediate overflow.
+  else:
+    upper -= productHigh # No low-limb borrow.
+    low -= productLow
+  true
+
+## Compare threshold to balance using the equivalent deposit <= balance+gratis equation.
+## Even full-width configured rates and footprint fields cannot overflow this comparison.
+proc funded(metadata: ServiceMetadata, parameters: Parameters): bool =
+  let balance = uint64(metadata.balance)
+  let gratis = uint64(metadata.depositOffset)
+  var low = 0'u64
+  var upper = 0'u64
+  if gratis > high(uint64)-balance:
+    upper = 1 # Preserve the 65th bit of available balance plus gratis.
+    low = gratis-(high(uint64)-balance)-1
+  else:
+    low = balance+gratis # Proven representable before addition.
+  for term in [(1'u64, parameters.get(depositPerAccount)),
+      (uint64(metadata.storageItems), parameters.get(depositPerItem)),
+      (uint64(metadata.storageBytes), parameters.get(depositPerByte))]:
+    let (count, rate) = term # Each independent term consumes the remaining exact two-limb budget.
+    if not consumeDeposit(low, upper, count, rate):
+      return false # FULL includes products larger than the complete available budget.
+  true
+
+proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openArray[byte],
+    parameters: Parameters, limit: ByteLimit): AccumulationEffectResult[AccumulationStorageChange] =
+  ## Apply one raw self-storage mutation atomically, retaining both initial provenance and checkpoint.
+  ## Borrowed bytes remain stable during this call; the complete-map store independently captures accepted values.
+  # Refuse without publishing a candidate map or successor effect pair.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationStorageChange](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # Default pairs cannot authorize mutations.
+  if not parameters.valid:
+    fail(AccumulationEffectError.InvalidParameters) # No default deposit schedule is accepted.
+  if uint64(key.len) > uint64(limit) or uint64(value.len) > uint64(limit):
+    fail(AccumulationEffectError.LimitExceeded) # Bound both borrowed extents before hashing/allocation.
+  let previous = data.regular.data
+  assert previous != nil # Private constructors retain complete current account snapshots.
+  let service = previous.initial.contextInfo.value.service
+  let accountKey = chapterServiceKey(StateChapter(255), service)
+  let account = previous.accounts.lookup(accountKey)
+  if account.error != StateStoreError.None or account.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # Self must have complete canonical metadata.
+  let decoded = decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if decoded.error != ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # Never repair corrupt metadata as a side effect.
+  var metadata = decoded.value.metadata
+  let derived = serviceStorageKey(service, key, limit)
+  if derived.error != ServiceValueError.None:
+    fail(AccumulationEffectError.BackendFailure) # No alternate namespace on failed hashing.
+  let old = previous.accounts.lookup(derived.value)
+  if old.error notin {StateStoreError.None, StateStoreError.MissingKey}:
+    fail(AccumulationEffectError.InvalidState) # No fabricated absent value from an invalid map.
+  let hadValue = old.error == StateStoreError.None
+  let oldBytes = (if hadValue: old.value.byteLength else: 0)
+  var items = uint64(metadata.storageItems)
+  var octets = uint64(metadata.storageBytes)
+  if hadValue:
+    # Remove the old footprint before adding a replacement; bounded native key/value lengths fit uint64.
+    if uint64(key.len) > high(uint64)-34-uint64(oldBytes):
+      fail(AccumulationEffectError.InvalidState) # Prove footprint addition before forming it.
+    let footprint = 34'u64+uint64(key.len)+uint64(oldBytes)
+    if items == 0 or octets < footprint:
+      fail(AccumulationEffectError.MalformedState) # Inconsistent stored counters never underflow.
+    items -= 1
+    octets -= footprint
+  if value.len != 0:
+    # A nonempty value inserts one item; an empty value deletes, including absent-key no-ops.
+    if uint64(key.len) > high(uint64)-34-uint64(value.len):
+      fail(AccumulationEffectError.InvalidState) # Full-width native extents cannot wrap a footprint.
+    let footprint = 34'u64+uint64(key.len)+uint64(value.len)
+    if items == uint64(high(uint32)) or footprint > high(uint64)-octets:
+      fail(AccumulationEffectError.InvalidState) # Preserve declared E4/E8 footprint domains without wrapping.
+    items += 1
+    octets += footprint
+  metadata.storageItems = AccountStorageItems(uint32(items))
+  metadata.storageBytes = AccountStorageBytes(octets)
+  if not funded(metadata, parameters):
+    fail(AccumulationEffectError.StorageFull) # FULL preserves the original map even for an underfunded deletion.
+  let encoded = serviceMetadataEntry(service, metadata, ByteLimit(ServiceMetadataBytes)).value
+  var owned = newSeq[byte](value.len)
+  for i, octet in value:
+    owned[i] = octet # Capture caller bytes before publishing an immutable map.
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply([StateWrite(key: accountKey, kind: StateWriteKind.Put,
+      value: encoded.value), StateWrite(key: derived.value,
+      kind: (if value.len == 0: StateWriteKind.Delete else: StateWriteKind.Put), value: owned)])
+  case changed.error
+  of StateStoreError.None:
+    discard # Publish only after both metadata and storage changes pass all inherited store ceilings.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Local map policy cannot masquerade as protocol FULL.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # Merklization failure leaves the source owner untouched.
+  else:
+    fail(AccumulationEffectError.InvalidState) # No partial successor on any store invariant failure.
+  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
+    accounts: changed.value, output: previous.output, provisions: previous.provisions))
+  let successor = AccumulationEffects(data: PairData(source: data.source, regular: current,
+    exceptional: data.exceptional))
+  AccumulationEffectResult[AccumulationStorageChange](status: AccumulationEffectError.None,
+    completed: AccumulationStorageChange(effects: successor, hadValue: hadValue,
+      previousBytes: oldBytes))
