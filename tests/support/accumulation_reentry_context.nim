@@ -36,9 +36,10 @@ proc reentryReady*(base: OwnedReport, id: byte, gases: openArray[uint64],
 proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = ExecutionEnding.Halt,
     firstGas = 1000'u64, secondGas = 1000'u64, provided = false, stopped = false,
     empty = false, tail: ReadyRow = @[], firstProgram: seq[byte] = @[],
-    secondProgram: seq[byte] = @[], extra: seq[StateEntry] = @[]): ReentryFixture =
+    secondProgram: seq[byte] = @[], extra: seq[StateEntry] = @[], incomingReports = 0,
+    preimageWire: seq[byte] = @[]): ReentryFixture =
   ## Consume one report initially, reserve nearly all later gas in the second, then release the true two-service reentry suffix.
-  # Optional authored preimages enter the signed parent; provided retains its original special program.
+  # Optional code preimages enter the parent; incoming reports/preimage wire enter the signed child; provided retains its guest.
   let firstEnding = if provided: ExecutionEnding.Exhausted else: first
   var budget = 1000'u64
   for ending in [firstEnding, second]:
@@ -61,7 +62,8 @@ proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = E
     entries.add(provisionRequest(42, @[73'u8]))
     entries.add(provisionRequest(99, @[81'u8]))
   var initial = executionFixture(base, first = firstEnding, second = second, empty = empty,
-    ready = queue, firstProgram = code, secondProgram = secondProgram, extra = entries)
+    ready = queue, firstProgram = code, secondProgram = secondProgram, extra = entries,
+    incomingReports = incomingReports, preimageWire = preimageWire)
   var policy = executionRoundConfig()
   policy.blockGas = Gas(budget)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value

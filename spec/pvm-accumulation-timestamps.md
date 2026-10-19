@@ -73,7 +73,8 @@ or dependency pin changed. Logs/results remain under ignored
 `build/pvm-accumulation-timestamps*`; these are local macOS checks, distinct from
 exact-head Linux CI.
 
-Next bounded work: C(13) activity coordination with refinement/provision activity,
-followed by combining independently bound account/history/statistics phases for
-block publication. M1 framing remains complete; full state serialization and
+[Service activity coordination](pvm-service-activity.md) now combines refinement,
+provision and accumulation metrics from one original block. Core/validator activity
+and final C(13) assembly remain subsequent work, before combining the independently
+bound account/history/statistics phases for block publication. M1 framing remains complete; full state serialization and
 whole-block parity remain open.

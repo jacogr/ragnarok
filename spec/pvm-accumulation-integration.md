@@ -45,7 +45,9 @@ paid-gas restoration and transfer-first inputs across later rounds.
 Processed-transfer counts and gross-gas reconciliation are now implemented in
 [statistics](pvm-transfer-statistics.md). [Account timestamps](pvm-accumulation-timestamps.md)
 now update existing active accounts on an actual private finalized map. Next bounded
-work: C(13) activity coordination.
+work: core/validator activity and final C(13) assembly.
+[Service activity](pvm-service-activity.md) now coordinates its eleven per-block
+fields from original-block reports/preimages and finalized accumulation.
 Unsupported account ancestry and participating-target deletion conflicts retain their existing local gates.
 
 ## Remaining boundaries after the merge
