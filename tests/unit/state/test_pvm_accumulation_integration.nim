@@ -211,14 +211,19 @@ block upgrade_boundary:
     ServiceIndex(42))).value.bytes == record.bytes,
     "proven selected self-metadata upgrade publishes without losing its incoming credit"
 
-block grow_heap_gate:
+block grow_heap_query:
   let fixture = batchFixture(firstEnvelope = guestEnvelope([@[10'u8, 1], @[50'u8, 0]]))
-  let refused = execute(fixture)
-  assert refused.error == AccumulationDispatchError.UnsupportedHostCall, "grow_heap remains explicitly gated after master sync"
-  assert prepare(fixture, refused, execute(fixture, 1)).error ==
-      AccumulationBatchError.InvalidExecution,
-    "local host refusal cannot masquerade as a completed batch outcome"
-  assert balance(fixture.state.snapshot.value, 42) == 10, "gated execution publishes no credit"
+  let done = execute(fixture)
+  assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt,
+    "adopted heap query is a genuine completed host outcome"
+  assert uint64(machineInfo(done.value.machine).value.registers[7]) == 50,
+    "oversized requested endpoint returns the actual heap endpoint"
+  let plan = prepare(fixture, done, execute(fixture, 1)).value
+  var state = fixture.state
+  discard applyAccumulationBatch(state, plan).value
+  assert balance(state.snapshot.value, 42) == 17 and balance(state.snapshot.value, 99) == 31,
+    "heap query composes with incoming-credit publication"
+  assert balance(fixture.state.snapshot.value, 42) == 10, "publication preserves the immutable prior"
 
 block backend_atomicity:
   var target = readable.state

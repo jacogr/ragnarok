@@ -26,7 +26,7 @@ The caller remains responsible for heap bounds and gas. This environment operati
 may map any validated interval, like the existing single-page `withPage` primitive;
 it does not expose guest authority to remap arbitrary memory.
 
-## Unresolved host semantics
+## Historical host differences and adoption
 
 The pinned vector release `d3c089c9a1d5352ad353626d7a2db8589f137b2a` explicitly
 records two deviations in `vendor/jamtestvectors/CHANGELOG.md`:
@@ -40,15 +40,14 @@ records two deviations in `vendor/jamtestvectors/CHANGELOG.md`:
    rounding the stack reservation to 64 KiB. The pinned GP's expression uses page
    rounding (4 KiB). For a one-byte stack these differ by 15 writable pages.
 
-These are not encoding-width discrepancies, so the maintainer's compact-encoding
-exception does not authorize adopting the vector deviations. The existing migration
-record already marks them as unresolved. No gitlink advances or host dispatch changes
-are made here; call 1 continues to return local `UnsupportedHostCall`.
-
-Focused pending tests keep both host-semantic decisions visible. Executable tests
-check the pinned source evidence and independently witness the differing results.
-Next work is resolve/adopt the host semantics under an explicit specification decision,
-then connect envelope-derived bounds, gas accounting and these memory operations.
+Both changes merged upstream on 2026-07-22. The initial implementation left them
+pending local adoption rather than changing its base pins. On 2026-10-19 the
+maintainer explicitly adopted both grow_heap fixes while preserving repository
+pins. [Bounded host integration](pvm-accumulation-heap.md) implements gas/result
+ordering from #533 and stack reservation from #538; its exact source/merge hashes
+are in [the adoption record](pvm-grow-heap-adoption.json). The historical gas and
+ceiling pending tests are now active adoption checks. The separate request-domain
+pin-upgrade decision is unchanged, and no other #533 behavior is adopted here.
 
 ## Completion evidence
 

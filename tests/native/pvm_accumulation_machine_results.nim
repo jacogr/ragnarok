@@ -12,6 +12,8 @@ let limits = InitializationLimits(envelope: InitializationByteLimit(1000),
 case paramStr(1)
 of "machine":
   discard default(PreparedAccumulationMachine).accumulationMachine.value # Default owners expose no CPU.
+of "heap":
+  discard default(PreparedAccumulationMachine).machineHeapBounds.value # Default owners expose no envelope bounds.
 of "bootstrap":
   discard default(PreparedAccumulationMachine).machineBootstrap.value # Default owners expose no provenance.
 of "invocation":

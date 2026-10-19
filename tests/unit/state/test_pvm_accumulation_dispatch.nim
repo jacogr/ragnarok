@@ -33,16 +33,18 @@ proc run(source: PreparedAccumulationMachine, steps = 2'u64, calls = 1'u64,
     ExecutionStepLimit(steps), HostCallLimit(calls), GasCycleLimit(cycles), pvmContextConfig())
 
 for id in [1'u8]:
-  # Every known unavailable accumulation call refuses locally instead of charging WHAT.
-  assert run(prepared(id)).error == AccumulationDispatchError.UnsupportedHostCall
+  # Adopted grow_heap treats the initial oversized argument as a bounded endpoint query.
+  let done = run(prepared(id))
+  assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt
+  assert uint64(machineInfo(done.value.machine).value.registers[7]) == 50
 for id in [7'u8, 8, 9, 10, 11, 12, 13, 14, 28, 127, 255]:
   # Refine-only identifiers and the sign-extended full-width identifier all use F's fallback.
   let done = run(prepared(id))
   assert done.error == AccumulationDispatchError.None
   assert done.value.exit == StepExit.Halt
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == high(uint64)-1
-for id in [0'u8, 2, 28, 255]:
-  let cost = (if id == 0: 48'u64 elif id == 2: 390'u64 else: 1000'u64)
+for id in [0'u8, 1, 2, 28, 255]:
+  let cost = (if id == 0: 48'u64 elif id == 1: 275'u64 elif id == 2: 390'u64 else: 1000'u64)
   let source = prepared(id)
   let initial = source.accumulationMachine.value
   let price = uint64(blockGas(programOf(initial).value, CodeAddress(5), GasCycleLimit(200)).value)
@@ -54,7 +56,8 @@ for id in [0'u8, 2, 28, 255]:
     if available < cost:
       # Terminal deficits retain causing PC and preserve r7 except for F's mandatory WHAT assignment.
       assert done.value.exit == StepExit.OutOfGas
-      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == cost-available
+      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == (if id ==
+          1: 0'u64 else: cost-available)
       assert uint64(cpu.pc) == 5
       let expected = (if id == 28 or id == 255: high(uint64)-1 else: 0xfeff0000'u64)
       assert uint64(cpu.registers[7]) == expected
@@ -62,7 +65,8 @@ for id in [0'u8, 2, 28, 255]:
       # Funded calls execute the prepaid return; zero requested bytes still returns parameter length.
       assert done.value.exit == StepExit.Halt
       assert uint64(cpu.gas) == available-cost and uint64(cpu.gasDeficit) == 0
-      let expected = (if id == 0: available-cost elif id == 2: 122'u64 else: high(uint64)-1)
+      let expected = (if id == 0: available-cost elif id == 1: 50'u64 elif id ==
+          2: 122'u64 else: high(uint64)-1)
       assert uint64(cpu.registers[7]) == expected
   assert uint64(machineInfo(initial).value.gas) == 10000 # All successors leave the input intact.
 let source = prepared(2)
@@ -91,11 +95,14 @@ assert run(copying, steps = 3).error == AccumulationDispatchError.LimitExceeded
 let panicked = executeAccumulationMachine(copying, pvmParameters(), limits(), MemoryByteLimit(1),
   ExecutionStepLimit(3), HostCallLimit(1), GasCycleLimit(200), pvmContextConfig())
 assert panicked.error == AccumulationDispatchError.None and panicked.value.exit == StepExit.Panic
-# Sufficient block gas still leaves an unavailable known call as a local scope refusal.
+# Exact block gas reaches grow_heap; merged #533 produces a completed OOG with no signed debt.
 let known = prepared(1)
 let knownPrice = uint64(blockGas(programOf(known.accumulationMachine.value).value,
   CodeAddress(5), GasCycleLimit(200)).value)
-assert run(prepared(1, knownPrice)).error == AccumulationDispatchError.UnsupportedHostCall
+let exhausted = run(prepared(1, knownPrice))
+assert exhausted.error == AccumulationDispatchError.None and exhausted.value.exit ==
+    StepExit.OutOfGas
+assert uint64(machineInfo(exhausted.value.machine).value.gasDeficit) == 0
 ## Fund a bounded actual engine run; copy policy is independent of gas and memory accessibility.
 proc runEffects(source: PreparedAccumulationMachine, copyLimit = 32'u64,
     steps = 100'u64, calls = 10'u64): AccumulationDispatchResult =
@@ -132,7 +139,8 @@ for id in [18'u8, 26]:
     let cpu = machineInfo(done.value.machine).value
     if available < cost:
       assert done.value.exit == StepExit.OutOfGas
-      assert uint64(cpu.gasDeficit) == cost-available and uint64(cpu.gas) == 0
+      assert uint64(cpu.gasDeficit) == (if id == 1: 0'u64 else: cost-available) and uint64(
+          cpu.gas) == 0
       assert uint64(cpu.pc) == 5 and uint64(cpu.registers[7]) == 0xfeff0000'u64
       checkYield(done, regular, false)
     else:

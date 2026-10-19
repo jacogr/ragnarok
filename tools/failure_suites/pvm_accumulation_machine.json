@@ -46,6 +46,17 @@
       "name": "pvm-accumulation-machine-limit",
       "diagnostic": "outcome.status == None",
       "description": "Accumulation machine limit extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "heap"
+      },
+      "arguments": [
+        "heap"
+      ],
+      "name": "pvm-accumulation-machine-heap",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation machine heap bounds extraction guard"
     }
   ]
 }
