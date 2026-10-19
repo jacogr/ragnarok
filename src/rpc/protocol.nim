@@ -56,14 +56,12 @@ type
   SubscriptionUpdate = object
     identity: SubscriptionId
     text: string
-  ## Private bounded subscription table and FIFO; no callbacks, pointers or state-map owners escape.
-  RpcSession* = object
+  RpcSession* = object ## Private bounded subscription table and FIFO; no callbacks, pointers or state-map owners escape.
     lastId: uint32
     active: array[MaxSubscriptions, Subscription]
     pending: array[MaxSubscriptionUpdates, SubscriptionUpdate]
     pendingCount, pendingBytes: int
-  ## Caller supplies only observed runtime information, copied synchronously during dispatch.
-  ClientInfo* = object
+  ClientInfo* = object ## Caller supplies only observed runtime information, copied synchronously during dispatch.
     uptimeMs*: int64
     peers*: uint32
     role*: string
@@ -72,8 +70,8 @@ type
     chain*: ChainView # Immutable request view; the initial adapter retains configured genesis.
     parameters*: ParameterResult # Optional immutable startup configuration; never read from disk per request.
 
-# JSON quoting preserves UTF-8 while escaping ASCII controls and delimiters.
 proc quote*(text: string): string =
+  ## JSON quoting preserves UTF-8 while escaping ASCII controls and delimiters.
   result = "\""
   for c in text: # Every control character is escaped independently of its printable representation.
     if c == '"' or c == '\\': result.add('\\'); result.add(c)
@@ -191,8 +189,8 @@ proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
   output = move(bytes)
   true
 
-# Import an optional complete genesis pair using the same strict bounded JSON policy as parameters.
 proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
+  ## Import an optional complete genesis pair using the same strict bounded JSON policy as parameters.
   # Reject absent, oversized or non-UTF-8 input before token allocation.
   if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text): return invalidGenesis()
   var values: seq[Value] = @[]
@@ -281,9 +279,9 @@ proc descriptor(value: Genesis): string =
   "{\"header_hash\":" & quote(base64.encode(array[32, byte](value.blockHash))) & ",\"slot\":" &
       $value.slot & "}"
 
-# Extract one strict JIP-4 parameter field from a bounded startup file. Genesis data is not imported.
-# Unknown fields are parsed for syntax only; duplicate root members and missing parameters fail atomically.
 proc configuredParameters*(text: string): ParameterResult =
+  ## Extract one strict JIP-4 parameter field from a bounded startup file. Genesis data is not imported.
+  ## Unknown fields are parsed for syntax only; duplicate root members and missing parameters fail atomically.
   if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text):
     return default(ParameterResult) # Missing, oversized or invalid text cannot imply a default chain.
   var values: seq[Value] = @[]
@@ -420,12 +418,12 @@ proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: stri
   inc session.pendingCount
   session.pendingBytes += text.len
 
-## Queue updates only for the selected publication stream atomically, or leave the session intact if either queue limit is exceeded.
-## Decode statistics at most once per session, only when requested; failed statistics emit a terminal
-## error for those subscribers. Service subscribers read validated accounts and optional bounded values;
-## only the affected subscriber is terminated on a read failure. Other subscriptions continue. No state snapshots are retained.
 proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult,
     finalized = false): bool =
+  ## Queue updates only for the selected publication stream atomically, or leave the session intact if either queue limit is exceeded.
+  ## Decode statistics at most once per session, only when requested; failed statistics emit a terminal
+  ## error for those subscribers. Service subscribers read validated accounts and optional bounded values;
+  ## only the affected subscriber is terminated on a read failure. Other subscriptions continue. No state snapshots are retained.
   if head.error != GenesisError.None:
     return false # Failed captures never expose a descriptor or mutate pending updates.
   var count = 0
@@ -472,8 +470,8 @@ proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult,
         session.active[index] = default(Subscription) # Its queued error is terminal; unrelated subscriptions survive.
   true
 
-## Consume one pending notification only when transport output is empty, releasing its byte allowance.
 proc nextUpdate*(session: var RpcSession): string =
+  ## Consume one pending notification only when transport output is empty, releasing its byte allowance.
   if session.pendingCount == 0:
     return "" # No allocation or descriptor work for ordinary RPC connections.
   result = session.pending[0].text
@@ -980,11 +978,11 @@ proc respondImpl(text: string, info: ClientInfo, session: var RpcSession, statef
       result.add(response)
   if result.len > 0: result = "[" & result & "]" # Notification-only batches produce no frame.
 
-## Dispatch with a connection-owned session; notifications may mutate subscriptions without replying.
 proc respond*(text: string, info: ClientInfo, session: var RpcSession): string =
+  ## Dispatch with a connection-owned session; notifications may mutate subscriptions without replying.
   respondImpl(text, info, session, true)
 
-## Stateless query adapter: subscription methods remain unavailable without an owned connection session.
 proc respond*(text: string, info: ClientInfo): string =
+  ## Stateless query adapter: subscription methods remain unavailable without an owned connection session.
   var unused = default(RpcSession)
   respondImpl(text, info, unused, false)

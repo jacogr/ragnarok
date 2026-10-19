@@ -11,8 +11,8 @@ import std/[strutils, base64, sha1]
 const MaxMessage* = 16384
 const MaxHeader* = 4096
 
-# Validate Unicode scalar encodings, excluding overlong sequences, surrogates and out-of-range values.
 proc validUtf8*(text: string): bool =
+  ## Validate Unicode scalar encodings, excluding overlong sequences, surrogates and out-of-range values.
   var i = 0
   while i < text.len: # Each iteration consumes one complete Unicode scalar.
     let first = ord(text[i])
@@ -37,8 +37,8 @@ proc validUtf8*(text: string): bool =
     if value < minimum or value > 0x10ffff or value in 0xd800..0xdfff: return false
   true
 
-# Produce one unmasked final server frame; caller supplies a bounded payload and valid opcode.
 proc frame*(payload: string, opcode = 1): string =
+  ## Produce one unmasked final server frame; caller supplies a bounded payload and valid opcode.
   result = ""
   if payload.len > 65535: return # The server's bounded response policy never needs a 64-bit length.
   result.add(char(128 or opcode))
@@ -53,9 +53,9 @@ proc hasToken(value, expected: string): bool =
     if token.strip().toLowerAscii() == expected: return true
   false
 
-# Accept only a complete RFC 6455 version-13 upgrade at /, with no body or browser Origin.
-# Empty output means invalid. SHA-1 is used solely for RFC 6455's public handshake challenge.
 proc upgrade*(header: string): string =
+  ## Accept only a complete RFC 6455 version-13 upgrade at /, with no body or browser Origin.
+  ## Empty output means invalid. SHA-1 is used solely for RFC 6455's public handshake challenge.
   result = ""
   if header.len > MaxHeader or not header.endsWith("\r\n\r\n"): return
   let lines = header.split("\r\n")
@@ -106,19 +106,24 @@ type
       finished: bool
     else: discard
 
-# Read the outcome before selecting success-only accessors.
-func status*(value: FrameResult): FrameStatus = value.state
-# Return an owned payload copy only after a complete frame has been established.
-func payload*(value: FrameResult): string {.requires: value.state == complete.} = value.body
-# Return the validated opcode on successful parsing.
-func opcode*(value: FrameResult): int {.requires: value.state == complete.} = value.operation
-# Return consumed bytes only for a complete frame.
-func consumed*(value: FrameResult): int {.requires: value.state == complete.} = value.length
-# Report FIN only after complete frame validation.
-func final*(value: FrameResult): bool {.requires: value.state == complete.} = value.finished
+func status*(value: FrameResult): FrameStatus =
+  ## Read the outcome before selecting success-only accessors.
+  value.state
+func payload*(value: FrameResult): string {.requires: value.state == complete.} =
+  ## Return an owned payload copy only after a complete frame has been established.
+  value.body
+func opcode*(value: FrameResult): int {.requires: value.state == complete.} =
+  ## Return the validated opcode on successful parsing.
+  value.operation
+func consumed*(value: FrameResult): int {.requires: value.state == complete.} =
+  ## Return consumed bytes only for a complete frame.
+  value.length
+func final*(value: FrameResult): bool {.requires: value.state == complete.} =
+  ## Report FIN only after complete frame validation.
+  value.finished
 
-# Decode one masked client frame, checking length before allocation; caller retains incomplete input.
 proc decodeFrame*(input: string): FrameResult =
+  ## Decode one masked client frame, checking length before allocation; caller retains incomplete input.
   if input.len < 2: return FrameResult(state: incomplete) # Wait for the fixed prefix.
   let first = ord(input[0])
   let second = ord(input[1])
