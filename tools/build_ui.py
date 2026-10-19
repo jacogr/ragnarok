@@ -5,7 +5,7 @@
 """Stage UI distribution files and generate immutable Nim asset arrays in build/.
 
 Exposes build for deterministic asset staging/embedding. Make invokes main before native builds;
-the checked-in ui/ currently holds static distribution assets until a frontend build replaces it.
+the checked-in src/ui/static/ holds distribution assets until a frontend build replaces it.
 """
 from pathlib import Path
 
@@ -76,7 +76,7 @@ def build(source, stage, manifest):
 # No JavaScript runtime is needed for the current static placeholder; Make owns future frontend sequencing.
 def main():
     """Build the repository-owned static distribution and its compile-time manifest."""
-    count = build(ROOT/'ui', ROOT/'build/ui', ROOT/'build/ui_assets.nim')
+    count = build(ROOT/'src/ui/static', ROOT/'build/ui', ROOT/'build/ui_assets.nim')
     print(f'Embedded UI manifest: {count} assets; staged in build/ui/')
 
 

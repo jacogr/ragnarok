@@ -139,7 +139,7 @@ class InventoryPreflight(unittest.TestCase):
                      'spec/extra-pins.json', 'tools/nested/helper.py', 'tools/nested/profile.json',
                      'tools/new-requirements.txt', 'tests/support/helper.nim', 'tests/nested/oracle.py',
                      'tests/unit/state/test_new.output', 'tests/fixtures/new.bin',
-                     'tests/fixtures/new.LICENSE', 'ui/nested/asset.bin', 'vectors/new.json')
+                     'tests/fixtures/new.LICENSE', 'src/ui/static/nested/asset.bin', 'vectors/new.json')
             ignored = ('build/ui/generated.js', 'build/result.json', 'vendor/dependency/helper.py', 'tools/__pycache__/cache.py',
                        'tools/.cache/record.json', 'native/extra/target/generated.rs',
                        'tests/fixtures/.DS_Store')

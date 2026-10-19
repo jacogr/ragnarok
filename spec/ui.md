@@ -11,8 +11,8 @@ This replaces the embedded asset source with files from that directory; edits ar
 on the next request. Missing development files return 404 without falling back to the bundle.
 The old `--ui-dir` spelling is removed. The development flag alone never starts the listener.
 
-`make ui-assets` stages the current static distribution from `ui/` into `build/ui/` and generates
-`build/ui_assets.nim`, containing immutable sorted URL paths and byte-exact asset constants.
+`make ui-assets` stages the static distribution from `src/ui/static/` into `build/ui/` and
+generates `build/ui_assets.nim`, containing immutable sorted URL paths and byte-exact asset constants.
 Make runs this step before production builds, native verification and source module checks.
 The generated source changes when asset paths or bytes change, so the compiler sees asset edits.
 Generated outputs remain under ignored `build/`; `make clean` removes them. Asset sources are
@@ -70,3 +70,6 @@ passed embedded serving from an unrelated empty working directory without extrac
 development edits/missing-file isolation, shared RPC/telemetry startup, 38 malformed CLI
 controls, concurrent QUIC progress and clean shutdown. Evidence: `build/ci/ui-embedded-*.log`
 and `build/tests/ui-e2e/results.json`. Canonical Linux CI remains separate.
+
+Static asset relocation to `src/ui/static/`: the generated embedded manifest is byte-identical;
+14 affected tooling/provenance/RPC-harness tests and inventory passed locally.

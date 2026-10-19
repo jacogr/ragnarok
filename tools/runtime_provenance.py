@@ -20,7 +20,7 @@ SOURCE_SCOPES = {
     'tests': {'.py', '.nim', '.output', '.c', '.cc', '.cpp', '.h', '.hpp'},
     'tools': {'.py', '.json', '.txt'},
 }
-DATA_DIRECTORIES = ('tests/fixtures', 'ui', 'vectors')
+DATA_DIRECTORIES = ('src/ui/static', 'tests/fixtures', 'vectors')
 # These upstream documents/corpora were already hashed; never sweep entire dependency checkouts.
 UPSTREAM_INPUTS = ('vendor/jam-np/simple.md', 'vendor/wycheproof/LICENSE',
                    'vendor/wycheproof/testvectors_v1/ed25519_test.json')

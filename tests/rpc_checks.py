@@ -157,7 +157,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
             ready(process, log)
             if ui:
                 # Static HTTP uses a separate socket and streams beyond its fixed chunk size.
-                index = (static/'index.html').read_bytes() if dev_ui else (Path(__file__).parents[1]/'ui/index.html').read_bytes()
+                index = (static/'index.html').read_bytes() if dev_ui else (Path(__file__).parents[1]/'src/ui/static/index.html').read_bytes()
                 cases = [('GET', '/', 200, index), ('HEAD', '/', 200, b''),
                          ('GET', '/index.html?v=1', 200, index),
                          ('GET', '/missing', 404, b''), ('GET', '/%2e%2e/peer.log', 400, b''),
