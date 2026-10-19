@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 preimagesareordered/fnprovidable/fnprovide: prior admission and atomic post-accumulation integration.
-## Exposes immutable admission/statistics certificates and explicit full-map publication; phase/slot binding is caller-owned.
+## Exposes canonical outstanding-request queries, immutable admission/statistics certificates and atomic publication.
+## Phase/slot binding is caller-owned; query/admission share exact account/history validation.
 
 import ../codec/[bounded, composite, owned, header, state_layout, state_trie, state_accounts,
   state_service_values, state_requests]
@@ -97,6 +98,16 @@ proc outstanding(state: StateStoreSnapshot, service: ServiceIndex,
     return PreimageTransitionResult[bool](status: PreimageTransitionError.MalformedState) # Require the entire stored value, not a prefix.
   PreimageTransitionResult[bool](status: PreimageTransitionError.None,
     completed: decoded.value.history.state == RequestState.Requested)
+
+## Query an exact canonical outstanding request without accepting a caller-selected namespace key.
+## Missing accounts/requests or nonempty histories are false; malformed maps/backend failure are typed refusals.
+proc preimageRequested*(state: StateStoreSnapshot, service: ServiceIndex,
+    hash: ServicePreimageHash, length: RequestLength): PreimageTransitionResult[bool] =
+  let key = serviceRequestKey(service, hash, length, ByteLimit(32))
+  if key.error != RequestError.None:
+    # Namespace derivation failure cannot fabricate a requested/unrequested verdict.
+    return PreimageTransitionResult[bool](status: PreimageTransitionError.BackendFailure)
+  outstanding(state, service, key.value)
 
 ## Compare raw byte sequences lexicographically; wire lengths and hash digests do not order equal-service blobs.
 func compareBlob(a, b: openArray[byte]): int =

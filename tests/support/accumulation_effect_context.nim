@@ -12,7 +12,7 @@ import ../../src/codec/[bounded, assurances, composite, header, work_digest, c2_
 import ../../src/crypto/primitives
 
 ## Construct a real credited account and exact tiny-profile components; this is not a published whole-chain state.
-proc preparedEffectContexts*(): PreparedAccumulationContexts =
+proc preparedEffectContexts*(extra: seq[StateEntry] = @[]): PreparedAccumulationContexts =
   let queue = planAccumulationQueues([], [0'u8], [0'u8], HeaderSlot(0),
     AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(2), epochSlots: EpochSlots(1),
       maxBytes: ByteLimit(1000)))).value
@@ -33,7 +33,7 @@ proc preparedEffectContexts*(): PreparedAccumulationContexts =
   let raw = @[0'u8]
   let hash = array[32, byte](blake2b256(raw).value)
   let rows = @[newSeq[AuthorizerHash](80), newSeq[AuthorizerHash](80)]
-  let entries = @[authorizationEntry(AuthorizationKind.Queues, rows, config.queues).value,
+  var entries = @[authorizationEntry(AuthorizationKind.Queues, rows, config.queues).value,
     validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6), config.staging).value,
     privilegeStateEntry(PrivilegeState(manager: ServiceIndex(11), delegator: ServiceIndex(12),
       registrar: ServiceIndex(13), assigners: @[ServiceIndex(14), ServiceIndex(15)]),
@@ -43,7 +43,9 @@ proc preparedEffectContexts*(): PreparedAccumulationContexts =
     servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(1))).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4, 2])]
-  let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(10),
+  # Extra authored records participate in the complete source root before any preparation or credit.
+  for entry in extra: entries.add(entry)
+  let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(100),
     perValue: ByteLimit(10000), totalValueBytes: ByteLimit(10000), nodes: TrieNodeLimit(10000)),
     writes: ElementLimit(1), writeValueBytes: ByteLimit(89))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(0), state, HeaderSlot(4),
