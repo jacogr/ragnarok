@@ -30,6 +30,10 @@ type
       InsufficientCash,      ## Account debits must preserve the creator's own minimum balance.
       ServiceExists,         ## A registrar-selected reserved service ID is already occupied.
       TransferGasLow         ## Offered deferred gas is below the current destination minimum.
+  AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
+    Initial,      ## No account mutation occurred on this retained lineage.
+    SelfMetadata, ## Only upgrade changed the invoking service's metadata.
+    Unsupported   ## At least one broader mutation requires later publication support.
   AccumulationEjectTarget* = distinct uint64 ## Full register identity; self and out-of-range values return WHO without narrowing.
   AccumulationTransferDestination* = distinct uint64 ## Full register domain; high bits are rejected as WHO before narrowing to ServiceIndex.
   AccumulationTransferIndex* = distinct uint64 ## Outgoing ordinal is neither a service identity nor a transfer amount.
@@ -71,6 +75,7 @@ type
   EffectData = ref object # Current implications retain separate initial provenance, accounts, yield, provisions and transfers.
     initial: InitialAccumulationContext
     accounts: StateStoreSnapshot
+    accountScope: AccumulationAccountScope
     nextService: ServiceIndex
     staging: ValidatorStateSnapshot
     queues: AuthorizationSnapshot
@@ -121,8 +126,15 @@ func value*[T](outcome: AccumulationEffectResult[T]): T {.inline,
   outcome.completed
 
 # Build an unpublished successor sharing frozen components; each operation replaces only its selected fields.
-proc successorData(previous: EffectData, accounts: StateStoreSnapshot): EffectData =
-  EffectData(initial: previous.initial, accounts: accounts, nextService: previous.nextService,
+proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
+    selfMetadata = false): EffectData =
+  var scope = previous.accountScope
+  if not sameStateSnapshot(previous.accounts, accounts):
+    # Only the upgrade operation can certify a self-only metadata successor; unsupported ancestry is sticky.
+    scope = if selfMetadata and scope != AccumulationAccountScope.Unsupported:
+      AccumulationAccountScope.SelfMetadata else: AccumulationAccountScope.Unsupported
+  EffectData(accountScope: scope, initial: previous.initial, accounts: accounts,
+    nextService: previous.nextService,
     staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
     output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
 
@@ -145,6 +157,16 @@ proc effectAccounts*(context: AccumulationEffectContext): AccumulationEffectResu
       AccumulationEffectError.Uninitialized) # No default owner grants a fabricated map.
   AccumulationEffectResult[StateStoreSnapshot](status: AccumulationEffectError.None,
     completed: context.data.accounts)
+
+proc effectAccountScope*(context: AccumulationEffectContext): AccumulationEffectResult[
+    AccumulationAccountScope] =
+  ## Read this immutable lineage's proven account-change scope; defaults carry no successful classification.
+  ## This observation cannot replace the batch's exact input/prior ownership or terminal selection proofs.
+  if context.data == nil:
+    return AccumulationEffectResult[AccumulationAccountScope](
+      status: AccumulationEffectError.Uninitialized) # A default is not an untouched initialized context.
+  AccumulationEffectResult[AccumulationAccountScope](status: AccumulationEffectError.None,
+    completed: context.data.accountScope)
 
 proc effectPrivileges*(context: AccumulationEffectContext): AccumulationEffectResult[
     PrivilegeSnapshot] =
@@ -237,7 +259,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): Accumu
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.InvalidContexts)
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
-    accounts: initial.value.contextAccounts.value,
+    accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
     nextService: initial.value.contextInfo.value.nextService,
     staging: initial.value.contextStaging.value, queues: initial.value.contextQueues.value,
     privileges: initial.value.contextPrivileges.value,
@@ -902,7 +924,7 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
     fail(AccumulationEffectError.BackendFailure) # Existing accounts and every retained owner survive hashing refusal.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let candidate = successorData(previous, changed.value)
+  let candidate = successorData(previous, changed.value, selfMetadata = true)
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,

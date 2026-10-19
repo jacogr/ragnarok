@@ -204,9 +204,12 @@ block upgrade_boundary:
   assert array[32, byte](metadata.codeHash) == array[32, byte](hash) and uint64(
       metadata.minimumTransferGas) == 9,
     "upgrade changes current metadata while original guest reaches halt"
-  assert prepare(fixture, first, execute(fixture, 1)).error ==
-      AccumulationBatchError.UnsupportedAccountEffects,
-    "selected code upgrade requires future account-effect merge support"
+  let plan = prepare(fixture, first, execute(fixture, 1)).value
+  var published = fixture.state
+  discard applyAccumulationBatch(published, plan).value
+  assert published.snapshot.value.lookup(chapterServiceKey(StateChapter(255),
+    ServiceIndex(42))).value.bytes == record.bytes,
+    "proven selected self-metadata upgrade publishes without losing its incoming credit"
 
 block grow_heap_gate:
   let fixture = batchFixture(firstEnvelope = guestEnvelope([@[10'u8, 1], @[50'u8, 0]]))
