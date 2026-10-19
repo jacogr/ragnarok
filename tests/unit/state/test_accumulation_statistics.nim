@@ -5,7 +5,8 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[ready_reconciliation, accumulation_publication, block_activity,
+import ../../../src/state/[recent_history, ready_reconciliation, accumulation_publication,
+  block_activity,
   service_activity,
   accumulation_accounts,
   accumulation_statistics,
@@ -17,7 +18,7 @@ import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistic
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_account_timestamps,
   service_activity_context, block_activity_context, accumulation_publication_context,
-  ready_reconciliation_context, arc_evidence]
+  ready_reconciliation_context, recent_history_context, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -37,9 +38,10 @@ proc completed(source: PreparedAccumulationReentry): CompletedAccumulationReentr
   completeAccumulationReentry(source, runs, skips, executionLimits()).value
 
 # Finalize only after actual guest rounds have reached an idle entry under a finite fixture depth.
-proc finished(fixture: ReentryFixture): PreparedFinalAccumulation =
+proc finished(fixture: ReentryFixture, outputPolicy = OutputLogConfig(items: ElementLimit(0),
+    maxBytes: ByteLimit(1))): PreparedFinalAccumulation =
   let limits = AccumulationOutputHistoryLimits(rounds: ElementLimit(6), executions: ElementLimit(10),
-    log: OutputLogConfig(items: ElementLimit(0), maxBytes: ByteLimit(1)))
+    log: outputPolicy)
   if not fixture.source.reentryInfo.value.dispatch:
     return prepareFinalAccumulation(fixture.source.reentrySource.value,
         limits).value # Earliest genuine stopped form.
@@ -182,6 +184,7 @@ proc main() {.raises.} =
     detachedActivity = checkServiceActivity(stats, incoming = true)
   assert detachedActivity.serviceActivityInfo.value.services == 3
   assert detachedActivity.serviceActivitySource.value.statisticsInfo.value.reports == 4
+  var publishedRecent = default(PublishedRecentHistory)
   var publishedReady = default(PublishedReadyReconciliation)
   var publishedAccumulation = default(PublishedAccumulation)
   var publishedActivity = default(PublishedBlockActivity)
@@ -198,6 +201,7 @@ proc main() {.raises.} =
     let activity = prepareBlockActivity(services, blockPolicy()).value
     publishedAccumulation = checkAccumulationPublication(activity, fixture.initial.entries, empty)
     publishedReady = checkReadySource(publishedAccumulation, fixture.initial.entries)
+    publishedRecent = checkRecentHistory(publishedReady, fixture.initial.entries)
   assert publishedActivity.publishedActivitySource.value.blockActivityInfo.value.services == 3
   assert publishedActivity.publishedActivityState.value.commitment.entries >
       0 # Published owner alone retains the entire original graph.
@@ -214,9 +218,27 @@ proc main() {.raises.} =
     let batch = prepareAccumulationPublication(activity, publicationPolicy()).value
     let coordinated = publishAccumulation(batch).value
     publishedReady = checkReadySource(coordinated, fixture.initial.entries, pending = true)
+    publishedRecent = checkRecentHistory(publishedReady, fixture.initial.entries)
   assert publishedReady.publishedReadySource.value.readyReconciliationInfo.value.reports == 3
   assert publishedReady.publishedReadyState.value.commitment.entries >
       0 # Detached queue owner retains the exact complete coordinated source graph.
+  block yielded_recent_outputs:
+    let code = recentYieldProgram()
+    let fixture = reentryFixture(blockTemplate(base), firstProgram = code, secondProgram = code,
+      incomingReports = 1, extra = @[blockPrior()])
+    let outputPolicy = OutputLogConfig(items: ElementLimit(4), maxBytes: ByteLimit(145))
+    let finalized = finished(fixture, outputPolicy)
+    let stats = prepareAccumulationStatistics(finalized, policy()).value
+    let services = prepareServiceActivity(stats, activityPolicy()).value
+    let activity = prepareBlockActivity(services, blockPolicy()).value
+    let batch = prepareAccumulationPublication(activity, publicationPolicy()).value
+    let coordinated = publishAccumulation(batch).value
+    let queue = prepareReadyReconciliation(coordinated, readyPolicy()).value
+    let ready = publishReadyReconciliation(queue).value
+    publishedRecent = checkRecentHistory(ready, fixture.initial.entries, yielded = true)
+  assert publishedRecent.publishedRecentSource.value.recentHistoryInfo.value.outputs == 4
+  assert publishedRecent.publishedRecentState.value.commitment.entries >
+      0 # Detached recent owner retains its complete exact source graph.
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))
