@@ -72,14 +72,25 @@ These are local resource ceilings, not protocol constants. Structural decoding d
 key validity, ticket eligibility, ring-root consistency or consensus validity. As with `val_count`,
 the value describes the frozen configured state and does not track later epochs.
 
-**Remaining zero placeholders:** `basic_piece_len` and
-`segment_piece_count` return **0 to mean “not yet derived.” These are not actual chain values.**
-This is an explicitly documented incomplete implementation of their JIP-2 meanings, selected by
-the maintainer; placeholders must not be used to size validator sets, produce tickets or encode data.
-The remaining derivations require additional state interpretation:
+`basic_piece_len` and `segment_piece_count` use the active C(8) population `v`, independently of
+optional pending-roster C(4). GP 0.8.0 `ecoriginalshards` selects the largest positive `d` satisfying
+`d <= v / 3 + 1` and `4104 mod (2 * d) == 0`. Startup caches `basic_piece_len = 2 * d`;
+`segment_piece_count = 4104 / basic_piece_len` is exact. The search is bounded by the already
+validated population (6–1,023 validators, in multiples of three), with at most 342 candidates.
+It performs no Reed–Solomon encoding or data-availability work.
 
-- Erasure-coding sizes must follow GP 0.8.0's validator-dependent original-shard count and fixed
-  4,104-byte segment, with the JIP-2 mapping specified when live-state support is added.
+This maps JIP-2’s historical `W_E`/`W_P` names to the pinned GP’s basic input piece size and segment
+parallelism. For 1,023 validators the values are 684 bytes and six pieces, matching the historical
+GP 0.6.2 definitions; for six validators they are six bytes and 684 pieces. Twelve validators use
+four original shards, not five: divisibility by 4,104 constrains the choice. Neither the core count
+nor the pending roster substitutes for active population. These frozen values do not track epochs
+or describe an independently retained work-report’s historical erasure profile.
+
+All four state-dependent parameter fields now have implemented derivations. **Zero still means
+“not derived”, never an actual chain value:** parameters-only configuration returns zero for all
+four; configured genesis without usable C(4) returns zero only for ticket attempts. This does not
+establish complete JIP-2 support, block import or consensus validity. Consumers must not use
+placeholder zeros to size validator sets, produce tickets or encode data.
 
 References: JIP-2 `parameters()`/Errors at the revision above; [JIP-4](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-4.md)
 `protocol_parameters`; GP 0.8.0 at `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix B
@@ -317,7 +328,10 @@ check actual active populations of 6, 9 and 12 with four configured cores, retai
 batches and notifications. Ticket tests vary pending populations independently of the six active
 validators, exercise both schedule tags, exact division and rounding, malformed/trailing/truncated
 chapters and byte/epoch ceilings. Live genesis fixtures independently expect six active validators;
-the service fixture includes nine pending validators and expects 134 ticket attempts.
+the service fixture includes nine pending validators and expects 134 ticket attempts. Erasure tests
+cover minimum and maximum active populations, divisor-selection boundaries, source isolation,
+batches and notifications; both live genesis fixtures independently expect six-byte pieces and
+684 pieces per segment, even when their pending rosters differ.
 Native tests cover truncation, malformed hex,
 configuration syntax/duplicates, invalid basic settings, snapshot isolation, unavailable configuration,
 argument validation and batches. Compiler probes protect private configuration/result fields and

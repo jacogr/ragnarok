@@ -4,7 +4,8 @@
 ## Immutable configured genesis view, rooted with the existing complete-map store.
 ## Exposes GenesisResult, guarded snapshot accessors, read-only lookup, serviceCount/serviceAt
 ## and captureGenesis. The configured map is trusted as complete; structural validation does not
-## establish consensus or validate every chapter. Optional C(4) supplies a cached RPC ticket limit.
+## establish consensus or validate every chapter. Optional C(4) supplies a cached RPC ticket limit;
+## C(8) also supplies erasure geometry.
 
 import std/[algorithm, assertions]
 import ./parameters
@@ -14,6 +15,10 @@ import ../state/store
 import ../crypto/primitives
 
 type
+  ## Original data bytes in one basic erasure-coding piece, derived from active validators.
+  ErasurePieceLength* = distinct uint64
+  ## Number of basic pieces in one fixed 4104-byte segment.
+  SegmentPieceCount* = distinct uint64
   ## Advertised ticket-attempt limit; zero explicitly represents an unavailable derivation.
   RpcTicketAttempts* = distinct uint64
   ## An ordinal in the retained service list, distinct from a service ID or state key.
@@ -31,6 +36,7 @@ type
     timeslot: uint32
     epochLength: EpochSlots          # Captured with the same parameters as header validation.
     corePopulation: CoreCount
+    pieceLength: ErasurePieceLength  # Derived once from the validated active C(8) population.
     ticketLimit: RpcTicketAttempts   # Cached at capture; optional C(4) never runs in the dispatcher.
     activePopulation: ValidatorCount # Actual C(8) population used for header validation.
     keys: seq[StateKey]              # Private fixed-width copies; at most 16384 entries.
@@ -63,6 +69,11 @@ func header*(value: Genesis): OwnedHeader {.requires: value.ready.} = value.seal
 func cores*(value: Genesis): CoreCount {.requires: value.ready.} = value.corePopulation
 ## Return the copied active validator population from the exactly decoded C(8) roster.
 func activeValidators*(value: Genesis): ValidatorCount {.requires: value.ready.} = value.activePopulation
+## Return the cached GP 0.8.0 basic piece length, independent of optional pending-roster state.
+func basicPieceLength*(value: Genesis): ErasurePieceLength {.requires: value.ready.} = value.pieceLength
+## Return the exact number of basic pieces in a segment; capture proves positive divisibility.
+func segmentPieces*(value: Genesis): SegmentPieceCount {.requires: value.ready.} =
+  SegmentPieceCount(4104 div uint64(value.pieceLength))
 ## Return the cached RPC ticket limit, or its documented zero when C(4) cannot be derived.
 func ticketAttempts*(value: Genesis): RpcTicketAttempts {.requires: value.ready.} = value.ticketLimit
 ## Return the captured epoch-ring length used to decode retained ready state.
@@ -144,6 +155,16 @@ proc stateRoot*(value: Genesis): StateRoot {.requires: value.ready.} = value.sta
 proc lookup*(value: Genesis, key: StateKey): StateStoreResult[StateValue] =
   store.lookup(value.state, key)
 
+## Select GP ecoriginalshards from an already validated active roster, then return twice that count.
+## At most 342 candidates are checked; no allocation or erasure encoding occurs here.
+proc capturePieceLength(validators: ValidatorCount): ErasurePieceLength =
+  let count = uint64(validators)
+  assert count >= 6 and count <= 1023 and count mod 3 == 0
+  var shards = count div 3 + 1
+  while 4104 mod (2 * shards) != 0:
+    dec shards # One always divides 2052, so the search terminates before a zero divisor.
+  ErasurePieceLength(2 * shards)
+
 ## Derive the advertised limit from complete C(4), borrowing only a validated immutable store.
 ## Missing, malformed or policy-limited optional state maps to the documented RPC zero placeholder.
 ## This checks serialization, not key validity, ticket eligibility or Safrole consensus transitions.
@@ -217,6 +238,7 @@ proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
   let hashed = blake2b256(wire)
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
   GenesisResult(status: GenesisError.None, completed: Genesis(ready: true, state: saved.value,
+    pieceLength: capturePieceLength(ValidatorCount(count.value)),
     ticketLimit: captureTicketAttempts(saved.value, CoreCount(cores), EpochSlots(parameters.get(
         epochPeriod))),
     sealedHeader: decoded.value.owner, activePopulation: ValidatorCount(count.value),
