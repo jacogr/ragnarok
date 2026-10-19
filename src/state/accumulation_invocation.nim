@@ -109,6 +109,18 @@ proc findUnusedAccumulationService*(state: StateStoreSnapshot, start: ServiceInd
     candidate = FirstPublicService+(candidate-FirstPublicService+1) mod PublicServiceCount
   AccumulationInvocationResult[ServiceIndex](status: AccumulationInvocationError.LimitExceeded)
 
+proc nextAccumulationService*(state: StateStoreSnapshot, current: ServiceIndex,
+    limit: ServiceProbeLimit): AccumulationInvocationResult[ServiceIndex] =
+  ## Advance a public cursor by 42 cyclically, then probe the caller's explicit membership snapshot.
+  ## Invalid public-domain inputs and exhausted local probe policy expose no replacement ID.
+  let candidate = uint64(uint32(current))
+  if candidate < FirstPublicService or candidate >= PublicServiceEnd:
+    return AccumulationInvocationResult[ServiceIndex](
+        status: AccumulationInvocationError.InvalidIndex) # Never wrap a reserved ID into the public cycle.
+  let advanced = FirstPublicService+(candidate-FirstPublicService+42) mod PublicServiceCount
+  findUnusedAccumulationService(state, ServiceIndex(uint32(advanced)),
+      limit) # At most PublicServiceCount+41 fits before addition/narrowing.
+
 proc bootstrapInfo*(plan: PreparedAccumulationInvocation): AccumulationInvocationResult[
     AccumulationInvocationInfo] =
   ## Copy bootstrap metadata while preserving immutable service/state/input ownership.

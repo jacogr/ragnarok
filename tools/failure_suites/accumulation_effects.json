@@ -209,6 +209,17 @@
         "origin": "designate"
       },
       "name": "accumulation-effect-designate"
+    },
+    {
+      "arguments": [
+        "new"
+      ],
+      "description": "Accumulation service creation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "new"
+      },
+      "name": "accumulation-effect-new"
     }
   ],
   "crypto_library": "crypto",
