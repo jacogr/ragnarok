@@ -118,3 +118,11 @@ source edits after native verification updated comments only, with targeted pinn
 formatting checks; passing behavior checks were retained rather than repeated.
 Next bounded work is ejection/deletion provenance and explicit conflict rules for
 accounts also represented by other executions/skips. Grow_heap stays gated.
+
+## Bounded ejection extension
+
+[Deleted-account publication](pvm-deleted-accounts.md) now captures successful
+ejections under a separate zero-default execution/batch limit. It preserves
+creation proofs and publishes removals/beneficiary credits only for targets outside
+represented service work. Participating-target and prior-ID recreation conflicts,
+outgoing transfers, privilege changes and grow_heap remain gated.

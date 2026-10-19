@@ -35,7 +35,15 @@ type
     SelfMetadata,    ## Only upgrade changed the invoking service's metadata.
     SelfEntries,     ## Bounded unique self storage/request keys accompany selected metadata.
     CreatedAccounts, ## Bounded creation proofs accompany supported self metadata/entries.
+    DeletedAccounts, ## Bounded ejection proofs accompany supported self/created account changes.
     Unsupported      ## At least one broader mutation requires later publication support.
+  AccumulationDeletedAccountIndex* = distinct uint64 ## A deletion ordinal cannot substitute a service identity or ejection target.
+  AccumulationDeletedAccount* = object ## Copied successful-ejection facts; final absence is checked in the producing context.
+    service*: ServiceIndex ## Actual target whose balance was reclaimed by this invocation.
+    requestKey*, preimageKey*: StateKey ## Exact canonical deletion keys, including any physical namespace alias.
+  # Immutable fixed facts retain neither account values nor parent effect graphs.
+  DeletedAccountsData = ref object
+    values: seq[AccumulationDeletedAccount]
   AccumulationCreatedAccountIndex* = distinct uint64 ## A created-account ordinal cannot substitute a service identity.
   AccumulationCreatedAccount* = object ## Copied creation facts remain tied to their producing effect context for final-value extraction.
     service*: ServiceIndex ## Actual reserved/automatic ID chosen by a genuine successful new call.
@@ -93,6 +101,8 @@ type
     accountKeyLimit: ElementLimit
     created: CreatedAccountsData
     createdLimit: ElementLimit
+    deleted: DeletedAccountsData
+    deletedLimit: ElementLimit
     nextService: ServiceIndex
     staging: ValidatorStateSnapshot
     queues: AuthorizationSnapshot
@@ -150,11 +160,12 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
     # Only the upgrade operation can certify a self-only metadata successor; unsupported ancestry is sticky.
     if selfMetadata and scope != AccumulationAccountScope.Unsupported:
       if scope notin {AccumulationAccountScope.SelfEntries,
-          AccumulationAccountScope.CreatedAccounts}:
+          AccumulationAccountScope.CreatedAccounts, AccumulationAccountScope.DeletedAccounts}:
         scope = AccumulationAccountScope.SelfMetadata # Upgrade preserves any existing bounded self-key proof.
     else:
       scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
-  EffectData(created: previous.created, createdLimit: previous.createdLimit,
+  EffectData(deleted: previous.deleted, deletedLimit: previous.deletedLimit,
+    created: previous.created, createdLimit: previous.createdLimit,
     accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
     accountScope: scope, initial: previous.initial, accounts: accounts,
     nextService: previous.nextService,
@@ -212,8 +223,9 @@ proc selfAccountData(previous: EffectData, accounts: StateStoreSnapshot,
   result = successorData(previous, accounts)
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.accountKeyLimit) != 0:
-    result.accountScope = if previous.accountScope == AccumulationAccountScope.CreatedAccounts:
-      AccumulationAccountScope.CreatedAccounts else: AccumulationAccountScope.SelfEntries # Self writers preserve existing child provenance.
+    result.accountScope = if previous.accountScope in {AccumulationAccountScope.CreatedAccounts,
+        AccumulationAccountScope.DeletedAccounts}:
+      previous.accountScope else: AccumulationAccountScope.SelfEntries # Self writers preserve existing membership proofs.
     result.accountKeys = keys
 
 # Bound fixed creation provenance before any candidate account map is hashed or published.
@@ -233,6 +245,26 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
   values[count] = AccumulationCreatedAccount(service: service, requestKey: requestKey)
   AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
     completed: CreatedAccountsData(values: values))
+
+# Bound the exact successful-ejection keys before allocating proof storage or hashing the candidate account map.
+proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex, requestKey,
+    preimageKey: StateKey):
+    AccumulationEffectResult[DeletedAccountsData] =
+  if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
+      previous.deletedLimit) == 0:
+    return AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
+      completed: previous.deleted) # Disabled tracing retains the earlier local ejection behavior.
+  let count = previous.deleted.values.len
+  if uint64(count) >= uint64(previous.deletedLimit) or count >= high(int) div sizeof(AccumulationDeletedAccount):
+    return AccumulationEffectResult[DeletedAccountsData](
+        status: AccumulationEffectError.LimitExceeded) # No candidate balance or partial key owner escapes.
+  var values = newSeq[AccumulationDeletedAccount](count+1)
+  for index, value in previous.deleted.values:
+    values[index] = value # Fixed immutable keys do not retain a chain of old effect versions.
+  values[count] = AccumulationDeletedAccount(service: service, requestKey: requestKey,
+      preimageKey: preimageKey)
+  AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
+    completed: DeletedAccountsData(values: values))
 
 proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffectResult[
     InitialAccumulationContext] =
@@ -313,6 +345,32 @@ proc effectCreatedAccountAt*(context: AccumulationEffectContext,
   assert data != nil # Successful count established the retained immutable owner.
   AccumulationEffectResult[AccumulationCreatedAccount](status: AccumulationEffectError.None,
     completed: data.created.values[int(uint64(index))])
+
+proc effectDeletedAccountCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Count the selected context's genuine ejections; unsupported lineages expose no incomplete membership proof.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized) # A default is not an initialized empty deletion set.
+  if data.accountScope == AccumulationAccountScope.Unsupported:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.InvalidState) # Broader effects cannot impersonate a complete deletion trace.
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.deleted.values.len)
+
+proc effectDeletedAccountAt*(context: AccumulationEffectContext,
+    index: AccumulationDeletedAccountIndex):
+    AccumulationEffectResult[AccumulationDeletedAccount] =
+  ## Copy one fixed deletion fact at a full-width ordinal, bound to this retained account context.
+  let count = context.effectDeletedAccountCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: count.error) # Defaults/unsupported traces expose no payload.
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: AccumulationEffectError.InvalidIndex) # Prove the native index before narrowing.
+  let data = context.data
+  assert data != nil # Successful count proves this immutable owner is initialized.
+  AccumulationEffectResult[AccumulationDeletedAccount](status: AccumulationEffectError.None,
+    completed: data.deleted.values[int(uint64(index))])
 
 proc effectPrivileges*(context: AccumulationEffectContext): AccumulationEffectResult[
     PrivilegeSnapshot] =
@@ -397,11 +455,11 @@ proc effectsSource*(effects: AccumulationEffects): AccumulationEffectResult[
     completed: data.source)
 
 proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
-    accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(
-        0)): AccumulationEffectResult[
+    accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(0),
+        deletedAccounts = ElementLimit(0)): AccumulationEffectResult[
     AccumulationEffects] =
   ## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
-  ## accountWriteKeys bounds unique self keys; createdAccounts independently bounds genuine creation facts. Zero retains the earlier gates.
+  ## accountWriteKeys bounds self keys; createdAccounts/deletedAccounts independently bound membership facts. Zero retains the earlier gates.
   let initial = contexts.initialContext(AccumulationDimension.Regular)
   if initial.error != AccumulationContextError.None:
     # Only successfully prepared immutable contexts can authorize host state effects.
@@ -411,6 +469,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
     created: CreatedAccountsData(values: @[]), createdLimit: createdAccounts,
+    deleted: DeletedAccountsData(values: @[]), deletedLimit: deletedAccounts,
     nextService: initial.value.contextInfo.value.nextService,
     staging: initial.value.contextStaging.value, queues: initial.value.contextQueues.value,
     privileges: initial.value.contextPrivileges.value,
@@ -1040,7 +1099,8 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   let candidate = successorData(previous, changed.value)
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.createdLimit) != 0:
-    candidate.accountScope = AccumulationAccountScope.CreatedAccounts # Only actual successful new calls can certify foreign additions.
+    candidate.accountScope = if previous.accountScope == AccumulationAccountScope.DeletedAccounts:
+      AccumulationAccountScope.DeletedAccounts else: AccumulationAccountScope.CreatedAccounts # New preserves earlier ejection facts.
     candidate.created = captured.value
   candidate.nextService = next
   let current = AccumulationEffectContext(data: candidate)
@@ -1275,6 +1335,9 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
     StateWrite(key: credited.key, kind: StateWriteKind.Put, value: credited.value)]
   if array[31, byte](preimageKey.value) != array[31, byte](requestKey.value):
     writes.add(StateWrite(key: preimageKey.value, kind: StateWriteKind.Delete)) # Equal pinned namespace keys need only one physical deletion.
+  let captured = prepareDeletedAccount(previous, service, requestKey.value, preimageKey.value)
+  if captured.error != AccumulationEffectError.None:
+    fail(captured.error) # Bound deletion proof capacity before hashing the candidate or publishing reclaimed balance.
   let changed = working.apply(writes)
   case changed.error
   of StateStoreError.None:
@@ -1285,7 +1348,12 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
     fail(AccumulationEffectError.BackendFailure) # Old balances and all target entries survive failed hashing.
   else:
     fail(AccumulationEffectError.InvalidState) # Namespace collisions or other invariants expose no partial successor.
-  let current = AccumulationEffectContext(data: successorData(previous, changed.value))
+  let candidate = successorData(previous, changed.value)
+  if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
+      previous.deletedLimit) != 0:
+    candidate.accountScope = AccumulationAccountScope.DeletedAccounts # Only successful eligible eject calls certify these foreign removals.
+    candidate.deleted = captured.value
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))

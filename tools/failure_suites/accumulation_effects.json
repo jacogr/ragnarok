@@ -80,6 +80,39 @@
     },
     {
       "arguments": [
+        "deleted-count"
+      ],
+      "description": "Accumulation effect deleted-count extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "deleted-count"
+      },
+      "name": "accumulation-effect-deleted-count"
+    },
+    {
+      "arguments": [
+        "deleted-at"
+      ],
+      "description": "Accumulation effect deleted-at extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "deleted-at"
+      },
+      "name": "accumulation-effect-deleted-at"
+    },
+    {
+      "arguments": [
+        "deleted-index"
+      ],
+      "description": "Accumulation effect deleted-index extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "deleted-index"
+      },
+      "name": "accumulation-effect-deleted-index"
+    },
+    {
+      "arguments": [
         "default"
       ],
       "description": "Accumulation effect selected-success guard",
