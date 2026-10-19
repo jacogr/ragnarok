@@ -3,13 +3,13 @@
 
 ## Execute a prepared accumulation CPU with its own fetch environment and implemented host calls.
 ## Guarded results separate guest outcomes, engine refusals and unavailable host functionality.
-## Retains storage/queue/privilege/checkpoint/yield/provide implications beside guest outcomes.
+## Retains storage/queue/staging/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_fetch]
 import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
-    state_privileges, state_authorization, work_report, bounded]
+    state_privileges, state_authorization, work_report, state_safrole, assurances, bounded]
 import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects, store]
 
 type
@@ -29,6 +29,7 @@ type
   ## Callback-local immutable fetch ownership cannot be substituted by the guest or caller.
   DispatchContext = object
     parameters: Parameters
+    staging: ValidatorStateConfig
     queues: AuthorizationConfig
     privileges: PrivilegeConfig
     fetch: FetchContext
@@ -535,6 +536,76 @@ proc assignResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
     return hostFailure(AccumulationDispatchError.InvalidContext) # Repeated state-boundary validation must agree.
   hostSuccess[AccumulationDispatchError](response)
 
+# Designate charges the full item cost before capturing records or checking current authority.
+proc designateResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let count = uint64(cpu.registers[8])
+  let lowProduct = (count and 0xffffffff'u64)*302+1100 # Below 2^41; retain its exact carry.
+  let highProduct = (count shr 32)*302+(lowProduct shr 32) # Below 2^41, including all high count bits.
+  let low = ((highProduct and 0xffffffff'u64) shl 32) or (lowProduct and 0xffffffff'u64)
+  let charged = chargedResponse(cpu, memory, low, highProduct shr 32)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve the existing signed-negative gas representation refusal.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No memory/profile/count/authority work before affordability.
+  let cores = context.parameters.get(coreCount)
+  if cores != uint64(context.staging.cores):
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Prepared and protocol population domains must agree.
+  if count > 0x100000000'u64 div 336:
+    response.action = HostAction.Panic # The natural interval cannot fit physical RAM; prove before multiplying.
+    return hostSuccess[AccumulationDispatchError](response)
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(336*count),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # All raw record bytes, without a count prefix, precede protocol refusal checks.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Preserve r7 and both effect versions even for a known invalid count.
+    return hostSuccess[AccumulationDispatchError](response)
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture policy is not a guest verdict.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no records.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  if count < 6 or count mod 3 != 0 or count div 3 > cores or
+      uint32(current.effectInfo.value.service) != uint32(
+          current.effectPrivileges.value.privilegeInfo.value.delegator):
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH covers both bad population and current authority.
+    return hostSuccess[AccumulationDispatchError](response)
+  let extent = stateValidatorSize(ValidatorCount(count), context.staging)
+  if extent.error in {StateComponentError.LimitExceeded, StateComponentError.LengthOverflow}:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Preflight component/native typed extents before allocation.
+  if extent.error != StateComponentError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # A validated protocol count must agree with codec policy.
+  var validators = newSeq[StateValidator](int(count))
+  for i in 0..<validators.len:
+    var bs = default(array[32, byte])
+    var ed = default(array[32, byte])
+    var bls = default(array[144, byte])
+    var metadata = default(array[128, byte])
+    for j in 0..<32:
+      bs[j] = captured.value[i*336+j] # Complete raw record extent proves every fixed field access.
+      ed[j] = captured.value[i*336+32+j]
+    for j in 0..<144:
+      bls[j] = captured.value[i*336+64+j] # Preserve the entire opaque BLS encoding without validation.
+    for j in 0..<128:
+      metadata[j] = captured.value[i*336+208+j] # Metadata finishes the exact 336-octet record.
+    validators[i] = StateValidator(bandersnatch: StateBsKey(bs), ed25519: StateEdKey(ed),
+      bls: StateBlsKey(bls), metadata: StateValidatorMetadata(metadata))
+  let changed = recordAccumulationDesignate(context.effects, validators, context.staging)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value # Serialized C(7) and its typed owner publish together.
+    response.registers[7] = RegisterValue(0) # OK, preserving record order and duplicate/zero entries.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # No fabricated protocol resource code.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No partial state on Merklization refusal.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # State-boundary validation must agree with the host.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -567,11 +638,13 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     blessResponse(context, cpu, memory) # Manager-authorized immutable role and allowance replacement.
   of 16:
     assignResponse(context, cpu, memory) # Current assigner replaces its ordered queue and authority together.
+  of 17:
+    designateResponse(context, cpu, memory) # Current delegator replaces the ordered staging roster.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 17, 19..25:
+  of 1, 19..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
@@ -612,8 +685,9 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
   let initialized = prepareAccumulationEffects(initial.value)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
-  var context = DispatchContext(parameters: parameters, queues: contextConfig.queues,
-      privileges: contextConfig.privileges, fetch: captured.value, copyLimit: copyLimit,
+  var context = DispatchContext(parameters: parameters, staging: contextConfig.staging,
+      queues: contextConfig.queues, privileges: contextConfig.privileges, fetch: captured.value,
+          copyLimit: copyLimit,
 
 effects: initialized.value, provisionLimits: provisionLimits)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
