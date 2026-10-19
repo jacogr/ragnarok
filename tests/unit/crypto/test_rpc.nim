@@ -10,7 +10,7 @@
 import std/[assertions, syncio, base64]
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../../src/codec/state_trie import StateEntry
-from ../../../src/codec/state_layout import chapterKey, StateChapter
+from ../../../src/codec/state_layout import chapterKey, chapterServiceKey, StateChapter
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
 
@@ -992,7 +992,7 @@ assert respond("[" & rootRequest & "," & rootRequest & "]", pinnedInfo) ==
 
 ## Capture a synthetic linked header and posterior roster/time map; signatures/execution are not asserted.
 proc childSnapshot(parent: BlockSnapshot, atSlot: uint32, settings: Parameters,
-    badParent = false, badRoot = false, activity: seq[byte] = @[]): BlockSnapshotResult =
+    badParent = false, badRoot = false, activity: seq[byte] = @[], accounts: seq[StateEntry] = @[]): BlockSnapshotResult =
   var wire = newSeq[byte](297)
   let identity = array[32, byte](parent.blockHash)
   let root = array[32, byte](parent.stateRoot)
@@ -1016,6 +1016,8 @@ proc childSnapshot(parent: BlockSnapshot, atSlot: uint32, settings: Parameters,
         value: roster)) # Match the previous validator population.
     entries.add(StateEntry(key: chapterKey(StateChapter(13)),
         value: activity)) # Capture explicit test C(13) bytes.
+  for account in accounts:
+    entries.add(account) # Explicit synthetic account entries model creation, mutation and malformed imports.
   captureBlockSnapshot(wire, entries, settings)
 
 let historySeed = genesisView(capturedGenesis)
@@ -1239,6 +1241,76 @@ for iteration in 0..<20:
   retireStatisticsSubscriptions() # Acyclic session destruction retires both normal and terminal notifications.
 assert getOccupiedMem() <= statsSubscriptionBaseline + 256
 
+# Service-data subscriptions distinguish absent accounts from malformed records and bind each selector independently.
+const SubscribeAccount = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeServiceData\",\"params\":[42,false],\"id\":61}"
+let unsubscribeAccount = UnsubscribeBest.replace("unsubscribeBestBlock", "unsubscribeServiceData")
+let accountBlob = quote(repeat("A", 119) & "=") # Independent Base64 encoding of the fixture's 89 zero bytes.
+let absentAccountUpdate = initialBestUpdate.replace("subscribeBestBlock",
+    "subscribeServiceData").replace(
+  "\"slot\":7}", "\"slot\":7,\"value\":null}")
+let presentAccountUpdate = absentAccountUpdate.replace("\"value\":null", "\"value\":" & accountBlob)
+let accountFailure = statsFailure.replace("subscribeStatistics", "subscribeServiceData").replace(
+  "Invalid, unavailable or oversized activity statistics", "Invalid or unavailable service data")
+var accountSession = default(RpcSession)
+assert "-32601" in respond(SubscribeAccount, serviceInfo)
+assert "\"code\":0" in respond(SubscribeAccount, info, accountSession)
+assert "Finalized chain view unavailable" in respond(SubscribeAccount.replace("false", "true"),
+    serviceInfo, accountSession)
+assert "\"code\":0" in respond(SubscribeAccount.replace("42,false", "43,false"), serviceInfo, accountSession)
+for bad in ["", "42", "42,false,0", "-1,false", "4294967296,false", "42.0,false", "\"42\",false",
+    "null,false", "42,0", "42,null", "42,\"false\"", "[],false"]:
+  assert "-32602" in respond(SubscribeAccount.replace("42,false", bad), serviceInfo,
+      accountSession) # Argument failure consumes no ID.
+assert respond(SubscribeAccount, withGenesis, accountSession) == SubscribedBest
+assert accountSession.nextUpdate() == absentAccountUpdate
+assert respond(SubscribeAccount.replace("42,false", "41,false"), withGenesis, accountSession) ==
+    SubscribedBest.replace("\"result\":1", "\"result\":2")
+assert accountSession.nextUpdate() == absentAccountUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert respond(SubscribeAccount.replace("42,false", "43,false"), withGenesis, accountSession) ==
+    SubscribedBest.replace("\"result\":1", "\"result\":3")
+assert accountSession.nextUpdate() == absentAccountUpdate.replace("\"subscription\":1", "\"subscription\":3")
+assert accountSession.queueChainUpdates(serviceInfo.chain.bestBlock)
+assert accountSession.nextUpdate() == presentAccountUpdate
+assert accountSession.nextUpdate() == absentAccountUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert accountSession.nextUpdate() == accountFailure.replace("\"subscription\":1", "\"subscription\":3")
+assert accountSession.queueChainUpdates(withGenesis.chain.bestBlock)
+assert accountSession.nextUpdate() == absentAccountUpdate # Removal is a null update, not a terminal error.
+assert accountSession.nextUpdate() == absentAccountUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert accountSession.nextUpdate() == "" # Only the malformed account's subscription was retired.
+assert respond(UnsubscribeBest, serviceInfo, accountSession) == UnsubscribedBest.replace("true", "false")
+assert respond(unsubscribeStats, serviceInfo, accountSession) == UnsubscribedBest.replace("true", "false")
+assert respond(unsubscribeAccount, serviceInfo, accountSession) == UnsubscribedBest
+assert accountSession.queueChainUpdates(serviceInfo.chain.bestBlock)
+assert accountSession.nextUpdate() == absentAccountUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert accountSession.nextUpdate() == "" # Cancellation does not affect the independent absent-service selector.
+var accountBoundary = default(RpcSession)
+assert respond(SubscribeAccount.replace("42,false", "4294967295,false"), serviceInfo,
+    accountBoundary) == SubscribedBest
+assert accountBoundary.nextUpdate() == presentAccountUpdate # The maximum nominal service index remains exact.
+var accountBatch = default(RpcSession)
+assert respond("[" & SubscribeAccount & "," & unsubscribeAccount & "]", serviceInfo,
+    accountBatch) ==
+  "[" & SubscribedBest & "," & UnsubscribedBest & "]"
+assert accountBatch.nextUpdate() == ""
+assert respond(SubscribeAccount.replace(",\"id\":61", ""), serviceInfo, accountBatch) == ""
+assert accountBatch.nextUpdate() == presentAccountUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert respond(unsubscribeAccount.replace("[1]", "[2]").replace(",\"id\":62", ""), serviceInfo,
+    accountBatch) == ""
+assert accountBatch.queueChainUpdates(serviceInfo.chain.bestBlock)
+assert accountBatch.nextUpdate() == ""
+
+## Repeated present/missing service updates must release owned metadata and notification storage.
+proc retireAccountSubscriptions() =
+  var retired = default(RpcSession)
+  discard respond(SubscribeAccount, serviceInfo, retired)
+  assert retired.queueChainUpdates(withGenesis.chain.bestBlock)
+  assert retired.queueChainUpdates(serviceInfo.chain.bestBlock)
+retireAccountSubscriptions()
+let accountSubscriptionBaseline = getOccupiedMem()
+for iteration in 0..<20:
+  retireAccountSubscriptions() # Temporary metadata copies and queued strings have acyclic lifetimes.
+assert getOccupiedMem() <= accountSubscriptionBaseline + 256
+
 ## Repeated connection retirement must release queued notifications and copied tentative session storage.
 proc retireSubscriptions() =
   var retired = default(Connection)
@@ -1423,6 +1495,44 @@ proc publicationLifecycle() =
   owner.tick(0)
   assert publicationReply(survivor[1]) == frame(statsFailure)
   assert owner.connections[1].opened # Invalid statistics terminate only their subscription, not the connection.
+  var accountPacket = masked(SubscribeAccount)
+  assert sendBytes(survivor[1], accountPacket.toCString(), csize_t(accountPacket.len), 0) ==
+      accountPacket.len
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+      "\"result\":2"))
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(absentAccountUpdate.replace("\"subscription\":1",
+      "\"subscription\":2").replace(genesisHash,
+    base64.encode(array[32, byte](missingStatsHead.value.blockHash))).replace("\"slot\":7",
+        "\"slot\":30"))
+  var metadata = newSeq[byte](89)
+  for atSlot in 31'u32..34'u32:
+    var accounts: seq[StateEntry] = @[]
+    if atSlot == 31 or atSlot == 32:
+      if atSlot == 32:
+        metadata[33] = 1 # Alter the account balance while retaining the supported version and framing.
+      accounts.add(StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)),
+          value: metadata))
+    elif atSlot == 34:
+      accounts.add(StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: @[
+          1'u8])) # Unsupported version is not absence.
+    let accountHead = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value,
+        accounts = accounts)
+    assert owner.publishBlock(accountHead) == ViewAdvanceError.None
+    owner.tick(0)
+    if atSlot == 34:
+      assert publicationReply(survivor[1]) == frame(accountFailure.replace("\"subscription\":1",
+          "\"subscription\":2")) # Only this account subscription terminates.
+    else:
+      let value = if atSlot == 33: "null" else: quote(base64.encode(
+          metadata)) # Service removal remains a successful update.
+      let expected = absentAccountUpdate.replace("\"subscription\":1",
+          "\"subscription\":2").replace(genesisHash,
+        base64.encode(array[32, byte](accountHead.value.blockHash))).replace("\"slot\":7",
+            "\"slot\":" & $atSlot).replace("\"value\":null", "\"value\":" & value)
+      assert publicationReply(survivor[1]) == frame(expected)
+  assert owner.connections[1].opened
   owner.close()
   assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
   owner.tick(0)

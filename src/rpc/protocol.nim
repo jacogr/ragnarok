@@ -8,7 +8,7 @@
 ## responses. configuredParameters and configuredGenesis validate bounded chainspec text into
 ## owned parameter and genesis snapshots;
 ## parameters() derives active-roster erasure geometry and pending-roster ticket limits;
-## missing state uses zero. RpcSession owns bounded best-block/statistics subscriptions and updates.
+## missing state uses zero. RpcSession owns bounded chain subscriptions and serialized updates.
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
@@ -41,11 +41,12 @@ type
   ## Connection-local subscription identity; zero is reserved for an unused fixed table entry.
   SubscriptionId = distinct uint32
   ## Supported chain subscriptions share capacity and IDs, but use their own cancellation method.
-  SubscriptionKind {.pure.} = enum BestBlock, Statistics
+  SubscriptionKind {.pure.} = enum BestBlock, Statistics, ServiceData
   ## One active subscription; zero identity marks a vacant entry regardless of its default kind.
   Subscription = object
     identity: SubscriptionId
     kind: SubscriptionKind
+    service: ServiceIndex # Nominal account selector, used only by service-data subscriptions.
   ## One owned notification, kept separately from the transport's possibly partly written frame.
   SubscriptionUpdate = object
     identity: SubscriptionId
@@ -346,7 +347,8 @@ proc error(id: string, code: int, message: string): string =
 
 ## Build a JIP-2 notification with either a complete result or a terminal human-readable error.
 proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure: string): string =
-  let methodName = if kind == SubscriptionKind.BestBlock: "subscribeBestBlock" else: "subscribeStatistics"
+  let methodName = if kind == SubscriptionKind.BestBlock: "subscribeBestBlock"
+    elif kind == SubscriptionKind.Statistics: "subscribeStatistics" else: "subscribeServiceData"
   let payload = if failure.len == 0: "\"result\":" & value else: "\"error\":" & quote(failure)
   "{\"jsonrpc\":\"2.0\",\"method\":" & quote(methodName) & ",\"params\":{\"subscription\":" &
     $uint32(identity) & "," & payload & "}}"
@@ -359,6 +361,17 @@ proc statisticsUpdate(head: BlockSnapshot): string =
   let blockInfo = descriptor(head)
   blockInfo[0..^2] & ",\"value\":" & quote(base64.encode(found.value.bytes)) & "}"
 
+## Encode one validated account record or an explicit missing-service null; malformed is never absence.
+proc serviceDataUpdate(head: BlockSnapshot, service: ServiceIndex): string =
+  let found = services.serviceData(head, service, ByteLimit(MaxBlobReplyBytes))
+  var value = "null"
+  if found.error == ServiceReadError.None:
+    value = quote(base64.encode(found.value.bytes)) # Exact account bytes use the existing query validator.
+  elif found.error != ServiceReadError.Missing:
+    return "" # Missing is a valid update; malformed, unsupported or unreadable records are failures.
+  let blockInfo = descriptor(head)
+  blockInfo[0..^2] & ",\"value\":" & value & "}"
+
 ## Append an already sized notification; callers reserve both a FIFO slot and its serialized bytes.
 proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: string) =
   session.pending[session.pendingCount] = SubscriptionUpdate(identity: identity, text: text)
@@ -367,7 +380,8 @@ proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: stri
 
 ## Queue all active updates atomically, or leave the session intact if either queue limit is exceeded.
 ## Decode statistics at most once per session, only when requested; failed statistics emit a terminal
-## error for those subscribers while best-block subscriptions continue. No state snapshots are retained.
+## error for those subscribers. Each service-data subscriber reads one fixed account record; only its
+## failures terminate it. Other subscriptions continue. No state snapshots are retained.
 proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): bool =
   if head.error != GenesisError.None:
     return false # Failed captures never expose a descriptor or mutate pending updates.
@@ -385,12 +399,17 @@ proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): boo
   let blockInfo = descriptor(head.value)
   let activity = if wantsStatistics: statisticsUpdate(head.value) else: ""
   var messages = default(array[MaxSubscriptions, string])
+  var failed = default(array[MaxSubscriptions, bool])
   var bytes = session.pendingBytes
   for index, item in session.active:
     if uint32(item.identity) != 0:
-      let failure = if item.kind == SubscriptionKind.Statistics and activity.len == 0:
-        "Invalid, unavailable or oversized activity statistics" else: ""
-      let value = if item.kind == SubscriptionKind.Statistics: activity else: blockInfo
+      let value = if item.kind == SubscriptionKind.Statistics: activity
+        elif item.kind == SubscriptionKind.ServiceData: serviceDataUpdate(head.value, item.service)
+        else: blockInfo # Account selectors are independent; each bounded subscription reads its own service.
+      failed[index] = value.len == 0
+      let failure = if not failed[index]: ""
+        elif item.kind == SubscriptionKind.ServiceData: "Invalid or unavailable service data"
+        else: "Invalid, unavailable or oversized activity statistics"
       messages[index] = updateText(item.identity, item.kind, value, failure)
       if messages[index].len > MaxSubscriptionQueueBytes - bytes:
         return false # No messages or terminal removals have committed yet.
@@ -399,7 +418,7 @@ proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): boo
     let item = session.active[index] # Copy the fixed record before mutating the queue/table.
     if uint32(item.identity) != 0:
       session.enqueueUpdate(item.identity, messages[index]) # Commit only after the entire publication fits.
-      if item.kind == SubscriptionKind.Statistics and activity.len == 0:
+      if failed[index]:
         session.active[index] = default(Subscription) # Its queued error is terminal; unrelated subscriptions survive.
   true
 
@@ -421,13 +440,21 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
   if parameters >= 0 and values[parameters].kind != arrayValue:
     return error(id, -32602, "Expected positional params") # Named arguments are not JIP-2 calls.
   let kind = if methodName in ["subscribeStatistics",
-      "unsubscribeStatistics"]: SubscriptionKind.Statistics else: SubscriptionKind.BestBlock
-  if methodName in ["subscribeBestBlock", "subscribeStatistics"]:
-    if kind == SubscriptionKind.Statistics:
-      if parameters < 0 or values[parameters].next != parameters + 2 or
-          values[parameters + 1].kind != literalValue or values[parameters + 1].text notin ["true", "false"]:
+      "unsubscribeStatistics"]: SubscriptionKind.Statistics
+    elif methodName in ["subscribeServiceData", "unsubscribeServiceData"]: SubscriptionKind.ServiceData
+    else: SubscriptionKind.BestBlock # Dispatch admits only the explicitly supported method families.
+  if methodName in ["subscribeBestBlock", "subscribeStatistics", "subscribeServiceData"]:
+    var service = 0'u32
+    if kind != SubscriptionKind.BestBlock:
+      let count = if kind == SubscriptionKind.ServiceData: 2 else: 1
+      if parameters < 0 or values[parameters].next != parameters + count + 1:
+        return error(id, -32602, "Expected positional subscription arguments") # All selectors and flags are explicit.
+      if kind == SubscriptionKind.ServiceData and not serviceNumber(values[parameters + 1], service):
+        return error(id, -32602, "Expected uint32 service ID") # Reject narrowing, floats and nonnumeric selectors.
+      let flag = values[parameters + count]
+      if flag.kind != literalValue or flag.text notin ["true", "false"]:
         return error(id, -32602, "Expected finalized boolean") # Never interpret numbers, null or containers as flags.
-      if values[parameters + 1].text == "true":
+      if flag.text == "true":
         return error(id, 0, "Finalized chain view unavailable") # Do not substitute best-chain state for finality.
     elif parameters >= 0 and values[parameters].next != parameters + 1:
       return error(id, -32602, "Expected no parameters") # Best-block subscriptions have no finalized flag.
@@ -441,16 +468,19 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
         break
     if free < 0 or session.pendingCount == MaxSubscriptionUpdates or session.lastId == high(uint32):
       return error(id, 0, "Subscription capacity exhausted") # Never wrap IDs or overrun bounded slots.
-    let value = if kind == SubscriptionKind.Statistics: statisticsUpdate(
-        head.value) else: descriptor(head.value)
+    let value = if kind == SubscriptionKind.Statistics: statisticsUpdate(head.value)
+      elif kind == SubscriptionKind.ServiceData: serviceDataUpdate(head.value, ServiceIndex(service))
+      else: descriptor(head.value) # Initial values use the same validation as publication updates.
     if value.len == 0:
-      return error(id, 0, "Invalid, unavailable or oversized activity statistics") # No initial success without a valid value.
+      let failure = if kind == SubscriptionKind.ServiceData: "Invalid or unavailable service data"
+        else: "Invalid, unavailable or oversized activity statistics"
+      return error(id, 0, failure) # No initial success without a valid value.
     let identity = SubscriptionId(session.lastId + 1)
     let message = updateText(identity, kind, value, "")
     if message.len > MaxSubscriptionQueueBytes - session.pendingBytes:
       return error(id, 0, "Subscription capacity exhausted") # Byte refusal cannot consume an ID or discard older updates.
     inc session.lastId
-    session.active[free] = Subscription(identity: identity, kind: kind)
+    session.active[free] = Subscription(identity: identity, kind: kind, service: ServiceIndex(service))
     session.enqueueUpdate(identity, message)
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $session.lastId & "}"
   var number = 0'u32
@@ -489,7 +519,7 @@ proc clientInfo(info: ClientInfo, stateful: bool): string =
       GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") & ",\"finalizedBlock\":null")
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
   result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
-      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\"" else: "") & "]")
+      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\"" else: "") & "]")
   result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -522,7 +552,8 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     i = token.next
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if stateful and methodName in ["subscribeBestBlock", "unsubscribeBestBlock",
-      "subscribeStatistics", "unsubscribeStatistics"]:
+      "subscribeStatistics", "unsubscribeStatistics", "subscribeServiceData",
+      "unsubscribeServiceData"]:
     let response = chainSubscription(values, parameters, methodName, id, info, session)
     return if hasId: response else: "" # Notifications execute but never receive a JSON-RPC reply.
   if not hasId: return "" # All remaining methods are read-only and have no notification side effects.
