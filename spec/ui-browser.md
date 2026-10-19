@@ -27,6 +27,22 @@ The Nim 2.2.12 executable from the already pinned formatter distribution bootstr
 upstream backend; its bytes are checked against the pinned archive before execution. Application
 code is compiled by Nimony, not Nim 2. Source/backend/bootstrap identities govern backend reuse.
 
+Upstream manages `nativenif` as a sibling checkout pinned by `src/nativenif.commit`, not a
+Git submodule. This project currently restores both source repositories from checksum-pinned
+archives under ignored `build/`; neither is a project submodule. The Nimony source revision
+must equal the nightly compiler revision, and the nativenif revision must equal that source's
+recorded dependency pin. These sources provide the missing backend; the Nimony compiler itself
+continues to come from the pinned nightly binary distribution.
+
+**Temporary bootstrap — remove when the pinned nightly ships `jorogumo`.** When updating the
+compiler pin, check the official Linux amd64 and macOS arm64 packages for `bin/jorogumo`.
+Once both supported packages include it, use that packaged binary from the same toolchain as
+`nimony`, preserve backend identity in the UI compiler cache, and delete `tools/setup_web.py`,
+`spec/web-toolchain.json`, its bootstrap-specific tests and the Make `web-toolchain` wiring.
+Remove the two source downloads and bootstrap-only Nim invocation too; do not retain a parallel
+self-build fallback. Keep the Nimony browser compilation, asset embedding and real-browser
+verification, and rerun `make check-ui` on the packaged backend before removing this workaround.
+
 `make ui-assets` invokes `nimony j --browser -d:release --mm:arc -d:ragnarokBrowser`, with the
 verified backend on that subprocess's PATH. `src/ui/client.nim` contains the application;
 `src/ui/static/` contains HTML/CSS. The result is `build/ui/{index.html,style.css,app.js}` and
