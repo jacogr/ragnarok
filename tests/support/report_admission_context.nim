@@ -97,7 +97,7 @@ proc transcript(domain: string, seed: array[32, byte]): seq[byte] =
 
 ## Copy a template into an authored report whose recent/lookup tuples refer to the same actual parent chain.
 proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash, lookupHash: array[
-    32, byte], mode: int, refinementGas = high(uint64)): OwnedReport =
+    32, byte], mode: int, refinementGas = high(uint64), refinement: seq[RefineLoad] = @[]): OwnedReport =
   let raw = reportBytes(reportFor(base, core, [10'u64]))
   var value = decodeReportBorrowed(raw, 2).value
   value.header.packageHash.bytes = default(array[32, byte])
@@ -110,6 +110,8 @@ proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash
   value.header.lookupSlot = LookupSlot(0)
   value.header.lookupStateRoot.bytes = default(array[32, byte])
   value.digests[0].refine.gasUsed = Gas(refinementGas) # Optional bounded activity keeps multi-report aggregation inside its natural domain.
+  if refinement.len > core:
+    value.digests[0].refine = refinement[core] # Explicit per-core loads override the default before signing.
   value.prerequisiteCount = 0
   value.lookupCount = 0
   if mode == 3: value.header.stateRoot.bytes[0] = value.header.stateRoot.bytes[
@@ -144,7 +146,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
         byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[],
             poolCopies = 1, refinementGas = high(uint64),
     historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32, withTicket = false,
-    shiftPending = false, guaranteeSlot = 0'u32): Context =
+    shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[RefineLoad] = @[]): Context =
   ## Author a signed advancing block (slot 2 by default), then run real disputes/Safrole/assurance processing.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
   ## Optional ready rows and belt peaks enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
@@ -271,7 +273,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   let target = if targetSlot != 0: targetSlot else: (if mode in [11, 12]: 6'u32 else: 2'u32)
   var children = newSeq[OwnedReport](reports)
   for i in 0..<reports: children[i] = report(selectedBase, i, root, parentHash, lookupHash,
-      mode, refinementGas) # Signed metadata includes corrected parent root and authored refinement work.
+      mode, refinementGas, refinement) # Signed metadata includes corrected parent root and authored refinement work.
   var guarantees = newSeq[Guarantee](reports)
   let signedSlot = if guaranteeSlot == 0: target else: guaranteeSlot
   let signed = certify(children, signedSlot, punished)
