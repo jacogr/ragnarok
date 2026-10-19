@@ -5,13 +5,14 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_statistics, accumulation_finalization, accumulation_outputs,
+import ../../../src/state/[accumulation_accounts, accumulation_statistics,
+  accumulation_finalization, accumulation_outputs,
   accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
   accumulation_execution,
   accumulation_inputs, accumulation_service, accumulation_dispatch, accumulation_skip, store]
 import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
-  accumulation_continuation_execution_context, arc_evidence]
+  accumulation_continuation_execution_context, accumulation_account_timestamps, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -72,6 +73,7 @@ proc main() {.raises.} =
   var wire = newSeq[byte](raw.len)
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
+  checkAccountProjection() # Pure malformed/missing/current account cases cannot fabricate a block certificate.
   let source = finished(reentryFixture(base))
   failHash(3)
   let plan = prepareAccumulationStatistics(source, policy()).value
@@ -158,12 +160,21 @@ proc main() {.raises.} =
       AccumulationStatisticsError.InvalidIndex
   assert hashCalls() == 0
   failHash(0)
+  checkAccountTimestamps(plan, [42'u32, 99'u32])
+  checkAccountTimestamps(skipped, [42'u32, 99'u32])
+  checkAccountTimestamps(allowance, [42'u32, 99'u32])
+  checkAccountTimestamps(omitted, [42'u32])
+  checkAccountTimestamps(noActivity, [])
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))
     detached = prepareAccumulationStatistics(local, policy()).value
   checkRow(detached.statisticsAt(StatisticsServiceIndex(1)).value, 99, 2, 66)
   assert detached.statisticsSource.value.finalAccumulationInfo.value.pendingReports == 0
+  let detachedAccounts = prepareAccumulationAccounts(detached, accountPolicy()).value
+  detached = default(PreparedAccumulationStatistics) # The account owner alone now retains this independently built statistics graph.
+  assert detachedAccounts.accumulationAccountSource.value.statisticsInfo.value.services == 2
+  assert detachedAccounts.accumulationAccountInfo.value.updates == 2
   let before = getOccupiedMem()
   failHash(3)
   for iteration in 0..<1000:

@@ -53,7 +53,8 @@ source/map identity, detached lifetime, hash-free preparation and 1,000 ARC cycl
 result/privacy/nominal guards and the registered native suite; run inventory, Python tooling and
 pinned formatting. Reuse unchanged finalizer, collector and PVM evidence.
 
-C(13) coordination with other activity, last-accumulation account timestamps, queue/history updates,
+[Account timestamps](pvm-accumulation-timestamps.md) now update existing active accounts privately.
+C(13) coordination with other activity, queue/history updates,
 transfer/account/privilege integration and whole-block publication remain open. M1 framing is
 complete; full state serialization and accumulation/block parity remain open.
 

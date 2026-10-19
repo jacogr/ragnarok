@@ -1,0 +1,14 @@
+{
+  "source": "tests/native/accumulation_account_results.nim",
+  "build_name": "accumulation-account-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-account-default", "diagnostic": "outcome.status == None", "description": "Accumulation account default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-account-refused", "diagnostic": "outcome.status == None", "description": "Accumulation account refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-account-info", "diagnostic": "outcome.status == None", "description": "Accumulation account info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-account-source", "diagnostic": "outcome.status == None", "description": "Accumulation account source extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-account-state", "diagnostic": "outcome.status == None", "description": "Accumulation account state extraction guard"},
+    {"identity": {"reason": "wrong-metadata"}, "arguments": ["wrong-metadata"], "name": "accumulation-account-wrong-metadata", "diagnostic": "outcome.status == MetadataFailure", "description": "Accumulation account wrong-metadata extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-account-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation account wrong-state extraction guard"}
+  ]
+}

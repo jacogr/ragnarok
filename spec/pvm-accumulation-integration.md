@@ -43,8 +43,9 @@ now binds outgoing values and gas to initial recursive preparation.
 paid-gas restoration and transfer-first inputs across later rounds.
 
 Processed-transfer counts and gross-gas reconciliation are now implemented in
-[statistics](pvm-transfer-statistics.md). Next bounded work: account
-last-accumulation updates from that genuine activity mapping.
+[statistics](pvm-transfer-statistics.md). [Account timestamps](pvm-accumulation-timestamps.md)
+now update existing active accounts on an actual private finalized map. Next bounded
+work: C(13) activity coordination.
 Unsupported account ancestry and participating-target deletion conflicts retain their existing local gates.
 
 ## Remaining boundaries after the merge

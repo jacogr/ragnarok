@@ -16,7 +16,7 @@ import ../../src/state/[accumulation_execution, accumulation_round, accumulation
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ../../src/crypto/primitives
 import ./[accumulation_execution_context, accumulation_reentry_context,
-  pvm_accumulation_context, pvm_accumulation_program, report_context]
+  pvm_accumulation_context, pvm_accumulation_program, report_context, accumulation_account_timestamps]
 
 # Observe preparation's private account phase without replacing guest execution, source certificates or backend verdicts.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -289,6 +289,7 @@ proc checkTransferReentry*(base: OwnedReport) =
     assert uint64(row.statistics.counters[ServiceMeasure.AccumulationCount]) == 0
   assert hashCalls() == 0
   failHash(0)
+  checkAccountTimestamps(statistics, [42'u32, 77'u32, 88'u32, 99'u32])
   let gross = uint64(source.later.executionContinuation.value.continuationPlan.value.continuationSource.value.executionInfo.value.gasUsed) +
     uint64(source.later.executionInfo.value.gasUsed)+uint64(
         firstDone.executionInfo.value.gasUsed)+uint64(secondDone.executionInfo.value.gasUsed)
@@ -471,6 +472,8 @@ proc checkTransferReentry*(base: OwnedReport) =
   let skippedRow = detachedStatistics.statisticsAt(StatisticsServiceIndex(1)).value
   assert uint32(skippedRow.service) == 77 and uint64(skippedRow.statistics.accumulationGas) == 0
   assert uint64(skippedRow.statistics.counters[ServiceMeasure.TransferCount]) == 4
+  checkAccountTimestamps(zeroStatistics, [42'u32, 77'u32, 99'u32])
+  checkAccountTimestamps(detachedStatistics, [42'u32, 77'u32, 99'u32])
   let enormous = finished(fixture(base, large = true).later)
   failHash(3)
   assert prepareAccumulationStatistics(enormous, wide).error ==
