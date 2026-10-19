@@ -9,6 +9,7 @@
 
 import std/[assertions, syncio, base64]
 import ../../../src/chain/[services, statistics, beefy, reports]
+from ../../../src/codec/state_requests import serviceRequestKey, RequestError, error, value
 from ../../../src/codec/state_trie import StateEntry
 from ../../../src/codec/state_layout import chapterKey, chapterServiceKey, StateChapter
 from ../../../src/codec/state_service_values import serviceStorageKey, servicePreimageKey,
@@ -1478,6 +1479,57 @@ assert "\"code\":0" in respond(maximumPreimageCall, oversizedPreimageInfo, bound
 assert respond(subscribePreimage, serviceInfo, boundedPreimages) == SubscribedBest.replace(
     "\"result\":1", "\"result\":2") # Rejected creations consume no IDs.
 
+## Build exact request subscriptions with an independently frozen zero hash and caller-selected length.
+proc subscribeRequest(length: string): string =
+  "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeServiceRequest\",\"params\":[42,\"" & repeat("A",
+      43) & "=\"," & length & ",false],\"id\":61}"
+let unsubscribeRequest = unsubscribePreimage.replace("unsubscribeServicePreimage",
+    "unsubscribeServiceRequest")
+let absentRequestUpdate = absentPreimageUpdate.replace("subscribeServicePreimage",
+    "subscribeServiceRequest")
+let requestFailure = preimageFailure.replace("subscribeServicePreimage",
+    "subscribeServiceRequest").replace("Invalid, unavailable or oversized service preimage",
+    "Invalid, unavailable or ambiguous service request")
+var requestSession = default(RpcSession)
+assert "-32601" in respond(subscribeRequest("0"), requestsInfo)
+assert "\"code\":0" in respond(subscribeRequest("0"), info, requestSession)
+assert "Finalized chain view unavailable" in respond(subscribeRequest("0").replace("false", "true"),
+    requestsInfo, requestSession)
+for bad in ["-1", "4294967296", "1.0", "true", "null", "\"1\""]:
+  assert "-32602" in respond(subscribeRequest(bad), requestsInfo,
+      requestSession) # Lengths parse exactly without narrowing or allocations based on them.
+assert "-32602" in respond(subscribeRequest("0").replace(repeat("A", 43) & "=", "a2V5"),
+    requestsInfo, requestSession)
+assert "-32602" in respond(subscribeRequest("0").replace(",false", ""), requestsInfo, requestSession)
+for bad in ["4", "5", "6", "4294967294", "4294967295"]:
+  assert "\"code\":0" in respond(subscribeRequest(bad), requestsInfo,
+      requestSession) # Malformed and ambiguous present entries cannot become absence.
+for index in 0..<4:
+  assert respond(subscribeRequest($index), requestsInfo, requestSession) == SubscribedBest.replace(
+      "\"result\":1", "\"result\":" & $(index + 1))
+  assert requestSession.nextUpdate() == absentRequestUpdate.replace("\"subscription\":1",
+      "\"subscription\":" & $(index + 1)).replace("\"value\":null", "\"value\":" & histories[
+      index]) # Each length independently selects its complete history.
+assert requestSession.queueChainUpdates(requestsInfo.chain.bestBlock)
+for index in 0..<4:
+  assert requestSession.nextUpdate() == absentRequestUpdate.replace("\"subscription\":1",
+      "\"subscription\":" & $(index + 1)).replace("\"value\":null", "\"value\":" & histories[
+      index]) # Published values use the same serializer as initial replies.
+assert respond(unsubscribePreimage, requestsInfo, requestSession) == UnsubscribedBest.replace(
+    "true", "false")
+assert respond(unsubscribeRequest, requestsInfo, requestSession) == UnsubscribedBest
+assert requestSession.queueChainUpdates(withGenesis.chain.bestBlock)
+for identity in 2..4:
+  assert requestSession.nextUpdate() == absentRequestUpdate.replace("\"subscription\":1",
+      "\"subscription\":" & $identity) # Missing accounts leave surviving selectors active.
+assert requestSession.nextUpdate() == ""
+var requestBatch = default(RpcSession)
+assert respond("[" & subscribeRequest("0") & "," & unsubscribeRequest & "]", requestsInfo,
+    requestBatch) == "[" & SubscribedBest & "," & UnsubscribedBest & "]"
+assert requestBatch.nextUpdate() == ""
+assert respond(subscribeRequest("9").replace(",\"id\":61", ""), requestsInfo, requestBatch) == ""
+assert requestBatch.nextUpdate() == absentRequestUpdate.replace("\"subscription\":1", "\"subscription\":2")
+
 ## Repeated connection retirement must release queued notifications and copied tentative session storage.
 proc retireSubscriptions() =
   var retired = default(Connection)
@@ -1786,6 +1838,44 @@ proc publicationLifecycle() =
           "\"value\":null", "\"value\":" & value)
       assert publicationReply(survivor[1]) == frame(
           expected) # Valid addition and subsequent deletion both preserve the subscription.
+  assert owner.connections[1].opened
+  let requestKey = serviceRequestKey(ServiceIndex(42), default(ServicePreimageHash), RequestLength(
+      0), ByteLimit(32))
+  assert requestKey.error == RequestError.None
+  var requestPacket = masked(subscribeRequest("0"))
+  assert sendBytes(survivor[1], requestPacket.toCString(), csize_t(requestPacket.len), 0) ==
+      requestPacket.len
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+      "\"result\":5"))
+  owner.tick(0)
+  discard publicationReply(survivor[1]) # Current head has no request entry.
+  for atSlot in 44'u32..49'u32:
+    var entries = @[accountEntry]
+    var value = "null"
+    if atSlot <= 47:
+      var wire = @[byte(atSlot - 44)]
+      for index in 0..<int(atSlot - 44):
+        for octet in [byte(index + 1), 0'u8, 0'u8, 0'u8]:
+          wire.add(octet) # Independent E4 slots encode each history state.
+      entries.add(StateEntry(key: requestKey.value, value: wire))
+      value = ["[]", "[1]", "[1,2]", "[1,2,3]"][int(atSlot - 44)]
+    elif atSlot == 49:
+      entries.add(StateEntry(key: requestKey.value, value: @[
+          4'u8])) # Invalid count terminates only the request subscription.
+    let requestHead = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value,
+        accounts = entries)
+    assert owner.publishBlock(requestHead) == ViewAdvanceError.None
+    owner.tick(0)
+    if atSlot == 49:
+      assert publicationReply(survivor[1]) == frame(requestFailure.replace("\"subscription\":1",
+          "\"subscription\":5")) # Malformed is neither null nor an empty history.
+    else:
+      let expected = absentRequestUpdate.replace("\"subscription\":1",
+          "\"subscription\":5").replace(genesisHash, base64.encode(array[32, byte](
+          requestHead.value.blockHash))).replace("\"slot\":7", "\"slot\":" & $atSlot).replace(
+          "\"value\":null", "\"value\":" & value)
+      assert publicationReply(survivor[1]) == frame(expected) # Updates include a successful null on deletion.
   assert owner.connections[1].opened
   owner.close()
   assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
