@@ -13,44 +13,38 @@ import ./[natural, bounded, composite, state_layout, state_trie]
 export ServiceIndex
 
 type
-  ## A service's accumulation output commitment is distinct from a state/trie root of equal width.
-  OutputCommitment* = distinct array[32, byte]
-  ## One complete fixed value pairs an E4 service identifier with its opaque 32-byte commitment.
-  AccumulationOutput* = object
+  OutputCommitment* = distinct array[32, byte] ## A service's accumulation output commitment is distinct from a state/trie root of equal width.
+  AccumulationOutput* = object ## One complete fixed value pairs an E4 service identifier with its opaque 32-byte commitment.
     service*: ServiceIndex
     commitment*: OutputCommitment
-  ## Sequence extraction uses an ordinal, not a service ID or byte count.
-  OutputLogIndex* = distinct uint64
-  ## Caller resource policy bounds element work/storage and the complete count-prefixed payload.
-  OutputLogConfig* = object
+  OutputLogIndex* = distinct uint64 ## Sequence extraction uses an ordinal, not a service ID or byte count.
+  OutputLogConfig* = object ## Caller resource policy bounds element work/storage and the complete count-prefixed payload.
     items*: ElementLimit
     maxBytes*: ByteLimit
-  ## Default/failed alternatives expose only reasons, never values, owners or partial progress.
-  OutputLogError* {.pure.} = enum
+  OutputLogError* {.pure.} = enum ## Default/failed alternatives expose only reasons, never values, owners or partial progress.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, LengthOverflow, InvalidOwner, InvalidIndex
-  ## Only selected complete success contains an application payload.
-  OutputLogResult*[T] = object
+  OutputLogResult*[T] = object ## Only selected complete success contains an application payload.
     case status: OutputLogError
     of None:
-      completed: T # Success must be selected before application fields are read.
+      completed: T             # Success must be selected before application fields are read.
     else:
-      discard      # Failure cannot fabricate an empty sequence or default commitment.
+      discard                  # Failure cannot fabricate an empty sequence or default commitment.
   ## Private acyclic ARC storage contains independent fixed pairs and no borrowed caller memory.
   OutputLogData = ref object
     values: seq[AccumulationOutput]
-  ## Copied value handles retain immutable storage; replacing one handle leaves other copies unchanged.
-  OutputLogSnapshot* = object
+  OutputLogSnapshot* = object ## Copied value handles retain immutable storage; replacing one handle leaves other copies unchanged.
     data: nil OutputLogData
-  ## Prefix success binds its complete captured sequence to the exact consumed byte extent.
-  OutputLogRead* = object
+  OutputLogRead* = object ## Prefix success binds its complete captured sequence to the exact consumed byte extent.
     snapshot*: OutputLogSnapshot
     consumed*: int
 
-## Failure reasons are read-only and never authorize payload or progress access.
-func error*[T](value: OutputLogResult[T]): OutputLogError = value.status
-## Complete public payloads and private extent proofs require successful selection.
+func error*[T](value: OutputLogResult[T]): OutputLogError =
+  ## Failure reasons are read-only and never authorize payload or progress access.
+  value.status
 func value*[T](value: OutputLogResult[T]): T
-    {.inline, requires: value.status == OutputLogError.None.} = value.completed
+    {.inline, requires: value.status == OutputLogError.None.} =
+  ## Complete public payloads and private extent proofs require successful selection.
+  value.completed
 
 ## Bound announced counts, native wire/storage extents and whole-parent policy before access/allocation.
 proc extent(count: uint64, prefix: int, config: OutputLogConfig): OutputLogResult[int] =
@@ -64,9 +58,9 @@ proc extent(count: uint64, prefix: int, config: OutputLogConfig): OutputLogResul
     return OutputLogResult[int](status: OutputLogError.LimitExceeded) # Even empty sequences consume their canonical count byte.
   OutputLogResult[int](status: OutputLogError.None, completed: bytes)
 
-## Decode a complete ordered sequence prefix after full count/extent preflight, without sorting or deduplication.
 proc decodeOutputLog*(input: openArray[byte], config: OutputLogConfig): OutputLogResult[
     OutputLogRead] =
+  ## Decode a complete ordered sequence prefix after full count/extent preflight, without sorting or deduplication.
   let count = natural.decode(input)
   if not count.ok:
     if count.error == DecodeError.truncated:
@@ -93,9 +87,9 @@ proc decodeOutputLog*(input: openArray[byte], config: OutputLogConfig): OutputLo
   OutputLogResult[OutputLogRead](status: OutputLogError.None,
     completed: OutputLogRead(snapshot: OutputLogSnapshot(data: data), consumed: checked.value))
 
-## Encode stable ordered source pairs into fresh C(16) bytes after complete extent preflight.
 proc outputLogEntry*(values: openArray[AccumulationOutput],
     config: OutputLogConfig): OutputLogResult[StateEntry] =
+  ## Encode stable ordered source pairs into fresh C(16) bytes after complete extent preflight.
   let count = natural.encode(JamNatural(values.len))
   let checked = extent(uint64(values.len), count.len, config)
   if checked.error != OutputLogError.None:
@@ -113,16 +107,16 @@ proc outputLogEntry*(values: openArray[AccumulationOutput],
     cursor += 36
   OutputLogResult[StateEntry](status: OutputLogError.None, completed: entry)
 
-## Return copied sequence cardinality without exposing the private mutable array representation.
 proc outputLogCount*(owner: OutputLogSnapshot): OutputLogResult[int] =
+  ## Return copied sequence cardinality without exposing the private mutable array representation.
   let data = owner.data
   if data == nil:
     return OutputLogResult[int](status: OutputLogError.InvalidOwner) # Default handles differ from captured zero-length logs.
   OutputLogResult[int](status: OutputLogError.None, completed: data.values.len)
 
-## Extract one independent fixed pair through its retained owner and nominal sequence ordinal.
 proc outputLogAt*(owner: OutputLogSnapshot, index: OutputLogIndex): OutputLogResult[
     AccumulationOutput] =
+  ## Extract one independent fixed pair through its retained owner and nominal sequence ordinal.
   let data = owner.data
   if data == nil:
     return OutputLogResult[AccumulationOutput](status: OutputLogError.InvalidOwner) # Missing storage cannot return a fabricated service/commitment.

@@ -13,15 +13,11 @@ import ./[natural, bounded, state_layout, state_trie, state_service_values]
 export ServiceIndex, ServicePreimageHash
 
 type
-  ## Advertised preimage length has the complete E4 domain and is distinct from timeslots or byte-policy ceilings.
-  RequestLength* = distinct uint32
-  ## Absolute request-history timeslots are independent from service IDs and advertised lengths.
-  RequestSlot* = distinct uint32
-  ## Count determines the history mode exactly: requested, supplied, removed, or restored.
-  RequestState* {.pure.} = enum
+  RequestLength* = distinct uint32 ## Advertised preimage length has the complete E4 domain and is distinct from timeslots or byte-policy ceilings.
+  RequestSlot* = distinct uint32 ## Absolute request-history timeslots are independent from service IDs and advertised lengths.
+  RequestState* {.pure.} = enum ## Count determines the history mode exactly: requested, supplied, removed, or restored.
     Requested, Available, Unavailable, Reavailable
-  ## Fixed tagged alternatives contain only their actual timeslots; default is the valid empty requested history.
-  RequestHistory* = object
+  RequestHistory* = object ## Fixed tagged alternatives contain only their actual timeslots; default is the valid empty requested history.
     case mode: RequestState
     of Requested:
       discard                                     # A not-yet-supplied request has no fabricated availability time.
@@ -31,26 +27,21 @@ type
       availableSlot, unavailableSlot: RequestSlot # Original supply and later removal timeslots.
     of Reavailable:
       originalSlot, removedSlot, restoredSlot: RequestSlot # Original supply/removal and latest restoration.
-  ## Caller policy can be stricter than the protocol's fixed three-slot maximum.
-  RequestHistoryConfig* = object
+  RequestHistoryConfig* = object ## Caller policy can be stricter than the protocol's fixed three-slot maximum.
     items*: ElementLimit
     maxBytes*: ByteLimit
-  ## Logical lookup hash bytes and encoded history bytes have independent resource policy.
-  RequestEntryConfig* = object
+  RequestEntryConfig* = object ## Logical lookup hash bytes and encoded history bytes have independent resource policy.
     keyBytes*: ByteLimit
     history*: RequestHistoryConfig
-  ## Default and failed results expose reasons alone, never default histories, keys or partial progress.
-  RequestError* {.pure.} = enum
+  RequestError* {.pure.} = enum ## Default and failed results expose reasons alone, never default histories, keys or partial progress.
     Uninitialized, None, Truncated, NonCanonical, InvalidCount, LimitExceeded, BackendFailure
-  ## Only selected complete success exposes its application payload.
-  RequestResult*[T] = object
+  RequestResult*[T] = object ## Only selected complete success exposes its application payload.
     case status: RequestError
     of None:
-      completed: T # Success is selected through the guarded accessor.
+      completed: T           # Success is selected through the guarded accessor.
     else:
-      discard      # Failed decode cannot appear to be a successful empty requested history.
-  ## Complete prefix decoding returns independent fixed tagged fields and exact consumed extent without a heap owner.
-  RequestHistoryRead* = object
+      discard                # Failed decode cannot appear to be a successful empty requested history.
+  RequestHistoryRead* = object ## Complete prefix decoding returns independent fixed tagged fields and exact consumed extent without a heap owner.
     history*: RequestHistory
     consumed*: int
   ## Private bounded field staging has no input-derived allocation or public unused timeslots.
@@ -58,44 +49,55 @@ type
     count: int
     slots: array[3, RequestSlot]
 
-## Read-only reasons never authorize a default history, key or completed progress.
-func error*[T](value: RequestResult[T]): RequestError = value.status
-## Complete public payloads and private extent proofs require successful selection.
+func error*[T](value: RequestResult[T]): RequestError =
+  ## Read-only reasons never authorize a default history, key or completed progress.
+  value.status
 func value*[T](value: RequestResult[T]): T
-    {.inline, requires: value.status == RequestError.None.} = value.completed
+    {.inline, requires: value.status == RequestError.None.} =
+  ## Complete public payloads and private extent proofs require successful selection.
+  value.completed
 
-## Construct the valid zero-slot Requested shape without any inactive timestamp payload.
-func requestedHistory*(): RequestHistory = RequestHistory(mode: Requested)
-## Construct the one-slot Available shape, preserving the full unsigned supplied-at value.
-func availableHistory*(since: RequestSlot): RequestHistory = RequestHistory(mode: Available,
+func requestedHistory*(): RequestHistory =
+  ## Construct the valid zero-slot Requested shape without any inactive timestamp payload.
+  RequestHistory(mode: Requested)
+func availableHistory*(since: RequestSlot): RequestHistory =
+  ## Construct the one-slot Available shape, preserving the full unsigned supplied-at value.
+  RequestHistory(mode: Available,
     sinceSlot: since)
-## Construct the two-slot Unavailable shape in supplied order, without chronology validation.
 func unavailableHistory*(availableFrom, unavailableFrom: RequestSlot): RequestHistory =
+  ## Construct the two-slot Unavailable shape in supplied order, without chronology validation.
   RequestHistory(mode: Unavailable, availableSlot: availableFrom, unavailableSlot: unavailableFrom)
-## Construct the three-slot Reavailable shape without sorting or repairing its source timeslots.
 func reavailableHistory*(originalFrom, removedAt, restoredAt: RequestSlot): RequestHistory =
+  ## Construct the three-slot Reavailable shape without sorting or repairing its source timeslots.
   RequestHistory(mode: Reavailable, originalSlot: originalFrom, removedSlot: removedAt,
       restoredSlot: restoredAt)
-## Inspect the read-only shape; callers cannot retag a history or manufacture inactive fields.
-func state*(history: RequestHistory): RequestState = history.mode
-## Extract a fixed copied since timestamp only from the selected Available alternative.
+func state*(history: RequestHistory): RequestState =
+  ## Inspect the read-only shape; callers cannot retag a history or manufacture inactive fields.
+  history.mode
 func since*(history: RequestHistory): RequestSlot
-    {.inline, requires: history.mode == RequestState.Available.} = history.sinceSlot
-## Extract a fixed copied availableFrom timestamp only from the selected Unavailable alternative.
+    {.inline, requires: history.mode == RequestState.Available.} =
+  ## Extract a fixed copied since timestamp only from the selected Available alternative.
+  history.sinceSlot
 func availableFrom*(history: RequestHistory): RequestSlot
-    {.inline, requires: history.mode == RequestState.Unavailable.} = history.availableSlot
-## Extract a fixed copied unavailableFrom timestamp only from the selected Unavailable alternative.
+    {.inline, requires: history.mode == RequestState.Unavailable.} =
+  ## Extract a fixed copied availableFrom timestamp only from the selected Unavailable alternative.
+  history.availableSlot
 func unavailableFrom*(history: RequestHistory): RequestSlot
-    {.inline, requires: history.mode == RequestState.Unavailable.} = history.unavailableSlot
-## Extract a fixed copied originalFrom timestamp only from the selected Reavailable alternative.
+    {.inline, requires: history.mode == RequestState.Unavailable.} =
+  ## Extract a fixed copied unavailableFrom timestamp only from the selected Unavailable alternative.
+  history.unavailableSlot
 func originalFrom*(history: RequestHistory): RequestSlot
-    {.inline, requires: history.mode == RequestState.Reavailable.} = history.originalSlot
-## Extract a fixed copied removedAt timestamp only from the selected Reavailable alternative.
+    {.inline, requires: history.mode == RequestState.Reavailable.} =
+  ## Extract a fixed copied originalFrom timestamp only from the selected Reavailable alternative.
+  history.originalSlot
 func removedAt*(history: RequestHistory): RequestSlot
-    {.inline, requires: history.mode == RequestState.Reavailable.} = history.removedSlot
-## Extract a fixed copied restoredAt timestamp only from the selected Reavailable alternative.
+    {.inline, requires: history.mode == RequestState.Reavailable.} =
+  ## Extract a fixed copied removedAt timestamp only from the selected Reavailable alternative.
+  history.removedSlot
 func restoredAt*(history: RequestHistory): RequestSlot
-    {.inline, requires: history.mode == RequestState.Reavailable.} = history.restoredSlot
+    {.inline, requires: history.mode == RequestState.Reavailable.} =
+  ## Extract a fixed copied restoredAt timestamp only from the selected Reavailable alternative.
+  history.restoredSlot
 
 ## Project each tagged source alternative into a private fixed array only for sizing and final commit.
 proc fields(value: RequestHistory): Fields =
@@ -126,9 +128,9 @@ proc extent(count: uint64, config: RequestHistoryConfig): RequestResult[int] =
     return RequestResult[int](status: RequestError.LimitExceeded) # Empty requested state still needs one count discriminator.
   RequestResult[int](status: RequestError.None, completed: bytes)
 
-## Decode one complete canonical fixed-domain history prefix before reading any of its timeslots.
 proc decodeRequestHistory*(input: openArray[byte], config: RequestHistoryConfig): RequestResult[
     RequestHistoryRead] =
+  ## Decode one complete canonical fixed-domain history prefix before reading any of its timeslots.
   let count = natural.decode(input)
   if not count.ok:
     if count.error == DecodeError.truncated:
@@ -156,9 +158,9 @@ proc decodeRequestHistory*(input: openArray[byte], config: RequestHistoryConfig)
   RequestResult[RequestHistoryRead](status: RequestError.None,
     completed: RequestHistoryRead(history: history, consumed: checked.value))
 
-## Derive the exact request key with a fixed E4 advertised length and opaque lookup hash, without length framing.
 proc serviceRequestKey*(service: ServiceIndex, hash: ServicePreimageHash, length: RequestLength,
     maxKeyBytes: ByteLimit): RequestResult[StateKey] =
+  ## Derive the exact request key with a fixed E4 advertised length and opaque lookup hash, without length framing.
   if uint64(maxKeyBytes) < 32:
     return RequestResult[StateKey](status: RequestError.LimitExceeded) # Logical lookup identity is exactly 32 bytes; E4 prefix is fixed overhead.
   var preimage = default(array[36, byte])
@@ -171,9 +173,9 @@ proc serviceRequestKey*(service: ServiceIndex, hash: ServicePreimageHash, length
     return RequestResult[StateKey](status: RequestError.BackendFailure) # No default key after native hash failure.
   RequestResult[StateKey](status: RequestError.None, completed: derived.value)
 
-## Construct one request mapping after complete history/key preflight; returned payload is independent caller storage.
 proc serviceRequestEntry*(service: ServiceIndex, hash: ServicePreimageHash, length: RequestLength,
     history: RequestHistory, config: RequestEntryConfig): RequestResult[StateEntry] =
+  ## Construct one request mapping after complete history/key preflight; returned payload is independent caller storage.
   let source = fields(history)
   let checked = extent(uint64(source.count), config.history)
   if checked.error != RequestError.None:

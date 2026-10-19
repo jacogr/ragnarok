@@ -14,11 +14,9 @@ type
   ReportData = ref object
     value: WorkReport
     wire: seq[byte]
-  # Copying this opaque handle retains the immutable snapshot automatically; no manual release is required.
-  OwnedReport* = object
+  OwnedReport* = object ## Copying this opaque handle retains the immutable snapshot automatically; no manual release is required.
     data: nil ReportData
-  # Fixed/count metadata includes trace length and never exposes mutable bytes or detached source coordinates.
-  OwnedReportInfo* = object
+  OwnedReportInfo* = object ## Fixed/count metadata includes trace length and never exposes mutable bytes or detached source coordinates.
     header*: ReportHeader
     core*: CoreIndex
     authorizer*: AuthorizerHash
@@ -39,9 +37,9 @@ proc reportOwnedError(error: CompositeError): OwnershipError {.raises: [].} =
   of InvalidTag: OwnershipError.InvalidTag # No such work-output variant exists.
   of InvalidSpan: OwnershipError.InvalidSpan # A caller descriptor is invalid.
 
-# Validate every field before retaining only the consumed prefix; Nim allocation exhaustion retains its fail-stop policy.
 proc decodeOwnedReport*(input: openArray[byte], coreCount: uint64): OwnedResult[
     OwnedReport] {.raises: [].} =
+  ## Validate every field before retaining only the consumed prefix; Nim allocation exhaustion retains its fail-stop policy.
   let parsed = decodeReportBorrowed(input, coreCount)
   # A malformed final field cannot create an owner with partially trusted data.
   if parsed.error != CompositeError.None: return ownedFailure[OwnedReport](reportOwnedError(parsed.error))
@@ -50,8 +48,8 @@ proc decodeOwnedReport*(input: openArray[byte], coreCount: uint64): OwnedResult[
   copyMem(addr data.wire[0], unsafeAddr input[0], parsed.consumed)
   ownedSuccess[OwnedReport](OwnedReport(data: data))
 
-# Return copied fixed/count metadata while preserving the owner's private byte/descriptor relationship.
 proc ownedReportInfo*(owner: OwnedReport): OwnedResult[OwnedReportInfo] {.raises: [].} =
+  ## Return copied fixed/count metadata while preserving the owner's private byte/descriptor relationship.
   # Missing owners cannot fabricate successfully validated empty reports.
   # Retain one stable reference so nil analysis and ARC lifetime cover all subsequent reads.
   let data = owner.data
@@ -73,19 +71,19 @@ proc reportOwnerOverlaps(data: ReportData, output: var openArray[byte],
   let b = cast[uint](addr output[0])
   (a <= b and b-a < uint(data.wire.len)) or (b < a and a-b < uint(length))
 
-# Let composed atomic encoders reject overlap with any part of their complete destination in preflight.
-# Only a Boolean leaves this owner; no backing pointer or detached coordinate is exposed.
 proc ownedReportOverlapsOutput*(owner: OwnedReport, output: var openArray[byte]): OwnedResult[
     bool] {.raises: [].} =
+  ## Let composed atomic encoders reject overlap with any part of their complete destination in preflight.
+  ## Only a Boolean leaves this owner; no backing pointer or detached coordinate is exposed.
   # Default owners have no validated storage against which an alias claim can be made.
   # Retain one stable reference so nil analysis and ARC lifetime cover all subsequent reads.
   let data = owner.data
   if data == nil: return ownedFailure[bool](OwnershipError.InvalidOwner)
   ownedSuccess[bool](reportOwnerOverlaps(data, output, output.len))
 
-# Copy authorization output at zero or digest i's successful payload at i+1, always bound to this owner alone.
 proc copyReportBlob*(owner: OwnedReport, index: int, output: var openArray[byte]): OwnedResult[
     int] {.raises: [].} =
+  ## Copy authorization output at zero or digest i's successful payload at i+1, always bound to this owner alone.
   # Owner and signed index proofs precede descriptor access.
   # Retain one stable reference so nil analysis and ARC lifetime cover all subsequent reads.
   let data = owner.data
@@ -107,9 +105,9 @@ proc copyReportBlob*(owner: OwnedReport, index: int, output: var openArray[byte]
     copyMem(addr output[0], unsafeAddr data.wire[blob.offset], blob.length)
   ownedSuccess[int](blob.length)
 
-# Atomically re-emit the canonical private snapshot without exporting its backing bytes.
 proc encodeOwnedReport*(owner: OwnedReport, output: var openArray[byte]): OwnedResult[
     int] {.raises: [].} =
+  ## Atomically re-emit the canonical private snapshot without exporting its backing bytes.
   # A default handle must not masquerade as a validated empty report.
   # Retain one stable reference so nil analysis and ARC lifetime cover all subsequent reads.
   let data = owner.data
@@ -121,8 +119,8 @@ proc encodeOwnedReport*(owner: OwnedReport, output: var openArray[byte]): OwnedR
   copyMem(addr output[0], unsafeAddr data.wire[0], length)
   ownedSuccess[int](length)
 
-# Return copied digest fields with length-only successful output metadata, keeping payloads private to their owner.
 proc ownedReportDigest*(owner: OwnedReport, index: int): OwnedResult[OwnedDigestInfo] {.raises: [].} =
+  ## Return copied digest fields with length-only successful output metadata, keeping payloads private to their owner.
   # Missing owners and signed invalid indices expose only their reason.
   # Retain one stable reference so nil analysis and ARC lifetime cover all subsequent reads.
   let data = owner.data
@@ -137,8 +135,8 @@ proc ownedReportDigest*(owner: OwnedReport, index: int): OwnedResult[OwnedDigest
     codeHash: digest.codeHash, payloadHash: digest.payloadHash, accumulateGas: digest.accumulateGas,
     output: output, refine: digest.refine))
 
-# Return one owned prerequisite identity, never a detached coordinate into caller storage.
 proc ownedReportPrerequisite*(owner: OwnedReport, index: int): OwnedResult[PackageHash] {.raises: [].} =
+  ## Return one owned prerequisite identity, never a detached coordinate into caller storage.
   # Bounds describe decoded membership, not merely unused fixed-array capacity.
   # Retain one stable reference so nil analysis and ARC lifetime cover all subsequent reads.
   let data = owner.data
@@ -147,8 +145,8 @@ proc ownedReportPrerequisite*(owner: OwnedReport, index: int): OwnedResult[Packa
       OwnershipError.InvalidIndex)
   ownedSuccess[PackageHash](data.value.prerequisites[index])
 
-# Return one owned dictionary key/root pair while preserving private backing storage.
 proc ownedReportLookup*(owner: OwnedReport, index: int): OwnedResult[SegmentLookup] {.raises: [].} =
+  ## Return one owned dictionary key/root pair while preserving private backing storage.
   # A null owner or invalid signed index cannot expose default dictionary metadata.
   # Retain one stable reference so nil analysis and ARC lifetime cover all subsequent reads.
   let data = owner.data

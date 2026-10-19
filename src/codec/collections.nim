@@ -10,34 +10,26 @@ import std/assertions
 import ./[natural, fixed_unsigned, bounded]
 
 type
-  # Schema cardinality is distinct from both resource ceilings and serialized byte extents.
-  CollectionCount* = distinct uint64
-  # A fixed-width unsigned scalar keeps its schema in the type, including the valid zero-width domain.
-  CollectionUInt*[width: static[int]] = object
+  CollectionCount* = distinct uint64 ## Schema cardinality is distinct from both resource ceilings and serialized byte extents.
+  CollectionUInt*[width: static[int]] = object ## A fixed-width unsigned scalar keeps its schema in the type, including the valid zero-width domain.
     value*: FixedUnsigned
-  # Fixed octets sort lexicographically by octet, with no length discriminator on individual elements.
-  CollectionBytes*[size: static[int]] = object
+  CollectionBytes*[size: static[int]] = object ## Fixed octets sort lexicographically by octet, with no length discriminator on individual elements.
     bytes*: array[size, byte]
     # A zero-wire-width scalar needs one physical unit for safe standard sequence capacity arithmetic.
     unit: array[ord(size == 0), byte]
-  # Application-defined referenced types cannot extend this closed scalar family gate.
-  CollectionFamily* = JamNatural | CollectionUInt[0] | CollectionUInt[1] | CollectionUInt[2] |
+  CollectionFamily* = JamNatural | CollectionUInt[0] | CollectionUInt[1] | CollectionUInt[2] | ## Application-defined referenced types cannot extend this closed scalar family gate.
     CollectionUInt[3] | CollectionUInt[4] | CollectionUInt[5] | CollectionUInt[6] |
     CollectionUInt[7] | CollectionUInt[8] | CollectionBytes
-  # Dictionary keys and values retain their separate compile-time schemas and logical roles.
-  Entry*[K, V] = object
+  Entry*[K, V] = object ## Dictionary keys and values retain their separate compile-time schemas and logical roles.
     key*: K
     value*: V
-  # Explicit caller policy bounds both entry count and the complete consumed/written parent prefix.
-  CollectionLimits* = object
+  CollectionLimits* = object ## Explicit caller policy bounds both entry count and the complete consumed/written parent prefix.
     items*: ElementLimit
     maxBytes*: ByteLimit
-  # Default/error alternatives never carry a value, owner, initialized count or partial cursor.
-  CollectionError* {.pure.} = enum
+  CollectionError* {.pure.} = enum ## Default/error alternatives never carry a value, owner, initialized count or partial cursor.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, InvalidCount,
     ValueOutOfRange, LengthOverflow, OutputTooSmall, AliasedBuffers, InvalidOwner, InvalidIndex
-  # Select complete success before reading its copied scalar, retained owner or byte extent.
-  CollectionResult*[T] = object
+  CollectionResult*[T] = object ## Select complete success before reading its copied scalar, retained owner or byte extent.
     case status: CollectionError
     of None:
       # Only successful operations expose complete data/progress.
@@ -45,8 +37,7 @@ type
     else:
       # Failed/default operations expose their reason alone.
       discard
-  # Child decoding returns a complete fixed value with its exact canonical prefix extent.
-  ScalarRead*[T] = object
+  ScalarRead*[T] = object ## Child decoding returns a complete fixed value with its exact canonical prefix extent.
     value*: T
     consumed*: int
   # Private layout retains no input pointer and authorizes capture only after complete validation.
@@ -55,39 +46,39 @@ type
   # Immutable typed storage contains only supported value-only scalar schemas, never public mutable sequences.
   SetData[T] = ref object
     values: seq[T]
-  # Copies retain an acyclic immutable snapshot; default differs from a validated empty set.
-  OwnedSet*[T] = object
+  OwnedSet*[T] = object ## Copies retain an acyclic immutable snapshot; default differs from a validated empty set.
     data: nil SetData[T]
   # Dictionary storage copies keys/values as fixed values after every nested field and order check succeeds.
   DictionaryData[K, V] = ref object
     values: seq[Entry[K, V]]
-  # Sets and dictionaries are distinct owners even when their scalar wire widths coincide.
-  OwnedDictionary*[K, V] = object
+  OwnedDictionary*[K, V] = object ## Sets and dictionaries are distinct owners even when their scalar wire widths coincide.
     data: nil DictionaryData[K, V]
-  # Success binds one complete retained owner to the exact consumed prefix for caller cursor advancement.
-  CollectionRead*[T] = object
+  CollectionRead*[T] = object ## Success binds one complete retained owner to the exact consumed prefix for caller cursor advancement.
     owner*: T
     consumed*: int
 
-# Outcomes remain read-only; only complete success authorizes values, owners or progress.
-func error*[T](value: CollectionResult[T]): CollectionError = value.status
-# Supported contracts replace unchecked raw variant-field reads on this compiler.
+func error*[T](value: CollectionResult[T]): CollectionError =
+  ## Outcomes remain read-only; only complete success authorizes values, owners or progress.
+  value.status
 func value*[T](value: CollectionResult[T]): T {.inline, requires: value.status ==
     CollectionError.None.} =
+  ## Supported contracts replace unchecked raw variant-field reads on this compiler.
   value.completed
 
-# Naturals need at least one count/value octet; logical order is numeric rather than wire-byte order.
-proc scalarMinimum*(T: typedesc[JamNatural]): int = 1
+proc scalarMinimum*(T: typedesc[JamNatural]): int =
+  ## Naturals need at least one count/value octet; logical order is numeric rather than wire-byte order.
+  1
 
-# Fixed unsigned schemas have a compile-time supported width; invalid widths cannot instantiate a codec.
 proc scalarMinimum*[W: static[int]](T: typedesc[CollectionUInt[W]]): int {.requires: W >= 0 and W <= 8.} =
+  ## Fixed unsigned schemas have a compile-time supported width; invalid widths cannot instantiate a codec.
   W
 
-# A fixed octet schema contributes exactly its configured number of bytes, including a possible empty value.
-proc scalarMinimum*[N: static[int]](T: typedesc[CollectionBytes[N]]): int = N
+proc scalarMinimum*[N: static[int]](T: typedesc[CollectionBytes[N]]): int =
+  ## A fixed octet schema contributes exactly its configured number of bytes, including a possible empty value.
+  N
 
-# Preserve complete primitive framing errors without publishing a default natural or partial child cursor.
 proc readScalar*(T: typedesc[JamNatural], input: openArray[byte]): CollectionResult[ScalarRead[JamNatural]] =
+  ## Preserve complete primitive framing errors without publishing a default natural or partial child cursor.
   let parsed = natural.decode(input)
   # A natural's inverse rejects incomplete and overlong encodings before any parent ordering decision.
   if not parsed.ok:
@@ -100,9 +91,9 @@ proc readScalar*(T: typedesc[JamNatural], input: openArray[byte]): CollectionRes
   CollectionResult[ScalarRead[JamNatural]](status: CollectionError.None,
     completed: ScalarRead[JamNatural](value: parsed.value, consumed: parsed.consumed))
 
-# Fixed unsigned decoding copies one typed scalar after complete field presence is proved.
 proc readScalar*[W: static[int]](T: typedesc[CollectionUInt[W]], input: openArray[
     byte]): CollectionResult[ScalarRead[CollectionUInt[W]]] =
+  ## Fixed unsigned decoding copies one typed scalar after complete field presence is proved.
   discard scalarMinimum(T)
   let parsed = decodeFixed(input, ByteWidth(W))
   # The compile-time width is valid, so an unsuccessful decoder here can only lack input bytes.
@@ -111,9 +102,9 @@ proc readScalar*[W: static[int]](T: typedesc[CollectionUInt[W]], input: openArra
   CollectionResult[ScalarRead[CollectionUInt[W]]](status: CollectionError.None,
     completed: ScalarRead[CollectionUInt[W]](value: CollectionUInt[W](value: parsed.value), consumed: W))
 
-# Fixed octet decoding copies complete bytes without retaining any borrowed child span.
 proc readScalar*[N: static[int]](T: typedesc[CollectionBytes[N]], input: openArray[
     byte]): CollectionResult[ScalarRead[CollectionBytes[N]]] =
+  ## Fixed octet decoding copies complete bytes without retaining any borrowed child span.
   # Even an empty fixed byte string has a complete value; positive schemas require the entire extent.
   if input.len < N: return CollectionResult[ScalarRead[CollectionBytes[N]]](
       status: CollectionError.Truncated)
@@ -123,30 +114,32 @@ proc readScalar*[N: static[int]](T: typedesc[CollectionBytes[N]], input: openArr
   CollectionResult[ScalarRead[CollectionBytes[N]]](status: CollectionError.None,
     completed: ScalarRead[CollectionBytes[N]](value: value, consumed: N))
 
-# Canonical natural encoding is infallible over its complete nominal uint64 domain.
 proc scalarSize*(value: JamNatural): CollectionResult[int] =
+  ## Canonical natural encoding is infallible over its complete nominal uint64 domain.
   CollectionResult[int](status: CollectionError.None, completed: natural.encode(value).len)
 
-# Source fixed integers must fit their declared width; never silently truncate an overflowing late value.
 proc scalarSize*[W: static[int]](value: CollectionUInt[W]): CollectionResult[int] =
+  ## Source fixed integers must fit their declared width; never silently truncate an overflowing late value.
   discard scalarMinimum(typeof(value))
   let checked = encodeFixed(value.value, ByteWidth(W))
   # Width is a schema constant; source overflow is the only remaining primitive encoding failure.
   if not checked.ok: return CollectionResult[int](status: CollectionError.ValueOutOfRange)
   CollectionResult[int](status: CollectionError.None, completed: W)
 
-# Fixed byte arrays already own exactly their compile-time extent and need no content validation.
 proc scalarSize*[N: static[int]](value: CollectionBytes[N]): CollectionResult[int] =
+  ## Fixed byte arrays already own exactly their compile-time extent and need no content validation.
   CollectionResult[int](status: CollectionError.None, completed: N)
 
-# Natural-key order compares the logical uint64 values, independently of prefix/wire byte order.
-proc scalarLess*(a, b: JamNatural): bool = uint64(a) < uint64(b)
+proc scalarLess*(a, b: JamNatural): bool =
+  ## Natural-key order compares the logical uint64 values, independently of prefix/wire byte order.
+  uint64(a) < uint64(b)
 
-# Little-endian scalar wire order is deliberately not used to sort numeric keys.
-proc scalarLess*[W: static[int]](a, b: CollectionUInt[W]): bool = uint64(a.value) < uint64(b.value)
+proc scalarLess*[W: static[int]](a, b: CollectionUInt[W]): bool =
+  ## Little-endian scalar wire order is deliberately not used to sort numeric keys.
+  uint64(a.value) < uint64(b.value)
 
-# Fixed byte keys use ordinary lexicographic octet order; equal complete keys are not strictly increasing.
 proc scalarLess*[N: static[int]](a, b: CollectionBytes[N]): bool =
+  ## Fixed byte keys use ordinary lexicographic octet order; equal complete keys are not strictly increasing.
   # The first differing octet decides the logical order; later octets cannot reverse it.
   for i in 0..<N:
     # Equal leading octets defer the decision to the next position.
@@ -173,8 +166,8 @@ proc put[N: static[int]](value: CollectionBytes[N], output: var openArray[byte],
   for i in 0..<N: output[cursor+i] = value.bytes[i]
   cursor += N
 
-# Encode one copied JamNatural atomically for generic composition, with typed source/capacity failures.
 proc encodeScalar*(value: JamNatural, output: var openArray[byte]): CollectionResult[int] =
+  ## Encode one copied JamNatural atomically for generic composition, with typed source/capacity failures.
   let measured = scalarSize(value)
   # Invalid scalar sources never authorize a partial field write.
   if measured.error != CollectionError.None: return measured
@@ -186,9 +179,9 @@ proc encodeScalar*(value: JamNatural, output: var openArray[byte]): CollectionRe
   put(copied, output, cursor)
   CollectionResult[int](status: CollectionError.None, completed: cursor)
 
-# Encode one copied CollectionUInt[W] atomically for generic composition, with typed source/capacity failures.
 proc encodeScalar*[W: static[int]](value: CollectionUInt[W], output: var openArray[
     byte]): CollectionResult[int] =
+  ## Encode one copied CollectionUInt[W] atomically for generic composition, with typed source/capacity failures.
   let measured = scalarSize(value)
   # Invalid scalar sources never authorize a partial field write.
   if measured.error != CollectionError.None: return measured
@@ -200,9 +193,9 @@ proc encodeScalar*[W: static[int]](value: CollectionUInt[W], output: var openArr
   put(copied, output, cursor)
   CollectionResult[int](status: CollectionError.None, completed: cursor)
 
-# Encode one copied CollectionBytes[N] atomically for generic composition, with typed source/capacity failures.
 proc encodeScalar*[N: static[int]](value: CollectionBytes[N], output: var openArray[
     byte]): CollectionResult[int] =
+  ## Encode one copied CollectionBytes[N] atomically for generic composition, with typed source/capacity failures.
   let measured = scalarSize(value)
   # Invalid scalar sources never authorize a partial field write.
   if measured.error != CollectionError.None: return measured
@@ -215,8 +208,7 @@ proc encodeScalar*[N: static[int]](value: CollectionBytes[N], output: var openAr
   CollectionResult[int](status: CollectionError.None, completed: cursor)
 
 type
-  # Exported checked scalar operations let Nimony verify generic callers across module boundaries.
-  CollectionScalar* = concept
+  CollectionScalar* = concept ## Exported checked scalar operations let Nimony verify generic callers across module boundaries.
     proc default(T: typedesc[Self]): Self
     proc scalarMinimum(T: typedesc[Self]): int
     proc readScalar(T: typedesc[Self], input: openArray[byte]): CollectionResult[ScalarRead[Self]]
@@ -326,14 +318,14 @@ limits: CollectionLimits): CollectionResult[CollectionRead[OwnedSet[T]]] =
   CollectionResult[CollectionRead[OwnedSet[T]]](status: CollectionError.None,
     completed: CollectionRead[OwnedSet[T]](owner: OwnedSet[T](data: data), consumed: cursor))
 
-# Decode a set with caller-known cardinality and no count discriminator, as C.1.6 directly specifies.
 proc decodeSet*[T: CollectionScalar and CollectionFamily](input: openArray[byte],
     count: CollectionCount, limits: CollectionLimits): CollectionResult[CollectionRead[OwnedSet[T]]] =
+  ## Decode a set with caller-known cardinality and no count discriminator, as C.1.6 directly specifies.
   decodeSetImpl[T](input, count, false, limits)
 
-# Decode an explicitly variable set using C.1.3's canonical natural cardinality discriminator.
 proc decodeVariableSet*[T: CollectionScalar and CollectionFamily](input: openArray[byte],
     limits: CollectionLimits): CollectionResult[CollectionRead[OwnedSet[T]]] =
+  ## Decode an explicitly variable set using C.1.3's canonical natural cardinality discriminator.
   decodeSetImpl[T](input, CollectionCount(0), true, limits)
 
 # Validate every source scalar and strict logical order before capacity, aliases or the first committed byte.
@@ -390,9 +382,9 @@ proc encodeSet*[T: CollectionScalar and CollectionFamily](values: openArray[T],
 output: var openArray[byte]): CollectionResult[int] =
   encodeSetImpl(values, count, false, limits, output)
 
-# Encode an explicitly variable canonical set with one natural element count.
 proc encodeVariableSet*[T: CollectionScalar and CollectionFamily](values: openArray[T],
     limits: CollectionLimits, output: var openArray[byte]): CollectionResult[int] =
+  ## Encode an explicitly variable canonical set with one natural element count.
   encodeSetImpl(values, CollectionCount(uint64(values.len)), true, limits, output)
 
 # Scan every key/value in dictionary order before allocating a retained typed record array.
@@ -428,9 +420,9 @@ proc scanDictionary[K, V: CollectionScalar and CollectionFamily](input: openArra
     previous = key.value.value
   CollectionResult[Layout](status: CollectionError.None, completed: layout)
 
-# Decode a naturally count-prefixed dictionary into an immutable acyclic typed snapshot.
 proc decodeDictionary*[K, V: CollectionScalar and CollectionFamily](input: openArray[byte],
     limits: CollectionLimits): CollectionResult[CollectionRead[OwnedDictionary[K, V]]] =
+  ## Decode a naturally count-prefixed dictionary into an immutable acyclic typed snapshot.
   let scanned = scanDictionary[K, V](input, limits)
   # Parent ownership is granted only after all keys, values, ordering and extents pass.
   if scanned.error != CollectionError.None:
@@ -448,9 +440,9 @@ proc decodeDictionary*[K, V: CollectionScalar and CollectionFamily](input: openA
     completed: CollectionRead[OwnedDictionary[K, V]](owner: OwnedDictionary[K, V](data: data),
         consumed: cursor))
 
-# Encode an already logically ordered dictionary atomically; duplicate keys are errors, never last-value-wins updates.
 proc encodeDictionary*[K, V: CollectionScalar and CollectionFamily](values: openArray[Entry[K, V]],
     limits: CollectionLimits, output: var openArray[byte]): CollectionResult[int] =
+  ## Encode an already logically ordered dictionary atomically; duplicate keys are errors, never last-value-wins updates.
   discard scalarMinimum(K)
   discard scalarMinimum(V)
   # Count policy and typed source extent precede all source iteration and pointer arithmetic.
@@ -496,18 +488,18 @@ proc encodeDictionary*[K, V: CollectionScalar and CollectionFamily](values: open
     put(pair.value, output, cursor)
   CollectionResult[int](status: CollectionError.None, completed: cursor)
 
-# Return copied set cardinality through the matching retained owner, without exposing mutable storage.
 proc setCount*[T: CollectionScalar and CollectionFamily](owner: OwnedSet[T]): CollectionResult[
     CollectionCount] =
+  ## Return copied set cardinality through the matching retained owner, without exposing mutable storage.
   let data = owner.data
   # Defaults cannot masquerade as a validated empty set.
   if data == nil: return CollectionResult[CollectionCount](status: CollectionError.InvalidOwner)
   CollectionResult[CollectionCount](status: CollectionError.None, completed: CollectionCount(uint64(
       data.values.len)))
 
-# Copy one complete scalar value; supported types contain no mutable referenced payload to leak.
 proc setAt*[T: CollectionScalar and CollectionFamily](owner: OwnedSet[T],
     index: int): CollectionResult[T] =
+  ## Copy one complete scalar value; supported types contain no mutable referenced payload to leak.
   let data = owner.data
   # Check ownership before accessing the private sequence, then reject signed index misuse.
   if data == nil: return CollectionResult[T](status: CollectionError.InvalidOwner)
@@ -525,26 +517,26 @@ output: var openArray[byte]): CollectionResult[int] =
   if data == nil: return CollectionResult[int](status: CollectionError.InvalidOwner)
   encodeSet(data.values, count, limits, output)
 
-# Reframe a retained set as an explicitly variable term without copying out or exporting its immutable elements.
 proc encodeOwnedVariableSet*[T: CollectionScalar and CollectionFamily](owner: OwnedSet[T],
     limits: CollectionLimits, output: var openArray[byte]): CollectionResult[int] =
+  ## Reframe a retained set as an explicitly variable term without copying out or exporting its immutable elements.
   let data = owner.data
   # Default snapshots contain no validated elements, even when a caller requests an empty frame.
   if data == nil: return CollectionResult[int](status: CollectionError.InvalidOwner)
   encodeVariableSet(data.values, limits, output)
 
-# Copy complete dictionary cardinality without exporting the key/value array or caller input coordinates.
 proc dictionaryCount*[K, V: CollectionScalar and CollectionFamily](owner: OwnedDictionary[K,
     V]): CollectionResult[CollectionCount] =
+  ## Copy complete dictionary cardinality without exporting the key/value array or caller input coordinates.
   let data = owner.data
   # Defaults differ from successfully captured zero-pair dictionaries.
   if data == nil: return CollectionResult[CollectionCount](status: CollectionError.InvalidOwner)
   CollectionResult[CollectionCount](status: CollectionError.None, completed: CollectionCount(uint64(
       data.values.len)))
 
-# Copy one whole key/value pair through its matching owner; callers cannot mutate private snapshot fields.
 proc dictionaryAt*[K, V: CollectionScalar and CollectionFamily](owner: OwnedDictionary[K, V],
     index: int): CollectionResult[Entry[K, V]] =
+  ## Copy one whole key/value pair through its matching owner; callers cannot mutate private snapshot fields.
   let data = owner.data
   # Ownership and signed bounds are ordinary typed failures rather than unchecked field/index accesses.
   if data == nil: return CollectionResult[Entry[K, V]](status: CollectionError.InvalidOwner)
@@ -552,9 +544,9 @@ proc dictionaryAt*[K, V: CollectionScalar and CollectionFamily](owner: OwnedDict
       status: CollectionError.InvalidIndex)
   CollectionResult[Entry[K, V]](status: CollectionError.None, completed: data.values[index])
 
-# Re-emit immutable dictionary values with all current limits, complete capacity and aliases checked again.
 proc encodeOwnedDictionary*[K, V: CollectionScalar and CollectionFamily](owner: OwnedDictionary[K,
     V], limits: CollectionLimits, output: var openArray[byte]): CollectionResult[int] =
+  ## Re-emit immutable dictionary values with all current limits, complete capacity and aliases checked again.
   let data = owner.data
   # Default handles do not imply validated empty dictionaries.
   if data == nil: return CollectionResult[int](status: CollectionError.InvalidOwner)

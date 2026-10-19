@@ -10,16 +10,12 @@ import ./natural
 import ./fixed_unsigned
 
 type
-  # A byte-string resource ceiling, never confused implicitly with an element count.
-  ByteLimit* = distinct uint64
-  # A sequence-element ceiling; it applies even when elements occupy zero wire bytes.
-  ElementLimit* = distinct uint64
-  # Typed failure reasons shared by the bounded container operations; None denotes success.
-  ContainerError* {.pure.} = enum
+  ByteLimit* = distinct uint64 ## A byte-string resource ceiling, never confused implicitly with an element count.
+  ElementLimit* = distinct uint64 ## A sequence-element ceiling; it applies even when elements occupy zero wire bytes.
+  ContainerError* {.pure.} = enum ## Typed failure reasons shared by the bounded container operations; None denotes success.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
     InvalidWidth, ValueOutOfRange, AliasedBuffers, LengthOverflow
-  # Only this module constructs write results; callers cannot forge or retag successes.
-  WriteResult* = object
+  WriteResult* = object ## Only this module constructs write results; callers cannot forge or retag successes.
     case status: ContainerError
     of None:
       # A completed write owns its extent; failures have no payload alternative.
@@ -27,8 +23,7 @@ type
     else:
       # Failed/default results expose their reason through a read-only accessor.
       discard
-  # A borrowed blob span is readable only after successful decoding; input ownership is unchanged.
-  BlobResult* = object
+  BlobResult* = object ## A borrowed blob span is readable only after successful decoding; input ownership is unchanged.
     case status: ContainerError
     of None:
       # These private coordinates belong to the caller's original buffer.
@@ -36,8 +31,7 @@ type
     else:
       # Neither a default span nor partial progress exists on failure.
       discard
-  # Copied sequence elements belong to caller storage; only success authorizes reading progress.
-  SequenceResult* = object
+  SequenceResult* = object ## Copied sequence elements belong to caller storage; only success authorizes reading progress.
     case status: ContainerError
     of None:
       # Counts and extents stay private so Nimony's raw variant reads cannot bypass checks.
@@ -56,31 +50,34 @@ type
       # Failure has no value, span, count or consumed/written metadata.
       discard
 
-# Read a completed write's reason without exposing a writable discriminator.
-func error*(value: WriteResult): ContainerError = value.status
-# Read a blob decode's reason; default construction remains Uninitialized.
-func error*(value: BlobResult): ContainerError = value.status
-# Read a sequence decode's reason without granting access to success data.
-func error*(value: SequenceResult): ContainerError = value.status
+func error*(value: WriteResult): ContainerError =
+  ## Read a completed write's reason without exposing a writable discriminator.
+  value.status
+func error*(value: BlobResult): ContainerError =
+  ## Read a blob decode's reason; default construction remains Uninitialized.
+  value.status
+func error*(value: SequenceResult): ContainerError =
+  ## Read a sequence decode's reason without granting access to success data.
+  value.status
 
-# Completed output size; Nimony proves success at the call or retains a runtime contract guard.
 func written*(value: WriteResult): int {.inline, requires: value.status == ContainerError.None.} =
+  ## Completed output size; Nimony proves success at the call or retains a runtime contract guard.
   value.byteWritten
-# Payload start in the original borrowed input; failed/default results cannot expose it.
 func offset*(value: BlobResult): int {.inline, requires: value.status == ContainerError.None.} =
+  ## Payload start in the original borrowed input; failed/default results cannot expose it.
   value.byteOffset
-# Payload byte count; the precondition rejects attempts to use a failed decode as an empty blob.
 func length*(value: BlobResult): int {.inline, requires: value.status == ContainerError.None.} =
+  ## Payload byte count; the precondition rejects attempts to use a failed decode as an empty blob.
   value.byteLength
-# Complete blob prefix extent; failures cannot advance a caller cursor.
 func consumed*(value: BlobResult): int {.inline, requires: value.status == ContainerError.None.} =
+  ## Complete blob prefix extent; failures cannot advance a caller cursor.
   value.byteConsumed
-# Number of copied sequence elements; caller storage is readable only after success.
 func count*(value: SequenceResult): int {.inline, requires: value.status == ContainerError.None.} =
+  ## Number of copied sequence elements; caller storage is readable only after success.
   value.elementCount
-# Complete sequence prefix extent; failures expose no progress.
 func consumed*(value: SequenceResult): int {.inline, requires: value.status ==
     ContainerError.None.} =
+  ## Complete sequence prefix extent; failures expose no progress.
   value.byteConsumed
 
 # Check address-range intersection without adding a length to a possibly large pointer value.
@@ -119,17 +116,17 @@ proc readFrame(input: openArray[byte], stride: int, limit: uint64): FrameResult 
   FrameResult(error: ContainerError.None, count: count, offset: prefix.consumed,
       consumed: prefix.consumed + payload)
 
-# Return a span for one bounded byte string; caller retains the original input and advances on success only.
 proc decodeBytesBorrowed*(input: openArray[byte], limit: ByteLimit): BlobResult {.raises: [].} =
+  ## Return a span for one bounded byte string; caller retains the original input and advances on success only.
   let frame = readFrame(input, 1, uint64(limit))
   # Failure exposes no span and consumes nothing.
   if frame.error != ContainerError.None: return BlobResult(status: frame.error)
   BlobResult(status: ContainerError.None, byteOffset: frame.offset, byteLength: int(frame.count),
       byteConsumed: frame.consumed)
 
-# Encode a canonical byte count and payload into a separate caller-owned output buffer, without allocation.
 proc encodeBytes*(value: openArray[byte], limit: ByteLimit,
                   output: var openArray[byte]): WriteResult {.raises: [].} =
+  ## Encode a canonical byte count and payload into a separate caller-owned output buffer, without allocation.
   # Apply the resource ceiling before output-size calculations or copying.
   if uint64(value.len) > uint64(limit): return WriteResult(status: ContainerError.LimitExceeded)
   let prefix = natural.encode(JamNatural(uint64(value.len)))
@@ -148,9 +145,9 @@ proc encodeBytes*(value: openArray[byte], limit: ByteLimit,
     copyMem(addr output[prefix.len], unsafeAddr value[0], value.len)
   WriteResult(status: ContainerError.None, byteWritten: total)
 
-# Encode a homogeneous fixed-width unsigned sequence after validating every element and all capacity.
 proc encodeSequence*(values: openArray[FixedUnsigned], width: ByteWidth, limit: ElementLimit,
                      output: var openArray[byte]): WriteResult {.raises: [].} =
+  ## Encode a homogeneous fixed-width unsigned sequence after validating every element and all capacity.
   let stride = int(width)
   # Width validation precedes all size arithmetic, including empty sequences.
   if stride < 0 or stride > 8: return WriteResult(status: ContainerError.InvalidWidth)
@@ -182,9 +179,9 @@ proc encodeSequence*(values: openArray[FixedUnsigned], width: ByteWidth, limit: 
     for i in 0..<stride: output[prefix.len + index * stride + i] = encoded.encoded.bytes[i]
   WriteResult(status: ContainerError.None, byteWritten: total)
 
-# Decode fixed-width elements into separate caller-owned storage, with no partial writes on any failure.
 proc decodeSequence*(input: openArray[byte], width: ByteWidth, limit: ElementLimit,
                      output: var openArray[FixedUnsigned]): SequenceResult {.raises: [].} =
+  ## Decode fixed-width elements into separate caller-owned storage, with no partial writes on any failure.
   let stride = int(width)
   # Validate width even for an empty/invalid prefix; no input is read before this check.
   if stride < 0 or stride > 8: return SequenceResult(status: ContainerError.InvalidWidth)

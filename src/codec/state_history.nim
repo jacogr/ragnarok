@@ -14,78 +14,59 @@ from ./work_report import PackageHash, SegmentRoot
 export PackageHash, SegmentRoot
 
 type
-  ## Recent block header identity is distinct from the two commitments stored beside it.
-  HistoryHeaderHash* = distinct array[32, byte]
-  ## Recent state root is copied independently from header and accumulation commitments.
-  HistoryStateRoot* = distinct array[32, byte]
-  ## Accumulation-log super-peak is a commitment, not an individual retained belt peak.
-  HistorySuperPeak* = distinct array[32, byte]
-  ## A present MMR peak is nominally distinct from the super-peak and other state roots.
-  HistoryPeakHash* = distinct array[32, byte]
-  ## Recent block timeslot uses E4, with no natural-number framing.
-  HistorySlot* = distinct uint32
-  ## One canonical dictionary pair binds a work-package identity to its segment root.
-  ReportedPackage* = object
+  HistoryHeaderHash* = distinct array[32, byte] ## Recent block header identity is distinct from the two commitments stored beside it.
+  HistoryStateRoot* = distinct array[32, byte] ## Recent state root is copied independently from header and accumulation commitments.
+  HistorySuperPeak* = distinct array[32, byte] ## Accumulation-log super-peak is a commitment, not an individual retained belt peak.
+  HistoryPeakHash* = distinct array[32, byte] ## A present MMR peak is nominally distinct from the super-peak and other state roots.
+  HistorySlot* = distinct uint32 ## Recent block timeslot uses E4, with no natural-number framing.
+  ReportedPackage* = object ## One canonical dictionary pair binds a work-package identity to its segment root.
     package*: PackageHash
     segment*: SegmentRoot
-  ## Borrowed source record; package keys must be strictly increasing by octet order.
-  HistoryBlock* = object
+  HistoryBlock* = object ## Borrowed source record; package keys must be strictly increasing by octet order.
     header*: HistoryHeaderHash
     superPeak*: HistorySuperPeak
     state*: HistoryStateRoot
     slot*: HistorySlot
     packages*: seq[ReportedPackage]
-  ## Optional peaks retain presence: a present all-zero hash differs from an absent peak.
-  HistoryPeak* = object
+  HistoryPeak* = object ## Optional peaks retain presence: a present all-zero hash differs from an absent peak.
     case isPresent: bool
     of true:
       peakHash: HistoryPeakHash # Only present peaks contain a fixed hash value.
     of false:
       discard                   # Absent peaks contain no fabricated zero identity.
-  ## Stable synchronous borrowed sources; history and peak order are semantically significant.
-  HistoryState* = object
+  HistoryState* = object ## Stable synchronous borrowed sources; history and peak order are semantically significant.
     blocks*: seq[HistoryBlock]
     peaks*: seq[HistoryPeak]
-  ## Explicit chain cores plus independent block/package/peak/complete-byte caller ceilings.
-  HistoryConfig* = object
+  HistoryConfig* = object ## Explicit chain cores plus independent block/package/peak/complete-byte caller ceilings.
     cores*: CoreCount
     blocks*, perBlock*, totalPackages*, peaks*: ElementLimit
     maxBytes*: ByteLimit
-  ## Indices retain the distinction between history records, dictionary pairs and belt positions.
-  HistoryBlockIndex* = distinct uint64
-  ## Package ordinals are meaningful only together with their original history block owner.
-  HistoryPackageIndex* = distinct uint64
-  ## Belt positions are independent of history record positions, including absent entries.
-  HistoryPeakIndex* = distinct uint64
-  ## Failures and defaults never expose values, owners or partial parser progress.
-  HistoryError* {.pure.} = enum
+  HistoryBlockIndex* = distinct uint64 ## Indices retain the distinction between history records, dictionary pairs and belt positions.
+  HistoryPackageIndex* = distinct uint64 ## Package ordinals are meaningful only together with their original history block owner.
+  HistoryPeakIndex* = distinct uint64 ## Belt positions are independent of history record positions, including absent entries.
+  HistoryError* {.pure.} = enum ## Failures and defaults never expose values, owners or partial parser progress.
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical,
     InvalidTag, LimitExceeded, LengthOverflow, InvalidOwner, InvalidIndex
-  ## Only complete success permits application access to its selected payload.
-  HistoryResult*[T] = object
+  HistoryResult*[T] = object ## Only complete success permits application access to its selected payload.
     case status: HistoryError
     of None:
       completed: T # Full values/counts are available only after success selection.
     else:
       discard      # Failed/default alternatives carry only their reason.
-  ## Copied metadata exposes fixed fields and dictionary cardinality without mutable storage.
-  HistoryBlockInfo* = object
+  HistoryBlockInfo* = object ## Copied metadata exposes fixed fields and dictionary cardinality without mutable storage.
     header*: HistoryHeaderHash
     superPeak*: HistorySuperPeak
     state*: HistoryStateRoot
     slot*: HistorySlot
     packages*: int
-  ## Fixed copied parent cardinalities do not expose nested source arrays.
-  HistoryInfo* = object
+  HistoryInfo* = object ## Fixed copied parent cardinalities do not expose nested source arrays.
     blocks*, peaks*: int
   ## Private acyclic ARC storage owns every fixed record, dictionary pair and optional peak copy.
   HistoryData = ref object
     state: HistoryState
-  ## Value handles share private immutable storage; default handles contain no validated history.
-  HistorySnapshot* = object
+  HistorySnapshot* = object ## Value handles share private immutable storage; default handles contain no validated history.
     data: nil HistoryData
-  ## Complete prefix decoding binds retained state to its exact consumed extent.
-  HistoryRead* = object
+  HistoryRead* = object ## Complete prefix decoding binds retained state to its exact consumed extent.
     snapshot*: HistorySnapshot
     consumed*: int
   ## At most eight block layouts are needed; no input-derived scratch allocation is required for scanning.
@@ -93,20 +74,25 @@ type
     blocks, peaks, peakStart, consumed: int
     starts, packages, counts: array[8, int]
 
-## Read-only result reasons never authorize a default/failed payload or partial progress.
-func error*[T](value: HistoryResult[T]): HistoryError = value.status
-## Selected values retain their success precondition under checked optimized builds.
+func error*[T](value: HistoryResult[T]): HistoryError =
+  ## Read-only result reasons never authorize a default/failed payload or partial progress.
+  value.status
 func value*[T](value: HistoryResult[T]): T {.inline, requires: value.status == HistoryError.None.} =
+  ## Selected values retain their success precondition under checked optimized builds.
   value.completed
-## Construct an absent peak with no readable hash alternative; default peaks have the same meaning.
-func absentHistoryPeak*(): HistoryPeak = HistoryPeak(isPresent: false)
-## Construct a present copied hash, including the distinct present-all-zero value.
-func presentHistoryPeak*(hash: HistoryPeakHash): HistoryPeak = HistoryPeak(isPresent: true,
+func absentHistoryPeak*(): HistoryPeak =
+  ## Construct an absent peak with no readable hash alternative; default peaks have the same meaning.
+  HistoryPeak(isPresent: false)
+func presentHistoryPeak*(hash: HistoryPeakHash): HistoryPeak =
+  ## Construct a present copied hash, including the distinct present-all-zero value.
+  HistoryPeak(isPresent: true,
     peakHash: hash)
-## Inspect presence without exposing a mutable discriminator.
-func present*(peak: HistoryPeak): bool = peak.isPresent
-## An absent source or copied peak cannot expose a fabricated hash.
-func hash*(peak: HistoryPeak): HistoryPeakHash {.inline, requires: peak.isPresent.} = peak.peakHash
+func present*(peak: HistoryPeak): bool =
+  ## Inspect presence without exposing a mutable discriminator.
+  peak.isPresent
+func hash*(peak: HistoryPeak): HistoryPeakHash {.inline, requires: peak.isPresent.} =
+  ## An absent source or copied peak cannot expose a fabricated hash.
+  peak.peakHash
 
 ## Check fixed-stride wire growth before native narrowing, multiplication and addition.
 proc grow(cursor: var int, count: uint64, width: int, limit: ByteLimit): HistoryError =
@@ -233,8 +219,8 @@ proc scan(input: openArray[byte], config: HistoryConfig): HistoryResult[Layout] 
   layout.consumed = cursor
   HistoryResult[Layout](status: HistoryError.None, completed: layout)
 
-## Decode into private immutable copies only after the whole nested source prefix is valid.
 proc decodeHistoryState*(input: openArray[byte], config: HistoryConfig): HistoryResult[HistoryRead] =
+  ## Decode into private immutable copies only after the whole nested source prefix is valid.
   let checked = scan(input, config)
   if checked.error != HistoryError.None: return HistoryResult[HistoryRead](
       status: checked.error) # No partial owners/progress on late failure.
@@ -282,8 +268,8 @@ proc putCount(n: int, output: var seq[byte], cursor: var int) =
   let prefix = natural.encode(JamNatural(n))
   put(prefix.bytes.toOpenArray(0, prefix.len-1), output, cursor)
 
-## Serialize stable borrowed history/belt sources into an independent C(3) entry after complete preflight.
 proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryResult[StateEntry] =
+  ## Serialize stable borrowed history/belt sources into an independent C(3) entry after complete preflight.
   var error = blockCount(uint64(source.blocks.len), config)
   if error != HistoryError.None: return HistoryResult[StateEntry](
       status: error) # No source traversal/allocation for invalid history count.
@@ -349,17 +335,17 @@ proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryRes
     if peak.present: put(array[32, byte](peak.hash), entry.value, cursor) # Absence emits only its zero tag.
   HistoryResult[StateEntry](status: HistoryError.None, completed: entry)
 
-## Return copied parent cardinalities while retaining all nested storage privately.
 proc historyInfo*(owner: HistorySnapshot): HistoryResult[HistoryInfo] =
+  ## Return copied parent cardinalities while retaining all nested storage privately.
   let data = owner.data
   if data == nil: return HistoryResult[HistoryInfo](
       status: HistoryError.InvalidOwner) # Default handles are not validated empty history.
   HistoryResult[HistoryInfo](status: HistoryError.None, completed: HistoryInfo(
       blocks: data.state.blocks.len, peaks: data.state.peaks.len))
 
-## Return copied block metadata, bound to its original owner and nominal history position.
 proc historyBlockAt*(owner: HistorySnapshot, index: HistoryBlockIndex): HistoryResult[
     HistoryBlockInfo] =
+  ## Return copied block metadata, bound to its original owner and nominal history position.
   let data = owner.data
   if data == nil: return HistoryResult[HistoryBlockInfo](
       status: HistoryError.InvalidOwner) # No dereference of default storage.
@@ -371,9 +357,9 @@ proc historyBlockAt*(owner: HistorySnapshot, index: HistoryBlockIndex): HistoryR
     superPeak: record.superPeak, state: record.state, slot: record.slot,
     packages: record.packages.len))
 
-## Extract one copied package/segment pair through the retained block and its own nominal pair position.
 proc historyPackageAt*(owner: HistorySnapshot, blockIndex: HistoryBlockIndex,
     index: HistoryPackageIndex): HistoryResult[ReportedPackage] =
+  ## Extract one copied package/segment pair through the retained block and its own nominal pair position.
   let data = owner.data
   if data == nil:
     return HistoryResult[ReportedPackage](status: HistoryError.InvalidOwner) # No dictionary storage on default handles.
@@ -385,8 +371,8 @@ proc historyPackageAt*(owner: HistorySnapshot, blockIndex: HistoryBlockIndex,
   HistoryResult[ReportedPackage](status: HistoryError.None,
     completed: data.state.blocks[int(uint64(blockIndex))].packages[int(uint64(index))])
 
-## Extract a fixed tagged peak copy; absent peaks expose no hash alternative.
 proc historyPeakAt*(owner: HistorySnapshot, index: HistoryPeakIndex): HistoryResult[HistoryPeak] =
+  ## Extract a fixed tagged peak copy; absent peaks expose no hash alternative.
   let data = owner.data
   if data == nil: return HistoryResult[HistoryPeak](
       status: HistoryError.InvalidOwner) # No fabricated peak on a missing owner.

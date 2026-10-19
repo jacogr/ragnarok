@@ -10,8 +10,7 @@ import std/assertions
 import ./[natural, bounded, composite, work_digest, work_report]
 
 type
-  # Refinement context reuses the nominal anchor/root/slot domains already used in reports.
-  RefinementContext* = object
+  RefinementContext* = object ## Refinement context reuses the nominal anchor/root/slot domains already used in reports.
     anchor*: BlockHash
     anchorSlot*: AnchorSlot
     stateRoot*: StateRoot
@@ -21,13 +20,10 @@ type
     lookupStateRoot*: LookupStateRoot
     prerequisites*: array[8, PackageHash]
     prerequisiteCount*: int
-  # Segment indices occupy fifteen bits; the remaining E2 bit selects reference identity kind.
-  ImportIndex* = distinct uint16
-  # Root references need no lookup; package references contribute to the dependency budget.
-  ImportKind* {.pure.} = enum
+  ImportIndex* = distinct uint16 ## Segment indices occupy fifteen bits; the remaining E2 bit selects reference identity kind.
+  ImportKind* {.pure.} = enum ## Root references need no lookup; package references contribute to the dependency budget.
     Root, Package
-  # The tagged identity prevents a package hash from being silently used as a segment root.
-  ImportReference* = object
+  ImportReference* = object ## The tagged identity prevents a package hash from being silently used as a segment root.
     index*: ImportIndex
     case referenceKind: ImportKind
     of Root:
@@ -36,16 +32,12 @@ type
       packageIdentity: PackageHash # A dependency needs resolution to an export-tree commitment.
                                    # Extrinsic input identity is distinct from code/package hashes of the same width.
   ExtrinsicHash* = distinct array[32, byte]
-  # Extrinsic input byte count uses fixed E4, independently from sequence counts.
-  ExtrinsicLength* = distinct uint32
-  # Complete owned fixed commitment fields; preimage availability and hashing are external.
-  ExtrinsicCommitment* = object
+  ExtrinsicLength* = distinct uint32 ## Extrinsic input byte count uses fixed E4, independently from sequence counts.
+  ExtrinsicCommitment* = object ## Complete owned fixed commitment fields; preimage availability and hashing are external.
     hash*: ExtrinsicHash
     length*: ExtrinsicLength
-  # The service hosting authorization code is distinct from each work item's destination service.
-  AuthorizerHost* = distinct uint32
-  # Stable borrowed encoding sources; payload/import/extrinsic sequences cannot change during the call.
-  WorkItem* = object
+  AuthorizerHost* = distinct uint32 ## The service hosting authorization code is distinct from each work item's destination service.
+  WorkItem* = object ## Stable borrowed encoding sources; payload/import/extrinsic sequences cannot change during the call.
     service*: ServiceIndex
     codeHash*: CodeHash
     refineGas*, accumulateGas*: Gas
@@ -53,23 +45,19 @@ type
     payload*: seq[byte]
     imports*: seq[ImportReference]
     extrinsics*: seq[ExtrinsicCommitment]
-  # Package encoding sources retain context by value but borrow all nested sequences synchronously.
-  WorkPackage* = object
+  WorkPackage* = object ## Package encoding sources retain context by value but borrow all nested sequences synchronously.
     host*: AuthorizerHost
     codeHash*: CodeHash
     context*: RefinementContext
     authorization*, configuration*: seq[byte]
     items*: seq[WorkItem]
-  # Gas ceilings are explicit chain parameters; maxBytes bounds serialized prefix storage separately.
-  PackageConfig* = object
+  PackageConfig* = object ## Gas ceilings are explicit chain parameters; maxBytes bounds serialized prefix storage separately.
     refineGas*, accumulateGas*: Gas
     maxBytes*: ByteLimit
-  # Default/failed branches expose only a reason, never a partial record or consumed progress.
-  PackageError* {.pure.} = enum
+  PackageError* {.pure.} = enum ## Default/failed branches expose only a reason, never a partial record or consumed progress.
     Uninitialized, None, InvalidConfig, Truncated, NonCanonical, LimitExceeded,
     OutputTooSmall, AliasedBuffers, InvalidOwner, InvalidIndex
-  # Application values exist exclusively after selecting the successful branch.
-  PackageResult*[T] = object
+  PackageResult*[T] = object ## Application values exist exclusively after selecting the successful branch.
     case status: PackageError
     of None:
       completed: T # Success alone authorizes access to the complete value.
@@ -79,29 +67,24 @@ type
   ContextRead* = object
     value*: RefinementContext
     consumed*: int
-  # Fixed records report their exact successful wire consumption without borrowed coordinates.
-  ImportRead* = object
+  ImportRead* = object ## Fixed records report their exact successful wire consumption without borrowed coordinates.
     value*: ImportReference
     consumed*: int
-  # Fixed commitment decoding is independently available outside a complete work item.
-  CommitmentRead* = object
+  CommitmentRead* = object ## Fixed commitment decoding is independently available outside a complete work item.
     value*: ExtrinsicCommitment
     consumed*: int
-  # Copied item metadata contains lengths rather than detachable payload/import spans.
-  ItemInfo* = object
+  ItemInfo* = object ## Copied item metadata contains lengths rather than detachable payload/import spans.
     service*: ServiceIndex
     codeHash*: CodeHash
     refineGas*, accumulateGas*: Gas
     exports*: ExportCount
     payloadBytes*, imports*, extrinsics*, consumed*: int
-  # Copied package metadata contains a complete fixed context and owned scalar fields.
-  PackageInfo* = object
+  PackageInfo* = object ## Copied package metadata contains a complete fixed context and owned scalar fields.
     host*: AuthorizerHost
     codeHash*: CodeHash
     context*: RefinementContext
     authorizationBytes*, configurationBytes*, items*, consumed*: int
-  # Owner-bound package blob selection cannot address arbitrary offsets.
-  PackageBlob* {.pure.} = enum
+  PackageBlob* {.pure.} = enum ## Owner-bound package blob selection cannot address arbitrary offsets.
     Authorization, Configuration
   # Only private scan/capture code can associate byte coordinates with immutable snapshot storage.
   ItemLayout = object
@@ -116,19 +99,15 @@ type
   PackageData = ref object
     wire: seq[byte]
     layout: Layout
-  # The package handle exports no mutable wire sequence or detached metadata offsets.
-  OwnedWorkPackage* = object
+  OwnedWorkPackage* = object ## The package handle exports no mutable wire sequence or detached metadata offsets.
     data: nil PackageData
-  # An item retains its complete parent snapshot; the index is private and cannot be rebound by callers.
-  OwnedWorkItem* = object
+  OwnedWorkItem* = object ## An item retains its complete parent snapshot; the index is private and cannot be rebound by callers.
     data: nil PackageData
     index: int
-  # Success binds exact package consumption to its immutable owner.
-  PackageRead* = object
+  PackageRead* = object ## Success binds exact package consumption to its immutable owner.
     owner*: OwnedWorkPackage
     consumed*: int
-  # Success binds exact standalone item consumption to its immutable owner.
-  ItemRead* = object
+  ItemRead* = object ## Success binds exact standalone item consumption to its immutable owner.
     owner*: OwnedWorkItem
     consumed*: int
   # Aggregate counters are private, bounded before addition and discarded on any failure.
@@ -139,34 +118,35 @@ type
     dependencyCount, dependencyLimit: int
 
 const
-  # GP checkextractsize/segmentfootprint constants; these are not serialized-byte limits.
-  MaxBundleBytes* = 13_791_360
+  MaxBundleBytes* = 13_791_360 ## GP checkextractsize/segmentfootprint constants; these are not serialized-byte limits.
   SegmentFootprint* = 4488
 
-# Read a generic outcome without exposing its private discriminator for mutation.
-func error*[T](value: PackageResult[T]): PackageError = value.status
-# Only complete operations expose application values, retained owners or progress.
+func error*[T](value: PackageResult[T]): PackageError =
+  ## Read a generic outcome without exposing its private discriminator for mutation.
+  value.status
 func value*[T](value: PackageResult[T]): T {.inline, requires: value.status == PackageError.None.} =
+  ## Only complete operations expose application values, retained owners or progress.
   value.completed
-# Read the selected nominal import role without allowing safe-code retagging.
-func kind*(value: ImportReference): ImportKind = value.referenceKind
-# Direct-root access requires the corresponding selected identity domain; returned bytes are copied.
+func kind*(value: ImportReference): ImportKind =
+  ## Read the selected nominal import role without allowing safe-code retagging.
+  value.referenceKind
 func root*(value: ImportReference): SegmentRoot {.inline, requires: value.referenceKind ==
     ImportKind.Root.} =
+  ## Direct-root access requires the corresponding selected identity domain; returned bytes are copied.
   value.rootIdentity
-# Package-reference access requires a dependency identity; returned bytes are independent copies.
 func package*(value: ImportReference): PackageHash {.inline, requires: value.referenceKind ==
     ImportKind.Package.} =
+  ## Package-reference access requires a dependency identity; returned bytes are independent copies.
   value.packageIdentity
-# Construct a direct-root source; the encoder still validates the supplied fifteen-bit index domain.
 func rootImport*(root: SegmentRoot, index: ImportIndex): ImportReference =
+  ## Construct a direct-root source; the encoder still validates the supplied fifteen-bit index domain.
   ImportReference(referenceKind: ImportKind.Root, rootIdentity: root, index: index)
-# Construct a package dependency source without implicitly converting a segment-root identity.
 func packageImport*(package: PackageHash, index: ImportIndex): ImportReference =
+  ## Construct a package dependency source without implicitly converting a segment-root identity.
   ImportReference(referenceKind: ImportKind.Package, packageIdentity: package, index: index)
 
-# Construct the published full-profile gas ceilings while retaining an explicit caller byte budget.
 proc fullPackageConfig*(maxBytes: ByteLimit): PackageConfig {.raises: [].} =
+  ## Construct the published full-profile gas ceilings while retaining an explicit caller byte budget.
   PackageConfig(refineGas: Gas(5_000_000_000'u64), accumulateGas: Gas(10_000_000),
       maxBytes: maxBytes)
 
@@ -231,8 +211,8 @@ proc contextSize(value: RefinementContext): PackageResult[int] {.raises: [].} =
       return PackageResult[int](status: PackageError.NonCanonical) # Duplicate/reversed hashes cannot be normalized silently.
   PackageResult[int](status: PackageError.None, completed: 169+32*value.prerequisiteCount)
 
-# Decode a complete fixed context plus bounded prerequisites without input-derived allocation.
 proc decodeRefinementContext*(input: openArray[byte]): PackageResult[ContextRead] {.raises: [].} =
+  ## Decode a complete fixed context plus bounded prerequisites without input-derived allocation.
   # The complete seven-field fixed prefix must exist before reading any scalar or root.
   if input.len < 168:
     return PackageResult[ContextRead](status: PackageError.Truncated)
@@ -307,9 +287,9 @@ proc putContext(value: RefinementContext, output: var openArray[byte], cursor: v
   # Preserve caller-supplied canonical order rather than sorting identities during encoding.
   for i in 0..<value.prerequisiteCount: put(value.prerequisites[i].bytes, output, cursor)
 
-# Encode standalone context atomically; fixed source storage must remain disjoint from written output.
 proc encodeRefinementContext*(value: RefinementContext, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  ## Encode standalone context atomically; fixed source storage must remain disjoint from written output.
   let measured = contextSize(value)
   # Source errors precede destination sizing and cannot alter caller sentinels.
   if measured.error != PackageError.None:
@@ -323,8 +303,8 @@ proc encodeRefinementContext*(value: RefinementContext, output: var openArray[by
   putContext(value, output, cursor)
   measured
 
-# Decode either legal packed-bit import alternative; the fifteen-bit index has no additional tag byte.
 proc decodeImportReference*(input: openArray[byte]): PackageResult[ImportRead] {.raises: [].} =
+  ## Decode either legal packed-bit import alternative; the fifteen-bit index has no additional tag byte.
   # Identity and packed E2 selector/index are one fixed 34-byte record.
   if input.len < 34:
     return PackageResult[ImportRead](status: PackageError.Truncated)
@@ -349,9 +329,9 @@ proc putImport(value: ImportReference, output: var openArray[byte], cursor: var 
     put(value.package.bytes, output, cursor) # Set selector retains the exporting package identity.
     putScalar(uint16(value.index) or 0x8000, 2, output, cursor)
 
-# Atomically encode one fixed import; typed indices still require their fifteen-bit wire domain.
 proc encodeImportReference*(value: ImportReference, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  ## Atomically encode one fixed import; typed indices still require their fifteen-bit wire domain.
   # Validate before any source alias or capacity can authorize a write.
   if uint16(value.index) > 32767:
     return PackageResult[int](status: PackageError.LimitExceeded)
@@ -364,8 +344,8 @@ proc encodeImportReference*(value: ImportReference, output: var openArray[byte])
   putImport(value, output, cursor)
   PackageResult[int](status: PackageError.None, completed: cursor)
 
-# Decode an opaque input-data hash plus its fixed E4 advertised preimage length.
 proc decodeExtrinsicCommitment*(input: openArray[byte]): PackageResult[CommitmentRead] {.raises: [].} =
+  ## Decode an opaque input-data hash plus its fixed E4 advertised preimage length.
   # The complete fixed record precedes any hash or length access.
   if input.len < 36:
     return PackageResult[CommitmentRead](status: PackageError.Truncated)
@@ -379,9 +359,9 @@ proc putCommitment(value: ExtrinsicCommitment, output: var openArray[byte],
   put(array[32, byte](value.hash), output, cursor)
   putScalar(uint32(value.length), 4, output, cursor)
 
-# Encode one complete fixed commitment atomically; per-package footprint accounting occurs in item composition.
 proc encodeExtrinsicCommitment*(value: ExtrinsicCommitment, output: var openArray[
     byte]): PackageResult[int] {.raises: [].} =
+  ## Encode one complete fixed commitment atomically; per-package footprint accounting occurs in item composition.
   # Both fixed fields must fit before examining destination addresses.
   if output.len < 36:
     return PackageResult[int](status: PackageError.OutputTooSmall)
@@ -569,9 +549,9 @@ proc itemAlias(value: WorkItem, output: var openArray[byte], required: int): boo
   overlaps(unsafeAddr value, sizeof(value), addr output[0], required) or
     aliases(value.payload) or aliases(value.imports) or aliases(value.extrinsics)
 
-# Encode a standalone item with the same aggregate policy as a one-item package, without auth/context costs.
 proc encodeWorkItem*(value: WorkItem, config: PackageConfig, output: var openArray[
     byte]): PackageResult[int] {.raises: [].} =
+  ## Encode a standalone item with the same aggregate policy as a one-item package, without auth/context costs.
   # Caller gas domains must admit at least a zero-gas item before source traversal.
   if not validConfig(config):
     return PackageResult[int](status: PackageError.InvalidConfig)
@@ -600,9 +580,9 @@ proc capture(input: openArray[byte], layout: Layout): PackageData {.raises: [].}
   # Copy the consumed prefix, excluding unrelated trailing bytes.
   for i in 0..<result.wire.len: result.wire[i] = input[i]
 
-# Decode standalone items without allocating before every manifest and aggregate policy has passed.
 proc decodeWorkItem*(input: openArray[byte], config: PackageConfig): PackageResult[
     ItemRead] {.raises: [].} =
+  ## Decode standalone items without allocating before every manifest and aggregate policy has passed.
   # Reject default caller domains first.
   if not validConfig(config):
     return PackageResult[ItemRead](status: PackageError.InvalidConfig)
@@ -620,9 +600,9 @@ proc decodeWorkItem*(input: openArray[byte], config: PackageConfig): PackageResu
     completed: ItemRead(owner: OwnedWorkItem(data: capture(input, layout), index: 0),
         consumed: cursor))
 
-# Encode a package only after all nested item resources, dependencies and sources pass preflight.
 proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var openArray[
     byte]): PackageResult[int] {.raises: [].} =
+  ## Encode a package only after all nested item resources, dependencies and sources pass preflight.
   # Validate chain gas domains first.
   if not validConfig(config):
     return PackageResult[int](status: PackageError.InvalidConfig)
@@ -689,9 +669,9 @@ proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var o
   assert cursor == required
   PackageResult[int](status: PackageError.None, completed: required)
 
-# Scan/capture the complete package; standalone and embedded items share exactly one structural policy.
 proc decodeWorkPackage*(input: openArray[byte], config: PackageConfig): PackageResult[
     PackageRead] {.raises: [].} =
+  ## Scan/capture the complete package; standalone and embedded items share exactly one structural policy.
   # Configuration cannot be inferred from bytes.
   if not validConfig(config):
     return PackageResult[PackageRead](status: PackageError.InvalidConfig)
@@ -765,16 +745,16 @@ proc selected(owner: OwnedWorkItem): PackageResult[ItemLayout] {.raises: [].} =
     return PackageResult[ItemLayout](status: PackageError.InvalidIndex) # Defensive guard for private handle invariants.
   PackageResult[ItemLayout](status: PackageError.None, completed: data.layout.items[owner.index])
 
-# Copy fixed package metadata; callers cannot modify retained context or sequence storage.
 proc workPackageInfo*(owner: OwnedWorkPackage): PackageResult[PackageInfo] {.raises: [].} =
+  ## Copy fixed package metadata; callers cannot modify retained context or sequence storage.
   # Reject uninitialized owners.
   let data = owner.data
   if data == nil:
     return PackageResult[PackageInfo](status: PackageError.InvalidOwner)
   PackageResult[PackageInfo](status: PackageError.None, completed: data.layout.info)
 
-# Retain an owner-bound child handle without copying/exposing wire or detached spans.
 proc workItemAt*(owner: OwnedWorkPackage, index: int): PackageResult[OwnedWorkItem] {.raises: [].} =
+  ## Retain an owner-bound child handle without copying/exposing wire or detached spans.
   # Default owners do not describe empty packages.
   let data = owner.data
   if data == nil:
@@ -783,16 +763,16 @@ proc workItemAt*(owner: OwnedWorkPackage, index: int): PackageResult[OwnedWorkIt
     return PackageResult[OwnedWorkItem](status: PackageError.InvalidIndex) # Signed bounds precede metadata selection.
   PackageResult[OwnedWorkItem](status: PackageError.None, completed: OwnedWorkItem(data: data, index: index))
 
-# Copy item scalar metadata/lengths without allowing callers to rebind its private coordinates.
 proc workItemInfo*(owner: OwnedWorkItem): PackageResult[ItemInfo] {.raises: [].} =
+  ## Copy item scalar metadata/lengths without allowing callers to rebind its private coordinates.
   let item = selected(owner)
   # No partial metadata on invalid handles.
   if item.error != PackageError.None:
     return PackageResult[ItemInfo](status: item.error)
   PackageResult[ItemInfo](status: PackageError.None, completed: item.value.info)
 
-# Copy one exact import value from its retained item's manifest.
 proc importAt*(owner: OwnedWorkItem, index: int): PackageResult[ImportReference] {.raises: [].} =
+  ## Copy one exact import value from its retained item's manifest.
   # Retain the exact backing snapshot independently of nested selector calls.
   let data = owner.data
   if data == nil: return PackageResult[ImportReference](status: PackageError.InvalidOwner)
@@ -807,8 +787,8 @@ proc importAt*(owner: OwnedWorkItem, index: int): PackageResult[ImportReference]
   assert parsed.error == PackageError.None
   PackageResult[ImportReference](status: PackageError.None, completed: parsed.value.value)
 
-# Copy a fixed input commitment through the same parent-bound item identity.
 proc extrinsicAt*(owner: OwnedWorkItem, index: int): PackageResult[ExtrinsicCommitment] {.raises: [].} =
+  ## Copy a fixed input commitment through the same parent-bound item identity.
   # Retain the exact backing snapshot independently of nested selector calls.
   let data = owner.data
   if data == nil: return PackageResult[ExtrinsicCommitment](status: PackageError.InvalidOwner)
@@ -835,9 +815,9 @@ proc copy(data: PackageData, start, length: int, output: var openArray[byte]): P
   for i in 0..<length: output[i] = data.wire[start+i]
   PackageResult[int](status: PackageError.None, completed: length)
 
-# Copy the item's payload, selected only by the matching retained owner.
 proc copyItemPayload*(owner: OwnedWorkItem, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  ## Copy the item's payload, selected only by the matching retained owner.
   # Retain the exact backing snapshot independently of nested selector calls.
   let data = owner.data
   if data == nil: return PackageResult[int](status: PackageError.InvalidOwner)
@@ -847,9 +827,9 @@ proc copyItemPayload*(owner: OwnedWorkItem, output: var openArray[byte]): Packag
     return PackageResult[int](status: item.error)
   copy(data, item.value.payload, item.value.info.payloadBytes, output)
 
-# Copy authorization/configuration bytes without exporting a mutable snapshot or arbitrary span.
 proc copyPackageBlob*(owner: OwnedWorkPackage, field: PackageBlob, output: var openArray[
     byte]): PackageResult[int] {.raises: [].} =
+  ## Copy authorization/configuration bytes without exporting a mutable snapshot or arbitrary span.
   # Default handles cannot authorize extraction.
   let data = owner.data
   if data == nil:
@@ -862,9 +842,9 @@ proc copyPackageBlob*(owner: OwnedWorkPackage, field: PackageBlob, output: var o
     copy(data, data.layout.configuration, data.layout.info.configurationBytes,
         output) # Exact code-configuration interval.
 
-# Re-emit one retained item atomically, independently of the parent package handle's lifetime.
 proc encodeOwnedWorkItem*(owner: OwnedWorkItem, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  ## Re-emit one retained item atomically, independently of the parent package handle's lifetime.
   # Retain the exact backing snapshot independently of nested selector calls.
   let data = owner.data
   if data == nil: return PackageResult[int](status: PackageError.InvalidOwner)
@@ -874,9 +854,9 @@ proc encodeOwnedWorkItem*(owner: OwnedWorkItem, output: var openArray[byte]): Pa
     return PackageResult[int](status: item.error)
   copy(data, item.value.start, item.value.info.consumed, output)
 
-# Re-emit the complete immutable package prefix while preserving unrelated destination suffix bytes.
 proc encodeOwnedWorkPackage*(owner: OwnedWorkPackage, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  ## Re-emit the complete immutable package prefix while preserving unrelated destination suffix bytes.
   # No fabricated empty package for defaults.
   let data = owner.data
   if data == nil:

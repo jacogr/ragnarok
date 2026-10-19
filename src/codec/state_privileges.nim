@@ -13,60 +13,50 @@ import ./[natural, bounded, composite, assurances, state_layout, state_trie]
 export ServiceIndex, CoreCount
 
 type
-  ## Gas allowance has the full unsigned 64-bit domain, distinct from service IDs and byte limits.
-  PrivilegeGas* = distinct uint64
-  ## A core position is not a service ID or an ordinal in the always-accumulate dictionary.
-  PrivilegeCoreIndex* = distinct uint64
-  ## Dictionary extraction uses its own ordinal, not a protocol service identifier.
-  PrivilegeEntryIndex* = distinct uint64
-  ## Fixed service/gas pair; numeric service keys must be strictly increasing in source order.
-  AlwaysAccumulate* = object
+  PrivilegeGas* = distinct uint64 ## Gas allowance has the full unsigned 64-bit domain, distinct from service IDs and byte limits.
+  PrivilegeCoreIndex* = distinct uint64 ## A core position is not a service ID or an ordinal in the always-accumulate dictionary.
+  PrivilegeEntryIndex* = distinct uint64 ## Dictionary extraction uses its own ordinal, not a protocol service identifier.
+  AlwaysAccumulate* = object ## Fixed service/gas pair; numeric service keys must be strictly increasing in source order.
     service*: ServiceIndex
     gas*: PrivilegeGas
-  ## Stable synchronous source; assigners have exactly the configured core count, without a wire count.
-  PrivilegeState* = object
+  PrivilegeState* = object ## Stable synchronous source; assigners have exactly the configured core count, without a wire count.
     manager*, delegator*, registrar*: ServiceIndex
     assigners*: seq[ServiceIndex]
     always*: seq[AlwaysAccumulate]
-  ## Supported chain profile plus caller ceilings on dictionary work and the complete component bytes.
-  PrivilegeConfig* = object
+  PrivilegeConfig* = object ## Supported chain profile plus caller ceilings on dictionary work and the complete component bytes.
     cores*: CoreCount
     maxAlways*: ElementLimit
     maxBytes*: ByteLimit
-  ## Failed/default results contain only reasons, never owners, source values or partial cursors.
-  PrivilegeError* {.pure.} = enum
+  PrivilegeError* {.pure.} = enum ## Failed/default results contain only reasons, never owners, source values or partial cursors.
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical,
     LimitExceeded, LengthOverflow, InvalidService, InvalidOwner, InvalidIndex
-  ## Success is the only alternative that contains a usable payload.
-  PrivilegeResult*[T] = object
+  PrivilegeResult*[T] = object ## Success is the only alternative that contains a usable payload.
     case status: PrivilegeError
     of None:
-      completed: T # Select success before reading application data.
+      completed: T             # Select success before reading application data.
     else:
-      discard      # Defaults and failures carry no fabricated state.
+      discard                  # Defaults and failures carry no fabricated state.
   ## Private immutable acyclic ARC storage contains independent fixed values only.
   PrivilegeData = ref object
     state: PrivilegeState
-  ## Value handles share retained storage; caller replacement never changes another handle's state.
-  PrivilegeSnapshot* = object
+  PrivilegeSnapshot* = object ## Value handles share retained storage; caller replacement never changes another handle's state.
     data: nil PrivilegeData
-  ## Complete prefix success binds the retained component to its exact consumed extent.
-  PrivilegeRead* = object
+  PrivilegeRead* = object ## Complete prefix success binds the retained component to its exact consumed extent.
     snapshot*: PrivilegeSnapshot
     consumed*: int
-  ## Scalar metadata is copied without exposing the retained assigner/dictionary arrays.
-  PrivilegeInfo* = object
+  PrivilegeInfo* = object ## Scalar metadata is copied without exposing the retained assigner/dictionary arrays.
     manager*, delegator*, registrar*: ServiceIndex
     cores*, always*: int
   ## Private scan proof contains only bounded offsets/counts and never escapes to callers.
   Layout = object
     start, count, consumed: int
 
-## A reason is read-only and never authorizes values or partial parsing progress.
-func error*[T](value: PrivilegeResult[T]): PrivilegeError = value.status
-## Public payloads and internal scalar/layout proofs require success under optimized builds too.
+func error*[T](value: PrivilegeResult[T]): PrivilegeError =
+  ## A reason is read-only and never authorizes values or partial parsing progress.
+  value.status
 func value*[T](value: PrivilegeResult[T]): T {.inline, requires: value.status ==
     PrivilegeError.None.} =
+  ## Public payloads and internal scalar/layout proofs require success under optimized builds too.
   value.completed
 
 ## Reject unsupported profiles before any field access or native count conversion.
@@ -154,9 +144,9 @@ proc scan(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[Layo
   PrivilegeResult[Layout](status: PrivilegeError.None,
     completed: Layout(start: start, count: int(count.value), consumed: cursor))
 
-## Capture the complete component only after every late dictionary key/value has passed preflight.
 proc decodePrivilegeState*(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[
     PrivilegeRead] =
+  ## Capture the complete component only after every late dictionary key/value has passed preflight.
   let checked = scan(input, config)
   if checked.error != PrivilegeError.None: return PrivilegeResult[PrivilegeRead](
       status: checked.error) # No failed owner/progress.
@@ -197,8 +187,8 @@ proc putGas(value: PrivilegeGas, output: var seq[byte], cursor: var int) =
     output[cursor] = byte((uint64(value) shr (j*8)) and 255)
     inc cursor
 
-## Encode a stable exact-shape source into independent C(12) bytes after complete preflight.
 proc privilegeStateEntry*(source: PrivilegeState, config: PrivilegeConfig): PrivilegeResult[StateEntry] =
+  ## Encode a stable exact-shape source into independent C(12) bytes after complete preflight.
   let valid = validate(config)
   if valid != PrivilegeError.None: return PrivilegeResult[StateEntry](
       status: valid) # Policy precedes source traversal.
@@ -235,8 +225,8 @@ proc privilegeStateEntry*(source: PrivilegeState, config: PrivilegeConfig): Priv
     putGas(pair.gas, entry.value, cursor)
   PrivilegeResult[StateEntry](status: PrivilegeError.None, completed: entry)
 
-## Return copied scalar roles and cardinalities without exporting retained arrays.
 proc privilegeInfo*(owner: PrivilegeSnapshot): PrivilegeResult[PrivilegeInfo] =
+  ## Return copied scalar roles and cardinalities without exporting retained arrays.
   let data = owner.data
   if data == nil: return PrivilegeResult[PrivilegeInfo](
       status: PrivilegeError.InvalidOwner) # Defaults are not valid empty state.
@@ -245,8 +235,8 @@ proc privilegeInfo*(owner: PrivilegeSnapshot): PrivilegeResult[PrivilegeInfo] =
       registrar: data.state.registrar,
       cores: data.state.assigners.len, always: data.state.always.len))
 
-## Extract one fixed assigner by nominal core position, keeping dictionary ordinals separate.
 proc privilegeAssignerAt*(owner: PrivilegeSnapshot, index: PrivilegeCoreIndex): PrivilegeResult[ServiceIndex] =
+  ## Extract one fixed assigner by nominal core position, keeping dictionary ordinals separate.
   let data = owner.data
   if data == nil: return PrivilegeResult[ServiceIndex](
       status: PrivilegeError.InvalidOwner) # No default service on absent storage.
@@ -255,9 +245,9 @@ proc privilegeAssignerAt*(owner: PrivilegeSnapshot, index: PrivilegeCoreIndex): 
   PrivilegeResult[ServiceIndex](status: PrivilegeError.None, completed: data.state.assigners[int(
       uint64(index))])
 
-## Extract one copied service/gas pair, independent of both its snapshot and source arrays.
 proc alwaysAccumulateAt*(owner: PrivilegeSnapshot, index: PrivilegeEntryIndex): PrivilegeResult[
     AlwaysAccumulate] =
+  ## Extract one copied service/gas pair, independent of both its snapshot and source arrays.
   let data = owner.data
   if data == nil: return PrivilegeResult[AlwaysAccumulate](
       status: PrivilegeError.InvalidOwner) # No fabricated pair on default owners.

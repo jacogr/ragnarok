@@ -13,41 +13,37 @@ import ./[bounded, composite, state_layout, state_trie]
 export ServiceIndex, StateKey
 
 type
-  ## A preimage lookup identity is distinct from a code hash, output commitment or final state key.
-  ServicePreimageHash* = distinct array[32, byte]
-  ## Independent caller limits for logical raw key/hash bytes and raw value bytes; namespace prefixes are fixed overhead.
-  ServiceEntryLimits* = object
+  ServicePreimageHash* = distinct array[32, byte] ## A preimage lookup identity is distinct from a code hash, output commitment or final state key.
+  ServiceEntryLimits* = object ## Independent caller limits for logical raw key/hash bytes and raw value bytes; namespace prefixes are fixed overhead.
     keyBytes*, valueBytes*: ByteLimit
-  ## Failed/default results contain reasons alone, never keys, values, owners or completed copy progress.
-  ServiceValueError* {.pure.} = enum
+  ServiceValueError* {.pure.} = enum ## Failed/default results contain reasons alone, never keys, values, owners or completed copy progress.
     Uninitialized, None, LimitExceeded, LengthOverflow, BackendFailure, InvalidServiceKey,
     InvalidOwner, OutputTooSmall, AliasedBuffers
-  ## Only selected complete success exposes its application payload.
-  ServiceValueResult*[T] = object
+  ServiceValueResult*[T] = object ## Only selected complete success exposes its application payload.
     case status: ServiceValueError
     of None:
-      completed: T # The guarded accessor alone authorizes a complete payload.
+      completed: T                # The guarded accessor alone authorizes a complete payload.
     else:
-      discard      # A failure cannot fabricate an empty captured value or default state key.
+      discard                     # A failure cannot fabricate an empty captured value or default state key.
   ## Private acyclic ARC storage binds independent raw value bytes to their exact supplied key and service.
   ServiceValueData = ref object
     service: ServiceIndex
     key: StateKey
     bytes: seq[byte]
-  ## Value handles share immutable private storage; replacing one handle never changes another's data.
-  ServiceValueSnapshot* = object
+  ServiceValueSnapshot* = object ## Value handles share immutable private storage; replacing one handle never changes another's data.
     data: nil ServiceValueData
-  ## Fixed copied identity/size metadata exports neither backing bytes nor reusable detached coordinates.
-  ServiceValueInfo* = object
+  ServiceValueInfo* = object ## Fixed copied identity/size metadata exports neither backing bytes nor reusable detached coordinates.
     service*: ServiceIndex
     key*: StateKey
     length*: int
 
-## Read-only reasons never authorize retained keys, raw bytes or completed copy progress.
-func error*[T](value: ServiceValueResult[T]): ServiceValueError = value.status
-## Public payloads and internal scratch extents require successful result selection.
+func error*[T](value: ServiceValueResult[T]): ServiceValueError =
+  ## Read-only reasons never authorize retained keys, raw bytes or completed copy progress.
+  value.status
 func value*[T](value: ServiceValueResult[T]): T
-    {.inline, requires: value.status == ServiceValueError.None.} = value.completed
+    {.inline, requires: value.status == ServiceValueError.None.} =
+  ## Public payloads and internal scratch extents require successful result selection.
+  value.completed
 
 ## Prove fixed-prefix addition for a nonnegative native key length before scratch allocation.
 proc storageExtent(length: int): ServiceValueResult[int] =
@@ -61,9 +57,9 @@ proc keyError(error: StateLayoutError): ServiceValueError =
   of StateLayoutError.LimitExceeded: ServiceValueError.LimitExceeded # Key policy failed before hashing.
   else: ServiceValueError.BackendFailure # A key is never fabricated after native hash failure.
 
-## Derive C(service, E4(uint32-max) || raw_storage_key), without natural/key-length framing.
 proc serviceStorageKey*(service: ServiceIndex, key: openArray[byte],
     maxKeyBytes: ByteLimit): ServiceValueResult[StateKey] =
+  ## Derive C(service, E4(uint32-max) || raw_storage_key), without natural/key-length framing.
   if uint64(key.len) > uint64(maxKeyBytes):
     return ServiceValueResult[StateKey](status: ServiceValueError.LimitExceeded) # Logical key policy excludes the fixed namespace overhead.
   let checked = storageExtent(key.len)
@@ -77,9 +73,9 @@ proc serviceStorageKey*(service: ServiceIndex, key: openArray[byte],
     return ServiceValueResult[StateKey](status: keyError(derived.error)) # No key after a backend rejection.
   ServiceValueResult[StateKey](status: ServiceValueError.None, completed: derived.value)
 
-## Derive C(service, E4(uint32-max-1) || lookup_hash) using a fixed local preimage buffer.
 proc servicePreimageKey*(service: ServiceIndex, hash: ServicePreimageHash,
     maxKeyBytes: ByteLimit): ServiceValueResult[StateKey] =
+  ## Derive C(service, E4(uint32-max-1) || lookup_hash) using a fixed local preimage buffer.
   if uint64(maxKeyBytes) < 32:
     return ServiceValueResult[StateKey](status: ServiceValueError.LimitExceeded) # The logical lookup identity always contains exactly 32 bytes.
   var preimage = default(array[36, byte])
@@ -99,9 +95,9 @@ proc entry(key: StateKey, value: openArray[byte]): StateEntry =
   for i in 0..<value.len: result.value[i] = value[
       i] # Fresh output never aliases caller input or retained owner bytes.
 
-## Construct one storage mapping after value/key policy and complete namespace-key derivation.
 proc serviceStorageEntry*(service: ServiceIndex, key, value: openArray[byte],
     limits: ServiceEntryLimits): ServiceValueResult[StateEntry] =
+  ## Construct one storage mapping after value/key policy and complete namespace-key derivation.
   if uint64(value.len) > uint64(limits.valueBytes):
     return ServiceValueResult[StateEntry](status: ServiceValueError.LimitExceeded) # Reject oversized values before key scratch/hash work.
   let derived = serviceStorageKey(service, key, limits.keyBytes)
@@ -109,9 +105,9 @@ proc serviceStorageEntry*(service: ServiceIndex, key, value: openArray[byte],
     return ServiceValueResult[StateEntry](status: derived.error) # No raw output allocation before key success.
   ServiceValueResult[StateEntry](status: ServiceValueError.None, completed: entry(derived.value, value))
 
-## Construct one preimage mapping while preserving the supplied hash/value relationship as raw state data.
 proc servicePreimageEntry*(service: ServiceIndex, hash: ServicePreimageHash, value: openArray[byte],
     limits: ServiceEntryLimits): ServiceValueResult[StateEntry] =
+  ## Construct one preimage mapping while preserving the supplied hash/value relationship as raw state data.
   if uint64(value.len) > uint64(limits.valueBytes):
     return ServiceValueResult[StateEntry](status: ServiceValueError.LimitExceeded) # Complete value policy precedes key hashing.
   let derived = servicePreimageKey(service, hash, limits.keyBytes)
@@ -119,9 +115,9 @@ proc servicePreimageEntry*(service: ServiceIndex, hash: ServicePreimageHash, val
     return ServiceValueResult[StateEntry](status: derived.error) # No output after key policy/backend failure.
   ServiceValueResult[StateEntry](status: ServiceValueError.None, completed: entry(derived.value, value))
 
-## Capture a complete externally delimited raw value using its existing trie key, without requiring original storage keys.
 proc captureServiceValue*(service: ServiceIndex, key: StateKey, value: openArray[byte],
     maxBytes: ByteLimit): ServiceValueResult[ServiceValueSnapshot] =
+  ## Capture a complete externally delimited raw value using its existing trie key, without requiring original storage keys.
   if uint64(value.len) > uint64(maxBytes):
     return ServiceValueResult[ServiceValueSnapshot](
         status: ServiceValueError.LimitExceeded) # Bound copies before allocation or identity traversal.
@@ -136,8 +132,8 @@ proc captureServiceValue*(service: ServiceIndex, key: StateKey, value: openArray
   ServiceValueResult[ServiceValueSnapshot](status: ServiceValueError.None,
       completed: ServiceValueSnapshot(data: data))
 
-## Return copied service/key/length metadata without exposing retained mutable arrays.
 proc serviceValueInfo*(owner: ServiceValueSnapshot): ServiceValueResult[ServiceValueInfo] =
+  ## Return copied service/key/length metadata without exposing retained mutable arrays.
   let data = owner.data
   if data == nil:
     return ServiceValueResult[ServiceValueInfo](status: ServiceValueError.InvalidOwner) # Default handles differ from captured empty raw values.
@@ -153,9 +149,9 @@ proc overlaps(owner: ServiceValueData, output: var openArray[byte]): bool =
   if source <= destination: destination-source < uint(owner.bytes.len) # Destination begins inside retained bytes.
   else: source-destination < uint(output.len) # Source begins inside caller output.
 
-## Atomically copy all retained raw bytes, checking owner, capacity and disjointness before any write.
 proc copyServiceValue*(owner: ServiceValueSnapshot, output: var openArray[
     byte]): ServiceValueResult[int] =
+  ## Atomically copy all retained raw bytes, checking owner, capacity and disjointness before any write.
   let data = owner.data
   if data == nil:
     return ServiceValueResult[int](status: ServiceValueError.InvalidOwner) # Missing owners cannot authorize a fabricated empty copy.
@@ -167,8 +163,8 @@ proc copyServiceValue*(owner: ServiceValueSnapshot, output: var openArray[
       i] # Only the completed raw-value prefix changes; destination suffix stays untouched.
   ServiceValueResult[int](status: ServiceValueError.None, completed: data.bytes.len)
 
-## Re-emit one retained keyed raw value to fresh output under the caller's current byte policy.
 proc serviceValueEntry*(owner: ServiceValueSnapshot, maxBytes: ByteLimit): ServiceValueResult[StateEntry] =
+  ## Re-emit one retained keyed raw value to fresh output under the caller's current byte policy.
   let data = owner.data
   if data == nil:
     return ServiceValueResult[StateEntry](status: ServiceValueError.InvalidOwner) # No default key/value from missing storage.

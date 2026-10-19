@@ -10,16 +10,12 @@
 import ./natural
 
 type
-  # A logical bit count is distinct from byte extents and from resource ceilings.
-  BitCount* = distinct uint64
-  # Caller policy bounds logical bits, including claims that would overflow naive ceil arithmetic.
-  BitLimit* = distinct uint64
-  # Default/failure alternatives contain no decoded value, owner or progress.
-  BitError* {.pure.} = enum
+  BitCount* = distinct uint64 ## A logical bit count is distinct from byte extents and from resource ceilings.
+  BitLimit* = distinct uint64 ## Caller policy bounds logical bits, including claims that would overflow naive ceil arithmetic.
+  BitError* {.pure.} = enum ## Default/failure alternatives contain no decoded value, owner or progress.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, InvalidCount,
     InvalidOwner, InvalidIndex, OutputTooSmall, AliasedBuffers, LengthOverflow
-  # Every operation must select success before reading its complete result.
-  BitResult*[T] = object
+  BitResult*[T] = object ## Every operation must select success before reading its complete result.
     case status: BitError
     of None:
       # Success alone authorizes access to a complete value or written extent.
@@ -27,23 +23,19 @@ type
     else:
       # Failures publish only their reason, never partial values or counts.
       discard
-  # Standalone Boolean decoding copies the value and consumes exactly one canonical octet.
-  BooleanRead* = object
+  BooleanRead* = object ## Standalone Boolean decoding copies the value and consumes exactly one canonical octet.
     value*: bool
     consumed*: int
   # Private acyclic ARC storage owns only validated packed payload bytes, not an input pointer.
   BitsData = ref object
     packed: seq[byte]
     count: BitCount
-  # Copying a handle retains immutable bytes; default handles differ from validated empty strings.
-  OwnedBits* = object
+  OwnedBits* = object ## Copying a handle retains immutable bytes; default handles differ from validated empty strings.
     data: nil BitsData
-  # Decoding returns one complete immutable owner and the exact consumed prefix, including any count.
-  BitsRead* = object
+  BitsRead* = object ## Decoding returns one complete immutable owner and the exact consumed prefix, including any count.
     owner*: OwnedBits
     consumed*: int
-  # Copied logical/physical metadata grants no access to private backing storage.
-  BitsInfo* = object
+  BitsInfo* = object ## Copied logical/physical metadata grants no access to private backing storage.
     count*: BitCount
     packedBytes*: int
   # Private preflight coordinates cannot escape independently of the owner they authorize capturing.
@@ -51,10 +43,11 @@ type
     count: BitCount
     offset, length, consumed: int
 
-# Read outcomes without granting mutable access to the private result discriminator.
-func error*[T](value: BitResult[T]): BitError = value.status
-# Only complete success authorizes copied values, ownership or consumed/written progress.
+func error*[T](value: BitResult[T]): BitError =
+  ## Read outcomes without granting mutable access to the private result discriminator.
+  value.status
 func value*[T](value: BitResult[T]): T {.inline, requires: value.status == BitError.None.} =
+  ## Only complete success authorizes copied values, ownership or consumed/written progress.
   value.completed
 
 # Compare address distances without overflowing endpoint sums; empty ranges need no valid pointer.
@@ -73,8 +66,8 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
 proc packedLength(count: uint64): uint64 {.raises: [].} =
   count div 8 + uint64(ord(count mod 8 != 0))
 
-# Read a standalone Boolean prefix without allocation; trailing bytes belong to the next field.
 proc decodeBoolean*(input: openArray[byte]): BitResult[BooleanRead] {.raises: [].} =
+  ## Read a standalone Boolean prefix without allocation; trailing bytes belong to the next field.
   # Both false and true require one wire octet.
   if input.len == 0: return BitResult[BooleanRead](status: BitError.Truncated)
   # Only the two images of the Boolean encoder are canonical.
@@ -82,8 +75,8 @@ proc decodeBoolean*(input: openArray[byte]): BitResult[BooleanRead] {.raises: []
   BitResult[BooleanRead](status: BitError.None,
     completed: BooleanRead(value: input[0] == 1, consumed: 1))
 
-# Encode a copied Boolean atomically; no source pointer or borrowing survives the call.
 proc encodeBoolean*(value: bool, output: var openArray[byte]): BitResult[int] {.raises: [].} =
+  ## Encode a copied Boolean atomically; no source pointer or borrowing survives the call.
   # Capacity precedes the only write and preserves empty destinations on failure.
   if output.len == 0: return BitResult[int](status: BitError.OutputTooSmall)
   output[0] = byte(ord(value))
@@ -113,15 +106,15 @@ proc capture(input: openArray[byte], layout: Layout): BitsRead =
   for i in 0..<layout.length: data.packed[i] = input[layout.offset+i]
   BitsRead(owner: OwnedBits(data: data), consumed: layout.consumed)
 
-# Decode a fixed logical bit count without a wire prefix; caller input stays stable only during this call.
 proc decodeFixedBits*(input: openArray[byte], count: BitCount, limit: BitLimit): BitResult[BitsRead] =
+  ## Decode a fixed logical bit count without a wire prefix; caller input stays stable only during this call.
   let checked = inspect(input, count, 0, limit)
   # A failed preflight authorizes neither a snapshot allocation nor partial metadata.
   if checked.error != BitError.None: return BitResult[BitsRead](status: checked.error)
   BitResult[BitsRead](status: BitError.None, completed: capture(input, checked.value))
 
-# Decode a variable bitstring whose canonical natural length counts bits, not packed octets.
 proc decodeBits*(input: openArray[byte], limit: BitLimit): BitResult[BitsRead] =
+  ## Decode a variable bitstring whose canonical natural length counts bits, not packed octets.
   let prefix = natural.decode(input)
   # Primitive framing failures precede any declared-count policy or input-derived allocation.
   if not prefix.ok:
@@ -166,26 +159,26 @@ proc encode(values: openArray[bool], count: BitCount, limit: BitLimit, variable:
     if value: output[offset+i div 8] = output[offset+i div 8] or byte(1 shl (i mod 8))
   BitResult[int](status: BitError.None, completed: total)
 
-# Encode a variable borrowed logical bit sequence with a canonical natural bit-count prefix.
 proc encodeBits*(values: openArray[bool], limit: BitLimit,
     output: var openArray[byte]): BitResult[int] {.raises: [].} =
+  ## Encode a variable borrowed logical bit sequence with a canonical natural bit-count prefix.
   encode(values, BitCount(uint64(values.len)), limit, true, output)
 
-# Encode exactly the caller's fixed schema count, without a count discriminator or partial writes.
 proc encodeFixedBits*(values: openArray[bool], count: BitCount, limit: BitLimit,
     output: var openArray[byte]): BitResult[int] {.raises: [].} =
+  ## Encode exactly the caller's fixed schema count, without a count discriminator or partial writes.
   encode(values, count, limit, false, output)
 
-# Copy logical/physical metadata through a retained immutable owner, never detached source coordinates.
 proc bitsInfo*(owner: OwnedBits): BitResult[BitsInfo] {.raises: [].} =
+  ## Copy logical/physical metadata through a retained immutable owner, never detached source coordinates.
   let data = owner.data
   # Validated zero-length bitstrings still have a nondefault owner.
   if data == nil: return BitResult[BitsInfo](status: BitError.InvalidOwner)
   BitResult[BitsInfo](status: BitError.None,
     completed: BitsInfo(count: data.count, packedBytes: data.packed.len))
 
-# Copy one Boolean through its matching owner; negative and out-of-range indices fail without accessing bytes.
 proc bitAt*(owner: OwnedBits, index: int): BitResult[bool] {.raises: [].} =
+  ## Copy one Boolean through its matching owner; negative and out-of-range indices fail without accessing bytes.
   let data = owner.data
   # Missing ownership precedes index checks so defaults never resemble valid empty strings.
   if data == nil: return BitResult[bool](status: BitError.InvalidOwner)
@@ -223,15 +216,15 @@ proc reemit(owner: OwnedBits, count: BitCount, limit: BitLimit, variable: bool,
   for i in 0..<length: output[offset+i] = data.packed[i]
   BitResult[int](status: BitError.None, completed: total)
 
-# Re-emit a retained bitstring in variable framing, even when originally captured as a fixed term.
 proc encodeOwnedBits*(owner: OwnedBits, limit: BitLimit,
     output: var openArray[byte]): BitResult[int] {.raises: [].} =
+  ## Re-emit a retained bitstring in variable framing, even when originally captured as a fixed term.
   let data = owner.data
   # Avoid accessing a default owner's count before reemit can enforce ownership.
   if data == nil: return BitResult[int](status: BitError.InvalidOwner)
   reemit(owner, data.count, limit, true, output)
 
-# Re-emit a retained bitstring with an explicitly matching fixed count and no discriminator.
 proc encodeOwnedFixedBits*(owner: OwnedBits, count: BitCount, limit: BitLimit,
     output: var openArray[byte]): BitResult[int] {.raises: [].} =
+  ## Re-emit a retained bitstring with an explicitly matching fixed count and no discriminator.
   reemit(owner, count, limit, false, output)

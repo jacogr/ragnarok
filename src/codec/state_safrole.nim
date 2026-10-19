@@ -11,63 +11,49 @@ import std/assertions
 import ./[natural, bounded, assurances, state_layout, state_trie]
 
 type
-  ## One fixed entropy word; the four-word state preserves accumulator/history order.
-  StateEntropyWord* = distinct array[32, byte]
-  ## Accumulator, then the three most recently ended epochs, with no count prefix.
-  StateEntropy* = array[4, StateEntropyWord]
-  ## The most recent block's timeslot is exactly E4 in state.
-  StateTime* = distinct uint32
-  ## Opaque state key encodings have separate nominal cryptographic roles.
-  StateBsKey* = distinct array[32, byte]
-  ## An Ed25519 state key is not an entropy word or Bandersnatch key.
-  StateEdKey* = distinct array[32, byte]
-  ## The full BLS public-key encoding has 144 bytes, including all zero bytes.
-  StateBlsKey* = distinct array[144, byte]
-  ## Validator metadata is opaque, fixed-width data rather than a string.
-  StateValidatorMetadata* = distinct array[128, byte]
-  ## All 336 bytes are copied values, preserving the protocol's field order.
-  StateValidator* = object
+  StateEntropyWord* = distinct array[32, byte] ## One fixed entropy word; the four-word state preserves accumulator/history order.
+  StateEntropy* = array[4, StateEntropyWord] ## Accumulator, then the three most recently ended epochs, with no count prefix.
+  StateTime* = distinct uint32 ## The most recent block's timeslot is exactly E4 in state.
+  StateBsKey* = distinct array[32, byte] ## Opaque state key encodings have separate nominal cryptographic roles.
+  StateEdKey* = distinct array[32, byte] ## An Ed25519 state key is not an entropy word or Bandersnatch key.
+  StateBlsKey* = distinct array[144, byte] ## The full BLS public-key encoding has 144 bytes, including all zero bytes.
+  StateValidatorMetadata* = distinct array[128, byte] ## Validator metadata is opaque, fixed-width data rather than a string.
+  StateValidator* = object ## All 336 bytes are copied values, preserving the protocol's field order.
     bandersnatch*: StateBsKey
     ed25519*: StateEdKey
     bls*: StateBlsKey
     metadata*: StateValidatorMetadata
-  ## Only these three independent top-level chapters contain a bare variable validator roster.
-  ValidatorChapter* {.pure.} = enum
+  ValidatorChapter* {.pure.} = enum ## Only these three independent top-level chapters contain a bare variable validator roster.
     Staging = 7, Active = 8, Previous = 9
-  ## Roster extraction uses an explicit ordinal, not a byte offset or service identifier.
-  StateValidatorIndex* = distinct uint64
-  ## Core count establishes the protocol population bound; other ceilings are caller resource policy.
-  ValidatorStateConfig* = object
+  StateValidatorIndex* = distinct uint64 ## Roster extraction uses an explicit ordinal, not a byte offset or service identifier.
+  ValidatorStateConfig* = object ## Core count establishes the protocol population bound; other ceilings are caller resource policy.
     cores*: CoreCount
     validators*: ElementLimit
     maxBytes*: ByteLimit
-  ## Failed/default results never expose values, owners or consumed progress.
-  StateComponentError* {.pure.} = enum
+  StateComponentError* {.pure.} = enum ## Failed/default results never expose values, owners or consumed progress.
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical,
     LimitExceeded, LengthOverflow, InvalidOwner, InvalidIndex, InvalidTag, WrongVariant
-  ## Select success before accessing a complete fixed value or immutable snapshot.
-  StateComponentResult*[T] = object
+  StateComponentResult*[T] = object ## Select success before accessing a complete fixed value or immutable snapshot.
     case status: StateComponentError
     of None:
       completed: T # Successful alternatives alone carry application data.
     else:
       discard      # Failures contain only their reason.
-  ## Prefix decoding publishes progress only after a whole component is valid.
-  StateComponentRead*[T] = object
+  StateComponentRead*[T] = object ## Prefix decoding publishes progress only after a whole component is valid.
     value*: T
     consumed*: int
   ## Private acyclic ARC storage owns copied records; callers cannot mutate the referenced object.
   ValidatorStateData = ref object
     records: seq[StateValidator]
-  ## Value handles share private immutable storage; replacing one handle cannot alter another snapshot.
-  ValidatorStateSnapshot* = object
+  ValidatorStateSnapshot* = object ## Value handles share private immutable storage; replacing one handle cannot alter another snapshot.
     data: nil ValidatorStateData
 
-# Failure reasons are readable without granting access to a value, owner or consumed progress.
-func error*[T](value: StateComponentResult[T]): StateComponentError = value.status
-# Every completed payload requires successful selection in optimized builds too.
+func error*[T](value: StateComponentResult[T]): StateComponentError =
+  ## Failure reasons are readable without granting access to a value, owner or consumed progress.
+  value.status
 func value*[T](value: StateComponentResult[T]): T {.inline, requires: value.status ==
     StateComponentError.None.} =
+  ## Every completed payload requires successful selection in optimized builds too.
   value.completed
 
 ## Copy fixed protocol fields from an already validated byte extent.
@@ -83,16 +69,16 @@ proc put(input: openArray[byte], output: var seq[byte], cursor: var int) =
     output[cursor] = b
     inc cursor
 
-## Emit chapter 6's exact 128-byte value, retaining no source reference.
 proc entropyEntry*(value: StateEntropy): StateEntry =
+  ## Emit chapter 6's exact 128-byte value, retaining no source reference.
   result = StateEntry(key: chapterKey(StateChapter(6)), value: newSeq[byte](128))
   var cursor = 0
   # Preserve accumulator followed by historical entropy order; no dynamic length is serialized.
   for word in value: put(array[32, byte](word), result.value, cursor)
 
-## Decode one complete entropy prefix into independent fixed copies; suffix bytes stay with the caller.
 proc decodeStateEntropy*(input: openArray[byte]): StateComponentResult[StateComponentRead[
     StateEntropy]] =
+  ## Decode one complete entropy prefix into independent fixed copies; suffix bytes stay with the caller.
   if input.len < 128:
     return StateComponentResult[StateComponentRead[StateEntropy]](
         status: StateComponentError.Truncated) # No partial history escapes.
@@ -102,14 +88,14 @@ proc decodeStateEntropy*(input: openArray[byte]): StateComponentResult[StateComp
   StateComponentResult[StateComponentRead[StateEntropy]](status: StateComponentError.None,
     completed: StateComponentRead[StateEntropy](value: value, consumed: 128))
 
-## Emit chapter 11's exact E4 value with no natural-number or tuple length prefix.
 proc timeEntry*(value: StateTime): StateEntry =
+  ## Emit chapter 11's exact E4 value with no natural-number or tuple length prefix.
   result = StateEntry(key: chapterKey(StateChapter(11)), value: newSeq[byte](4))
   # Explicit little-endian extraction avoids native alignment/endian assumptions.
   for i in 0..<4: result.value[i] = byte((uint32(value) shr (8*i)) and 255)
 
-## Decode one E4 timeslot prefix without applying state-transition or chronology rules.
 proc decodeStateTime*(input: openArray[byte]): StateComponentResult[StateComponentRead[StateTime]] =
+  ## Decode one E4 timeslot prefix without applying state-transition or chronology rules.
   if input.len < 4:
     return StateComponentResult[StateComponentRead[StateTime]](
         status: StateComponentError.Truncated) # No partial numeric value is published.
@@ -135,9 +121,9 @@ proc extent(count: uint64, prefix: int, config: ValidatorStateConfig): StateComp
     return StateComponentResult[int](status: StateComponentError.LimitExceeded) # Byte policy includes the canonical count prefix.
   StateComponentResult[int](status: StateComponentError.None, completed: bytes)
 
-## Serialize an ordered borrowed roster into a new chapter entry; null/repeated key records remain structural values.
 proc validatorEntry*(chapter: ValidatorChapter, values: openArray[StateValidator],
                      config: ValidatorStateConfig): StateComponentResult[StateEntry] =
+  ## Serialize an ordered borrowed roster into a new chapter entry; null/repeated key records remain structural values.
   # The nightly permits unchecked enum casts; only the three roster chapters may construct an entry.
   if ord(chapter) < ord(ValidatorChapter.Staging) or ord(chapter) > ord(ValidatorChapter.Previous):
     return StateComponentResult[StateEntry](status: StateComponentError.InvalidTag)
@@ -156,9 +142,9 @@ proc validatorEntry*(chapter: ValidatorChapter, values: openArray[StateValidator
     put(array[128, byte](validator.metadata), entry.value, cursor)
   StateComponentResult[StateEntry](status: StateComponentError.None, completed: entry)
 
-## Measure a borrowed canonical roster prefix without allocation, for whole-parent preflight.
 proc stateValidatorPrefixSize*(input: openArray[byte],
     config: ValidatorStateConfig): StateComponentResult[int] =
+  ## Measure a borrowed canonical roster prefix without allocation, for whole-parent preflight.
   if uint64(config.cores) < 2:
     return StateComponentResult[int](
         status: StateComponentError.InvalidConfig) # Invalid policy never starts parsing.
@@ -180,14 +166,14 @@ proc stateValidatorPrefixSize*(input: openArray[byte],
         status: StateComponentError.Truncated) # Complete wire extent precedes snapshot allocation.
   StateComponentResult[int](status: StateComponentError.None, completed: checked.value)
 
-## Measure a typed roster source without allocation, preserving the same population/resource policy.
 proc stateValidatorSize*(count: ValidatorCount, config: ValidatorStateConfig): StateComponentResult[int] =
+  ## Measure a typed roster source without allocation, preserving the same population/resource policy.
   extent(uint64(count), natural.encode(JamNatural(uint64(count))).len, config)
 
-## Decode a canonical variable roster prefix into private immutable copied storage.
 proc decodeStateValidators*(input: openArray[byte],
     config: ValidatorStateConfig): StateComponentResult[StateComponentRead[
     ValidatorStateSnapshot]] =
+  ## Decode a canonical variable roster prefix into private immutable copied storage.
   let checked = stateValidatorPrefixSize(input, config)
   if checked.error != StateComponentError.None:
     return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
@@ -207,16 +193,16 @@ proc decodeStateValidators*(input: openArray[byte],
   StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](status: StateComponentError.None,
     completed: StateComponentRead[ValidatorStateSnapshot](value: owner, consumed: cursor))
 
-## Inspect a retained snapshot's population without exporting its mutable backing sequence.
 proc validatorCount*(owner: ValidatorStateSnapshot): StateComponentResult[int] =
+  ## Inspect a retained snapshot's population without exporting its mutable backing sequence.
   let data = owner.data
   if data == nil:
     return StateComponentResult[int](status: StateComponentError.InvalidOwner) # Default handles carry no population.
   StateComponentResult[int](status: StateComponentError.None, completed: data.records.len)
 
-## Extract an independent fixed validator copy bound to its original immutable snapshot.
 proc validatorAt*(owner: ValidatorStateSnapshot, index: StateValidatorIndex): StateComponentResult[
     StateValidator] =
+  ## Extract an independent fixed validator copy bound to its original immutable snapshot.
   let data = owner.data
   if data == nil:
     return StateComponentResult[StateValidator](status: StateComponentError.InvalidOwner) # Never dereference absent owners.

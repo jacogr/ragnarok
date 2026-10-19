@@ -10,11 +10,9 @@ import std/assertions
 import ./[bounded, composite, owned, tickets, assurances, guarantees, disputes, header]
 
 type
-  # Static component identities prevent swapping equal-width/wire-compatible child schemas.
-  ComponentKind* {.pure.} = enum
+  ComponentKind* {.pure.} = enum ## Static component identities prevent swapping equal-width/wire-compatible child schemas.
     Header, Tickets, Preimages, Guarantees, Assurances, Disputes
-  # Nested failures retain the existing child's typed reason, not a parsed message or partial value.
-  ComponentFailure* = object
+  ComponentFailure* = object ## Nested failures retain the existing child's typed reason, not a parsed message or partial value.
     case schema: ComponentKind
     of Header:
       headerReason: HeaderError       # Only this selected component's failure reason exists.
@@ -32,8 +30,7 @@ type
   FrameError* {.pure.} = enum
     Uninitialized, None, InvalidConfig, InvalidOwner, LimitExceeded,
     OutputTooSmall, AliasedBuffers, LengthOverflow, InvalidComponent
-  # Only success contains data; structured child failures remain failure-only tagged alternatives.
-  FrameResult*[T] = object
+  FrameResult*[T] = object ## Only success contains data; structured child failures remain failure-only tagged alternatives.
     case status: FrameError
     of None:
       completed: T                  # Complete application values exist exclusively after success selection.
@@ -49,42 +46,31 @@ type
     ticketLimit*: TicketLimit
     preimages*: PreimageLimits
     maxBytes*: ByteLimit
-  # Copied schema metadata reports complete prefix extent and total logical records, without coordinates.
-  ComponentInfo* = object
+  ComponentInfo* = object ## Copied schema metadata reports complete prefix extent and total logical records, without coordinates.
     records*, consumed*: int
   # The private snapshot binds exact child bytes to the configuration under which they were captured.
   ComponentData = ref object
     wire: seq[byte]
     config: FrameConfig
     info: ComponentInfo
-  # Copying a statically schema-bound handle retains an immutable child, never a mutable backing sequence.
-  Component*[kind: static[ComponentKind]] = object
+  Component*[kind: static[ComponentKind]] = object ## Copying a statically schema-bound handle retains an immutable child, never a mutable backing sequence.
     data: nil ComponentData
-  # Header components require complete sealed headers; unsigned snapshots have a different API/type.
-  HeaderComponent* = Component[ComponentKind.Header]
-  # Each complete extrinsic family has a separate nominal component type.
-  TicketComponent* = Component[ComponentKind.Tickets]
-  # A byte/work/optional frame cannot stand in for a validated preimage component.
-  PreimageComponent* = Component[ComponentKind.Preimages]
-  # Complete guarantee components include every nested report, slot and credential.
-  GuaranteeComponent* = Component[ComponentKind.Guarantees]
-  # Assurance components retain the exact profile bitfield width and canonical validator order.
-  AssuranceComponent* = Component[ComponentKind.Assurances]
-  # Dispute components contain all three complete verdict/culprit/fault sequences.
-  DisputeComponent* = Component[ComponentKind.Disputes]
-  # Successful component decoding binds its matching owner to exact prefix progress.
-  ComponentRead*[kind: static[ComponentKind]] = object
+  HeaderComponent* = Component[ComponentKind.Header] ## Header components require complete sealed headers; unsigned snapshots have a different API/type.
+  TicketComponent* = Component[ComponentKind.Tickets] ## Each complete extrinsic family has a separate nominal component type.
+  PreimageComponent* = Component[ComponentKind.Preimages] ## A byte/work/optional frame cannot stand in for a validated preimage component.
+  GuaranteeComponent* = Component[ComponentKind.Guarantees] ## Complete guarantee components include every nested report, slot and credential.
+  AssuranceComponent* = Component[ComponentKind.Assurances] ## Assurance components retain the exact profile bitfield width and canonical validator order.
+  DisputeComponent* = Component[ComponentKind.Disputes] ## Dispute components contain all three complete verdict/culprit/fault sequences.
+  ComponentRead*[kind: static[ComponentKind]] = object ## Successful component decoding binds its matching owner to exact prefix progress.
     owner*: Component[kind]
     consumed*: int
-  # Stable borrowed source descriptors contain only immutable schema-bound children, in normative wire order.
-  Extrinsic* {.byref.} = object
+  Extrinsic* {.byref.} = object ## Stable borrowed source descriptors contain only immutable schema-bound children, in normative wire order.
     tickets*: TicketComponent
     preimages*: PreimageComponent
     guarantees*: GuaranteeComponent
     assurances*: AssuranceComponent
     disputes*: DisputeComponent
-  # Parent metadata exposes cardinalities and complete extent, never detached component spans.
-  ExtrinsicInfo* = object
+  ExtrinsicInfo* = object ## Parent metadata exposes cardinalities and complete extent, never detached component spans.
     tickets*, preimages*, guarantees*, assurances*, disputes*, consumed*: int
   # Private scan positions are retained only until complete parent validation authorizes capture.
   ExtrinsicLayout = object
@@ -95,71 +81,67 @@ type
     source: Extrinsic
     config: FrameConfig
     info: ExtrinsicInfo
-  # A default handle differs from a captured seven-byte empty extrinsic.
-  OwnedExtrinsic* = object
+  OwnedExtrinsic* = object ## A default handle differs from a captured seven-byte empty extrinsic.
     data: nil ExtrinsicData
-  # Successful full extrinsic decoding returns only complete ownership/progress.
-  ExtrinsicRead* = object
+  ExtrinsicRead* = object ## Successful full extrinsic decoding returns only complete ownership/progress.
     owner*: OwnedExtrinsic
     consumed*: int
-  # A block source borrows immutable sealed-header and complete-extrinsic handles for one encode call.
-  Block* {.byref.} = object
+  Block* {.byref.} = object ## A block source borrows immutable sealed-header and complete-extrinsic handles for one encode call.
     header*: HeaderComponent
     extrinsic*: OwnedExtrinsic
-  # Block metadata copies both child extents and exact total consumption without granting arbitrary extraction.
-  BlockInfo* = object
+  BlockInfo* = object ## Block metadata copies both child extents and exact total consumption without granting arbitrary extraction.
     headerBytes*, extrinsicBytes*, consumed*: int
   # Private acyclic block storage retains its immutable children and captured configuration.
   BlockData = ref object
     source: Block
     config: FrameConfig
     info: BlockInfo
-  # Child getters retain their own immutable storage after the final block handle is released.
-  OwnedBlock* = object
+  OwnedBlock* = object ## Child getters retain their own immutable storage after the final block handle is released.
     data: nil BlockData
-  # Successful block decoding binds both complete child captures to exact prefix consumption.
-  BlockRead* = object
+  BlockRead* = object ## Successful block decoding binds both complete child captures to exact prefix consumption.
     owner*: OwnedBlock
     consumed*: int
 
-# Read parent outcomes without exposing a mutable tag or unguarded alternative.
-func error*[T](value: FrameResult[T]): FrameError = value.status
-# Only complete success authorizes a value, retained owner or consumed progress.
+func error*[T](value: FrameResult[T]): FrameError =
+  ## Read parent outcomes without exposing a mutable tag or unguarded alternative.
+  value.status
 func value*[T](value: FrameResult[T]): T {.inline, requires: value.status == FrameError.None.} =
+  ## Only complete success authorizes a value, retained owner or consumed progress.
   value.completed
-# Only a child failure authorizes its nested schema-specific reason.
 func cause*[T](value: FrameResult[T]): ComponentFailure {.requires: value.status ==
     FrameError.InvalidComponent.} =
+  ## Only a child failure authorizes its nested schema-specific reason.
   value.nestedCause
-# Nested schema identity is read-only; the selected payload cannot be independently retagged.
-func kind*(value: ComponentFailure): ComponentKind = value.schema
-# Read the header reason only after selecting its matching schema.
+func kind*(value: ComponentFailure): ComponentKind =
+  ## Nested schema identity is read-only; the selected payload cannot be independently retagged.
+  value.schema
 func headerError*(value: ComponentFailure): HeaderError {.requires: value.schema ==
     ComponentKind.Header.} =
+  ## Read the header reason only after selecting its matching schema.
   value.headerReason
-# Read the tickets reason only after selecting its matching schema.
 func ticketError*(value: ComponentFailure): TicketError {.requires: value.schema ==
     ComponentKind.Tickets.} =
+  ## Read the tickets reason only after selecting its matching schema.
   value.ticketReason
-# Read the preimages reason only after selecting its matching schema.
 func preimageError*(value: ComponentFailure): CompositeError {.requires: value.schema ==
     ComponentKind.Preimages.} =
+  ## Read the preimages reason only after selecting its matching schema.
   value.preimageReason
-# Read the guarantees reason only after selecting its matching schema.
 func guaranteeError*(value: ComponentFailure): GuaranteeError {.requires: value.schema ==
     ComponentKind.Guarantees.} =
+  ## Read the guarantees reason only after selecting its matching schema.
   value.guaranteeReason
-# Read the assurances reason only after selecting its matching schema.
 func assuranceError*(value: ComponentFailure): AssuranceError {.requires: value.schema ==
     ComponentKind.Assurances.} =
+  ## Read the assurances reason only after selecting its matching schema.
   value.assuranceReason
-# Read the disputes reason only after selecting its matching schema.
 func disputeError*(value: ComponentFailure): DisputeError {.requires: value.schema ==
     ComponentKind.Disputes.} =
+  ## Read the disputes reason only after selecting its matching schema.
   value.disputeReason
 
-# Construct the full chain domains; preimage and whole-frame limits remain explicit caller resource policy.
 proc fullFrameConfig*(maxBytes: ByteLimit, preimages: PreimageLimits): FrameConfig {.raises: [].} =
+  ## Construct the full chain domains; preimage and whole-frame limits remain explicit caller resource policy.
   FrameConfig(cores: CoreCount(341), validators: ValidatorCount(1023), epochSlots: EpochSlots(600),
     ticketLimit: TicketLimit(16), preimages: preimages, maxBytes: maxBytes)
 
@@ -248,9 +230,9 @@ proc capture[kind: static[ComponentKind]](input: openArray[byte], config: FrameC
   for i in 0..<data.wire.len: data.wire[i] = input[i]
   Component[kind](data: data)
 
-# Decode/capture one statically typed standalone component, leaving unrelated suffixes to the caller.
 proc decodeComponent*[kind: static[ComponentKind]](input: openArray[byte],
     config: FrameConfig): FrameResult[ComponentRead[kind]] =
+  ## Decode/capture one statically typed standalone component, leaving unrelated suffixes to the caller.
   let checked = inspect[kind](input, config)
   # No input-derived allocation occurs before complete child validation and byte-budget checks.
   if checked.error == FrameError.InvalidComponent: return failed[ComponentRead[kind]](checked.cause)
@@ -260,9 +242,9 @@ proc decodeComponent*[kind: static[ComponentKind]](input: openArray[byte],
   FrameResult[ComponentRead[kind]](status: FrameError.None, completed: ComponentRead[kind](
     owner: capture[kind](input, config, checked.value), consumed: checked.value.consumed))
 
-# Copy component cardinality/extent metadata without revealing its private byte storage or configuration coordinates.
 proc componentInfo*[kind: static[ComponentKind]](owner: Component[kind]): FrameResult[
     ComponentInfo] =
+  ## Copy component cardinality/extent metadata without revealing its private byte storage or configuration coordinates.
   let data = owner.data
   # Default handles cannot fabricate a validated empty component of any schema.
   if data == nil: return FrameResult[ComponentInfo](status: FrameError.InvalidOwner)
@@ -293,9 +275,9 @@ proc put[kind: static[ComponentKind]](owner: Component[kind], output: var openAr
     output[cursor] = value
     inc cursor
 
-# Re-emit an immutable component atomically, preserving all unused destination suffix capacity.
 proc encodeComponent*[kind: static[ComponentKind]](owner: Component[kind], output: var openArray[
     byte]): FrameResult[int] =
+  ## Re-emit an immutable component atomically, preserving all unused destination suffix capacity.
   let data = owner.data
   if data == nil: return FrameResult[int](status: FrameError.InvalidOwner) # Defaults contain no validated schema bytes.
   let size = data.info.consumed
@@ -414,8 +396,8 @@ proc captureExtrinsic(input: openArray[byte], config: FrameConfig,
     ComponentInfo(records: layout.info.disputes, consumed: layout.lengths[4]))
   OwnedExtrinsic(data: ExtrinsicData(source: source, config: config, info: layout.info))
 
-# Decode one complete extrinsic prefix with child owners captured only after every family validates.
 proc decodeExtrinsic*(input: openArray[byte], config: FrameConfig): FrameResult[ExtrinsicRead] =
+  ## Decode one complete extrinsic prefix with child owners captured only after every family validates.
   let scanned = scanExtrinsic(input, config)
   if scanned.error == FrameError.InvalidComponent: return failed[ExtrinsicRead](
       scanned.cause) # Preserve the failing family's reason.
@@ -522,8 +504,8 @@ proc measure(source: Extrinsic, config: FrameConfig): FrameResult[ExtrinsicInfo]
   info.consumed = cursor
   FrameResult[ExtrinsicInfo](status: FrameError.None, completed: info)
 
-# Retain already validated immutable source components without a parent encode/decode round trip.
 proc ownExtrinsic*(source: Extrinsic, config: FrameConfig): FrameResult[OwnedExtrinsic] =
+  ## Retain already validated immutable source components without a parent encode/decode round trip.
   let checked = measure(source, config)
   # A source captured under another profile must satisfy this complete parent policy before ownership is granted.
   if checked.error == FrameError.InvalidComponent: return failed[OwnedExtrinsic](checked.cause)
@@ -552,9 +534,9 @@ proc putExtrinsic(source: Extrinsic, output: var openArray[byte], cursor: var in
   put(source.assurances, output, cursor)
   put(source.disputes, output, cursor)
 
-# Encode a complete extrinsic atomically without a temporary whole-frame staging allocation.
 proc encodeExtrinsic*(source: Extrinsic, config: FrameConfig, output: var openArray[
     byte]): FrameResult[int] =
+  ## Encode a complete extrinsic atomically without a temporary whole-frame staging allocation.
   let measured = measure(source, config)
   if measured.error == FrameError.InvalidComponent: return failed[int](
       measured.cause) # Late nested policy failures precede output sizing.
@@ -569,49 +551,49 @@ proc encodeExtrinsic*(source: Extrinsic, config: FrameConfig, output: var openAr
   assert cursor == size
   FrameResult[int](status: FrameError.None, completed: size)
 
-# Copy parent cardinalities without exposing mutable child buffers or source descriptors.
 proc extrinsicInfo*(owner: OwnedExtrinsic): FrameResult[ExtrinsicInfo] =
+  ## Copy parent cardinalities without exposing mutable child buffers or source descriptors.
   let data = owner.data
   if data == nil: return FrameResult[ExtrinsicInfo](
       status: FrameError.InvalidOwner) # Defaults differ from a validated empty frame.
   FrameResult[ExtrinsicInfo](status: FrameError.None, completed: data.info)
 
-# Re-emit an immutable extrinsic using the policy captured with its exact schema-bound children.
 proc encodeOwnedExtrinsic*(owner: OwnedExtrinsic, output: var openArray[byte]): FrameResult[int] =
+  ## Re-emit an immutable extrinsic using the policy captured with its exact schema-bound children.
   let data = owner.data
   if data == nil: return FrameResult[int](status: FrameError.InvalidOwner) # Uninitialized owners cannot encode empty children.
   encodeExtrinsic(data.source, data.config, output)
 
-# Retain the original tickets snapshot after the extrinsic/block owner is released.
 proc extrinsicTickets*(owner: OwnedExtrinsic): FrameResult[TicketComponent] =
+  ## Retain the original tickets snapshot after the extrinsic/block owner is released.
   let data = owner.data
   if data == nil: return FrameResult[TicketComponent](
       status: FrameError.InvalidOwner) # No child exists for an absent owner.
   FrameResult[TicketComponent](status: FrameError.None, completed: data.source.tickets)
 
-# Retain the original preimages snapshot after the extrinsic/block owner is released.
 proc extrinsicPreimages*(owner: OwnedExtrinsic): FrameResult[PreimageComponent] =
+  ## Retain the original preimages snapshot after the extrinsic/block owner is released.
   let data = owner.data
   if data == nil: return FrameResult[PreimageComponent](
       status: FrameError.InvalidOwner) # No child exists for an absent owner.
   FrameResult[PreimageComponent](status: FrameError.None, completed: data.source.preimages)
 
-# Retain the original guarantees snapshot after the extrinsic/block owner is released.
 proc extrinsicGuarantees*(owner: OwnedExtrinsic): FrameResult[GuaranteeComponent] =
+  ## Retain the original guarantees snapshot after the extrinsic/block owner is released.
   let data = owner.data
   if data == nil: return FrameResult[GuaranteeComponent](
       status: FrameError.InvalidOwner) # No child exists for an absent owner.
   FrameResult[GuaranteeComponent](status: FrameError.None, completed: data.source.guarantees)
 
-# Retain the original assurances snapshot after the extrinsic/block owner is released.
 proc extrinsicAssurances*(owner: OwnedExtrinsic): FrameResult[AssuranceComponent] =
+  ## Retain the original assurances snapshot after the extrinsic/block owner is released.
   let data = owner.data
   if data == nil: return FrameResult[AssuranceComponent](
       status: FrameError.InvalidOwner) # No child exists for an absent owner.
   FrameResult[AssuranceComponent](status: FrameError.None, completed: data.source.assurances)
 
-# Retain the original disputes snapshot after the extrinsic/block owner is released.
 proc extrinsicDisputes*(owner: OwnedExtrinsic): FrameResult[DisputeComponent] =
+  ## Retain the original disputes snapshot after the extrinsic/block owner is released.
   let data = owner.data
   if data == nil: return FrameResult[DisputeComponent](
       status: FrameError.InvalidOwner) # No child exists for an absent owner.
@@ -647,8 +629,8 @@ proc measureBlock(source: Block, config: FrameConfig): FrameResult[BlockInfo] =
     headerBytes: h.value.consumed,
     extrinsicBytes: e.value.consumed, consumed: total))
 
-# Encode complete immutable block sources atomically; hashes/signatures/state relationships are separate validation.
 proc encodeBlock*(source: Block, config: FrameConfig, output: var openArray[byte]): FrameResult[int] =
+  ## Encode complete immutable block sources atomically; hashes/signatures/state relationships are separate validation.
   let measured = measureBlock(source, config)
   if measured.error == FrameError.InvalidComponent: return failed[int](
       measured.cause) # Validate the final child before header writes.
@@ -668,8 +650,8 @@ proc encodeBlock*(source: Block, config: FrameConfig, output: var openArray[byte
   assert cursor == size
   FrameResult[int](status: FrameError.None, completed: size)
 
-# Decode/capture both block children only after the complete sealed-header/extrinsic scan succeeds.
 proc decodeBlock*(input: openArray[byte], config: FrameConfig): FrameResult[BlockRead] =
+  ## Decode/capture both block children only after the complete sealed-header/extrinsic scan succeeds.
   let h = inspect[ComponentKind.Header](input, config)
   if h.error == FrameError.InvalidComponent: return failed[BlockRead](
       h.cause) # Header framing failures remain correctly attributed.
@@ -691,35 +673,35 @@ proc decodeBlock*(input: openArray[byte], config: FrameConfig): FrameResult[Bloc
     owner: OwnedBlock(data: BlockData(source: source, config: config, info: info)),
         consumed: total))
 
-# Copy block metadata without publishing private child positions or mutable storage.
 proc blockInfo*(owner: OwnedBlock): FrameResult[BlockInfo] =
+  ## Copy block metadata without publishing private child positions or mutable storage.
   let data = owner.data
   if data == nil: return FrameResult[BlockInfo](
       status: FrameError.InvalidOwner) # Default handles have no complete block.
   FrameResult[BlockInfo](status: FrameError.None, completed: data.info)
 
-# Retain the exact complete sealed header component after releasing its enclosing block.
 proc blockHeader*(owner: OwnedBlock): FrameResult[HeaderComponent] =
+  ## Retain the exact complete sealed header component after releasing its enclosing block.
   let data = owner.data
   if data == nil: return FrameResult[HeaderComponent](
       status: FrameError.InvalidOwner) # No child for default blocks.
   FrameResult[HeaderComponent](status: FrameError.None, completed: data.source.header)
 
-# Retain all exact extrinsic children after releasing their enclosing block.
 proc blockExtrinsic*(owner: OwnedBlock): FrameResult[OwnedExtrinsic] =
+  ## Retain all exact extrinsic children after releasing their enclosing block.
   let data = owner.data
   if data == nil: return FrameResult[OwnedExtrinsic](
       status: FrameError.InvalidOwner) # No fabricated empty frame.
   FrameResult[OwnedExtrinsic](status: FrameError.None, completed: data.source.extrinsic)
 
-# Re-emit a captured block atomically using its captured configuration and immutable child bytes.
 proc encodeOwnedBlock*(owner: OwnedBlock, output: var openArray[byte]): FrameResult[int] =
+  ## Re-emit a captured block atomically using its captured configuration and immutable child bytes.
   let data = owner.data
   if data == nil: return FrameResult[int](status: FrameError.InvalidOwner) # Default snapshots contain no valid header/extrinsic.
   encodeBlock(data.source, data.config, output)
 
-# Return independent copied ticket records, never the component's immutable backing wire/storage.
 proc readTickets*(owner: TicketComponent): FrameResult[seq[Ticket]] =
+  ## Return independent copied ticket records, never the component's immutable backing wire/storage.
   let data = owner.data
   if data == nil: return FrameResult[seq[Ticket]](
       status: FrameError.InvalidOwner) # Defaults cannot supply record counts.
@@ -731,8 +713,8 @@ proc readTickets*(owner: TicketComponent): FrameResult[seq[Ticket]] =
         ticketReason: parsed.error)) # Preserve future child-contract errors.
   FrameResult[seq[Ticket]](status: FrameError.None, completed: values)
 
-# Return independent copied assurance records under the exact component profile, without exposing mutable snapshots.
 proc readAssurances*(owner: AssuranceComponent): FrameResult[seq[Assurance]] =
+  ## Return independent copied assurance records under the exact component profile, without exposing mutable snapshots.
   let data = owner.data
   if data == nil: return FrameResult[seq[Assurance]](
       status: FrameError.InvalidOwner) # Default owners have no validator population.
@@ -746,15 +728,15 @@ proc readAssurances*(owner: AssuranceComponent): FrameResult[seq[Assurance]] =
         assuranceReason: parsed.error)) # No partial records on failure.
   FrameResult[seq[Assurance]](status: FrameError.None, completed: values)
 
-# Materialize an existing immutable preimage-family owner on demand from the exact retained component bytes.
 proc readPreimages*(owner: PreimageComponent): OwnedResult[OwnedFrame] =
+  ## Materialize an existing immutable preimage-family owner on demand from the exact retained component bytes.
   let data = owner.data
   if data == nil: return ownedFailure[OwnedFrame](
       OwnershipError.InvalidOwner) # No schema reinterpretation for defaults.
   decodeOwnedPreimages(data.wire, data.config.preimages)
 
-# Materialize the existing report/credential owner API on demand, keeping JAM report logic in its original codec.
 proc readGuarantees*(owner: GuaranteeComponent): GuaranteeResult[GuaranteesRead] =
+  ## Materialize the existing report/credential owner API on demand, keeping JAM report logic in its original codec.
   let data = owner.data
   if data == nil: return guaranteeFailure[GuaranteesRead](
       GuaranteeError.InvalidOwner) # Defaults carry no reports.
@@ -762,8 +744,8 @@ proc readGuarantees*(owner: GuaranteeComponent): GuaranteeResult[GuaranteesRead]
   decodeGuarantees(data.wire, GuaranteeConfig(cores: config.cores,
       validators: config.validators, maxBytes: config.maxBytes))
 
-# Materialize the existing immutable disputes API without exporting raw wire or detached spans.
 proc readDisputes*(owner: DisputeComponent): DisputeResult[DisputesRead] =
+  ## Materialize the existing immutable disputes API without exporting raw wire or detached spans.
   let data = owner.data
   if data == nil: return disputeFailure[DisputesRead](
       DisputeError.InvalidOwner) # Missing snapshots carry no verdicts.
@@ -771,8 +753,8 @@ proc readDisputes*(owner: DisputeComponent): DisputeResult[DisputesRead] =
   decodeDisputes(data.wire, DisputeConfig(validators: config.validators,
       maxBytes: config.maxBytes))
 
-# Materialize the existing sealed-header/marker API on demand; an unsigned component has no matching type.
 proc readHeader*(owner: HeaderComponent): HeaderResult[HeaderRead] =
+  ## Materialize the existing sealed-header/marker API on demand; an unsigned component has no matching type.
   let data = owner.data
   if data == nil: return headerFailure[HeaderRead](
       HeaderError.InvalidOwner) # Defaults cannot fabricate a seal.

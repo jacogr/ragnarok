@@ -13,40 +13,31 @@ from ./work_report import AuthorizerHash
 export AuthorizerHash
 
 type
-  ## Distinguishes variable pools (chapter 1) from fixed queues (chapter 2).
-  AuthorizationKind* {.pure.} = enum
+  AuthorizationKind* {.pure.} = enum ## Distinguishes variable pools (chapter 1) from fixed queues (chapter 2).
     Pools, Queues
-  ## Synchronous borrowed source row; neither its backing storage nor any mutable alias is retained.
-  AuthorizerRow* = seq[AuthorizerHash]
-  ## An ordinal in the configured core sequence, distinct from an authorizer position.
-  AuthorizationCoreIndex* = distinct uint64
-  ## A position within one core's ordered pool or queue.
-  AuthorizationIndex* = distinct uint64
-  ## Explicit chain cardinality and caller ceilings for total hashes and complete payload bytes.
-  AuthorizationConfig* = object
+  AuthorizerRow* = seq[AuthorizerHash] ## Synchronous borrowed source row; neither its backing storage nor any mutable alias is retained.
+  AuthorizationCoreIndex* = distinct uint64 ## An ordinal in the configured core sequence, distinct from an authorizer position.
+  AuthorizationIndex* = distinct uint64 ## A position within one core's ordered pool or queue.
+  AuthorizationConfig* = object ## Explicit chain cardinality and caller ceilings for total hashes and complete payload bytes.
     cores*: CoreCount
     maxHashes*: ElementLimit
     maxBytes*: ByteLimit
-  ## Failed/default results have no entry, owner, count or consumed cursor.
-  AuthorizationError* {.pure.} = enum
+  AuthorizationError* {.pure.} = enum ## Failed/default results have no entry, owner, count or consumed cursor.
     Uninitialized, None, InvalidConfig, InvalidCount, Truncated, NonCanonical,
     LimitExceeded, LengthOverflow, InvalidOwner, InvalidIndex, InvalidTag
-  ## Only success exposes the complete selected application value.
-  AuthorizationResult*[T] = object
+  AuthorizationResult*[T] = object ## Only success exposes the complete selected application value.
     case status: AuthorizationError
     of None:
-      completed: T # Complete success alone carries application data.
+      completed: T                 # Complete success alone carries application data.
     else:
-      discard      # No default value or partial progress on failure.
+      discard                      # No default value or partial progress on failure.
   ## Private acyclic ARC storage binds ordered copied hashes to their validated component kind.
   AuthorizationData = ref object
     kind: AuthorizationKind
     rows: seq[AuthorizerRow]
-  ## Value handle shares immutable private storage; replacing a handle cannot mutate other copies.
-  AuthorizationSnapshot* = object
+  AuthorizationSnapshot* = object ## Value handle shares immutable private storage; replacing a handle cannot mutate other copies.
     data: nil AuthorizationData
-  ## Complete prefix decoding carries its immutable snapshot and exact consumed byte extent.
-  AuthorizationRead* = object
+  AuthorizationRead* = object ## Complete prefix decoding carries its immutable snapshot and exact consumed byte extent.
     snapshot*: AuthorizationSnapshot
     consumed*: int
   ## Preflight arithmetic records no source pointer or partially constructed owner.
@@ -54,11 +45,12 @@ type
     bytes: int
     hashes: uint64
 
-# Failure reasons do not authorize entries, owners, hashes, counts or consumed progress.
-func error*[T](value: AuthorizationResult[T]): AuthorizationError = value.status
-# Public and internal completed values require explicit successful selection in optimized builds too.
+func error*[T](value: AuthorizationResult[T]): AuthorizationError =
+  ## Failure reasons do not authorize entries, owners, hashes, counts or consumed progress.
+  value.status
 func value*[T](value: AuthorizationResult[T]): T {.inline, requires: value.status ==
     AuthorizationError.None.} =
+  ## Public and internal completed values require explicit successful selection in optimized builds too.
   value.completed
 
 ## Validate configuration-derived descriptor and minimum wire extents without multiplying untrusted sizes.
@@ -108,9 +100,9 @@ proc poolCount(input: openArray[byte]): AuthorizationResult[tuple[count: uint64,
   AuthorizationResult[tuple[count: uint64, prefix: int]](status: AuthorizationError.None,
     completed: (uint64(parsed.value), int(parsed.consumed)))
 
-## Emit chapter 1/2 from stable caller rows after whole-component shape/resource preflight.
 proc authorizationEntry*(kind: AuthorizationKind, rows: openArray[AuthorizerRow],
                          config: AuthorizationConfig): AuthorizationResult[StateEntry] =
+  ## Emit chapter 1/2 from stable caller rows after whole-component shape/resource preflight.
   let valid = validate(kind, config)
   if valid != AuthorizationError.None:
     return AuthorizationResult[StateEntry](status: valid) # Invalid configuration never allocates payload storage.
@@ -143,9 +135,9 @@ proc authorizationEntry*(kind: AuthorizationKind, rows: openArray[AuthorizerRow]
         inc cursor
   AuthorizationResult[StateEntry](status: AuthorizationError.None, completed: entry)
 
-## Decode one complete component prefix into immutable copied storage after a no-allocation validation pass.
 proc decodeAuthorization*(kind: AuthorizationKind, input: openArray[byte],
                           config: AuthorizationConfig): AuthorizationResult[AuthorizationRead] =
+  ## Decode one complete component prefix into immutable copied storage after a no-allocation validation pass.
   let valid = validate(kind, config)
   if valid != AuthorizationError.None:
     return AuthorizationResult[AuthorizationRead](
@@ -190,24 +182,24 @@ proc decodeAuthorization*(kind: AuthorizationKind, input: openArray[byte],
   AuthorizationResult[AuthorizationRead](status: AuthorizationError.None,
     completed: AuthorizationRead(snapshot: owner, consumed: cursor))
 
-## Inspect the retained component kind, rejecting default handles rather than inventing an empty pool.
 proc authorizationKind*(owner: AuthorizationSnapshot): AuthorizationResult[AuthorizationKind] =
+  ## Inspect the retained component kind, rejecting default handles rather than inventing an empty pool.
   let data = owner.data
   if data == nil:
     return AuthorizationResult[AuthorizationKind](
         status: AuthorizationError.InvalidOwner) # No validated kind on default handles.
   AuthorizationResult[AuthorizationKind](status: AuthorizationError.None, completed: data.kind)
 
-## Count configured core rows without exporting the owner's private nested sequences.
 proc authorizationCores*(owner: AuthorizationSnapshot): AuthorizationResult[int] =
+  ## Count configured core rows without exporting the owner's private nested sequences.
   let data = owner.data
   if data == nil:
     return AuthorizationResult[int](status: AuthorizationError.InvalidOwner) # No population on absent storage.
   AuthorizationResult[int](status: AuthorizationError.None, completed: data.rows.len)
 
-## Inspect one owner's row size after checking its nominal core ordinal.
 proc authorizerCount*(owner: AuthorizationSnapshot,
     core: AuthorizationCoreIndex): AuthorizationResult[int] =
+  ## Inspect one owner's row size after checking its nominal core ordinal.
   let data = owner.data
   if data == nil:
     return AuthorizationResult[int](status: AuthorizationError.InvalidOwner) # Never dereference default snapshots.
@@ -215,9 +207,9 @@ proc authorizerCount*(owner: AuthorizationSnapshot,
     return AuthorizationResult[int](status: AuthorizationError.InvalidIndex) # Check before native indexing.
   AuthorizationResult[int](status: AuthorizationError.None, completed: data.rows[int(uint64(core))].len)
 
-## Extract a copied authorizer hash through its retained core owner and nominal row position.
 proc authorizerAt*(owner: AuthorizationSnapshot, core: AuthorizationCoreIndex,
                    index: AuthorizationIndex): AuthorizationResult[AuthorizerHash] =
+  ## Extract a copied authorizer hash through its retained core owner and nominal row position.
   let data = owner.data
   # Bind and validate the same retained storage used for final hash extraction.
   if data == nil:

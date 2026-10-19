@@ -11,13 +11,10 @@ import ./fixed_unsigned
 import ./bounded
 
 type
-  # Caller-supplied or decoded coordinates in a borrowed pool; encoders validate bounds against that pool.
-  BlobSpan* = object
+  BlobSpan* = object ## Caller-supplied or decoded coordinates in a borrowed pool; encoders validate bounds against that pool.
     offset*, length*: int
-  # The four-byte service field is nominally different from counts and ordinary machine values.
-  ServiceIndex* = distinct uint32
-  # Presence carries a span; absence has no payload fields or bytes.
-  OptionalBlob* = object
+  ServiceIndex* = distinct uint32 ## The four-byte service field is nominally different from counts and ordinary machine values.
+  OptionalBlob* = object ## Presence carries a span; absence has no payload fields or bytes.
     case isPresent: bool
     of true:
       # Only the present branch refers to the associated byte pool.
@@ -25,11 +22,9 @@ type
     of false:
       # Absence is represented solely by discriminator zero.
       discard
-  # Exact C.2 work-output tags; Bad/Big retain the paper's names rather than inferred semantics.
-  WorkKind* {.pure.} = enum
+  WorkKind* {.pure.} = enum ## Exact C.2 work-output tags; Bad/Big retain the paper's names rather than inferred semantics.
     Success, OutOfGas, Panic, BadExports, Oversize, Bad, Big
-  # Success carries a borrowed source/decoded span; all error variants contain only their tag.
-  WorkOutput* = object
+  WorkOutput* = object ## Success carries a borrowed source/decoded span; all error variants contain only their tag.
     case outputKind: WorkKind
     of Success:
       # Span coordinates refer to the same caller-owned pool/wire as the result.
@@ -37,20 +32,16 @@ type
     else:
       # Error variants have no encoded blob length or payload.
       discard
-  # A preimage record contains a nominal service index and one nested variable blob.
-  Preimage* = object
+  Preimage* = object ## A preimage record contains a nominal service index and one nested variable blob.
     service*: ServiceIndex
     blob*: BlobSpan
-  # Separate policies bound record count, a single blob and aggregate payload bytes.
-  PreimageLimits* = object
+  PreimageLimits* = object ## Separate policies bound record count, a single blob and aggregate payload bytes.
     items*: ElementLimit
     perBlob*, totalBlobBytes*: ByteLimit
-  # Typed status discriminator: Uninitialized is the default failure; None selects completed data.
-  CompositeError* {.pure.} = enum
+  CompositeError* {.pure.} = enum ## Typed status discriminator: Uninitialized is the default failure; None selects completed data.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
     AliasedBuffers, LengthOverflow, InvalidTag, InvalidSpan
-  # Completed output extent; callers cannot retag failures or read uncommitted progress.
-  CompositeWrite* = object
+  CompositeWrite* = object ## Completed output extent; callers cannot retag failures or read uncommitted progress.
     case status: CompositeError
     of None:
       # Only the defining codec constructs complete success data.
@@ -58,8 +49,7 @@ type
     else:
       # Default and failed alternatives carry no usable payload.
       discard
-  # Validated optional value and prefix; payloads remain private until success.
-  OptionalResult* = object
+  OptionalResult* = object ## Validated optional value and prefix; payloads remain private until success.
     case status: CompositeError
     of None:
       # Only the defining codec constructs complete success data.
@@ -68,8 +58,7 @@ type
     else:
       # Default and failed alternatives carry no usable payload.
       discard
-  # Validated work-output value and prefix; failures expose their reason alone.
-  WorkResult* = object
+  WorkResult* = object ## Validated work-output value and prefix; failures expose their reason alone.
     case status: CompositeError
     of None:
       # Only the defining codec constructs complete success data.
@@ -78,8 +67,7 @@ type
     else:
       # Default and failed alternatives carry no usable payload.
       discard
-  # Completed caller-storage prefix; failures cannot authorize records or cursor progress.
-  PreimageResult* = object
+  PreimageResult* = object ## Completed caller-storage prefix; failures cannot authorize records or cursor progress.
     case status: CompositeError
     of None:
       # Only the defining codec constructs complete success data.
@@ -99,68 +87,78 @@ type
       # Failure has no value, span, count or consumed/written metadata.
       discard
 
-# Construct a payload-free optional source descriptor without borrowing any buffer.
-func absentBlob*(): OptionalBlob = OptionalBlob(isPresent: false)
-# Construct a present source descriptor; the encoder still validates span bounds against its pool.
-func presentBlob*(span: BlobSpan): OptionalBlob = OptionalBlob(isPresent: true, payloadSpan: span)
-# Read optional presence without permitting callers to retag an absent value.
-func present*(value: OptionalBlob): bool = value.isPresent
-# Only present optionals contain a span; returned coordinates are copied, not writable aliases.
-func blob*(value: OptionalBlob): BlobSpan {.inline, requires: value.isPresent.} = value.payloadSpan
-
-# Construct a successful work source descriptor; pool-dependent validation remains with the encoder.
-func successfulWork*(span: BlobSpan): WorkOutput = WorkOutput(outputKind: WorkKind.Success,
-    payloadSpan: span)
-# Payload-free work descriptors cannot use the Success tag, which requires an explicit span.
-func failedWork*(kind: WorkKind): WorkOutput {.requires: kind != WorkKind.Success.} =
-  WorkOutput(outputKind: kind)
-# Inspect a work tag without allowing mutations that could manufacture a success payload.
-func kind*(value: WorkOutput): WorkKind = value.outputKind
-# Only Success carries a span; all six work-error tags reject payload access.
-func blob*(value: WorkOutput): BlobSpan {.inline, requires: value.outputKind == WorkKind.Success.} =
+func absentBlob*(): OptionalBlob =
+  ## Construct a payload-free optional source descriptor without borrowing any buffer.
+  OptionalBlob(isPresent: false)
+func presentBlob*(span: BlobSpan): OptionalBlob =
+  ## Construct a present source descriptor; the encoder still validates span bounds against its pool.
+  OptionalBlob(isPresent: true, payloadSpan: span)
+func present*(value: OptionalBlob): bool =
+  ## Read optional presence without permitting callers to retag an absent value.
+  value.isPresent
+func blob*(value: OptionalBlob): BlobSpan {.inline, requires: value.isPresent.} =
+  ## Only present optionals contain a span; returned coordinates are copied, not writable aliases.
   value.payloadSpan
 
-# Sibling encoders may report a typed failure, but cannot label a missing extent as success.
+func successfulWork*(span: BlobSpan): WorkOutput =
+  ## Construct a successful work source descriptor; pool-dependent validation remains with the encoder.
+  WorkOutput(outputKind: WorkKind.Success,
+    payloadSpan: span)
+func failedWork*(kind: WorkKind): WorkOutput {.requires: kind != WorkKind.Success.} =
+  ## Payload-free work descriptors cannot use the Success tag, which requires an explicit span.
+  WorkOutput(outputKind: kind)
+func kind*(value: WorkOutput): WorkKind =
+  ## Inspect a work tag without allowing mutations that could manufacture a success payload.
+  value.outputKind
+func blob*(value: WorkOutput): BlobSpan {.inline, requires: value.outputKind == WorkKind.Success.} =
+  ## Only Success carries a span; all six work-error tags reject payload access.
+  value.payloadSpan
+
 func compositeFailure*(reason: CompositeError): CompositeWrite {.requires: reason !=
     CompositeError.None.} =
+  ## Sibling encoders may report a typed failure, but cannot label a missing extent as success.
   CompositeWrite(status: reason)
-# Sibling encoders explicitly report their completed nonnegative extent after their own preflight/commit.
 func compositeWritten*(extent: int): CompositeWrite {.requires: extent >= 0.} =
+  ## Sibling encoders explicitly report their completed nonnegative extent after their own preflight/commit.
   CompositeWrite(status: CompositeError.None, byteWritten: extent)
 
-# Read the CompositeWrite reason without exposing a writable discriminator.
-func error*(value: CompositeWrite): CompositeError = value.status
-# Read the OptionalResult reason without exposing a writable discriminator.
-func error*(value: OptionalResult): CompositeError = value.status
-# Read the WorkResult reason without exposing a writable discriminator.
-func error*(value: WorkResult): CompositeError = value.status
-# Read the PreimageResult reason without exposing a writable discriminator.
-func error*(value: PreimageResult): CompositeError = value.status
-# Only completed writes publish a committed extent.
+func error*(value: CompositeWrite): CompositeError =
+  ## Read the CompositeWrite reason without exposing a writable discriminator.
+  value.status
+func error*(value: OptionalResult): CompositeError =
+  ## Read the OptionalResult reason without exposing a writable discriminator.
+  value.status
+func error*(value: WorkResult): CompositeError =
+  ## Read the WorkResult reason without exposing a writable discriminator.
+  value.status
+func error*(value: PreimageResult): CompositeError =
+  ## Read the PreimageResult reason without exposing a writable discriminator.
+  value.status
 func written*(value: CompositeWrite): int {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## Only completed writes publish a committed extent.
   value.byteWritten
-# Only complete optional decodes expose their selected variant.
 func value*(value: OptionalResult): OptionalBlob {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## Only complete optional decodes expose their selected variant.
   value.decodedValue
-# Failed optional decodes cannot advance a byte cursor.
 func consumed*(value: OptionalResult): int {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## Failed optional decodes cannot advance a byte cursor.
   value.byteConsumed
-# Only complete work-output decodes expose their selected variant.
 func value*(value: WorkResult): WorkOutput {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## Only complete work-output decodes expose their selected variant.
   value.decodedValue
-# Failed work-output decodes cannot publish prefix progress.
 func consumed*(value: WorkResult): int {.inline, requires: value.status == CompositeError.None.} =
+  ## Failed work-output decodes cannot publish prefix progress.
   value.byteConsumed
-# Only a completed preimage decode authorizes its caller-owned record prefix.
 func count*(value: PreimageResult): int {.inline, requires: value.status == CompositeError.None.} =
+  ## Only a completed preimage decode authorizes its caller-owned record prefix.
   value.elementCount
-# Failed preimage scans/decodes cannot expose partial progress.
 func consumed*(value: PreimageResult): int {.inline, requires: value.status ==
     CompositeError.None.} =
+  ## Failed preimage scans/decodes cannot expose partial progress.
   value.byteConsumed
 
 # Compare address differences so overlap detection never overflows a pointer-end addition.
@@ -227,8 +225,8 @@ proc writeTag(tag: int, hasBlob: bool, span: BlobSpan, pool: openArray[byte], li
       copyMem(addr output[1 + length.len], unsafeAddr pool[span.offset], span.length)
   size
 
-# Validate and measure a work output without mutation; enclosing codecs use this for atomic preflight.
 proc measureWork*(value: WorkOutput, poolSize: int, limit: ByteLimit): CompositeWrite {.raises: [].} =
+  ## Validate and measure a work output without mutation; enclosing codecs use this for atomic preflight.
   # Only success contains a borrowed payload descriptor.
   if value.kind == WorkKind.Success: return tagSize(0, true, value.blob, poolSize, limit)
   tagSize(ord(value.kind), false, BlobSpan(), poolSize, limit)
@@ -249,14 +247,14 @@ proc readTag(input: openArray[byte], maximum, blobTag: uint64,
   TaggedResult(error: CompositeError.None, tag: value, blob: BlobSpan(offset: tag.consumed + blob.offset, length: blob.length),
                consumed: tag.consumed + blob.consumed)
 
-# C.1.3 optional-blob schema: zero for absent, or one followed by a variable blob.
 proc encodeOptionalBorrowed*(value: OptionalBlob, pool: openArray[byte], limit: ByteLimit,
                      output: var openArray[byte]): CompositeWrite {.raises: [].} =
+  ## C.1.3 optional-blob schema: zero for absent, or one followed by a variable blob.
   if value.present: writeTag(1, true, value.blob, pool, limit, output) # Present branch validates its span.
   else: writeTag(0, false, BlobSpan(), pool, limit, output) # Absent branch has no payload.
 
-# Return a typed optional view only after validating discriminator and any present blob completely.
 proc decodeOptionalBorrowed*(input: openArray[byte], limit: ByteLimit): OptionalResult {.raises: [].} =
+  ## Return a typed optional view only after validating discriminator and any present blob completely.
   let parsed = readTag(input, 1, 1, limit)
   if parsed.error != CompositeError.None: return OptionalResult(
       status: parsed.error) # No usable value on failure.
@@ -265,14 +263,14 @@ proc decodeOptionalBorrowed*(input: openArray[byte], limit: ByteLimit): Optional
   OptionalResult(status: CompositeError.None, decodedValue: OptionalBlob(isPresent: true,
       payloadSpan: parsed.blob), byteConsumed: parsed.consumed)
 
-# C.2 work-output O: success zero plus a variable blob, or one of six payload-free errors.
 proc encodeWorkBorrowed*(value: WorkOutput, pool: openArray[byte], limit: ByteLimit,
                  output: var openArray[byte]): CompositeWrite {.raises: [].} =
+  ## C.2 work-output O: success zero plus a variable blob, or one of six payload-free errors.
   if value.kind == WorkKind.Success: return writeTag(0, true, value.blob, pool, limit, output) # Success payload.
   writeTag(ord(value.kind), false, BlobSpan(), pool, limit, output) # Error tag is range checked before narrowing.
 
-# Decode exactly the work-output discriminator set; preserve trailing fields in either variant.
 proc decodeWorkBorrowed*(input: openArray[byte], limit: ByteLimit): WorkResult {.raises: [].} =
+  ## Decode exactly the work-output discriminator set; preserve trailing fields in either variant.
   let parsed = readTag(input, 6, 0, limit)
   if parsed.error != CompositeError.None: return WorkResult(
       status: parsed.error) # No enum conversion on bad data.
@@ -313,9 +311,9 @@ proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
     cursor += blob.consumed
   PreimageResult(status: CompositeError.None, elementCount: count, byteConsumed: cursor)
 
-# Decode the full preimage extrinsic into caller-owned records, retaining blob locations as original-input spans.
 proc decodePreimagesBorrowed*(input: openArray[byte], limits: PreimageLimits,
                       output: var openArray[Preimage]): PreimageResult {.raises: [].} =
+  ## Decode the full preimage extrinsic into caller-owned records, retaining blob locations as original-input spans.
   let prefix = natural.decode(input)
   if not prefix.ok:
     # An invalid outer discriminator cannot advance a cursor or initialize any record.
@@ -337,9 +335,9 @@ proc decodePreimagesBorrowed*(input: openArray[byte], limits: PreimageLimits,
   if checked.error != CompositeError.None: return checked # Whole-frame validation precedes any record write.
   walk(input, prefix.consumed, count, limits, output, true)
 
-# Encode nested tuples from a shared byte pool, preflighting every span, count, byte budget and destination extent.
 proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte], limits: PreimageLimits,
                       output: var openArray[byte]): CompositeWrite {.raises: [].} =
+  ## Encode nested tuples from a shared byte pool, preflighting every span, count, byte budget and destination extent.
   if uint64(values.len) > uint64(limits.items): return CompositeWrite(
       status: CompositeError.LimitExceeded) # Count ceiling.
   let prefix = natural.encode(JamNatural(uint64(values.len)))
@@ -379,9 +377,9 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
     cursor += value.blob.length
   CompositeWrite(status: CompositeError.None, byteWritten: required)
 
-# Inspect preimage framing/payload policy without allocation or exposing source coordinates.
 proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
     wireLimit: ByteLimit): PreimageResult {.raises: [].} =
+  ## Inspect preimage framing/payload policy without allocation or exposing source coordinates.
   let prefix = natural.decode(input)
   # Preserve primitive framing errors before choosing a count.
   if not prefix.ok:

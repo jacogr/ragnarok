@@ -8,19 +8,14 @@
 ## value/consumption results.
 
 type
-  # An unsigned wire value, distinct from both ordinary uint64 and general JAM naturals.
-  FixedUnsigned* = distinct uint64
-  # A requested byte count, validated by both APIs before use; supported counts are 0..8.
-  ByteWidth* = distinct int
-  # Complete output storage belongs to the caller; only the first len bytes are emitted.
-  EncodedFixed* = object
+  FixedUnsigned* = distinct uint64 ## An unsigned wire value, distinct from both ordinary uint64 and general JAM naturals.
+  ByteWidth* = distinct int ## A requested byte count, validated by both APIs before use; supported counts are 0..8.
+  EncodedFixed* = object ## Complete output storage belongs to the caller; only the first len bytes are emitted.
     bytes*: array[8, byte]
     len*: range[0..8]
-  # Errors distinguish an unsupported width, a value that will not fit, and missing input bytes.
-  FixedError* {.pure.} = enum
+  FixedError* {.pure.} = enum ## Errors distinguish an unsupported width, a value that will not fit, and missing input bytes.
     InvalidWidth, ValueOutOfRange, Truncated
-  # The encoder alone constructs successful owned prefixes; callers cannot forge or retag them.
-  FixedEncodeResult* = object
+  FixedEncodeResult* = object ## The encoder alone constructs successful owned prefixes; callers cannot forge or retag them.
     case success: bool
     of true:
       # Copied fixed storage is private until the success precondition is satisfied.
@@ -28,8 +23,7 @@ type
     of false:
       # Default/error alternatives carry only a reason; default remains InvalidWidth.
       failureReason: FixedError
-  # The decoder alone constructs copied values with complete prefix extents.
-  FixedDecodeResult* = object
+  FixedDecodeResult* = object ## The decoder alone constructs copied values with complete prefix extents.
     case success: bool
     of true:
       # Zero-width success still has value zero and consumes no bytes.
@@ -39,29 +33,31 @@ type
       # No value or cursor progress exists on failure.
       failureReason: FixedError
 
-# Read the encoding outcome without exposing a writable discriminator.
-func ok*(value: FixedEncodeResult): bool = value.success
-# Read the decoding outcome; a default result remains an explicit failure.
-func ok*(value: FixedDecodeResult): bool = value.success
-# Return copied encoded storage only for a completed successful encoding.
+func ok*(value: FixedEncodeResult): bool =
+  ## Read the encoding outcome without exposing a writable discriminator.
+  value.success
+func ok*(value: FixedDecodeResult): bool =
+  ## Read the decoding outcome; a default result remains an explicit failure.
+  value.success
 func encoded*(value: FixedEncodeResult): EncodedFixed {.inline, requires: value.success.} =
+  ## Return copied encoded storage only for a completed successful encoding.
   value.encodedValue
-# Decode success owns its value; no default zero can escape a failed decode.
 func value*(value: FixedDecodeResult): FixedUnsigned {.inline, requires: value.success.} =
+  ## Decode success owns its value; no default zero can escape a failed decode.
   value.decodedValue
-# Only a complete decode may advance the caller's prefix cursor.
 func consumed*(value: FixedDecodeResult): range[0..8] {.inline, requires: value.success.} =
+  ## Only a complete decode may advance the caller's prefix cursor.
   value.byteConsumed
-# Encoding success has no failure reason; ask for it only after selecting failure.
 func error*(value: FixedEncodeResult): FixedError {.inline, requires: not value.success.} =
+  ## Encoding success has no failure reason; ask for it only after selecting failure.
   value.failureReason
-# Decoding success has no failure reason, even when it consumes zero bytes.
 func error*(value: FixedDecodeResult): FixedError {.inline, requires: not value.success.} =
+  ## Decoding success has no failure reason, even when it consumes zero bytes.
   value.failureReason
 
-# Encode exactly width little-endian bytes without allocation or silent narrowing.
-# Inline this small scalar operation so checked container loops can eliminate temporary result construction.
 proc encodeFixed*(value: FixedUnsigned, width: ByteWidth): FixedEncodeResult {.inline, raises: [].} =
+  ## Encode exactly width little-endian bytes without allocation or silent narrowing.
+  ## Inline this small scalar operation so checked container loops can eliminate temporary result construction.
   let count = int(width)
   # Validate the signed width before using it as a loop bound or shift amount.
   if count < 0 or count > 8:
@@ -78,9 +74,9 @@ proc encodeFixed*(value: FixedUnsigned, width: ByteWidth): FixedEncodeResult {.i
     encoded.bytes[i] = byte((x shr (8 * i)) and 255)
   FixedEncodeResult(success: true, encodedValue: encoded)
 
-# Decode a borrowed prefix of exactly width bytes; trailing bytes remain with the caller.
-# Inline without disabling checks; enclosing loops already prove each complete scalar input extent.
 proc decodeFixed*(input: openArray[byte], width: ByteWidth): FixedDecodeResult {.inline, raises: [].} =
+  ## Decode a borrowed prefix of exactly width bytes; trailing bytes remain with the caller.
+  ## Inline without disabling checks; enclosing loops already prove each complete scalar input extent.
   let count = int(width)
   # Reject invalid widths even if the buffer is large enough; this check precedes indexing.
   if count < 0 or count > 8:

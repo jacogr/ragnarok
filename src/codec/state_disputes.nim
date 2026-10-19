@@ -13,25 +13,19 @@ from ./disputes import DisputeHash, OffenderKey
 export DisputeHash, OffenderKey
 
 type
-  ## The three report judgment domains share a report identity type but retain separate set membership.
-  JudgmentSet* {.pure.} = enum
+  JudgmentSet* {.pure.} = enum ## The three report judgment domains share a report identity type but retain separate set membership.
     Good, Bad, Wonky
-  ## A set ordinal is distinct from validator, service and byte indices.
-  DisputeStateIndex* = distinct uint64
-  ## Stable borrowed sources; each set must already be strictly increasing by octet order.
-  DisputeState* = object
+  DisputeStateIndex* = distinct uint64 ## A set ordinal is distinct from validator, service and byte indices.
+  DisputeState* = object ## Stable borrowed sources; each set must already be strictly increasing by octet order.
     reports*: array[JudgmentSet, seq[DisputeHash]]
     offenders*: seq[OffenderKey]
-  ## Independent per-set, aggregate item and complete encoded-byte resource ceilings.
-  DisputeStateConfig* = object
+  DisputeStateConfig* = object ## Independent per-set, aggregate item and complete encoded-byte resource ceilings.
     perSet*, totalItems*: ElementLimit
     maxBytes*: ByteLimit
-  ## Default and failed alternatives expose neither values nor partial progress.
-  DisputeStateError* {.pure.} = enum
+  DisputeStateError* {.pure.} = enum ## Default and failed alternatives expose neither values nor partial progress.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, LengthOverflow, InvalidOwner,
       InvalidIndex, InvalidTag
-  ## A complete selected success alone carries an entry, snapshot, copied field or count.
-  DisputeStateResult*[T] = object
+  DisputeStateResult*[T] = object ## A complete selected success alone carries an entry, snapshot, copied field or count.
     case status: DisputeStateError
     of None:
       completed: T # Failure alternatives cannot expose fabricated data.
@@ -40,15 +34,12 @@ type
   ## Private acyclic ARC storage retains fixed copied values in their canonical set order.
   DisputeStateData = ref object
     state: DisputeState
-  ## Value handles share immutable private data; replacing a handle leaves other copies unchanged.
-  DisputeStateSnapshot* = object
+  DisputeStateSnapshot* = object ## Value handles share immutable private data; replacing a handle leaves other copies unchanged.
     data: nil DisputeStateData
-  ## Prefix success binds one complete retained component to its exact consumed extent.
-  DisputeStateRead* = object
+  DisputeStateRead* = object ## Prefix success binds one complete retained component to its exact consumed extent.
     snapshot*: DisputeStateSnapshot
     consumed*: int
-  ## Fixed copied counts preserve report-class and offender separation without exporting sequences.
-  DisputeStateInfo* = object
+  DisputeStateInfo* = object ## Fixed copied counts preserve report-class and offender separation without exporting sequences.
     reports*: array[JudgmentSet, int]
     offenders*: int
   ## Private synchronous layout proof contains no retained pointer or externally reusable span.
@@ -56,11 +47,12 @@ type
     starts, counts: array[4, int]
     consumed: int
 
-## Read-only failure reasons do not authorize data or partial progress.
-func error*[T](value: DisputeStateResult[T]): DisputeStateError = value.status
-## Success-only public and internal payloads retain their contract in checked optimized builds.
+func error*[T](value: DisputeStateResult[T]): DisputeStateError =
+  ## Read-only failure reasons do not authorize data or partial progress.
+  value.status
 func value*[T](value: DisputeStateResult[T]): T {.inline, requires: value.status ==
     DisputeStateError.None.} =
+  ## Success-only public and internal payloads retain their contract in checked optimized builds.
   value.completed
 
 ## Strict lexicographic octet order agrees with GP sequence ordering and canonical fixed-octet sets.
@@ -122,8 +114,8 @@ proc scan(input: openArray[byte], config: DisputeStateConfig): DisputeStateResul
   layout.consumed = cursor
   DisputeStateResult[Layout](status: DisputeStateError.None, completed: layout)
 
-## Encode a complete stable source into an independent C(5) entry, rejecting noncanonical input without sorting.
 proc disputeStateEntry*(source: DisputeState, config: DisputeStateConfig): DisputeStateResult[StateEntry] =
+  ## Encode a complete stable source into an independent C(5) entry, rejecting noncanonical input without sorting.
   var size = 0
   var total = 0'u64
   # Whole-source validation precedes allocation and includes even the last offender identity.
@@ -166,9 +158,9 @@ proc disputeStateEntry*(source: DisputeState, config: DisputeStateConfig): Dispu
         inc cursor
   DisputeStateResult[StateEntry](status: DisputeStateError.None, completed: entry)
 
-## Decode the complete canonical component into immutable private copies after a no-allocation scan.
 proc decodeDisputeState*(input: openArray[byte], config: DisputeStateConfig): DisputeStateResult[
     DisputeStateRead] =
+  ## Decode the complete canonical component into immutable private copies after a no-allocation scan.
   let checked = scan(input, config)
   if checked.error != DisputeStateError.None:
     return DisputeStateResult[DisputeStateRead](status: checked.error) # No child data or consumed cursor after failure.
@@ -188,8 +180,8 @@ proc decodeDisputeState*(input: openArray[byte], config: DisputeStateConfig): Di
     completed: DisputeStateRead(snapshot: DisputeStateSnapshot(data: data),
         consumed: layout.consumed))
 
-## Return independent fixed counts without exporting mutable set arrays.
 proc disputeStateInfo*(owner: DisputeStateSnapshot): DisputeStateResult[DisputeStateInfo] =
+  ## Return independent fixed counts without exporting mutable set arrays.
   let data = owner.data
   if data == nil: return DisputeStateResult[DisputeStateInfo](
       status: DisputeStateError.InvalidOwner) # Default handles are not validated empty state.
@@ -199,9 +191,9 @@ proc disputeStateInfo*(owner: DisputeStateSnapshot): DisputeStateResult[DisputeS
       kind] = data.state.reports[kind].len
   DisputeStateResult[DisputeStateInfo](status: DisputeStateError.None, completed: info)
 
-## Extract a copied report identity through its retained owner, judgment class and nominal ordinal.
 proc judgedReportAt*(owner: DisputeStateSnapshot, kind: JudgmentSet,
     index: DisputeStateIndex): DisputeStateResult[DisputeHash] =
+  ## Extract a copied report identity through its retained owner, judgment class and nominal ordinal.
   let data = owner.data
   if data == nil: return DisputeStateResult[DisputeHash](
       status: DisputeStateError.InvalidOwner) # No storage on default snapshots.
@@ -212,8 +204,8 @@ proc judgedReportAt*(owner: DisputeStateSnapshot, kind: JudgmentSet,
   DisputeStateResult[DisputeHash](status: DisputeStateError.None, completed: data.state.reports[
       kind][int(uint64(index))])
 
-## Extract an independent offender key without permitting report-hash/key substitution.
 proc stateOffenderAt*(owner: DisputeStateSnapshot, index: DisputeStateIndex): DisputeStateResult[OffenderKey] =
+  ## Extract an independent offender key without permitting report-hash/key substitution.
   let data = owner.data
   if data == nil: return DisputeStateResult[OffenderKey](
       status: DisputeStateError.InvalidOwner) # No fabricated default key on failure.
