@@ -46,7 +46,7 @@ UNIT_FIXTURES['pvm_registers'] = ('RAGNAROK_PVM_REGISTERS', PVM_REGISTERS,
 STATE_REPORT = ROOT/'tests/fixtures/state-report.bin'
 for case in ('state_availability', 'state_availability_private', 'state_workqueues',
              'state_workqueues_private', 'accumulation_execution', 'accumulation_outputs',
-             'accumulation_continuation'):
+             'accumulation_continuation', 'accumulation_continuation_inputs'):
     # Every consumer verifies the same exact source bytes before its native assertions execute.
     UNIT_FIXTURES[case] = ('RAGNAROK_STATE_REPORT', STATE_REPORT, ((STATE_REPORT, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'),))
 

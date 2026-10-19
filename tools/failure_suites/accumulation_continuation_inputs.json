@@ -1,0 +1,17 @@
+{
+  "source": "tests/native/accumulation_continuation_inputs_results.nim",
+  "build_name": "accumulation-continuation-inputs-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-continuation-inputs-default", "diagnostic": "outcome.status == None", "description": "Continuation inputs default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-continuation-inputs-refused", "diagnostic": "outcome.status == None", "description": "Continuation inputs refused extraction guard"},
+    {"identity": {"reason": "inputs"}, "arguments": ["inputs"], "name": "accumulation-continuation-inputs-inputs", "diagnostic": "outcome.status == None", "description": "Continuation inputs inputs extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-continuation-inputs-state", "diagnostic": "outcome.status == None", "description": "Continuation inputs state extraction guard"},
+    {"identity": {"reason": "plan"}, "arguments": ["plan"], "name": "accumulation-continuation-inputs-plan", "diagnostic": "outcome.status == None", "description": "Continuation inputs plan extraction guard"},
+    {"identity": {"reason": "wrong-operand"}, "arguments": ["wrong-operand"], "name": "accumulation-continuation-inputs-wrong-operand", "diagnostic": "outcome.status == OperandFailure", "description": "Continuation inputs wrong-operand extraction guard"},
+    {"identity": {"reason": "wrong-input"}, "arguments": ["wrong-input"], "name": "accumulation-continuation-inputs-wrong-input", "diagnostic": "outcome.status == InputFailure", "description": "Continuation inputs wrong-input extraction guard"},
+    {"identity": {"reason": "wrong-service"}, "arguments": ["wrong-service"], "name": "accumulation-continuation-inputs-wrong-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Continuation inputs wrong-service extraction guard"},
+    {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-continuation-inputs-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Continuation inputs wrong-batch extraction guard"},
+    {"identity": {"reason": "start"}, "arguments": ["start"], "name": "accumulation-continuation-inputs-start", "diagnostic": "outcome.status == None", "description": "Continuation inputs start extraction guard"}
+  ]
+}

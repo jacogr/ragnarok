@@ -3,7 +3,7 @@
 
 ## GP 0.8.0 accumulation.tex operandtuple/accone: report-derived per-service operand preparation.
 ##
-## Exposes explicit report prefixes, bounded preparation, immutable service-group/operand access
+## Exposes explicit report ranges, bounded preparation, immutable service-group/operand access
 ## and a block-bound adapter retaining the queue certificate. Execution/gas allocation are separate.
 
 import std/algorithm
@@ -11,6 +11,7 @@ import ../codec/[bounded, natural, composite, work_digest, report_owned, owned, 
 import ./accumulation_queue
 
 type
+  AccumulationReportStart* = distinct uint64 ## Original-queue range start is distinct from a selected report count.
   AccumulationReportPrefix* = distinct uint64 ## A caller-selected prefix is not an executed-report count or a byte/digest ordinal.
   OperandServiceIndex* = distinct uint64 ## A service-group ordinal is not the protocol service identifier stored at that position.
   ServiceOperandIndex* = distinct uint64 ## A per-service operand ordinal cannot address a service group or report queue.
@@ -34,6 +35,7 @@ type
   OperandData = ref object
     source: AccumulationQueuePlan
     prefix: AccumulationReportPrefix
+    start: AccumulationReportStart
     groups: seq[ServiceGroup]
   PreparedAccumulationOperands* = object ## Projection preparation is not a complete service invocation or accumulation certificate.
     data: nil OperandData
@@ -93,12 +95,22 @@ proc operandQueue*(plan: PreparedAccumulationOperands): AccumulationOperandResul
 
 proc operandReportPrefix*(plan: PreparedAccumulationOperands): AccumulationOperandResult[
     AccumulationReportPrefix] =
-  ## Report the selected prefix; preparation does not claim that any reports executed.
+  ## Report the selected count after operandReportStart; preparation does not claim that any reports executed.
   let data = plan.data
   if data == nil: return AccumulationOperandResult[AccumulationReportPrefix](
       status: AccumulationOperandError.Uninitialized) # No default prefix.
   AccumulationOperandResult[AccumulationReportPrefix](status: AccumulationOperandError.None,
       completed: data.prefix)
+
+proc operandReportStart*(plan: PreparedAccumulationOperands): AccumulationOperandResult[
+    AccumulationReportStart] =
+  ## Return the retained original-queue start; ordinary prefix preparation always starts at zero.
+  let data = plan.data
+  if data == nil:
+    return AccumulationOperandResult[AccumulationReportStart](
+        status: AccumulationOperandError.Uninitialized) # No fabricated range provenance.
+  AccumulationOperandResult[AccumulationReportStart](status: AccumulationOperandError.None,
+      completed: data.start)
 
 proc operandServiceAt*(plan: PreparedAccumulationOperands,
     index: OperandServiceIndex): AccumulationOperandResult[OperandServiceInfo] =
@@ -129,12 +141,11 @@ proc serviceOperandAt*(plan: PreparedAccumulationOperands, service: OperandServi
   AccumulationOperandResult[OwnedOperand](status: AccumulationOperandError.None,
     completed: group.operands[int(uint64(index))])
 
-proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: AccumulationReportPrefix,
-    config: AccumulationOperandConfig): AccumulationOperandResult[PreparedAccumulationOperands] =
-  ## Prepare i^U only for an explicit prefix of Q's priority sequence; unavailable/deferred queue rows stay excluded.
-  ## Borrow the immutable plan during the call and retain it on success. Preflight every bound before copying blobs.
-  ## This neither chooses a gas-dependent prefix nor adds transfer/free-allowance-only services or writes state.
-  ## Refuse the entire projection without publishing partially materialized groups.
+# Prepare one bounded original-queue range; the public prefix wrapper supplies start zero.
+proc prepareOperandRange(queue: AccumulationQueuePlan, start: AccumulationReportStart,
+    prefix: AccumulationReportPrefix, config: AccumulationOperandConfig): AccumulationOperandResult[
+        PreparedAccumulationOperands] =
+  # Refuse without publishing partially materialized groups or range provenance.
   template fail(reason: AccumulationOperandError) =
     return AccumulationOperandResult[PreparedAccumulationOperands](status: reason)
   if uint64(config.operands) > uint64(high(int) div sizeof(Descriptor)) or
@@ -144,7 +155,7 @@ proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: Accumula
   let count = queue.accumulationCount
   if count.error != AccumulationQueueError.None:
     fail(AccumulationOperandError.InvalidQueue) # Missing plans cannot imply an empty successful prefix.
-  if uint64(prefix) > uint64(count.value):
+  if uint64(start) > uint64(count.value) or uint64(prefix) > uint64(count.value) - uint64(start):
     fail(AccumulationOperandError.InvalidPrefix) # Check before native conversion or priority access.
   if uint64(prefix) > uint64(config.reports):
     fail(AccumulationOperandError.LimitExceeded) # Bound prefix traversal even before digest descriptors.
@@ -153,7 +164,8 @@ proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: Accumula
   var wire = 0'u64
   # Walk reports then digests exactly as the accone sequence comprehension specifies.
   for i in 0..<int(uint64(prefix)):
-    let report = queue.accumulationAt(AccumulationIndex(i)).value
+    # The checked range proves this addition stays inside the original native queue.
+    let report = queue.accumulationAt(AccumulationIndex(uint64(start) + uint64(i))).value
     let meta = ownedReportInfo(report).value
     # Every digest creates an operand, including error and empty-success work results.
     for j in 0..<meta.digestCount:
@@ -225,8 +237,21 @@ proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: Accumula
       groups.add(ServiceGroup(service: item.service, operands: @[])) # Start the next numerically ordered group.
     groups[^1].operands.add(captured.value.owner)
   AccumulationOperandResult[PreparedAccumulationOperands](status: AccumulationOperandError.None,
-    completed: PreparedAccumulationOperands(data: OperandData(source: queue, prefix: prefix,
-        groups: groups)))
+    completed: PreparedAccumulationOperands(data: OperandData(source: queue, start: start,
+        prefix: prefix, groups: groups)))
+
+proc prepareAccumulationOperands*(queue: AccumulationQueuePlan, prefix: AccumulationReportPrefix,
+    config: AccumulationOperandConfig): AccumulationOperandResult[PreparedAccumulationOperands] =
+  ## Prepare C.2 operands for a start-zero priority prefix; excluded/deferred rows remain unavailable.
+  ## Borrow the immutable source during the call and retain it on success; all bounds precede payload copying.
+  prepareOperandRange(queue, AccumulationReportStart(0), prefix, config)
+
+proc prepareAccumulationOperandRange*(queue: AccumulationQueuePlan, start: AccumulationReportStart,
+    prefix: AccumulationReportPrefix, config: AccumulationOperandConfig): AccumulationOperandResult[
+        PreparedAccumulationOperands] =
+  ## Prepare only the checked original-queue range, preserving report/digest order within each numeric service group.
+  ## The retained start/count do not certify execution; no queue reconstruction, gas selection or state write occurs.
+  prepareOperandRange(queue, start, prefix, config)
 
 proc prepareBlockAccumulationOperands*(queue: BlockAccumulationQueue,
     prefix: AccumulationReportPrefix, config: AccumulationOperandConfig): AccumulationOperandResult[

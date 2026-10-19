@@ -59,7 +59,7 @@ proc code(ending: ExecutionEnding): seq[byte] =
 proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     second = ExecutionEnding.Halt, empty = false, report = false, firstProgram: seq[byte] = @[],
     secondProgram: seq[byte] = @[], allowanceGas = 100000'u64,
-    ready: ReadyRow = @[]): ExecutionFixture =
+    ready: ReadyRow = @[], extra: seq[StateEntry] = @[]): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
   ## Optional allowance gas and ready rows enter the signed parent before the round is planned.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
@@ -87,6 +87,8 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     if ending != ExecutionEnding.Missing:
       entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), raw,
         ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(raw.len))).value)
+  for entry in extra:
+    entries.add(entry) # Additional effect witnesses enter the genuine parent before its commitment/signatures.
   let context = authored(base, reports = 0, withAvailable = report, extra = entries,
       accountCode = firstCode, ready = ready)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
