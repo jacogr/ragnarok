@@ -1047,10 +1047,11 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
     steps: ExecutionStepLimit, calls: HostCallLimit,
     cycles: GasCycleLimit, contextConfig: AccumulationContextConfig,
     provisionLimits = default(AccumulationProvisionLimits),
-    serviceProbes = ServiceProbeLimit(0), transferLimit = ElementLimit(
-        0)): AccumulationDispatchResult =
+    serviceProbes = ServiceProbeLimit(0), transferLimit = ElementLimit(0),
+    accountWriteKeys = ElementLimit(0)): AccumulationDispatchResult =
   ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
   ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
+  ## accountWriteKeys opts into bounded self storage/request provenance; zero retains the earlier publication gate.
   ## Omitted transferLimit permits no outgoing append; protocol refusals and OOG require no capacity.
   ## Omitted serviceProbes permits no automatic successor probing; reserved creation needs no probes.
   ## Omitted provision limits give zero retained capacity; no default authorizes unbounded capture.
@@ -1077,7 +1078,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
     return AccumulationDispatchResult(status: AccumulationDispatchError.LimitExceeded) # Bound chapter copies.
   if initial.error != AccumulationContextError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # Require exact initial I.
-  let initialized = prepareAccumulationEffects(initial.value)
+  let initialized = prepareAccumulationEffects(initial.value, accountWriteKeys)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
   var context = DispatchContext(parameters: parameters, staging: contextConfig.staging,

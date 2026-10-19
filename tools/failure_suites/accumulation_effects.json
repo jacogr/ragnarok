@@ -14,6 +14,39 @@
     },
     {
       "arguments": [
+        "account-write-count"
+      ],
+      "description": "Accumulation effect account-write-count extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "account-write-count"
+      },
+      "name": "accumulation-effect-account-write-count"
+    },
+    {
+      "arguments": [
+        "account-write-key"
+      ],
+      "description": "Accumulation effect account-write-key extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "account-write-key"
+      },
+      "name": "accumulation-effect-account-write-key"
+    },
+    {
+      "arguments": [
+        "account-write-index"
+      ],
+      "description": "Accumulation effect account-write-index extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "account-write-index"
+      },
+      "name": "accumulation-effect-account-write-index"
+    },
+    {
+      "arguments": [
         "default"
       ],
       "description": "Accumulation effect selected-success guard",

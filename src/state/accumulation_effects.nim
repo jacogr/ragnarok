@@ -33,7 +33,12 @@ type
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
     Initial,      ## No account mutation occurred on this retained lineage.
     SelfMetadata, ## Only upgrade changed the invoking service's metadata.
+    SelfEntries,  ## Bounded unique self storage/request keys accompany selected metadata.
     Unsupported   ## At least one broader mutation requires later publication support.
+  AccumulationAccountWriteIndex* = distinct uint64 ## A traced key ordinal cannot substitute a service identity or raw storage key.
+  # Only self operation implementations construct this immutable unique-key proof; values stay in the account snapshot.
+  AccountKeysData = ref object
+    keys: seq[StateKey]
   AccumulationEjectTarget* = distinct uint64 ## Full register identity; self and out-of-range values return WHO without narrowing.
   AccumulationTransferDestination* = distinct uint64 ## Full register domain; high bits are rejected as WHO before narrowing to ServiceIndex.
   AccumulationTransferIndex* = distinct uint64 ## Outgoing ordinal is neither a service identity nor a transfer amount.
@@ -76,6 +81,8 @@ type
     initial: InitialAccumulationContext
     accounts: StateStoreSnapshot
     accountScope: AccumulationAccountScope
+    accountKeys: AccountKeysData
+    accountKeyLimit: ElementLimit
     nextService: ServiceIndex
     staging: ValidatorStateSnapshot
     queues: AuthorizationSnapshot
@@ -131,12 +138,70 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
   var scope = previous.accountScope
   if not sameStateSnapshot(previous.accounts, accounts):
     # Only the upgrade operation can certify a self-only metadata successor; unsupported ancestry is sticky.
-    scope = if selfMetadata and scope != AccumulationAccountScope.Unsupported:
-      AccumulationAccountScope.SelfMetadata else: AccumulationAccountScope.Unsupported
-  EffectData(accountScope: scope, initial: previous.initial, accounts: accounts,
+    if selfMetadata and scope != AccumulationAccountScope.Unsupported:
+      if scope != AccumulationAccountScope.SelfEntries:
+        scope = AccumulationAccountScope.SelfMetadata # Upgrade preserves any existing bounded self-key proof.
+    else:
+      scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
+  EffectData(accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
+    accountScope: scope, initial: previous.initial, accounts: accounts,
     nextService: previous.nextService,
     staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
     output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
+
+# Bound unique nonmetadata keys before allocating a trace or hashing its prospective map.
+proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite]):
+    AccumulationEffectResult[AccountKeysData] =
+  if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
+      previous.accountKeyLimit) == 0:
+    return AccumulationEffectResult[AccountKeysData](status: AccumulationEffectError.None,
+      completed: previous.accountKeys) # Disabled tracing and unsupported ancestry retain the existing execution behavior.
+  let own = chapterServiceKey(StateChapter(255), previous.initial.contextInfo.value.service)
+  let retained = previous.accountKeys
+  var count = retained.keys.len
+  for index, write in writes:
+    # Self metadata is already handled by the batch's separate fixed-record policy.
+    if array[31, byte](write.key) == array[31, byte](own): continue
+    var seen = false
+    for key in retained.keys:
+      if array[31, byte](key) == array[31, byte](write.key): seen = true # Existing touched keys need no new descriptor.
+    for earlier in 0..<index:
+      if array[31, byte](writes[earlier].key) == array[31, byte](
+          write.key): seen = true # Collapse duplicates within this atomic operation.
+    if not seen:
+      if uint64(count) >= uint64(previous.accountKeyLimit) or count >= high(int) div sizeof(StateKey):
+        return AccumulationEffectResult[AccountKeysData](
+            status: AccumulationEffectError.LimitExceeded) # No candidate map or partially copied proof.
+      inc count
+  if count == retained.keys.len:
+    return AccumulationEffectResult[AccountKeysData](status: AccumulationEffectError.None,
+      completed: previous.accountKeys) # Replacements/deletions of already touched keys share the immutable key set.
+  var keys = newSeq[StateKey](count)
+  var destination = 0
+  for key in retained.keys:
+    keys[destination] = key
+    inc destination # The full new descriptor extent was preflighted above.
+  for write in writes:
+    if array[31, byte](write.key) == array[31, byte](
+        own): continue # Fixed self metadata is never duplicated in the key trace.
+    var seen = false
+    for index in 0..<destination:
+      if array[31, byte](keys[index]) == array[31, byte](
+          write.key): seen = true # Preserve first-touch order without copying values.
+    if not seen:
+      keys[destination] = write.key
+      inc destination
+  AccumulationEffectResult[AccountKeysData](status: AccumulationEffectError.None,
+    completed: AccountKeysData(keys: keys))
+
+# Bind the prepared self-key proof only after the same operation's account writes fully succeed.
+proc selfAccountData(previous: EffectData, accounts: StateStoreSnapshot,
+    keys: AccountKeysData): EffectData =
+  result = successorData(previous, accounts)
+  if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
+      previous.accountKeyLimit) != 0:
+    result.accountScope = AccumulationAccountScope.SelfEntries # Only the three audited self writers use this private constructor.
+    result.accountKeys = keys
 
 proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffectResult[
     InitialAccumulationContext] =
@@ -167,6 +232,30 @@ proc effectAccountScope*(context: AccumulationEffectContext): AccumulationEffect
       status: AccumulationEffectError.Uninitialized) # A default is not an untouched initialized context.
   AccumulationEffectResult[AccumulationAccountScope](status: AccumulationEffectError.None,
     completed: context.data.accountScope)
+
+proc effectAccountWriteCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Count immutable traced self keys; unsupported lineages expose no incomplete publication proof.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized) # Defaults cannot authorize zero work.
+  if data.accountScope == AccumulationAccountScope.Unsupported:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.InvalidState) # A partial trace cannot certify a broader mutation.
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.accountKeys.keys.len)
+
+proc effectAccountWriteKeyAt*(context: AccumulationEffectContext,
+    index: AccumulationAccountWriteIndex):
+    AccumulationEffectResult[StateKey] =
+  ## Copy one key bound to this retained context; resolve its final value only in the same context's effectAccounts.
+  let count = context.effectAccountWriteCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[StateKey](status: count.error) # Preserve default/unsupported proof refusal.
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[StateKey](status: AccumulationEffectError.InvalidIndex) # Check the full-width ordinal before narrowing.
+  let data = context.data
+  assert data != nil # Successful count proves this retained immutable owner is initialized.
+  AccumulationEffectResult[StateKey](status: AccumulationEffectError.None,
+    completed: data.accountKeys.keys[int(uint64(index))])
 
 proc effectPrivileges*(context: AccumulationEffectContext): AccumulationEffectResult[
     PrivilegeSnapshot] =
@@ -250,9 +339,11 @@ proc effectsSource*(effects: AccumulationEffects): AccumulationEffectResult[
   AccumulationEffectResult[PreparedAccumulationContexts](status: AccumulationEffectError.None,
     completed: data.source)
 
-proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): AccumulationEffectResult[
+proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
+    accountWriteKeys = ElementLimit(0)): AccumulationEffectResult[
     AccumulationEffects] =
   ## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
+  ## accountWriteKeys explicitly bounds unique self storage/request provenance; zero retains the earlier publication gate.
   let initial = contexts.initialContext(AccumulationDimension.Regular)
   if initial.error != AccumulationContextError.None:
     # Only successfully prepared immutable contexts can authorize host state effects.
@@ -260,6 +351,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): Accumu
         status: AccumulationEffectError.InvalidContexts)
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
+    accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
     nextService: initial.value.contextInfo.value.nextService,
     staging: initial.value.contextStaging.value, queues: initial.value.contextQueues.value,
     privileges: initial.value.contextPrivileges.value,
@@ -567,10 +659,14 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   var owned = newSeq[byte](value.len)
   for i, octet in value:
     owned[i] = octet # Capture caller bytes before publishing an immutable map.
-  var working = forkStateStore(previous.accounts).value
-  let changed = working.apply([StateWrite(key: accountKey, kind: StateWriteKind.Put,
+  let writes = [StateWrite(key: accountKey, kind: StateWriteKind.Put,
       value: encoded.value), StateWrite(key: derived.value,
-      kind: (if value.len == 0: StateWriteKind.Delete else: StateWriteKind.Put), value: owned)])
+      kind: (if value.len == 0: StateWriteKind.Delete else: StateWriteKind.Put), value: owned)]
+  let keys = prepareSelfAccountKeys(previous, writes)
+  if keys.error != AccumulationEffectError.None:
+    fail(keys.error) # Trace capacity refusal precedes candidate map hashing.
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply(writes)
   case changed.error
   of StateStoreError.None:
     discard # Publish only after both metadata and storage changes pass all inherited store ceilings.
@@ -580,7 +676,7 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     fail(AccumulationEffectError.BackendFailure) # Merklization failure leaves the source owner untouched.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial successor on any store invariant failure.
-  let candidate = successorData(previous, changed.value)
+  let candidate = selfAccountData(previous, changed.value, keys.value)
   let current = AccumulationEffectContext(data: candidate)
   let successor = AccumulationEffects(data: PairData(source: data.source, regular: current,
     exceptional: data.exceptional))
@@ -1211,6 +1307,9 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     let encoded = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
     writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put,
         value: encoded.value)) # Only creation changes metadata; restoration needs one write.
+  let keys = prepareSelfAccountKeys(previous, writes)
+  if keys.error != AccumulationEffectError.None:
+    fail(keys.error) # Unique-key capacity is proved before hashing any candidate account state.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1222,7 +1321,7 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     fail(AccumulationEffectError.BackendFailure) # Previous accounts and request histories survive failed hashing.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial successor escapes other complete-map invariants.
-  let current = AccumulationEffectContext(data: successorData(previous, changed.value))
+  let current = AccumulationEffectContext(data: selfAccountData(previous, changed.value, keys.value))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
         exceptional: data.exceptional)))
@@ -1299,6 +1398,9 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
       fail(AccumulationEffectError.BackendFailure) # Failed canonical replacement has no request payload to publish.
     writes.add(StateWrite(key: request.value.key, kind: StateWriteKind.Put,
         value: request.value.value)) # Replacement changes no metadata or preimage.
+  let keys = prepareSelfAccountKeys(previous, writes)
+  if keys.error != AccumulationEffectError.None:
+    fail(keys.error) # Unique-key capacity is proved before hashing any candidate account state.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1310,7 +1412,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     fail(AccumulationEffectError.BackendFailure) # Previous maps survive even late candidate hashing failure.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial effects escape other store invariants.
-  let current = AccumulationEffectContext(data: successorData(previous, changed.value))
+  let current = AccumulationEffectContext(data: selfAccountData(previous, changed.value, keys.value))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
         exceptional: data.exceptional)))
