@@ -32,7 +32,7 @@ Send a WebSocket text message:
 No private keys, environment variables, command-line secrets or filesystem paths are exposed.
 Ragnarok-specific extensions use `ragnarok_`. Standard JIP-2 methods retain their specified
 unprefixed names. `parameters()`, `bestBlock()`, `parent(hash)`, `stateRoot(hash)`, `statistics(hash)`, `listServices(hash)`, `beefyRoot(hash)`, `workReport(hash)` and the service queries below are implemented; other JIP-2 chain methods
-remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block subscriptions
+remain unavailable and return JSON-RPC `-32601` for identified requests. Best-block and best-chain statistics subscriptions
 are implemented as described below; other subscriptions remain unavailable.
 This is not complete JIP-2 support. In particular an
 unavailable block database cannot be reported as an empty chain or a successful subscription.
@@ -614,12 +614,12 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Only these best-block methods are enabled; finalized and service subscriptions remain unavailable.
+Best-block and best-chain statistics methods are enabled; finalized and service subscriptions remain unavailable.
 `ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
 The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
 `respond(text, info, session)` with its connection-owned `RpcSession`.
 
-Each connection owns at most eight subscriptions. IDs are increasing uint32 integers starting at
+Each connection owns at most eight subscriptions across supported families. IDs are increasing uint32 integers starting at
 one, never reused within that connection; exhaustion returns JIP-2 error 0 without wrapping.
 Unsubscribe accepts exactly one nonnegative integer lexeme within uint32 range, returns `true` if
 that connection owned the ID and `false` otherwise. Default/unconfigured chain views cannot be
@@ -636,8 +636,8 @@ oversized batches and malformed envelopes cannot create subscriptions. Changes a
 if their response fits the existing aggregate output budget.
 
 Successful `publishBlock` enqueues the new descriptor for every active subscriber. Rejected
-publication emits nothing. Each connection owns a FIFO of at most sixteen serialized updates;
-these retain no state maps or views. One dispatcher tick still writes at most one frame per slot,
+publication emits nothing. Each connection owns a FIFO of at most sixteen serialized updates and 65,535 queued bytes;
+these retain no state maps or views. The byte ceiling was added with statistics subscriptions below. One dispatcher tick still writes at most one frame per slot,
 servicing request replies before queued updates. Already queued transport bytes and partial-write
 offsets remain intact. Cancellation removes pending updates for that ID but cannot retract a frame
 already handed to the transport buffer. Closing/reusing a connection releases its subscriptions,
@@ -660,3 +660,52 @@ disconnection while another client and the listener/head continue, plus partial-
 preservation during notification delivery. Live process tests cover configured and absent
 chain sources and cancellation over actual loopback WS. Full import, fork selection, finalized
 views and other subscription families remain separate bounded work.
+
+
+## Best-chain statistics subscriptions
+
+`subscribeStatistics(false)` and `unsubscribeStatistics(id)` implement the best-chain part of the
+pinned JIP-2 Methods / subscribeStatistics definition. Exactly one Boolean is required when
+subscribing. `true` returns error 0 (`Finalized chain view unavailable`); the server never silently
+substitutes the best chain. Finalized tracking remains unavailable until a finality source exists.
+The method names are advertised by `ragnarok_clientInfo` on stateful WS connections.
+
+The initial update follows the subscription response. Each successfully published head produces
+an update, including when its statistics bytes are unchanged. `params.result` is a Chain
+Subscription Update: `{"header_hash": "…", "slot": n, "value": "…"}`. The value is the exact padded
+Base64 C(13) encoding used by `statistics(hash)`, after the same roster/core/framing validation and
+32 KiB raw limit. No decoding or serialization rules change. A missing, malformed or oversized
+initial value returns error 0 without allocating an ID. Unsupported arguments return `-32602`.
+
+Subscriptions share one increasing ID sequence and the existing eight-entry table. Cancellation
+must use the corresponding method: `unsubscribeBestBlock` cannot cancel a statistics subscription,
+and vice versa. A wrong-family or unknown ID returns `false` without removing queued data. Normal
+cancellation returns `true` and removes pending messages for that ID; JSON-RPC notification-form
+calls and sequential batches retain their existing behavior.
+
+At publication, statistics are decoded at most once per connection, only if at least one statistics
+subscription exists. The validated serialized value is reused while constructing that connection's
+updates. Across the eight connections, this bounds work to eight statistics reads per publication,
+independent of the number of subscriptions. No state snapshot is retained by the notification FIFO.
+If statistics become unavailable/invalid/oversized, existing statistics subscriptions each receive
+one `params.error` string and are removed. Best-block subscriptions and the connection continue.
+Terminal removal is a local policy where JIP-2 does not specify recovery; a later unsubscribe
+returns `false`, and the already queued terminal notification remains deliverable.
+
+The FIFO now enforces both sixteen messages and **65,535 serialized notification bytes** per
+connection, separate from the transport's current frame. A message fits the existing WS frame
+limit. All messages and terminal removals for a publication are preflighted before committing
+any of them. Overflow disconnects only that consumer without undoing the chain publication.
+Creation refusal preserves the next ID and existing queue; dequeue and cancellation release their
+exact byte allowances. Together with the 32 KiB raw-value ceiling and eight-entry table, these
+bounds also cap temporary notification construction. Large values can therefore fill the byte
+budget before the count budget, even for a small number of subscribers.
+
+Native checks cover exact value-bearing envelopes, unchanged-value delivery, finalized refusal,
+malformed arguments/state, wrong-family cancellation, shared IDs, mixed best/statistics delivery,
+terminal-error isolation, notification-form calls and batches. A valid 2,000-service statistics
+fixture exercises byte overflow, atomic refusal, ID preservation and byte reclamation. ARC checks
+cover decoder and notification lifetime. Connected socket tests publish changed statistics and a
+missing-statistics child, checking the resulting update/error while preserving the connection.
+Live process checks exercise configured statistics, absent chapters, finalized refusal and
+cancellation. Importer integration, finalized views and service subscriptions remain separate work.

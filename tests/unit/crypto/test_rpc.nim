@@ -992,7 +992,7 @@ assert respond("[" & rootRequest & "," & rootRequest & "]", pinnedInfo) ==
 
 ## Capture a synthetic linked header and posterior roster/time map; signatures/execution are not asserted.
 proc childSnapshot(parent: BlockSnapshot, atSlot: uint32, settings: Parameters,
-    badParent = false, badRoot = false): BlockSnapshotResult =
+    badParent = false, badRoot = false, activity: seq[byte] = @[]): BlockSnapshotResult =
   var wire = newSeq[byte](297)
   let identity = array[32, byte](parent.blockHash)
   let root = array[32, byte](parent.stateRoot)
@@ -1009,8 +1009,13 @@ proc childSnapshot(parent: BlockSnapshot, atSlot: uint32, settings: Parameters,
     wire[96 + index] = clock[index]
   var roster = newSeq[byte](2017)
   roster[0] = 6 # Six fixed 336-byte validator records, structurally valid for the configured cores.
-  let entries = [StateEntry(key: chapterKey(StateChapter(8)), value: roster),
+  var entries = @[StateEntry(key: chapterKey(StateChapter(8)), value: roster),
     StateEntry(key: chapterKey(StateChapter(11)), value: clock)]
+  if activity.len > 0:
+    entries.add(StateEntry(key: chapterKey(StateChapter(9)),
+        value: roster)) # Match the previous validator population.
+    entries.add(StateEntry(key: chapterKey(StateChapter(13)),
+        value: activity)) # Capture explicit test C(13) bytes.
   captureBlockSnapshot(wire, entries, settings)
 
 let historySeed = genesisView(capturedGenesis)
@@ -1097,8 +1102,8 @@ const UnsubscribedBest = "{\"jsonrpc\":\"2.0\",\"id\":62,\"result\":true}"
 let initialBestUpdate = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":{\"subscription\":1,\"result\":{\"header_hash\":\"" &
   genesisHash & "\",\"slot\":7}}}"
 var subscriptions = default(RpcSession)
-assert subscriptions.nextBestUpdate() == ""
-assert not subscriptions.queueBestBlock(unavailableGenesis())
+assert subscriptions.nextUpdate() == ""
+assert not subscriptions.queueChainUpdates(unavailableGenesis())
 assert "\"code\":0" in respond(SubscribeBest, info, subscriptions)
 assert "\"code\":-32601" in respond(SubscribeBest, withGenesis)
 assert "\"code\":-32602" in respond(SubscribeBest.replace("[]", "[false]"), withGenesis, subscriptions)
@@ -1106,62 +1111,142 @@ assert "\"code\":-32602" in respond(SubscribeBest.replace("[]", "{}"), withGenes
 assert "\"code\":-32600" in respond(SubscribeBest.replace("\"id\":61", "\"id\":61,\"id\":62"),
     withGenesis, subscriptions)
 assert respond(SubscribeBest, withGenesis, subscriptions) == SubscribedBest
-assert subscriptions.nextBestUpdate() == initialBestUpdate
-assert subscriptions.nextBestUpdate() == ""
-assert subscriptions.queueBestBlock(historyChild)
-assert subscriptions.nextBestUpdate() == initialBestUpdate.replace(genesisHash,
+assert subscriptions.nextUpdate() == initialBestUpdate
+assert subscriptions.nextUpdate() == ""
+assert subscriptions.queueChainUpdates(historyChild)
+assert subscriptions.nextUpdate() == initialBestUpdate.replace(genesisHash,
     childHashText).replace("\"slot\":7", "\"slot\":9")
 for malformed in ["-1", "1.0", "1e0", "4294967296", "true", "null", "\"1\"", "[]", "1,2", ""]:
   assert "\"code\":-32602" in respond(UnsubscribeBest.replace("[1]", "[" & malformed & "]"),
     withGenesis, subscriptions) # Invalid cancellation must leave the active ID intact.
-assert subscriptions.queueBestBlock(historyChild)
+assert subscriptions.queueChainUpdates(historyChild)
 var otherSession = default(RpcSession)
 assert respond(UnsubscribeBest, withGenesis, otherSession) == UnsubscribedBest.replace("true", "false")
 assert respond(UnsubscribeBest, withGenesis, subscriptions) == UnsubscribedBest
-assert subscriptions.nextBestUpdate() == "" # Cancellation removes this ID's undelivered events.
+assert subscriptions.nextUpdate() == "" # Cancellation removes this ID's undelivered events.
 assert respond(UnsubscribeBest, withGenesis, subscriptions) == UnsubscribedBest.replace("true", "false")
 assert respond(SubscribeBest, withGenesis, subscriptions) == SubscribedBest.replace("\"result\":1", "\"result\":2")
-assert subscriptions.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert subscriptions.nextUpdate() == initialBestUpdate.replace(
+    "\"subscription\":1", "\"subscription\":2")
 assert respond(UnsubscribeBest.replace("[1]", "[2]").replace(",\"id\":62", ""), withGenesis,
     subscriptions) == ""
-assert subscriptions.queueBestBlock(historyChild)
-assert subscriptions.nextBestUpdate() == "" # Notification-form cancellation executes without a reply.
+assert subscriptions.queueChainUpdates(historyChild)
+assert subscriptions.nextUpdate() == "" # Notification-form cancellation executes without a reply.
 var batchSession = default(RpcSession)
 assert respond("[" & SubscribeBest & "," & UnsubscribeBest & "]", withGenesis, batchSession) ==
   "[" & SubscribedBest & "," & UnsubscribedBest & "]"
-assert batchSession.nextBestUpdate() == "" # Sequential batch cancellation removes the initial event too.
+assert batchSession.nextUpdate() == "" # Sequential batch cancellation removes the initial event too.
 assert respond(SubscribeBest.replace(",\"id\":61", ""), withGenesis, batchSession) == ""
-assert batchSession.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1",
-    "\"subscription\":2")
+assert batchSession.nextUpdate() == initialBestUpdate.replace(
+    "\"subscription\":1", "\"subscription\":2")
 var rejectedBatch = default(RpcSession)
 assert "-32600" in respond("[" & repeat(SubscribeBest & ",", 16) & SubscribeBest & "]", withGenesis, rejectedBatch)
 assert "-32700" in respond("[" & SubscribeBest & ",", withGenesis, rejectedBatch)
 assert respond(SubscribeBest, withGenesis, rejectedBatch) ==
     SubscribedBest # Failed whole-message parsing has no effects.
 var capacitySession = default(RpcSession)
-for identity in 1..MaxBestSubscriptions:
+for identity in 1..MaxSubscriptions:
   assert respond(SubscribeBest, withGenesis, capacitySession) == SubscribedBest.replace(
     "\"result\":1", "\"result\":" & $identity) # Eight independent IDs share one connection-local FIFO.
 assert "\"code\":0" in respond(SubscribeBest, withGenesis, capacitySession)
-assert capacitySession.queueBestBlock(historyChild) # Eight initial plus eight published events exactly fill the FIFO.
-assert not capacitySession.queueBestBlock(historyChild) # Overflow leaves the previously queued sequence intact.
-for identity in 1..MaxBestSubscriptions:
-  assert capacitySession.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1",
-      "\"subscription\":" & $identity)
-for identity in 1..MaxBestSubscriptions:
-  assert capacitySession.nextBestUpdate() == initialBestUpdate.replace("\"subscription\":1",
-      "\"subscription\":" & $identity).replace(
+assert capacitySession.queueChainUpdates(historyChild) # Eight initial plus eight published events exactly fill the FIFO.
+assert not capacitySession.queueChainUpdates(historyChild) # Overflow leaves the previously queued sequence intact.
+for identity in 1..MaxSubscriptions:
+  assert capacitySession.nextUpdate() == initialBestUpdate.replace(
+      "\"subscription\":1", "\"subscription\":" & $identity)
+for identity in 1..MaxSubscriptions:
+  assert capacitySession.nextUpdate() == initialBestUpdate.replace(
+      "\"subscription\":1", "\"subscription\":" & $identity).replace(
     genesisHash, childHashText).replace("\"slot\":7", "\"slot\":9")
-assert capacitySession.nextBestUpdate() == ""
+assert capacitySession.nextUpdate() == ""
+
+# Statistics use the same numeric ID namespace but their own JIP-2 method and value-bearing update.
+const SubscribeStats = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeStatistics\",\"params\":[false],\"id\":61}"
+let unsubscribeStats = UnsubscribeBest.replace("unsubscribeBestBlock", "unsubscribeStatistics")
+let activityBlob = activityAnswer["{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":".len..^2]
+let initialStatsUpdate = initialBestUpdate.replace("subscribeBestBlock",
+    "subscribeStatistics").replace(
+  "\"slot\":7}", "\"slot\":7,\"value\":" & activityBlob & "}")
+let statsFailure = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeStatistics\",\"params\":{\"subscription\":1,\"error\":\"Invalid, unavailable or oversized activity statistics\"}}"
+var statsSession = default(RpcSession)
+assert "-32601" in respond(SubscribeStats, activityOwner) # The stateless adapter cannot own subscriptions.
+assert "\"code\":0" in respond(SubscribeStats, withGenesis, statsSession)
+assert "\"code\":0" in respond(SubscribeStats, activityInfo("00"), statsSession)
+assert "\"code\":0" in respond(SubscribeStats, activityInfo(repeat("00", 32769)), statsSession)
+assert "Finalized chain view unavailable" in respond(SubscribeStats.replace("false", "true"),
+    activityOwner, statsSession)
+for bad in ["", "0", "null", "\"false\"", "false,false", "{}"]:
+  assert "-32602" in respond(SubscribeStats.replace("[false]", "[" & bad & "]"), activityOwner,
+      statsSession) # Flag validation precedes subscription allocation.
+assert respond(SubscribeStats, activityOwner, statsSession) == SubscribedBest
+assert respond(SubscribeBest, activityOwner, statsSession) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+assert respond(UnsubscribeBest, activityOwner, statsSession) == UnsubscribedBest.replace("true", "false")
+assert respond(unsubscribeStats.replace("[1]", "[2]"), activityOwner, statsSession) ==
+    UnsubscribedBest.replace("true", "false")
+assert statsSession.nextUpdate() == initialStatsUpdate # Wrong-family cancellation cannot discard queued updates.
+assert statsSession.nextUpdate() == initialBestUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert statsSession.queueChainUpdates(activityOwner.chain.bestBlock)
+assert statsSession.nextUpdate() == initialStatsUpdate # Every published head produces an update, even with unchanged C(13).
+assert statsSession.nextUpdate() == initialBestUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert statsSession.queueChainUpdates(historyChild)
+assert respond(unsubscribeStats, activityOwner, statsSession) == UnsubscribedBest.replace("true", "false")
+assert statsSession.nextUpdate() == statsFailure # Terminal errors retain their queued notification after automatic removal.
+assert statsSession.nextUpdate() == initialBestUpdate.replace("\"subscription\":1",
+    "\"subscription\":2").replace(
+  genesisHash, childHashText).replace("\"slot\":7", "\"slot\":9")
+assert statsSession.queueChainUpdates(historyChild)
+assert "subscribeBestBlock" in statsSession.nextUpdate()
+assert statsSession.nextUpdate() == "" # A terminal statistics error occurs once; best-block delivery survives.
+var cancelStats = default(RpcSession)
+assert respond("[" & SubscribeStats & "," & unsubscribeStats & "]", activityOwner, cancelStats) ==
+  "[" & SubscribedBest & "," & UnsubscribedBest & "]"
+assert cancelStats.nextUpdate() == ""
+assert respond(SubscribeStats.replace(",\"id\":61", ""), activityOwner, cancelStats) == ""
+assert cancelStats.nextUpdate() == initialStatsUpdate.replace("\"subscription\":1", "\"subscription\":2")
+assert respond(unsubscribeStats.replace("[1]", "[2]").replace(",\"id\":62", ""), activityOwner,
+    cancelStats) == ""
+assert cancelStats.queueChainUpdates(historyChild)
+assert cancelStats.nextUpdate() == ""
+
+# A valid large C(13) stays under the raw value ceiling but two serialized notifications exceed the FIFO byte limit.
+var largeActivity = activityHex[0..<644] & "87d0" # Canonical compact 2000-service dictionary count.
+for identity in 0..<2000:
+  largeActivity.add(toHex(identity and 255, 2) & toHex(identity shr 8, 2) & "0000" & repeat("00",
+      11)) # Ordered E4 service IDs and zero counters.
+let largeActivityOwner = activityInfo(largeActivity)
+var byteLimited = default(RpcSession)
+assert respond(SubscribeStats, largeActivityOwner, byteLimited) == SubscribedBest
+assert "\"code\":0" in respond(SubscribeStats, largeActivityOwner, byteLimited)
+let largeUpdate = byteLimited.nextUpdate()
+assert largeUpdate.len > MaxSubscriptionQueueBytes div 2 and largeUpdate.len < MaxSubscriptionQueueBytes
+assert respond(SubscribeStats, largeActivityOwner, byteLimited) == SubscribedBest.replace(
+    "\"result\":1", "\"result\":2") # Refused creation did not consume an ID; dequeue released bytes.
+assert not byteLimited.queueChainUpdates(largeActivityOwner.chain.bestBlock) # Two active large updates cannot fit even in an empty queue.
+assert respond(unsubscribeStats.replace("[1]", "[2]"), largeActivityOwner, byteLimited) == UnsubscribedBest
+assert byteLimited.nextUpdate() == "" # Cancellation releases the large pending message's byte allowance.
+assert byteLimited.queueChainUpdates(largeActivityOwner.chain.bestBlock)
+assert byteLimited.nextUpdate() == largeUpdate
+
+## Repeated validated C(13) updates and terminal errors must release decoder and queue storage.
+proc retireStatisticsSubscriptions() =
+  var retired = default(RpcSession)
+  discard respond(SubscribeStats, activityOwner, retired)
+  assert retired.queueChainUpdates(activityOwner.chain.bestBlock)
+  assert retired.queueChainUpdates(historyChild)
+retireStatisticsSubscriptions()
+let statsSubscriptionBaseline = getOccupiedMem()
+for iteration in 0..<20:
+  retireStatisticsSubscriptions() # Acyclic session destruction retires both normal and terminal notifications.
+assert getOccupiedMem() <= statsSubscriptionBaseline + 256
 
 ## Repeated connection retirement must release queued notifications and copied tentative session storage.
 proc retireSubscriptions() =
   var retired = default(Connection)
-  for identity in 1..MaxBestSubscriptions:
+  for identity in 1..MaxSubscriptions:
     discard respond(SubscribeBest, withGenesis, retired.session) # Each call adds an owned initial descriptor.
-  assert retired.session.queueBestBlock(historyChild)
+  assert retired.session.queueChainUpdates(historyChild)
   retired.close()
-  assert retired.session.nextBestUpdate() == ""
+  assert retired.session.nextUpdate() == ""
   assert respond(SubscribeBest, withGenesis, retired.session) ==
       SubscribedBest # Slot reuse starts a new ID namespace.
 retireSubscriptions()
@@ -1269,7 +1354,7 @@ proc publicationLifecycle() =
       next.value.blockHash))).replace("\"slot\":7", "\"slot\":10")
   assert publicationReply(pair[1]) == frame(initial)
   assert owner.publishBlock(next) == ViewAdvanceError.Duplicate
-  assert owner.connections[0].session.nextBestUpdate() == "" # Rejected publication emits no event.
+  assert owner.connections[0].session.nextUpdate() == "" # Rejected publication emits no event.
   owner.connections[0].input = "\x81" # Retain a partial client frame while delivering an unrelated update.
   let partialDeadline = getMonoTime().ticks div 1_000_000 + 2000
   owner.connections[0].deadline = partialDeadline
@@ -1301,7 +1386,7 @@ proc publicationLifecycle() =
     assert owner.publishBlock(child) == ViewAdvanceError.None # A stalled consumer cannot stall head publication.
   assert owner.opened and owner.chain.bestBlock.value.slot == 27
   assert not owner.connections[0].opened # Initial plus sixteen undelivered updates exceeds the bounded FIFO.
-  assert owner.connections[0].session.nextBestUpdate() == ""
+  assert owner.connections[0].session.nextUpdate() == ""
   var survivorRequest = masked(bestRequest)
   assert sendBytes(survivor[1], survivorRequest.toCString(), csize_t(survivorRequest.len), 0) ==
       survivorRequest.len
@@ -1309,6 +1394,35 @@ proc publicationLifecycle() =
   let survivingInfo = ClientInfo(chain: owner.chain, parameters: genesisParameters)
   assert publicationReply(survivor[1]) == frame(respond(bestRequest, survivingInfo))
   assert owner.connections[1].opened # The overflowing subscriber cannot disconnect another client.
+  let rawActivity = base64.decode(activityBlob[1..^2])
+  var activityBytes = newSeq[byte](rawActivity.len)
+  for index in 0..<rawActivity.len:
+    activityBytes[index] = byte(rawActivity[index]) # Preserve the independent statistics fixture exactly.
+  let statsHead = childSnapshot(owner.chain.bestBlock.value, 28, genesisParameters.value,
+      activity = activityBytes)
+  assert owner.publishBlock(statsHead) == ViewAdvanceError.None
+  var statsPacket = masked(SubscribeStats)
+  assert sendBytes(survivor[1], statsPacket.toCString(), csize_t(statsPacket.len), 0) ==
+      statsPacket.len
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(SubscribedBest)
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(initialStatsUpdate.replace(genesisHash,
+    base64.encode(array[32, byte](statsHead.value.blockHash))).replace("\"slot\":7", "\"slot\":28"))
+  activityBytes[1] = 1 # Change an ordinary current-validator counter without changing the roster shape.
+  let changedStatsHead = childSnapshot(statsHead.value, 29, genesisParameters.value,
+      activity = activityBytes)
+  assert owner.publishBlock(changedStatsHead) == ViewAdvanceError.None
+  owner.tick(0)
+  let changedBlob = quote(base64.encode(activityBytes))
+  assert publicationReply(survivor[1]) == frame(initialStatsUpdate.replace(genesisHash,
+    base64.encode(array[32, byte](changedStatsHead.value.blockHash))).replace("\"slot\":7",
+        "\"slot\":29").replace(activityBlob, changedBlob))
+  let missingStatsHead = childSnapshot(changedStatsHead.value, 30, genesisParameters.value)
+  assert owner.publishBlock(missingStatsHead) == ViewAdvanceError.None
+  owner.tick(0)
+  assert publicationReply(survivor[1]) == frame(statsFailure)
+  assert owner.connections[1].opened # Invalid statistics terminate only their subscription, not the connection.
   owner.close()
   assert owner.publishBlock(next) == ViewAdvanceError.Uninitialized
   owner.tick(0)

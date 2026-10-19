@@ -37,7 +37,9 @@ for same-dispatcher handoff between ticks; it installs a successful append witho
 integration must call this boundary; no live importer, fork choice or finality is provided here. Retained-report lookup still searches only the selected head.
 
 Each WS connection owns a private `RpcSession` with a fixed subscription table and bounded FIFO
-of serialized best-block notifications. Request dispatch commits subscription changes only when
-its reply fits the response budget. Publication queues descriptors without retaining snapshot owners;
+of serialized best-block and statistics notifications, limited by both message count and bytes. Request dispatch commits subscription changes only when
+its reply fits the response budget. Publication queues descriptors and validated C(13) bytes without retaining snapshot owners;
 overflow closes only the affected connection. The dispatcher writes replies before notifications,
-one frame per turn, preserving partial-write offsets. Disconnect releases the entire session.
+one frame per turn, preserving partial-write offsets. Statistics are decoded once per connection
+per publication when requested; invalid values terminate only those subscriptions with an error.
+Disconnect releases the entire session.
