@@ -14,12 +14,10 @@ import ../crypto/[primitives, extrinsic_commitment]
 import ./[store, safrole_transition]
 
 type
-  ## Caller-selected C.2 profile and independent parent-header ceiling; no domain is inferred from bytes.
-  BlockAdmissionConfig* = object
+  BlockAdmissionConfig* = object ## Caller-selected C.2 profile and independent parent-header ceiling; no domain is inferred from bytes.
     frame*: FrameConfig
     maxParentHeaderBytes*: ByteLimit
-  ## Only the completed alternative carries a binding; all rejected comparisons retain a reason alone.
-  BlockAdmissionError* {.pure.} = enum
+  BlockAdmissionError* {.pure.} = enum ## Only the completed alternative carries a binding; all rejected comparisons retain a reason alone.
     Uninitialized, None, InvalidConfig, InvalidBlock, InvalidParent, MissingState, InvalidState,
     InvalidSlot, InvalidParentHash, InvalidStateRoot, InvalidExtrinsicHash,
     LimitExceeded, LengthOverflow, BackendFailure
@@ -29,25 +27,20 @@ type
     header: OwnedHeader
     parent: OwnedHeader
     state: StateStoreSnapshot
-  ## Private identity cannot be forged by supplying disconnected headers, tickets or detached byte spans.
-  BoundBlock* = object
+  BoundBlock* = object ## Private identity cannot be forged by supplying disconnected headers, tickets or detached byte spans.
     data: nil BindingData
-  ## Default/failed alternatives contain no bound owner or comparison progress.
-  BlockAdmissionResult* = object
+  BlockAdmissionResult* = object ## Default/failed alternatives contain no bound owner or comparison progress.
     case status: BlockAdmissionError
     of None:
       completed: BoundBlock # All three commitments and chronology matched this exact captured block.
     else:
       discard               # No preflight or primitive refusal fabricates a successful binding.
-  ## Success retains the bound input together with the Safrole stage's immutable published state/header.
-  BlockSafroleUpdate* = object
+  BlockSafroleUpdate* = object ## Success retains the bound input together with the Safrole stage's immutable published state/header.
     admitted*: BoundBlock
     transition*: SafroleTransition
-  ## Composition preserves the precise admission or Safrole refusal without a partial snapshot.
-  BlockSafroleError* {.pure.} = enum
+  BlockSafroleError* {.pure.} = enum ## Composition preserves the precise admission or Safrole refusal without a partial snapshot.
     Uninitialized, None, AdmissionFailure, SafroleFailure
-  ## Nested failed Safrole results contain only their existing checked stage reason.
-  BlockSafroleResult* = object
+  BlockSafroleResult* = object ## Nested failed Safrole results contain only their existing checked stage reason.
     case status: BlockSafroleError
     of None:
       completed: BlockSafroleUpdate        # No mutable store handle escapes publication.
@@ -58,48 +51,54 @@ type
     else:
       discard                              # Default results cannot expose input or posterior state.
 
-## Inspect admission refusal without granting retagging or access to an invalid binding.
-func error*(outcome: BlockAdmissionResult): BlockAdmissionError = outcome.status
-## Retain the completed binding only after selecting success.
+func error*(outcome: BlockAdmissionResult): BlockAdmissionError =
+  ## Inspect admission refusal without granting retagging or access to an invalid binding.
+  outcome.status
 func value*(outcome: BlockAdmissionResult): BoundBlock {.inline,
-    requires: outcome.status == BlockAdmissionError.None.} = outcome.completed
-## Inspect composed stage status without extracting an unselected reason.
-func error*(outcome: BlockSafroleResult): BlockSafroleError = outcome.status
-## Extract complete composed success only.
+    requires: outcome.status == BlockAdmissionError.None.} =
+  ## Retain the completed binding only after selecting success.
+  outcome.completed
+func error*(outcome: BlockSafroleResult): BlockSafroleError =
+  ## Inspect composed stage status without extracting an unselected reason.
+  outcome.status
 func value*(outcome: BlockSafroleResult): BlockSafroleUpdate {.inline,
-    requires: outcome.status == BlockSafroleError.None.} = outcome.completed
-## Read the exact admission cause only after selecting that failed stage.
+    requires: outcome.status == BlockSafroleError.None.} =
+  ## Extract complete composed success only.
+  outcome.completed
 func admissionError*(outcome: BlockSafroleResult): BlockAdmissionError {.inline,
-    requires: outcome.status == BlockSafroleError.AdmissionFailure.} = outcome.admissionReason
-## Read the existing typed Safrole failure only after selecting its refusal alternative.
+    requires: outcome.status == BlockSafroleError.AdmissionFailure.} =
+  ## Read the exact admission cause only after selecting that failed stage.
+  outcome.admissionReason
 func safroleError*(outcome: BlockSafroleResult): SafroleTransitionResult {.inline,
-    requires: outcome.status == BlockSafroleError.SafroleFailure.} = outcome.stageReason
+    requires: outcome.status == BlockSafroleError.SafroleFailure.} =
+  ## Read the existing typed Safrole failure only after selecting its refusal alternative.
+  outcome.stageReason
 
-## Retain the same immutable block after binding, independently of caller handles and source buffers.
 proc admittedBlock*(binding: BoundBlock): OwnedBlock {.requires: binding.data != nil.} =
+  ## Retain the same immutable block after binding, independently of caller handles and source buffers.
   let data = binding.data
   assert data != nil # Bind the checked ARC owner once before extraction.
   data.candidate
-## Retain the exact header that was extracted from this block, never an independently supplied candidate.
 proc admittedHeader*(binding: BoundBlock): OwnedHeader {.requires: binding.data != nil.} =
+  ## Retain the exact header that was extracted from this block, never an independently supplied candidate.
   let data = binding.data
   assert data != nil # Preserve the owner throughout the copied handle access.
   data.header
-## Retain the parent header whose complete sealed serialization matched the candidate's parent identity.
 proc admittedParent*(binding: BoundBlock): OwnedHeader {.requires: binding.data != nil.} =
+  ## Retain the parent header whose complete sealed serialization matched the candidate's parent identity.
   let data = binding.data
   assert data != nil # A default binding cannot substitute for genesis context.
   data.parent
-## Retain the exact complete-map snapshot whose commitment and timeslot matched the header context.
 proc admittedState*(binding: BoundBlock): StateStoreSnapshot {.requires: binding.data != nil.} =
+  ## Retain the exact complete-map snapshot whose commitment and timeslot matched the header context.
   let data = binding.data
   assert data != nil # No partial light map is promoted to a full-state root.
   data.state
 
-## Revalidate the captured block under caller policy, then bind parent hash, complete state root and extrinsic hash.
-## Parent is trusted chain context supplied by the caller; this function does not establish chain ancestry/consensus.
 proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
     state: StateStoreSnapshot, config: BlockAdmissionConfig): BlockAdmissionResult =
+  ## Revalidate the captured block under caller policy, then bind parent hash, complete state root and extrinsic hash.
+  ## Parent is trusted chain context supplied by the caller; this function does not establish chain ancestry/consensus.
   let info = blockInfo(candidate)
   if info.error != FrameError.None:
     return BlockAdmissionResult(status: BlockAdmissionError.InvalidBlock) # Default is not a complete decoded block.
@@ -162,11 +161,11 @@ proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
     completed: BoundBlock(data: BindingData(candidate: exact, header: header.value.owner,
       parent: parent, state: state)))
 
-## Bind one immutable block to the current parent state, then extract its own tickets for atomic Safrole.
-## Posterior disputes offenders remain supplied; other extrinsic execution, wall clock and block import are separate.
 proc advanceBlockSafrole*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     offenders: openArray[OffenderKey], config: BlockAdmissionConfig,
     safrole: SafroleTransitionConfig): BlockSafroleResult =
+  ## Bind one immutable block to the current parent state, then extract its own tickets for atomic Safrole.
+  ## Posterior disputes offenders remain supplied; other extrinsic execution, wall clock and block import are separate.
   if uint64(config.frame.cores) != uint64(safrole.state.validators.cores) or
       uint64(config.frame.validators) != uint64(safrole.state.validators.validators) or
       uint64(config.frame.epochSlots) != uint64(safrole.state.epochSlots) or

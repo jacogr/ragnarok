@@ -11,27 +11,26 @@ import ../codec/[state_safrole, state_consensus, bounded]
 import ../crypto/primitives
 
 type
-  ## Chain epoch/tail parameters and independent finite chapter, accumulator and roster ceilings.
-  SealerScheduleConfig* = object
+  SealerScheduleConfig* = object ## Chain epoch/tail parameters and independent finite chapter, accumulator and roster ceilings.
     state*: SafroleStateConfig
     tailStart*: EpochSlots
-  ## Failure alternatives carry no schedule, partial fallback keys or candidate chapter.
-  SealerScheduleError* {.pure.} = enum
+  SealerScheduleError* {.pure.} = enum ## Failure alternatives carry no schedule, partial fallback keys or candidate chapter.
     Uninitialized, None, MissingState, InvalidConfig, InvalidSlot, InvalidState, LimitExceeded,
       LengthOverflow, BackendFailure
-  ## Only complete success retains a private immutable C(4) candidate, with no borrowed input lifetime.
-  SealerScheduleResult* = object
+  SealerScheduleResult* = object ## Only complete success retains a private immutable C(4) candidate, with no borrowed input lifetime.
     case status: SealerScheduleError
     of None:
       completed: SafroleStateSnapshot # Acyclic owned codec storage copies fixed records and selected schedule.
     else:
       discard # Defaults and refusals expose only their reason.
 
-## Inspect a read-only reason without granting access to candidate storage or retagging.
-func error*(outcome: SealerScheduleResult): SealerScheduleError = outcome.status
-## Extract the immutable candidate only after selecting successful schedule construction.
+func error*(outcome: SealerScheduleResult): SealerScheduleError =
+  ## Inspect a read-only reason without granting access to candidate storage or retagging.
+  outcome.status
 func value*(outcome: SealerScheduleResult): SafroleStateSnapshot {.inline,
-    requires: outcome.status == SealerScheduleError.None.} = outcome.completed
+    requires: outcome.status == SealerScheduleError.None.} =
+  ## Extract the immutable candidate only after selecting successful schedule construction.
+  outcome.completed
 
 ## Preserve policy/extent failures; other codec reasons identify invalid serialized input.
 func codecError(reason: StateComponentError): SealerScheduleError =
@@ -55,11 +54,11 @@ proc canonical(owner: SafroleStateSnapshot, count: int): bool =
     if not lower: return false # Equal identifiers are duplicates even when attempts differ.
   true
 
-## Borrow exact parent/staged C(4) and posterior C(8) synchronously; replace only the staged schedule.
-## Caller authenticates and stages rotation, entropy/time and ticket admission independently.
-## The parent contest must remain available after admission resets/replaces the staged accumulator.
 proc selectSafroleSchedule*(parent, staged, active: openArray[byte], previous, target: StateTime,
     entropy2: StateEntropyWord, config: SealerScheduleConfig): SealerScheduleResult =
+  ## Borrow exact parent/staged C(4) and posterior C(8) synchronously; replace only the staged schedule.
+  ## Caller authenticates and stages rotation, entropy/time and ticket admission independently.
+  ## The parent contest must remain available after admission resets/replaces the staged accumulator.
   let epoch = uint64(config.state.epochSlots)
   if epoch == 0 or uint64(config.tailStart) == 0 or uint64(config.tailStart) >= epoch:
     return SealerScheduleResult(status: SealerScheduleError.InvalidConfig) # Positive epoch and nonempty closing period.

@@ -10,22 +10,18 @@ import ./[accumulation_invocation, accumulation_service, accumulation_round, acc
   report_admission, block_transition, store]
 
 type
-  ## Explicit chain population and independent decoding/aggregate-copy ceilings.
-  AccumulationContextConfig* = object
+  AccumulationContextConfig* = object ## Explicit chain population and independent decoding/aggregate-copy ceilings.
     validators*: ValidatorCount
     queues*: AuthorizationConfig
     staging*: ValidatorStateConfig
     privileges*: PrivilegeConfig
     totalBytes*: ByteLimit
-  ## Initial dimensions share I; only a future checkpoint operation may distinguish them.
-  AccumulationDimension* {.pure.} = enum
+  AccumulationDimension* {.pure.} = enum ## Initial dimensions share I; only a future checkpoint operation may distinguish them.
     Regular, Exceptional
-  ## Refusal contains no partially decoded state or fabricated implications.
-  AccumulationContextError* {.pure.} = enum
+  AccumulationContextError* {.pure.} = enum ## Refusal contains no partially decoded state or fabricated implications.
     Uninitialized, None, InvalidInvocation, InvalidConfig, MissingState, MalformedState,
     LimitExceeded, InvalidDimension
-  ## Copied initial I metadata; effects are empty and yield is absent before any execution.
-  InitialAccumulationInfo* = object
+  InitialAccumulationInfo* = object ## Copied initial I metadata; effects are empty and yield is absent before any execution.
     service*, nextService*: ServiceIndex
     transfers*, provisions*: int
     hasYield*: bool
@@ -36,36 +32,34 @@ type
     queues: AuthorizationSnapshot
     staging: ValidatorStateSnapshot
     privileges: PrivilegeSnapshot
-  ## Immutable initial implications; no mutable sequence or checkpoint state is exported.
-  InitialAccumulationContext* = object
+  InitialAccumulationContext* = object ## Immutable initial implications; no mutable sequence or checkpoint state is exported.
     data: nil ContextData
-  ## Both dimensions initially refer to one immutable I, making initial equality structural.
-  PreparedAccumulationContexts* = object
+  PreparedAccumulationContexts* = object ## Both dimensions initially refer to one immutable I, making initial equality structural.
     initial: InitialAccumulationContext
   ## Retained certificate prevents replacement of the block, entropy or parent state.
   BlockContextData = ref object
     invocation: BlockAccumulationInvocation
     projection: PreparedAccumulationContexts
-  ## Only the bound adapter constructs contexts tied to an authenticated chain profile.
-  BlockAccumulationContexts* = object
+  BlockAccumulationContexts* = object ## Only the bound adapter constructs contexts tied to an authenticated chain profile.
     data: nil BlockContextData
-  ## Select success before reading any private completed payload, including in optimized builds.
-  AccumulationContextResult*[T] = object
+  AccumulationContextResult*[T] = object ## Select success before reading any private completed payload, including in optimized builds.
     case status: AccumulationContextError
     of None:
       completed: T # Complete initialization alone publishes retained views.
     else:
       discard      # No partially decoded values accompany refusal.
 
-## Read a reason without permitting result retagging.
-func error*[T](outcome: AccumulationContextResult[T]): AccumulationContextError = outcome.status
-## Extract only explicitly selected success under compiler/runtime contracts.
+func error*[T](outcome: AccumulationContextResult[T]): AccumulationContextError =
+  ## Read a reason without permitting result retagging.
+  outcome.status
 func value*[T](outcome: AccumulationContextResult[T]): T {.inline,
-    requires: outcome.status == AccumulationContextError.None.} = outcome.completed
+    requires: outcome.status == AccumulationContextError.None.} =
+  ## Extract only explicitly selected success under compiler/runtime contracts.
+  outcome.completed
 
-## Select either initial dimension; reject invalid enum casts instead of aliasing arbitrary dimensions.
 proc initialContext*(contexts: PreparedAccumulationContexts,
     dimension: AccumulationDimension): AccumulationContextResult[InitialAccumulationContext] =
+  ## Select either initial dimension; reject invalid enum casts instead of aliasing arbitrary dimensions.
   if ord(dimension) < ord(AccumulationDimension.Regular) or
       ord(dimension) > ord(AccumulationDimension.Exceptional):
     return AccumulationContextResult[InitialAccumulationContext](status:
@@ -76,9 +70,9 @@ proc initialContext*(contexts: PreparedAccumulationContexts,
   AccumulationContextResult[InitialAccumulationContext](status: AccumulationContextError.None,
     completed: contexts.initial)
 
-## Copy I's service/next-ID and its genuinely empty initial effects, without claiming an outcome.
 proc contextInfo*(context: InitialAccumulationContext): AccumulationContextResult[
     InitialAccumulationInfo] =
+  ## Copy I's service/next-ID and its genuinely empty initial effects, without claiming an outcome.
   let data = context.data
   if data == nil: return AccumulationContextResult[InitialAccumulationInfo](status:
     AccumulationContextError.Uninitialized) # No synthetic service or effects.
@@ -87,64 +81,64 @@ proc contextInfo*(context: InitialAccumulationContext): AccumulationContextResul
     completed: InitialAccumulationInfo(service: seed.service, nextService: seed.nextService,
       transfers: 0, provisions: 0, hasYield: false))
 
-## Retain the exact bootstrap, including immutable input provenance and independent argument extraction.
 proc contextInvocation*(context: InitialAccumulationContext): AccumulationContextResult[
     PreparedAccumulationInvocation] =
+  ## Retain the exact bootstrap, including immutable input provenance and independent argument extraction.
   let data = context.data
   if data == nil: return AccumulationContextResult[PreparedAccumulationInvocation](status:
     AccumulationContextError.Uninitialized) # No default bootstrap masquerades as initialized.
   AccumulationContextResult[PreparedAccumulationInvocation](status: AccumulationContextError.None,
     completed: data.invocation)
 
-## Retain the complete post-credit map backing all accounts/storage/preimages, never a partial root.
-## Other chapters remain present; this view neither filters the map nor validates every unrelated account value.
 proc contextAccounts*(context: InitialAccumulationContext): AccumulationContextResult[
     StateStoreSnapshot] =
+  ## Retain the complete post-credit map backing all accounts/storage/preimages, never a partial root.
+  ## Other chapters remain present; this view neither filters the map nor validates every unrelated account value.
   let data = context.data
   if data == nil: return AccumulationContextResult[StateStoreSnapshot](status:
     AccumulationContextError.Uninitialized) # No empty-map substitution.
   AccumulationContextResult[StateStoreSnapshot](status: AccumulationContextError.None,
     completed: data.accounts)
 
-## Extract the post-credit invoking account validated by the retained service preparation.
 proc contextSelf*(context: InitialAccumulationContext): AccumulationContextResult[ServiceMetadata] =
+  ## Extract the post-credit invoking account validated by the retained service preparation.
   let data = context.data
   if data == nil: return AccumulationContextResult[ServiceMetadata](status:
     AccumulationContextError.Uninitialized) # No default account on failed setup.
   AccumulationContextResult[ServiceMetadata](status: AccumulationContextError.None,
     completed: data.invocation.bootstrapService.value.serviceInfo.value.account)
 
-## Retain the decoded C(2) queue owner; bounded per-core extraction never exports mutable rows.
 proc contextQueues*(context: InitialAccumulationContext): AccumulationContextResult[
     AuthorizationSnapshot] =
+  ## Retain the decoded C(2) queue owner; bounded per-core extraction never exports mutable rows.
   let data = context.data
   if data == nil: return AccumulationContextResult[AuthorizationSnapshot](status:
     AccumulationContextError.Uninitialized) # No fabricated empty queues.
   AccumulationContextResult[AuthorizationSnapshot](status: AccumulationContextError.None,
     completed: data.queues)
 
-## Retain C(7)'s ordered staging roster; active/previous rosters are not substitutes.
 proc contextStaging*(context: InitialAccumulationContext): AccumulationContextResult[
     ValidatorStateSnapshot] =
+  ## Retain C(7)'s ordered staging roster; active/previous rosters are not substitutes.
   let data = context.data
   if data == nil: return AccumulationContextResult[ValidatorStateSnapshot](status:
     AccumulationContextError.Uninitialized) # No fabricated empty roster.
   AccumulationContextResult[ValidatorStateSnapshot](status: AccumulationContextError.None,
     completed: data.staging)
 
-## Retain all C(12) roles, assigners and always-accumulate allowances without mutable aliases.
 proc contextPrivileges*(context: InitialAccumulationContext): AccumulationContextResult[
     PrivilegeSnapshot] =
+  ## Retain all C(12) roles, assigners and always-accumulate allowances without mutable aliases.
   let data = context.data
   if data == nil: return AccumulationContextResult[PrivilegeSnapshot](status:
     AccumulationContextError.Uninitialized) # No synthetic privilege roles.
   AccumulationContextResult[PrivilegeSnapshot](status: AccumulationContextError.None,
     completed: data.privileges)
 
-## Bind exact bootstrap state and complete partialstate components; pure callers supply the chain profile.
-## Each chapter is length-preflighted before copying; aggregate arithmetic uses subtraction before addition.
 proc prepareAccumulationContexts*(invocation: PreparedAccumulationInvocation,
     config: AccumulationContextConfig): AccumulationContextResult[PreparedAccumulationContexts] =
+  ## Bind exact bootstrap state and complete partialstate components; pure callers supply the chain profile.
+  ## Each chapter is length-preflighted before copying; aggregate arithmetic uses subtraction before addition.
   ## Refuse atomically; earlier decoded components remain local and are released on failure.
   template fail(reason: AccumulationContextError) =
     return AccumulationContextResult[PreparedAccumulationContexts](status: reason)
@@ -205,27 +199,27 @@ proc prepareAccumulationContexts*(invocation: PreparedAccumulationInvocation,
   AccumulationContextResult[PreparedAccumulationContexts](status: AccumulationContextError.None,
     completed: PreparedAccumulationContexts(initial: initial))
 
-## Retain the genuine source certificate independently of the paired-context handle.
 proc contextBlockInvocation*(contexts: BlockAccumulationContexts): AccumulationContextResult[
     BlockAccumulationInvocation] =
+  ## Retain the genuine source certificate independently of the paired-context handle.
   let data = contexts.data
   if data == nil: return AccumulationContextResult[BlockAccumulationInvocation](status:
     AccumulationContextError.Uninitialized) # No forged block provenance.
   AccumulationContextResult[BlockAccumulationInvocation](status: AccumulationContextError.None,
     completed: data.invocation)
 
-## Retain the complete immutable initial pair from a genuine block-bound preparation.
 proc contextProjection*(contexts: BlockAccumulationContexts): AccumulationContextResult[
     PreparedAccumulationContexts] =
+  ## Retain the complete immutable initial pair from a genuine block-bound preparation.
   let data = contexts.data
   if data == nil: return AccumulationContextResult[PreparedAccumulationContexts](status:
     AccumulationContextError.Uninitialized) # No fabricated initial contexts.
   AccumulationContextResult[PreparedAccumulationContexts](status: AccumulationContextError.None,
     completed: data.projection)
 
-## Bind cardinalities to this invocation's certified block profile; state comes only from its service owner.
 proc prepareBlockAccumulationContexts*(invocation: BlockAccumulationInvocation,
     config: AccumulationContextConfig): AccumulationContextResult[BlockAccumulationContexts] =
+  ## Bind cardinalities to this invocation's certified block profile; state comes only from its service owner.
   ## Refuse without publishing a partially bound context certificate.
   template fail(reason: AccumulationContextError) =
     return AccumulationContextResult[BlockAccumulationContexts](status: reason)

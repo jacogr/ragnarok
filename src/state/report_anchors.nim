@@ -13,19 +13,15 @@ import ../crypto/primitives
 import ./[report_policy, guarantee_credentials]
 
 type
-  ## Lookup age is measured in timeslots, independently of the eight recent blocks.
-  LookupAge* = distinct uint64
-  ## Exact corrected C(3) decoding and explicit chain-specific lookup age.
-  ReportAnchorConfig* = object
+  LookupAge* = distinct uint64 ## Lookup age is measured in timeslots, independently of the eight recent blocks.
+  ReportAnchorConfig* = object ## Exact corrected C(3) decoding and explicit chain-specific lookup age.
     history*: HistoryConfig
     lookupAge*: LookupAge
-  ## Independent retained-header count, per-header profile and aggregate serialized-byte ceilings.
-  AncestorConfig* = object
+  AncestorConfig* = object ## Independent retained-header count, per-header profile and aggregate serialized-byte ceilings.
     header*: HeaderConfig
     headers*: ElementLimit
     maxBytes*: ByteLimit
-  ## Failed/default stages contain a reason alone, never a partially validated batch or chain.
-  ReportAnchorError* {.pure.} = enum
+  ReportAnchorError* {.pure.} = enum ## Failed/default stages contain a reason alone, never a partially validated batch or chain.
     Uninitialized, None, InvalidPolicy, InvalidHistory, InvalidConfig, InvalidSlot,
     LimitExceeded, InvalidRecentAnchor, LookupTooOld, InvalidRecent,
     InvalidHeader, BrokenAncestry, MissingLookupAnchor, WrongLookupState, BackendFailure
@@ -34,56 +30,55 @@ type
     policy: PolicyCheckedReports
     history: HistorySnapshot
     slot: StateTime
-  ## Recent/age validation is deliberately distinct from a completed ancestor proof.
-  RecentAnchoredReports* = object
+  RecentAnchoredReports* = object ## Recent/age validation is deliberately distinct from a completed ancestor proof.
     data: nil RecentData
   ## Final owner retains each checked full sealed header and the entire previous stage.
   AnchorData = ref object
     recent: RecentAnchoredReports
     headers: seq[OwnedHeader]
-  ## Complete anchors still require later package/dependency/capacity admission.
-  AnchoredReports* = object
+  AnchoredReports* = object ## Complete anchors still require later package/dependency/capacity admission.
     data: nil AnchorData
-  ## Success-only payload extraction uses the supported checked-build contract.
-  ReportAnchorResult*[T] = object
+  ReportAnchorResult*[T] = object ## Success-only payload extraction uses the supported checked-build contract.
     case status: ReportAnchorError
     of None:
       completed: T
     else:
       discard # Neither a default nor a refusal exposes progress.
 
-## Inspect a reason without permitting external retagging.
-func error*[T](outcome: ReportAnchorResult[T]): ReportAnchorError = outcome.status
-## Extract only a completely selected success.
+func error*[T](outcome: ReportAnchorResult[T]): ReportAnchorError =
+  ## Inspect a reason without permitting external retagging.
+  outcome.status
 func value*[T](outcome: ReportAnchorResult[T]): T {.inline,
-    requires: outcome.status == ReportAnchorError.None.} = outcome.completed
+    requires: outcome.status == ReportAnchorError.None.} =
+  ## Extract only a completely selected success.
+  outcome.completed
 
-## Retain the exact policy certificate whose reports were checked.
 proc recentPolicy*(owner: RecentAnchoredReports): ReportAnchorResult[PolicyCheckedReports] =
+  ## Retain the exact policy certificate whose reports were checked.
   let data = owner.data
   if data == nil:
     return ReportAnchorResult[PolicyCheckedReports](status: ReportAnchorError.Uninitialized) # No default batch.
   ReportAnchorResult[PolicyCheckedReports](status: ReportAnchorError.None, completed: data.policy)
 
-## Retain corrected history for subsequent package/dependency checks without mutable storage.
 proc anchorHistory*(owner: RecentAnchoredReports): ReportAnchorResult[HistorySnapshot] =
+  ## Retain corrected history for subsequent package/dependency checks without mutable storage.
   let data = owner.data
   if data == nil:
     return ReportAnchorResult[HistorySnapshot](status: ReportAnchorError.Uninitialized) # No fabricated empty history.
   ReportAnchorResult[HistorySnapshot](status: ReportAnchorError.None, completed: data.history)
 
-## Retain the complete prior stage after lookup-anchor certification.
 proc anchoredRecent*(owner: AnchoredReports): ReportAnchorResult[RecentAnchoredReports] =
+  ## Retain the complete prior stage after lookup-anchor certification.
   let data = owner.data
   if data == nil:
     return ReportAnchorResult[RecentAnchoredReports](
         status: ReportAnchorError.Uninitialized) # No disconnected reports.
   ReportAnchorResult[RecentAnchoredReports](status: ReportAnchorError.None, completed: data.recent)
 
-## Caller supplies the actual beta-dagger after parent-state-root correction, not the appended posterior history.
-## Decode exactly under current bounds; age subtraction saturates mathematically at genesis without wrapping.
 proc checkRecentReportAnchors*(policy: PolicyCheckedReports, correctedHistory: openArray[byte],
     slot: StateTime, config: ReportAnchorConfig): ReportAnchorResult[RecentAnchoredReports] =
+  ## Caller supplies the actual beta-dagger after parent-state-root correction, not the appended posterior history.
+  ## Decode exactly under current bounds; age subtraction saturates mathematically at genesis without wrapping.
   let credentials = policy.policyCredentials
   if credentials.error != ReportPolicyError.None:
     return ReportAnchorResult[RecentAnchoredReports](
@@ -127,10 +122,10 @@ proc checkRecentReportAnchors*(policy: PolicyCheckedReports, correctedHistory: o
   ReportAnchorResult[RecentAnchoredReports](status: ReportAnchorError.None,
     completed: RecentAnchoredReports(data: RecentData(policy: policy, history: history, slot: slot)))
 
-## Parent is trusted chain context; older headers are supplied newest-first and must link all the way to it.
-## Both lookup header and its newer child must be in this retained ancestor sequence, never the candidate header.
 proc checkReportLookupAnchors*(recent: RecentAnchoredReports, parent: OwnedHeader,
     older: openArray[OwnedHeader], config: AncestorConfig): ReportAnchorResult[AnchoredReports] =
+  ## Parent is trusted chain context; older headers are supplied newest-first and must link all the way to it.
+  ## Both lookup header and its newer child must be in this retained ancestor sequence, never the candidate header.
   let data = recent.data
   if data == nil:
     return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidRecent) # A default cannot bypass the first stage.

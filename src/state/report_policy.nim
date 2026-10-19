@@ -13,41 +13,38 @@ import ../codec/[state_authorization, state_accounts, state_layout, state_safrol
 import ./[store, guarantee_credentials]
 
 type
-  ## Maximum accumulation gas for one report, distinct from per-item gas and the block-wide ceiling.
-  ReportGasLimit* = distinct uint64
-  ## Pool decode resources, fixed service metadata policy and explicit chain-specific report gas ceiling.
-  ReportPolicyConfig* = object
+  ReportGasLimit* = distinct uint64 ## Maximum accumulation gas for one report, distinct from per-item gas and the block-wide ceiling.
+  ReportPolicyConfig* = object ## Pool decode resources, fixed service metadata policy and explicit chain-specific report gas ceiling.
     pools*: AuthorizationConfig
     accountBytes*: ByteLimit
     reportGas*: ReportGasLimit
-  ## Failed/default alternatives contain no checked reports, parent snapshot or partial gas totals.
-  ReportPolicyError* {.pure.} = enum
+  ReportPolicyError* {.pure.} = enum ## Failed/default alternatives contain no checked reports, parent snapshot or partial gas totals.
     Uninitialized, None, InvalidConfig, InvalidCredentials, InvalidState, MissingState,
     LimitExceeded, Unauthorized, UnknownService, WrongCodeHash, InsufficientGas, ReportGasExceeded
   ## Private acyclic owner binds the credential certificate to the exact immutable parent map used for policy.
   PolicyData = ref object
     credentials: VerifiedGuaranteeCredentials
     parent: StateStoreSnapshot
-  ## A completed policy certificate is still not a complete report-admission or state-transition certificate.
-  PolicyCheckedReports* = object
+  PolicyCheckedReports* = object ## A completed policy certificate is still not a complete report-admission or state-transition certificate.
     data: nil PolicyData
-  ## Only complete success carries an application value; failed alternatives carry a reason alone.
-  ReportPolicyResult*[T] = object
+  ReportPolicyResult*[T] = object ## Only complete success carries an application value; failed alternatives carry a reason alone.
     case status: ReportPolicyError
     of None:
       completed: T
     else:
       discard # Defaults and refusals cannot expose checked records or progress.
 
-## Inspect status without permitting external retagging.
-func error*[T](outcome: ReportPolicyResult[T]): ReportPolicyError = outcome.status
-## Extract only selected success under the supported checked-build contract.
+func error*[T](outcome: ReportPolicyResult[T]): ReportPolicyError =
+  ## Inspect status without permitting external retagging.
+  outcome.status
 func value*[T](outcome: ReportPolicyResult[T]): T {.inline,
-    requires: outcome.status == ReportPolicyError.None.} = outcome.completed
+    requires: outcome.status == ReportPolicyError.None.} =
+  ## Extract only selected success under the supported checked-build contract.
+  outcome.completed
 
-## Retain the exact certified credentials, with their immutable records and reporter keys.
 proc policyCredentials*(owner: PolicyCheckedReports): ReportPolicyResult[
     VerifiedGuaranteeCredentials] =
+  ## Retain the exact certified credentials, with their immutable records and reporter keys.
   let data = owner.data
   if data == nil:
     return ReportPolicyResult[VerifiedGuaranteeCredentials](
@@ -55,18 +52,18 @@ proc policyCredentials*(owner: PolicyCheckedReports): ReportPolicyResult[
   ReportPolicyResult[VerifiedGuaranteeCredentials](status: ReportPolicyError.None,
       completed: data.credentials)
 
-## Retain the complete parent map actually used, so later admission cannot silently substitute another buffer/state.
 proc policyParent*(owner: PolicyCheckedReports): ReportPolicyResult[StateStoreSnapshot] =
+  ## Retain the complete parent map actually used, so later admission cannot silently substitute another buffer/state.
   let data = owner.data
   if data == nil:
     return ReportPolicyResult[StateStoreSnapshot](
         status: ReportPolicyError.Uninitialized) # No default parent certificate.
   ReportPolicyResult[StateStoreSnapshot](status: ReportPolicyError.None, completed: data.parent)
 
-## Read parent C(1) and C(255,service) only; no pool advancement, state mutation, hashing or PVM execution occurs.
-## The caller supplies the actual admitted parent and matching completed credential context, authenticated externally.
 proc checkReportPolicy*(credentials: VerifiedGuaranteeCredentials, parent: StateStoreSnapshot,
     config: ReportPolicyConfig): ReportPolicyResult[PolicyCheckedReports] =
+  ## Read parent C(1) and C(255,service) only; no pool advancement, state mutation, hashing or PVM execution occurs.
+  ## The caller supplies the actual admitted parent and matching completed credential context, authenticated externally.
   if uint64(config.pools.cores) < 2 or uint64(config.pools.cores) > 341 or
       uint64(config.accountBytes) < uint64(ServiceMetadataBytes):
     return ReportPolicyResult[PolicyCheckedReports](

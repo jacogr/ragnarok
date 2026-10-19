@@ -12,30 +12,28 @@ from ../codec/disputes import OffenderKey
 from ../codec/header import EpochSlots
 
 type
-  ## Explicit per-roster population/byte policy and independent offender work ceiling.
-  ValidatorRotationConfig* = object
+  ValidatorRotationConfig* = object ## Explicit per-roster population/byte policy and independent offender work ceiling.
     roster*: ValidatorStateConfig
     offenders*: ElementLimit
-  ## Complete posterior roster handles share only immutable codec-owned storage.
-  ValidatorRotation* = object
+  ValidatorRotation* = object ## Complete posterior roster handles share only immutable codec-owned storage.
     pending*, active*, previous*: ValidatorStateSnapshot
     epochChanged*: bool
-  ## Invalid/default results expose no posterior roster handles or partial work.
-  ValidatorRotationError* {.pure.} = enum
+  ValidatorRotationError* {.pure.} = enum ## Invalid/default results expose no posterior roster handles or partial work.
     Uninitialized, None, InvalidConfig, InvalidSlot, InvalidState, NonCanonical, LimitExceeded, LengthOverflow
-  ## Only success contains a complete plan; discriminator and payload remain private.
-  ValidatorRotationResult* = object
+  ValidatorRotationResult* = object ## Only success contains a complete plan; discriminator and payload remain private.
     case status: ValidatorRotationError
     of None:
       completed: ValidatorRotation # Callers select success before accessing any handles.
     else:
       discard                      # Failed alternatives carry only their reason.
 
-## Inspect a reason without publishing roster handles or allowing result mutation.
-func error*(outcome: ValidatorRotationResult): ValidatorRotationError = outcome.status
-## Require successful selection before returning the complete immutable roster-handle group.
+func error*(outcome: ValidatorRotationResult): ValidatorRotationError =
+  ## Inspect a reason without publishing roster handles or allowing result mutation.
+  outcome.status
 func value*(outcome: ValidatorRotationResult): ValidatorRotation {.inline,
-    requires: outcome.status == ValidatorRotationError.None.} = outcome.completed
+    requires: outcome.status == ValidatorRotationError.None.} =
+  ## Require successful selection before returning the complete immutable roster-handle group.
+  outcome.completed
 
 ## Convert existing codec failures without treating bad owners or policy refusals as empty validator sets.
 func codecError(reason: StateComponentError): ValidatorRotationError =
@@ -68,12 +66,12 @@ proc excluded(key: StateEdKey, offenders: openArray[OffenderKey]): bool =
       first = middle+1 # Search the strictly larger half; middle is still below last.
   false
 
-## Rotate once on epoch crossing; replace every offending staging record with all-zero fields in place.
-## No crossing retains the prior pending/active/previous unchanged, even when staging/offenders differ.
-## The result is a plan only: the epoch ring root and C(4)/C(8)/C(9) must be coordinated before publication.
 proc planValidatorRotation*(staging, pending, active, previous: ValidatorStateSnapshot,
     priorSlot, targetSlot: StateTime, epochSlots: EpochSlots,
     offenders: openArray[OffenderKey], config: ValidatorRotationConfig): ValidatorRotationResult =
+  ## Rotate once on epoch crossing; replace every offending staging record with all-zero fields in place.
+  ## No crossing retains the prior pending/active/previous unchanged, even when staging/offenders differ.
+  ## The result is a plan only: the epoch ring root and C(4)/C(8)/C(9) must be coordinated before publication.
   if uint64(epochSlots) == 0 or uint64(config.roster.cores) < 2:
     return ValidatorRotationResult(status: ValidatorRotationError.InvalidConfig) # No zero division or guessed profile.
   if uint32(targetSlot) <= uint32(priorSlot):

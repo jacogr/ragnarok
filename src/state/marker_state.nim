@@ -19,11 +19,11 @@ func stateError(reason: StateStoreError): SafroleMarkerError =
   of StateStoreError.LengthOverflow: SafroleMarkerError.LengthOverflow # Preserve checked native extent refusal.
   else: SafroleMarkerError.InvalidState # Other lookup errors cannot describe this fixed read-only key set.
 
-## Bind a structurally decoded unsigned header to parent C(4)/C(6)/C(11) and staged C(4)/C(11).
-## The header slot must equal staged time; caller authenticates entropy proofs and earlier stages separately.
-## Both snapshots remain immutable on success and refusal; this performs no writes or commitment hashing.
 proc validateSafroleHeaderMarkers*(parent, staged: StateStoreSnapshot,
     candidate: OwnedUnsignedHeader, config: SafroleMarkerConfig): SafroleMarkerError =
+  ## Bind a structurally decoded unsigned header to parent C(4)/C(6)/C(11) and staged C(4)/C(11).
+  ## The header slot must equal staged time; caller authenticates entropy proofs and earlier stages separately.
+  ## Both snapshots remain immutable on success and refusal; this performs no writes or commitment hashing.
   let info = unsignedHeaderInfo(candidate)
   if info.error != HeaderError.None:
     return SafroleMarkerError.InvalidHeader # A default header cannot stand for a decoded empty marker pair.

@@ -12,21 +12,16 @@ import ./[accumulation_inputs, accumulation_round, accumulation_queue, report_ad
   block_transition, block_admission, store]
 
 type
-  ## Protocol code-size eligibility is distinct from local preimage-copy/hash resource policy.
-  ServiceCodeLimit* = distinct uint64
-  ## Bound complete preimage work independently of the protocol limit on the extracted code suffix.
-  AccumulationServiceConfig* = object
+  ServiceCodeLimit* = distinct uint64 ## Protocol code-size eligibility is distinct from local preimage-copy/hash resource policy.
+  AccumulationServiceConfig* = object ## Bound complete preimage work independently of the protocol limit on the extracted code suffix.
     codeLimit*: ServiceCodeLimit
     preimageBytes*: ByteLimit
-  ## Successful contexts distinguish absent/malformed/oversized code from a valid empty code blob.
-  AccumulationCodeStatus* {.pure.} = enum
+  AccumulationCodeStatus* {.pure.} = enum ## Successful contexts distinguish absent/malformed/oversized code from a valid empty code blob.
     Missing, Malformed, Oversized, Ready
-  ## Failures expose no partially resolved account, code or input sequence.
-  AccumulationServiceError* {.pure.} = enum
+  AccumulationServiceError* {.pure.} = enum ## Failures expose no partially resolved account, code or input sequence.
     Uninitialized, None, InvalidInputs, InvalidIndex, InvalidState, MissingAccount,
     MalformedAccount, LimitExceeded, BackendFailure, CodeUnavailable, InvalidRound, BalanceOverflow
-  ## Copied post-credit metadata preserves other account fields and exact invocation gas/input counts.
-  AccumulationServiceInfo* = object
+  AccumulationServiceInfo* = object ## Copied post-credit metadata preserves other account fields and exact invocation gas/input counts.
     service*: ServiceIndex
     slot*: HeaderSlot
     gas*: Gas
@@ -40,51 +35,50 @@ type
     inputs: PreparedAccumulationInputs
     index: InvocationServiceIndex
     code: seq[byte]
-  ## Pure contexts certify only resolution against the caller's explicit state and slot.
-  PreparedAccumulationService* = object
+  PreparedAccumulationService* = object ## Pure contexts certify only resolution against the caller's explicit state and slot.
     data: nil ServiceData
   ## Bound storage retains the original initial-round certificate separately from its immutable projection.
   BlockServiceData = ref object
     round: BlockAccumulationRound
     projection: PreparedAccumulationService
-  ## Only the block adapter supplies exact admitted-parent state and authenticated candidate slot.
-  BlockAccumulationService* = object
+  BlockAccumulationService* = object ## Only the block adapter supplies exact admitted-parent state and authenticated candidate slot.
     data: nil BlockServiceData
-  ## Only selected success carries complete retained handles, copied metadata or independent code bytes.
-  AccumulationServiceResult*[T] = object
+  AccumulationServiceResult*[T] = object ## Only selected success carries complete retained handles, copied metadata or independent code bytes.
     case status: AccumulationServiceError
     of None:
       completed: T # Extract through the selected-success accessor only.
     else:
       discard      # Failures/defaults carry no usable success payload.
 
-## Inspect a reason without permitting retagging or mutable access.
-func error*[T](outcome: AccumulationServiceResult[T]): AccumulationServiceError = outcome.status
-## Extract selected success under compiler and runtime contracts.
+func error*[T](outcome: AccumulationServiceResult[T]): AccumulationServiceError =
+  ## Inspect a reason without permitting retagging or mutable access.
+  outcome.status
 func value*[T](outcome: AccumulationServiceResult[T]): T {.inline,
-    requires: outcome.status == AccumulationServiceError.None.} = outcome.completed
+    requires: outcome.status == AccumulationServiceError.None.} =
+  ## Extract selected success under compiler and runtime contracts.
+  outcome.completed
 
-## Copy complete account/gas/code-status metadata without exporting retained arrays.
 proc serviceInfo*(plan: PreparedAccumulationService): AccumulationServiceResult[
     AccumulationServiceInfo] =
+  ## Copy complete account/gas/code-status metadata without exporting retained arrays.
   let data = plan.data
   if data == nil: return AccumulationServiceResult[AccumulationServiceInfo](
       status: AccumulationServiceError.Uninitialized) # No default account or successful empty code.
   AccumulationServiceResult[AccumulationServiceInfo](status: AccumulationServiceError.None,
     completed: data.info)
 
-## Retain the post-credit complete state independently for later skip or execution-context construction.
 proc serviceState*(plan: PreparedAccumulationService): AccumulationServiceResult[
     StateStoreSnapshot] =
+  ## Retain the post-credit complete state independently for later skip or execution-context construction.
   let data = plan.data
   if data == nil: return AccumulationServiceResult[StateStoreSnapshot](
       status: AccumulationServiceError.Uninitialized) # No substitute parent map.
   AccumulationServiceResult[StateStoreSnapshot](status: AccumulationServiceError.None,
       completed: data.state)
 
-## Retain the exact pre-credit source separately; extracting or reusing either view never credits again.
 proc servicePriorState*(plan: PreparedAccumulationService): AccumulationServiceResult[
     StateStoreSnapshot] =
+  ## Retain the exact pre-credit source separately; extracting or reusing either view never credits again.
   let data = plan.data
   if data == nil:
     # No default source can stand in for an initialized complete map.
@@ -93,9 +87,9 @@ proc servicePriorState*(plan: PreparedAccumulationService): AccumulationServiceR
   AccumulationServiceResult[StateStoreSnapshot](status: AccumulationServiceError.None,
     completed: data.prior)
 
-## Extract one input only from this context's original service group; no second service selector is accepted.
 proc serviceInputAt*(plan: PreparedAccumulationService,
     index: InvocationInputIndex): AccumulationServiceResult[InvocationInput] =
+  ## Extract one input only from this context's original service group; no second service selector is accepted.
   let data = plan.data
   if data == nil: return AccumulationServiceResult[InvocationInput](
       status: AccumulationServiceError.Uninitialized) # No fabricated input.
@@ -106,8 +100,8 @@ proc serviceInputAt*(plan: PreparedAccumulationService,
   AccumulationServiceResult[InvocationInput](status: AccumulationServiceError.None,
       completed: input.value)
 
-## Copy only eligible code, preserving immutable owner storage; Ready with zero bytes is valid here.
 proc serviceCode*(plan: PreparedAccumulationService): AccumulationServiceResult[seq[byte]] =
+  ## Copy only eligible code, preserving immutable owner storage; Ready with zero bytes is valid here.
   let data = plan.data
   if data == nil: return AccumulationServiceResult[seq[byte]](
       status: AccumulationServiceError.Uninitialized) # A default owner is not an unavailable-code success.
@@ -117,12 +111,12 @@ proc serviceCode*(plan: PreparedAccumulationService): AccumulationServiceResult[
   for i in 0..<bytes.len: bytes[i] = data.code[i] # Caller mutations cannot alter later extraction.
   AccumulationServiceResult[seq[byte]](status: AccumulationServiceError.None, completed: bytes)
 
-## Resolve one service from explicit state/slot and prepared inputs; missing accounts are a preparation refusal,
-## not a fabricated Psi_A outcome. No invocation-time minimum-gas or balance filter is added by this layer.
-## The account's code preimage is E(length(metadata)) || metadata || code, with no outer code length.
 proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: InvocationServiceIndex,
     state: StateStoreSnapshot, slot: HeaderSlot,
     config: AccumulationServiceConfig): AccumulationServiceResult[PreparedAccumulationService] =
+  ## Resolve one service from explicit state/slot and prepared inputs; missing accounts are a preparation refusal,
+  ## not a fabricated Psi_A outcome. No invocation-time minimum-gas or balance filter is added by this layer.
+  ## The account's code preimage is E(length(metadata)) || metadata || code, with no outer code length.
   ## Refuse without exposing an earlier metadata record or partially copied code.
   template fail(reason: AccumulationServiceError) =
     return AccumulationServiceResult[PreparedAccumulationService](status: reason)
@@ -208,27 +202,27 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
         transfers: source.transfers, operands: source.operands, account: metadata, code: status,
         codeBytes: codeBytes))))
 
-## Retain the original bound initial round independently of the extracted service context.
 proc serviceBlockRound*(plan: BlockAccumulationService): AccumulationServiceResult[
     BlockAccumulationRound] =
+  ## Retain the original bound initial round independently of the extracted service context.
   let data = plan.data
   if data == nil: return AccumulationServiceResult[BlockAccumulationRound](
       status: AccumulationServiceError.Uninitialized) # No forged round certificate.
   AccumulationServiceResult[BlockAccumulationRound](status: AccumulationServiceError.None,
       completed: data.round)
 
-## Retain a pure context while preserving the separately held admitted-block provenance.
 proc serviceProjection*(plan: BlockAccumulationService): AccumulationServiceResult[
     PreparedAccumulationService] =
+  ## Retain a pure context while preserving the separately held admitted-block provenance.
   let data = plan.data
   if data == nil: return AccumulationServiceResult[PreparedAccumulationService](
       status: AccumulationServiceError.Uninitialized) # No default success projection.
   AccumulationServiceResult[PreparedAccumulationService](status: AccumulationServiceError.None,
     completed: data.projection)
 
-## Supply exact admitted-parent accounts and the authenticated candidate slot for one initial-round service.
 proc prepareBlockAccumulationService*(round: BlockAccumulationRound, index: InvocationServiceIndex,
     config: AccumulationServiceConfig): AccumulationServiceResult[BlockAccumulationService] =
+  ## Supply exact admitted-parent accounts and the authenticated candidate slot for one initial-round service.
   ## Publish neither a bound owner nor pure projection after any parent/lookup refusal.
   template fail(reason: AccumulationServiceError) =
     return AccumulationServiceResult[BlockAccumulationService](status: reason)

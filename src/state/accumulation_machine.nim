@@ -9,33 +9,32 @@ import ../pvm/[initialize, machine, program]
 import ./[accumulation_invocation, accumulation_service]
 
 type
-  ## Adapter failures distinguish invalid ownership, local policy and malformed executable inputs.
-  AccumulationMachineError* {.pure.} = enum
+  AccumulationMachineError* {.pure.} = enum ## Adapter failures distinguish invalid ownership, local policy and malformed executable inputs.
     Uninitialized, None, InvalidInvocation, LimitExceeded, InvalidEnvelope, InvalidProgram
   ## Private acyclic storage binds the initialized CPU to the exact immutable invocation provenance.
   AccumulationMachineData = ref object
     bootstrap: PreparedAccumulationInvocation
     machine: Machine
-  ## A prepared CPU is not an executed Psi_A result or an authenticated block certificate.
-  PreparedAccumulationMachine* = object
+  PreparedAccumulationMachine* = object ## A prepared CPU is not an executed Psi_A result or an authenticated block certificate.
     data: nil AccumulationMachineData
-  ## Only complete success exposes an owner or retained child; failures have no partial machine.
-  AccumulationMachineResult*[T] = object
+  AccumulationMachineResult*[T] = object ## Only complete success exposes an owner or retained child; failures have no partial machine.
     case status: AccumulationMachineError
     of None:
       completed: T # Extract only through the selected-success accessor.
     else:
       discard      # No default or failed payload.
 
-## Inspect the outcome without granting mutable access to its discriminator.
-func error*[T](outcome: AccumulationMachineResult[T]): AccumulationMachineError = outcome.status
-## Retain selected success under compiler and runtime result contracts.
+func error*[T](outcome: AccumulationMachineResult[T]): AccumulationMachineError =
+  ## Inspect the outcome without granting mutable access to its discriminator.
+  outcome.status
 func value*[T](outcome: AccumulationMachineResult[T]): T {.inline,
-    requires: outcome.status == AccumulationMachineError.None.} = outcome.completed
+    requires: outcome.status == AccumulationMachineError.None.} =
+  ## Retain selected success under compiler and runtime result contracts.
+  outcome.completed
 
-## Retain the exact initialization source independently of this machine wrapper.
 proc machineBootstrap*(prepared: PreparedAccumulationMachine): AccumulationMachineResult[
     PreparedAccumulationInvocation] =
+  ## Retain the exact initialization source independently of this machine wrapper.
   let data = prepared.data
   if data == nil:
     # Default wrappers cannot fabricate service provenance.
@@ -44,20 +43,20 @@ proc machineBootstrap*(prepared: PreparedAccumulationMachine): AccumulationMachi
   AccumulationMachineResult[PreparedAccumulationInvocation](status: AccumulationMachineError.None,
     completed: data.bootstrap)
 
-## Retain the immutable initial CPU; execution produces independent successor snapshots.
 proc accumulationMachine*(prepared: PreparedAccumulationMachine): AccumulationMachineResult[Machine] =
+  ## Retain the immutable initial CPU; execution produces independent successor snapshots.
   let data = prepared.data
   if data == nil:
     # No successful empty machine is substituted for an uninitialized owner.
     return AccumulationMachineResult[Machine](status: AccumulationMachineError.Uninitialized)
   AccumulationMachineResult[Machine](status: AccumulationMachineError.None, completed: data.machine)
 
-## Use the bootstrap's own code, compact arguments and declared gas at the fixed accumulation PC 5.
-## Bound the complete code copy before extraction; the standard initializer bounds program and pages.
-## The bootstrap has already enforced code eligibility. Malformed envelopes/programs remain typed local
-## preparation failures, not fabricated Psi_M/Psi_A panic, gas usage or posterior-state results.
 proc initializeAccumulationMachine*(bootstrap: PreparedAccumulationInvocation,
     limits: InitializationLimits): AccumulationMachineResult[PreparedAccumulationMachine] =
+  ## Use the bootstrap's own code, compact arguments and declared gas at the fixed accumulation PC 5.
+  ## Bound the complete code copy before extraction; the standard initializer bounds program and pages.
+  ## The bootstrap has already enforced code eligibility. Malformed envelopes/programs remain typed local
+  ## preparation failures, not fabricated Psi_M/Psi_A panic, gas usage or posterior-state results.
   ## Refuse without publishing a partial program, memory or retained initialization wrapper.
   template fail(reason: AccumulationMachineError) =
     return AccumulationMachineResult[PreparedAccumulationMachine](status: reason)

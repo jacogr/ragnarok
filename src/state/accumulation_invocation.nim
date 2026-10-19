@@ -11,16 +11,12 @@ import ./[accumulation_service, accumulation_round, accumulation_queue, report_a
   block_transition, store]
 
 type
-  ## Invocation input count is not a gas amount, service identity or byte ceiling.
-  AccumulationArgumentCount* = distinct uint64
-  ## Local membership-lookup ceiling is distinct from the protocol's public identifier interval.
-  ServiceProbeLimit* = distinct uint64
-  ## Failed/default results expose no partially selected ID or argument buffer.
-  AccumulationInvocationError* {.pure.} = enum
+  AccumulationArgumentCount* = distinct uint64 ## Invocation input count is not a gas amount, service identity or byte ceiling.
+  ServiceProbeLimit* = distinct uint64 ## Local membership-lookup ceiling is distinct from the protocol's public identifier interval.
+  AccumulationInvocationError* {.pure.} = enum ## Failed/default results expose no partially selected ID or argument buffer.
     Uninitialized, None, InvalidService, CodeUnavailable, InvalidState, MissingState,
     MalformedState, BackendFailure, LimitExceeded, InvalidIndex
-  ## Copied seed metadata records exact entropy and slot, without claiming an execution outcome.
-  AccumulationInvocationInfo* = object
+  AccumulationInvocationInfo* = object ## Copied seed metadata records exact entropy and slot, without claiming an execution outcome.
     service*, nextService*: ServiceIndex
     slot*: HeaderSlot
     inputs*: AccumulationArgumentCount
@@ -30,18 +26,15 @@ type
     service: PreparedAccumulationService
     info: AccumulationInvocationInfo
     arguments: seq[byte]
-  ## Pure bootstrap trusts the caller's explicit posterior entropy; it is not a block certificate.
-  PreparedAccumulationInvocation* = object
+  PreparedAccumulationInvocation* = object ## Pure bootstrap trusts the caller's explicit posterior entropy; it is not a block certificate.
     data: nil InvocationData
   ## Bound storage retains the genuine service certificate and its posterior-entropy projection.
   BlockInvocationData = ref object
     service: BlockAccumulationService
     projection: PreparedAccumulationInvocation
-  ## Only the block adapter can bind the entropy word to the service's actual block stage.
-  BlockAccumulationInvocation* = object
+  BlockAccumulationInvocation* = object ## Only the block adapter can bind the entropy word to the service's actual block stage.
     data: nil BlockInvocationData
-  ## Only complete selected success carries arguments, owners or a collision-checked identifier.
-  AccumulationInvocationResult*[T] = object
+  AccumulationInvocationResult*[T] = object ## Only complete selected success carries arguments, owners or a collision-checked identifier.
     case status: AccumulationInvocationError
     of None:
       completed: T # Guard extraction in checked optimized builds too.
@@ -49,23 +42,23 @@ type
       discard      # No default success fields accompany a reason.
 
 const
-  ## GP Cminpublicindex; low indices are reserved for explicit Registrar creation.
-  FirstPublicService* = 65536'u64
-  ## The top 256 service IDs are excluded from automatic allocation.
-  PublicServiceEnd* = 4294967040'u64
-  ## Exact cyclic automatic-allocation domain; arithmetic is proved in uint64 before narrowing.
+  FirstPublicService* = 65536'u64 ## GP Cminpublicindex; low indices are reserved for explicit Registrar creation.
+  PublicServiceEnd* = 4294967040'u64 ## The top 256 service IDs are excluded from automatic allocation.
+ ## Exact cyclic automatic-allocation domain; arithmetic is proved in uint64 before narrowing.
   PublicServiceCount = PublicServiceEnd-FirstPublicService
 
-## Read failure without granting result retagging.
 func error*[T](outcome: AccumulationInvocationResult[
-    T]): AccumulationInvocationError = outcome.status
-## Extract only selected success under supported compiler/runtime contracts.
+    T]): AccumulationInvocationError =
+  ## Read failure without granting result retagging.
+  outcome.status
 func value*[T](outcome: AccumulationInvocationResult[T]): T {.inline,
-    requires: outcome.status == AccumulationInvocationError.None.} = outcome.completed
+    requires: outcome.status == AccumulationInvocationError.None.} =
+  ## Extract only selected success under supported compiler/runtime contracts.
+  outcome.completed
 
-## E(t,s,len(inputs)) uses general compact naturals, independent of header field widths.
 proc accumulationArguments*(slot: HeaderSlot, service: ServiceIndex,
     count: AccumulationArgumentCount): seq[byte] =
+  ## E(t,s,len(inputs)) uses general compact naturals, independent of header field widths.
   result = @[]
   # Three fixed scalar encodings require at most 5+5+9 octets; no count-dependent allocation occurs.
   for scalar in [uint64(uint32(slot)), uint64(uint32(service)), uint64(count)]:
@@ -73,9 +66,9 @@ proc accumulationArguments*(slot: HeaderSlot, service: ServiceIndex,
     for i in 0..<encoded.len: result.add(encoded.bytes[
         i]) # Concatenate exact compact bytes, without extra framing.
 
-## Hash compact service, raw posterior entropy and compact slot; decode only the first four LE digest bytes.
 proc initialAccumulationService*(service: ServiceIndex, entropy: StateEntropyWord,
     slot: HeaderSlot): AccumulationInvocationResult[ServiceIndex] =
+  ## Hash compact service, raw posterior entropy and compact slot; decode only the first four LE digest bytes.
   let id = natural.encode(JamNatural(uint64(uint32(service))))
   let time = natural.encode(JamNatural(uint64(uint32(slot))))
   var seed = default(array[42, byte])
@@ -95,9 +88,9 @@ proc initialAccumulationService*(service: ServiceIndex, entropy: StateEntropyWor
   AccumulationInvocationResult[ServiceIndex](status: AccumulationInvocationError.None,
     completed: ServiceIndex(uint32(candidate)))
 
-## GP check(i): only actual C(255,i) membership occupies an ID; bound probes include the final absence check.
 proc findUnusedAccumulationService*(state: StateStoreSnapshot, start: ServiceIndex,
     limit: ServiceProbeLimit): AccumulationInvocationResult[ServiceIndex] =
+  ## GP check(i): only actual C(255,i) membership occupies an ID; bound probes include the final absence check.
   var candidate = uint64(uint32(start))
   if candidate < FirstPublicService or candidate >= PublicServiceEnd:
     return AccumulationInvocationResult[ServiceIndex](
@@ -116,26 +109,26 @@ proc findUnusedAccumulationService*(state: StateStoreSnapshot, start: ServiceInd
     candidate = FirstPublicService+(candidate-FirstPublicService+1) mod PublicServiceCount
   AccumulationInvocationResult[ServiceIndex](status: AccumulationInvocationError.LimitExceeded)
 
-## Copy bootstrap metadata while preserving immutable service/state/input ownership.
 proc bootstrapInfo*(plan: PreparedAccumulationInvocation): AccumulationInvocationResult[
     AccumulationInvocationInfo] =
+  ## Copy bootstrap metadata while preserving immutable service/state/input ownership.
   let data = plan.data
   if data == nil: return AccumulationInvocationResult[AccumulationInvocationInfo](
       status: AccumulationInvocationError.Uninitialized) # No default ID or entropy.
   AccumulationInvocationResult[AccumulationInvocationInfo](status: AccumulationInvocationError.None,
       completed: data.info)
 
-## Retain the original service context independently of this bootstrap handle.
 proc bootstrapService*(plan: PreparedAccumulationInvocation): AccumulationInvocationResult[
     PreparedAccumulationService] =
+  ## Retain the original service context independently of this bootstrap handle.
   let data = plan.data
   if data == nil: return AccumulationInvocationResult[PreparedAccumulationService](
       status: AccumulationInvocationError.Uninitialized) # No synthetic execution context.
   AccumulationInvocationResult[PreparedAccumulationService](
       status: AccumulationInvocationError.None, completed: data.service)
 
-## Return independent argument bytes; caller edits cannot alter subsequent invocation setup.
 proc bootstrapArguments*(plan: PreparedAccumulationInvocation): AccumulationInvocationResult[seq[byte]] =
+  ## Return independent argument bytes; caller edits cannot alter subsequent invocation setup.
   let data = plan.data
   if data == nil: return AccumulationInvocationResult[seq[byte]](
       status: AccumulationInvocationError.Uninitialized) # No fake empty argument tuple.
@@ -144,9 +137,9 @@ proc bootstrapArguments*(plan: PreparedAccumulationInvocation): AccumulationInvo
   AccumulationInvocationResult[seq[byte]](status: AccumulationInvocationError.None,
       completed: bytes)
 
-## Prepare an eligible service's initial seed and arguments without reserving IDs or mutating state.
 proc prepareAccumulationInvocation*(service: PreparedAccumulationService, entropy: StateEntropyWord,
     limit: ServiceProbeLimit): AccumulationInvocationResult[PreparedAccumulationInvocation] =
+  ## Prepare an eligible service's initial seed and arguments without reserving IDs or mutating state.
   ## Refuse atomically, exposing neither a raw candidate nor partial arguments.
   template fail(reason: AccumulationInvocationError) =
     return AccumulationInvocationResult[PreparedAccumulationInvocation](status: reason)
@@ -170,27 +163,27 @@ proc prepareAccumulationInvocation*(service: PreparedAccumulationService, entrop
         slot: fields.slot, inputs: count, entropy: entropy),
       arguments: accumulationArguments(fields.slot, fields.service, count))))
 
-## Retain the actual bound source so later context construction cannot replace its parent or stage.
 proc bootstrapBlockService*(plan: BlockAccumulationInvocation): AccumulationInvocationResult[
     BlockAccumulationService] =
+  ## Retain the actual bound source so later context construction cannot replace its parent or stage.
   let data = plan.data
   if data == nil: return AccumulationInvocationResult[BlockAccumulationService](
       status: AccumulationInvocationError.Uninitialized) # No forged service certificate.
   AccumulationInvocationResult[BlockAccumulationService](status: AccumulationInvocationError.None,
       completed: data.service)
 
-## Extract the immutable pure bootstrap view from a genuine block-bound preparation.
 proc bootstrapProjection*(plan: BlockAccumulationInvocation): AccumulationInvocationResult[
     PreparedAccumulationInvocation] =
+  ## Extract the immutable pure bootstrap view from a genuine block-bound preparation.
   let data = plan.data
   if data == nil: return AccumulationInvocationResult[PreparedAccumulationInvocation](
       status: AccumulationInvocationError.Uninitialized) # No fabricated successful view.
   AccumulationInvocationResult[PreparedAccumulationInvocation](
       status: AccumulationInvocationError.None, completed: data.projection)
 
-## Decode exact posterior C(6) from this service's completed block stage; parent entropy is never substituted.
 proc prepareBlockAccumulationInvocation*(service: BlockAccumulationService,
     limit: ServiceProbeLimit): AccumulationInvocationResult[BlockAccumulationInvocation] =
+  ## Decode exact posterior C(6) from this service's completed block stage; parent entropy is never substituted.
   ## Preserve refusal without constructing a partially bound bootstrap owner.
   template fail(reason: AccumulationInvocationError) =
     return AccumulationInvocationResult[BlockAccumulationInvocation](status: reason)

@@ -13,27 +13,26 @@ import ../bandersnatch/bandersnatch
 import ./[validators, store]
 
 type
-  ## Complete chapter/roster ceilings plus a separate bound on borrowed posterior offender identities.
-  ValidatorTransitionConfig* = object
+  ValidatorTransitionConfig* = object ## Complete chapter/roster ceilings plus a separate bound on borrowed posterior offender identities.
     safrole*: SafroleStateConfig
     offenders*: ElementLimit
-  ## Defaults/failures have no snapshot or partial write batch; primitive refusal never fabricates a root.
-  ValidatorStateError* {.pure.} = enum
+  ValidatorStateError* {.pure.} = enum ## Defaults/failures have no snapshot or partial write batch; primitive refusal never fabricates a root.
     Uninitialized, None, InvalidConfig, InvalidSlot, InvalidState, MissingState, NonCanonical,
       LimitExceeded, LengthOverflow, BackendFailure
-  ## Private discriminator and payload require successful selection before snapshot extraction.
-  ValidatorStateResult* = object
+  ValidatorStateResult* = object ## Private discriminator and payload require successful selection before snapshot extraction.
     case status: ValidatorStateError
     of None:
       completed: StateStoreSnapshot # Retained immutable historical state; never a mutable map view.
     else:
       discard                       # Only the typed reason survives a refused operation.
 
-## Inspect a reason without exposing state or permitting retagging.
-func error*(outcome: ValidatorStateResult): ValidatorStateError = outcome.status
-## Extract only a successfully published immutable working-store snapshot.
+func error*(outcome: ValidatorStateResult): ValidatorStateError =
+  ## Inspect a reason without exposing state or permitting retagging.
+  outcome.status
 func value*(outcome: ValidatorStateResult): StateStoreSnapshot {.inline,
-    requires: outcome.status == ValidatorStateError.None.} = outcome.completed
+    requires: outcome.status == ValidatorStateError.None.} =
+  ## Extract only a successfully published immutable working-store snapshot.
+  outcome.completed
 
 ## Preserve actionable codec policy failures while rejecting missing structural validity.
 func codecError(reason: StateComponentError): ValidatorStateError =
@@ -69,11 +68,11 @@ proc records(owner: ValidatorStateSnapshot): seq[StateValidator] =
   for i in 0..<result.len:
     result[i] = validatorAt(owner, StateValidatorIndex(uint64(i))).value # Stable owner-bound fixed copy.
 
-## Decode exact required chapters, rotate once, recompute the pending ring and publish C(4)/C(8)/C(9).
-## Caller supplies canonical POST-disputes offenders. C(7), C(11), schedules and accumulators are preserved.
-## This is a working-state substep; it neither advances the time nor commits a complete block transition.
 proc rotateValidatorState*(state: var StateStore, target: StateTime,
     offenders: openArray[OffenderKey], config: ValidatorTransitionConfig): ValidatorStateResult =
+  ## Decode exact required chapters, rotate once, recompute the pending ring and publish C(4)/C(8)/C(9).
+  ## Caller supplies canonical POST-disputes offenders. C(7), C(11), schedules and accumulators are preserved.
+  ## This is a working-state substep; it neither advances the time nor commits a complete block transition.
   let policy = config.safrole
   if uint64(policy.epochSlots) == 0 or uint64(policy.validators.cores) < 2 or
       uint64(policy.validators.cores) > 341:

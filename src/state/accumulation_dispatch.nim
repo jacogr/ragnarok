@@ -12,12 +12,10 @@ import ../codec/[state_outputs, composite, state_layout, state_accounts, state_s
 import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects, store]
 
 type
-  ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
-  AccumulationDispatchError* {.pure.} = enum
+  AccumulationDispatchError* {.pure.} = enum ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
     Uninitialized, None, InvalidMachine, InvalidParameters, LimitExceeded, InvalidContext,
     UnsupportedHostCall, ExecutionFailure, MalformedState, BackendFailure, GasRangeExceeded
-  ## Success alone retains a CPU outcome; engine failure carries only its enum-valued reason.
-  AccumulationDispatchResult* = object
+  AccumulationDispatchResult* = object ## Success alone retains a CPU outcome; engine failure carries only its enum-valued reason.
     case status: AccumulationDispatchError
     of None:
       completed: StepOutcome                # Immutable successor; no reference back to this result.
@@ -33,18 +31,22 @@ type
     effects: AccumulationEffects
     provisionLimits: AccumulationProvisionLimits
 
-## Inspect the selected alternative without granting mutable access to its discriminator.
-func error*(outcome: AccumulationDispatchResult): AccumulationDispatchError = outcome.status
-## Retain a completed guest outcome independently of all preparation handles.
+func error*(outcome: AccumulationDispatchResult): AccumulationDispatchError =
+  ## Inspect the selected alternative without granting mutable access to its discriminator.
+  outcome.status
 func value*(outcome: AccumulationDispatchResult): StepOutcome {.inline,
-    requires: outcome.status == AccumulationDispatchError.None.} = outcome.completed
-## Retain both current implication dimensions only after complete guest execution succeeds.
-## A guest panic/OOG is a completed outcome; local engine/host refusals expose neither dimension.
+    requires: outcome.status == AccumulationDispatchError.None.} =
+  ## Retain a completed guest outcome independently of all preparation handles.
+  outcome.completed
 func effects*(outcome: AccumulationDispatchResult): AccumulationEffects {.inline,
-    requires: outcome.status == AccumulationDispatchError.None.} = outcome.completedEffects
-## Inspect the original execution-budget or instruction refusal without a fabricated guest result.
+    requires: outcome.status == AccumulationDispatchError.None.} =
+  ## Retain both current implication dimensions only after complete guest execution succeeds.
+  ## A guest panic/OOG is a completed outcome; local engine/host refusals expose neither dimension.
+  outcome.completedEffects
 func executionError*(outcome: AccumulationDispatchResult): StepError {.inline,
-    requires: outcome.status == AccumulationDispatchError.ExecutionFailure.} = outcome.reason
+    requires: outcome.status == AccumulationDispatchError.ExecutionFailure.} =
+  ## Inspect the original execution-budget or instruction refusal without a fabricated guest result.
+  outcome.reason
 
 ## Charge checkpoint/yield before reading memory or changing implications; debt preserves exact magnitude.
 ## Effects are callback-local immutable versions, discarded if later execution refuses locally.
@@ -288,16 +290,16 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     # Refine-only IDs 7..14 and all other full-width IDs take accumulation's unknown branch.
     hostSuccess[AccumulationDispatchError](unknownHostResponse(cpu.gas, cpu.registers, memory))
 
-## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
-## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
-## Omitted provision limits give zero retained capacity; no default authorizes unbounded capture.
-## Each call prepares I from this machine's own bootstrap and starts from its immutable initial CPU.
-## No caller-supplied replacement effects, persistent writes or partial results escape.
 proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, parameters: Parameters,
     fetchLimits: FetchAccumulationLimits, copyLimit: MemoryByteLimit,
     steps: ExecutionStepLimit, calls: HostCallLimit,
     cycles: GasCycleLimit, contextConfig: AccumulationContextConfig,
     provisionLimits = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
+  ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
+  ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
+  ## Omitted provision limits give zero retained capacity; no default authorizes unbounded capture.
+  ## Each call prepares I from this machine's own bootstrap and starts from its immutable initial CPU.
+  ## No caller-supplied replacement effects, persistent writes or partial results escape.
   let captured = machineFetchContext(prepared, parameters, fetchLimits)
   case captured.error
   of InvocationFetchError.None:

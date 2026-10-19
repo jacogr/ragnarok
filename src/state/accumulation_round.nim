@@ -9,19 +9,16 @@ import ./[accumulation_queue, accumulation_operands, accumulation_inputs, report
   block_transition, block_admission, store]
 
 type
-  ## Explicit chain gas parameters and independent ceilings for parent decoding and projections.
-  ## Gas parameters are configuration, not values authenticated by a block's state root.
-  AccumulationRoundConfig* = object
+  AccumulationRoundConfig* = object ## Explicit chain gas parameters and independent ceilings for parent decoding and projections.
+ ## Gas parameters are configuration, not values authenticated by a block's state root.
     reportGas*, blockGas*: Gas
     privileges*: PrivilegeConfig
     operands*: AccumulationOperandConfig
     inputs*: AccumulationInputConfig
-  ## Refusals contain neither a selected prefix nor partially prepared service inputs.
-  AccumulationRoundError* {.pure.} = enum
+  AccumulationRoundError* {.pure.} = enum ## Refusals contain neither a selected prefix nor partially prepared service inputs.
     Uninitialized, None, InvalidConfig, InvalidQueue, InvalidPrivileges, MissingState,
     LimitExceeded, GasOverflow, InvalidOperands, InvalidInputs
-  ## Declared reservation is distinct from actual execution usage; dispatch follows accseq's n > 0.
-  AccumulationRoundInfo* = object
+  AccumulationRoundInfo* = object ## Declared reservation is distinct from actual execution usage; dispatch follows accseq's n > 0.
     budget*, allowanceGas*, reportGas*: Gas
     prefix*: AccumulationReportPrefix
     dispatch*: bool
@@ -30,60 +27,59 @@ type
     info: AccumulationRoundInfo
     privileges: PrivilegeSnapshot
     inputs: PreparedAccumulationInputs
-  ## Pure planning does not certify that the supplied privileges belong to any admitted parent.
-  InitialAccumulationRound* = object
+  InitialAccumulationRound* = object ## Pure planning does not certify that the supplied privileges belong to any admitted parent.
     data: nil RoundData
   ## Bound storage retains the genuine admitted queue and its exact parent-derived round together.
   BlockRoundData = ref object
     queue: BlockAccumulationQueue
     projection: InitialAccumulationRound
-  ## Only the block adapter constructs this parent-state-bound plan.
-  BlockAccumulationRound* = object
+  BlockAccumulationRound* = object ## Only the block adapter constructs this parent-state-bound plan.
     data: nil BlockRoundData
-  ## Private tagged results require selected success before extracting a complete payload.
-  AccumulationRoundResult*[T] = object
+  AccumulationRoundResult*[T] = object ## Private tagged results require selected success before extracting a complete payload.
     case status: AccumulationRoundError
     of None:
       completed: T # Only success carries a usable immutable owner or copied metadata.
     else:
       discard      # Default and failure carry only their reason.
 
-## Read a reason without exposing writable discriminators.
-func error*[T](outcome: AccumulationRoundResult[T]): AccumulationRoundError = outcome.status
-## Extract selected success under compiler and runtime contracts.
+func error*[T](outcome: AccumulationRoundResult[T]): AccumulationRoundError =
+  ## Read a reason without exposing writable discriminators.
+  outcome.status
 func value*[T](outcome: AccumulationRoundResult[T]): T {.inline,
-    requires: outcome.status == AccumulationRoundError.None.} = outcome.completed
+    requires: outcome.status == AccumulationRoundError.None.} =
+  ## Extract selected success under compiler and runtime contracts.
+  outcome.completed
 
-## Read copied budget/prefix information without claiming execution or actual gas consumption.
 proc roundInfo*(plan: InitialAccumulationRound): AccumulationRoundResult[AccumulationRoundInfo] =
+  ## Read copied budget/prefix information without claiming execution or actual gas consumption.
   let data = plan.data
   if data == nil: return AccumulationRoundResult[AccumulationRoundInfo](
       status: AccumulationRoundError.Uninitialized) # No fabricated empty round.
   AccumulationRoundResult[AccumulationRoundInfo](status: AccumulationRoundError.None,
     completed: data.info)
 
-## Retain independent immutable inputs after the plan or caller's source handles leave scope.
 proc roundInputs*(plan: InitialAccumulationRound): AccumulationRoundResult[
     PreparedAccumulationInputs] =
+  ## Retain independent immutable inputs after the plan or caller's source handles leave scope.
   let data = plan.data
   if data == nil: return AccumulationRoundResult[PreparedAccumulationInputs](
       status: AccumulationRoundError.Uninitialized) # No fabricated input projection.
   AccumulationRoundResult[PreparedAccumulationInputs](status: AccumulationRoundError.None,
     completed: data.inputs)
 
-## Retain the exact privilege snapshot, including roles and assigners needed by later execution.
 proc roundPrivileges*(plan: InitialAccumulationRound): AccumulationRoundResult[PrivilegeSnapshot] =
+  ## Retain the exact privilege snapshot, including roles and assigners needed by later execution.
   let data = plan.data
   if data == nil: return AccumulationRoundResult[PrivilegeSnapshot](
       status: AccumulationRoundError.Uninitialized) # No default privilege source.
   AccumulationRoundResult[PrivilegeSnapshot](status: AccumulationRoundError.None,
     completed: data.privileges)
 
-## Select the largest whole-report prefix after reserving all free allowances; initial transfers are empty.
-## Scan digest gas with subtraction so an unaffordable mathematical sum stops selection without wrapping.
-## Local report/digest ceilings include inspected rejected work; no partial report is ever prepared.
 proc planInitialAccumulation*(queue: AccumulationQueuePlan, privileges: PrivilegeSnapshot,
     config: AccumulationRoundConfig): AccumulationRoundResult[InitialAccumulationRound] =
+  ## Select the largest whole-report prefix after reserving all free allowances; initial transfers are empty.
+  ## Scan digest gas with subtraction so an unaffordable mathematical sum stops selection without wrapping.
+  ## Local report/digest ceilings include inspected rejected work; no partial report is ever prepared.
   ## Refuse atomically without leaking a partially selected prefix or allowance sum.
   template fail(reason: AccumulationRoundError) =
     return AccumulationRoundResult[InitialAccumulationRound](status: reason)
@@ -155,28 +151,28 @@ proc planInitialAccumulation*(queue: AccumulationQueuePlan, privileges: Privileg
         reportGas: Gas(budget-free-remaining), prefix: AccumulationReportPrefix(prefix),
         dispatch: prefix != 0 or allowances.len != 0))))
 
-## Retain the original admitted queue independently of the round projection's lifetime.
 proc roundBlockQueue*(plan: BlockAccumulationRound): AccumulationRoundResult[
     BlockAccumulationQueue] =
+  ## Retain the original admitted queue independently of the round projection's lifetime.
   let data = plan.data
   if data == nil: return AccumulationRoundResult[BlockAccumulationQueue](
       status: AccumulationRoundError.Uninitialized) # No synthetic admission certificate.
   AccumulationRoundResult[BlockAccumulationQueue](status: AccumulationRoundError.None,
       completed: data.queue)
 
-## Extract a pure immutable view without discarding the separately retained admission source.
 proc roundProjection*(plan: BlockAccumulationRound): AccumulationRoundResult[
     InitialAccumulationRound] =
+  ## Extract a pure immutable view without discarding the separately retained admission source.
   let data = plan.data
   if data == nil: return AccumulationRoundResult[InitialAccumulationRound](
       status: AccumulationRoundError.Uninitialized) # No synthetic successful round.
   AccumulationRoundResult[InitialAccumulationRound](status: AccumulationRoundError.None,
     completed: data.projection)
 
-## Decode exact admitted-parent C(12), never the stage's posterior map or an unrelated caller buffer.
-## Check complete chapter extent before copying, reject suffixes, and retain the genuine block queue.
 proc planBlockInitialAccumulation*(queue: BlockAccumulationQueue,
     config: AccumulationRoundConfig): AccumulationRoundResult[BlockAccumulationRound] =
+  ## Decode exact admitted-parent C(12), never the stage's posterior map or an unrelated caller buffer.
+  ## Check complete chapter extent before copying, reject suffixes, and retain the genuine block queue.
   ## Preserve typed refusal without exposing an earlier decoded chapter or pure projection.
   template fail(reason: AccumulationRoundError) =
     return AccumulationRoundResult[BlockAccumulationRound](status: reason)

@@ -13,20 +13,16 @@ import ../crypto/primitives
 import ./store
 
 type
-  ## Well-balanced Keccak root of the ordered E4-service/output-commitment sequence.
-  AccumulationRoot* = distinct array[32, byte]
-  ## Header-derived fields and precomputed accumulation root; reported packages are supplied separately.
-  HistoryAdvance* = object
+  AccumulationRoot* = distinct array[32, byte] ## Well-balanced Keccak root of the ordered E4-service/output-commitment sequence.
+  HistoryAdvance* = object ## Header-derived fields and precomputed accumulation root; reported packages are supplied separately.
     header*: HistoryHeaderHash
     parentState*: HistoryStateRoot
     slot*: HistorySlot
     accumulation*: AccumulationRoot
-  ## Failures retain their cause without proposed bytes or committed state.
-  HistoryTransitionError* {.pure.} = enum
+  HistoryTransitionError* {.pure.} = enum ## Failures retain their cause without proposed bytes or committed state.
     Uninitialized, None, InvalidConfig, InvalidState, NonCanonical, LimitExceeded,
     LengthOverflow, MissingState, BackendFailure
-  ## Private success payloads require checked selection; default results are failures.
-  HistoryTransitionResult*[T] = object
+  HistoryTransitionResult*[T] = object ## Private success payloads require checked selection; default results are failures.
     case status: HistoryTransitionError
     of None:
       completed: T # Never expose mutable discriminators or unchecked variant fields.
@@ -37,11 +33,13 @@ type
     bytes: array[36, byte]
     size: int
 
-## Read a reason without granting access to any payload.
-func error*[T](outcome: HistoryTransitionResult[T]): HistoryTransitionError = outcome.status
-## Only complete success permits extraction, including in checked optimized builds.
+func error*[T](outcome: HistoryTransitionResult[T]): HistoryTransitionError =
+  ## Read a reason without granting access to any payload.
+  outcome.status
 func value*[T](outcome: HistoryTransitionResult[T]): T {.inline,
-    requires: outcome.status == HistoryTransitionError.None.} = outcome.completed
+    requires: outcome.status == HistoryTransitionError.None.} =
+  ## Only complete success permits extraction, including in checked optimized builds.
+  outcome.completed
 
 ## Preserve resource and canonicality failures from the existing component codec.
 func codecError(reason: HistoryError): HistoryTransitionError =
@@ -124,9 +122,9 @@ proc capture(owner: HistorySnapshot, config: HistoryConfig): HistoryTransitionRe
         checked.error)) # Exact byte policy also applies.
   HistoryTransitionResult[HistoryState](status: HistoryTransitionError.None, completed: source)
 
-## Correct the latest parent record for accumulation's view; empty genesis history remains empty.
 proc correctHistoryParent*(owner: HistorySnapshot, parent: HistoryStateRoot,
     config: HistoryConfig): HistoryTransitionResult[StateEntry] =
+  ## Correct the latest parent record for accumulation's view; empty genesis history remains empty.
   let captured = capture(owner, config)
   if captured.error != HistoryTransitionError.None:
     return HistoryTransitionResult[StateEntry](status: captured.error) # No output after invalid input.
@@ -167,9 +165,9 @@ proc outputNode(values: openArray[AccumulationOutput], start, count: int): Histo
   for i in 0..<32: node.bytes[i] = array[32, byte](digest.value)[i] # Internal child is exactly one hash.
   HistoryTransitionResult[OutputNode](status: HistoryTransitionError.None, completed: node)
 
-## Derive the well-balanced Keccak root from stable ordered output pairs; no sorting or deduplication.
 proc accumulationRoot*(values: openArray[AccumulationOutput],
     config: OutputLogConfig): HistoryTransitionResult[AccumulationRoot] =
+  ## Derive the well-balanced Keccak root from stable ordered output pairs; no sorting or deduplication.
   if uint64(values.len) > uint64(config.items):
     return HistoryTransitionResult[AccumulationRoot](
         status: HistoryTransitionError.LimitExceeded) # Bound work first.
@@ -204,9 +202,9 @@ func comparePackages(a, b: ReportedPackage): int =
     if a.package.bytes[i] > b.package.bytes[i]: return 1 # Values never decide dictionary order.
   0 # Duplicate keys are rejected by the existing canonical encoder after sorting.
 
-## Correct parent, append the accumulation root to the belt, bag peaks and retain the newest eight records.
 proc advanceHistory*(owner: HistorySnapshot, input: HistoryAdvance,
     packages: openArray[ReportedPackage], config: HistoryConfig): HistoryTransitionResult[StateEntry] =
+  ## Correct parent, append the accumulation root to the belt, bag peaks and retain the newest eight records.
   let captured = capture(owner, config)
   if captured.error != HistoryTransitionError.None:
     return HistoryTransitionResult[StateEntry](status: captured.error) # No hashing under invalid input policy.
@@ -279,10 +277,10 @@ proc advanceHistory*(owner: HistorySnapshot, input: HistoryAdvance,
         encoded.error)) # Payload shape already preflighted.
   HistoryTransitionResult[StateEntry](status: HistoryTransitionError.None, completed: encoded.value)
 
-## Read exact C(3), advance privately and publish one atomic write; all unrelated state remains unchanged.
 proc advanceHistoryState*(state: var StateStore, input: HistoryAdvance,
     packages: openArray[ReportedPackage], config: HistoryConfig): HistoryTransitionResult[
         StateStoreSnapshot] =
+  ## Read exact C(3), advance privately and publish one atomic write; all unrelated state remains unchanged.
   let before = state.snapshot
   if before.error != StateStoreError.None:
     return HistoryTransitionResult[StateStoreSnapshot](status: storeError(before.error)) # No default store.

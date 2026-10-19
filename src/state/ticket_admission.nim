@@ -11,29 +11,28 @@ import ../codec/[state_safrole, state_consensus, tickets, bounded, assurances]
 import ../bandersnatch/bandersnatch
 
 type
-  ## Protocol epoch/tail/block parameters and explicit finite chapter/accumulator resource ceilings.
-  TicketAdmissionConfig* = object
+  TicketAdmissionConfig* = object ## Protocol epoch/tail/block parameters and explicit finite chapter/accumulator resource ceilings.
     state*: SafroleStateConfig
     tailStart*: EpochSlots
     blockTickets*: TicketLimit
-  ## Default/failure alternatives expose no candidate accumulator, snapshot or partial accepted prefix.
-  TicketAdmissionError* {.pure.} = enum
+  TicketAdmissionError* {.pure.} = enum ## Default/failure alternatives expose no candidate accumulator, snapshot or partial accepted prefix.
     Uninitialized, None, InvalidConfig, InvalidSlot, InvalidState, LimitExceeded, LengthOverflow,
       UnexpectedTicket, InvalidAttempt, InvalidProof, BadOrder, Duplicate, NotRetained,
         BackendFailure, MissingState
-  ## Only complete success contains the private immutable candidate C(4) owner.
-  TicketAdmissionResult* = object
+  TicketAdmissionResult* = object ## Only complete success contains the private immutable candidate C(4) owner.
     case status: TicketAdmissionError
     of None:
       completed: SafroleStateSnapshot # Snapshot retains copied fields without retaining borrowed input/proof bytes.
     else:
       discard # Rejected batches publish only their reason.
 
-## Read only a reason without exposing or retagging candidate state.
-func error*(outcome: TicketAdmissionResult): TicketAdmissionError = outcome.status
-## Extract an immutable candidate only after checking successful batch admission.
+func error*(outcome: TicketAdmissionResult): TicketAdmissionError =
+  ## Read only a reason without exposing or retagging candidate state.
+  outcome.status
 func value*(outcome: TicketAdmissionResult): SafroleStateSnapshot {.inline,
-    requires: outcome.status == TicketAdmissionError.None.} = outcome.completed
+    requires: outcome.status == TicketAdmissionError.None.} =
+  ## Extract an immutable candidate only after checking successful batch admission.
+  outcome.completed
 
 ## Preserve codec configuration/extent policy failures; other errors denote malformed C(4).
 func codecError(reason: StateComponentError): TicketAdmissionError =
@@ -66,13 +65,13 @@ func contains(values: openArray[WinningTicket], key: WinningTicketId): bool =
       first = middle+1 # Search strictly higher identifiers.
   false
 
-## Borrow serialized C(4)/proofs synchronously and return a new immutable candidate on complete success.
-## previous/target are parent/new slots, even if a caller already advanced working-state C(11).
-## On crossing, reset accumulation once; duplicate exclusion still uses the supplied prior accumulator.
-## Caller coordinates rotation/entropy first and publishes this candidate only after remaining block stages pass.
 proc admitSafroleTickets*(input: openArray[byte], previous, target: StateTime,
     entropy2: StateEntropyWord, submitted: openArray[Ticket],
     config: TicketAdmissionConfig): TicketAdmissionResult =
+  ## Borrow serialized C(4)/proofs synchronously and return a new immutable candidate on complete success.
+  ## previous/target are parent/new slots, even if a caller already advanced working-state C(11).
+  ## On crossing, reset accumulation once; duplicate exclusion still uses the supplied prior accumulator.
+  ## Caller coordinates rotation/entropy first and publishes this candidate only after remaining block stages pass.
   let epoch = uint64(config.state.epochSlots)
   let cores = uint64(config.state.validators.cores)
   if epoch == 0 or uint64(config.tailStart) == 0 or uint64(config.tailStart) >= epoch or

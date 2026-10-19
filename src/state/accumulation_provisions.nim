@@ -9,21 +9,16 @@ import ../codec/[bounded, composite, natural, owned, header, state_trie]
 import ./[accumulation_effects, preimages, store]
 
 type
-  ## A retained context ordinal is distinct from a provision's ordinal inside that context.
-  AccumulationProvisionSourceIndex* = distinct uint64
-  ## Actual copied/union byte observations are not caller ceilings or protocol gas amounts.
-  AccumulationProvisionBytes* = distinct uint64
-  ## Traversal caps charge repeated inputs too; encodedBytes separately bounds deterministic frame transport.
-  AccumulationProvisionUnionLimits* = object
+  AccumulationProvisionSourceIndex* = distinct uint64 ## A retained context ordinal is distinct from a provision's ordinal inside that context.
+  AccumulationProvisionBytes* = distinct uint64 ## Actual copied/union byte observations are not caller ceilings or protocol gas amounts.
+  AccumulationProvisionUnionLimits* = object ## Traversal caps charge repeated inputs too; encodedBytes separately bounds deterministic frame transport.
     contexts*: ElementLimit
     values*: PreimageLimits
     encodedBytes*: ByteLimit
-  ## Default/refused plans never carry sources, rows or partially published maps.
-  AccumulationProvisionError* {.pure.} = enum
+  AccumulationProvisionError* {.pure.} = enum ## Default/refused plans never carry sources, rows or partially published maps.
     Uninitialized, None, InvalidContext, InvalidIndex, InvalidState, LimitExceeded,
     MalformedState, BackendFailure
-  ## Fixed facts distinguish inspected contributions from the unique set eventually applied.
-  AccumulationProvisionPlanInfo* = object
+  AccumulationProvisionPlanInfo* = object ## Fixed facts distinguish inspected contributions from the unique set eventually applied.
     contexts*, inputItems*, items*: int
     inputBytes*, bytes*: AccumulationProvisionBytes
   ## Private copied sort rows own their entire raw blob; no source ordinal can substitute a payload.
@@ -35,22 +30,22 @@ type
     sources: seq[AccumulationEffectContext]
     values: PreparedPreimageValues
     info: AccumulationProvisionPlanInfo
-  ## Only successful union preparation constructs a plan; mutable buffers and execution verdict flags are not accepted.
-  PreparedAccumulationProvisions* = object
+  PreparedAccumulationProvisions* = object ## Only successful union preparation constructs a plan; mutable buffers and execution verdict flags are not accepted.
     data: nil ProvisionPlanData
-  ## Read-only success extraction preserves the selected-result contract in optimized native builds.
-  AccumulationProvisionResult*[T] = object
+  AccumulationProvisionResult*[T] = object ## Read-only success extraction preserves the selected-result contract in optimized native builds.
     case status: AccumulationProvisionError
     of None:
       completed: T # No partial owner accompanies a failed alternative.
     else:
       discard
 
-## Inspect refusal without allowing result retagging.
-func error*[T](outcome: AccumulationProvisionResult[T]): AccumulationProvisionError = outcome.status
-## Extract only selected success under runtime/compiler contracts.
+func error*[T](outcome: AccumulationProvisionResult[T]): AccumulationProvisionError =
+  ## Inspect refusal without allowing result retagging.
+  outcome.status
 func value*[T](outcome: AccumulationProvisionResult[T]): T {.inline,
-    requires: outcome.status == AccumulationProvisionError.None.} = outcome.completed
+    requires: outcome.status == AccumulationProvisionError.None.} =
+  ## Extract only selected success under runtime/compiler contracts.
+  outcome.completed
 
 ## Canonical set transport orders numeric services, then complete raw byte strings including proper prefixes.
 func compareRow(a, b: UnionRow): int =
@@ -64,9 +59,9 @@ func compareRow(a, b: UnionRow): int =
   if a.bytes.len > b.bytes.len: return 1
   0
 
-## Copy cardinalities and byte observations; retained arrays are never exposed.
 proc provisionPlanInfo*(plan: PreparedAccumulationProvisions): AccumulationProvisionResult[
     AccumulationProvisionPlanInfo] =
+  ## Copy cardinalities and byte observations; retained arrays are never exposed.
   let data = plan.data
   if data == nil:
     return AccumulationProvisionResult[AccumulationProvisionPlanInfo](
@@ -74,10 +69,10 @@ proc provisionPlanInfo*(plan: PreparedAccumulationProvisions): AccumulationProvi
   AccumulationProvisionResult[AccumulationProvisionPlanInfo](
       status: AccumulationProvisionError.None, completed: data.info)
 
-## Retain one of the caller's exact selected context owners without accepting replacement buffers.
 proc provisionSourceAt*(plan: PreparedAccumulationProvisions,
     index: AccumulationProvisionSourceIndex):
     AccumulationProvisionResult[AccumulationEffectContext] =
+  ## Retain one of the caller's exact selected context owners without accepting replacement buffers.
   let data = plan.data
   if data == nil:
     return AccumulationProvisionResult[AccumulationEffectContext](
@@ -88,10 +83,10 @@ proc provisionSourceAt*(plan: PreparedAccumulationProvisions,
   AccumulationProvisionResult[AccumulationEffectContext](status: AccumulationProvisionError.None,
     completed: data.sources[int(uint64(index))])
 
-## Plan only the set union of explicitly supplied contexts; this is not certification of terminal context selection.
 proc prepareAccumulationProvisions*(sources: openArray[AccumulationEffectContext],
     limits: AccumulationProvisionUnionLimits): AccumulationProvisionResult[
         PreparedAccumulationProvisions] =
+  ## Plan only the set union of explicitly supplied contexts; this is not certification of terminal context selection.
   ## Refuse before publishing any captured input or intermediate sorted value.
   template fail(reason: AccumulationProvisionError) =
     return AccumulationProvisionResult[PreparedAccumulationProvisions](status: reason)
@@ -185,9 +180,9 @@ proc prepareAccumulationProvisions*(sources: openArray[AccumulationEffectContext
         contexts: sources.len, inputItems: int(count), items: unique.len,
         inputBytes: AccumulationProvisionBytes(copied), bytes: AccumulationProvisionBytes(unionBytes)))))
 
-## Apply fnprovide to the explicit posterior complete map and slot; no terminal/PVM provenance is invented here.
 proc integrateAccumulationProvisions*(state: var StateStore, plan: PreparedAccumulationProvisions,
     slot: HeaderSlot): AccumulationProvisionResult[StateStoreSnapshot] =
+  ## Apply fnprovide to the explicit posterior complete map and slot; no terminal/PVM provenance is invented here.
   let data = plan.data
   if data == nil:
     return AccumulationProvisionResult[StateStoreSnapshot](

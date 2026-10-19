@@ -12,22 +12,18 @@ import ./[store, block_admission, block_transition, disputes, safrole_transition
   report_admission, report_assignments]
 
 type
-  ## One explicit collection of bounded policies for the earlier coordinator and complete report admission.
-  BlockReportConfig* = object
+  BlockReportConfig* = object ## One explicit collection of bounded policies for the earlier coordinator and complete report admission.
     admission*: BlockAdmissionConfig
     disputes*: DisputesConfig
     safrole*: SafroleTransitionConfig
     availability*: AvailabilityTransitionConfig
     reports*: ReportAdmissionConfig
-  ## Only the selected failed stage carries its cause; no refusal exposes an intermediate map or report plan.
-  BlockReportError* {.pure.} = enum
+  BlockReportError* {.pure.} = enum ## Only the selected failed stage carries its cause; no refusal exposes an intermediate map or report plan.
     Uninitialized, None, StageFailure, ReportFailure, PublicationFailure
-  ## Success retains certified report/block context and the complete final immutable state snapshot.
-  BlockReportUpdate* = object
+  BlockReportUpdate* = object ## Success retains certified report/block context and the complete final immutable state snapshot.
     reports*: AdmittedReports
     snapshot*: StateStoreSnapshot
-  ## Private alternatives prevent construction/retagging of completed updates or unrelated failure reasons.
-  BlockReportResult* = object
+  BlockReportResult* = object ## Private alternatives prevent construction/retagging of completed updates or unrelated failure reasons.
     case status: BlockReportError
     of None:
       completed: BlockReportUpdate
@@ -40,26 +36,31 @@ type
     else:
       discard # Defaults carry neither a candidate nor a usable stage result.
 
-## Inspect stage selection without allowing caller mutation.
-func error*(outcome: BlockReportResult): BlockReportError = outcome.status
-## Extract a complete immutable update only after every implemented stage and publication succeeds.
+func error*(outcome: BlockReportResult): BlockReportError =
+  ## Inspect stage selection without allowing caller mutation.
+  outcome.status
 func value*(outcome: BlockReportResult): BlockReportUpdate {.inline,
-    requires: outcome.status == BlockReportError.None.} = outcome.completed
-## Inspect the selected earlier admission/disputes/Safrole/assurance refusal.
+    requires: outcome.status == BlockReportError.None.} =
+  ## Extract a complete immutable update only after every implemented stage and publication succeeds.
+  outcome.completed
 func stageError*(outcome: BlockReportResult): BlockTransitionResult {.inline,
-    requires: outcome.status == BlockReportError.StageFailure.} = outcome.stageReason
-## Inspect the selected report refusal, preserving its own exact child cause.
+    requires: outcome.status == BlockReportError.StageFailure.} =
+  ## Inspect the selected earlier admission/disputes/Safrole/assurance refusal.
+  outcome.stageReason
 func reportError*(outcome: BlockReportResult): ReportAdmissionResult[AdmittedReports] {.inline,
-    requires: outcome.status == BlockReportError.ReportFailure.} = outcome.reportReason
-## Inspect only a refused final store publication's resource/hash cause.
+    requires: outcome.status == BlockReportError.ReportFailure.} =
+  ## Inspect the selected report refusal, preserving its own exact child cause.
+  outcome.reportReason
 func publicationError*(outcome: BlockReportResult): StateStoreError {.inline,
-    requires: outcome.status == BlockReportError.PublicationFailure.} = outcome.publicationReason
+    requires: outcome.status == BlockReportError.PublicationFailure.} =
+  ## Inspect only a refused final store publication's resource/hash cause.
+  outcome.publicationReason
 
-## Execute on a private handle, deriving report inputs from its real earlier stage and actual parent binding.
-## Replace the caller's canonical handle exactly once, after complete C(10) publication; all earlier failures roll back.
-## Older headers are borrowed stably during the call and captured by the report certificate on success.
 proc advanceBlockReports*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     older: openArray[OwnedHeader], config: BlockReportConfig): BlockReportResult =
+  ## Execute on a private handle, deriving report inputs from its real earlier stage and actual parent binding.
+  ## Replace the caller's canonical handle exactly once, after complete C(10) publication; all earlier failures roll back.
+  ## Older headers are borrowed stably during the call and captured by the report certificate on success.
   var working = state
   let staged = advanceBlockState(working, candidate, parent, config.admission, config.disputes,
     config.safrole, config.availability)

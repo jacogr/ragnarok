@@ -12,53 +12,48 @@ from ../codec/disputes import OffenderKey
 import ../crypto/primitives
 
 type
-  ## Rotation is a chain parameter, distinct from an absolute E4 timeslot.
-  GuarantorRotationSlots* = distinct uint64
-  ## Chain profile and explicit roster/offender resource ceilings, checked before scratch allocation.
-  GuarantorConfig* = object
+  GuarantorRotationSlots* = distinct uint64 ## Rotation is a chain parameter, distinct from an absolute E4 timeslot.
+  GuarantorConfig* = object ## Chain profile and explicit roster/offender resource ceilings, checked before scratch allocation.
     roster*: ValidatorStateConfig
     epochSlots*: EpochSlots
     rotationSlots*: GuarantorRotationSlots
     offenders*: ElementLimit
-  ## No failure exposes partial permutations, keys, or an assignment plan.
-  GuarantorError* {.pure.} = enum
+  GuarantorError* {.pure.} = enum ## No failure exposes partial permutations, keys, or an assignment plan.
     Uninitialized, None, InvalidConfig, InvalidState, LimitExceeded, NonCanonical,
     InvalidSlot, InvalidIndex, BackendFailure
   ## Private acyclic owner retains a bounded permutation, never caller-owned mutable storage.
   PermutationData = ref object
     indices: seq[uint32]
-  ## Immutable permutation handle permits only checked ordinal extraction.
-  GuarantorPermutation* = object
+  GuarantorPermutation* = object ## Immutable permutation handle permits only checked ordinal extraction.
     data: nil PermutationData
-  ## One validator's core and copied complete record after posterior offender nulling.
-  GuarantorAssignment* = object
+  GuarantorAssignment* = object ## One validator's core and copied complete record after posterior offender nulling.
     core*: CoreIndex
     validator*: StateValidator
   ## Private storage owns both rotation tables; prior may be absent before genesis.
   GuarantorData = ref object
     current, previous: seq[GuarantorAssignment]
     slot, rotation: uint64
-  ## A plan keeps its roster, entropy-derived assignment and slot selection inseparable.
-  GuarantorPlan* = object
+  GuarantorPlan* = object ## A plan keeps its roster, entropy-derived assignment and slot selection inseparable.
     data: nil GuarantorData
-  ## Only the selected success alternative carries application data.
-  GuarantorResult*[T] = object
+  GuarantorResult*[T] = object ## Only the selected success alternative carries application data.
     case status: GuarantorError
     of None:
       completed: T
     else:
-      discard # Default/refused alternatives contain a reason only.
+      discard                  # Default/refused alternatives contain a reason only.
 
-## Read status without granting mutation of the discriminator.
-func error*[T](outcome: GuarantorResult[T]): GuarantorError = outcome.status
-## Supported contracts reject default/refused result extraction in checked optimized builds.
+func error*[T](outcome: GuarantorResult[T]): GuarantorError =
+  ## Read status without granting mutation of the discriminator.
+  outcome.status
 func value*[T](outcome: GuarantorResult[T]): T {.inline,
-    requires: outcome.status == GuarantorError.None.} = outcome.completed
+    requires: outcome.status == GuarantorError.None.} =
+  ## Supported contracts reject default/refused result extraction in checked optimized builds.
+  outcome.completed
 
-## Shuffle validator ordinals using BLAKE2b(seed || E4(i div 8)), four-byte LE draws, and shrinking swaps.
-## Shuffling ordinals then dividing by three equals shuffling the repeated core labels in P(v,e,t).
 proc shuffleValidatorIndices*(count: ValidatorCount, entropy: StateEntropyWord,
     ceiling: ElementLimit): GuarantorResult[GuarantorPermutation] =
+  ## Shuffle validator ordinals using BLAKE2b(seed || E4(i div 8)), four-byte LE draws, and shrinking swaps.
+  ## Shuffling ordinals then dividing by three equals shuffling the repeated core labels in P(v,e,t).
   if uint64(ceiling) > 1023 or uint64(count) > uint64(ceiling):
     return GuarantorResult[GuarantorPermutation](status: GuarantorError.LimitExceeded) # Bound allocations and counters.
   let n = int(uint64(count))
@@ -90,9 +85,9 @@ proc shuffleValidatorIndices*(count: ValidatorCount, entropy: StateEntropyWord,
   GuarantorResult[GuarantorPermutation](status: GuarantorError.None,
       completed: GuarantorPermutation(data: data))
 
-## Extract a copied ordinal; default handles and out-of-range ordinals are typed refusals.
 proc shuffledIndex*(owner: GuarantorPermutation, index: StateValidatorIndex): GuarantorResult[
     StateValidatorIndex] =
+  ## Extract a copied ordinal; default handles and out-of-range ordinals are typed refusals.
   let data = owner.data
   if data == nil:
     return GuarantorResult[StateValidatorIndex](status: GuarantorError.Uninitialized) # No fabricated identity shuffle.
@@ -141,11 +136,11 @@ proc table(roster: ValidatorStateSnapshot, entropy: StateEntropyWord, slot: uint
       values[i].validator = default(StateValidator) # All fields null; population and core positions stay unchanged.
   GuarantorResult[seq[GuarantorAssignment]](status: GuarantorError.None, completed: values)
 
-## Capture posterior active/previous rosters and entropy histories for this block's two admissible rotations.
-## The caller supplies completed Safrole/disputes context; this pure planner does not authenticate that context.
 proc planGuarantors*(active, previous: ValidatorStateSnapshot, entropy: StateEntropy,
     slot: StateTime, offenders: openArray[OffenderKey], config: GuarantorConfig): GuarantorResult[
         GuarantorPlan] =
+  ## Capture posterior active/previous rosters and entropy histories for this block's two admissible rotations.
+  ## The caller supplies completed Safrole/disputes context; this pure planner does not authenticate that context.
   let epoch = uint64(config.epochSlots)
   let rotation = uint64(config.rotationSlots)
   if epoch == 0 or rotation == 0 or rotation > epoch or epoch mod rotation != 0 or
@@ -178,10 +173,10 @@ proc planGuarantors*(active, previous: ValidatorStateSnapshot, entropy: StateEnt
     data.previous = old.value
   GuarantorResult[GuarantorPlan](status: GuarantorError.None, completed: GuarantorPlan(data: data))
 
-## Select a validator's copied assignment from the report slot's current or previous rotation.
-## This establishes only assignment eligibility: no credential signature or report context is checked here.
 proc guarantorAt*(plan: GuarantorPlan, slot: GuaranteeSlot, index: GuarantorIndex): GuarantorResult[
     GuarantorAssignment] =
+  ## Select a validator's copied assignment from the report slot's current or previous rotation.
+  ## This establishes only assignment eligibility: no credential signature or report context is checked here.
   let data = plan.data
   if data == nil:
     return GuarantorResult[GuarantorAssignment](status: GuarantorError.Uninitialized) # No default usable plan.

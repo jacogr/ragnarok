@@ -11,24 +11,24 @@ import ../chain/parameters
 import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_machine]
 
 type
-  ## Adapter failures distinguish invalid selections from local resource refusals and encoding errors.
-  InvocationFetchError* {.pure.} = enum
+  InvocationFetchError* {.pure.} = enum ## Adapter failures distinguish invalid selections from local resource refusals and encoding errors.
     Uninitialized, None, InvalidContext, InvalidInputs, InvalidIndex, LimitExceeded,
       EncodingFailure,
     InvalidMachine, InvalidParameters
-  ## Success owns a complete immutable fetch context; no partial attachment is exposed on failure.
-  InvocationFetchResult* = object
+  InvocationFetchResult* = object ## Success owns a complete immutable fetch context; no partial attachment is exposed on failure.
     case status: InvocationFetchError
     of None:
       completed: FetchContext # Extract only through the selected-success accessor.
     else:
       discard                 # Failed/default alternatives contain no context.
 
-## Inspect the adapter's outcome without exposing writable result storage.
-func error*(outcome: InvocationFetchResult): InvocationFetchError = outcome.status
-## Retain the complete context independently of every preparation handle.
+func error*(outcome: InvocationFetchResult): InvocationFetchError =
+  ## Inspect the adapter's outcome without exposing writable result storage.
+  outcome.status
 func value*(outcome: InvocationFetchResult): FetchContext {.inline,
-    requires: outcome.status == InvocationFetchError.None.} = outcome.completed
+    requires: outcome.status == InvocationFetchError.None.} =
+  ## Retain the complete context independently of every preparation handle.
+  outcome.completed
 
 ## Private stable selection chooses either a validated plan group or its already-bound service.
 ## Only the explicit-plan API supplies an ordinal; the machine path uses serviceInputAt exclusively.
@@ -107,11 +107,11 @@ proc captureSelection(context: FetchContext, source: FetchSelection, count: uint
     fail(InvocationFetchError.EncodingFailure) # Unexpected codec refusal remains a local typed error.
   InvocationFetchResult(status: InvocationFetchError.None, completed: attached.value)
 
-## Select one service ordinal and preserve its transfer-before-operand input order exactly.
-## Borrow only immutable owners; validate the whole list before copying blobs. Pure prepared inputs
-## do not certify block provenance, account eligibility, transfer credit or execution.
 proc withInvocationFetch*(context: FetchContext, inputs: PreparedAccumulationInputs,
     service: InvocationServiceIndex, limits: FetchAccumulationLimits): InvocationFetchResult =
+  ## Select one service ordinal and preserve its transfer-before-operand input order exactly.
+  ## Borrow only immutable owners; validate the whole list before copying blobs. Pure prepared inputs
+  ## do not certify block provenance, account eligibility, transfer credit or execution.
   let checked = withFetchAccumulation(context, FetchPresence.Absent, [], limits)
   if checked.error != FetchError.None:
     # Preserve base-context validation precedence without mutating the supplied handle.
@@ -127,11 +127,11 @@ proc withInvocationFetch*(context: FetchContext, inputs: PreparedAccumulationInp
   let count = uint64(info.transfers) + uint64(info.operands)
   captureSelection(context, FetchSelection(bound: false, inputs: inputs, index: service), count, limits)
 
-## Assemble all accumulation fetch families from the machine's own prepared invocation.
-## Configured parameters are explicit; entropy and ordered inputs cannot be independently replaced.
-## No source handle or borrowed span must survive return; the complete context owns immutable bytes.
 proc machineFetchContext*(prepared: PreparedAccumulationMachine, parameters: Parameters,
     limits: FetchAccumulationLimits): InvocationFetchResult =
+  ## Assemble all accumulation fetch families from the machine's own prepared invocation.
+  ## Configured parameters are explicit; entropy and ordered inputs cannot be independently replaced.
+  ## No source handle or borrowed span must survive return; the complete context owns immutable bytes.
   let bootstrap = prepared.machineBootstrap
   if bootstrap.error != AccumulationMachineError.None:
     # Default machines cannot authorize a synthetic fetch environment.

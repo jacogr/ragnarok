@@ -15,13 +15,11 @@ import ../crypto/[primitives, assurance_context]
 import ./store
 
 type
-  ## One chain profile plus independent roster, assignment and newly available report ceilings.
-  AvailabilityTransitionConfig* = object
+  AvailabilityTransitionConfig* = object ## One chain profile plus independent roster, assignment and newly available report ceilings.
     rosters*: ValidatorStateConfig
     assignments*: AvailabilityConfig
     availableReports*: ElementLimit
-  ## Refusals carry no reports, assignments or partially published state.
-  AvailabilityTransitionError* {.pure.} = enum
+  AvailabilityTransitionError* {.pure.} = enum ## Refusals carry no reports, assignments or partially published state.
     Uninitialized, None, InvalidConfig, InvalidState, MissingState, InvalidSlot,
     LimitExceeded, InvalidIndex, UnassignedCore, ContextFailure, BackendFailure, PublicationFailure
   ## Private acyclic storage retains copied immutable assignment/report handles and the exact encoded chapter.
@@ -29,15 +27,12 @@ type
     assignments: AvailabilitySnapshot
     available: seq[OwnedReport]
     entry: StateEntry
-  ## Opaque plan handles cannot be forged by mixing reports and assignment buffers.
-  AvailabilityPlan* = object
+  AvailabilityPlan* = object ## Opaque plan handles cannot be forged by mixing reports and assignment buffers.
     data: nil AvailabilityData
-  ## Complete adapter success exposes its final map and the available reports for later accumulation.
-  AvailabilityUpdate* = object
+  AvailabilityUpdate* = object ## Complete adapter success exposes its final map and the available reports for later accumulation.
     snapshot*: StateStoreSnapshot
     plan*: AvailabilityPlan
-  ## Exact signature/context refusal is selected separately from ordinary policy/state failures.
-  AvailabilityTransitionResult*[T] = object
+  AvailabilityTransitionResult*[T] = object ## Exact signature/context refusal is selected separately from ordinary policy/state failures.
     case status: AvailabilityTransitionError
     of None:
       completed: T
@@ -46,27 +41,30 @@ type
     else:
       discard # Default/refused operations contain no usable plan or update.
 
-## Read the status without allowing external retagging.
 func error*[T](outcome: AvailabilityTransitionResult[
-    T]): AvailabilityTransitionError = outcome.status
-## Extract only complete success under supported checked-build contracts.
+    T]): AvailabilityTransitionError =
+  ## Read the status without allowing external retagging.
+  outcome.status
 func value*[T](outcome: AvailabilityTransitionResult[T]): T {.inline,
-    requires: outcome.status == AvailabilityTransitionError.None.} = outcome.completed
-## Inspect only the explicitly selected assurance-signature/context refusal.
+    requires: outcome.status == AvailabilityTransitionError.None.} =
+  ## Extract only complete success under supported checked-build contracts.
+  outcome.completed
 func contextError*[T](outcome: AvailabilityTransitionResult[T]): AssuranceContextError {.inline,
-    requires: outcome.status == AvailabilityTransitionError.ContextFailure.} = outcome.contextReason
-## Retain the immutable posterior assignment sequence independently of every caller handle.
+    requires: outcome.status == AvailabilityTransitionError.ContextFailure.} =
+  ## Inspect only the explicitly selected assurance-signature/context refusal.
+  outcome.contextReason
 proc assuredAssignments*(plan: AvailabilityPlan): AvailabilitySnapshot {.requires: plan.data != nil.} =
+  ## Retain the immutable posterior assignment sequence independently of every caller handle.
   let data = plan.data
   assert data != nil # A default owner is not an empty C(10).
   data.assignments
-## Count newly available reports in core order, independently of timeout/resize clearing.
 proc availableReportCount*(plan: AvailabilityPlan): int {.requires: plan.data != nil.} =
+  ## Count newly available reports in core order, independently of timeout/resize clearing.
   let data = plan.data
   assert data != nil # No success-like empty list for an uninitialized plan.
   data.available.len
-## Copy one retained complete report handle after checking its ordinal.
 proc availableReportAt*(plan: AvailabilityPlan, index: int): AvailabilityTransitionResult[OwnedReport] =
+  ## Copy one retained complete report handle after checking its ordinal.
   let data = plan.data
   if data == nil: return AvailabilityTransitionResult[OwnedReport](
       status: AvailabilityTransitionError.Uninitialized) # No owner.
@@ -76,12 +74,12 @@ proc availableReportAt*(plan: AvailabilityPlan, index: int): AvailabilityTransit
   AvailabilityTransitionResult[OwnedReport](status: AvailabilityTransitionError.None,
       completed: data.available[index])
 
-## Plan from post-disputes assignments and the parent roster; posterior population is a size-only context projection.
-## The caller supplies a validated posterior population in production. Tiny STF independently exercises size three.
 proc planAvailability*(assignments: AvailabilitySnapshot, active: ValidatorStateSnapshot,
     posteriorPopulation: ValidatorCount, values: openArray[Assurance], parent: AssuranceParent,
     slot: StateTime, config: AvailabilityTransitionConfig): AvailabilityTransitionResult[
         AvailabilityPlan] =
+  ## Plan from post-disputes assignments and the parent roster; posterior population is a size-only context projection.
+  ## The caller supplies a validated posterior population in production. Tiny STF independently exercises size three.
   template fail(reason: AvailabilityTransitionError) =
     return AvailabilityTransitionResult[AvailabilityPlan](status: reason)
   let cores = uint64(config.rosters.cores)
@@ -152,11 +150,11 @@ proc planAvailability*(assignments: AvailabilitySnapshot, active: ValidatorState
     completed: AvailabilityPlan(data: AvailabilityData(assignments: captured.value.snapshot,
       available: available, entry: encoded.value)))
 
-## Consume the current post-disputes/Safrole map; parent active keys remain a separate retained trusted context.
-## C(11) and the posterior C(8) size come from that same staged map; publish C(10) alone atomically.
 proc advanceAvailabilityState*(state: var StateStore, parentActive: ValidatorStateSnapshot,
     values: openArray[Assurance], parent: AssuranceParent, slot: StateTime,
     config: AvailabilityTransitionConfig): AvailabilityTransitionResult[AvailabilityUpdate] =
+  ## Consume the current post-disputes/Safrole map; parent active keys remain a separate retained trusted context.
+  ## C(11) and the posterior C(8) size come from that same staged map; publish C(10) alone atomically.
   template fail(reason: AvailabilityTransitionError) =
     return AvailabilityTransitionResult[AvailabilityUpdate](status: reason)
   let retained = state.snapshot

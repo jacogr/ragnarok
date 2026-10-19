@@ -12,37 +12,35 @@ import ../bandersnatch/bandersnatch
 import ./entropy
 
 type
-  ## Independent finite C(4)/roster and complete-header ceilings; epoch length selects the cyclic schedule slot.
-  SafroleAuthConfig* = object
+  SafroleAuthConfig* = object ## Independent finite C(4)/roster and complete-header ceilings; epoch length selects the cyclic schedule slot.
     state*: SafroleStateConfig
     maxHeaderBytes*: ByteLimit
-  ## Failed/default authentication exposes neither entropy, a partial seal output nor a header witness.
-  SafroleAuthError* {.pure.} = enum
+  SafroleAuthError* {.pure.} = enum ## Failed/default authentication exposes neither entropy, a partial seal output nor a header witness.
     Uninitialized, None, MissingState, InvalidConfig, InvalidSlot, InvalidState, InvalidHeader,
     LimitExceeded, LengthOverflow, InvalidAuthor, InvalidSeal, InvalidTicket, InvalidEntropy, BackendFailure
-  ## Successful copied metadata retains the exact immutable authenticated header and fixed verified outputs.
-  SafroleAuthentication* = object
+  SafroleAuthentication* = object ## Successful copied metadata retains the exact immutable authenticated header and fixed verified outputs.
     header*: OwnedHeader
     entropy*: EntropyInput
     sealOutput*: BsOutput
     ticketed*: bool
-  ## Private discriminator and payload require explicit success selection before application use.
-  SafroleAuthResult* = object
+  SafroleAuthResult* = object ## Private discriminator and payload require explicit success selection before application use.
     case status: SafroleAuthError
     of None:
       completed: SafroleAuthentication # No borrowed state pointers or native secret/setup owner survives.
     else:
       discard # Refusal contains its reason alone.
 
-## Read the reason without allowing callers to manufacture success.
-func error*(outcome: SafroleAuthResult): SafroleAuthError = outcome.status
-## Extract verified entropy and its retained exact header only after both signatures and schedule binding pass.
+func error*(outcome: SafroleAuthResult): SafroleAuthError =
+  ## Read the reason without allowing callers to manufacture success.
+  outcome.status
 func value*(outcome: SafroleAuthResult): SafroleAuthentication {.inline,
-    requires: outcome.status == SafroleAuthError.None.} = outcome.completed
+    requires: outcome.status == SafroleAuthError.None.} =
+  ## Extract verified entropy and its retained exact header only after both signatures and schedule binding pass.
+  outcome.completed
 
-## Context adapters can preserve a failure reason, but cannot manufacture success without authenticated data.
 func safroleAuthFailure*(reason: SafroleAuthError): SafroleAuthResult {.requires: reason !=
     SafroleAuthError.None.} =
+  ## Context adapters can preserve a failure reason, but cannot manufacture success without authenticated data.
   SafroleAuthResult(status: reason)
 
 ## Preserve policy/native extent errors while rejecting malformed serialized stage state.
@@ -67,13 +65,13 @@ proc context(domain: string, seed: array[32, byte], ticketed: bool, attempt: byt
   for i in 0..<32: result[domain.len+i] = seed[i] # Entropy history/output is an exact fixed word.
   if ticketed: result[result.high] = attempt # Ticket entry index is E1, never a compact natural.
 
-## Authenticate a structurally decoded full header using posterior C(4)/C(8) and retained parent C(6)/time.
-## Derive posterior eta[3] from parent eta[2] on any epoch crossing, otherwise parent eta[3].
-## This history rotation does not depend on new eta[0], avoiding circular trust in unverified entropy.
-## Marker validity, earlier stage lineage and parent/extrinsic commitments remain caller responsibilities.
 proc authenticateSafroleSeal*(candidate: OwnedHeader, schedule, active: openArray[byte],
     previous: StateTime, parentEntropy: StateEntropy,
         config: SafroleAuthConfig): SafroleAuthResult =
+  ## Authenticate a structurally decoded full header using posterior C(4)/C(8) and retained parent C(6)/time.
+  ## Derive posterior eta[3] from parent eta[2] on any epoch crossing, otherwise parent eta[3].
+  ## This history rotation does not depend on new eta[0], avoiding circular trust in unverified entropy.
+  ## Marker validity, earlier stage lineage and parent/extrinsic commitments remain caller responsibilities.
   let epoch = uint64(config.state.epochSlots)
   if epoch == 0:
     return SafroleAuthResult(status: SafroleAuthError.InvalidConfig) # No modulo or epoch division under a zero length.

@@ -13,13 +13,11 @@ import ./[report_anchors, report_policy, guarantee_credentials, store]
 import ../codec/state_layout
 
 type
-  ## State decode bounds and per-index item ceilings bound parent copies, sorting scratch and lookups.
-  ReportPackageConfig* = object
+  ReportPackageConfig* = object ## State decode bounds and per-index item ceilings bound parent copies, sorting scratch and lookups.
     availability*: AvailabilityConfig
     queues*: WorkQueueConfig
     indexItems*: ElementLimit
-  ## Default and failed alternatives contain no certificate, partial index or accepted prefix.
-  ReportPackageError* {.pure.} = enum
+  ReportPackageError* {.pure.} = enum ## Default and failed alternatives contain no certificate, partial index or accepted prefix.
     Uninitialized, None, InvalidRecent, InvalidCredentials, InvalidHistory, InvalidConfig,
     MissingState, InvalidState, LimitExceeded, DuplicatePackage, MissingDependency, InvalidSegmentRoot
   ## Acyclic private owner retains the exact earlier stage and all decoded parent pipeline views.
@@ -28,25 +26,25 @@ type
     availability: AvailabilitySnapshot
     ready: ReadySnapshot
     accumulated: AccumulatedSnapshot
-  ## Package checks do not certify lookup ancestry, core capacity or C(10) publication.
-  PackageCheckedReports* = object
+  PackageCheckedReports* = object ## Package checks do not certify lookup ancestry, core capacity or C(10) publication.
     data: nil PackageData
-  ## Only complete application success carries an immutable owner.
-  ReportPackageResult*[T] = object
+  ReportPackageResult*[T] = object ## Only complete application success carries an immutable owner.
     case status: ReportPackageError
     of None:
       completed: T
     else:
-      discard # Failed/default results cannot expose successful data.
+      discard                      # Failed/default results cannot expose successful data.
 
-## Read a failure reason without allowing external retagging.
-func error*[T](outcome: ReportPackageResult[T]): ReportPackageError = outcome.status
-## Extract only a completely selected success under the checked-build contract.
+func error*[T](outcome: ReportPackageResult[T]): ReportPackageError =
+  ## Read a failure reason without allowing external retagging.
+  outcome.status
 func value*[T](outcome: ReportPackageResult[T]): T {.inline,
-    requires: outcome.status == ReportPackageError.None.} = outcome.completed
+    requires: outcome.status == ReportPackageError.None.} =
+  ## Extract only a completely selected success under the checked-build contract.
+  outcome.completed
 
-## Retain the exact recent/policy context for later lookup/capacity admission stages.
 proc packageRecent*(owner: PackageCheckedReports): ReportPackageResult[RecentAnchoredReports] =
+  ## Retain the exact recent/policy context for later lookup/capacity admission stages.
   let data = owner.data
   if data == nil:
     return ReportPackageResult[RecentAnchoredReports](
@@ -98,11 +96,11 @@ func contains(values: seq[ReportedPackage], key: ReportedPackage): bool =
       high = middle # Preserve the first possible exact match.
   low < values.len and comparePair(values[low], key) == 0
 
-## Reason-only relation inspection; known is caller-supplied existing-pipeline evidence, not a state certificate.
-## Inputs are borrowed stably for this call. This helper never produces an application admission owner.
-## The state-backed entry point below derives known itself; projections may use the STF's summarized known set.
 proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: HistorySnapshot,
     known: openArray[PackageHash], limit: ElementLimit): ReportPackageError =
+  ## Reason-only relation inspection; known is caller-supplied existing-pipeline evidence, not a state certificate.
+  ## Inputs are borrowed stably for this call. This helper never produces an application admission owner.
+  ## The state-backed entry point below derives known itself; projections may use the STF's summarized known set.
   let records = credentials.verifiedGuaranteeCount
   if records.error != GuaranteeCredentialError.None:
     return ReportPackageError.InvalidCredentials # No raw/default extrinsic bypass.
@@ -168,10 +166,10 @@ proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: 
         return ReportPackageError.InvalidSegmentRoot # Verify the associated root, not just the key.
   ReportPackageError.None
 
-## Load exact parent C(10)/C(14)/C(15), derive the prior-pipeline identities and certify all package relations.
-## Corrected recent history retains the parent's package dictionaries; no post-assurance substitution or writes occur.
 proc checkReportPackages*(recent: RecentAnchoredReports,
     config: ReportPackageConfig): ReportPackageResult[PackageCheckedReports] =
+  ## Load exact parent C(10)/C(14)/C(15), derive the prior-pipeline identities and certify all package relations.
+  ## Corrected recent history retains the parent's package dictionaries; no post-assurance substitution or writes occur.
   let policy = recent.recentPolicy
   if policy.error != ReportAnchorError.None:
     return ReportPackageResult[PackageCheckedReports](

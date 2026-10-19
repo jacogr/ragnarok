@@ -13,8 +13,7 @@ import ../codec/[bounded, assurances, guarantees, state_safrole, state_availabil
 import ./guarantee_credentials
 
 type
-  ## Default and refused plans contain a reason only, never partial assignments or serialized progress.
-  ReportAssignmentError* {.pure.} = enum
+  ReportAssignmentError* {.pure.} = enum ## Default and refused plans contain a reason only, never partial assignments or serialized progress.
     Uninitialized, None, InvalidConfig, InvalidCredentials, InvalidAssignments,
     LimitExceeded, InactiveCore, OccupiedCore
   ## Private acyclic owner binds original post-assurance state, credentials and exact completed C(10) candidate.
@@ -23,26 +22,26 @@ type
     source: AvailabilitySnapshot
     candidate: AvailabilitySnapshot
     entry: StateEntry
-  ## A completed assignment candidate is not a complete report-admission or publication certificate.
-  ReportAssignmentPlan* = object
+  ReportAssignmentPlan* = object ## A completed assignment candidate is not a complete report-admission or publication certificate.
     data: nil AssignmentData
-  ## Only selected success carries a retained plan or copied serialization.
-  ReportAssignmentResult*[T] = object
+  ReportAssignmentResult*[T] = object ## Only selected success carries a retained plan or copied serialization.
     case status: ReportAssignmentError
     of None:
       completed: T
     else:
       discard # No successful payload after default initialization or refusal.
 
-## Inspect the reason without allowing external retagging.
-func error*[T](outcome: ReportAssignmentResult[T]): ReportAssignmentError = outcome.status
-## Extract complete success only under supported checked-build contracts.
+func error*[T](outcome: ReportAssignmentResult[T]): ReportAssignmentError =
+  ## Inspect the reason without allowing external retagging.
+  outcome.status
 func value*[T](outcome: ReportAssignmentResult[T]): T {.inline,
-    requires: outcome.status == ReportAssignmentError.None.} = outcome.completed
+    requires: outcome.status == ReportAssignmentError.None.} =
+  ## Extract complete success only under supported checked-build contracts.
+  outcome.completed
 
-## Retain the exact original post-assurance assignment table, independently of caller scope.
 proc reportAssignmentSource*(plan: ReportAssignmentPlan): ReportAssignmentResult[
     AvailabilitySnapshot] =
+  ## Retain the exact original post-assurance assignment table, independently of caller scope.
   let data = plan.data
   if data == nil:
     return ReportAssignmentResult[AvailabilitySnapshot](
@@ -50,9 +49,9 @@ proc reportAssignmentSource*(plan: ReportAssignmentPlan): ReportAssignmentResult
   ReportAssignmentResult[AvailabilitySnapshot](status: ReportAssignmentError.None,
       completed: data.source)
 
-## Retain the proposed immutable table, whose new children include complete original guarantees.
 proc reportAssignmentState*(plan: ReportAssignmentPlan): ReportAssignmentResult[
     AvailabilitySnapshot] =
+  ## Retain the proposed immutable table, whose new children include complete original guarantees.
   let data = plan.data
   if data == nil:
     return ReportAssignmentResult[AvailabilitySnapshot](
@@ -60,8 +59,8 @@ proc reportAssignmentState*(plan: ReportAssignmentPlan): ReportAssignmentResult[
   ReportAssignmentResult[AvailabilitySnapshot](status: ReportAssignmentError.None,
       completed: data.candidate)
 
-## Copy exact proposed chapter bytes; mutating this ordinary value cannot alter the retained candidate.
 proc reportAssignmentEntry*(plan: ReportAssignmentPlan): ReportAssignmentResult[StateEntry] =
+  ## Copy exact proposed chapter bytes; mutating this ordinary value cannot alter the retained candidate.
   let data = plan.data
   if data == nil:
     return ReportAssignmentResult[StateEntry](status: ReportAssignmentError.Uninitialized) # No fabricated chapter.
@@ -80,12 +79,12 @@ func codecError(reason: AvailabilityError): ReportAssignmentError =
   else:
     ReportAssignmentError.InvalidAssignments # No malformed/default nested record becomes valid state.
 
-## Caller supplies the actual post-assurance table, not the parent table used for duplicate-package exclusion.
-## Candidate time and active population come from the credential certificate, never a second loose projection.
-## Revalidate the whole source and every destination before constructing the final candidate; no writes or hashing occur.
 proc planReportAssignments*(credentials: VerifiedGuaranteeCredentials,
     postAssurances: AvailabilitySnapshot, config: AvailabilityConfig): ReportAssignmentResult[
         ReportAssignmentPlan] =
+  ## Caller supplies the actual post-assurance table, not the parent table used for duplicate-package exclusion.
+  ## Candidate time and active population come from the credential certificate, never a second loose projection.
+  ## Revalidate the whole source and every destination before constructing the final candidate; no writes or hashing occur.
   let context = credentials.verifiedGuaranteeContext
   if context.error != GuaranteeCredentialError.None:
     return ReportAssignmentResult[ReportAssignmentPlan](

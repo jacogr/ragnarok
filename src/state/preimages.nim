@@ -11,23 +11,17 @@ import ../crypto/primitives
 import ./store
 
 type
-  ## Statistics traversal addresses service groups rather than individual supplied blobs.
-  ProvisionIndex* = distinct uint64
-  ## Actual provided counters are not byte ceilings, slots or gas amounts.
-  ProvisionCount* = distinct uint64
-  ## Actual total provided octets remain distinct from counts and caller byte ceilings.
-  ProvisionBytes* = distinct uint64
-  ## Per-service block statistics contribution counts admitted extrinsic data, even if later no longer needed.
-  PreimageProvision* = object
+  ProvisionIndex* = distinct uint64 ## Statistics traversal addresses service groups rather than individual supplied blobs.
+  ProvisionCount* = distinct uint64 ## Actual provided counters are not byte ceilings, slots or gas amounts.
+  ProvisionBytes* = distinct uint64 ## Actual total provided octets remain distinct from counts and caller byte ceilings.
+  PreimageProvision* = object ## Per-service block statistics contribution counts admitted extrinsic data, even if later no longer needed.
     service*: ServiceIndex
     count*: ProvisionCount
     bytes*: ProvisionBytes
-  ## Selected complete admission facts contain no detached blob spans.
-  PreimageAdmissionInfo* = object
+  PreimageAdmissionInfo* = object ## Selected complete admission facts contain no detached blob spans.
     items*, services*: int
     bytes*: ProvisionBytes
-  ## Refusal never exposes partially admitted input, proposed writes or a candidate state root.
-  PreimageTransitionError* {.pure.} = enum
+  PreimageTransitionError* {.pure.} = enum ## Refusal never exposes partially admitted input, proposed writes or a candidate state root.
     Uninitialized, None, InvalidInput, InvalidState, NotOrderedUnique, NotRequested,
     MalformedState, LimitExceeded, BackendFailure, InvalidIndex
   ## Fixed private rows cache only identities proved from the retained input; no caller buffer is trusted later.
@@ -43,25 +37,24 @@ type
     rows: seq[PreimageRow]
     provisions: seq[PreimageProvision]
     bytes: ProvisionBytes
-  ## Read-only certificate cannot be constructed from substituted source coordinates or changed state.
-  AdmittedPreimages* = object
+  AdmittedPreimages* = object ## Read-only certificate cannot be constructed from substituted source coordinates or changed state.
     data: nil PreimageData
-  ## Canonical value-set identities are prepared independently from posterior state, without granting extrinsic admission.
-  PreparedPreimageValues* = object
+  PreparedPreimageValues* = object ## Canonical value-set identities are prepared independently from posterior state, without granting extrinsic admission.
     data: nil PreimageData
-  ## Only selected success carries owners, fixed observations or an atomically committed map.
-  PreimageTransitionResult*[T] = object
+  PreimageTransitionResult*[T] = object ## Only selected success carries owners, fixed observations or an atomically committed map.
     case status: PreimageTransitionError
     of None:
       completed: T # No default payload may be read after failure.
     else:
       discard      # Keep failures and incomplete progress value-free.
 
-## Read a reason without granting result mutation or retagging.
-func error*[T](outcome: PreimageTransitionResult[T]): PreimageTransitionError = outcome.status
-## Extract selected success under supported compiler/runtime contracts in optimized builds too.
+func error*[T](outcome: PreimageTransitionResult[T]): PreimageTransitionError =
+  ## Read a reason without granting result mutation or retagging.
+  outcome.status
 func value*[T](outcome: PreimageTransitionResult[T]): T {.inline,
-    requires: outcome.status == PreimageTransitionError.None.} = outcome.completed
+    requires: outcome.status == PreimageTransitionError.None.} =
+  ## Extract selected success under supported compiler/runtime contracts in optimized builds too.
+  outcome.completed
 
 ## Map complete-store failures without changing backend/resource refusals into protocol invalidity.
 func storeReason(reason: StateStoreError): PreimageTransitionError =
@@ -102,10 +95,10 @@ proc outstanding(state: StateStoreSnapshot, service: ServiceIndex,
   PreimageTransitionResult[bool](status: PreimageTransitionError.None,
     completed: decoded.value.history.state == RequestState.Requested)
 
-## Query an exact canonical outstanding request without accepting a caller-selected namespace key.
-## Missing accounts/requests or nonempty histories are false; malformed maps/backend failure are typed refusals.
 proc preimageRequested*(state: StateStoreSnapshot, service: ServiceIndex,
     hash: ServicePreimageHash, length: RequestLength): PreimageTransitionResult[bool] =
+  ## Query an exact canonical outstanding request without accepting a caller-selected namespace key.
+  ## Missing accounts/requests or nonempty histories are false; malformed maps/backend failure are typed refusals.
   let key = serviceRequestKey(service, hash, length, ByteLimit(32))
   if key.error != RequestError.None:
     # Namespace derivation failure cannot fabricate a requested/unrequested verdict.
@@ -186,17 +179,17 @@ proc preparePreimages(prior: StateStoreSnapshot, source: OwnedFrame,
     completed: data)
 
 
-## Admit only an ordered, unique and prior-requested extrinsic; relaxed preparation never exposes this certificate.
 proc admitPreimages*(prior: StateStoreSnapshot, source: OwnedFrame,
     limits: PreimageLimits): PreimageTransitionResult[AdmittedPreimages] =
+  ## Admit only an ordered, unique and prior-requested extrinsic; relaxed preparation never exposes this certificate.
   let prepared = preparePreimages(prior, source, limits, true)
   if prepared.error != PreimageTransitionError.None:
     return PreimageTransitionResult[AdmittedPreimages](status: prepared.error) # No unadmitted owner escapes.
   PreimageTransitionResult[AdmittedPreimages](status: PreimageTransitionError.None,
     completed: AdmittedPreimages(data: prepared.value))
 
-## Copy admission cardinalities without exposing row storage or source offsets.
 proc preimageInfo*(plan: AdmittedPreimages): PreimageTransitionResult[PreimageAdmissionInfo] =
+  ## Copy admission cardinalities without exposing row storage or source offsets.
   let data = plan.data
   if data == nil: return PreimageTransitionResult[PreimageAdmissionInfo](
       status: PreimageTransitionError.Uninitialized) # Default certificates have no complete counts.
@@ -204,24 +197,24 @@ proc preimageInfo*(plan: AdmittedPreimages): PreimageTransitionResult[PreimageAd
     completed: PreimageAdmissionInfo(items: data.rows.len, services: data.provisions.len,
         bytes: data.bytes))
 
-## Retain the exact immutable prior map that authorized these submissions.
 proc preimagePrior*(plan: AdmittedPreimages): PreimageTransitionResult[StateStoreSnapshot] =
+  ## Retain the exact immutable prior map that authorized these submissions.
   let data = plan.data
   if data == nil: return PreimageTransitionResult[StateStoreSnapshot](
       status: PreimageTransitionError.Uninitialized) # No substitute empty prior state.
   PreimageTransitionResult[StateStoreSnapshot](status: PreimageTransitionError.None,
       completed: data.prior)
 
-## Retain the original owned extrinsic; its existing bounded blob APIs preserve source relationships.
 proc preimageSource*(plan: AdmittedPreimages): PreimageTransitionResult[OwnedFrame] =
+  ## Retain the original owned extrinsic; its existing bounded blob APIs preserve source relationships.
   let data = plan.data
   if data == nil: return PreimageTransitionResult[OwnedFrame](
       status: PreimageTransitionError.Uninitialized) # No default successful input.
   PreimageTransitionResult[OwnedFrame](status: PreimageTransitionError.None, completed: data.source)
 
-## Extract a fixed per-service provision contribution; full C(13) assembly remains a separate pipeline step.
 proc provisionAt*(plan: AdmittedPreimages, index: ProvisionIndex): PreimageTransitionResult[
     PreimageProvision] =
+  ## Extract a fixed per-service provision contribution; full C(13) assembly remains a separate pipeline step.
   let data = plan.data
   if data == nil: return PreimageTransitionResult[PreimageProvision](
       status: PreimageTransitionError.Uninitialized) # No fabricated zero contribution.
@@ -264,9 +257,9 @@ proc integratePrepared(state: var StateStore, current: StateStoreSnapshot, data:
       completed: published.value)
 
 
-## Atomically fulfill the admitted extrinsic against one retained post-accumulation map, preserving prior admission semantics.
 proc integratePreimages*(state: var StateStore, plan: AdmittedPreimages,
     slot: HeaderSlot): PreimageTransitionResult[StateStoreSnapshot] =
+  ## Atomically fulfill the admitted extrinsic against one retained post-accumulation map, preserving prior admission semantics.
   let data = plan.data
   if data == nil:
     return PreimageTransitionResult[StateStoreSnapshot](
@@ -277,9 +270,9 @@ proc integratePreimages*(state: var StateStore, plan: AdmittedPreimages,
         current.error)) # Even empty application needs a complete map.
   integratePrepared(state, current.value, data, slot)
 
-## Capture canonical value-set identities once, without claiming prior extrinsic solicitation or producing admission statistics.
 proc prepareProvidedPreimages*(source: OwnedFrame, limits: PreimageLimits):
     PreimageTransitionResult[PreparedPreimageValues] =
+  ## Capture canonical value-set identities once, without claiming prior extrinsic solicitation or producing admission statistics.
   let prepared = preparePreimages(default(StateStoreSnapshot), source, limits, false)
   if prepared.error != PreimageTransitionError.None:
     return PreimageTransitionResult[PreparedPreimageValues](
@@ -287,10 +280,10 @@ proc prepareProvidedPreimages*(source: OwnedFrame, limits: PreimageLimits):
   PreimageTransitionResult[PreparedPreimageValues](status: PreimageTransitionError.None,
     completed: PreparedPreimageValues(data: prepared.value))
 
-## Apply one immutable service/blob set through fnprovide, rechecking posterior requests without rehashing captured values.
-## This pure boundary never produces an AdmittedPreimages certificate or C(13) contribution.
 proc integrateProvidedPreimages*(state: var StateStore, plan: PreparedPreimageValues,
     slot: HeaderSlot): PreimageTransitionResult[StateStoreSnapshot] =
+  ## Apply one immutable service/blob set through fnprovide, rechecking posterior requests without rehashing captured values.
+  ## This pure boundary never produces an AdmittedPreimages certificate or C(13) contribution.
   let data = plan.data
   if data == nil:
     return PreimageTransitionResult[StateStoreSnapshot](
