@@ -1,0 +1,14 @@
+{
+  "source": "tests/native/accumulation_continuation_execution_results.nim",
+  "build_name": "accumulation-continuation-execution-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-continuation-execution-default", "diagnostic": "outcome.status == None", "description": "Continuation execution default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-continuation-execution-refused", "diagnostic": "outcome.status == None", "description": "Continuation execution refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-continuation-execution-info", "diagnostic": "outcome.status == None", "description": "Continuation execution info extraction guard"},
+    {"identity": {"reason": "gas"}, "arguments": ["gas"], "name": "accumulation-continuation-execution-gas", "diagnostic": "outcome.status == None", "description": "Continuation execution gas extraction guard"},
+    {"identity": {"reason": "batch"}, "arguments": ["batch"], "name": "accumulation-continuation-execution-batch", "diagnostic": "outcome.status == None", "description": "Continuation execution batch extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-continuation-execution-source", "diagnostic": "outcome.status == None", "description": "Continuation execution source extraction guard"},
+    {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-continuation-execution-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Continuation execution wrong-batch extraction guard"}
+  ]
+}
