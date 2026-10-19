@@ -84,4 +84,6 @@ or batch implementation changed; their existing evidence is reused.
 Logs and diagnostics are retained under `build/accumulation-outputs/`. These are local macOS results,
 separate from exact-head Linux CI. The [continuation planner](accumulation-continuation.md) now selects the next report-only prefix
 from actual remaining gas and the original admitted queue. Range input/state binding and
-transfer-aware execution, final output-set union and block publication remain subsequent work.
+transfer-aware execution and block publication remain subsequent work.
+[Retained history collection](accumulation-reentry-outputs.md) now unions the selected full pairs
+across genuine completed initial, continuation and repeated reentry rounds.
