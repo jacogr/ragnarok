@@ -32,7 +32,9 @@ host-loop dispatch. Runtime/compile guards enforce private capture results and t
 Fresh 1,000-cycle ARC evidence exercises both captures and execution. Existing fetch and codec
 suites remain regression controls. No copied upstream source or vector is introduced.
 
-Remaining: encoded package/context and work-item summary selectors, extrinsics/imports,
-accumulation selectors and complete service invocation assembly. Positive gas-domain limitations
-remain documented in pvm-host-gas.md. Next bounded chunk: encoded refinement context and
-work-item summaries, with independent exact-byte witnesses.
+Selectors 10–12 now use [encoded metadata capture](pvm-fetch-summaries.md), with fixed
+storage bounds independent of the raw-blob cap.
+
+Remaining: full encoded package, extrinsics/imports, accumulation selectors and complete
+service invocation assembly. Positive gas-domain limitations remain documented in
+pvm-host-gas.md. Next bounded chunk: full encoded package fetch.

@@ -1,13 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Evaluate fetch for optional entropy, trace and raw package blobs, or directly borrowed values.
+## Evaluate fetch for optional entropy, trace and package values, or directly borrowed values.
 ## Exposes FetchContext capture, bounded withFetchPackage attachment and selector responses.
 ## FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
 ## Capture owns bounded immutable context; responses own memory copies. See spec/pvm-fetch-context.md.
 
 import ./[machine, step]
-import ../codec/work_package
+import ../codec/[work_package, fixed_unsigned]
 
 type
   # Invocation entropy is one nominal 32-byte value, distinct from arbitrary trace bytes.
@@ -33,13 +33,16 @@ type
   FetchTraceLimit* = distinct uint64
   # Local cap on configuration, token and all item payload bytes captured together.
   FetchPackageLimit* = distinct uint64
-  # Private package snapshot keeps only the raw blobs this fetch selector family needs.
+  # Private package snapshot owns raw blobs and fixed bounded encoded metadata.
   # The fixed item table is bounded by the validated C.2 package limit of sixteen items.
   FetchPackageData = ref object
     configuration: seq[byte]
     authorization: seq[byte]
     payloads: array[16, seq[byte]]
     itemCount: int
+    context: array[425, byte]
+    contextLength: int
+    summaries: array[993, byte]
   # Private acyclic owner retains only selected input values and has no references to caller storage.
   FetchContextData = ref object
     entropyPresence: FetchPresence
@@ -89,7 +92,40 @@ proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
   FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner,
       packageData: nil))
 
-# Attach raw package blobs to a new context without changing the original entropy/trace snapshot.
+# Write one bounded fixed-width summary field using the canonical scalar codec.
+# Private callers pass disjoint fields inside a fixed 62-byte summary; failure publishes no owner.
+proc summaryField(output: var openArray[byte], offset, width: int, value: uint64): bool =
+  let encoded = encodeFixed(FixedUnsigned(value), ByteWidth(width))
+  if not encoded.ok:
+    # Retain a checked narrowing boundary even for validated codec metadata.
+    return false
+  for i in 0..<width:
+    # Field extents are constants selected by encodeSummary below.
+    output[offset + i] = encoded.encoded.bytes[i]
+  true
+
+# Encode GP fetch S(w), which differs from C.2 work-item serialization and omits all blob contents.
+# The caller owns exactly 62 bytes; each count/length is checked by the fixed-width codec.
+proc encodeSummary(item: ItemInfo, output: var openArray[byte]): bool =
+  if output.len != 62:
+    # Prevent private caller mistakes from exposing an incomplete summary.
+    return false
+  if not summaryField(output, 0, 4, uint64(item.service)) or
+      not summaryField(output, 36, 8, uint64(item.refineGas)) or
+      not summaryField(output, 44, 8, uint64(item.accumulateGas)) or
+      not summaryField(output, 52, 2, uint64(item.exports)) or
+      not summaryField(output, 54, 2, uint64(item.imports)) or
+      not summaryField(output, 56, 2, uint64(item.extrinsics)) or
+      not summaryField(output, 58, 4, uint64(item.payloadBytes)):
+    # Any unrepresentable field refuses capture before allocating raw blobs.
+    return false
+  let hash = array[32, byte](item.codeHash)
+  for i in 0..<32:
+    # Hash bytes retain their original order, unlike the little-endian scalar fields.
+    output[4 + i] = hash[i]
+  true
+
+# Attach package blobs and encoded metadata while preserving the original entropy/trace snapshot.
 # Present input must be a validated codec owner. Preflight aggregate byte lengths before allocating;
 # copying happens once at capture, never once per guest fetch. Absence ignores the package argument.
 proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
@@ -115,6 +151,14 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
     if uint64(length) > remaining:
       return FetchContextResult(status: FetchError.LimitExceeded)
     remaining -= uint64(length)
+  var contextBytes = default(array[425, byte])
+  let contextEncoded = encodeRefinementContext(info.context, contextBytes)
+  if contextEncoded.error != PackageError.None:
+    # Eight prerequisites bound the canonical context encoding to 425 bytes.
+    return FetchContextResult(status: FetchError.InvalidContext)
+  var summaries = default(array[993, byte])
+  # A validated count in 1..16 has a one-byte compact encoding; this prefix counts items, not bytes.
+  summaries[0] = byte(info.items)
   var items = default(array[16, OwnedWorkItem])
   var lengths = default(array[16, int])
   for i in 0..<info.items:
@@ -128,6 +172,9 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
     if item.error != PackageError.None:
       # Never allocate from metadata when the bound child lookup refused.
       return FetchContextResult(status: FetchError.InvalidContext)
+    if not encodeSummary(item.value, summaries.toOpenArray(1 + i * 62, (i + 1) * 62)):
+      # Fixed metadata is prepared before allocating any variable-size snapshot blobs.
+      return FetchContextResult(status: FetchError.InvalidContext)
     lengths[i] = item.value.payloadBytes
     if uint64(lengths[i]) > remaining:
       # A late item over budget refuses the entire capture, not just the final payload.
@@ -135,7 +182,8 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
     remaining -= uint64(lengths[i])
   let captured = FetchPackageData(configuration: newSeq[byte](info.configurationBytes),
     authorization: newSeq[byte](info.authorizationBytes), payloads: default(array[16, seq[byte]]),
-    itemCount: info.items)
+    itemCount: info.items, context: contextBytes, contextLength: contextEncoded.value,
+    summaries: summaries)
   if copyPackageBlob(package, PackageBlob.Configuration, captured.configuration).error !=
       PackageError.None:
     # The codec checks the complete output span; no unfinished owner escapes an unexpected refusal.
@@ -171,7 +219,7 @@ proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
     return FetchResult(status: FetchError.InvalidMemory)
   let requested = uint64(registers[9])
   # Splitting before multiplication computes ceil(rate*z/1024) for all uint64 z without overflow.
-  # Private callers use rate <= 96 and base <= 103, so the total and any deficit fit signed 64 bits.
+  # Private callers use rate <= 96 and base <= 317, so the total and any deficit fit signed 64 bits.
   let cost = base + (requested div 1024) * rate + ((requested mod 1024) * rate + 1023) div 1024
   if uint64(gas) < cost:
     # General-host underfunding takes precedence over guest memory and local copy-size checks.
@@ -225,7 +273,7 @@ proc fetchTraceResponse*(gas: MachineGas, registers: RegisterFile, memory: Memor
     trace: openArray[byte], limit: MemoryByteLimit): FetchResult =
   fetchValue(gas, registers, memory, trace, true, 2, 80, 96, limit)
 
-# Select entropy, trace or package blobs for host identifier 2; other known selectors remain local refusals.
+# Select entropy, trace or package values for host identifier 2; other known selectors remain refusals.
 # Values >= 16 are protocol-unknown selectors (cost 80, NONE), not unknown host identifiers.
 # Invalid context/memory and local copy caps remain typed failures for fallible host dispatch.
 proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: RegisterFile,
@@ -244,6 +292,28 @@ proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: Re
     # Trace absence still charges the requested length at selector 2's rate.
     fetchValue(gas, registers, memory, owner.trace,
       owner.tracePresence == FetchPresence.Present, 2, 80, 96, limit)
+  of 10, 11, 12:
+    # Metadata is encoded once at capture; requests borrow only the selected fixed-buffer extent.
+    let package = context.packageData
+    let base = (if selector == 10: 111'u64 elif selector == 11: 317'u64 else: 250'u64)
+    if package == nil:
+      # All metadata selectors retain their own fixed price when the package is absent.
+      return fetchValue(gas, registers, memory, [], false, selector, base, 0, limit)
+    if selector == 10:
+      # Context uses the existing canonical C.2 codec and ignores both item registers.
+      return fetchValue(gas, registers, memory,
+        package.context.toOpenArray(0, package.contextLength - 1), true, selector, base, 0, limit)
+    if selector == 11:
+      # One count prefix precedes the ordered fixed-width summaries, without per-item framing.
+      return fetchValue(gas, registers, memory,
+        package.summaries.toOpenArray(0, package.itemCount * 62), true, selector, base, 0, limit)
+    let index = uint64(registers[11])
+    if index >= uint64(package.itemCount):
+      # Test the full unsigned register before narrowing or multiplying the item index.
+      return fetchValue(gas, registers, memory, [], false, selector, base, 0, limit)
+    let start = 1 + int(index) * 62
+    fetchValue(gas, registers, memory, package.summaries.toOpenArray(start, start + 61),
+      true, selector, base, 0, limit)
   of 8, 9, 13:
     # All three raw-blob selectors share presence, bounds, charging and atomic-copy semantics.
     let package = context.packageData

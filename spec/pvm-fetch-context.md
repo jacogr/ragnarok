@@ -39,6 +39,6 @@ and refused result guards, privacy/nominal compilation checks and 1,000 fresh na
 The present fetch and host-failure suites retain clipping, memory and dispatch regression coverage.
 No upstream code or fixture is copied. These witnesses establish this subset only.
 
-Remaining: encoded/summary and external-input selector families, service invocation context
-assembly and complete invocation/gas accounting. The positive gas-domain gate in pvm-host-gas.md is unchanged. Next bounded chunk:
-encoded refinement context and work-item summaries.
+Remaining: full encoded package and external-input selector families, service invocation context
+assembly and complete invocation/gas accounting. The positive gas-domain gate in pvm-host-gas.md is unchanged. Encoded refinement context and summaries are covered by [selectors 10–12](pvm-fetch-summaries.md).
+Next bounded chunk: full encoded package fetch.
