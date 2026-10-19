@@ -1,0 +1,20 @@
+{
+  "source": "tests/native/accumulation_reentry_execution_results.nim",
+  "build_name": "accumulation-reentry-execution-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "inv-default"}, "arguments": ["inv-default"], "name": "accumulation-reentry-execution-inv-default", "diagnostic": "outcome.status == None", "description": "Reentry execution inv-default extraction guard"},
+    {"identity": {"reason": "inv-refused"}, "arguments": ["inv-refused"], "name": "accumulation-reentry-execution-inv-refused", "diagnostic": "outcome.status == None", "description": "Reentry execution inv-refused extraction guard"},
+    {"identity": {"reason": "inv-projection"}, "arguments": ["inv-projection"], "name": "accumulation-reentry-execution-inv-projection", "diagnostic": "outcome.status == None", "description": "Reentry execution inv-projection extraction guard"},
+    {"identity": {"reason": "inv-source"}, "arguments": ["inv-source"], "name": "accumulation-reentry-execution-inv-source", "diagnostic": "outcome.status == None", "description": "Reentry execution inv-source extraction guard"},
+    {"identity": {"reason": "inv-service"}, "arguments": ["inv-service"], "name": "accumulation-reentry-execution-inv-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Reentry execution inv-service extraction guard"},
+    {"identity": {"reason": "inv-reason"}, "arguments": ["inv-reason"], "name": "accumulation-reentry-execution-inv-reason", "diagnostic": "outcome.status == InvocationFailure", "description": "Reentry execution inv-reason extraction guard"},
+    {"identity": {"reason": "exec-default"}, "arguments": ["exec-default"], "name": "accumulation-reentry-execution-exec-default", "diagnostic": "outcome.status == None", "description": "Reentry execution exec-default extraction guard"},
+    {"identity": {"reason": "exec-refused"}, "arguments": ["exec-refused"], "name": "accumulation-reentry-execution-exec-refused", "diagnostic": "outcome.status == None", "description": "Reentry execution exec-refused extraction guard"},
+    {"identity": {"reason": "exec-info"}, "arguments": ["exec-info"], "name": "accumulation-reentry-execution-exec-info", "diagnostic": "outcome.status == None", "description": "Reentry execution exec-info extraction guard"},
+    {"identity": {"reason": "exec-gas"}, "arguments": ["exec-gas"], "name": "accumulation-reentry-execution-exec-gas", "diagnostic": "outcome.status == None", "description": "Reentry execution exec-gas extraction guard"},
+    {"identity": {"reason": "exec-batch"}, "arguments": ["exec-batch"], "name": "accumulation-reentry-execution-exec-batch", "diagnostic": "outcome.status == None", "description": "Reentry execution exec-batch extraction guard"},
+    {"identity": {"reason": "exec-source"}, "arguments": ["exec-source"], "name": "accumulation-reentry-execution-exec-source", "diagnostic": "outcome.status == None", "description": "Reentry execution exec-source extraction guard"},
+    {"identity": {"reason": "exec-reason"}, "arguments": ["exec-reason"], "name": "accumulation-reentry-execution-exec-reason", "diagnostic": "outcome.status == BatchFailure", "description": "Reentry execution exec-reason extraction guard"}
+  ]
+}
