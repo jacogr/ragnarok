@@ -95,8 +95,9 @@ formatting and diff checks passed. All declarations are local to their suite/gua
 no shared harness or inventory changes were required. Logs are retained under
 `build/accumulation-batch/`. These are local macOS checks, separate from exact-head Linux CI.
 
-Next work completes round coverage, including uninvoked services and actual service-indexed gas
-accounting, before later rounds and block publication. PVM storage writes already retain versioned account effects in their own stack. Merging those
+The [complete-input extension](accumulation-complete-batch.md) now adds certified skipped-service
+credits and exact coverage checks. Actual service-indexed gas accounting and admitted-round binding
+remain next, before later rounds and block publication. PVM storage writes already retain versioned account effects in their own stack. Merging those
 effects remains subsequent work and is protected here by `UnsupportedAccountEffects`; supported
 batches cover immutable account backing plus incoming credits and deferred preimage provisions.
 

@@ -4,8 +4,9 @@
 ## Failed common-source batches expose no partial account/provision state or wrong-alternative reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_batch, accumulation_provisions, store]
-import ../../src/codec/[header, state_layout]
+import ../../src/state/[accumulation_batch, accumulation_provisions, accumulation_service,
+    accumulation_inputs, accumulation_skip, store]
+import ../../src/codec/[bounded, header, state_layout]
 import ../support/accumulation_batch_context
 
 let argument = paramStr(1)
@@ -27,6 +28,24 @@ of "duplicate":
 of "source":
   result = prepareAccumulationBatch(batchInputSet(), prior, [first, second], HeaderSlot(128),
       batchPolicy())
+  discard result.value
+of "incomplete":
+  result = prepareCompleteAccumulationBatch(fixture.inputs, prior, [first], [], HeaderSlot(128),
+      batchPolicy())
+  discard result.value
+of "invalid-skip":
+  let missing = default(SkippedAccumulation)
+  result = prepareCompleteAccumulationBatch(fixture.inputs, prior, [first], [missing], HeaderSlot(
+      128), batchPolicy())
+  discard result.value
+of "skip-slot":
+  # Only a genuinely resolved oversized-code alternative supplies this mismatching slot.
+  let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(1), prior,
+    HeaderSlot(129), AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0),
+        preimageBytes: ByteLimit(1024))).value
+  let skipped = finishUninvokedAccumulation(service).value
+  result = prepareCompleteAccumulationBatch(fixture.inputs, prior, [first], [skipped], HeaderSlot(
+      128), batchPolicy())
   discard result.value
 of "index":
   let index = if argument == "index": high(uint64) else: 0'u64
