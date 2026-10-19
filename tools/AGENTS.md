@@ -39,8 +39,8 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
   duplicate/misplaced profiles. Do not recreate a shared append-only requirement manifest.
 
 - Apply module/feature grouping and lexicographic insertion to other unordered requirement/source
-  registries too. `tools/runtime_sources.json` is alphabetical by repository-relative path; new
-  per-suite requirement files and existing failure-family files are discovered automatically.
+  registries too. Runtime provenance discovers project source/configuration and fixture directories;
+  new helpers, per-suite requirement files and failure-family files need no provenance registration.
   Preserve genuinely ordered values, including native library/link/include order, positional
   diagnostic records and runtime scenario steps. Document and test any new ordering exception.
 

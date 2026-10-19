@@ -390,7 +390,7 @@ def main():
     sources += [ROOT/f'vendor/jamtestvectors/codec/{profile}/work_result_{number}.{suffix}'
                 for profile in ('tiny', 'full') for number in (0, 1) for suffix in ('json', 'bin')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                              for path in sorted(sources)}
+                              for path in sorted(set(sources))}
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
     sys.path.insert(0, str(ROOT/'tests'))
     libraries, quic_fixtures, native_evidence = prepare_libraries(BUILD)

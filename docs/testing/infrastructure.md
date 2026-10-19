@@ -87,14 +87,13 @@ those values explicitly. The loader expands and validates the exact counts, dist
 and log names before running any probes. Fixture-dependent probes, offload completion checks,
 language-policy observations and store positive controls remain explicit in the runner.
 
-`tools/runtime_sources.json` lists literal runtime provenance inputs, alphabetically by
-repository-relative
-path, one path per line. The preflight rejects append-only or randomly prepended additions. Native
-suite sources, fixture manifests, source globs and pinned vector expansions remain explicit Python
-rules. Per-suite native requirement files and per-family failure files are discovered and hashed
-automatically. The runtime hashes the inventory itself alongside every resolved input; a missing
-input
-still fails verification.
+Runtime provenance is discovered by `tools/runtime_provenance.py`, using source-family extension
+rules for `src/`, `native/`, `tools/`, `tests/`, `spec/` and CI workflows, plus all files in
+`tests/fixtures/` and `vectors/`. The result is sorted and deduplicated before hashing. Build
+outputs, Python caches, hidden artifacts and Cargo target directories are excluded. The Makefile
+and existing required native fixture paths remain mandatory. Selected upstream documents/corpora
+retain precise paths; runtime-owned pinned vector expansions remain unchanged. Missing local files,
+escaping paths and incomplete evidence lists fail preflight; vendor provisioning remains separate.
 
 Run `make check-inventory` for a fast, Python-only preflight before opening a verification PR.
 It validates per-family fields, build profiles, source paths, case counts, diagnostics and global
@@ -110,13 +109,13 @@ independent count in `verification_inventory.json` and an explicit `run_failure_
 the intended position. Alphabetical file loading does not change execution order. All family
 files are automatically included in runtime provenance; no central list of JSON files is needed.
 
-Provenance preflight checks all Python files recursively under `tools/` and `tests/`, plus
-JSON files under `tools/`, against the exact source expansion used by runtime reports.
-Add newly introduced helpers to `tools/runtime_sources.json`; existing explicit discovery
-rules also count as coverage. Historical exceptions live in `runtime_provenance.EXCLUSIONS`
-with a reason; missing, already-covered or unjustified exceptions fail preflight. This check
-also catches untracked new helpers locally. Native sources and fixtures retain their separate
-inventory checks; this policy does not claim complete dependency-graph discovery.
+Provenance preflight checks the discovered project input families against the exact expansion
+used by runtime reports. New modules, helpers, source-local expectations and fixture files are
+included automatically; no per-file provenance registration is needed. Historical exceptions live
+in `runtime_provenance.EXCLUSIONS` with a reason; missing, already-covered or unjustified exceptions
+fail preflight. Source and fixture discovery includes untracked inputs locally. Native suites and
+compiler fixtures retain their separate semantic contract checks; hashing an input does not claim
+that every code path was executed or that the expansion is a complete dependency graph.
 
 Corpus orchestration lives in `tools/corpus_codec.py`, `corpus_state.py`, `corpus_services.py`,
 `corpus_crypto.py` and `corpus_network.py`. `test_runtime.run_unit` schedules their entry points

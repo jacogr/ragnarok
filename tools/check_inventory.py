@@ -38,10 +38,10 @@ def validate_inventory():
     from failure_checks import FAILURE_SUITES
     from native_tests import unit_source
     from native_requirements import UNIT_LINKS
-    from verification_inventory import UNIT_SUITES, RUNTIME_SOURCES
+    from verification_inventory import UNIT_SUITES
     from compiler_fixtures import COMPILER_FIXTURES
-    from runtime_provenance import runtime_sources, validate_coverage
-    validate_coverage(ROOT, runtime_sources())
+    from runtime_provenance import runtime_sources
+    runtime_sources()
     validate_registration(FAILURE_SUITES, (ROOT/'tools/test_runtime.py').read_text())
     expected = {unit_source(name) for name in UNIT_SUITES}
     for source in expected:
@@ -52,10 +52,6 @@ def validate_inventory():
                for profile in UNIT_LINKS.values()):
         # Reject names for which native setup cannot supply a prepared library.
         raise ValueError('Unknown native unit linking profile')
-    for name in RUNTIME_SOURCES:
-        # Submodules may be absent in a fresh checkout; their pinned bytes are verified after setup.
-        if not name.startswith('vendor/') and not (ROOT/name).is_file():
-            raise ValueError('Missing runtime provenance source: '+name)
     return len(FAILURE_SUITES), sum(len(suite['cases']) for suite in FAILURE_SUITES.values()), len(expected)
 
 

@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from verification_inventory import (cases, unique_object, load_sources, validate_order,
+from verification_inventory import (cases, unique_object, validate_order,
                                     discover_unit_sources, discover_arc_suites, source_metadata)
 
 
@@ -41,18 +41,6 @@ class VerificationInventory(unittest.TestCase):
                          (('kind', 'one'), ('kind', 'two')))
         self.assertEqual(list(json.loads('{"second": 2, "first": 1}',
                                        object_pairs_hook=unique_object)), ['second', 'first'])
-
-    # Provenance entries are unique relative paths; malformed inventories fail before native work begins.
-    def test_source_inventory_validation(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder)/'sources.json'
-            path.write_text('["src/a.nim", "tools/b.py"]')
-            self.assertEqual(load_sources(path), ('src/a.nim', 'tools/b.py'))
-            for invalid in (["a", "a"], ["../outside"], ["/outside"], [""], [7], {"a": "b"}):
-                # Neither aliases outside the checkout nor duplicate entries count as retained evidence.
-                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
-                    path.write_text(json.dumps(invalid))
-                    load_sources(path)
 
     # Prefix grouping gives unrelated features separate insertion points in every named registry.
     def test_alphabetical_sections(self):

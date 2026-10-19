@@ -4,7 +4,7 @@
 """Load merge-friendly verification data while retaining the harness's public value types.
 
 Exposes directory-discovered native suites, source-local ARC declarations, runtime/corpus
-identities, per-family budgets and RUNTIME_SOURCES. validate_order enforces alphabetical entries within JSON sections.
+identities and per-family budgets. validate_order enforces alphabetical entries within JSON sections.
 """
 import json
 import re
@@ -130,19 +130,3 @@ BS_MEMBERS = cases(_DATA['BS_MEMBERS'])
 FAILURE_COUNTS = _DATA['FAILURE_COUNTS']
 CORPUS_NAMES = cases(_DATA['CORPUS_NAMES'])
 ARC_SUITES = discover_arc_suites(UNIT_SOURCES)
-
-# Reject duplicate or escaping literal provenance paths; missing files fail when evidence is hashed.
-def load_sources(path):
-    raw = json.loads(path.read_text())
-    if not isinstance(raw, list):
-        # An object or scalar is not an ordered file inventory.
-        raise ValueError('Runtime sources must be a list')
-    values = cases(raw)
-    for value in values:
-        # Inventory entries must name repository-relative files, never host-specific outside inputs.
-        if not isinstance(value, str) or not value or Path(value).is_absolute() or '..' in Path(value).parts:
-            raise ValueError('Invalid runtime source path: '+str(value))
-    return values
-
-
-RUNTIME_SOURCES = load_sources(Path(__file__).with_name('runtime_sources.json'))
