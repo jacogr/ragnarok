@@ -4,6 +4,8 @@
 ## Native state-only yield/checkpoint assertions against independent fixed-value history expectations.
 ## Hastur entry point verifies credited provenance, immutable dimensions, refusal/absence and ARC release.
 
+# @@Verification={"arc": "accumulation_effects_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation,
   accumulation_service, accumulation_inputs, store]

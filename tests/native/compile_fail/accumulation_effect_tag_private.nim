@@ -4,6 +4,8 @@
 ## Compiler rejection probe for private accumulation effect storage and nominal mutation arguments.
 ## This access/call must fail rather than forge implication state or substitute an unrelated protocol hash.
 
+# @@Verification={"group": "privacy", "expected": "status"}
+
 import ../../../src/state/accumulation_effects
 let owner = default(AccumulationEffectResult[AccumulationEffects])
 discard owner.status

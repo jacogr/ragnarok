@@ -39,7 +39,7 @@ def summarize(report, kind):
             lines.append('| `'+key+'` | '+('Pass' if row['passed'] else 'Fail')+' | '+str(row.get('requests', 'vectors/threads'))+' |')
     elif kind == 'failures':
         # Runtime contracts own a separate inventory; compiler rejections belong to the guards job.
-        from verification_inventory import FAILURE_COUNTS
+        from failure_plans import FAILURE_COUNTS
         lines = ['## Runtime failure and contract verification', '', '**Status: '+report['status']+'**', '',
                  '| Group | Passed | Total |', '| --- | --- | --- |']
         for key in FAILURE_COUNTS:

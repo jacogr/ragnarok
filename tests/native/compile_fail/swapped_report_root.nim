@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "nominal", "expected": "got: ReportHash but wanted: ReportHash"}
+
 import ../../../src/codec/work_report
 let wrong = ReportHeader(packageHash: SegmentRoot())
 discard wrong

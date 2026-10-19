@@ -10,7 +10,7 @@ Python-only registration and provenance preflight used before every CI workload.
 | --- | --- | --- |
 | `check-modules` | Every-source semantic compilation | `build/tests/modules/` |
 | `check-python` | One Python reference, tooling and provenance discovery | `build/tests/python/` |
-| `check-unit` | Registered native suites and independent corpora | `build/tests/runtime/` |
+| `check-unit` | Discovered native suites and independent corpora | `build/tests/runtime/` |
 | `check-failures` | Every declared runtime behavior/contract family and store positive controls | `build/tests/failures/` |
 | `check-guards` | Compiler contract, privacy, nominal, schema and ownership rejection probes | `build/tests/guards/` |
 | `check-e2e` | Peer-entry selftests and live networking/resource scenarios | `build/tests/e2e/` |
@@ -28,7 +28,7 @@ is a failure, not evidence of coverage.
 
 ## Focused local verification
 
-Use `make unit SUITE=natural` (substitute any registered suite name) to execute just that native
+Use `make unit SUITE=natural` (substitute any discovered suite name) to execute just that native
 suite with the same pinned compiler, linking, fixture validation and selected-suite ARC checks.
 Focused output is summarized; full runner diagnostics remain in
 `build/tests/native/selected/<suite>.log`, with a bounded excerpt on failure. An unknown suite is
@@ -44,9 +44,11 @@ CI continues complete verification; focused local results must never be reported
 
 ## Coverage and adding tests
 
-Current expected identities and per-family counts live in
-[`verification_inventory.json`](../tools/verification_inventory.json), native requirements and
-failure-family files. The preflight checks source/output coverage and registration; report
+Native suite identities are discovered from `tests/unit/`, with ARC declarations in their source
+headers. Compiler rejections own their expectations in `tests/native/compile_fail/` headers.
+Linking comes from native requirements. Runtime expectations come from existing failure-family
+files and [specialized plans](../tools/failure_plans.py); [named corpus tasks](../tools/corpus_catalog.py)
+supply both execution and expected report identities. The preflight checks source/output coverage and registration; report
 verdicts reject missing, duplicate and failed observations. Completed reports and their summaries
 provide observed totals for the exact revision under test. This guide deliberately does not
 repeat rolling grand totals that unrelated feature PRs would all have to update.

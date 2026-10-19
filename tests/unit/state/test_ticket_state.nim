@@ -7,6 +7,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+# @@Verification={"arc": "ticket_state_arc_release"}
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[ticket_state, ticket_admission, entropy, store]
 import ../../../src/codec/[state_safrole, state_consensus, state_layout, state_trie, tickets, bounded]

@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "schemas", "expected": "string"}
+
 import ../../../src/codec/collections
 var input: array[1, byte] = default(array[1, byte])
 discard decodeVariableSet[string](input, CollectionLimits())

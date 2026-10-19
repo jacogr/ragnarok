@@ -15,8 +15,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from check_inventory import validate_registration
-from runtime_provenance import validate_coverage, validate_source_order, runtime_sources
+from runtime_provenance import validate_coverage, discover_project_sources, runtime_sources
 from failure_checks import FAILURE_SUITES, load_suites
 
 
@@ -76,18 +75,14 @@ class InventoryPreflight(unittest.TestCase):
                 with self.subTest(collision=collision), self.assertRaisesRegex(ValueError, 'Duplicate failure log'):
                     load_suites(folder)
 
-    # Deleted files, unscheduled additions, duplicate calls and computed names cannot silently alter coverage.
-    def test_registration_mismatches(self):
-        suites = {'first': {}, 'second': {}}
-        def runner(calls):
-            # Only syntax is inspected; deliberately inert arguments must never be executed.
-            return 'def run_failures():\n'+''.join('    run_failure_suite(None, '+name+')\n' for name in calls)
-        validate_registration(suites, runner(["'second'", "'first'"]))
-        for names in (["'first'"], ["'first'", "'second'", "'third'"],
-                      ["'first'", "'second'", "'first'"], ['computed_name']):
-            # File order does not schedule probes, but each declared family requires one literal call.
-            with self.subTest(names=names), self.assertRaises(ValueError):
-                validate_registration(suites, runner(names))
+    # Discovery schedules every validated family once, including additions without a runner edit.
+    def test_discovered_failure_scheduling(self):
+        from unittest.mock import patch
+        from failure_checks import run_failure_suites
+        families = {'first': {}, 'new_family': {}, 'second': {}}
+        with patch('failure_checks.FAILURE_SUITES', families), patch('failure_checks.run_failure_suite') as run:
+            run_failure_suites(None, {}, {}, None, None)
+        self.assertEqual([call.args[-1] for call in run.call_args_list], list(families))
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, 'No failure suites'):
             load_suites(Path(temporary))
 
@@ -95,7 +90,8 @@ class InventoryPreflight(unittest.TestCase):
     def test_provenance_omissions(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            paths = [root/name for name in ('tools/helper.py', 'tools/nested/profile.json', 'tests/nested/oracle.py')]
+            paths = [root/name for name in ('Makefile', 'tools/helper.py', 'tools/nested/profile.json', 'tests/nested/oracle.py',
+                                               'src/telemetry/client.nim', 'native/bridge.c', 'tests/fixtures/sample.bin')]
             for path in paths:
                 # Files need no executable content for source coverage validation.
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,7 +102,8 @@ class InventoryPreflight(unittest.TestCase):
                 with self.subTest(path=omitted), self.assertRaisesRegex(ValueError, 'Unlisted runtime provenance'):
                     validate_coverage(root, [p for p in paths if p != omitted], {})
             excluded = 'tools/helper.py'
-            validate_coverage(root, paths[1:], {excluded: 'Historical standalone control.'})
+            validate_coverage(root, [p for p in paths if p != root/excluded],
+                              {excluded: 'Historical standalone control.'})
             for exclusions in ({excluded: ''}, {'tools/deleted.py': 'Removed'}, {excluded: 'Already covered'}):
                 # Exceptions must be current, justified and disjoint from actual report coverage.
                 with self.subTest(exclusions=exclusions), self.assertRaisesRegex(ValueError, 'Invalid provenance exclusion'):
@@ -124,11 +121,86 @@ class InventoryPreflight(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('PASS verification inventory:', result.stdout)
 
-    # Alphabetical grouping is enforced, and feature-owned profiles all enter provenance automatically.
-    def test_source_order_and_profile_discovery(self):
-        validate_source_order(('src/pvm/gas.nim', 'src/state/store.nim', 'tools/build.py'))
-        with self.assertRaisesRegex(ValueError, 'alphabetical'):
-            validate_source_order(('tools/build.py', 'src/pvm/gas.nim'))
+    # Runtime evidence uses deterministic unique discovery, including every current native requirement.
+    def test_source_and_profile_discovery(self):
+        sources = runtime_sources()
+        self.assertEqual(sources, sorted(set(sources)))
         expected = set((ROOT/'tools/native_requirements').glob('*/*.json'))
+        expected.update((ROOT/'src/telemetry').glob('*.nim'))
         self.assertTrue(expected)
-        self.assertTrue(expected <= set(runtime_sources()))
+        self.assertTrue(expected <= set(sources))
+
+    # New inputs are discovered without shared manifest edits; generated and vendor trees stay bounded.
+    def test_new_inputs_and_generated_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            names = ('Makefile', '.github/workflows/extra.yaml', 'src/telemetry/new.nim',
+                     'native/bridge.h', 'native/extra/src/lib.rs', 'native/extra/Cargo.lock',
+                     'spec/extra-pins.json', 'tools/nested/helper.py', 'tools/nested/profile.json',
+                     'tools/new-requirements.txt', 'tests/support/helper.nim', 'tests/nested/oracle.py',
+                     'tests/unit/state/test_new.output', 'tests/fixtures/new.bin',
+                     'tests/fixtures/new.LICENSE', 'vectors/new.json')
+            ignored = ('build/result.json', 'vendor/dependency/helper.py', 'tools/__pycache__/cache.py',
+                       'tools/.cache/record.json', 'native/extra/target/generated.rs',
+                       'tests/fixtures/.DS_Store')
+            for name in (*reversed(names), *ignored):
+                # Use arbitrary extensions for fixture bytes and realistic suffixes for generated artifacts.
+                path = root/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            discovered = discover_project_sources(root)
+            self.assertEqual(discovered, {root/name for name in names})
+            validate_coverage(root, sorted(discovered), {})
+            added = root/'src/telemetry/later.nim'
+            added.touch()
+            self.assertIn(added, discover_project_sources(root))
+            with self.assertRaisesRegex(ValueError, 'Unlisted runtime provenance'):
+                validate_coverage(root, sorted(discovered), {})
+
+    # Absent local inputs, duplicate identities and paths outside the checkout cannot be evidence.
+    def test_invalid_provenance_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)/'repo'
+            root.mkdir()
+            makefile = root/'Makefile'
+            makefile.touch()
+            with self.assertRaisesRegex(ValueError, 'Missing runtime provenance'):
+                validate_coverage(root, [makefile, root/'tools/missing.py'], {})
+            with self.assertRaisesRegex(ValueError, 'Duplicate runtime provenance'):
+                validate_coverage(root, [makefile, makefile], {})
+            outside = root.parent/'outside.py'
+            outside.touch()
+            for path in (outside, root/'..'/'outside.py'):
+                # Both direct absolute escapes and parent-relative aliases are rejected.
+                with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Invalid runtime provenance'):
+                    validate_coverage(root, [makefile, path], {})
+            alias = root/'alias.py'
+            alias.symlink_to(outside)
+            with self.assertRaisesRegex(ValueError, 'Invalid runtime provenance'):
+                validate_coverage(root, [makefile, alias], {})
+            validate_coverage(root, [makefile, root/'vendor/pinned/not-provisioned.json'], {})
+            linked_root = root.parent/'linked-repo'
+            linked_root.symlink_to(root, target_is_directory=True)
+            validate_coverage(linked_root, [linked_root/'Makefile'], {})
+            makefile.unlink()
+            with self.assertRaisesRegex(ValueError, 'Missing runtime provenance'):
+                validate_coverage(root, [makefile], {})
+
+
+# The typed declaration is the case owner; parsing must never silently omit an unsupported value.
+class ProbeCaseDeclarations(unittest.TestCase):
+    def test_declarations(self):
+        """Read the bounded enum format and reject malformed or duplicate case identities."""
+        from failure_plans import driver_modes
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)/'driver.nim'
+            header = '# @@ProbeCases\ntype VerificationProbe = enum\n'
+            source.write_text(header+'  vpFirst = "first"\n  vpSecond = "second"\n\n')
+            self.assertEqual(driver_modes(source), ('first', 'second'))
+            for body in ('', '  vpFirst = "same"\n  vpSecond = "same"',
+                         '  vpSame = "first"\n  vpSame = "second"',
+                         '  vpBad = computedValue', '  vpSecond = "second"\n  vpFirst = "first"'):
+                # Unsupported syntax and order cannot change the scheduled workload unnoticed.
+                source.write_text(header+body+'\n\n')
+                with self.subTest(body=body), self.assertRaises(ValueError):
+                    driver_modes(source)

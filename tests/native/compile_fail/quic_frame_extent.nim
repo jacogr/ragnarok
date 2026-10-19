@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "privacy", "expected": "completedExtent"}
+
 import ../../../src/quic/protocol
 var result = default(FrameResult)
 discard result.completedExtent

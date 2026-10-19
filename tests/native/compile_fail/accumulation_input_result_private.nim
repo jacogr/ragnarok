@@ -4,6 +4,8 @@
 ## Compiler rejection fixture protecting private invocation storage and nominal indexing.
 ## Its top-level access/call must fail compilation rather than expose or forge validated values.
 
+# @@Verification={"group": "privacy", "expected": "completed"}
+
 import ../../../src/state/[accumulation_inputs, accumulation_operands]
 import ../../../src/codec/composite
 let owner = default(AccumulationInputResult[PreparedAccumulationInputs])

@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "privacy", "expected": "put"}
+
 import ../../../src/codec/[collections, natural]
 var output: array[1, byte] = default(array[1, byte])
 var cursor = 0

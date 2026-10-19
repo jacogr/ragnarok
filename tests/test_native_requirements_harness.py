@@ -23,7 +23,7 @@ import native_fixtures
 
 # A malformed manifest must fail preflight rather than silently dropping native checks.
 class NativeRequirementsHarness(unittest.TestCase):
-    # Missing and unexpected suites both violate the independent execution inventory.
+    # Missing and unexpected profiles both violate directory-discovered suite coverage.
     def test_coverage(self):
         for name in ('natural', 'unexpected'):
             # Exercise both an omitted suite and an unscheduled addition.
@@ -35,7 +35,7 @@ class NativeRequirementsHarness(unittest.TestCase):
     # Invalid schema, flags, profiles and batch membership cannot become executable arguments.
     def test_invalid_requirements(self):
         changes = [('unknown', True), ('prepared', 1), ('directory', '../outside'),
-                   ('directory', 'codec'), ('libraries', ['crypto']), ('libraries', 'observer'),
+                   ('directory', 'codec'), ('directory', 'crypto'), ('libraries', []), ('libraries', 'observer'),
                    ('includes', []), ('includes', ['crypto', 'crypto']),
                    ('observers', ['injected']), ('defines', ['unchecked']),
                    ('observers', ['verify'])]

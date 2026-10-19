@@ -4,6 +4,8 @@
 ## Native host-call and bounded recursive-Psi execution witnesses.
 ## Checks stepOnce/execute PC rules, suspension/retry, private work limits and ARC release evidence.
 
+# @@Verification={"arc": "pvm_execution_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step]
 import ../../support/arc_evidence

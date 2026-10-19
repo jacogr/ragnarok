@@ -10,6 +10,39 @@
 import std/[assertions, cmdline, syncio]
 import ../../src/codec/[report_owned, owned]
 include ../../src/codec/state_availability
+import ../support/probe_cases
+
+## Declared misuse modes; custom strings preserve CLI labels and typed dispatch is exhaustive.
+# @@ProbeCases
+type VerificationProbe = enum
+  vpAbsentGuarantee = "absent-guarantee"
+  vpAbsentRegistered = "absent-registered"
+  vpAtIndex = "at-index"
+  vpAtOwner = "at-owner"
+  vpConsumed = "consumed"
+  vpDecodeBytes = "decode-bytes"
+  vpDecodeConfig = "decode-config"
+  vpDecodeCredential = "decode-credential"
+  vpDecodeFraming = "decode-framing"
+  vpDecodeLate = "decode-late"
+  vpDecodePresent = "decode-present"
+  vpDecodeTag = "decode-tag"
+  vpDecodeTimestamp = "decode-timestamp"
+  vpDecodeValidator = "decode-validator"
+  vpEntryBytes = "entry-bytes"
+  vpEntryConfig = "entry-config"
+  vpEntryCount = "entry-count"
+  vpEntryCredential = "entry-credential"
+  vpEntryPresent = "entry-present"
+  vpEntryReport = "entry-report"
+  vpEntryValidator = "entry-validator"
+  vpInfo = "info"
+  vpLayoutConsumed = "layout-consumed"
+  vpLayoutPresent = "layout-present"
+  vpOwner = "owner"
+
+# Validate selection or list declarations before reading any runtime fixture.
+let selectedProbe = selectProbe[VerificationProbe](paramStr(1))
 var fixture: seq[byte] = @[]
 # Independent fixture bytes are trusted setup, not expected answers derived from the parent decoder.
 try:
@@ -75,155 +108,152 @@ for i in 1+fixture.len+5..<encoded.value.value.len: framing.add(encoded.value.va
 var timestamp = newSeq[byte](encoded.value.value.len-3)
 # Drop registration bytes and the second tag, leaving a partial mandatory E4 field.
 for i in 0..<timestamp.len: timestamp[i] = encoded.value.value[i]
-case paramStr(1)
-of "entry-config":
+case selectedProbe
+of vpEntryConfig:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[StateEntry]) else: availabilityStateEntry(
       original, invalid)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidConfig)
   discard parsed.value.value.len
-of "entry-count":
+of vpEntryCount:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[StateEntry]) else: availabilityStateEntry([], policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidCount)
   discard parsed.value.value.len
-of "entry-bytes":
+of vpEntryBytes:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[StateEntry]) else: availabilityStateEntry(
       original, tiny)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.LimitExceeded)
   discard parsed.value.value.len
-of "entry-present":
+of vpEntryPresent:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[StateEntry]) else: availabilityStateEntry(
       original, none)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.LimitExceeded)
   discard parsed.value.value.len
-of "entry-report":
+of vpEntryReport:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[StateEntry]) else: availabilityStateEntry(
       missing, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidReport)
   discard parsed.value.value.len
-of "entry-credential":
+of vpEntryCredential:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[StateEntry]) else: availabilityStateEntry(
       shortCredentials, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidCredential)
   discard parsed.value.value.len
-of "entry-validator":
+of vpEntryValidator:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[StateEntry]) else: availabilityStateEntry(
       badValidator, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidValidator)
   discard parsed.value.value.len
-of "owner":
+of vpOwner:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState([], policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.Truncated)
   discard parsed.value.snapshot
-of "consumed":
+of vpConsumed:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState([], policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.Truncated)
   discard parsed.value.consumed
-of "decode-config":
+of vpDecodeConfig:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState([], invalid)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidConfig)
   discard parsed.value.consumed
-of "decode-tag":
+of vpDecodeTag:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState([2'u8], policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidTag)
   discard parsed.value.consumed
-of "decode-late":
+of vpDecodeLate:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState(late, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidTag)
   discard parsed.value.consumed
-of "decode-credential":
+of vpDecodeCredential:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState(credential, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidCredential)
   discard parsed.value.consumed
-of "decode-validator":
+of vpDecodeValidator:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState(validator, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidValidator)
   discard parsed.value.consumed
-of "decode-framing":
+of vpDecodeFraming:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState(framing, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.NonCanonical)
   discard parsed.value.consumed
-of "decode-present":
+of vpDecodePresent:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState(encoded.value.value, none)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.LimitExceeded)
   discard parsed.value.consumed
-of "decode-bytes":
+of vpDecodeBytes:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState(encoded.value.value, tiny)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.LimitExceeded)
   discard parsed.value.consumed
-of "decode-timestamp":
+of vpDecodeTimestamp:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityRead]) else: decodeAvailabilityState(timestamp, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.Truncated)
   discard parsed.value.consumed
-of "info":
+of vpInfo:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[AvailabilityInfo]) else: availabilityInfo(
       default(AvailabilitySnapshot))
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidOwner)
   discard parsed.value.present
-of "at-owner":
+of vpAtOwner:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityAssignment]) else: availabilityAt(default(AvailabilitySnapshot),
       AssignmentCoreIndex(0))
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidOwner)
   discard parsed.value.present
-of "at-index":
+of vpAtIndex:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[
       AvailabilityAssignment]) else: availabilityAt(owner, AssignmentCoreIndex(high(uint64)))
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidIndex)
   discard parsed.value.present
-of "layout-consumed":
+of vpLayoutConsumed:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[Layout]) else: scan([0'u8], policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.Truncated)
   discard parsed.value.consumed
-of "layout-present":
+of vpLayoutPresent:
   # Neither defaults nor these actual failed operations authorize payloads or progress.
   let parsed = if useDefault: default(AvailabilityResult[Layout]) else: scan(late, policy)
   assert parsed.error == (if useDefault: AvailabilityError.Uninitialized else: AvailabilityError.InvalidTag)
   discard parsed.value.present
-of "absent-guarantee":
+of vpAbsentGuarantee:
   # Dynamic default/source/decoded absence must reject this inactive field separately.
   let assignment = if paramStr(2) == "default": default(AvailabilityAssignment)
     elif paramStr(2) == "source": absentAssignment()
     else: availabilityAt(owner, AssignmentCoreIndex(1)).value
   discard assignment.guarantee
-of "absent-registered":
+of vpAbsentRegistered:
   # Dynamic default/source/decoded absence must reject this inactive field separately.
   let assignment = if paramStr(2) == "default": default(AvailabilityAssignment)
     elif paramStr(2) == "source": absentAssignment()
     else: availabilityAt(owner, AssignmentCoreIndex(1)).value
   discard assignment.registered
-else:
-  # Unknown trusted modes cannot masquerade as successful guard rejections.
-  assert false

@@ -7,14 +7,18 @@ Exposes run_network to execute protocol/telemetry corpora and record their verdi
 """
 from functools import partial
 from pathlib import Path
-from corpus_checks import run_corpus
+from corpus_checks import run_corpus, CorpusGroup
 from native_checks import announce
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# Run the network corpora with explicit process, workspace and library inputs.
-def run_network(compiler, report, checks, libraries, quic_fixtures, integration_wires):
+
+CORPORA = CorpusGroup()
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def quic_protocol_corpus(compiler, report, checks, libraries, quic_fixtures, integration_wires):
     BUILD = checks.folder
     build, command = checks.build, checks.command
     execute_corpus = partial(run_corpus, build, command, compiler)
@@ -30,8 +34,18 @@ def run_network(compiler, report, checks, libraries, quic_fixtures, integration_
                         metadata=dict(groups=groups,
                                       scope='pinned SAN/DER identity and structural CE framing; no TLS handshake or fixture eligibility claim'), expected_hash=True,
                         quic_library=quic_library)
-    report['quic_protocol_corpus'] = corpus
     announce('independent SAN/DER/frame boundary corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def integration_corpus(compiler, report, checks, libraries, quic_fixtures, integration_wires):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
+    quic_library = libraries['quic']
     # Compose independently parsed full C.2 wires and hashlib keys through the enabled production ABI.
     from integration_oracle import requests as integration_requests
     lines, expected = integration_requests(integration_wires)
@@ -42,5 +56,9 @@ def run_network(compiler, report, checks, libraries, quic_fixtures, integration_
                         metadata=dict(scope='CE fixture codec/crypto composition; no authenticated transport or normative digest/preimage relationship'), expected_hash=True,
                         crypto_library=crypto_library,
                         defines=('integration',))
-    report['integration_corpus'] = corpus
     announce('independent CE digest capture/hash-binding corpus', corpus['passed'])
+    return corpus
+
+
+# Existing callers use the same entry point; the declared tasks own its complete plan.
+run_network = CORPORA.run

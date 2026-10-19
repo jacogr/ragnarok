@@ -4,6 +4,8 @@
 ## Negative compiler fixture protecting memory-step outcome privacy and nominal limits.
 ## Intentionally rejects the forbidden member access or mismatched call below.
 
+# @@Verification={"group": "privacy", "expected": "failedPage"}
+
 import ../../../src/pvm/[machine, gas, step]
 var outcome = default(StepOutcome)
 discard outcome.failedPage

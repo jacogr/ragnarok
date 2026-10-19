@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"arc": "pvm_accumulation_provision_arc_release"}
 
 ## Real guest provide witnesses verify exact charging, protocol priorities and immutable implications.
 ## Covers local failure rollback, checkpoint separation, full-width arithmetic and repeated ARC release.

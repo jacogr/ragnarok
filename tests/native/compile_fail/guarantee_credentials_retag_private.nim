@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "privacy", "expected": "status"}
+
 import ../../../src/state/guarantee_credentials
 let owner = default(GuaranteeCredentialResult[VerifiedGuaranteeCredentials])
 discard owner.status # Must fail before native lowering.

@@ -15,16 +15,10 @@ import platform
 from pathlib import Path
 import sys
 from native_checks import NativeChecks, announce
-from corpus_codec import run_codecs
-from corpus_state import run_state
-from corpus_services import run_services
-from corpus_crypto import run_bandersnatch, run_crypto
-from corpus_network import run_network
-from failure_checks import probe_failure, run_failure_suite
-from verification_inventory import (
-    AVAILABILITY_MEMBERS, BS_MEMBERS, COMPOSITION_MEMBERS,
-    CORPUS_NAMES, FAILURE_COUNTS, WORKQUEUES_MEMBERS,
-)
+from corpus_catalog import CORPUS_NAMES, run_corpora
+from failure_checks import probe_failure, run_failure_suites
+from failure_plans import (FAILURE_PLANS, FAILURE_COUNTS, SPECIAL_CASES, SPECIAL_DRIVERS,
+                           check_driver_modes)
 from native_tests import UNIT_SUITES, unit_batches, unit_work_directory, unit_command, unit_environment, unit_evidence, ARC_SUITES
 from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures
 
@@ -48,15 +42,20 @@ def unit_passed(report):
 
 # Missing, duplicate or failed contract probes cannot be masked by successful sibling families.
 def failures_passed(report):
-    for family, count in FAILURE_COUNTS.items():
+    for family, expected in FAILURE_PLANS.items():
         # Each historical workload must produce exactly its original ordered set of distinct records.
         rows = report.get(family, [])
         identities = [json.dumps({key: value for key, value in row.items()
                                  if key not in ('run', 'check', 'passed')}, sort_keys=True) for row in rows]
-        if len(rows) != count or len(set(identities)) != count or not all(row.get('passed') is True for row in rows):
+        wanted = {json.dumps(identity, sort_keys=True) for identity in expected}
+        if (len(rows) != len(expected) or set(identities) != wanted
+                or not all(row.get('passed') is True for row in rows)):
             # Incomplete evidence remains a failing job even when all emitted rows happened to pass.
             return False
-    return (report.get('store_controls', {}).get('passed') is True and 'suites' not in report
+    return (report.get('store_controls', {}).get('passed') is True
+            and set(report.get('probe_cases', {})) == set(SPECIAL_DRIVERS)
+            and all(row.get('passed') is True for row in report['probe_cases'].values())
+            and 'suites' not in report
             and not any(key.endswith('_corpus') for key in report))
 
 
@@ -85,12 +84,7 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
             report['suites'].append(row)
             announce(name+' (Hastur)', row['passed'])
     # Feature calls retain the original order, including shared driver-build dependencies.
-    run_codecs(compiler, report, checks, libraries)
-    run_state(compiler, report, checks, libraries)
-    run_services(compiler, report, checks, libraries)
-    run_bandersnatch(compiler, report, checks, libraries)
-    run_network(compiler, report, checks, libraries, quic_fixtures, integration_wires)
-    run_crypto(compiler, report, checks, libraries)
+    run_corpora(compiler, report, checks, libraries, quic_fixtures, integration_wires)
 
 
 # Execute strict crash/contract probes separately; compilation alone cannot prove these preconditions.
@@ -100,19 +94,15 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     crypto_observer = libraries['observer']
     bs_library = libraries['bandersnatch']
     bs_libraries = (libraries['bandersnatch_observer'], bs_library)
-    quic_library = libraries['quic']
+    # Independent family files own scheduling; lexical discovery cannot omit a newly added family.
+    run_failure_suites(compiler, report, libraries, build, command)
     # Public store payloads/views require their own contracts, independent of ordinary success suites.
     compiled, binary = build(compiler, ROOT/'tests/native/state_store_results.nim', 'state-store-results', crypto_library)
     report['store_build'] = compiled
     report['store_controls'] = dict(passed=False)
     if compiled['exit_code'] == 0:
         # Actual and default failures cover every public generic payload family.
-        cases = [(member, origin, 'outcome.status == None')
-                 for member in ('store', 'snapshot', 'lookup') for origin in ('default', 'error')]
-        cases += [('fork', 'default', 'outcome.status == None'),
-                  ('metadata', 'default', 'not snapshot.data == nil'),
-                  ('length', 'default', 'not view.owner.data == nil'),
-                  ('bytes', 'default', 'not view.owner.data == nil')]
+        cases = SPECIAL_CASES['store']
         for member, origin, sentinel in cases:
             # Match the supported precondition and exit status, never an unrelated crash or fixture error.
             probe_failure(command, report['store'], [binary, member, origin],
@@ -123,119 +113,18 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         report['store_controls'] = dict(checks=controls,
             passed=all(row['exit_code'] == 0 and row['output'].strip() == ('1' if member == 'metadata' else '0')
                        for member, row in controls.items()))
-    # Proposed entry and committed-snapshot payloads are independently guarded on default and real failures.
-    run_failure_suite(compiler, report, libraries, build, command, 'authorization_transition')
-    # Root, proposed entry and committed snapshot payload families require independent checked guards.
-    run_failure_suite(compiler, report, libraries, build, command, 'history_transition')
-    # Updated fixed words/time and committed snapshots each require default and actual failure guards.
-    run_failure_suite(compiler, report, libraries, build, command, 'entropy_transition')
-    # Both default and actual failed plans reject payload extraction through the intended checked contract.
-    run_failure_suite(compiler, report, libraries, build, command, 'validator_rotation')
-    # Isolate default and actual failed publication results; require the intended access contract.
-    run_failure_suite(compiler, report, libraries, build, command, 'validator_state')
-    # Default and real failed admission candidates reject owner extraction through the intended contract.
-    run_failure_suite(compiler, report, libraries, build, command, 'ticket_admission')
-    # Publication snapshots require successful selection for both default and actually refused results.
-    run_failure_suite(compiler, report, libraries, build, command, 'ticket_state')
-    # Default and actually refused schedule results must not expose candidate payloads.
-    run_failure_suite(compiler, report, libraries, build, command, 'sealer_schedule')
-    # Default and actually refused schedule results must not expose candidate payloads.
-    run_failure_suite(compiler, report, libraries, build, command, 'sealer_state')
-    # Default and actually refused schedule results must not expose candidate payloads.
-    run_failure_suite(compiler, report, libraries, build, command, 'safrole_markers')
-    # Default and actually refused schedule results must not expose candidate payloads.
-    run_failure_suite(compiler, report, libraries, build, command, 'safrole_authentication')
-    # Coordinator success and each typed failure reason require their own selected result alternative.
-    run_failure_suite(compiler, report, libraries, build, command, 'safrole_transition')
-    # A refused commitment must never expose a default digest as a successful application value.
-    run_failure_suite(compiler, report, libraries, build, command, 'extrinsic_commitment')
-    # Isolate bound-owner, composed success and each stage-reason accessor from all other guards.
-    run_failure_suite(compiler, report, libraries, build, command, 'block_admission')
-    # Disputes plans, derived-owner access and composed failure causes require their exact selected contracts.
-    run_failure_suite(compiler, report, libraries, build, command, 'disputes_transition')
-    # Availability plans, reports and typed context causes require their own successful/failed alternative.
-    run_failure_suite(compiler, report, libraries, build, command, 'availability_transition')
-    run_failure_suite(compiler, report, libraries, build, command, 'guarantor_assignments')
-    run_failure_suite(compiler, report, libraries, build, command, 'guarantee_credentials')
-    run_failure_suite(compiler, report, libraries, build, command, 'report_policy')
-    run_failure_suite(compiler, report, libraries, build, command, 'report_anchors')
-    # PVM scalar success and page-fault reason access require their exact selected alternatives.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_machine')
-    # Register results publish values only after successful opcode evaluation.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_registers')
-    # Gas failures never expose a partial or uninitialized block charge.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_gas')
-    # Local step failures never expose a partially charged machine.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_step')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_memory_step')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_execution')
-    # Fetch local refusals must not expose a completed host response.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_dispatch')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_fetch')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_machine')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_outcome')
-    # Actual provide resource/backend/state/gas failures must expose no charged CPU or partial implications.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_accumulation_provision')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch')
-    # Optional fetch capture and dispatch failures expose no partial owner or response.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_accumulation')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_context')
-    # Package blob capture refuses invalid owners and aggregate limits without partial snapshots.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_inputs')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_invocation')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_package')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_fetch_parameters')
-    # Host dispatch and shared instruction budgets never expose failed execution payloads.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_execution')
-    # Fallible callbacks preserve their reasons without exposing partial execution payloads.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_failures')
-    # Terminal gas deficits cannot bypass canonical state or success selection.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_gas')
-    # Failed host range copies never expose partial buffers or memory owners.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_heap_memory')
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_memory')
-    # Host replies publish only valid posterior snapshots and no stale suspension metadata.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_host_response')
-    # Initialization failures never expose a partially prepared machine.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_initialization')
-    # Local return-buffer refusals never expose bytes or a copied prefix.
-    run_failure_suite(compiler, report, libraries, build, command, 'pvm_output')
-    run_failure_suite(compiler, report, libraries, build, command, 'report_packages')
-    run_failure_suite(compiler, report, libraries, build, command, 'report_assignments')
-    run_failure_suite(compiler, report, libraries, build, command, 'report_admission')
-    run_failure_suite(compiler, report, libraries, build, command, 'report_transition')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_queue')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_operands')
-    # Requested provision owners and refusal results retain strict selected-success extraction.
-    # Union preparation and posterior fulfillment preserve guarded success and private ownership.
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_provision_integration')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_provisions')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_context')
-    # Default, absent-yield and refused state effects must reject through selected-success extraction.
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_effects')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_inputs')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_invocation')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_round')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_service')
-    run_failure_suite(compiler, report, libraries, build, command, 'accumulation_skip')
-    run_failure_suite(compiler, report, libraries, build, command, 'preimage_transition')
-    # Transcript and count access on every actual/default context failure must terminate at the success contract.
-    run_failure_suite(compiler, report, libraries, build, command, 'assurance_context')
-    # Failed/default guarantee signing messages cannot expose an all-zero or partial domain/hash payload.
-    run_failure_suite(compiler, report, libraries, build, command, 'guarantee_message')
     # Actual/default result access must reject for every fixed proof/output, sequence and opaque native owner.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_bandersnatch_results.nim', 'bandersnatch-results',
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['bandersnatch'], 'bandersnatch-results',
                              native_libraries=bs_libraries, cflags=OWNER_DEFINES)
     report['bandersnatch_build'] = compiled
     if compiled['exit_code'] == 0:
         # Separate processes prevent prior contract failures or test-observer flags from concealing later checks.
-        for origin in ('default', 'error'):
-            for member in BS_MEMBERS:
-                probe_failure(command, report['bandersnatch'], [binary, member, origin],
-                              'bs-' + origin + '-' + member, 'value.status == None',
-                              origin + ' Bandersnatch ' + member + ' runtime guard', origin=origin, member=member)
-    # Default/failed/pending frame metadata and default/failed E4 lengths cannot bypass result access contracts.
-    run_failure_suite(compiler, report, libraries, build, command, 'quic_protocol')
+        check_driver_modes(command, binary, 'bandersnatch', report)
+        for member, origin, sentinel in SPECIAL_CASES['bandersnatch']:
+            # Each declared mode and failure origin retains its own process and supported diagnostic.
+            probe_failure(command, report['bandersnatch'], [binary, member, origin],
+                          'bs-' + origin + '-' + member, sentinel,
+                          origin + ' Bandersnatch ' + member + ' runtime guard', origin=origin, member=member)
     # Completion guards need only their public fixture, not the E2E network/soak workloads.
     from test_quic_offload import corpus as offload_fixture
     offload_wire, _ = offload_fixture(BUILD/'offload-fixture')
@@ -247,115 +136,58 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
         report['offload_results_'+str(enabled)] = compiled
         if compiled['exit_code'] == 0:
             # Enabled empty-poll probes start and join their own workers before attempting the invalid read.
-            for origin in ('default', 'empty'):
+            for selected, origin in SPECIAL_CASES['offload']:
+                # Each enabled/disabled build executes only its own planned origins.
+                if selected != enabled:
+                    continue
                 environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(offload_wire),
                                'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': ''}
                 probe_failure(command, report['offload'], [binary, origin],
                               'offload-result-' + str(enabled) + '-' + origin, 'value.hasCompletion',
                               'offload ' + str(enabled) + ' ' + origin + ' completion runtime guard', environment=environment, enabled=enabled, origin=origin)
-    # Every default/actual integration result family must reject value access before use.
-    run_failure_suite(compiler, report, libraries, build, command, 'integration')
     # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
     compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
     report['runtime_build'] = compiled
     if compiled['exit_code'] == 0:
         # Every observation is separate so a prior assertion failure cannot conceal wrapping behavior.
-        for mode, sentinel in (('assertion', 'trial assertion sentinel'), ('bounds', '[AssertionDefect]'),
-                               ('wrapping', '-9223372036854775808')):
+        for mode, sentinel, expected_exit in SPECIAL_CASES['runtime']:
             result = command([binary, mode], mode+'-runtime')
-            expected_exit = 0 if mode == 'wrapping' else 1
             passed = result['exit_code'] == expected_exit and sentinel in result['output']
             report['runtime'].append(dict(name=mode, passed=passed, run=result))
             announce(mode+' behavior', passed)
-    # Each of six public coordinates/counts must reject both defaults and actual operation failures.
-    run_failure_suite(compiler, report, libraries, build, command, 'bounded')
-    # Primitive success payloads are guarded on defaults/errors; error reasons are guarded on success.
-    run_failure_suite(compiler, report, libraries, build, command, 'primitive')
-    # Composite results, nested variants and explicit constructor preconditions are independently guarded.
-    run_failure_suite(compiler, report, libraries, build, command, 'composite')
-    # Generic owned payloads, absent/error metadata and explicit factories retain independent guards.
-    run_failure_suite(compiler, report, libraries, build, command, 'owned')
-    # Report/header and newly instantiated owned results reject all failed/default payload access.
-    run_failure_suite(compiler, report, libraries, build, command, 'reports')
-    # Decoder and inspection progress share the same result type but must reject each failing operation independently.
-    run_failure_suite(compiler, report, libraries, build, command, 'assurances')
-    # Every public guarantee result instantiation must protect failed/default values, including inspection tuples.
-    run_failure_suite(compiler, report, libraries, build, command, 'guarantees')
-    # Ticket write, decode and inspection APIs reject progress reads on defaults and actual typed failures.
-    run_failure_suite(compiler, report, libraries, build, command, 'tickets')
-    # Every public dispute result type and explicit failure construction retain success contracts.
-    run_failure_suite(compiler, report, libraries, build, command, 'disputes')
-    # Every public package result instantiation and both import identity alternatives retain checked access.
-    run_failure_suite(compiler, report, libraries, build, command, 'packages')
-    # Guard all public header result instantiations and both source/metadata optional alternatives.
-    run_failure_suite(compiler, report, libraries, build, command, 'headers')
-    # Parent values and nested component reasons require independent checked alternatives.
-    run_failure_suite(compiler, report, libraries, build, command, 'blocks')
-    # All Boolean/bitstring result types and public operations retain success-only value access.
-    run_failure_suite(compiler, report, libraries, build, command, 'bits')
-    # Every collection/scalar result shape keeps failure/default application access guarded.
-    run_failure_suite(compiler, report, libraries, build, command, 'collections')
-    # Guard every C.2 result and selected work/source/metadata/decoded union alternative independently.
-    run_failure_suite(compiler, report, libraries, build, command, 'c2')
-    run_failure_suite(compiler, report, libraries, build, command, 'crypto')
-    # Guard every default/failed layout result and both wrong alternatives for every metadata field.
-    run_failure_suite(compiler, report, libraries, build, command, 'layout')
-    # Public commitment and private recursive child-hash results must reject failed/default payload reads.
-    run_failure_suite(compiler, report, libraries, build, command, 'trie')
-    # Every default/failed component result must reject values, owners, copied records and consumed progress.
-    run_failure_suite(compiler, report, libraries, build, command, 'safrole')
-    # Public authorization fields and internal framing tuples must reject every default/failed payload read.
-    run_failure_suite(compiler, report, libraries, build, command, 'authorization')
-    # Chapter-local results and closed source alternatives guard every inactive/default observation.
-    run_failure_suite(compiler, report, libraries, build, command, 'consensus')
-    # All public result shapes and private scan layouts require success before payload access.
-    run_failure_suite(compiler, report, libraries, build, command, 'state_disputes')
-    run_failure_suite(compiler, report, libraries, build, command, 'state_store_slice')
-    # Public/private results and runtime-selected absent peak copies require exact supported contracts.
-    run_failure_suite(compiler, report, libraries, build, command, 'history')
     # Every public/private result and each inactive assignment field must retain its exact contract.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_availability_results.nim', 'availability-results', crypto_library)
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['availability'], 'availability-results', crypto_library)
     report['availability_build'] = compiled
     if compiled['exit_code'] == 0:
         # Actual/default failures and dynamic absence origins execute independently, retaining their own diagnostics.
-        cases = [(member, origin, 'value.status == None') for origin in ('default', 'error') for member in AVAILABILITY_MEMBERS]
-        cases += [('absent-'+field, origin, 'assignment.isPresent') for origin in ('default', 'source', 'decoded') for field in ('guarantee', 'registered')]
+        check_driver_modes(command, binary, 'availability', report)
+        cases = SPECIAL_CASES['availability']
         for member, origin, sentinel in cases:
             probe_failure(command, report['availability'], [binary, member, origin, availability_fixture],
                           'availability-' + origin + '-' + member, sentinel,
                           origin + ' availability ' + member + ' runtime guard', origin=origin, member=member)
-    # Every public result shape and private natural/layout proof requires success before payload access.
-    run_failure_suite(compiler, report, libraries, build, command, 'privileges')
-    # All public and internal tuple/natural/layout payloads require exact successful selection.
-    run_failure_suite(compiler, report, libraries, build, command, 'statistics')
     # Both queue domains and internal count/layout proofs require successful payload selection.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_workqueues_results.nim', 'workqueues-results', crypto_library)
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['workqueues'], 'workqueues-results', crypto_library)
     report['workqueues_build'] = compiled
     if compiled['exit_code'] == 0:
         # Actual/default failures execute separately so one rejected access cannot conceal another.
-        for origin in ('default', 'error'):
-            for member in WORKQUEUES_MEMBERS:
-                probe_failure(command, report['workqueues'], [binary, member, origin, availability_fixture],
-                              'workqueues-' + origin + '-' + member, 'value.status == None',
-                              origin + ' workqueues ' + member + ' runtime guard', origin=origin, member=member)
-    # Public entry/read/count/pair payloads and internal extent proofs retain exact success contracts.
-    run_failure_suite(compiler, report, libraries, build, command, 'outputs')
-    # Fixed metadata and encoded entries require exact success, even though records need no retained heap owner.
-    run_failure_suite(compiler, report, libraries, build, command, 'accounts')
-    # Backend refusals and private alias misuse execute through a test-only observer, never production binaries.
-    run_failure_suite(compiler, report, libraries, build, command, 'service_values')
-    # Result payloads and every inactive timestamp require supported success/shape contracts.
-    run_failure_suite(compiler, report, libraries, build, command, 'requests')
+        check_driver_modes(command, binary, 'workqueues', report)
+        for member, origin, sentinel in SPECIAL_CASES['workqueues']:
+            # Execute every declared access in its own process with the original failure expectation.
+            probe_failure(command, report['workqueues'], [binary, member, origin, availability_fixture],
+                          'workqueues-' + origin + '-' + member, sentinel,
+                          origin + ' workqueues ' + member + ' runtime guard', origin=origin, member=member)
     # Complete composition payloads require exact success, including backend and association failures.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_composition_results.nim', 'composition-results', crypto_observer)
+    compiled, binary = build(compiler, SPECIAL_DRIVERS['composition'], 'composition-results', crypto_observer)
     report['composition_build'] = compiled
     if compiled['exit_code'] == 0:
         # Actual and default failures execute separately so one protected read never conceals another.
-        for origin in ('default', 'error'):
-            for member in COMPOSITION_MEMBERS:
-                probe_failure(command, report['composition'], [binary, member, origin, composition_fixture],
-                              'composition-' + origin + '-' + member, 'value.status == None',
-                              origin + ' composition ' + member + ' runtime guard', origin=origin, member=member)
+        check_driver_modes(command, binary, 'composition', report)
+        for member, origin, sentinel in SPECIAL_CASES['composition']:
+            # Execute every declared access in its own process with the original failure expectation.
+            probe_failure(command, report['composition'], [binary, member, origin, composition_fixture],
+                          'composition-' + origin + '-' + member, sentinel,
+                          origin + ' composition ' + member + ' runtime guard', origin=origin, member=member)
 
 
 # Select one independent workload and invalidate stale evidence before any setup or compilation.
@@ -396,7 +228,7 @@ def main():
     sources += [ROOT/f'vendor/jamtestvectors/codec/{profile}/work_result_{number}.{suffix}'
                 for profile in ('tiny', 'full') for number in (0, 1) for suffix in ('json', 'bin')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                              for path in sorted(sources)}
+                              for path in sorted(set(sources))}
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
     sys.path.insert(0, str(ROOT/'tests'))
     libraries, quic_fixtures, native_evidence = prepare_libraries(BUILD)

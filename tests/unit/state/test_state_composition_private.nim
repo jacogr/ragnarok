@@ -6,6 +6,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+# @@Verification={"arc": "composition_arc_release"}
+
 import std/envvars
 import ../../support/arc_evidence
 include ../../../src/codec/state_composition

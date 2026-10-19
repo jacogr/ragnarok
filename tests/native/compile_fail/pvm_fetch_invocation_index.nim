@@ -3,6 +3,8 @@
 
 ## Protocol service identities cannot substitute for prepared service-group ordinals.
 
+# @@Verification={"group": "nominal", "expected": "got: ServiceIndex but wanted: InvocationServiceIndex"}
+
 import ../../../src/state/accumulation_inputs
 import ../../../src/codec/composite
 

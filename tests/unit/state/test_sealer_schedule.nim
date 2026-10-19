@@ -7,6 +7,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+# @@Verification={"arc": "sealer_schedule_arc_release"}
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/sealer_schedule
 import ../../../src/codec/[state_safrole, state_consensus, bounded, assurances]

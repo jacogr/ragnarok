@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "nominal", "expected": "StateEntropyWord", "early": ["advanceEntropyTime(", "[4] expected: EntropyInput but got: StateEntropyWord"]}
+
 import ../../../src/state/entropy
 import ../../../src/codec/state_safrole
 from ../../../src/codec/header import EpochSlots

@@ -7,6 +7,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "privacy", "expected": "completed"}
+
 import ../../../src/codec/[state_authorization, state_trie]
 let value = default(AuthorizationResult[tuple[count: uint64, prefix: int]])
 discard value.completed

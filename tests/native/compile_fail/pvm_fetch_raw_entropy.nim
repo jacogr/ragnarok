@@ -3,6 +3,8 @@
 
 ## Arbitrary byte arrays cannot enter the nominal invocation entropy boundary implicitly.
 
+# @@Verification={"group": "nominal", "expected": "got: array[0..31, uint8] but wanted: FetchEntropy"}
+
 import ../../../src/pvm/host_fetch
 
 type

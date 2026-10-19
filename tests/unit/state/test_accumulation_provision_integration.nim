@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"arc": "accumulation_provision_integration_arc_release"}
 
 ## Explicit context union and posterior fulfillment witnesses; no terminal-selection or whole-block certificate is fabricated.
 ## Covers canonical set semantics, resource preflight, exact writes, rollback, ownership and ARC release.

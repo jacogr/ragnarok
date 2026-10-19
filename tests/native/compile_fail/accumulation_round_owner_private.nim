@@ -4,6 +4,8 @@
 ## Compiler rejection fixture protecting immutable initial accumulation ownership and gas domains.
 ## Its top-level access must fail semantic compilation rather than expose or forge validated values.
 
+# @@Verification={"group": "privacy", "expected": "data"}
+
 import ../../../src/state/accumulation_round
 import ../../../src/codec/bounded
 let owner = default(InitialAccumulationRound)

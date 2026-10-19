@@ -7,6 +7,8 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
+# @@Verification={"arc": "assurance_context_arc_release"}
+
 import ../../support/arc_evidence
 import std/[assertions, syncio]
 import ../../../src/crypto/[primitives, assurance_context]

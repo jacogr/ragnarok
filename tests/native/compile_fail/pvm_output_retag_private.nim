@@ -4,6 +4,8 @@
 ## Negative compiler fixture for return-output privacy and the nominal byte-copy budget.
 ## The selected private/read-only field or raw budget must fail compilation.
 
+# @@Verification={"group": "privacy", "expected": "status"}
+
 import ../../../src/pvm/[step, output]
 var r = default(OutputResult)
 r.status = OutputError.None

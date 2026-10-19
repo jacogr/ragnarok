@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "nominal", "expected": "got: ValidatorIndex but wanted: GuarantorIndex"}
+
 import ../../../src/codec/[guarantees, assurances]
 let wrong = GuaranteeCredential(validator: ValidatorIndex(1))
 discard wrong

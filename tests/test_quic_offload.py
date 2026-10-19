@@ -39,25 +39,42 @@ def corpus(directory=None):
                                     for start in (1, 4, 7)]}
 
 
-# Keep no-network completion capacity and held shutdown checks identical for direct and cumulative runners.
-def selftests(binary, fixture, directory):
+# The shared process helper retains exact markers, limits, environment and log ownership.
+def run_selftest(name, binary, fixture, directory, flag, gate, markers):
+    """Require the original exit status and every complete-line marker for one no-network check."""
     directory.mkdir(parents=True, exist_ok=True)
-    results = []
-    # These holds belong only to this harness and are never used to claim actual Rust execution.
-    for name, flag, gate, markers in (
-            ('offload_capacity', '--offload-selftest', '', ('OFFLOAD_SELFTEST 4', 'OFFLOAD_EXHAUSTED', 'OFFLOAD_JOINED 2')),
-            ('offload_held_shutdown', '--offload-held-shutdown', str(directory/f'held-{time.time_ns()}'),
-             ('OFFLOAD_HELD_SHUTDOWN 4', 'OFFLOAD_STATE 2 2 0 0 0 0 4', 'OFFLOAD_JOINED 2'))):
-        path = directory/(name+'.log')
-        environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(fixture),
-                       'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': gate}
-        with path.open('w') as output:
-            process = subprocess.run([str(binary), flag], env=environment, stdout=output,
-                                     stderr=subprocess.STDOUT, timeout=30)
-        transcript = path.read_text()
-        assert process.returncode == 0 and all(marker in transcript.splitlines() for marker in markers), transcript
-        results.append(dict(name=name, passed=True, run=dict(exit_code=process.returncode, log=str(path))))
-    return results
+    path = directory/(name+'.log')
+    environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(fixture),
+                   'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': gate}
+    with path.open('w') as output:
+        process = subprocess.run([str(binary), flag], env=environment, stdout=output,
+                                 stderr=subprocess.STDOUT, timeout=30)
+    transcript = path.read_text()
+    assert process.returncode == 0 and all(marker in transcript.splitlines() for marker in markers), transcript
+    return dict(name=name, passed=True, run=dict(exit_code=process.returncode, log=str(path)))
+
+
+def offload_capacity(binary, fixture, directory):
+    """Keep completed jobs within the original fixed completion capacity and join both workers."""
+    return run_selftest(offload_capacity.__name__, binary, fixture, directory,
+                        '--offload-selftest', '',
+                        ('OFFLOAD_SELFTEST 4', 'OFFLOAD_EXHAUSTED', 'OFFLOAD_JOINED 2'))
+
+
+def offload_held_shutdown(binary, fixture, directory):
+    """Require held workers to join without the controller releasing their private gate."""
+    return run_selftest(offload_held_shutdown.__name__, binary, fixture, directory,
+                        '--offload-held-shutdown', str(directory/f'held-{time.time_ns()}'),
+                        ('OFFLOAD_HELD_SHUTDOWN 4', 'OFFLOAD_STATE 2 2 0 0 0 0 4', 'OFFLOAD_JOINED 2'))
+
+
+# Direct execution and E2E completeness consume the same callables; neither maintains another name list.
+OFFLOAD_SELFTESTS = (offload_capacity, offload_held_shutdown)
+
+
+def selftests(binary, fixture, directory):
+    """Run the declared no-network checks in their original order, stopping on the first failure."""
+    return [function(binary, fixture, directory) for function in OFFLOAD_SELFTESTS]
 
 
 # One process survives repeated queue pressure, cancellation and proof errors without replacing its listener/workers.

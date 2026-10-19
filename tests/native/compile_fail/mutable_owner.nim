@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "privacy", "expected": "data"}
+
 import ../../../src/codec/owned
 var frame = default(OwnedFrame)
 frame.data.wire[0] = 7

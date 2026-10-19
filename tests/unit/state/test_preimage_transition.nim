@@ -4,6 +4,8 @@
 ## Native preimage STF account/statistics projections and prior/post-state phase-boundary regressions.
 ## Hastur entry point checks ordering, bounded work, atomic rollback, retained ownership and ARC release.
 
+# @@Verification={"arc": "preimage_transition_arc_release"}
+
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[preimages, store]
 import ../../../src/codec/[natural, bounded, composite, owned, header, state_layout, state_trie,

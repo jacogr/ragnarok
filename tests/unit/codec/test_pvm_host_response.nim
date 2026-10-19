@@ -4,6 +4,8 @@
 ## Native Psi_H host-response witnesses using real initialization, suspension and return capture.
 ## Checks all actions, PC/charged preservation, nominal gas, immutable snapshots and ARC release.
 
+# @@Verification={"arc": "pvm_host_response_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, initialize, gas, step, output]
 import ../../support/arc_evidence

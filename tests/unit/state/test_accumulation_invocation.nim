@@ -4,6 +4,8 @@
 ## Native Psi_A/I bootstrap witnesses: compact bytes, bounded ID probing and posterior-entropy provenance.
 ## Hastur entry point verifies independent reference cases, retained owners and complete ARC release.
 
+# @@Verification={"arc": "accumulation_invocation_arc_release"}
+
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[accumulation_invocation, accumulation_service, accumulation_inputs,
   accumulation_operands, accumulation_round, accumulation_queue, report_admission, store]

@@ -6,5 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "nominal", "expected": "[2] expected: MemoryAddress but got: uint64", "early": ["load(", "[2] expected: MemoryAddress but got: uint64"]}
+
 import ../../../src/pvm/machine
 discard load(default(Memory), 0'u64, AccessWidth(1))

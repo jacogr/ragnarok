@@ -31,7 +31,6 @@ class VerificationUnit(unittest.TestCase):
     def test_unit_complete_inventory(self):
         report = dict(suites=[dict(name=name, passed=True) for name in UNIT_SUITES],
                       **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES})
-        self.assertEqual(len(test_runtime.CORPUS_NAMES), 41)
         self.assertTrue(test_runtime.unit_passed(report))
         self.assertFalse(test_runtime.unit_passed({**report, 'suites': report['suites'][1:]}))
         self.assertFalse(test_runtime.unit_passed({**report, 'suites': [report['suites'][0]]*len(UNIT_SUITES)}))

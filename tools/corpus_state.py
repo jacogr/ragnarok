@@ -8,14 +8,18 @@ Exposes run_state to execute state serialization/composition corpora and record 
 from functools import partial
 from pathlib import Path
 import hashlib
-from corpus_checks import run_corpus
+from corpus_checks import run_corpus, CorpusGroup
 from native_checks import announce
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# Run the state corpora with explicit process, workspace and library inputs.
-def run_state(compiler, report, checks, libraries):
+
+CORPORA = CorpusGroup()
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def layout_corpus(compiler, report, checks, libraries):
     BUILD = checks.folder
     build, command = checks.build, checks.command
     execute_corpus = partial(run_corpus, build, command, compiler)
@@ -29,8 +33,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'layout-corpus',
                         metadata=dict(historical_projected_singletons=len(legacy_singletons())),
                         crypto_library=crypto_library)
-    report['layout_corpus'] = corpus
     announce('independent state-key/node layout and hash corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def trie_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Compare independent unsorted-list partitions, every key divergence bit and labelled historical projections.
     from state_trie_oracle import requests as trie_requests, legacy_maps
     lines, expected = trie_requests()
@@ -40,8 +53,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'trie-corpus',
                         metadata=dict(historical_projected_maps=len(legacy_maps())),
                         crypto_library=crypto_library)
-    report['trie_corpus'] = corpus
     announce('independent bounded state trie root corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def safrole_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent entropy/time/roster bytes, malformed inputs, published derived fixtures and partial roots.
     from state_safrole_oracle import requests as safrole_requests, published as safrole_published
     lines, expected = safrole_requests()
@@ -51,8 +73,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'safrole-corpus',
                         metadata=dict(published_derived_state_sources=len(safrole_published())),
                         crypto_library=crypto_library)
-    report['safrole_corpus'] = corpus
     announce('independent entropy/validator-roster/timeslot state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def authorization_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent ordered core/row equations, malformed inputs, derived fixtures and partial commitments.
     from state_authorization_oracle import requests as authorization_requests, published as authorization_published
     lines, expected = authorization_requests()
@@ -62,8 +93,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'authorization-corpus',
                         metadata=dict(published_derived_state_sources=len(authorization_published())),
                         crypto_library=crypto_library)
-    report['authorization_corpus'] = corpus
     announce('independent authorization pool/queue state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def consensus_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent chapter-4 byte/field equations, derived fixtures and partial single-entry roots.
     from state_consensus_oracle import requests as consensus_requests, published as consensus_published
     lines, expected = consensus_requests()
@@ -73,8 +113,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'consensus-corpus',
                         metadata=dict(published_derived_state_sources=len(consensus_published())),
                         crypto_library=crypto_library)
-    report['consensus_corpus'] = corpus
     announce('independent chapter-4 Safrole basic state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def state_disputes_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent chapter-5 byte/field equations, derived fixtures and partial single-entry roots.
     from state_disputes_oracle import requests as state_disputes_requests, published as state_disputes_published
     lines, expected = state_disputes_requests()
@@ -84,8 +133,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'state_disputes-corpus',
                         metadata=dict(published_derived_state_sources=len(state_disputes_published())),
                         crypto_library=crypto_library)
-    report['state_disputes_corpus'] = corpus
     announce('independent chapter-5 dispute judgment/offender state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def history_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent chapter-3 byte/field equations, derived fixtures and partial single-entry roots.
     from state_history_oracle import requests as state_history_requests, published as state_history_published
     lines, expected = state_history_requests()
@@ -95,8 +153,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'state_history-corpus',
                         metadata=dict(published_derived_state_sources=len(state_history_published())),
                         crypto_library=crypto_library)
-    report['history_corpus'] = corpus
     announce('independent chapter-3 recent history state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def availability_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent chapter-10 byte/field equations, derived fixtures and partial single-entry roots.
     from state_availability_oracle import requests as state_availability_requests, published as state_availability_published, published_verdicts as availability_verdicts
     lines, expected = state_availability_requests()
@@ -107,8 +174,17 @@ def run_state(compiler, report, checks, libraries):
                         metadata=dict(published_derived_state_sources=len(state_availability_published()),
                                       published_decode_verdicts=availability_verdicts()),
                         crypto_library=crypto_library)
-    report['availability_corpus'] = corpus
     announce('independent chapter-10 availability assignment state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def privileges_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent chapter-12 byte/field equations, derived fixtures and partial single-entry roots.
     from state_privileges_oracle import requests as state_privileges_requests, published as state_privileges_published
     lines, expected = state_privileges_requests()
@@ -118,8 +194,17 @@ def run_state(compiler, report, checks, libraries):
                         source, lines, expected, 'state_privileges-corpus',
                         metadata=dict(published_derived_state_sources=len(state_privileges_published())),
                         crypto_library=crypto_library)
-    report['privileges_corpus'] = corpus
     announce('independent chapter-12 privileged service state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def statistics_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Preserve independent chapter-13 byte/field equations, derived fixtures and partial single-entry roots.
     from state_statistics_oracle import requests as state_statistics_requests, published_validators as state_statistics_published, trace_evidence as statistics_traces
     lines, expected = state_statistics_requests()
@@ -132,8 +217,17 @@ def run_state(compiler, report, checks, libraries):
                                       gas_encoding_policy="accepted canonical compact naturals; no fallback"),
                         crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(corpus['published_trace_components']) == 6 and all(row['complete_component_match'] for row in corpus['published_trace_components'])
-    report['statistics_corpus'] = corpus
     announce('independent chapter-13 activity statistics state corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def workqueues_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Chapters 14/15 retain independent literal, derived JSON and exact raw trace evidence.
     from state_workqueues_oracle import requests as workqueue_requests, published as workqueue_published, published_traces as workqueue_traces, parse as workqueue_parse, wire as workqueue_wire
     lines, expected = workqueue_requests()
@@ -152,8 +246,17 @@ def run_state(compiler, report, checks, libraries):
                                       published_trace_components=traces),
                         crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 12 and all(row['complete_component_match'] for row in traces)
-    report['workqueues_corpus'] = corpus
     announce('independent chapters 14/15 ready/accumulated queue corpus', corpus['passed'])
+    return corpus
+
+
+# Run this independently declared corpus with its original checks and dependencies.
+@CORPORA.case
+def outputs_corpus(compiler, report, checks, libraries):
+    BUILD = checks.folder
+    build, command = checks.build, checks.command
+    execute_corpus = partial(run_corpus, build, command, compiler)
+    crypto_library = libraries['crypto']
     # Chapter 16 preserves the independent ordered fixed-pair corpus and exact empty published traces.
     from state_outputs_oracle import requests as outputs_requests, published as outputs_published, parse as outputs_parse, wire as outputs_wire, DEFAULT as outputs_default
     lines, expected = outputs_requests()
@@ -172,5 +275,9 @@ def run_state(compiler, report, checks, libraries):
                                       scope='ordered fixed pairs; published traces empty, nonempty coverage authored; no accumulation execution'),
                         crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 8 and all(row['complete_component_match'] for row in traces)
-    report['outputs_corpus'] = corpus
     announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
+    return corpus
+
+
+# Existing callers use the same entry point; the declared tasks own its complete plan.
+run_state = CORPORA.run

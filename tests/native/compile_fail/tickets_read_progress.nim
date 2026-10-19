@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "privacy", "expected": "consumed"}
+
 import ../../../src/codec/tickets
 var value = default(TicketRead)
 value.consumed = 0

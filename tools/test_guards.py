@@ -17,15 +17,16 @@ import subprocess
 import sys
 import time
 from native_checks import NativeChecks, ROOT, announce
+from runtime_provenance import runtime_sources
 from native_tests import unit_jobs
 from setup_nimony import cache_directory
-from verification_inventory import PRIVATE, NOMINAL, CONTRACTS, EARLY_NOMINAL
+from compiler_fixtures import PRIVATE, NOMINAL, CONTRACTS, EARLY_NOMINAL, SCHEMAS, OWNERSHIP
 
 BUILD = ROOT/'build/tests/guards'
 checks = NativeChecks(BUILD)
 command, build = checks.command, checks.build
 COUNTS = dict(privacy=len(PRIVATE), nominal=len(NOMINAL), contracts=len(CONTRACTS),
-              schemas=5, ownership_compile=4)
+              schemas=len(SCHEMAS), ownership_compile=len(OWNERSHIP))
 
 
 # Missing, duplicated or failed checks cannot be replaced by a successful sibling group.
@@ -53,9 +54,7 @@ def compile_rejections(compiler, expectations):
 # Keep the original diagnostics and lowering checks in this group's private workspace.
 def run(compiler, bs_library, report):
     # Closed family checks and direct static scalar contracts reject unsupported schemas before execution.
-    for name, domain in (('unsupported_collection_scalar', 'string'),
-                         ('negative_collection_width', 'CollectionUInt'), ('wide_collection_width', 'CollectionUInt'),
-                         ('scalar_collection_negative_width', '-1'), ('scalar_collection_wide_width', '9')):
+    for name, domain in SCHEMAS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
         if name.startswith('scalar_collection_'):
@@ -70,27 +69,17 @@ def run(compiler, bs_library, report):
         passed = result['exit_code'] != 0 and rejected
         report['schemas'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
-    # Unique socket ownership is checked by lowering/code generation, not by semantic checking alone.
-    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/quic_io_endpoint_copy.nim', 'quic-endpoint-copy')
-    passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <UdpEndpoint>" in compiled['output']
-    report['ownership_compile'].append(dict(name='quic_io_endpoint_copy', passed=passed, check=compiled))
-    announce('unique UDP endpoint copy rejection', passed)
-    # Telemetry's composite socket/queue owner must independently reject copies during lowering.
-    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/telemetry_client_copy.nim', 'telemetry-client-copy')
-    rejected = compiled['exit_code'] != 0 and "'=dup' is not available for type <Client>" in compiled['output']
-    report['ownership_compile'].append(dict(name='telemetry_client_copy', passed=rejected, check=compiled))
-    announce('unique telemetry client copy rejection', rejected)
-    # The RPC listener owns an array of accepted sockets and needs its own lowering contract.
-    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/rpc_server_copy.nim', 'rpc-server-copy')
-    rejected = compiled['exit_code'] != 0 and "'=dup' is not available for type <Server>" in compiled['output']
-    report['ownership_compile'].append(dict(name='rpc_server_copy', passed=rejected, check=compiled))
-    announce('unique RPC server copy rejection', rejected)
-    # RawThread membership alone did not reject pool copies; the exported pool-level contract must reject during lowering.
-    compiled, _ = build(compiler, ROOT/'tests/native/compile_fail/offload_pool_copy.nim', 'offload-pool-copy',
-                        native_libraries=(bs_library,), defines=('offload',))
-    passed = compiled['exit_code'] != 0 and "'=dup' is not available for type <OffloadPool>" in compiled['output']
-    report['ownership_compile'].append(dict(name='offload_pool_copy', passed=passed, check=compiled))
-    announce('unique offload pool copy rejection', passed)
+    # Composite owner rejections require lowering rather than semantic checking alone.
+    for name, profile in OWNERSHIP.items():
+        options = {}
+        if profile.get('offload', False):
+            # Proof-pool lowering retains its real native ABI and the enabled worker definition.
+            options = dict(native_libraries=(bs_library,), defines=('offload',))
+        compiled, _ = build(compiler, ROOT/f'tests/native/compile_fail/{name}.nim',
+                            profile['build_name'], **options)
+        rejected = compiled['exit_code'] != 0 and profile['expected'] in compiled['output']
+        report['ownership_compile'].append(dict(name=name, passed=rejected, check=compiled))
+        announce(name, rejected)
     # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
     rejection_started = time.monotonic()
     report['compiler_rejection_jobs'] = unit_jobs()
@@ -242,9 +231,8 @@ def main():
         metadata = compiler.parent.parent/'NIGHTLY.txt'
         report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
         report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
-        sources = [Path(__file__), ROOT/'tools/verification_inventory.py', ROOT/'tools/verification_inventory.json', ROOT/'tools/native_checks.py', ROOT/'tools/native_dependencies.py', ROOT/'tools/build_crypto.py', ROOT/'tools/build_bandersnatch.py', ROOT/'tools/build_quic.py',
-                   ROOT/'spec/toolchain.json', ROOT/'spec/bandersnatch-pins.json',
-                   *sorted((ROOT/'tests/native/compile_fail').glob('*.nim'))]
+        # Shared source-family discovery covers new transitive modules and helpers automatically.
+        sources = runtime_sources()
         report['sources'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in sources}
         sys.path.insert(0, str(ROOT/'tests'))

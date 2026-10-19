@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"arc": "pvm_accumulation_lookup_arc_release"}
 
 ## Authored lookup programs verify exact namespace selection, bounded suffix copying and atomic guest writes.
 ## Tests distinguish absent/empty state, full-width inputs, charged failures, source ownership and ARC release.

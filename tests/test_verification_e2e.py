@@ -31,7 +31,8 @@ class VerificationE2E(unittest.TestCase):
                 missing[name] = dict(passed=False)
                 self.assertFalse(test_e2e.passed(missing))
         self.assertFalse(test_e2e.passed({**report, 'suites': []}))
-        self.assertEqual(len(test_e2e.SELFTESTS), 6)
+        self.assertFalse(test_e2e.passed({**report, 'suites': report['suites']+[report['suites'][0]]}))
+        self.assertFalse(test_e2e.passed({**report, 'suites': [dict(name='replacement', passed=True)]+report['suites'][1:]}))
         self.assertFalse(set(UNIT_SUITES) & set(test_e2e.SELFTESTS))
 
 

@@ -4,6 +4,8 @@
 ## Sparse writable-range witnesses compare page counts, permissions and retained bytes to a dense oracle.
 ## Covers allocation preflight, address-space endpoints, immutable ownership and ARC release.
 
+# @@Verification={"arc": "pvm_heap_memory_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/machine
 import ../../support/arc_evidence

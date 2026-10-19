@@ -4,6 +4,8 @@
 ## Bounded host-aware execution witnesses: shared budgets, context ordering and terminal state.
 ## Exercises trusted callback failures, immutable snapshots and complete ARC lifetimes.
 
+# @@Verification={"arc": "pvm_host_execution_arc_release"}
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step]
 import ../../support/arc_evidence

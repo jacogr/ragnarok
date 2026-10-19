@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "privacy", "expected": "completed"}
+
 import ../../../src/codec/[state_workqueues, state_trie]
 let value = default(WorkQueueResult[uint64])
 discard value.completed

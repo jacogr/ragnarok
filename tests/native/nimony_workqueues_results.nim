@@ -9,6 +9,57 @@
 
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state_workqueues
+import ../support/probe_cases
+
+## Declared misuse modes; custom strings preserve CLI labels and typed dispatch is exhaustive.
+# @@ProbeCases
+type VerificationProbe = enum
+  vpAccConsumed = "acc-consumed"
+  vpAccEntryCount = "acc-entry-count"
+  vpAccEntryOrder = "acc-entry-order"
+  vpAccEntryPolicy = "acc-entry-policy"
+  vpAccInfo = "acc-info"
+  vpAccLayout = "acc-layout"
+  vpAccOrder = "acc-order"
+  vpAccOverflow = "acc-overflow"
+  vpAccOwner = "acc-owner"
+  vpAccSlotIndex = "acc-slot-index"
+  vpAccSlotOwner = "acc-slot-owner"
+  vpCountNoncanonical = "count-noncanonical"
+  vpCountTruncated = "count-truncated"
+  vpDepIndex = "dep-index"
+  vpDepItem = "dep-item"
+  vpDepOwner = "dep-owner"
+  vpDepSlot = "dep-slot"
+  vpHashIndex = "hash-index"
+  vpHashOwner = "hash-owner"
+  vpHashSlot = "hash-slot"
+  vpItemIndex = "item-index"
+  vpItemOwner = "item-owner"
+  vpItemSlot = "item-slot"
+  vpReadyBytes = "ready-bytes"
+  vpReadyChild = "ready-child"
+  vpReadyConfig = "ready-config"
+  vpReadyConsumed = "ready-consumed"
+  vpReadyDependencies = "ready-dependencies"
+  vpReadyEntryBytes = "ready-entry-bytes"
+  vpReadyEntryChild = "ready-entry-child"
+  vpReadyEntryConfig = "ready-entry-config"
+  vpReadyEntryCount = "ready-entry-count"
+  vpReadyEntryDependencies = "ready-entry-dependencies"
+  vpReadyEntryOrder = "ready-entry-order"
+  vpReadyEntryPolicy = "ready-entry-policy"
+  vpReadyEntryReport = "ready-entry-report"
+  vpReadyFraming = "ready-framing"
+  vpReadyInfo = "ready-info"
+  vpReadyLayout = "ready-layout"
+  vpReadyOverflow = "ready-overflow"
+  vpReadyOwner = "ready-owner"
+  vpReadySlotIndex = "ready-slot-index"
+  vpReadySlotOwner = "ready-slot-owner"
+
+# Validate selection or list declarations before reading any runtime fixture.
+let selectedProbe = selectProbe[VerificationProbe](paramStr(1))
 var fixture: seq[byte] = @[]
 # Independent report fixture bytes are required setup, never parent-decoder-derived expectations.
 try:
@@ -68,250 +119,247 @@ var hugeCount = @[255'u8]
 # Canonical uint64 maximum cannot authorize an unrepresentable fixed hash row.
 for i in 0..<8: hugeCount.add(255'u8)
 var cursor = 0
-case paramStr(1)
-of "ready-entry-config":
+case selectedProbe
+of vpReadyEntryConfig:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry(rows, invalid)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidConfig)
   discard parsed.value.value.len
-of "ready-entry-count":
+of vpReadyEntryCount:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry([], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidCount)
   discard parsed.value.value.len
-of "ready-entry-policy":
+of vpReadyEntryPolicy:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry(rows, noItems)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LimitExceeded)
   discard parsed.value.value.len
-of "ready-entry-report":
+of vpReadyEntryReport:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry(missing, policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidReport)
   discard parsed.value.value.len
-of "ready-entry-child":
+of vpReadyEntryChild:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry(rows, childBytes)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LimitExceeded)
   discard parsed.value.value.len
-of "ready-entry-dependencies":
+of vpReadyEntryDependencies:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry(rows, noDependencies)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LimitExceeded)
   discard parsed.value.value.len
-of "ready-entry-order":
+of vpReadyEntryOrder:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry(duplicate, policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.NonCanonical)
   discard parsed.value.value.len
-of "ready-entry-bytes":
+of vpReadyEntryBytes:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: readyStateEntry(rows, tiny)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LimitExceeded)
   discard parsed.value.value.len
-of "acc-entry-count":
+of vpAccEntryCount:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: accumulatedStateEntry([], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidCount)
   discard parsed.value.value.len
-of "acc-entry-order":
+of vpAccEntryOrder:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: accumulatedStateEntry(
       badHistory, policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.NonCanonical)
   discard parsed.value.value.len
-of "acc-entry-policy":
+of vpAccEntryPolicy:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[StateEntry]) else: accumulatedStateEntry(
       history, noItems)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LimitExceeded)
   discard parsed.value.value.len
-of "ready-owner":
+of vpReadyOwner:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState([], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.Truncated)
   discard parsed.value.snapshot
-of "ready-consumed":
+of vpReadyConsumed:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState([], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.Truncated)
   discard parsed.value.consumed
-of "ready-config":
+of vpReadyConfig:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState([], invalid)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidConfig)
   discard parsed.value.consumed
-of "ready-overflow":
+of vpReadyOverflow:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState([], hugeEpoch)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LengthOverflow)
   discard parsed.value.consumed
-of "ready-framing":
+of vpReadyFraming:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState([0'u8, 128, 0], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.NonCanonical)
   discard parsed.value.consumed
-of "ready-child":
+of vpReadyChild:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState([0'u8, 1], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.Truncated)
   discard parsed.value.consumed
-of "ready-dependencies":
+of vpReadyDependencies:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState(readyEntry.value.value, noDependencies)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LimitExceeded)
   discard parsed.value.consumed
-of "ready-bytes":
+of vpReadyBytes:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       ReadySnapshot]]) else: decodeReadyState(readyEntry.value.value, tiny)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LimitExceeded)
   discard parsed.value.consumed
-of "acc-owner":
+of vpAccOwner:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       AccumulatedSnapshot]]) else: decodeAccumulatedState([], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.Truncated)
   discard parsed.value.snapshot
-of "acc-consumed":
+of vpAccConsumed:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       AccumulatedSnapshot]]) else: decodeAccumulatedState([], policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.Truncated)
   discard parsed.value.consumed
-of "acc-order":
+of vpAccOrder:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       AccumulatedSnapshot]]) else: decodeAccumulatedState(badSet, policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.NonCanonical)
   discard parsed.value.consumed
-of "acc-overflow":
+of vpAccOverflow:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueRead[
       AccumulatedSnapshot]]) else: decodeAccumulatedState(hugeCount, huge)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.LengthOverflow)
   discard parsed.value.consumed
-of "ready-info":
+of vpReadyInfo:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueInfo]) else: readyInfo(default(ReadySnapshot))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidOwner)
   discard parsed.value.items
-of "acc-info":
+of vpAccInfo:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[WorkQueueInfo]) else: accumulatedInfo(default(AccumulatedSnapshot))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidOwner)
   discard parsed.value.items
-of "ready-slot-owner":
+of vpReadySlotOwner:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[int]) else: readySlotCount(default(
       ReadySnapshot), WorkQueueSlot(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidOwner)
   discard parsed.value
-of "ready-slot-index":
+of vpReadySlotIndex:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[int]) else: readySlotCount(owner,
       WorkQueueSlot(high(uint64)))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value
-of "acc-slot-owner":
+of vpAccSlotOwner:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[int]) else: accumulatedSlotCount(default(
       AccumulatedSnapshot), WorkQueueSlot(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidOwner)
   discard parsed.value
-of "acc-slot-index":
+of vpAccSlotIndex:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[int]) else: accumulatedSlotCount(accumulated,
       WorkQueueSlot(high(uint64)))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value
-of "item-owner":
+of vpItemOwner:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[ReadyItemInfo]) else: readyItemAt(default(
       ReadySnapshot), WorkQueueSlot(0), ReadyItemIndex(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidOwner)
   discard parsed.value.report
-of "item-slot":
+of vpItemSlot:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[ReadyItemInfo]) else: readyItemAt(owner,
       WorkQueueSlot(high(uint64)), ReadyItemIndex(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value.dependencies
-of "item-index":
+of vpItemIndex:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[ReadyItemInfo]) else: readyItemAt(owner,
       WorkQueueSlot(1), ReadyItemIndex(high(uint64)))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value.dependencies
-of "dep-owner":
+of vpDepOwner:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[PackageHash]) else: readyDependencyAt(default(
       ReadySnapshot), WorkQueueSlot(0), ReadyItemIndex(0), WorkQueueHashIndex(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidOwner)
   discard parsed.value.bytes
-of "dep-slot":
+of vpDepSlot:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[PackageHash]) else: readyDependencyAt(owner,
       WorkQueueSlot(high(uint64)), ReadyItemIndex(0), WorkQueueHashIndex(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value.bytes
-of "dep-item":
+of vpDepItem:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[PackageHash]) else: readyDependencyAt(owner,
       WorkQueueSlot(1), ReadyItemIndex(high(uint64)), WorkQueueHashIndex(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value.bytes
-of "dep-index":
+of vpDepIndex:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[PackageHash]) else: readyDependencyAt(owner,
       WorkQueueSlot(1), ReadyItemIndex(0), WorkQueueHashIndex(high(uint64)))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value.bytes
-of "hash-owner":
+of vpHashOwner:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[PackageHash]) else: accumulatedHashAt(default(
       AccumulatedSnapshot), WorkQueueSlot(0), WorkQueueHashIndex(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidOwner)
   discard parsed.value.bytes
-of "hash-slot":
+of vpHashSlot:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[PackageHash]) else: accumulatedHashAt(
       accumulated, WorkQueueSlot(high(uint64)), WorkQueueHashIndex(0))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value.bytes
-of "hash-index":
+of vpHashIndex:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[PackageHash]) else: accumulatedHashAt(
       accumulated, WorkQueueSlot(0), WorkQueueHashIndex(high(uint64)))
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.InvalidIndex)
   discard parsed.value.bytes
-of "count-truncated":
+of vpCountTruncated:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[uint64]) else: readCount([], cursor, policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.Truncated)
   discard parsed.value
-of "count-noncanonical":
+of vpCountNoncanonical:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[uint64]) else: readCount([128'u8, 0], cursor, policy)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.NonCanonical)
   discard parsed.value
-of "ready-layout":
+of vpReadyLayout:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[Layout]) else: scan([0'u8, 128, 0], policy, true)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.NonCanonical)
   discard parsed.value.dependencies
-of "acc-layout":
+of vpAccLayout:
   # Defaults and these actual failures cannot authorize values, owners or partial progress.
   let parsed = if useDefault: default(WorkQueueResult[Layout]) else: scan(badSet, policy, false)
   assert parsed.error == (if useDefault: WorkQueueError.Uninitialized else: WorkQueueError.NonCanonical)
   discard parsed.value.consumed
-else:
-  # Unknown trusted modes cannot masquerade as expected access rejections.
-  assert false

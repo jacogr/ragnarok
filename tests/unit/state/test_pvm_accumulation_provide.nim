@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"arc": "pvm_accumulation_provide_arc_release"}
 
 ## Authored provide guest programs verify charging, exact row ordering, requested capture and checkpoint rollback.
 ## Includes wide gas/target/pointer witnesses, normalized provision ownership, local refusals and ARC release.

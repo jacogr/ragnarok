@@ -17,6 +17,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from corpus_checks import compare_corpus, run_corpus
 from corpus_crypto import run_crypto
+from corpus_checks import CorpusGroup
 
 
 # Exercise the shared process boundary independently of any protocol oracle or native compiler.
@@ -134,3 +135,42 @@ class CorpusHarness(unittest.TestCase):
                         # The failed-build expected hash uses the same newline convention as successful runs.
                         self.assertEqual(corpus['expected_sha256'], hashlib.sha256(b'\n').hexdigest())
                     command.assert_not_called()
+
+
+# Registration supplies both the expected identity and its callable, before any workload executes.
+class CorpusRegistration(unittest.TestCase):
+    def test_order_and_shared_dependencies(self):
+        """Tasks publish before dependents execute; registration does no work."""
+        group = CorpusGroup()
+        calls = []
+        @group.case
+        def first_corpus(compiler, report, checks, libraries):
+            # The first task owns its verdict; no separate report-key declaration is needed.
+            calls.append('first')
+            return dict(passed=True, shared=7)
+        @group.case
+        def second_corpus(compiler, report, checks, libraries):
+            # Dependents reuse only a declared predecessor's published build/evidence.
+            calls.append('second')
+            return dict(passed=report['first_corpus']['shared'] == 7)
+        self.assertEqual(calls, [])
+        self.assertEqual(list(group.tasks), ['first_corpus', 'second_corpus'])
+        report = {}
+        group.run(None, report, None, None)
+        self.assertEqual(calls, ['first', 'second'])
+        self.assertTrue(all(row['passed'] for row in report.values()))
+        with self.assertRaisesRegex(ValueError, 'Duplicate corpus report'):
+            group.run(None, report, None, None)
+        with self.assertRaisesRegex(ValueError, 'duplicate corpus task'):
+            group.case(first_corpus)
+
+    def test_missing_verdict(self):
+        """A registered task cannot disappear into an empty or untyped result."""
+        for observed in (None, {}, {'passed': 1}):
+            # Each shape must fail before it can become a successful report row.
+            group = CorpusGroup()
+            @group.case
+            def missing_corpus(compiler, report, checks, libraries):
+                return observed
+            with self.subTest(observed=observed), self.assertRaisesRegex(ValueError, 'Missing corpus verdict'):
+                group.run(None, {}, None, None)

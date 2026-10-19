@@ -6,6 +6,8 @@
 ## Hastur main replays 262 independent queue expectations, literal ordering/refusal cases, a genuine
 ## signed block-admission binding and 1,000 ARC release cycles; no production APIs are defined.
 
+# @@Verification={"arc": "accumulation_queue_arc_release"}
+
 import std/[assertions, envvars, strutils, syncio, sequtils]
 import ../../../src/state/[accumulation_queue, report_admission, block_transition, availability, store]
 import ../../../src/codec/[bounded, state_workqueues, report_owned, owned, work_report, composite, header]

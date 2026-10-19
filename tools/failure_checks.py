@@ -3,14 +3,14 @@
 
 """Run strict assertion probes and fixed state-result suites without changing native diagnostics.
 
-Exposes validated FAILURE_SUITES, strict probe_failure and run_failure_suite orchestration with
+Exposes validated FAILURE_SUITES, strict probe_failure and discovered run_failure_suites with
 retained diagnostics.
 """
 import json
 import re
 from pathlib import Path
 from native_checks import ROOT, announce
-from verification_inventory import FAILURE_COUNTS, unique_object
+from verification_inventory import unique_object
 
 
 # Expand shared labels and argument fields without evaluating code from inventory data.
@@ -41,9 +41,6 @@ def validate_suite(group, suite, root=ROOT):
     check_fields(suite, {'source', 'build_name', 'crypto_library', 'native_libraries', 'quic_library',
                         'defines', 'name_template', 'description_template', 'diagnostic',
                         'argument_fields', 'cases'}, {'source', 'build_name', 'cases'}, group)
-    if group not in FAILURE_COUNTS:
-        # Coverage counts remain independently declared, including the explicit specialized families.
-        raise ValueError('Unknown failure family: '+group)
     for field in ('name_template', 'description_template', 'diagnostic'):
         # Optional defaults must be meaningful strings even when current cases override them.
         if field in suite and (not isinstance(suite[field], str) or not suite[field].strip()):
@@ -71,8 +68,8 @@ def validate_suite(group, suite, root=ROOT):
         # Defines are compiler symbols, not arbitrary command-line options.
         raise ValueError('Invalid defines in '+group)
     raw = suite['cases']
-    if not isinstance(raw, list) or len(raw) != FAILURE_COUNTS[group]:
-        # A missing or vacuous family must fail before a successful sibling can mask lost coverage.
+    if not isinstance(raw, list) or not raw:
+        # A missing or vacuous declaration cannot define a complete execution plan.
         raise ValueError('Invalid case count in '+group)
     expanded = []
     for index, case in enumerate(raw):
@@ -167,3 +164,11 @@ def run_failure_suite(compiler, report, libraries, build, command, group):
         case = case_details(suite, case)
         probe_failure(command, report[group], [binary, *case['arguments']], case['name'],
                       case['diagnostic'], case['description'], **case['identity'])
+
+
+# Ordinary families are independent; discovery schedules each exactly once in stable lexical order.
+def run_failure_suites(compiler, report, libraries, build, command):
+    """Run every validated family without a second list of scheduler calls."""
+    for group in FAILURE_SUITES:
+        # Each family retains its declared build inputs, probe order and strict diagnostic predicate.
+        run_failure_suite(compiler, report, libraries, build, command, group)

@@ -317,7 +317,7 @@ class NativeUnitHarness(unittest.TestCase):
     def test_linked_expected_output_required(self):
         with temporary_folder('hastur') as folder:
             (folder/'test_state_trie.nim').write_text('assert true\n')
-            with patch.object(native_tests, 'STATE_ROOT', folder):
+            with patch.dict(native_tests.UNIT_SOURCES, {'state_trie': folder/'test_state_trie.nim'}):
                 with self.assertRaisesRegex(FileNotFoundError, 'expected output'):
                     native_tests.unit_command(folder/'nimony', 'state_trie', {'crypto': folder/'library'})
 

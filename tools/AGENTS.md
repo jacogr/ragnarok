@@ -25,13 +25,12 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
   under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
   be faster on warm local repeats. Record timings without weakening test workloads or verdicts.
 
-- Keep entries within every section of `tools/verification_inventory.json` in lexicographic
-  (Python `sorted`) order. Use consistent feature prefixes, such as `pvm_`, and insert beside
-  existing entries for that feature; never prepend or append an unrelated registration.
-  Keep one entry per line, including diagnostic pairs. Preserve positional values inside records
-  and the existing top-level section layout. The inventory loader rejects unordered sections;
-  run `make check-inventory` before committing. Any genuinely order-dependent future section
-  needs an explicit documented validator exception and a regression test, not silent reordering.
+- Keep source-owned verification plans deterministic and feature-grouped. Ordinary failure-family
+  files own expected identities; specialized drivers own typed mode declarations and variant plans.
+  Named corpus and E2E callables own scheduling/report identities. Ordinary failure files
+  schedule themselves through lexical discovery; do not add per-family runner calls. Do not recreate a central name/count
+  registry. Preserve genuinely ordered build options and dependency/task execution order; run
+  `make check-inventory` for changes to these declarations.
 
 - Native test requirements belong in `tools/native_requirements/<source-family>/<suite>.json`,
   one file per suite, named with the suite's consistent feature prefix. Keep independent JSON fields
@@ -39,8 +38,8 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
   duplicate/misplaced profiles. Do not recreate a shared append-only requirement manifest.
 
 - Apply module/feature grouping and lexicographic insertion to other unordered requirement/source
-  registries too. `tools/runtime_sources.json` is alphabetical by repository-relative path; new
-  per-suite requirement files and existing failure-family files are discovered automatically.
+  registries too. Shared runtime/E2E/compiler-guard provenance discovers project source/configuration and fixture directories;
+  new helpers, per-suite requirement files and failure-family files need no provenance registration.
   Preserve genuinely ordered values, including native library/link/include order, positional
   diagnostic records and runtime scenario steps. Document and test any new ordering exception.
 

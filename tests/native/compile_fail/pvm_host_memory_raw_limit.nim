@@ -3,6 +3,8 @@
 
 ## Compilation must reject raw integers in the host byte-copy budget domain.
 
+# @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: MemoryByteLimit"}
+
 import ../../../src/pvm/machine
 # A local policy record isolates the nominal field contract from unrelated owner validation.
 type Policy = object

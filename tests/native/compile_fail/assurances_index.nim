@@ -6,6 +6,8 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
+# @@Verification={"group": "nominal", "expected": "got: CoreCount but wanted: ValidatorIndex"}
+
 import ../../../src/codec/assurances
 let value: ValidatorIndex = CoreCount(0)
 discard value

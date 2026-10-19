@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"arc": "pvm_accumulation_outcome_arc_release"}
 
 ## Authored Psi_M/Psi_A terminal normalization witnesses use actual guest execution and retained effects.
 ## Exercises gas caps, checkpoint selection, bounded return overrides, provenance and ARC release.

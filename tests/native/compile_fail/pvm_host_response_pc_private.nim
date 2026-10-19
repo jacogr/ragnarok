@@ -3,6 +3,8 @@
 
 ## Compilation must reject external access to the causing host-call address.
 
+# @@Verification={"group": "privacy", "expected": "callAddress"}
+
 import ../../../src/pvm/step
 let outcome = default(StepOutcome)
 discard outcome.callAddress
