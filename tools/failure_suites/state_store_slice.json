@@ -1,0 +1,29 @@
+{
+  "source": "tests/native/state_store_slice_results.nim",
+  "build_name": "state-store-slice-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "state-store-slice-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "State slice owner extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "range"
+      },
+      "arguments": [
+        "range"
+      ],
+      "name": "state-store-slice-range",
+      "diagnostic": "outcome.status == None",
+      "description": "State slice range extraction guard"
+    }
+  ]
+}

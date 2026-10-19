@@ -7,7 +7,7 @@
 ## incremental trie yet.
 ##
 ## Exposes StateStore/StateStoreSnapshot handles, snapshot, lookup, commitment and atomic apply over
-## complete serialized mappings, plus forkStateStore with inherited ceilings for private working branches.
+## complete serialized mappings, bounded owner-bound copySlice, plus forkStateStore with inherited ceilings for private working branches.
 
 import std/[algorithm, assertions]
 import ../codec/[state_trie, state_layout, bounded]
@@ -29,7 +29,7 @@ type
   ## Failure alternatives expose no snapshots, values, counts or partially computed roots.
   StateStoreError* {.pure.} = enum
     Uninitialized, None, MissingKey, InvalidWrite, LimitExceeded, DuplicateKey,
-    LengthOverflow, BackendFailure
+    LengthOverflow, BackendFailure, InvalidRange
   ## Acyclic ARC-owned map. Values become immutable before this owner is published.
   SnapshotData = ref object
     entries: seq[StateEntry]
@@ -170,6 +170,24 @@ proc bytes*(view: StateValue): seq[byte] {.requires: view.owner.data != nil.} =
   let data = view.owner.data
   assert data != nil # Bind the validated view owner once before copying its immutable storage.
   copyBytes(data.entries[view.position].value)
+
+## Copy exactly one owner-bound raw byte interval without materializing the remaining value.
+## Generic storage coordinates are uint64; validate by subtraction before narrowing or allocation.
+## Default owners, invalid ranges and policy refusal expose no bytes or partial progress.
+proc copySlice*(view: StateValue, offset, length: uint64,
+    limit: ByteLimit): StateStoreResult[seq[byte]] =
+  let data = view.owner.data
+  if data == nil:
+    return StateStoreResult[seq[byte]](status: StateStoreError.Uninitialized) # Empty copies still need an owner.
+  let size = uint64(data.entries[view.position].value.len)
+  if offset > size or length > size-offset:
+    return StateStoreResult[seq[byte]](status: StateStoreError.InvalidRange) # Never clip an invalid caller range silently.
+  if length > uint64(limit):
+    return StateStoreResult[seq[byte]](status: StateStoreError.LimitExceeded) # Bound the exact copied interval before allocation.
+  var copied = newSeq[byte](int(length)) # Range validation proves both coordinates fit the source's native length.
+  for i in 0..<copied.len:
+    copied[i] = data.entries[view.position].value[int(offset)+i] # offset+length<=size proves every native index.
+  StateStoreResult[seq[byte]](status: StateStoreError.None, completed: copied)
 
 ## Merge unique sorted mutations into a private candidate, then publish only after the root succeeds.
 ## Empty batches retain the existing version. Failure leaves the store and every old snapshot unchanged.

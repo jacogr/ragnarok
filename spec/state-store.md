@@ -51,6 +51,25 @@ the call. ARC owners are acyclic; no callback, foreign pointer or mutable sequen
 Default and failed tagged results expose only their reason. Successful payload extraction and
 initialized-view access have checked contracts; private fields remain inaccessible to callers.
 
+## Bounded value slicing
+
+`copySlice(StateValue, offset, length, ByteLimit)` copies exactly one raw interval
+without materializing the rest of the retained value. Generic storage coordinates
+are full-width uint64 values, checked against the owner's native extent by
+subtraction before narrowing or allocation. This API requires a valid interval;
+it does not silently clip caller coordinates. Empty slices at the value end are
+valid. Default owners return `Uninitialized`, invalid ranges return `InvalidRange`
+and a short copy ceiling returns `LimitExceeded`, with no byte payload on failure.
+Successful bytes are independently mutable; they retain no borrowed pointer or
+writable reference into the map. The input view keeps its original snapshot alive
+throughout the call and across later map updates. No hashing/publication occurs.
+
+The [PVM lookup host](pvm-accumulation-lookup.md) clips protocol offsets first,
+then uses this operation to bound work by selected bytes rather than total
+preimage size. Unit witnesses exhaust small intervals, exact/short ceilings,
+full-width invalid ranges and source/output mutation. A strict byte-result probe
+and privacy check preserve the generic store-result contract.
+
 ## Verification and next increment
 
 Two native Hastur suites run in `make check-unit`: the production crypto profile exercises owned

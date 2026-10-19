@@ -59,7 +59,8 @@ not insert raw preimages or fulfill request histories.
 
 ## Next boundary
 
-Remaining account host calls (lookup/read/write/info), grow_heap's specification
+[Lookup (3)](pvm-accumulation-lookup.md) now reads existing account preimages;
+remaining account host calls (read/write/info), grow_heap's specification
 decision and selected-provision publication remain subsequent increments. This is
 not full Psi_A, authenticated block execution or persistent state publication.
 

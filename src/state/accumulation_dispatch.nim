@@ -8,8 +8,8 @@
 
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_fetch]
-import ../codec/[state_outputs, composite]
-import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects]
+import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values, bounded]
+import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects, store]
 
 type
   ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
@@ -174,6 +174,85 @@ proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Corrupt account/request state is not WHO or HUH.
   hostSuccess[AccumulationDispatchError](response)
 
+## Apply Omega_L to the current immutable account backing; a short lookup copies only its selected suffix.
+## Fixed hash input is separately bounded to 32 bytes; variable slice/write work obeys copyLimit.
+proc lookupResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let requested = uint64(cpu.registers[11])
+  let cost = 600'u64+(requested div 1024)*248+((requested mod 1024)*248+1023) div 1024
+  let available = uint64(cpu.gas) # Rate<1024 proves the full cost and deficit fit below 2^63 for every uint64 request.
+  var response = HostResponse(action: HostAction.Continue, gas: MachineGas(0),
+    gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory)
+  if available < cost:
+    response.action = HostAction.OutOfGas # Affordability precedes hash reads, target selection and local copy policy.
+    response.gasDeficit = GasDeficit(cost-available)
+    return hostSuccess[AccumulationDispatchError](response)
+  response.gas = MachineGas(available-cost)
+  let hashBytes = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+      MemoryByteLimit(32))
+  case hashBytes.error
+  of MachineError.None:
+    discard # Own the complete input hash before any potentially overlapping guest write.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # A bad hash pointer takes precedence over an absent account.
+    return hostSuccess[AccumulationDispatchError](response)
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Fixed extent/policy cannot cause ordinary resource refusal.
+  let initial = context.effects.effectContext(AccumulationDimension.Regular).value.effectInitialContext.value
+  let self = initial.contextInfo.value.service
+  let rawTarget = uint64(cpu.registers[7])
+  var target = self
+  if rawTarget != high(uint64):
+    if rawTarget > uint64(high(uint32)):
+      response.registers[7] = RegisterValue(high(uint64)) # NONE; an out-of-domain service cannot alias its low bits.
+      return hostSuccess[AccumulationDispatchError](response)
+    target = ServiceIndex(uint32(rawTarget)) # An explicit self ID follows the same current complete-map backing.
+  let state = initial.contextAccounts.value
+  let account = state.lookup(chapterServiceKey(StateChapter(255), target))
+  if account.error == StateStoreError.MissingKey:
+    response.registers[7] = RegisterValue(high(uint64)) # NONE has zero cardinality; the output interval is empty.
+    return hostSuccess[AccumulationDispatchError](response)
+  if account.error != StateStoreError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid map may fabricate absence.
+  if account.value.byteLength != ServiceMetadataBytes:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Prove the fixed account extent before its copy.
+  if decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes)).error !=
+      ServiceMetadataError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Malformed metadata is never an absent account.
+  var hash = default(array[32, byte])
+  for i in 0..<32:
+    hash[i] = hashBytes.value[i] # Lookup uses the supplied identity bytes, not a recomputed payload hash.
+  let key = servicePreimageKey(target, ServicePreimageHash(hash), ByteLimit(32))
+  if key.error != ServiceValueError.None:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # Canonical namespace derivation cannot fall back to another key.
+  let found = state.lookup(key.value)
+  if found.error == StateStoreError.MissingKey:
+    response.registers[7] = RegisterValue(high(uint64)) # Missing and present-empty remain different protocol values.
+    return hostSuccess[AccumulationDispatchError](response)
+  if found.error != StateStoreError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No partial lookup owner escapes a corrupt map.
+  let size = uint64(found.value.byteLength)
+  let offset = min(uint64(cpu.registers[10]), size)
+  let length = min(requested, size-offset) # Subtraction is proved by the clipped offset, before any additions/narrowing.
+  let copied = found.value.copySlice(offset, length, ByteLimit(uint64(context.copyLimit)))
+  if copied.error == StateStoreError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Bound only the selected bytes, independent of full value length.
+  if copied.error != StateStoreError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # The checked owner/range must authorize the complete slice.
+  let written = writeBytes(memory, MemoryAddress(uint64(cpu.registers[9])), copied.value,
+      context.copyLimit)
+  case written.error
+  of MachineError.None:
+    response.memory = written.value # Every page was preflighted before publishing the immutable memory successor.
+    response.registers[7] = RegisterValue(size)
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Preserve all bytes/r7 when any effective output byte is unwritable.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # A local bound is not a guest panic or NONE.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory ownership cannot become a protocol response.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -194,11 +273,13 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       hostFailure(AccumulationDispatchError.LimitExceeded) # Local copy policy is not guest failure.
     else:
       hostFailure(AccumulationDispatchError.InvalidContext) # Never fabricate protocol absence.
+  of 3:
+    lookupResponse(context, cpu, memory) # Account preimages remain separate from deferred provide effects.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 3..6, 15..17, 19..25:
+  of 1, 4..6, 15..17, 19..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
