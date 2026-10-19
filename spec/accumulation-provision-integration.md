@@ -24,8 +24,9 @@ no partial map. Preserve metadata, storage, unrelated chapters and extrinsic sta
 This is a pure state planner/application boundary. The caller chooses the contexts, actual posterior
 map and slot. It does not certify terminal context selection, merge per-service account mutations,
 execute later rounds, integrate a block extrinsic or publish a complete block transition. Terminal
-normalization is already implemented in the separately open PVM stack; this slice does not duplicate
-that implementation or claim completed accumulation.
+normalization is implemented in the maintained PVM adapter. The
+[terminal-bound wrapper](accumulation-terminal-provisions.md) now selects contexts and verifies the
+invocation slot from actual completed executions without changing this explicit lower-level API.
 
 ## Completion tests
 
@@ -73,6 +74,7 @@ or upstream source was modified. Logs and guard JSON are under
 `build/accumulation-provision-integration/`. These are local macOS checks, not exact-head Linux CI
 or complete accumulation/STF evidence.
 
-Next bounded work binds actual terminal-selected effects and the merged posterior account state
-to this planner, then coordinates later rounds and complete block publication. M1's documented
+The [terminal-bound wrapper](accumulation-terminal-provisions.md) now connects actual terminal-selected
+effects and invocation slots to this planner. Merging posterior account state, establishing common
+round/parent provenance, later rounds and complete block publication remain subsequent work. M1's documented
 framing baseline remains implemented; full state parity retains the parked pin-upgrade qualification.
