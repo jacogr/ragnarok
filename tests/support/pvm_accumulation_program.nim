@@ -15,6 +15,7 @@ proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
         spareEntries = 0): PreparedAccumulationMachine =
   ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
   ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
+  ## Forward account metadata and explicit spare map capacity to the authentic bootstrap fixture.
   var code = @[0'u8, 0, 0, 0, 0]
   var starts = @[true, true, true, true, true]
   for instruction in instructions:

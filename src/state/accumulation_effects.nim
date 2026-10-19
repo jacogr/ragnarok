@@ -15,7 +15,9 @@ type
   AccumulationEffectError* {.pure.} = enum ## No refused/default operation exposes a partial context, fabricated hash or successful empty owner.
     Uninitialized, None, InvalidContexts, InvalidDimension, YieldAbsent, UnknownService,
     NotRequested, AlreadyProvided, InvalidLength, InvalidState, MalformedState, LimitExceeded,
-      BackendFailure, InvalidIndex, StorageFull, InvalidParameters
+      BackendFailure, InvalidIndex,
+      StorageFull,      ## Candidate storage footprint requires more balance than the account has.
+      InvalidParameters ## Deposit settings must come from a valid parameter snapshot.
   AccumulationProvisionIndex* = distinct uint64 ## A provision ordinal is neither its target service nor a byte count.
   AccumulationProvisionLimits* = object ## Independent ceilings bound retained records, individual hash/copy work and aggregate payload bytes.
     items*: ElementLimit
@@ -56,7 +58,7 @@ type
     data: nil PairData
   AccumulationStorageChange* = object ## A completed storage mutation owns its successor pair and copied prior-value facts.
     effects*: AccumulationEffects ## Independently retained successor; prior regular/checkpoint owners remain unchanged.
-    hadValue*: bool ## Distinguish an absent key from a present value whose previous length was zero.
+    hadValue*: bool     ## Distinguish an absent key from a present value whose previous length was zero.
     previousBytes*: int ## Previous raw value length; meaningful only when hadValue is true.
   AccumulationEffectInfo* = object ## Copied current facts report retained provisions and the still-empty outgoing transfer sequence.
     service*, nextService*: ServiceIndex
@@ -347,6 +349,8 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     parameters: Parameters, limit: ByteLimit): AccumulationEffectResult[AccumulationStorageChange] =
   ## Apply one raw self-storage mutation atomically, retaining both initial provenance and checkpoint.
   ## Borrowed bytes remain stable during this call; the complete-map store independently captures accepted values.
+  ## Empty values delete the key. Success retains the successor and distinguishes absent/present-empty prior values.
+  ## StorageFull is a funding refusal; copy/store limits, malformed counters and backend failure publish no successor.
   # Refuse without publishing a candidate map or successor effect pair.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationStorageChange](status: reason)

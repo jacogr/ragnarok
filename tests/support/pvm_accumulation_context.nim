@@ -39,6 +39,7 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
         account = default(ServiceMetadata), spareEntries = 0): PreparedAccumulationInvocation =
   ## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
   ## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
+  ## account supplies copied metadata; the code hash is derived from code. spareEntries (0..64) bounds extra map capacity.
   assert operandCount >= 0 and operandCount <= 16
   var reports: seq[OwnedReport] = @[]
   if operandCount > 0:
