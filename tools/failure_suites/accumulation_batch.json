@@ -1,0 +1,19 @@
+{
+  "source": "tests/native/accumulation_batch_results.nim",
+  "build_name": "accumulation-batch-results",
+  "crypto_library": "observer",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-batch-default", "diagnostic": "outcome.status == None", "description": "Accumulation batch default extraction guard"},
+    {"identity": {"reason": "duplicate"}, "arguments": ["duplicate"], "name": "accumulation-batch-duplicate", "diagnostic": "outcome.status == None", "description": "Accumulation batch duplicate extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-batch-source", "diagnostic": "outcome.status == None", "description": "Accumulation batch source extraction guard"},
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "accumulation-batch-index", "diagnostic": "outcome.status == None", "description": "Accumulation batch index extraction guard"},
+    {"identity": {"reason": "wrong-store"}, "arguments": ["wrong-store"], "name": "accumulation-batch-wrong-store", "diagnostic": "outcome.status == StoreFailure", "description": "Accumulation batch wrong-store extraction guard"},
+    {"identity": {"reason": "wrong-terminal"}, "arguments": ["wrong-terminal"], "name": "accumulation-batch-wrong-terminal", "diagnostic": "outcome.status == TerminalFailure", "description": "Accumulation batch wrong-terminal extraction guard"},
+    {"identity": {"reason": "wrong-normalization"}, "arguments": ["wrong-normalization"], "name": "accumulation-batch-wrong-normalization", "diagnostic": "outcome.terminalReason == NormalizationFailure", "description": "Accumulation batch wrong-normalization extraction guard"},
+    {"identity": {"reason": "wrong-provision"}, "arguments": ["wrong-provision"], "name": "accumulation-batch-wrong-provision", "diagnostic": "outcome.terminalReason == ProvisionFailure", "description": "Accumulation batch wrong-provision extraction guard"},
+    {"identity": {"reason": "apply-default"}, "arguments": ["apply-default"], "name": "accumulation-batch-apply-default", "diagnostic": "outcome.status == None", "description": "Accumulation batch apply-default extraction guard"},
+    {"identity": {"reason": "stale"}, "arguments": ["stale"], "name": "accumulation-batch-stale", "diagnostic": "outcome.status == None", "description": "Accumulation batch stale extraction guard"},
+    {"identity": {"reason": "account"}, "arguments": ["account"], "name": "accumulation-batch-account", "diagnostic": "outcome.status == None", "description": "Accumulation batch account extraction guard"},
+    {"identity": {"reason": "provision"}, "arguments": ["provision"], "name": "accumulation-batch-provision", "diagnostic": "outcome.status == None", "description": "Accumulation batch provision extraction guard"}
+  ]
+}

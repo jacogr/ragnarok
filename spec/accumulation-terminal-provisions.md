@@ -71,3 +71,9 @@ verification passed 441 tests with six skips. One inline generic-default asserti
 conditional test expression were simplified around pinned compiler/formatter behavior; upstream
 sources and toolchains remain pristine. Logs are under `build/accumulation-terminal-provisions/`.
 These are local macOS results; exact-head Linux CI remains separate.
+
+The [common-source batch coordinator](accumulation-batch-state.md) now verifies a shared immutable
+input/prior owner and unique invoking services, merges supported incoming-credit metadata, then
+applies this terminal plan on its private candidate. This lower-level API deliberately continues to
+accept an explicit posterior store. Complete-round coverage, skipped-service integration,
+account-mutating hosts, aggregate gas and block publication remain separate work.

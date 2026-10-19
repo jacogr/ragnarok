@@ -58,6 +58,15 @@ func value*[T](outcome: AccumulationServiceResult[T]): T {.inline,
   ## Extract selected success under compiler and runtime contracts.
   outcome.completed
 
+func serviceSourceMatches*(plan: PreparedAccumulationService, inputs: PreparedAccumulationInputs,
+    prior: StateStoreSnapshot): bool =
+  ## Prove exact input and prior-snapshot ownership without exposing replaceable handles.
+  ## Defaults never match; copied handles of the genuine immutable sources remain valid.
+  let data = plan.data
+  if data == nil:
+    return false # No default service can certify an input set or complete-map prior.
+  sameAccumulationInputs(data.inputs, inputs) and sameStateSnapshot(data.prior, prior)
+
 proc serviceInfo*(plan: PreparedAccumulationService): AccumulationServiceResult[
     AccumulationServiceInfo] =
   ## Copy complete account/gas/code-status metadata without exporting retained arrays.
