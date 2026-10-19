@@ -12,64 +12,66 @@ import ../codec/bounded
 const MaxRetainedBlocks* = 8 # Local retention policy; no protocol history or finality guarantee.
 
 type
-  ## Private immutable oldest-to-newest snapshots; append allocates a separate sequence container.
-  ChainView* = object
+  ChainView* = object ## Private immutable oldest-to-newest snapshots; append allocates a separate sequence container.
     snapshot: seq[BlockSnapshotResult]
     finalized: BlockSnapshotResult # Separate bounded owner; absent until a trusted caller reports finality.
-  ## Default/failure outcomes never contain a replacement view.
-  ViewAdvanceError* {.pure.} = enum
+  ViewAdvanceError* {.pure.} = enum ## Default/failure outcomes never contain a replacement view.
     Uninitialized, None, InvalidSnapshot, Duplicate, NotChild, SlotNotIncreasing,
     StateMismatch, ParametersMismatch
-  ## Only success owns a newly selected immutable history; callers retain the prior view on failure.
-  ViewAdvanceResult* = object
+  ViewAdvanceResult* = object ## Only success owns a newly selected immutable history; callers retain the prior view on failure.
     case status: ViewAdvanceError
     of None:
       completed: ChainView
     else:
       discard # No partial history escapes a failed append.
 
-  ## Finality selection failures carry no replacement view or guessed finalized head.
-  ViewFinalizeError* {.pure.} = enum Uninitialized, None, UnknownBlock, Regression
-  ## Successful selection retains immutable history plus one finalized snapshot.
-  ViewFinalizeResult* = object
+  ViewFinalizeError* {.pure.} = enum Uninitialized, None, UnknownBlock,
+    Regression ## Finality selection failures carry no replacement view or guessed finalized head.
+  ViewFinalizeResult* = object ## Successful selection retains immutable history plus one finalized snapshot.
     case status: ViewFinalizeError
     of None:
       completed: ChainView
     else:
       discard # No partial finality update is observable.
 
-## Inspect finality selection without allowing discriminator mutation.
-func error*(outcome: ViewFinalizeResult): ViewFinalizeError = outcome.status
-## Extract a successful immutable replacement only after checking the result.
+func error*(outcome: ViewFinalizeResult): ViewFinalizeError =
+  ## Inspect finality selection without allowing discriminator mutation.
+  outcome.status
 func value*(outcome: ViewFinalizeResult): ChainView {.requires: outcome.status ==
-    ViewFinalizeError.None.} = outcome.completed
+    ViewFinalizeError.None.} =
+  ## Extract a successful immutable replacement only after checking the result.
+  outcome.completed
 
-## Return only explicitly supplied finality; genesis and best-head advances imply none.
-func finalizedBlock*(view: ChainView): BlockSnapshotResult = view.finalized
+func finalizedBlock*(view: ChainView): BlockSnapshotResult =
+  ## Return only explicitly supplied finality; genesis and best-head advances imply none.
+  view.finalized
 
-## Read the outcome without exposing a mutable discriminator.
-func error*(outcome: ViewAdvanceResult): ViewAdvanceError {.inline.} = outcome.status
-## Extract the replacement view only after selecting success.
+func error*(outcome: ViewAdvanceResult): ViewAdvanceError {.inline.} =
+  ## Read the outcome without exposing a mutable discriminator.
+  outcome.status
 func value*(outcome: ViewAdvanceResult): ChainView {.requires: outcome.status ==
-    ViewAdvanceError.None.} = outcome.completed
+    ViewAdvanceError.None.} =
+  ## Extract the replacement view only after selecting success.
+  outcome.completed
 
-## Seed a history from a successful immutable genesis owner; absent/invalid inputs produce an empty view.
 proc genesisView*(source: GenesisResult): ChainView =
+  ## Seed a history from a successful immutable genesis owner; absent/invalid inputs produce an empty view.
   if source.error == GenesisError.None:
     return ChainView(snapshot: @[source]) # Private container retains the structurally checked owner.
   default(ChainView) # Failed inputs expose no payload.
 
-## Return the rolling history count, excluding the separately retained finalized owner.
-func retainedCount*(view: ChainView): int = view.snapshot.len
+func retainedCount*(view: ChainView): int =
+  ## Return the rolling history count, excluding the separately retained finalized owner.
+  view.snapshot.len
 
-## Select the newest retained block; the caller, not this store, decides which chain is selected.
 func bestBlock*(view: ChainView): BlockSnapshotResult =
+  ## Select the newest retained block; the caller, not this store, decides which chain is selected.
   if view.snapshot.len == 0:
     return unavailableGenesis() # Default views have no implicit head.
   view.snapshot[^1]
 
-## Resolve an exact full-header identity in at most nine comparisons, including the finalized owner.
 func blockAt*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
+  ## Resolve an exact full-header identity in at most nine comparisons, including the finalized owner.
   for saved in view.snapshot:
     if array[32, byte](saved.value.blockHash) == array[32, byte](hash):
       return saved # Successful results retain their own immutable snapshot lifetime.
@@ -78,16 +80,16 @@ func blockAt*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
       return view.finalized # Keep finalized-state queries available after history-window eviction.
   unavailableGenesis() # Other evicted blocks are unavailable.
 
-## Return a parent only when both child and its exact parent are retained in this view.
 func parentOf*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
+  ## Return a parent only when both child and its exact parent are retained in this view.
   let child = view.blockAt(hash)
   if child.error != GenesisError.None:
     return unavailableGenesis() # A historical parent cannot be inferred for an unknown child.
   view.blockAt(child.value.parentHash)
 
-## Append a structurally checked direct child; preserve old views and evict only the oldest on success.
-## The caller must supply execution-validated state before using this as a live node chain source.
 proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResult =
+  ## Append a structurally checked direct child; preserve old views and evict only the oldest on success.
+  ## The caller must supply execution-validated state before using this as a live node chain source.
   let head = view.bestBlock
   if head.error != GenesisError.None:
     return ViewAdvanceResult(status: ViewAdvanceError.Uninitialized) # Explicit seeding is required.
@@ -112,18 +114,18 @@ proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResul
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(snapshot: saved,
       finalized: view.finalized))
 
-## Search only the selected head's retained reports under the existing byte budget.
-## Block history does not widen report searches into an archive or multiply decoder work per request.
 proc reportAt*(view: ChainView, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
+  ## Search only the selected head's retained reports under the existing byte budget.
+  ## Block history does not widen report searches into an archive or multiply decoder work per request.
   let head = view.bestBlock
   if head.error != GenesisError.None:
     return default(ReportReadResult) # The existing result marks default owners uninitialized.
   reports.workReport(head.value, hash, limit)
 
 
-## Select a caller-certified finalized block on this retained linear chain; no consensus proof is checked.
-## Reject unknown hashes and regressions; repeated selection is idempotent. Immutable old views survive.
 proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
+  ## Select a caller-certified finalized block on this retained linear chain; no consensus proof is checked.
+  ## Reject unknown hashes and regressions; repeated selection is idempotent. Immutable old views survive.
   if view.bestBlock.error != GenesisError.None:
     return ViewFinalizeResult(status: ViewFinalizeError.Uninitialized) # Explicit chain seeding is required.
   let selected = view.blockAt(hash)

@@ -10,26 +10,26 @@ import ../codec/[state_layout, state_safrole, state_statistics, bounded]
 export StateValue, bytes, ByteLimit
 
 type
-  ## Default, unavailable, malformed and oversized inputs never expose a value.
-  StatisticsReadError* {.pure.} = enum
+  StatisticsReadError* {.pure.} = enum ## Default, unavailable, malformed and oversized inputs never expose a value.
     Uninitialized, None, Unavailable, Malformed, LimitExceeded
-  ## A successful view retains its immutable state owner; extraction returns independent bytes.
-  StatisticsReadResult* = object
+  StatisticsReadResult* = object ## A successful view retains its immutable state owner; extraction returns independent bytes.
     case status: StatisticsReadError
     of None:
       completed: StateValue
     else:
       discard # Failure carries only its reason.
 
-## Inspect success or failure without granting mutable access to the result.
-func error*(value: StatisticsReadResult): StatisticsReadError = value.status
-## Extract only a complete successful immutable view.
+func error*(value: StatisticsReadResult): StatisticsReadError =
+  ## Inspect success or failure without granting mutable access to the result.
+  value.status
 func value*(value: StatisticsReadResult): StateValue {.requires: value.status ==
-    StatisticsReadError.None.} = value.completed
+    StatisticsReadError.None.} =
+  ## Extract only a complete successful immutable view.
+  value.completed
 
-## Validate chapter 13 against both actual roster populations and the retained core configuration.
-## Bound copies before decoding; no state mutation or consensus validation is performed.
 proc statistics*(view: Genesis, limit: ByteLimit): StatisticsReadResult =
+  ## Validate chapter 13 against both actual roster populations and the retained core configuration.
+  ## Bound copies before decoding; no state mutation or consensus validation is performed.
   let found = view.lookup(chapterKey(StateChapter(13)))
   if found.error == StateStoreError.Uninitialized:
     return StatisticsReadResult(status: StatisticsReadError.Uninitialized) # Default genesis fails before guarded access.

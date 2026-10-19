@@ -10,26 +10,26 @@ import ../codec/[state_layout, state_history, bounded]
 export HistorySuperPeak
 
 type
-  ## Missing, malformed, mismatched and oversized histories contain no readable commitment.
-  BeefyReadError* {.pure.} = enum
+  BeefyReadError* {.pure.} = enum ## Missing, malformed, mismatched and oversized histories contain no readable commitment.
     Uninitialized, None, Unavailable, Malformed, LimitExceeded
-  ## Success owns a fixed copied root and retains no mutable state or decoder storage.
-  BeefyReadResult* = object
+  BeefyReadResult* = object ## Success owns a fixed copied root and retains no mutable state or decoder storage.
     case status: BeefyReadError
     of None:
       completed: HistorySuperPeak
     else:
       discard # Failure exposes only its reason.
 
-## Inspect the selected outcome without exposing a writable discriminator.
-func error*(value: BeefyReadResult): BeefyReadError = value.status
-## Extract a copied commitment only after selecting success.
+func error*(value: BeefyReadResult): BeefyReadError =
+  ## Inspect the selected outcome without exposing a writable discriminator.
+  value.status
 func value*(value: BeefyReadResult): HistorySuperPeak {.requires: value.status ==
-    BeefyReadError.None.} = value.completed
+    BeefyReadError.None.} =
+  ## Extract a copied commitment only after selecting success.
+  value.completed
 
-## Decode the complete bounded chapter and select its newest matching record (GP accoutsignedcommitment).
-## Missing/empty history is unavailable, not a fabricated zero root. No consensus validation is implied.
 proc beefyRoot*(view: Genesis): BeefyReadResult =
+  ## Decode the complete bounded chapter and select its newest matching record (GP accoutsignedcommitment).
+  ## Missing/empty history is unavailable, not a fabricated zero root. No consensus validation is implied.
   let found = view.lookup(chapterKey(StateChapter(3)))
   if found.error == StateStoreError.Uninitialized:
     return BeefyReadResult(status: BeefyReadError.Uninitialized) # Default owners fail before access.

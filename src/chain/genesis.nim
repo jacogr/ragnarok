@@ -16,20 +16,13 @@ import ../state/store
 import ../crypto/primitives
 
 type
-  ## Original data bytes in one basic erasure-coding piece, derived from active validators.
-  ErasurePieceLength* = distinct uint64
-  ## Number of basic pieces in one fixed 4104-byte segment.
-  SegmentPieceCount* = distinct uint64
-  ## Advertised ticket-attempt limit; zero explicitly represents an unavailable derivation.
-  RpcTicketAttempts* = distinct uint64
-  ## An ordinal in the retained service list, distinct from a service ID or state key.
-  ServiceListIndex* = distinct int
-  ## Ordinal in the retained sorted serialized-key index, bound to its genesis owner.
-  StateKeyIndex* = distinct int
-  ## Block identity is a full sealed-header hash, never a state root.
-  BlockHash* = distinct array[32, byte]
-  ## Private immutable retained state with copied descriptor fields; no mutable store escapes.
-  BlockSnapshot* = object
+  ErasurePieceLength* = distinct uint64 ## Original data bytes in one basic erasure-coding piece, derived from active validators.
+  SegmentPieceCount* = distinct uint64 ## Number of basic pieces in one fixed 4104-byte segment.
+  RpcTicketAttempts* = distinct uint64 ## Advertised ticket-attempt limit; zero explicitly represents an unavailable derivation.
+  ServiceListIndex* = distinct int ## An ordinal in the retained service list, distinct from a service ID or state key.
+  StateKeyIndex* = distinct int ## Ordinal in the retained sorted serialized-key index, bound to its genesis owner.
+  BlockHash* = distinct array[32, byte] ## Block identity is a full sealed-header hash, never a state root.
+  BlockSnapshot* = object ## Private immutable retained state with copied descriptor fields; no mutable store escapes.
     ready: bool
     state: StateStoreSnapshot
     sealedHeader: OwnedHeader        # Retain the codec owner of the exact hashed wire bytes.
@@ -45,72 +38,86 @@ type
     activePopulation: ValidatorCount # Actual C(8) population used for header validation.
     keys: seq[StateKey]              # Private fixed-width copies; at most 16384 entries.
     services: seq[ServiceIndex]      # Private sorted IDs captured with the same immutable state.
-  ## Compatibility name for the configured genesis snapshot; storage is shared with block snapshots.
-  Genesis* = BlockSnapshot
-  ## Absent configuration differs from a supplied but invalid genesis pair.
-  GenesisError* {.pure.} = enum
+  Genesis* = BlockSnapshot ## Compatibility name for the configured genesis snapshot; storage is shared with block snapshots.
+  GenesisError* {.pure.} = enum ## Absent configuration differs from a supplied but invalid genesis pair.
     Unavailable, None, Invalid
-  ## Only success contains a usable immutable block snapshot.
-  GenesisResult* = object
+  GenesisResult* = object ## Only success contains a usable immutable block snapshot.
     case status: GenesisError
     of None:
       completed: BlockSnapshot
     else:
-      discard # Failed and default alternatives carry no chain data.
+      discard             # Failed and default alternatives carry no chain data.
 
-## Generic name for the same guarded capture result used by startup genesis loading.
-type BlockSnapshotResult* = GenesisResult
+type BlockSnapshotResult* = GenesisResult ## Generic name for the same guarded capture result used by startup genesis loading.
 
-## Read status without exposing the discriminator to mutation.
-func error*(value: GenesisResult): GenesisError = value.status
-## Extract only a successful chain snapshot.
+func error*(value: GenesisResult): GenesisError =
+  ## Read status without exposing the discriminator to mutation.
+  value.status
 func value*(value: GenesisResult): BlockSnapshot {.requires: value.status ==
-    GenesisError.None.} = value.completed
-## Construct an explicit unavailable result for absent snapshot/configuration.
-func unavailableGenesis*(): GenesisResult = GenesisResult(status: GenesisError.Unavailable)
-## Construct a failed result for malformed explicit configuration.
-func invalidGenesis*(): GenesisResult = GenesisResult(status: GenesisError.Invalid)
-## Return the copied block identity.
-func blockHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} = value.identity
-## Return the header's claimed parent identity; only a provider lookup establishes parent availability.
-func parentHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} = value.parentIdentity
-## Return the header's prior root, distinct from the captured posterior state commitment.
-func priorStateRoot*(value: BlockSnapshot): StateRoot {.requires: value.ready.} = value.priorCommitment
-## Compare complete protocol tuples so retained history cannot silently mix startup chain profiles.
+    GenesisError.None.} =
+  ## Extract only a successful chain snapshot.
+  value.completed
+func unavailableGenesis*(): GenesisResult =
+  ## Construct an explicit unavailable result for absent snapshot/configuration.
+  GenesisResult(status: GenesisError.Unavailable)
+func invalidGenesis*(): GenesisResult =
+  ## Construct a failed result for malformed explicit configuration.
+  GenesisResult(status: GenesisError.Invalid)
+func blockHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} =
+  ## Return the copied block identity.
+  value.identity
+func parentHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} =
+  ## Return the header's claimed parent identity; only a provider lookup establishes parent availability.
+  value.parentIdentity
+func priorStateRoot*(value: BlockSnapshot): StateRoot {.requires: value.ready.} =
+  ## Return the header's prior root, distinct from the captured posterior state commitment.
+  value.priorCommitment
 func sameParameters*(left, right: BlockSnapshot): bool {.requires: left.ready and right.ready.} =
+  ## Compare complete protocol tuples so retained history cannot silently mix startup chain profiles.
   for field in low(Parameter)..high(Parameter):
     if left.configuration.get(field) != right.configuration.get(field):
       return false # Every encoded fetch field participates, not only cores and epoch length.
   true
 
-## Retain the validated immutable sealed-header owner, independent of the genesis handle lifetime.
-func header*(value: BlockSnapshot): OwnedHeader {.requires: value.ready.} = value.sealedHeader
-## Return the retained core configuration used to decode this snapshot.
-func cores*(value: BlockSnapshot): CoreCount {.requires: value.ready.} = value.corePopulation
-## Return the copied active validator population from the exactly decoded C(8) roster.
-func activeValidators*(value: BlockSnapshot): ValidatorCount {.requires: value.ready.} = value.activePopulation
-## Return the cached GP 0.8.0 basic piece length, independent of optional pending-roster state.
-func basicPieceLength*(value: BlockSnapshot): ErasurePieceLength {.requires: value.ready.} = value.pieceLength
-## Return the exact number of basic pieces in a segment; capture proves positive divisibility.
+func header*(value: BlockSnapshot): OwnedHeader {.requires: value.ready.} =
+  ## Retain the validated immutable sealed-header owner, independent of the genesis handle lifetime.
+  value.sealedHeader
+func cores*(value: BlockSnapshot): CoreCount {.requires: value.ready.} =
+  ## Return the retained core configuration used to decode this snapshot.
+  value.corePopulation
+func activeValidators*(value: BlockSnapshot): ValidatorCount {.requires: value.ready.} =
+  ## Return the copied active validator population from the exactly decoded C(8) roster.
+  value.activePopulation
+func basicPieceLength*(value: BlockSnapshot): ErasurePieceLength {.requires: value.ready.} =
+  ## Return the cached GP 0.8.0 basic piece length, independent of optional pending-roster state.
+  value.pieceLength
 func segmentPieces*(value: BlockSnapshot): SegmentPieceCount {.requires: value.ready.} =
+  ## Return the exact number of basic pieces in a segment; capture proves positive divisibility.
   SegmentPieceCount(4104 div uint64(value.pieceLength))
-## Return the cached RPC ticket limit, or its documented zero when C(4) cannot be derived.
-func ticketAttempts*(value: BlockSnapshot): RpcTicketAttempts {.requires: value.ready.} = value.ticketLimit
-## Return the captured epoch-ring length used to decode retained ready state.
-func epochSlots*(value: BlockSnapshot): EpochSlots {.requires: value.ready.} = value.epochLength
-## Return the copied genesis timeslot.
-func slot*(value: BlockSnapshot): uint32 {.requires: value.ready.} = value.timeslot
-## Return the bounded number of structurally valid service accounts discovered at capture.
-func serviceCount*(value: BlockSnapshot): int {.requires: value.ready.} = value.services.len
-## Return a copied ID by owner-bound ordinal; no mutable sequence or detached view escapes.
+func ticketAttempts*(value: BlockSnapshot): RpcTicketAttempts {.requires: value.ready.} =
+  ## Return the cached RPC ticket limit, or its documented zero when C(4) cannot be derived.
+  value.ticketLimit
+func epochSlots*(value: BlockSnapshot): EpochSlots {.requires: value.ready.} =
+  ## Return the captured epoch-ring length used to decode retained ready state.
+  value.epochLength
+func slot*(value: BlockSnapshot): uint32 {.requires: value.ready.} =
+  ## Return the copied genesis timeslot.
+  value.timeslot
+func serviceCount*(value: BlockSnapshot): int {.requires: value.ready.} =
+  ## Return the bounded number of structurally valid service accounts discovered at capture.
+  value.services.len
 func serviceAt*(value: BlockSnapshot, index: ServiceListIndex): ServiceIndex {.requires: value.ready and
-    int(index) >= 0 and int(index) < value.services.len.} = value.services[int(index)]
+    int(index) >= 0 and int(index) < value.services.len.} =
+  ## Return a copied ID by owner-bound ordinal; no mutable sequence or detached view escapes.
+  value.services[int(index)]
 
-## Return the number of exact serialized keys retained with this snapshot.
-func keyCount*(value: BlockSnapshot): int {.requires: value.ready.} = value.keys.len
-## Copy one key without exporting mutable index storage.
+func keyCount*(value: BlockSnapshot): int {.requires: value.ready.} =
+  ## Return the number of exact serialized keys retained with this snapshot.
+  value.keys.len
 func keyAt*(value: BlockSnapshot, index: StateKeyIndex): StateKey {.requires: value.ready and
-    int(index) >= 0 and int(index) < value.keys.len.} = value.keys[int(index)]
+    int(index) >= 0 and int(index) < value.keys.len.} =
+  ## Copy one key without exporting mutable index storage.
+  value.keys[int(index)]
 
 ## Compare full serialized keys by unsigned octet order, independent of Base64 spelling.
 func compareStateKey(left, right: StateKey): int =
@@ -122,8 +129,8 @@ func compareStateKey(left, right: StateKey): int =
     if a[index] > b[index]: return 1 # Distinct keys never compare equal.
   0
 
-## Locate the first strictly greater key; keyCount is the valid end sentinel.
 proc keyAfter*(value: BlockSnapshot, key: StateKey): StateKeyIndex {.requires: value.ready.} =
+  ## Locate the first strictly greater key; keyCount is the valid end sentinel.
   var low = 0
   var high = value.keys.len
   while low < high:
@@ -168,11 +175,12 @@ proc discoverServices(entries: openArray[StateEntry]): seq[ServiceIndex] =
     result.add(ServiceIndex(service))
   result.sort(compareService) # The validated map already rejects duplicate keys and therefore IDs.
 
-## Read the computed posterior root of the supplied genesis map, not the header's prior-state field.
-proc stateRoot*(value: BlockSnapshot): StateRoot {.requires: value.ready.} = value.state.commitment.root
+proc stateRoot*(value: BlockSnapshot): StateRoot {.requires: value.ready.} =
+  ## Read the computed posterior root of the supplied genesis map, not the header's prior-state field.
+  value.state.commitment.root
 
-## Read a serialized key from this retained snapshot; the view owns its lifetime, and default owners fail.
 proc lookup*(value: BlockSnapshot, key: StateKey): StateStoreResult[StateValue] =
+  ## Read a serialized key from this retained snapshot; the view owns its lifetime, and default owners fail.
   store.lookup(value.state, key)
 
 ## Select GP ecoriginalshards from an already validated active roster, then return twice that count.
@@ -215,10 +223,10 @@ proc captureTicketAttempts(state: StateStoreSnapshot, cores: CoreCount,
   # The 4096-slot ceiling proves multiplication and ceiling-division addition cannot overflow.
   RpcTicketAttempts((2 * slots + pending - 1) div pending)
 
-## Capture a structurally checked header and supplied posterior map, using its active roster and time.
-## Input bytes are borrowed only during this call; no signature or whole-state validation is claimed.
 proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry],
     parameters: Parameters): BlockSnapshotResult =
+  ## Capture a structurally checked header and supplied posterior map, using its active roster and time.
+  ## Input bytes are borrowed only during this call; no signature or whole-state validation is claimed.
   let cores = parameters.get(coreCount)
   if cores > 341 or wire.len == 0 or wire.len > 256 * 1024 or entries.len > 16384:
     return invalidGenesis() # Bound profile, header and map before owned construction.
@@ -227,8 +235,14 @@ proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry]
   # Required context is obtained from actual serialized state, never inferred from core count.
   for entry in entries:
     let key = array[31, byte](entry.key)
-    if key == array[31, byte](chapterKey(StateChapter(8))): roster = entry.value # Active author population.
-    elif key == array[31, byte](chapterKey(StateChapter(11))): time = entry.value # State/header slot consistency.
+    if key == array[31, byte](chapterKey(StateChapter(8))):
+      # Apply the roster decoder's byte ceiling before copying caller-owned storage.
+      if entry.value.len > 1024 * 1024: return invalidGenesis()
+      roster = entry.value # Active author population.
+    elif key == array[31, byte](chapterKey(StateChapter(11))):
+      # The complete time chapter is one E4 slot; reject other extents before copying.
+      if entry.value.len != 4: return invalidGenesis()
+      time = entry.value # State/header slot consistency.
   let validators = decodeStateValidators(roster, ValidatorStateConfig(cores: CoreCount(cores),
     validators: ElementLimit(1023), maxBytes: ByteLimit(1024 * 1024)))
   if validators.error != StateComponentError.None: return invalidGenesis() # Missing or malformed C(8).
@@ -269,8 +283,8 @@ proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry]
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
             keys: captureKeys(entries), services: discoverServices(entries)))
 
-## Preserve the startup genesis loader contract using the general structurally checked snapshot capture.
-## Neither entry point verifies execution, signatures, consensus or completeness of the supplied map.
 proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
     parameters: Parameters): GenesisResult =
+  ## Preserve the startup genesis loader contract using the general structurally checked snapshot capture.
+  ## Neither entry point verifies execution, signatures, consensus or completeness of the supplied map.
   captureBlockSnapshot(wire, entries, parameters)

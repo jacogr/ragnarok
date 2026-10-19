@@ -12,24 +12,23 @@ import ../crypto/primitives
 export report_owned, owned
 
 type
-  ## Report identity hashes the exact canonical report, excluding guarantee credentials and slots.
-  WorkReportHash* = distinct array[32, byte]
-  ## Missing reports differ from malformed state, resource refusal and native hash failure.
-  ReportReadError* {.pure.} = enum
+  WorkReportHash* = distinct array[32, byte] ## Report identity hashes the exact canonical report, excluding guarantee credentials and slots.
+  ReportReadError* {.pure.} = enum ## Missing reports differ from malformed state, resource refusal and native hash failure.
     Uninitialized, None, Missing, Malformed, LimitExceeded, BackendFailure
-  ## The successful immutable report retains its acyclic owner after the parent decoder is released.
-  ReportReadResult* = object
+  ReportReadResult* = object ## The successful immutable report retains its acyclic owner after the parent decoder is released.
     case status: ReportReadError
     of None:
       completed: OwnedReport
     else:
       discard # Failures carry no report or partial bytes.
 
-## Inspect the reason without permitting callers to retag the result.
-func error*(value: ReportReadResult): ReportReadError = value.status
-## Retain the immutable report only after selecting successful lookup.
+func error*(value: ReportReadResult): ReportReadError =
+  ## Inspect the reason without permitting callers to retag the result.
+  value.status
 func value*(value: ReportReadResult): OwnedReport {.requires: value.status ==
-    ReportReadError.None.} = value.completed
+    ReportReadError.None.} =
+  ## Retain the immutable report only after selecting successful lookup.
+  value.completed
 
 ## Hash one immutable canonical report and apply the reply budget only to a matching identity.
 proc matchReport(report: OwnedReport, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
@@ -136,9 +135,9 @@ proc readyReport(view: Genesis, hash: WorkReportHash, limit: ByteLimit): ReportR
         return matched # Successful report owners survive retirement of the enclosing queue.
   ReportReadResult(status: ReportReadError.Missing)
 
-## Prefer C(10) and fall back to C(14) only for an ordinary miss; never mask malformed assignments.
-## This is bounded local retention, not archive retrieval, signature checking or network fetching.
 proc workReport*(view: Genesis, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
+  ## Prefer C(10) and fall back to C(14) only for an ordinary miss; never mask malformed assignments.
+  ## This is bounded local retention, not archive retrieval, signature checking or network fetching.
   let available = availabilityReport(view, hash, limit)
   if available.error != ReportReadError.Missing:
     return available # Preserve success, default-owner failure and every availability refusal.
