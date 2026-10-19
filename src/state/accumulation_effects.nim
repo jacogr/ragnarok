@@ -1,13 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 implications: immutable account/queue/privilege writes, yields, provisions and exceptional checkpoints.
-## Exposes prepared pairs, guarded current accounts/info/queues/privileges and controlled mutations.
+## GP 0.8.0 implications: immutable account/queue/staging/privilege writes, yields, provisions and exceptional checkpoints.
+## Exposes prepared pairs, guarded current accounts/info/queues/staging/privileges and controlled mutations.
 ## Guest memory, gas, registers, execution verdicts and publication belong to their caller's PVM layer.
 
 import std/[assertions, algorithm]
 import ../codec/[bounded, composite, state_outputs, state_accounts, state_layout, state_requests,
-    state_service_values, state_privileges, state_authorization, work_report]
+    state_service_values, state_privileges, state_authorization, work_report, state_safrole]
 import ../chain/parameters
 import ../crypto/primitives
 import ./[accumulation_context, store, preimages]
@@ -19,12 +19,14 @@ type
     Uninitialized, None, InvalidContexts, InvalidDimension, YieldAbsent, UnknownService,
     NotRequested, AlreadyProvided, InvalidLength, InvalidState, MalformedState, LimitExceeded,
       BackendFailure, InvalidIndex,
-      StorageFull,       ## Candidate storage footprint requires more balance than the account has.
-      InvalidParameters, ## Deposit settings must come from a valid parameter snapshot.
-      NotManager,        ## Only the current privileged manager may replace the privilege state.
-      AmbiguousPrivileges, ## Conflicting gas values for one service have no pinned dictionary interpretation.
-      InvalidCore,       ## The selected core is outside the current positional queue layout.
-      NotAssigner        ## Only the current assigner may replace its core queue.
+      StorageFull,           ## Candidate storage footprint requires more balance than the account has.
+      InvalidParameters,     ## Deposit settings must come from a valid parameter snapshot.
+      NotManager,            ## Only the current privileged manager may replace the privilege state.
+      AmbiguousPrivileges,   ## Conflicting gas values for one service have no pinned dictionary interpretation.
+      InvalidCore,           ## The selected core is outside the current positional queue layout.
+      NotAssigner,           ## Only the current assigner may replace its core queue.
+      InvalidValidatorCount, ## Staging population must be a supported multiple of three.
+      NotDelegator           ## Only the current delegator may replace the staging roster.
   AccumulationProvisionIndex* = distinct uint64 ## A provision ordinal is neither its target service nor a byte count.
   AccumulationProvisionLimits* = object ## Independent ceilings bound retained records, individual hash/copy work and aggregate payload bytes.
     items*: ElementLimit
@@ -53,6 +55,7 @@ type
   EffectData = ref object
     initial: InitialAccumulationContext
     accounts: StateStoreSnapshot
+    staging: ValidatorStateSnapshot
     queues: AuthorizationSnapshot
     privileges: PrivilegeSnapshot
     output: YieldValue
@@ -126,6 +129,15 @@ proc effectQueues*(context: AccumulationEffectContext): AccumulationEffectResult
   AccumulationEffectResult[AuthorizationSnapshot](status: AccumulationEffectError.None,
     completed: context.data.queues)
 
+proc effectStaging*(context: AccumulationEffectContext): AccumulationEffectResult[
+    ValidatorStateSnapshot] =
+  ## Retain this version's exact ordered staging roster independently of initial population and later effects.
+  if context.data == nil:
+    return AccumulationEffectResult[ValidatorStateSnapshot](
+        status: AccumulationEffectError.Uninitialized) # Defaults grant no staging owner.
+  AccumulationEffectResult[ValidatorStateSnapshot](status: AccumulationEffectError.None,
+    completed: context.data.staging)
+
 proc effectInfo*(context: AccumulationEffectContext): AccumulationEffectResult[
     AccumulationEffectInfo] =
   ## Copy current yield-presence and retained service facts, never mutable implication storage.
@@ -191,7 +203,8 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts): Accumu
         status: AccumulationEffectError.InvalidContexts)
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
     accounts: initial.value.contextAccounts.value,
-    queues: initial.value.contextQueues.value, privileges: initial.value.contextPrivileges.value,
+    staging: initial.value.contextStaging.value, queues: initial.value.contextQueues.value,
+    privileges: initial.value.contextPrivileges.value,
     output: YieldValue(present: false),
 
 provisions: ProvisionSetData(values: @[], bytes: 0, largest: 0)))
@@ -211,7 +224,8 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
   let previous = data.regular.data
   assert previous != nil # Private construction preserves initialized children for every published pair.
   let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: previous.accounts, queues: previous.queues, privileges: previous.privileges,
+    accounts: previous.accounts, staging: previous.staging, queues: previous.queues,
+    privileges: previous.privileges,
     output: YieldValue(present: true, commitment: commitment), provisions: previous.provisions))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
@@ -326,7 +340,8 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   provisions[previous.provisions.values.len] = AccumulationProvision(data: ProvisionData(
       service: service, bytes: owned))
   let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: previous.accounts, queues: previous.queues, privileges: previous.privileges,
+    accounts: previous.accounts, staging: previous.staging, queues: previous.queues,
+    privileges: previous.privileges,
     output: previous.output,
     provisions: ProvisionSetData(
       values: provisions,
@@ -513,7 +528,8 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   else:
     fail(AccumulationEffectError.InvalidState) # No partial successor on any store invariant failure.
   let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, queues: previous.queues, privileges: previous.privileges,
+    accounts: changed.value, staging: previous.staging, queues: previous.queues,
+    privileges: previous.privileges,
     output: previous.output,
     provisions: previous.provisions))
   let successor = AccumulationEffects(data: PairData(source: data.source, regular: current,
@@ -588,7 +604,8 @@ proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeSta
   else:
     fail(AccumulationEffectError.InvalidState) # No partial map survives any other store invariant failure.
   let currentContext = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, queues: previous.queues, privileges: decoded.value.snapshot,
+    accounts: changed.value, staging: previous.staging, queues: previous.queues,
+    privileges: decoded.value.snapshot,
     output: previous.output,
     provisions: previous.provisions))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
@@ -668,9 +685,56 @@ proc recordAccumulationAssign*(effects: AccumulationEffects, core: Authorization
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
   let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
-    accounts: changed.value, queues: nextQueues.value.snapshot,
+    accounts: changed.value, staging: previous.staging, queues: nextQueues.value.snapshot,
     privileges: nextRoles.value.snapshot,
     output: previous.output, provisions: previous.provisions))
+  AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+    completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
+      exceptional: data.exceptional)))
+
+proc recordAccumulationDesignate*(effects: AccumulationEffects, validators: openArray[
+    StateValidator], config: ValidatorStateConfig): AccumulationEffectResult[AccumulationEffects] =
+  ## Replace the complete regular staging roster only for the current delegator, preserving the checkpoint.
+  ## Borrowed records stay stable during this call; accepted canonical bytes and typed snapshot own their copies.
+  ## InvalidValidatorCount/NotDelegator are protocol refusals; component/store/backend failures expose no successor.
+  # Refuse before publishing a partial map or roster owner.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationEffects](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # Default pairs cannot authorize delegation.
+  let previous = data.regular.data
+  assert previous != nil # All private pair constructors retain complete current versions.
+  let roles = previous.privileges.privilegeInfo.value
+  if uint64(config.cores) != uint64(roles.cores):
+    fail(AccumulationEffectError.InvalidState) # The complete state fixes the profile, not the proposed roster.
+  if validators.len < 6 or validators.len mod 3 != 0 or validators.len div 3 > roles.cores:
+    fail(AccumulationEffectError.InvalidValidatorCount) # Counts vary within valcount, independently of the initial roster length.
+  if uint32(previous.initial.contextInfo.value.service) != uint32(roles.delegator):
+    fail(AccumulationEffectError.NotDelegator) # Always use current roles after any bless handoff.
+  let encoded = validatorEntry(ValidatorChapter.Staging, validators, config)
+  if encoded.error in {StateComponentError.LimitExceeded, StateComponentError.LengthOverflow}:
+    fail(AccumulationEffectError.LimitExceeded) # The codec preflights count, typed/native extents and canonical bytes.
+  if encoded.error != StateComponentError.None:
+    fail(AccumulationEffectError.InvalidState) # No invalid candidate or profile can fabricate a roster.
+  let decoded = decodeStateValidators(encoded.value.value, config)
+  if decoded.error != StateComponentError.None:
+    fail(AccumulationEffectError.InvalidState) # Require one independent canonical typed snapshot before publication.
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply([StateWrite(key: encoded.value.key, kind: StateWriteKind.Put,
+    value: encoded.value.value)])
+  case changed.error
+  of StateStoreError.None:
+    discard # Both representations share one fully Merklized successor.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Inherited complete-map policy is independent of guest gas.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # Prior serialized state and typed roster remain valid.
+  else:
+    fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
+  let current = AccumulationEffectContext(data: EffectData(initial: previous.initial,
+    accounts: changed.value, staging: decoded.value.value, queues: previous.queues,
+    privileges: previous.privileges, output: previous.output, provisions: previous.provisions))
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))

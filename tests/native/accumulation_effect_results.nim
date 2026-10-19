@@ -6,7 +6,7 @@
 
 import std/cmdline
 import ../../src/state/[accumulation_effects, accumulation_context]
-import ../../src/codec/[state_outputs, bounded, composite, state_privileges, state_authorization]
+import ../../src/codec/[state_outputs, bounded, composite, state_privileges, state_authorization, state_safrole]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 
@@ -32,6 +32,9 @@ of "privileges": discard context.effectPrivileges.value # Default contexts expos
 of "queues": discard context.effectQueues.value # Defaults cannot expose a current queue owner.
 of "assign": discard recordAccumulationAssign(pair, AuthorizationCoreIndex(0), [], ServiceIndex(0),
   default(AuthorizationConfig), default(PrivilegeConfig)).value # Failed mutation carries no successor.
+of "staging": discard context.effectStaging.value # Default contexts expose no current roster.
+of "designate": discard recordAccumulationDesignate(pair, [], default(
+    ValidatorStateConfig)).value # Failed mutation has no successor.
 of "bless": discard recordAccumulationBless(pair, default(PrivilegeState), default(
     PrivilegeConfig)).value # Default pairs cannot publish roles.
 of "info": discard context.effectInfo.value # No default metadata/effects.

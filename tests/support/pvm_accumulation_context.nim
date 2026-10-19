@@ -29,14 +29,15 @@ proc pvmEnvelope*(raw: openArray[byte] = [0'u8, 0, 7, 0, 0, 0, 0, 0, 50, 0, 63],
   for octet in raw:
     result.add(octet) # Raw program bytes include their own framing and opcode mask.
 
-proc pvmContextConfig*(): AccumulationContextConfig =
-  ## Coherent tiny-profile chapter and aggregate ceilings for the accumulation dispatcher.
+proc pvmContextConfig*(cores = 2'u64): AccumulationContextConfig =
+  ## Coherent two/three-core fixture ceilings, retaining an initial population of six validators.
+  assert cores >= 2 and cores <= 3 # Bound every derived fixture extent; the default profile remains unchanged.
   AccumulationContextConfig(validators: ValidatorCount(6),
-    queues: AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
-      maxBytes: ByteLimit(5120)),
-    staging: ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
-      maxBytes: ByteLimit(2017)),
-    privileges: PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(0),
+    queues: AuthorizationConfig(cores: CoreCount(cores), maxHashes: ElementLimit(80*cores),
+      maxBytes: ByteLimit(2560*cores)),
+    staging: ValidatorStateConfig(cores: CoreCount(cores), validators: ElementLimit(3*cores),
+      maxBytes: ByteLimit(1008*cores+1)),
+    privileges: PrivilegeConfig(cores: CoreCount(cores), maxAlways: ElementLimit(0),
       maxBytes: ByteLimit(100)), totalBytes: ByteLimit(10000))
 
 proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
@@ -44,18 +45,20 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     entropy: StateEntropyWord = default(StateEntropyWord),
     precedingService = false, includeContexts = false, extra: seq[StateEntry] = @[],
         account = default(ServiceMetadata), spareEntries = 0,
-            manager = 0'u32, assigner = 0'u32): PreparedAccumulationInvocation =
+            manager = 0'u32, assigner = 0'u32, delegator = 0'u32,
+                cores = 2'u64): PreparedAccumulationInvocation =
   ## The allowance supplies exact gas; optional authored failed-work operands supply a nonzero input count.
   ## Returned bootstrap retains real immutable account/code/input owners after all local sources die.
-  ## manager/assigner supply copied initial authority; neither changes the selected service.
+  ## manager/assigner/delegator supply copied initial authority without changing the selected service.
   ## account supplies copied metadata; the code hash is derived from code. spareEntries (0..64) bounds extra map capacity.
-  ## manager sets the initial C(12) authority independently of the selected invocation allowance.
+  ## cores selects the coherent two/three-core profile; the staging roster initially contains six records.
+  assert cores >= 2 and cores <= 3 # Keep optional profiles within the fixture map/memory ceilings.
   assert operandCount >= 0 and operandCount <= 16
   var reports: seq[OwnedReport] = @[]
   if operandCount > 0:
     # Authored zero-gas failed-work operands affect the argument count without changing declared gas.
     var report = default(WorkReport)
-    report.header.erasureShards = ErasureShards(6)
+    report.header.erasureShards = ErasureShards(uint16(3*cores))
     report.digestCount = operandCount
     for i in 0..<operandCount:
       report.digests[i].service = ServiceIndex(serviceId) # All operands belong to the one selected service.
@@ -64,11 +67,11 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
       payloadHash[0] = byte(i+1)
       report.digests[i].payloadHash = PayloadHash(payloadHash) # Distinguish input order in fetch witnesses.
     var encoded = newSeq[byte](10000)
-    let written = encodeReportBorrowed(report, [], 2, encoded)
+    let written = encodeReportBorrowed(report, [], cores, encoded)
     assert written.error == CompositeError.None
-    reports.add(decodeOwnedReport(encoded.toOpenArray(0, written.written-1), 2).value)
+    reports.add(decodeOwnedReport(encoded.toOpenArray(0, written.written-1), cores).value)
   let queue = planAccumulationQueues(reports, [0'u8], [0'u8], HeaderSlot(0),
-    AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(2), epochSlots: EpochSlots(1),
+    AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(cores), epochSlots: EpochSlots(1),
       perSlot: ElementLimit(1), totalItems: ElementLimit(1), reportBytes: ByteLimit(10000),
       maxBytes: ByteLimit(20000)), items: ElementLimit(1))).value
   let operands = prepareAccumulationOperands(queue, AccumulationReportPrefix(reports.len),
@@ -96,13 +99,17 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(preimage.len))).value]
   if includeContexts:
     # Actual canonical chapters authorize initial I; missing state must never be silently substituted.
-    let config = pvmContextConfig()
-    entries.add(authorizationEntry(AuthorizationKind.Queues,
-      @[newSeq[AuthorizerHash](80), newSeq[AuthorizerHash](80)], config.queues).value)
+    let config = pvmContextConfig(cores)
+    var rows = newSeq[AuthorizerRow](int(cores))
+    var assigners = newSeq[ServiceIndex](int(cores))
+    for core in 0..<int(cores):
+      rows[core] = newSeq[AuthorizerHash](80) # Preserve complete ordered queues in both supported profiles.
+      assigners[core] = ServiceIndex(assigner)
+    entries.add(authorizationEntry(AuthorizationKind.Queues, rows, config.queues).value)
     entries.add(validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6),
         config.staging).value)
-    entries.add(privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager), assigners: @[
-        ServiceIndex(assigner), ServiceIndex(assigner)]),
+    entries.add(privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
+        delegator: ServiceIndex(delegator), assigners: assigners),
       config.privileges).value)
   assert spareEntries >= 0 and spareEntries <= 64
   assert extra.len <= 64 # Keep all test-only extent additions below native and trie policy ceilings.

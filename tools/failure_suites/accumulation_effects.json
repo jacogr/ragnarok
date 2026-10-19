@@ -187,6 +187,28 @@
         "origin": "assign"
       },
       "name": "accumulation-effect-assign"
+    },
+    {
+      "arguments": [
+        "staging"
+      ],
+      "description": "Accumulation designate selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "staging"
+      },
+      "name": "accumulation-effect-staging"
+    },
+    {
+      "arguments": [
+        "designate"
+      ],
+      "description": "Accumulation designate selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "designate"
+      },
+      "name": "accumulation-effect-designate"
     }
   ],
   "crypto_library": "crypto",
