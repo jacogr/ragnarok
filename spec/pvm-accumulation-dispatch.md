@@ -9,15 +9,16 @@ machine's own bootstrap, prepares initial I using the explicit `AccumulationCont
 then executes that same immutable initial CPU. Mandatory C(2)/C(7)/C(12) chapters must
 exist and match the configured profile; the adapter never accepts substitute effects. Parameters
 and local limits are explicit. Gas (0) and fetch (2) use the existing host
-implementations. Checkpoint (18) and yield (26) retain versioned implication effects.
-Known accumulation calls 1, 3–6, 15–17, 19–25 and 27 are local
+implementations. Checkpoint (18), yield (26) and [provide (27)](pvm-accumulation-provide.md)
+retain versioned implication effects.
+Known accumulation calls 1, 3–6, 15–17 and 19–25 are local
 `UnsupportedHostCall` failures, even when their eventual protocol implementation
 might exhaust gas. Refine-only calls 7–14 and all other identifiers use F's unknown
 branch: charge 1000 and set r7 to WHAT, including on gas exhaustion. IDs are compared
 at their complete uint64 width.
 
-Capture, copying, instruction count, host-call count and gas-analysis budgets stay
-separate. Local failures expose no machine or execution progress. Completed guest
+Capture, copying, provision retention, instruction count, host-call count and
+gas-analysis budgets stay separate. Local failures expose no machine or execution progress. Completed guest
 outcomes retain the engine's snapshot, including terminal gas deficit, and both
 implication dimensions through the guarded `effects` accessor. Repeated
 calls start from the unchanged initial CPU; there is no stateful resume facility.

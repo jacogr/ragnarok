@@ -1,20 +1,21 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Execute a prepared accumulation CPU with its own fetch environment and implemented general calls.
+## Execute a prepared accumulation CPU with its own fetch environment and implemented host calls.
 ## Guarded results separate guest outcomes, engine refusals and unavailable host functionality.
-## Retains checkpoint/yield implications beside guest outcomes; Psi_A normalization/publication remain open.
+## Retains checkpoint/yield/provide implications beside guest outcomes.
+## Outcome normalization and state publication are separate operations.
 
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_fetch]
-import ../codec/state_outputs
+import ../codec/[state_outputs, composite]
 import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects]
 
 type
   ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
   AccumulationDispatchError* {.pure.} = enum
     Uninitialized, None, InvalidMachine, InvalidParameters, LimitExceeded, InvalidContext,
-    UnsupportedHostCall, ExecutionFailure
+    UnsupportedHostCall, ExecutionFailure, BackendFailure, GasRangeExceeded
   ## Success alone retains a CPU outcome; engine failure carries only its enum-valued reason.
   AccumulationDispatchResult* = object
     case status: AccumulationDispatchError
@@ -30,6 +31,7 @@ type
     fetch: FetchContext
     copyLimit: MemoryByteLimit
     effects: AccumulationEffects
+    provisionLimits: AccumulationProvisionLimits
 
 ## Inspect the selected alternative without granting mutable access to its discriminator.
 func error*(outcome: AccumulationDispatchResult): AccumulationDispatchError = outcome.status
@@ -87,6 +89,91 @@ proc effectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
       return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory is a local invariant refusal.
   hostSuccess[AccumulationDispatchError](response)
 
+## Compute the full 66-bit provide cost using bounded base-2^32 limbs, then subtract gas exactly.
+## Only debt outside the machine's existing signed-negative domain is a local representation refusal.
+proc provideCharge(cpu: MachineInfo, memory: Memory): HostResult[
+    AccumulationDispatchError] {.raises: [].} =
+  let size = uint64(cpu.registers[9])
+  let units = size div 1024
+  let tail = 3980'u64 + ((size mod 1024)*2264+1023) div 1024
+  let lowProduct = (units and 0xffffffff'u64)*2264+tail # Below 2^44+6244, proven before multiplication.
+  let highProduct = (units shr 32)*2264+(lowProduct shr 32) # Below 2^35; includes the low-limb carry.
+  let low = ((highProduct and 0xffffffff'u64) shl 32) or (lowProduct and 0xffffffff'u64)
+  let upper = highProduct shr 32 # Complete cost is upper*2^64+low, with upper at most two.
+  let available = uint64(cpu.gas)
+  var response = HostResponse(action: HostAction.Continue, gas: MachineGas(0),
+    gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory)
+  if upper == 0 and available >= low:
+    response.gas = MachineGas(available-low) # A funded cost is representable and subtraction cannot underflow.
+    return hostSuccess[AccumulationDispatchError](response)
+  var debtHigh = upper
+  var debtLow = 0'u64
+  if low >= available:
+    debtLow = low-available # No low-limb borrow; upper cost limbs remain unchanged.
+  else:
+    # Underfunding with a smaller low limb implies upper>0, so borrowing one upper unit is valid.
+    debtHigh = upper-1
+    debtLow = high(uint64)-available+low+1 # available>low proves each addition remains representable.
+  if debtHigh != 0 or debtLow > 0x8000000000000000'u64:
+    return hostFailure(AccumulationDispatchError.GasRangeExceeded) # Preserve the signed-gas gate, never clamp debt.
+  response.action = HostAction.OutOfGas
+  response.gasDeficit = GasDeficit(debtLow)
+  hostSuccess[AccumulationDispatchError](response)
+
+## Read and retain requested preimage bytes under the exact provide-row ordering after affordability.
+## Neither protocol refusal nor local failure changes the callback's prior effect pair.
+proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = provideCharge(cpu, memory)
+  if charged.kind != HostResultKind.Response:
+    return charged # A representation refusal has no response or partially charged CPU.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # Affordability precedes length, guest memory, target lookup and local copy policy.
+  let size = uint64(cpu.registers[9])
+  if size > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-8) # Invalid protocol length is HUH before any memory read.
+    return hostSuccess[AccumulationDispatchError](response)
+  let copied = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(size),
+    context.copyLimit)
+  case copied.error
+  of MachineError.None:
+    discard # A successful preflight owns the complete borrowed guest interval, including an empty interval.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Charged panic precedes even an unknown target; r7 is unchanged.
+    return hostSuccess[AccumulationDispatchError](response)
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local policy cannot masquerade as a protocol code.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners are local invariants.
+  let rawTarget = uint64(cpu.registers[7])
+  var target = ServiceIndex(0)
+  if rawTarget == high(uint64):
+    target = context.effects.effectContext(AccumulationDimension.Regular).value.effectInfo.value.service # Exact self sentinel.
+  elif rawTarget <= uint64(high(uint32)):
+    target = ServiceIndex(uint32(rawTarget)) # Full-width validation precedes nominal uint32 conversion.
+  else:
+    response.registers[7] = RegisterValue(high(uint64)-3) # Out-of-domain service cannot alias its low bits.
+    return hostSuccess[AccumulationDispatchError](response)
+  let retained = recordAccumulationProvision(context.effects, target, copied.value,
+      context.provisionLimits)
+  case retained.error
+  of AccumulationEffectError.None:
+    context.effects = retained.value # Only complete success publishes the new immutable regular version.
+    response.registers[7] = RegisterValue(0) # OK; account/preimage storage remains unchanged.
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO, after memory accessibility was established.
+  of AccumulationEffectError.NotRequested, AccumulationEffectError.AlreadyProvided,
+      AccumulationEffectError.InvalidLength:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH, retaining both prior dimensions.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # No partial capture or machine escapes local refusal.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # Failed hashes never become unrequested verdicts.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Corrupt account/request state is not WHO or HUH.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -109,7 +196,9 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       hostFailure(AccumulationDispatchError.InvalidContext) # Never fabricate protocol absence.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
-  of 1, 3..6, 15..17, 19..25, 27:
+  of 27:
+    provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
+  of 1, 3..6, 15..17, 19..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
@@ -117,13 +206,15 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     hostSuccess[AccumulationDispatchError](unknownHostResponse(cpu.gas, cpu.registers, memory))
 
 ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
-## Capture limits apply before execution; copy and engine budgets remain independent local policies.
+## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
+## Omitted provision limits give zero retained capacity; no default authorizes unbounded capture.
 ## Each call prepares I from this machine's own bootstrap and starts from its immutable initial CPU.
 ## No caller-supplied replacement effects, persistent writes or partial results escape.
 proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, parameters: Parameters,
     fetchLimits: FetchAccumulationLimits, copyLimit: MemoryByteLimit,
     steps: ExecutionStepLimit, calls: HostCallLimit,
-    cycles: GasCycleLimit, contextConfig: AccumulationContextConfig): AccumulationDispatchResult =
+    cycles: GasCycleLimit, contextConfig: AccumulationContextConfig,
+    provisionLimits = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
   let captured = machineFetchContext(prepared, parameters, fetchLimits)
   case captured.error
   of InvocationFetchError.None:
@@ -149,7 +240,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
   var context = DispatchContext(fetch: captured.value, copyLimit: copyLimit,
-      effects: initialized.value)
+      effects: initialized.value, provisionLimits: provisionLimits)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
     steps, calls, cycles)
   case evaluated.error
