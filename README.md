@@ -55,10 +55,16 @@ readable code, explicit decisions and independent verification central to the pr
 
 ### Why Nim when it is not one of the listed JAM languages?
 
-We chose Nim for readable native code, distinct protocol types, explicit ownership and access
-to C libraries for low-level primitives. The language choice serves the implementation we want
-to build. Nim is absent from the prize's [published language sets](https://jam.web3.foundation/);
-rule 3 allows applications for unlisted languages, but that would not address our use of agents.
+[Nim](https://nim-lang.org/) is a statically typed, compiled systems programming language
+(native executables, deterministic memory management, generics, compile-time evaluation and macros,
+with direct C interoperability). It combines those capabilities with readable syntax and distinct
+types that help keep protocol domains separate.
+
+That makes **Set B, “Native code”**, the natural technical fit in our view, alongside languages
+such as C, C++, Rust and Zig. Nim simply is not listed in the prize's
+[published language sets](https://jam.web3.foundation/). This is our assessment, not an official
+classification; [rule 3](https://jam.web3.foundation/rules) allows applications for unlisted
+languages, but that would not address our use of agents.
 The original evaluation is preserved in the
 [`language-selection` release](https://github.com/jacogr/ragnarok/releases/tag/language-selection).
 
