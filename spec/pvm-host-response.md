@@ -10,12 +10,13 @@ in GP 0.8.0 Appendix A, **Host Call Definition**, `Psi_H*`. The source is
 This adapter accepts a trusted host's completed response to a recursive `execute`
 Host suspension. It does not dispatch a host function, execute another guest step,
 manage host context, or implement the complete `Psi_H` invocation loop. The existing
-unsigned `MachineGas` domain supports nonnegative posterior host gas; signed guest
-gas underflow remains an explicit execution-model boundary.
+`MachineGas` credit and `GasDeficit` fields now retain exact negative terminal host
+results; see [host gas accounting](pvm-host-gas.md). Guest block affordability rules
+are unchanged.
 
 ## Transition and ownership contract
 
-`HostResponse` carries an explicit `HostAction`, nominal gas, a copied register file
+`HostResponse` carries an explicit `HostAction`, canonical gas credit/deficit, a copied register file
 and immutable memory owner. `Continue` advances the causing PC by `1 + skip` and
 returns `Continued`. `Halt`, `Panic` and `OutOfGas` return the selected guest exit at
 the causing ecalli PC. All four actions retain the supplied posterior gas, registers
@@ -50,4 +51,5 @@ isolated runtime probes enforce failed-result and exit-metadata selection.
 This composes initialization, bounded execution, host-response application and output
 capture. A [bounded host dispatcher](pvm-host-execution.md) composes trusted handlers
 and caller-owned context. Concrete host functions, complete invocation wrappers and
-signed gas accounting remain separate work, along with the existing PVM specification gates.
+gas-used accounting remain separate work. [Gas and unknown-call responses](pvm-host-gas.md)
+implement exact fixed-charge terminal deficits; existing PVM specification gates remain.

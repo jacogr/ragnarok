@@ -9,7 +9,8 @@ Transition). No specification or vector pins change.
 ## Scope and ownership
 
 `src/pvm/machine.nim` captures thirteen 64-bit registers, a validated program/entry
-address through `captureMachine`, unsigned 64-bit gas, the block-charged flag, and immutable memory. This is
+address through `captureMachine`, unsigned 64-bit gas credit, the block-charged flag, and immutable memory.
+Terminal host snapshots also retain a canonical gas deficit as described below. This is
 an explicit machine-state constructor, not the standard JAM program initializer.
 CPU metadata and page images returned to callers are copies. The program owner
 comes from the first increment; memory/program handles retained by a machine stay
@@ -136,3 +137,6 @@ and fault repair/retry while preserving the explicit wrapping-access gate.
 [Host byte-range access](pvm-host-memory.md) separately provides bounded natural-interval
 reads and atomic writes; it preserves scalar instruction semantics. Standard initialization
 and host dispatch have separate contracts; concrete host functions and complete JAM invocation remain open.
+
+Terminal host balances now carry canonical gas credit/deficit; see
+[host gas accounting](pvm-host-gas.md). Negative snapshots cannot resume execution.

@@ -27,8 +27,10 @@ type
   MemoryByteLimit* = distinct uint64
   # Register values are independent of decoded immediates and addresses.
   RegisterValue* = distinct uint64
-  # PVM gas is unsigned here; signed host-call gas accounting is outside this increment.
+  # Nonnegative gas component; a terminal negative balance is represented separately by GasDeficit.
   MachineGas* = distinct uint64
+  # Magnitude of a negative terminal balance, at most 2^63; nonzero deficit requires zero gas.
+  GasDeficit* = distinct uint64
   # Every machine snapshot contains exactly thirteen copied register values.
   RegisterFile* = array[13, RegisterValue]
   # Writable pages are also readable; inaccessible pages may retain bytes for later remapping.
@@ -42,7 +44,7 @@ type
   # Local API failures are distinct from guest panic/fault, including an explicit specification gate.
   MachineError* {.pure.} = enum
     Uninitialized, None, InvalidOwner, InvalidPage, UnsortedPages, LimitExceeded,
-    InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange
+    InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange, InvalidGasState
   # Fault addresses belong to the failure reason; other failures carry no value or progress.
   MachineResult*[T] = object
     case status: MachineError
@@ -69,6 +71,8 @@ type
   MachineInfo* = object
     pc*: CodeAddress
     gas*: MachineGas
+    # Terminal negative magnitude; gas credit must be zero whenever this is nonzero.
+    gasDeficit*: GasDeficit
     blockCharged*: bool
     registers*: RegisterFile
   # Immutable machine root retains program and memory owners without any back-reference.
@@ -355,6 +359,9 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
 proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
   # Empty/default memory must be distinguished from a valid all-inaccessible memory snapshot.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
+  if uint64(info.gasDeficit) != 0:
+    # Negative balances are terminal state and cannot be captured as executable guest input.
+    return MachineResult[Machine](status: MachineError.InvalidGasState)
   # Reuse the base PR's instruction-boundary validation without re-decoding or copying its program.
   if instruction(program, info.pc).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
@@ -368,6 +375,10 @@ proc captureTerminalMachine*(program: Program, memory: Memory,
     info: MachineInfo): MachineResult[Machine] =
   # Even terminal snapshots require genuine program and memory owners.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
+  if uint64(info.gasDeficit) > 0x8000000000000000'u64 or
+      (uint64(info.gasDeficit) != 0 and uint64(info.gas) != 0):
+    # Canonical balances never carry simultaneous credit/debt or exceed the signed negative domain.
+    return MachineResult[Machine](status: MachineError.InvalidGasState)
   if codeLength(program).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
   MachineResult[Machine](status: MachineError.None,

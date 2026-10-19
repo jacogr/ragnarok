@@ -3,7 +3,7 @@
 
 ## GP 0.8.0 charged single steps and bounded execution; see spec/pvm-step.md.
 ## Exposes scoped stepRegisters/stepControl/stepMemory, complete stepOnce, bounded execute,
-## applyHostResponse and executeWithHost for bounded trusted nonnegative-gas host transitions.
+## applyHostResponse and executeWithHost for bounded trusted host transitions including terminal gas deficits.
 ## Guarded StepResult snapshots expose read-only exit and selected faultPage/hostCall metadata.
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
 
@@ -42,6 +42,8 @@ type
   HostResponse* = object
     action*: HostAction
     gas*: MachineGas
+    # Nonzero only for an OutOfGas reply with zero credit; validated before snapshot publication.
+    gasDeficit*: GasDeficit
     registers*: RegisterFile
     memory*: Memory
   # Local scope/resource/specification failures are distinct from guest execution outcomes.
@@ -88,6 +90,12 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   if uint64(original.value.pc) != uint64(suspension.callAddress):
     # Single-step Host carries the following PC, even when it names an identical ecalli.
     return StepResult(status: StepError.InvalidHostSuspension)
+  if uint64(original.value.gasDeficit) != 0:
+    # A replaced terminal snapshot cannot authorize another host response.
+    return StepResult(status: StepError.InvalidMachine)
+  if uint64(response.gasDeficit) != 0 and response.action != HostAction.OutOfGas:
+    # Negative host gas is meaningful only on OutOfGas, never as a continuation or successful halt.
+    return StepResult(status: StepError.InvalidHostResponse)
   let item = instruction(program.value, original.value.pc)
   if item.error != ProgramError.None:
     # A terminal/import PC outside executable code cannot authorize a host response.
@@ -97,6 +105,7 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
     return StepResult(status: StepError.InvalidHostSuspension)
   var info = original.value
   info.gas = response.gas
+  info.gasDeficit = response.gasDeficit
   info.registers = response.registers
   var exit = StepExit.Continued
   case response.action
@@ -110,7 +119,7 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
     # Host panic likewise retains all posterior state and the causing host-call PC.
     exit = StepExit.Panic
   of HostAction.OutOfGas:
-    # The trusted host supplies its posterior unsigned gas; do not fabricate a charge or clamp it.
+    # Preserve the host's canonical credit/deficit balance; terminal capture validates its domain.
     exit = StepExit.OutOfGas
   of HostAction.Uninitialized:
     # A default response is not an implicit continuation with zeroed registers or gas.
@@ -320,6 +329,9 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     return StepResult(status: StepError.InvalidMachine)
   let program = owner.value
   var info = captured.value
+  if uint64(info.gasDeficit) != 0:
+    # Terminal host debt must never be reinterpreted as executable zero gas.
+    return StepResult(status: StepError.InvalidMachine)
   let decoded = instruction(program, info.pc)
   # Entry capture validates PC; terminal snapshots may intentionally have a non-executable PC.
   if decoded.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
@@ -434,6 +446,9 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
   if original.error != MachineError.None or owner.error != MachineError.None or
       originalMemory.error != MachineError.None:
     # Absent owners are local API misuse, not a guest program failing deblob.
+    return StepResult(status: StepError.InvalidMachine)
+  if uint64(original.value.gasDeficit) != 0:
+    # Reject terminal debt before even a zero-budget or invalid-PC execution path.
     return StepResult(status: StepError.InvalidMachine)
   let program = owner.value
   var current = source
