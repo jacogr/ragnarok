@@ -15,18 +15,18 @@ import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
   pvm_accumulation_provision, arc_evidence]
 
-## Inject backend refusal only after genuine source and execution owners exist.
+# Inject backend refusal only after genuine source and execution owners exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
-## Permit a complete account-root phase before refusing the next provision-root hash.
+# Permit a complete account-root phase before refusing the next provision-root hash.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
-## Count actual backend work to prove early provenance/stale gates precede hashing.
+# Count actual backend work to prove early provenance/stale gates precede hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
-## Inspect the existing complete-map commitment without hashing or reconstructing partial accounts.
+# Inspect the existing complete-map commitment without hashing or reconstructing partial accounts.
 proc root(state: StateStore): array[32, byte] = array[32, byte](
     state.snapshot.value.commitment.root)
 
-## Replace only named metadata/history values; code/storage/opaque chapters remain in the full expected map.
+# Replace only named metadata/history values; code/storage/opaque chapters remain in the full expected map.
 proc expectedRows(fixture: BatchFixture, first = true, second = true,
     providedSecond = true): seq[StateEntry] =
   result = @[]

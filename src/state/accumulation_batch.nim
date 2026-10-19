@@ -11,30 +11,36 @@ import ./[accumulation_inputs, accumulation_service, accumulation_invocation, ac
   accumulation_terminal_provisions, store]
 
 type
-  ## Account merge work is independently bounded from union traversal/copy/wire work.
-  AccumulationBatchLimits* = object
-    accounts*: ElementLimit
-    provisions*: AccumulationProvisionUnionLimits
-  ## Refusals expose only their reasons; no earlier credit, candidate root or partial terminal set escapes.
-  AccumulationBatchError* {.pure.} = enum
-    Uninitialized, None, InvalidInputs, InvalidState, InvalidExecution, SourceMismatch,
-    DuplicateService, InvalidIndex, StaleState, UnsupportedAccountEffects, LimitExceeded,
-      TerminalFailure, StoreFailure
-  ## Copied batch observations describe the explicit executed subset, never complete-round coverage.
-  AccumulationBatchInfo* = object
-    executions*, accountWrites*: int
-    terminal*: AccumulationTerminalProvisionInfo
-  ## Acyclic owner retains exact input/prior provenance, private metadata writes and normalized terminal effects.
+  AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
+    accounts*: ElementLimit ## Maximum changed self-metadata records encoded for incoming credits.
+    provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
+  AccumulationBatchError* {.pure.} = enum ## Refusals expose only their reasons; no earlier credit, candidate root or partial terminal set escapes.
+    Uninitialized,    ## Default result or plan without initialized ownership.
+    None,             ## Complete selected success; guarded value extraction is available.
+    InvalidInputs,    ## The expected prepared input owner is uninitialized.
+    InvalidState,     ## The expected prior snapshot or publication store is uninitialized.
+    InvalidExecution, ## A local dispatch refusal supplied no completed execution source.
+    SourceMismatch,   ## An execution belongs to a different input owner or prior snapshot.
+    DuplicateService, ## More than one execution invokes the same service in this subset.
+    InvalidIndex,     ## The plan-owned execution ordinal is outside the retained outcomes.
+    StaleState,       ## The publication store no longer retains this plan's exact prior version.
+    UnsupportedAccountEffects, ## Selected account changes need a merger beyond incoming-credit metadata.
+    LimitExceeded,    ## Batch descriptors or account writes exceed local preparation ceilings.
+    TerminalFailure,  ## Terminal preparation or provision fulfillment refused; inspect its nested reason.
+    StoreFailure      ## The private account-write phase refused; inspect storeError.
+  AccumulationBatchInfo* = object ## Copied batch observations describe the explicit executed subset, never complete-round coverage.
+    executions*: int    ## Unique services in the explicit executed subset.
+    accountWrites*: int ## Changed self-metadata records prepared for incoming credits.
+    terminal*: AccumulationTerminalProvisionInfo ## Checked invocation slot and selected-provision accounting.
+  # Acyclic owner retains exact input/prior provenance, private metadata writes and normalized terminal effects.
   BatchData = ref object
     inputs: PreparedAccumulationInputs
     prior: StateStoreSnapshot
     writes: seq[StateWrite]
     terminal: PreparedTerminalAccumulationProvisions
-  ## Only verified common-source, unique-service executions produce a batch plan.
-  PreparedAccumulationBatch* = object
+  PreparedAccumulationBatch* = object ## Only verified common-source, unique-service executions produce a batch plan.
     data: nil BatchData
-  ## Nested failure alternatives retain enums alone, with guarded extraction of the selected reason.
-  AccumulationBatchResult*[T] = object
+  AccumulationBatchResult*[T] = object ## Nested failure alternatives retain enums alone, with guarded extraction of the selected reason.
     case status: AccumulationBatchError
     of None:
       completed: T # Only successful preparation/query/application exposes an immutable owner or copied facts.
@@ -47,29 +53,35 @@ type
     else:
       discard # Every other refusal/default carries just its outer reason.
 
-## Inspect the selected alternative without permitting retagging.
-func error*[T](outcome: AccumulationBatchResult[T]): AccumulationBatchError = outcome.status
-## Extract complete selected success under checked optimized contracts.
+func error*[T](outcome: AccumulationBatchResult[T]): AccumulationBatchError =
+  ## Inspect the selected alternative without permitting retagging.
+  outcome.status
 func value*[T](outcome: AccumulationBatchResult[T]): T {.inline,
-    requires: outcome.status == AccumulationBatchError.None.} = outcome.completed
-## Inspect only an actual terminal adapter refusal.
+    requires: outcome.status == AccumulationBatchError.None.} =
+  ## Extract complete selected success under checked optimized contracts.
+  outcome.completed
 func terminalError*[T](outcome: AccumulationBatchResult[
     T]): AccumulationTerminalProvisionError {.inline,
 
-requires: outcome.status == AccumulationBatchError.TerminalFailure.} = outcome.terminalReason
-## Inspect only the nested normalization alternative, preserving its specification gate.
+requires: outcome.status == AccumulationBatchError.TerminalFailure.} =
+  ## Inspect only an actual terminal adapter refusal.
+  outcome.terminalReason
 func normalizationError*[T](outcome: AccumulationBatchResult[T]): AccumulationOutcomeError {.inline,
     requires: outcome.status == AccumulationBatchError.TerminalFailure and
-      outcome.terminalReason == AccumulationTerminalProvisionError.NormalizationFailure.} = outcome.normalizationReason
-## Inspect only the nested union/fulfillment alternative.
+      outcome.terminalReason == AccumulationTerminalProvisionError.NormalizationFailure.} =
+  ## Inspect only the nested normalization alternative, preserving its specification gate.
+  outcome.normalizationReason
 func provisionError*[T](outcome: AccumulationBatchResult[T]): AccumulationProvisionError {.inline,
     requires: outcome.status == AccumulationBatchError.TerminalFailure and
-      outcome.terminalReason == AccumulationTerminalProvisionError.ProvisionFailure.} = outcome.provisionReason
-## Inspect only a refused private account-write phase.
+      outcome.terminalReason == AccumulationTerminalProvisionError.ProvisionFailure.} =
+  ## Inspect only the nested union/fulfillment alternative.
+  outcome.provisionReason
 func storeError*[T](outcome: AccumulationBatchResult[T]): StateStoreError {.inline,
-    requires: outcome.status == AccumulationBatchError.StoreFailure.} = outcome.storeReason
+    requires: outcome.status == AccumulationBatchError.StoreFailure.} =
+  ## Inspect only a refused private account-write phase.
+  outcome.storeReason
 
-## Translate reason-only terminal failure without retaining a parent success payload or candidate state.
+# Translate reason-only terminal failure without retaining a parent success payload or candidate state.
 func terminalRefusal[T, U](failed: AccumulationTerminalProvisionResult[U]): AccumulationBatchResult[T] =
   var normalized = AccumulationOutcomeError.Uninitialized
   var provided = AccumulationProvisionError.Uninitialized
@@ -80,14 +92,14 @@ func terminalRefusal[T, U](failed: AccumulationTerminalProvisionResult[U]): Accu
   AccumulationBatchResult[T](status: AccumulationBatchError.TerminalFailure,
     terminalReason: failed.error, normalizationReason: normalized, provisionReason: provided)
 
-## Sort numeric service IDs independently of execution order or little-endian key bytes.
+# Sort numeric service IDs independently of execution order or little-endian key bytes.
 func compareService(left, right: ServiceIndex): int =
   if uint32(left) < uint32(right): return -1 # Prove uniqueness before any union hashing.
   if uint32(left) > uint32(right): return 1
   0
 
-## Copy observations without granting mutable metadata, arrays or replaceable publication provenance.
 proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[AccumulationBatchInfo] =
+  ## Copy observations without granting mutable metadata, arrays or replaceable publication provenance.
   let data = plan.data
   if data == nil:
     return AccumulationBatchResult[AccumulationBatchInfo](
@@ -96,9 +108,9 @@ proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[Accumu
     completed: AccumulationBatchInfo(executions: data.terminal.terminalProvisionInfo.value.provisions.contexts,
       accountWrites: data.writes.len, terminal: data.terminal.terminalProvisionInfo.value))
 
-## Retain one genuine normalized outcome in the original execution order.
 proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisionSourceIndex):
     AccumulationBatchResult[AccumulationOutcome] =
+  ## Retain one genuine normalized outcome in the original execution order.
   let data = plan.data
   if data == nil:
     return AccumulationBatchResult[AccumulationOutcome](
@@ -110,12 +122,12 @@ proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisi
   AccumulationBatchResult[AccumulationOutcome](status: AccumulationBatchError.None,
       completed: retained.value)
 
-## Prepare an explicit unique-service subset from one input owner and exact prior complete-map version.
-## Source/uniqueness checks precede terminal normalization and union hashing; inputs stay stable during this call.
 proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
     executions: openArray[AccumulationDispatchResult], slot: HeaderSlot,
     limits: AccumulationBatchLimits): AccumulationBatchResult[PreparedAccumulationBatch] =
-  ## Refuse without exposing partially retained service rows or encoded account writes.
+  ## Prepare an explicit unique-service subset from one input owner and exact prior complete-map version.
+  ## Source/uniqueness checks precede terminal normalization and union hashing; inputs stay stable during this call.
+  # Refuse without exposing partially retained service rows or encoded account writes.
   template fail(reason: AccumulationBatchError) =
     return AccumulationBatchResult[PreparedAccumulationBatch](status: reason)
   if inputs.invocationServiceCount.error != AccumulationInputError.None:
@@ -171,10 +183,10 @@ proc prepareAccumulationBatch*(inputs: PreparedAccumulationInputs, prior: StateS
     completed: PreparedAccumulationBatch(data: BatchData(inputs: inputs, prior: prior,
       writes: writes, terminal: selected.value)))
 
-## Apply credit merge then fnprovide privately; only complete success publishes the caller's store.
-## Exact prior identity prevents lost updates and duplicate incoming credit; phase-local store limits are inherited.
 proc applyAccumulationBatch*(state: var StateStore, plan: PreparedAccumulationBatch):
     AccumulationBatchResult[StateStoreSnapshot] =
+  ## Apply credit merge then fnprovide privately; only complete success publishes the caller's store.
+  ## Exact prior identity prevents lost updates and duplicate incoming credit; phase-local store limits are inherited.
   let data = plan.data
   if data == nil:
     return AccumulationBatchResult[StateStoreSnapshot](

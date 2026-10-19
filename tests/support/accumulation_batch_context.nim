@@ -18,17 +18,20 @@ import ./[pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_p
   accumulation_provision_integration]
 
 type
-  ## Literal final instructions distinguish normal halt from exceptional rollback.
-  BatchEnding* {.pure.} = enum
-    Halt, Panic, Ambiguous, StorageHalt, StoragePanic, StorageCheckpointPanic
-  ## Mutable test-only fixture values are independently captured by the production preparation APIs.
-  BatchFixture* = object
-    inputs*: PreparedAccumulationInputs
-    state*: StateStore
-    entries*: seq[StateEntry]
+  BatchEnding* {.pure.} = enum ## Literal final instructions distinguish normal halt from exceptional rollback.
+    Halt,                  ## Normal termination retains both regular provision contributions.
+    Panic,                 ## A trap discards the later regular provision and retains the first checkpoint.
+    Ambiguous,             ## A readable 32-byte return exercises the nonempty-provisions gate.
+    StorageHalt,           ## The sibling PVM API retains a regular storage write at halt.
+    StoragePanic,          ## Panic discards a storage write made after the original checkpoint.
+    StorageCheckpointPanic ## A second checkpoint retains the storage write before panic.
+  BatchFixture* = object ## Mutable test-only fixture values are independently captured by the production preparation APIs.
+    inputs*: PreparedAccumulationInputs ## Shared immutable service-input owner for execution provenance.
+    state*: StateStore        ## Complete prior map captured independently of the fixture rows.
+    entries*: seq[StateEntry] ## Mutable authored rows used to construct independent expected maps.
 
-## Assemble two provides around a checkpoint; instruction bytes and opcode boundaries are independently authored.
 proc batchEnvelope*(ending: BatchEnding): seq[byte] =
+  ## Assemble two provides around a checkpoint; instruction bytes and opcode boundaries are independently authored.
   var instructions = @[registerImmediate(7, 42), registerImmediate(8, 65536),
     registerImmediate(9, 1), @[10'u8, 27], @[10'u8, 18], registerImmediate(7, 99),
     registerImmediate(8, 196608), @[10'u8, 27]]
@@ -63,8 +66,8 @@ proc batchEnvelope*(ending: BatchEnding): seq[byte] =
   for octet in mask: raw.add(octet)
   pvmEnvelope(raw)
 
-## Equal-content calls create distinct input owners for source-substitution rejection tests.
 proc batchInputSet*(incoming = true): PreparedAccumulationInputs =
+  ## Equal-content calls create distinct input owners for source-substitution rejection tests.
   let queue = planAccumulationQueues([], [0'u8], [0'u8], HeaderSlot(0),
     AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(2), epochSlots: EpochSlots(1),
       maxBytes: ByteLimit(1000)))).value
@@ -82,9 +85,9 @@ proc batchInputSet*(incoming = true): PreparedAccumulationInputs =
     AccumulationInputConfig(inputs: ElementLimit(2), allowances: ElementLimit(2),
         services: ElementLimit(2))).value
 
-## Capture both ready-code services and independent canonical requests in the same complete immutable prior.
 proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
     writes = 64'u64, incoming = true): BatchFixture =
+  ## Capture both ready-code services and independent canonical requests in the same complete immutable prior.
   let config = pvmContextConfig()
   var entries = @[
     authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
@@ -111,9 +114,9 @@ proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
   result = BatchFixture(inputs: batchInputSet(incoming), entries: entries,
     state: newStateStore(entries, limits).value)
 
-## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
 proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128)):
     AccumulationDispatchResult =
+  ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
   let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(index),
     fixture.state.snapshot.value, slot, AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512),
         preimageBytes: ByteLimit(1024))).value
@@ -131,7 +134,7 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
     ExecutionStepLimit(200), HostCallLimit(32), GasCycleLimit(10000), pvmContextConfig(),
     provisionPolicy(items = 2, perBlob = 1, total = 2))
 
-## Account and union ceilings remain independent, with the latter including duplicate contributions from both services.
 proc batchPolicy*(accounts = 2'u64): AccumulationBatchLimits =
+  ## Account and union ceilings remain independent, with the latter including duplicate contributions from both services.
   AccumulationBatchLimits(accounts: ElementLimit(accounts),
     provisions: integrationPolicy(contexts = 2, items = 4, perBlob = 1, total = 4, encoded = 13))
