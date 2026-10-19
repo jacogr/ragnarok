@@ -60,8 +60,8 @@ else:
 
 # Composite owner is explicitly non-copyable: copying slots would duplicate native descriptor ownership.
 proc `=copy`*(destination: var Server, source: Server) {.error: "RPC Server owns socket descriptors".}
-# ARC destruction closes every live descriptor, including partial startup and exception paths.
 proc `=destroy`*(server: Server) =
+  ## ARC destruction closes every live descriptor, including partial startup and exception paths.
   if server.opened:
     # Default instances never close stdin.
     discard posix.close(server.fd)
@@ -84,8 +84,8 @@ proc close(slot: var Connection) =
   slot.messageDeadline = 0
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
 
-# Explicit shutdown is idempotent and leaves ARC with no live native handles.
 proc close*(server: var Server) =
+  ## Explicit shutdown is idempotent and leaves ARC with no live native handles.
   for slot in mitems(server.connections):
     # Release accepted sockets before listener.
     slot.close()
@@ -105,9 +105,9 @@ proc nonblocking(fd: cint): bool =
       return false
   true
 
-# Bind loopback only; port zero disables RPC. Startup failure is reported to the peer CLI.
 proc start*(server: var Server, port: uint16, role: string,
     parameters = unavailableParameters(), genesis = unavailableGenesis()): bool =
+  ## Bind loopback only; port zero disables RPC. Startup failure is reported to the peer CLI.
   if server.opened:
     # A second start cannot leak or replace a live listener.
     return false
@@ -143,12 +143,12 @@ proc start*(server: var Server, port: uint16, role: string,
   server.chain = genesisView(genesis)
   true
 
-## Publish a caller-validated direct child between ticks on the same dispatcher thread.
-## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
-## current view and forward advanceView's reason. Success replaces the chain and queues subscription updates,
-## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
-## This is not a thread-safe import/validation API.
 proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceError =
+  ## Publish a caller-validated direct child between ticks on the same dispatcher thread.
+  ## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
+  ## current view and forward advanceView's reason. Success replaces the chain and queues subscription updates,
+  ## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
+  ## This is not a thread-safe import/validation API.
   if not server.opened:
     return ViewAdvanceError.Uninitialized # Shutdown cannot be bypassed by publishing another snapshot.
   let update = server.chain.advanceView(child)
@@ -161,10 +161,10 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
         slot.close() # Disconnect only the overflowing consumer; never drop updates or reject the chain head.
   ViewAdvanceError.None
 
-## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.
-## Requires a known retained chain block; failures leave the view intact. No finality proof is verified.
-## A new finalized head emits only finalized subscription events; repeats are silent and best is unchanged.
 proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
+  ## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.
+  ## Requires a known retained chain block; failures leave the view intact. No finality proof is verified.
+  ## A new finalized head emits only finalized subscription events; repeats are silent and best is unchanged.
   if not server.opened:
     return ViewFinalizeError.Uninitialized # Closed listeners cannot receive state publications.
   let update = server.chain.finalizeView(hash)
@@ -274,8 +274,8 @@ proc process(slot: var Connection, info: ClientInfo, now: int64) =
     # Idle keepalive window.
     slot.deadline = now + 30000
 
-# One accept, one bounded read, one frame and one write per slot per turn; called by the existing peer loop.
 proc tick*(server: var Server, peers: uint32) =
+  ## One accept, one bounded read, one frame and one write per slot per turn; called by the existing peer loop.
   if not server.opened:
     # Default peer operation does no additional syscall or clock work.
     return
