@@ -10,11 +10,9 @@
 import ./[program, machine]
 
 type
-  # Unsupported instructions are scope failures, not guest traps; no partial registers escape.
-  RegisterError* {.pure.} = enum
+  RegisterError* {.pure.} = enum ## Unsupported instructions are scope failures, not guest traps; no partial registers escape.
     Uninitialized, None, InvalidInstruction, UnsupportedInstruction
-  # The fixed register array is copied on success and inaccessible for every failure alternative.
-  RegisterResult* = object
+  RegisterResult* = object ## The fixed register array is copied on success and inaccessible for every failure alternative.
     case status: RegisterError
     of None:
       # No references or mutable storage are shared with the input register file.
@@ -23,14 +21,15 @@ type
       # Failed/default alternatives carry only their reason.
       discard
 
-# Inspect the reason without permitting result retagging.
-func error*(r: RegisterResult): RegisterError = r.status
-# Select success before extracting the copied register file.
+func error*(r: RegisterResult): RegisterError =
+  ## Inspect the reason without permitting result retagging.
+  r.status
 func value*(r: RegisterResult): RegisterFile {.inline, requires: r.status == RegisterError.None.} =
+  ## Select success before extracting the copied register file.
   r.completed
 
-# Identify the complete register-only execution scope before gas charging or register evaluation.
 func registerOnlyOpcode*(opcode: byte): bool =
+  ## Identify the complete register-only execution scope before gas charging or register evaluation.
   opcode in {20'u8, 51'u8, 100'u8..110'u8, 131'u8..161'u8, 190'u8..230'u8}
 
 # Sign-extend a low-width bit pattern without host signed overflow or implementation-defined shifts.
@@ -103,10 +102,10 @@ func countBits(value: uint64, bits: int, mode: int): uint64 =
       # A one completes the contiguous zero prefix/suffix.
       break
 
-# Evaluate one validated instruction's register mutation. All operands come from the original array,
-# including when destination and sources alias. Non-register instructions fail before any mutation.
 proc evaluateRegisters*(program: Program, pc: CodeAddress,
     registers: RegisterFile): RegisterResult =
+  ## Evaluate one validated instruction's register mutation. All operands come from the original array,
+  ## including when destination and sources alias. Non-register instructions fail before any mutation.
   let decoded = instruction(program, pc)
   # Invalid owners and unmarked/out-of-range addresses never yield executable operands.
   if decoded.error != ProgramError.None:

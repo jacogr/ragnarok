@@ -11,17 +11,12 @@
 import ./[program, machine, registers, gas]
 
 type
-  # Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
-  HostCallId* = distinct uint64
-  # Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
-  ExecutionStepLimit* = distinct uint64
-  # Local dispatch budget, independent of attempted guest instructions and guest gas.
-  HostCallLimit* = distinct uint64
-  # Guest outcomes shared by single-step and bounded recursive execution.
-  StepExit* {.pure.} = enum
+  HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
+  ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
+  HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
+  StepExit* {.pure.} = enum ## Guest outcomes shared by single-step and bounded recursive execution.
     Continued, OutOfGas, Panic, Halt, Fault, Host
-  # Normal and terminal guest outcomes are completed evaluations with an inspectable snapshot.
-  StepOutcome* = object
+  StepOutcome* = object ## Normal and terminal guest outcomes are completed evaluations with an inspectable snapshot.
     machine*: Machine
     case kind: StepExit
     of Fault:
@@ -35,25 +30,21 @@ type
     else:
       # Normal, terminal and gas outcomes have no fault metadata.
       discard
-  # Host continuations and terminal requests are separate from guest fault/host suspension reasons.
-  HostAction* {.pure.} = enum
+  HostAction* {.pure.} = enum ## Host continuations and terminal requests are separate from guest fault/host suspension reasons.
     Uninitialized, Continue, Halt, Panic, OutOfGas
-  # A trusted host supplies posterior gas/registers/memory; it cannot choose PC, code or charged flag.
-  # Memory remains an immutable retained owner, while registers are copied by value.
-  HostResponse* = object
+  HostResponse* = object ## A trusted host supplies posterior gas/registers/memory; it cannot choose PC, code or charged flag.
+ ## Memory remains an immutable retained owner, while registers are copied by value.
     action*: HostAction
     gas*: MachineGas
     # Nonzero only for an OutOfGas reply with zero credit; validated before snapshot publication.
     gasDeficit*: GasDeficit
     registers*: RegisterFile
     memory*: Memory
-  # Local scope/resource/specification failures are distinct from guest execution outcomes.
-  StepError* {.pure.} = enum
+  StepError* {.pure.} = enum ## Local scope/resource/specification failures are distinct from guest execution outcomes.
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
     NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension,
       InvalidHostResponse, HostCallLimitExceeded
-  # Failed/default alternatives carry only their reason; no partial machine or charge escapes.
-  StepResult* = object
+  StepResult* = object ## Failed/default alternatives carry only their reason; no partial machine or charge escapes.
     case status: StepError
     of None:
       # Immutable child handles form an acyclic graph without a back-reference to this result.
@@ -63,11 +54,9 @@ type
       discard
 
 type
-  # Callback selection is independent of the caller's enum: no numeric reason implies success.
-  HostResultKind* {.pure.} = enum
+  HostResultKind* {.pure.} = enum ## Callback selection is independent of the caller's enum: no numeric reason implies success.
     Uninitialized, Response, Failure
-  # A fallible callback returns either posterior state or its own typed local refusal, never both.
-  HostResult*[Reason: enum] = object
+  HostResult*[Reason: enum] = object ## A fallible callback returns either posterior state or its own typed local refusal, never both.
     case selection: HostResultKind
     of Response:
       # Only this alternative retains a memory owner through the host response.
@@ -78,11 +67,9 @@ type
     else:
       # A default callback result is malformed, not an implicit continuation.
       discard
-  # Guest completion, engine refusal and callback refusal have separate guarded alternatives.
-  HostExecutionError* {.pure.} = enum
+  HostExecutionError* {.pure.} = enum ## Guest completion, engine refusal and callback refusal have separate guarded alternatives.
     Uninitialized, None, ExecutionFailure, HostFailure
-  # Fallible execution preserves the callback's enum while exposing no machine on either failure.
-  HostExecutionResult*[Reason: enum] = object
+  HostExecutionResult*[Reason: enum] = object ## Fallible execution preserves the callback's enum while exposing no machine on either failure.
     case status: HostExecutionError
     of None:
       # Completed guest outcomes retain the same immutable snapshot as ordinary StepResult.
@@ -97,50 +84,60 @@ type
       # Default results have no outcome or selected error detail.
       discard
 
-# Construct a selected response; applyHostResponse still validates its fields before publication.
 func hostSuccess*[Reason: enum](response: HostResponse): HostResult[Reason] =
+  ## Construct a selected response; applyHostResponse still validates its fields before publication.
   HostResult[Reason](selection: HostResultKind.Response, response: response)
-# Construct a local callback refusal, preserving even the zero ordinal of the supplied enum.
 func hostFailure*[Reason: enum](reason: Reason): HostResult[Reason] =
+  ## Construct a local callback refusal, preserving even the zero ordinal of the supplied enum.
   HostResult[Reason](selection: HostResultKind.Failure, reason: reason)
-# Read callback selection without allowing discriminator mutation.
-func kind*[Reason: enum](r: HostResult[Reason]): HostResultKind = r.selection
-# Select a callback response only after checking its kind.
+func kind*[Reason: enum](r: HostResult[Reason]): HostResultKind =
+  ## Read callback selection without allowing discriminator mutation.
+  r.selection
 func value*[Reason: enum](r: HostResult[Reason]): HostResponse
-    {.requires: r.selection == HostResultKind.Response.} = r.response
-# Select the local reason only after choosing the callback failure branch.
+    {.requires: r.selection == HostResultKind.Response.} =
+  ## Select a callback response only after checking its kind.
+  r.response
 func failure*[Reason: enum](r: HostResult[Reason]): Reason
-    {.requires: r.selection == HostResultKind.Failure.} = r.reason
-# Inspect fallible execution status without permitting result forgery.
-func error*[Reason: enum](r: HostExecutionResult[Reason]): HostExecutionError = r.status
-# Extract completed guest state only after successful execution.
+    {.requires: r.selection == HostResultKind.Failure.} =
+  ## Select the local reason only after choosing the callback failure branch.
+  r.reason
+func error*[Reason: enum](r: HostExecutionResult[Reason]): HostExecutionError =
+  ## Inspect fallible execution status without permitting result forgery.
+  r.status
 func value*[Reason: enum](r: HostExecutionResult[Reason]): StepOutcome
-    {.requires: r.status == HostExecutionError.None.} = r.completed
-# Extract an engine reason only from the selected execution-failure alternative.
+    {.requires: r.status == HostExecutionError.None.} =
+  ## Extract completed guest state only after successful execution.
+  r.completed
 func executionError*[Reason: enum](r: HostExecutionResult[Reason]): StepError
-    {.requires: r.status == HostExecutionError.ExecutionFailure.} = r.executionReason
-# Extract the original callback enum only from a selected host failure.
+    {.requires: r.status == HostExecutionError.ExecutionFailure.} =
+  ## Extract an engine reason only from the selected execution-failure alternative.
+  r.executionReason
 func hostError*[Reason: enum](r: HostExecutionResult[Reason]): Reason
-    {.requires: r.status == HostExecutionError.HostFailure.} = r.hostReason
+    {.requires: r.status == HostExecutionError.HostFailure.} =
+  ## Extract the original callback enum only from a selected host failure.
+  r.hostReason
 
-# Inspect status without permitting success forgery or retagging.
-func error*(r: StepResult): StepError = r.status
-# Select successful evaluation before inspecting either guest outcome and its machine snapshot.
-func value*(r: StepResult): StepOutcome {.requires: r.status == StepError.None.} = r.completed
+func error*(r: StepResult): StepError =
+  ## Inspect status without permitting success forgery or retagging.
+  r.status
+func value*(r: StepResult): StepOutcome {.requires: r.status == StepError.None.} =
+  ## Select successful evaluation before inspecting either guest outcome and its machine snapshot.
+  r.completed
 
-# Read the guest reason without permitting an outcome to be retagged into a fabricated fault.
-func exit*(outcome: StepOutcome): StepExit = outcome.kind
-# A page address is available only after selecting the fault alternative.
+func exit*(outcome: StepOutcome): StepExit =
+  ## Read the guest reason without permitting an outcome to be retagged into a fabricated fault.
+  outcome.kind
 func faultPage*(outcome: StepOutcome): PageAddress {.requires: outcome.kind == StepExit.Fault.} =
+  ## A page address is available only after selecting the fault alternative.
   outcome.failedPage
 
-# Host-call metadata is meaningful only after selecting the Host alternative.
 func hostCall*(outcome: StepOutcome): HostCallId {.requires: outcome.kind == StepExit.Host.} =
+  ## Host-call metadata is meaningful only after selecting the Host alternative.
   outcome.callNumber
 
-# Apply Psi_H's posterior host state to a recursive execute suspension at its causing ecalli.
-# The host has already selected its action and gas; this function invokes no host or guest work.
 proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepResult =
+  ## Apply Psi_H's posterior host state to a recursive execute suspension at its causing ecalli.
+  ## The host has already selected its action and gas; this function invokes no host or guest work.
   # Only recursive Host suspensions are valid inputs, never fault repair or terminal normalization.
   if suspension.exit != StepExit.Host:
     return StepResult(status: StepError.InvalidHostSuspension)
@@ -479,23 +476,23 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   StepResult(status: StepError.None,
     completed: StepOutcome(kind: outcome, machine: updated.value))
 
-# Preserve the register-only capability boundary for existing callers; no control opcode is accepted.
 proc stepRegisters*(source: Machine, limit: GasCycleLimit): StepResult =
+  ## Preserve the register-only capability boundary for existing callers; no control opcode is accepted.
   stepImpl(source, limit, false, false, false)
 
-# Execute one register/control instruction under Psi_1, including trap, unlikely and dynamic halt.
-# Memory/host instructions remain local UnsupportedInstruction failures with no state progress.
 proc stepControl*(source: Machine, limit: GasCycleLimit): StepResult =
+  ## Execute one register/control instruction under Psi_1, including trap, unlikely and dynamic halt.
+  ## Memory/host instructions remain local UnsupportedInstruction failures with no state progress.
   stepImpl(source, limit, true, false, false)
 
-# Execute one register/control/load/store instruction; host calls remain outside this capability.
-# Memory fault/panic retains charged gas and original PC/registers/memory; local gates have no snapshot.
 proc stepMemory*(source: Machine, limit: GasCycleLimit): StepResult =
+  ## Execute one register/control/load/store instruction; host calls remain outside this capability.
+  ## Memory fault/panic retains charged gas and original PC/registers/memory; local gates have no snapshot.
   stepImpl(source, limit, true, true, false)
 
-# Evaluate Psi_1 for every valid opcode, including host suspension; no host function is invoked here.
-# Existing specification gates remain local failures and expose no partially updated machine.
 proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
+  ## Evaluate Psi_1 for every valid opcode, including host suspension; no host function is invoked here.
+  ## Existing specification gates remain local failures and expose no partially updated machine.
   stepImpl(source, limit, true, true, true)
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
@@ -559,8 +556,8 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
   # Exhaustion is a local policy refusal, never OutOfGas, a host call, or a resumable guest outcome.
   StepResult(status: StepError.StepLimitExceeded)
 
-# Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.
 proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =
+  ## Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.
   var remaining = uint64(stepLimit)
   executeBudget(source, remaining, gasLimit)
 
@@ -587,14 +584,14 @@ proc nextHost(current: Machine, remaining, calls: var uint64, gasLimit: GasCycle
     dec calls
   evaluated
 
-# Run Psi_H* with typed local callback refusals and one instruction budget across continuations.
-# Context is exclusively borrowed for this synchronous call. Callback effects persist on local errors;
-# callers requiring atomic external effects must stage their context. Neither callback nor context is retained.
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
         raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
         gasLimit: GasCycleLimit): HostExecutionResult[Reason] =
+  ## Run Psi_H* with typed local callback refusals and one instruction budget across continuations.
+  ## Context is exclusively borrowed for this synchronous call. Callback effects persist on local errors;
+  ## callers requiring atomic external effects must stage their context. Neither callback nor context is retained.
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
   var current = source
@@ -628,11 +625,11 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
         return executionResult[Reason](applied)
       current = applied.value.machine
 
-# Preserve the response-only API with the same guest/dispatch scheduler and response application boundary.
-# Context is borrowed synchronously; already-performed callback effects survive later local errors.
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
+  ## Preserve the response-only API with the same guest/dispatch scheduler and response application boundary.
+  ## Context is borrowed synchronously; already-performed callback effects survive later local errors.
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
   var current = source

@@ -8,13 +8,10 @@
 import ./[machine, step]
 
 type
-  # Local copying policy is independent of guest register lengths, gas and physical memory addresses.
-  OutputByteLimit* = distinct uint64
-  # Guest unreadability is successful empty output; only local misuse/policy refusals fail this API.
-  OutputError* {.pure.} = enum
+  OutputByteLimit* = distinct uint64 ## Local copying policy is independent of guest register lengths, gas and physical memory addresses.
+  OutputError* {.pure.} = enum ## Guest unreadability is successful empty output; only local misuse/policy refusals fail this API.
     Uninitialized, None, NotHalted, InvalidMachine, LimitExceeded
-  # Failed/default alternatives expose neither output bytes nor a completed-prefix count.
-  OutputResult* = object
+  OutputResult* = object ## Failed/default alternatives expose neither output bytes nor a completed-prefix count.
     case status: OutputError
     of None:
       # Seq ownership is copied on extraction; no mutable memory-page reference escapes.
@@ -23,13 +20,15 @@ type
       # Failure reasons alone are observable without selecting success.
       discard
 
-# Read status without permitting result forgery or retagging.
-func error*(r: OutputResult): OutputError = r.status
-# Return an independently owned byte sequence only after selecting successful extraction.
-func value*(r: OutputResult): seq[byte] {.requires: r.status == OutputError.None.} = r.completed
+func error*(r: OutputResult): OutputError =
+  ## Read status without permitting result forgery or retagging.
+  r.status
+func value*(r: OutputResult): seq[byte] {.requires: r.status == OutputError.None.} =
+  ## Return an independently owned byte sequence only after selecting successful extraction.
+  r.completed
 
-# Apply only Psi_M's halt return-buffer rule; execution, host dispatch and gas accounting are separate.
 proc captureOutput*(outcome: StepOutcome, limit: OutputByteLimit): OutputResult =
+  ## Apply only Psi_M's halt return-buffer rule; execution, host dispatch and gas accounting are separate.
   # Host/fault/panic/out-of-gas and unfinished steps must not be converted into successful returns.
   if outcome.exit != StepExit.Halt:
     return OutputResult(status: OutputError.NotHalted)

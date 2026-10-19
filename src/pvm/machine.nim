@@ -11,44 +11,28 @@
 import ./program
 
 type
-  # Guest effective addresses retain the register domain until cyclic 32-bit memory access.
-  MemoryAddress* = distinct uint64
-  # Fault reasons contain a physical aligned byte address, not a page ordinal.
-  PageAddress* = distinct uint32
-  # Page ordinals are below 2^20; validated exclusive range endpoints may equal 2^20.
-  PageIndex* = distinct uint32
-  ## A count of pages is distinct from an ordinal, byte length and local allocation policy.
-  PageCount* = distinct uint32
-  # Local allocation policy bounds materialized pages, including inaccessible retained pages.
-  PageLimit* = distinct uint32
-  # Supported scalar access sizes are 1, 2, 4 and 8; other values return InvalidWidth.
-  AccessWidth* = distinct byte
-  # Natural byte-range length for host memory operations, never a scalar instruction width.
-  MemoryLength* = distinct uint64
-  # Local payload-copy ceiling; independent of guest lengths and page-allocation limits.
-  MemoryByteLimit* = distinct uint64
-  # Register values are independent of decoded immediates and addresses.
-  RegisterValue* = distinct uint64
-  # Nonnegative gas component; a terminal negative balance is represented separately by GasDeficit.
-  MachineGas* = distinct uint64
-  # Magnitude of a negative terminal balance, at most 2^63; nonzero deficit requires zero gas.
-  GasDeficit* = distinct uint64
-  # Every machine snapshot contains exactly thirteen copied register values.
-  RegisterFile* = array[13, RegisterValue]
-  # Writable pages are also readable; inaccessible pages may retain bytes for later remapping.
-  PageAccess* {.pure.} = enum
+  MemoryAddress* = distinct uint64 ## Guest effective addresses retain the register domain until cyclic 32-bit memory access.
+  PageAddress* = distinct uint32 ## Fault reasons contain a physical aligned byte address, not a page ordinal.
+  PageIndex* = distinct uint32 ## Page ordinals are below 2^20; validated exclusive range endpoints may equal 2^20.
+  PageCount* = distinct uint32 ## A count of pages is distinct from an ordinal, byte length and local allocation policy.
+  PageLimit* = distinct uint32 ## Local allocation policy bounds materialized pages, including inaccessible retained pages.
+  AccessWidth* = distinct byte ## Supported scalar access sizes are 1, 2, 4 and 8; other values return InvalidWidth.
+  MemoryLength* = distinct uint64 ## Natural byte-range length for host memory operations, never a scalar instruction width.
+  MemoryByteLimit* = distinct uint64 ## Local payload-copy ceiling; independent of guest lengths and page-allocation limits.
+  RegisterValue* = distinct uint64 ## Register values are independent of decoded immediates and addresses.
+  MachineGas* = distinct uint64 ## Nonnegative gas component; a terminal negative balance is represented separately by GasDeficit.
+  GasDeficit* = distinct uint64 ## Magnitude of a negative terminal balance, at most 2^63; nonzero deficit requires zero gas.
+  RegisterFile* = array[13, RegisterValue] ## Every machine snapshot contains exactly thirteen copied register values.
+  PageAccess* {.pure.} = enum ## Writable pages are also readable; inaccessible pages may retain bytes for later remapping.
     Inaccessible, ReadOnly, ReadWrite
-  # Caller-owned page input is copied and never retained by reference.
-  PageImage* = object
+  PageImage* = object ## Caller-owned page input is copied and never retained by reference.
     index*: PageIndex
     access*: PageAccess
     bytes*: array[4096, byte]
-  # Local API failures are distinct from guest panic/fault, including an explicit specification gate.
-  MachineError* {.pure.} = enum
+  MachineError* {.pure.} = enum ## Local API failures are distinct from guest panic/fault, including an explicit specification gate.
     Uninitialized, None, InvalidOwner, InvalidPage, UnsortedPages, LimitExceeded,
     InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange, InvalidGasState
-  # Fault addresses belong to the failure reason; other failures carry no value or progress.
-  MachineResult*[T] = object
+  MachineResult*[T] = object ## Fault addresses belong to the failure reason; other failures carry no value or progress.
     case status: MachineError
     of None:
       # Only success publishes a complete value or owner.
@@ -66,11 +50,9 @@ type
   MemoryData = ref object
     pages: seq[PageData]
     limit: PageLimit
-  # A default handle is invalid; captureMemory([], ...) creates valid empty memory.
-  Memory* = object
+  Memory* = object ## A default handle is invalid; captureMemory([], ...) creates valid empty memory.
     data: nil MemoryData
-  # Copied CPU state has no pointer into registers or mutable backing storage.
-  MachineInfo* = object
+  MachineInfo* = object ## Copied CPU state has no pointer into registers or mutable backing storage.
     pc*: CodeAddress
     gas*: MachineGas
     # Terminal negative magnitude; gas credit must be zero whenever this is nonzero.
@@ -82,18 +64,18 @@ type
     program: Program
     memory: Memory
     info: MachineInfo
-  # Copying the public handle retains the same immutable snapshot, never a mutable machine alias.
-  Machine* = object
+  Machine* = object ## Copying the public handle retains the same immutable snapshot, never a mutable machine alias.
     data: nil MachineData
 
-# Status inspection cannot retag or forge a result.
-func error*[T](r: MachineResult[T]): MachineError = r.status
-# A successful result alone grants access to its copied payload.
+func error*[T](r: MachineResult[T]): MachineError =
+  ## Status inspection cannot retag or forge a result.
+  r.status
 func value*[T](r: MachineResult[T]): T {.inline, requires: r.status == MachineError.None.} =
+  ## A successful result alone grants access to its copied payload.
   r.completed
-# A page address is meaningful only for a guest Fault, never for API failures or panic.
 func faultPage*[T](r: MachineResult[T]): PageAddress {.inline, requires: r.status ==
     MachineError.Fault.} =
+  ## A page address is meaningful only for a guest Fault, never for API failures or panic.
   r.failedPage
 
 # Propagate only a failure reason across payload types without leaking partial success state.
@@ -104,8 +86,8 @@ func failure[T, U](r: MachineResult[U]): MachineResult[T] {.requires: r.status !
     return MachineResult[T](status: MachineError.Fault, failedPage: r.failedPage)
   MachineResult[T](status: r.status)
 
-# Validate sorted unique physical page ordinals and the allocation limit before capturing any page.
 proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResult[Memory] =
+  ## Validate sorted unique physical page ordinals and the allocation limit before capturing any page.
   # A local resource ceiling is not a consensus memory size or gas limit.
   if uint64(pages.len) > uint64(uint32(limit)):
     return MachineResult[Memory](status: MachineError.LimitExceeded)
@@ -137,8 +119,8 @@ func lowerBound(data: MemoryData, index: uint32): int =
       last = middle
   first
 
-# Return a copied page, representing absent pages as inaccessible all-zero storage.
 proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
+  ## Return a copied page, representing absent pages as inaccessible all-zero storage.
   # Default owners never behave like valid empty memory.
   if memory.data == nil: return MachineResult[PageImage](status: MachineError.InvalidOwner)
   # Page ordinals must be validated before converting them to addresses.
@@ -152,9 +134,9 @@ proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
   MachineResult[PageImage](status: MachineError.None, completed: PageImage(index: index,
     access: PageAccess.Inaccessible, bytes: default(array[4096, byte])))
 
-# Replace or insert one environment-owned page, preserving all other pages and the prior snapshot.
-# This is setup/remapping, not a guest write: it may change read-only/inaccessible page contents.
 proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
+  ## Replace or insert one environment-owned page, preserving all other pages and the prior snapshot.
+  ## This is setup/remapping, not a guest write: it may change read-only/inaccessible page contents.
   # All local errors precede both the reference-vector and page allocation.
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   if uint32(page.index) >= 0x100000'u32:
@@ -176,9 +158,9 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
-## Count writable pages in [first, past), with an exclusive endpoint up to 2^20.
-## Walk only retained pages; missing pages are inaccessible. This does not infer heap bounds.
 proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[PageCount] =
+  ## Count writable pages in [first, past), with an exclusive endpoint up to 2^20.
+  ## Walk only retained pages; missing pages are inaccessible. This does not infer heap bounds.
   let data = memory.data
   if data == nil:
     # Default owners must not masquerade as an empty, valid address space.
@@ -195,10 +177,10 @@ proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[P
       inc count # Unique ordinals bound the count by the physical page domain.
   MachineResult[PageCount](status: MachineError.None, completed: PageCount(count))
 
-## Atomically map [first, past) writable, preserving all retained bytes and outside permissions.
-## Preflight the owner's complete page policy before allocation. Absent pages become zero-filled;
-## unchanged page owners are shared. Callers must separately enforce host-call region/gas rules.
 proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[Memory] =
+  ## Atomically map [first, past) writable, preserving all retained bytes and outside permissions.
+  ## Preflight the owner's complete page policy before allocation. Absent pages become zero-filled;
+  ## unchanged page owners are shared. Callers must separately enforce host-call region/gas rules.
   let data = memory.data
   if data == nil:
     # No partial allocation or default empty address space is produced on invalid ownership.
@@ -291,9 +273,9 @@ proc inspect(memory: Memory, address: MemoryAddress, width: AccessWidth,
   if hasFault: return MachineResult[bool](status: MachineError.Fault, failedPage: firstFault)
   MachineResult[bool](status: MachineError.None, completed: true)
 
-# Load a little-endian unsigned scalar; sign extension belongs to the eventual instruction executor.
 proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineResult[
     RegisterValue] =
+  ## Load a little-endian unsigned scalar; sign extension belongs to the eventual instruction executor.
   let checked = inspect(memory, address, width, false)
   # A failed preflight exposes no partially read value.
   if checked.error != MachineError.None: return failure[RegisterValue, bool](checked)
@@ -308,9 +290,9 @@ proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineR
     value = value or (uint64(data.pages[at].image.bytes[int(physical mod 4096)]) shl (8 * i))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
-# Store the low width bytes atomically into a new owner; no source snapshot can change on failure.
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Memory] =
+  ## Store the low width bytes atomically into a new owner; no source snapshot can change on failure.
   let checked = inspect(memory, address, width, true)
   # Validate the entire access before cloning or changing even the first touched page.
   if checked.error != MachineError.None: return failure[Memory, bool](checked)
@@ -367,9 +349,9 @@ proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
     inc page
   MachineResult[bool](status: MachineError.None, completed: true)
 
-# Copy a complete readable host range into independent bytes; failure never exposes a readable prefix.
 proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit): MachineResult[seq[byte]] =
+  ## Copy a complete readable host range into independent bytes; failure never exposes a readable prefix.
   let checked = inspectRange(memory, address, length, limit, false)
   if checked.error != MachineError.None:
     # Preserve the exact local reason or first inaccessible page without publishing partial bytes.
@@ -393,10 +375,10 @@ proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
     copied += count
   MachineResult[seq[byte]](status: MachineError.None, completed: bytes)
 
-# Atomically copy borrowed input into a new memory snapshot; unchanged pages remain shared immutable.
-# Input is borrowed only during this call. Failed writes never alter or expose a partial successor.
 proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     limit: MemoryByteLimit): MachineResult[Memory] =
+  ## Atomically copy borrowed input into a new memory snapshot; unchanged pages remain shared immutable.
+  ## Input is borrowed only during this call. Failed writes never alter or expose a partial successor.
   let checked = inspectRange(memory, address, MemoryLength(uint64(input.len)), limit, true)
   if checked.error != MachineError.None:
     # Full permission and policy checks precede every cloned page and reference-vector allocation.
@@ -427,8 +409,8 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
-# Capture a validated entry location and copied CPU values; this is not standard JAM initialization.
 proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
+  ## Capture a validated entry location and copied CPU values; this is not standard JAM initialization.
   # Empty/default memory must be distinguished from a valid all-inaccessible memory snapshot.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
   if uint64(info.gasDeficit) != 0:
@@ -440,11 +422,11 @@ proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): Machi
   MachineResult[Machine](status: MachineError.None,
     completed: Machine(data: MachineData(program: program, memory: memory, info: info)))
 
-# Capture a terminal execution snapshot whose PC need not identify an executable instruction.
-# This trusted boundary preserves Psi_1 trap PCs beyond the code; it does not validate an exit reason.
-# Program/memory are immutable owned children; no caller-owned mutable state is retained.
 proc captureTerminalMachine*(program: Program, memory: Memory,
     info: MachineInfo): MachineResult[Machine] =
+  ## Capture a terminal execution snapshot whose PC need not identify an executable instruction.
+  ## This trusted boundary preserves Psi_1 trap PCs beyond the code; it does not validate an exit reason.
+  ## Program/memory are immutable owned children; no caller-owned mutable state is retained.
   # Even terminal snapshots require genuine program and memory owners.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
   if uint64(info.gasDeficit) > 0x8000000000000000'u64 or
@@ -456,29 +438,29 @@ proc captureTerminalMachine*(program: Program, memory: Memory,
   MachineResult[Machine](status: MachineError.None,
     completed: Machine(data: MachineData(program: program, memory: memory, info: info)))
 
-# Copy all CPU values; changes to this returned value cannot affect its source machine.
 proc machineInfo*(machine: Machine): MachineResult[MachineInfo] =
+  ## Copy all CPU values; changes to this returned value cannot affect its source machine.
   # Default handles do not imply zero registers or successful execution.
   if machine.data == nil: return MachineResult[MachineInfo](status: MachineError.InvalidOwner)
   MachineResult[MachineInfo](status: MachineError.None, completed: machine.data.info)
 
-# Retain the immutable memory handle for inspection or environment-driven page recovery.
 proc memoryOf*(machine: Machine): MachineResult[Memory] =
+  ## Retain the immutable memory handle for inspection or environment-driven page recovery.
   # Ownership must be established before extracting a child handle.
   if machine.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   MachineResult[Memory](status: MachineError.None, completed: machine.data.memory)
 
-# Replace only the memory owner after an environment repair; CPU state/program remain unchanged.
 proc withMemory*(machine: Machine, memory: Memory): MachineResult[Machine] =
+  ## Replace only the memory owner after an environment repair; CPU state/program remain unchanged.
   # Neither parent nor replacement may be an uninitialized owner.
   if machine.data == nil or memory.data == nil:
     return MachineResult[Machine](status: MachineError.InvalidOwner)
   MachineResult[Machine](status: MachineError.None, completed: Machine(data: MachineData(
     program: machine.data.program, memory: memory, info: machine.data.info)))
 
-# Update one copied register without executing an instruction or charging gas.
 proc withRegister*(machine: Machine, index: RegisterIndex,
     value: RegisterValue): MachineResult[Machine] =
+  ## Update one copied register without executing an instruction or charging gas.
   # The owner and public nominal index both require validation before accessing the fixed array.
   if machine.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
   if byte(index) >= 13:
@@ -490,9 +472,9 @@ proc withRegister*(machine: Machine, index: RegisterIndex,
   MachineResult[Machine](status: MachineError.None, completed: Machine(data: MachineData(
     program: data.program, memory: data.memory, info: info)))
 
-# A successful memory update replaces only memory; every CPU field survives unchanged.
 proc store*(machine: Machine, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Machine] =
+  ## A successful memory update replaces only memory; every CPU field survives unchanged.
   # A default machine cannot manufacture a successful update from default memory.
   if machine.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
   let data = machine.data
@@ -501,8 +483,8 @@ proc store*(machine: Machine, address: MemoryAddress, width: AccessWidth,
   if updated.error != MachineError.None: return failure[Machine, Memory](updated)
   withMemory(machine, updated.value)
 
-# Retain the immutable program belonging to this exact snapshot; never accept a separate substitute.
 proc programOf*(machine: Machine): MachineResult[Program] =
+  ## Retain the immutable program belonging to this exact snapshot; never accept a separate substitute.
   # Default handles have no program identity to expose.
   if machine.data == nil: return MachineResult[Program](status: MachineError.InvalidOwner)
   MachineResult[Program](status: MachineError.None, completed: machine.data.program)
