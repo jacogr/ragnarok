@@ -43,8 +43,8 @@ proc assignParameters(): Parameters =
   bytes[82] = 80
   bytes[83] = 0
   decodeParameters(bytes).value
-proc checkAssignPublicationGate*(base: OwnedReport) =
-  ## Actual assign changes its private selected queue; the current batch boundary must refuse broader effects rather than lose them.
+proc checkAssignPublication*(base: OwnedReport) =
+  ## Real assign requires explicit batch quotas and publishes its queue with the selected assigner while preserving original source state.
   let fixture = executionFixture(blockTemplate(base), firstProgram = assignProgram(),
     incomingReports = 1, assigner = 42, refinementGas = 11, extra = @[blockPrior()])
   let prior = fixture.state.snapshot.value
@@ -59,19 +59,34 @@ proc checkAssignPublicationGate*(base: OwnedReport) =
   let second = executionGuest(fixture, 1)
   let refused = completeBlockAccumulation(fixture.round, [first, second], [], executionLimits())
   assert refused.error == AccumulationExecutionError.BatchFailure
-  assert refused.batchFailure.error == AccumulationBatchError.UnsupportedAccountEffects
+  assert refused.batchFailure.error == AccumulationBatchError.LimitExceeded
+  var enabled = executionLimits()
+  enabled.batch.assignCores = ElementLimit(2)
+  enabled.batch.assignBytes = ByteLimit(10000)
+  let completed = completeBlockAccumulation(fixture.round, [first, second], [], enabled).value
+  var published = fixture.state
+  let snapshot = applyAccumulationBatch(published, completed.executionBatch.value).value
+  assert snapshot.lookup(chapterKey(StateChapter(2))).value.bytes == queue
   assert sameStateSnapshot(fixture.state.snapshot.value,
-      prior) # No partial queue/account successor escapes the existing explicit gate.
+      prior) # Private publication never mutates the original signed source.
 proc authorizationFixture*(base: OwnedReport, guarantees, copies: int,
-    empty = false): AuthorizationFixture =
+    empty = false, assigned = false): AuthorizationFixture =
   ## Execute one genuine initial round, then certify the stopped continuation without replaying any effects.
-  let fixture = executionFixture(blockTemplate(base), empty = empty,
-    incomingReports = guarantees, poolCopies = copies, refinementGas = 11, extra = @[blockPrior()])
+  let program = if assigned: assignProgram() else: newSeq[byte]()
+  let fixture = executionFixture(blockTemplate(base), empty = empty, firstProgram = program,
+    incomingReports = guarantees, poolCopies = copies, refinementGas = 11, assigner = 42, extra = @[
+        blockPrior()])
   var runs: seq[AccumulationDispatchResult] = @[]
   if not empty:
-    runs.add(executionGuest(fixture, 0))
+    let params = if assigned: assignParameters() else: pvmParameters()
+    runs.add(executionGuest(fixture, 0, parameters = params, copyLimit = MemoryByteLimit(
+        if assigned: 2560'u64 else: 32'u64)))
     runs.add(executionGuest(fixture, 1)) # Both services execute maintained ordinary halt paths.
-  let completed = completeBlockAccumulation(fixture.round, runs, [], executionLimits()).value
+  var enabled = executionLimits()
+  if assigned:
+    enabled.batch.assignCores = ElementLimit(2)
+    enabled.batch.assignBytes = ByteLimit(10000) # The signed source includes its original always-accumulate dictionary.
+  let completed = completeBlockAccumulation(fixture.round, runs, [], enabled).value
   let continuation = planAccumulationContinuation(completed,
     AccumulationContinuationLimits(executions: ElementLimit(2), reports: ElementLimit(4),
         digests: ElementLimit(8))).value
@@ -85,7 +100,7 @@ proc authorizationFixture*(base: OwnedReport, guarantees, copies: int,
         0), maxBytes: ByteLimit(1)))).value
   AuthorizationFixture(finalized: finalized, entries: fixture.entries)
 proc checkBlockAuthorization*(source: PublishedBlockPreimages, original: openArray[StateEntry],
-    guarantees, copies: int): PublishedBlockAuthorization =
+    guarantees, copies: int, assigned = false): PublishedBlockAuthorization =
   ## Literal whole C(1) expectations distinguish incoming guaranteed cores from accumulated work and use actual posterior C(2).
   let prior = source.publishedPreimageState.value
   let poolKey = chapterKey(StateChapter(1))
@@ -99,13 +114,19 @@ proc checkBlockAuthorization*(source: PublishedBlockPreimages, original: openArr
     expected.add(byte(retained+1)) # Each tiny count is one canonical natural octet.
     for occurrence in 0..<retained:
       for octet in authorizer.bytes: expected.add(octet)
-    for index in 0..<32: expected.add(0'u8) # These completed sources retain their original all-zero posterior queues.
+    for index in 0..<32: expected.add(if assigned and core == 0: byte(
+        index+1) else: 0'u8) # The new pool uses the genuine posterior queue's slot-two hash.
   var parentQueue: seq[byte] = @[]
   for record in original:
     if array[31, byte](record.key) == array[31, byte](queueKey): parentQueue = record.value
   let queues = prior.lookup(queueKey).value.bytes
   assert parentQueue.len == 5120 and queues.len == 5120
-  assert queues == parentQueue # Broader assign effects remain explicitly gated before this completed source can be constructed.
+  if assigned:
+    assert queues != parentQueue
+    for index in 0..<queues.len:
+      assert queues[index] == (if index >= 64 and index < 96: byte(index-63) else: 0'u8)
+  else:
+    assert queues == parentQueue # Ordinary completed sources preserve their original all-zero queues.
   failHash(3)
   let plan = prepareBlockAuthorization(source, blockAuthorizationPolicy()).value
   let info = plan.blockAuthorizationInfo.value

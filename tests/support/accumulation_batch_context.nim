@@ -87,16 +87,19 @@ proc batchInputSet*(incoming = true): PreparedAccumulationInputs =
 
 proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
     writes = 64'u64, incoming = true, firstEnvelope: seq[byte] = @[],
-    secondEnvelope: seq[byte] = @[], extra: seq[StateEntry] = @[]): BatchFixture =
+    secondEnvelope: seq[byte] = @[], extra: seq[StateEntry] = @[],
+    assigners: seq[ServiceIndex] = @[], manager = 0'u32): BatchFixture =
   ## Capture both ready-code services and independent canonical requests in the same complete immutable prior.
   ## Optional copied envelopes/extra entries authorize cross-host witnesses without changing default callers.
   let config = pvmContextConfig()
+  assert assigners.len == 0 or assigners.len == 2 # Optional current roles enter the same authenticated fixture map.
+  let selectedAssigners = if assigners.len == 0: @[ServiceIndex(0), ServiceIndex(0)] else: assigners
   var entries = @[
     authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
         AuthorizerHash](80)], config.queues).value,
     validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6), config.staging).value,
-    privilegeStateEntry(PrivilegeState(assigners: @[ServiceIndex(0), ServiceIndex(0)]),
-        config.privileges).value,
+    privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
+        assigners: selectedAssigners), config.privileges).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 8]),
     serviceStorageEntry(ServiceIndex(42), @[1'u8], @[2'u8], ServiceEntryLimits(keyBytes: ByteLimit(
         1), valueBytes: ByteLimit(1))).value,
