@@ -1,6 +1,7 @@
 {
   "UNIT_SUITES": [
     "accumulation_context",
+    "accumulation_credit",
     "accumulation_inputs",
     "accumulation_invocation",
     "accumulation_operands",
@@ -1212,7 +1213,7 @@
     "accumulation_operands": 9,
     "accumulation_queue": 7,
     "accumulation_round": 7,
-    "accumulation_service": 9,
+    "accumulation_service": 10,
     "accumulation_skip": 8,
     "assurance_context": 24,
     "assurances": 10,
@@ -1294,7 +1295,7 @@
     "service_values": 38,
     "state_disputes": 32,
     "statistics": 62,
-    "store": 9,
+    "store": 10,
     "ticket_admission": 2,
     "ticket_state": 2,
     "tickets": 10,
@@ -1348,6 +1349,7 @@
   ],
   "ARC_SUITES": {
     "accumulation_context": "accumulation_context_arc_release",
+    "accumulation_credit": "accumulation_credit_arc_release",
     "accumulation_inputs": "accumulation_inputs_arc_release",
     "accumulation_invocation": "accumulation_invocation_arc_release",
     "accumulation_operands": "accumulation_operands_arc_release",
@@ -1436,6 +1438,7 @@
   },
   "UNIT_LINKS": {
     "accumulation_context": "observer",
+    "accumulation_credit": "observer",
     "accumulation_inputs": "observer",
     "accumulation_invocation": "observer",
     "accumulation_operands": "observer",

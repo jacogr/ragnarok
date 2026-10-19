@@ -60,6 +60,7 @@ proc semantics() =
   assert invalid.snapshot.error == StateStoreError.Uninitialized
   assert invalid.apply([]).error == StateStoreError.Uninitialized
   let missing = default(StateStoreSnapshot)
+  assert missing.forkStateStore.error == StateStoreError.Uninitialized
   assert missing.lookup(key(0)).error == StateStoreError.Uninitialized
   var input = @[StateEntry(key: key(2), value: @[2'u8]),
                 StateEntry(key: key(0), value: newSeq[byte](0))]
@@ -69,6 +70,13 @@ proc semantics() =
   let before = state.snapshot.value
   let retained = before.lookup(key(2)).value
   let oldRoot = array[32, byte](before.commitment.root)
+  var forked = before.forkStateStore.value
+  assert forked.apply([StateWrite(key: key(2), kind: StateWriteKind.Put, value: @[8'u8])]).error ==
+      StateStoreError.None
+  assert before.read(2) == @[2'u8] and forked.snapshot.value.read(2) == @[8'u8]
+  assert forked.apply([StateWrite(key: key(2), kind: StateWriteKind.Put, value: newSeq[byte](
+      34))]).error == StateStoreError.LimitExceeded
+  assert forked.snapshot.value.read(2) == @[8'u8] # Inherited per-value ceiling survives fork and publication.
   input[0].value[0] = 99
   input.setLen(0)
   assert before.read(2) == @[2'u8]

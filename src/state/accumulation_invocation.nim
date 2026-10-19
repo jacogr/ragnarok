@@ -156,7 +156,8 @@ proc prepareAccumulationInvocation*(service: PreparedAccumulationService, entrop
   if info.value.code != AccumulationCodeStatus.Ready:
     fail(AccumulationInvocationError.CodeUnavailable) # This bootstrap is only for the invoking Psi_A alternative.
   let fields = info.value
-  let count = AccumulationArgumentCount(uint64(fields.operands)) # Service contexts explicitly exclude transfers.
+  # Both counts are nonnegative, bounded native sequence lengths; their uint64 sum fits even on 64-bit hosts.
+  let count = AccumulationArgumentCount(uint64(fields.transfers)+uint64(fields.operands))
   let first = initialAccumulationService(fields.service, entropy, fields.slot)
   if first.error != AccumulationInvocationError.None: fail(first.error) # Preserve backend refusal before lookup.
   let unused = findUnusedAccumulationService(service.serviceState.value, first.value, limit)

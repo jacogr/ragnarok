@@ -8,7 +8,8 @@ initial-round service. Authority is GP 0.8.0 at revision
 (SHA-256 `badaf09677a420ec6d47ae439f8d7641173e8fd460ed8f2305e336d999073d7a`) and
 `pvm_invocations.tex`, equation `accinvocation` / `Psi_A`
 (SHA-256 `67a4fa455d2c1e7979ed9eec8849cb2dcdda7386c2f4085f1d11e93e72f7d6cb`).
-It builds on [initial round planning](accumulation-round.md) without invoking a PVM or writing state.
+It builds on [initial round planning](accumulation-round.md). [Incoming credit](accumulation-credit.md)
+now prepares a private credited map without invoking a PVM or publishing the caller's store.
 
 The account's code-hash preimage is `E(length(metadata)) || metadata || code`. Only metadata has a
 length prefix; the remaining suffix is the complete code blob. There is no additional code-length
@@ -58,11 +59,12 @@ A missing account is a typed `MissingAccount` **preparation refusal**. This modu
 an absent-service execution outcome, infer block invalidity, or synthesize account fields. Such
 outcomes must be handled when complete accumulation execution is integrated.
 
-Contexts containing deferred transfers are refused explicitly: transfer balance credit belongs to
-a real state-transition slice. Initial rounds contain no transfers, so the bound initial-round path
-is supported completely within this scope. No balances, account timestamps, storage, privilege
-chapters, output logs or queues are modified. The unavailable-code statuses identify the `Psi_A`
-entry gate only; this layer does not fabricate zero-used-gas execution results or checkpoint states.
+Incoming transfers now credit the selected account through [the credit contract](accumulation-credit.md).
+`serviceInfo.account` and `serviceState` expose the post-credit account/map; `servicePriorState`
+retains the exact original map. Initial block rounds still contain no incoming transfers. Account
+timestamps, storage, privilege chapters, output logs and queues remain unchanged by preparation.
+The unavailable-code statuses identify the `Psi_A` entry gate only; this layer does not fabricate
+zero-used-gas execution results or checkpoint states.
 
 ## Verification
 
@@ -75,7 +77,7 @@ minimums, and check that returned bytes are independent copies.
 
 Literal cases cover missing accounts/preimages, malformed/extended/versioned account records,
 preimage/hash corruption, both namespace/content hash failures, resource preflight before content
-hashing, rejected transfer contexts, default handles and hostile indices. Genuinely signed blocks
+hashing, zero-transfer contexts, default handles and hostile indices. Genuinely signed blocks
 bind matching report/account code identities, real assurance-derived inputs, parent C(12) and the
 actual candidate slot. Extracted operands remain usable after all source contexts leave scope.
 A 1,000-cycle success/refusal loop requires unchanged live ARC occupancy. Strict runtime probes
@@ -91,5 +93,5 @@ sources change.
 
 [Invocation bootstrap](accumulation-invocation.md) now prepares compact arguments and the
 collision-checked initial service ID, with authenticated slot and posterior entropy. Complete initial
-partial-state binding for regular/exceptional contexts is next; actual execution, transfer credit,
+partial-state binding for regular/exceptional contexts is next; actual execution,
 checkpoint outcomes, later rounds and publication remain separate.

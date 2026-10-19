@@ -7,7 +7,7 @@
 ## incremental trie yet.
 ##
 ## Exposes StateStore/StateStoreSnapshot handles, snapshot, lookup, commitment and atomic apply over
-## complete serialized mappings.
+## complete serialized mappings, plus forkStateStore with inherited ceilings for private working branches.
 
 import std/[algorithm, assertions]
 import ../codec/[state_trie, state_layout, bounded]
@@ -34,6 +34,7 @@ type
   SnapshotData = ref object
     entries: seq[StateEntry]
     commitment: StateTrieCommitment
+    limits: StateStoreLimits
   ## Read-only retained map identity; copies preserve the same immutable historical state.
   StateStoreSnapshot* = object
     data: nil SnapshotData
@@ -108,7 +109,7 @@ proc newStateStore*(entries: openArray[StateEntry], limits: StateStoreLimits): S
   for i, entry in entries:
     owned[i] = StateEntry(key: entry.key, value: copyBytes(entry.value))
   owned.sort(compareEntry)
-  let data = SnapshotData(entries: owned, commitment: committed.value)
+  let data = SnapshotData(entries: owned, commitment: committed.value, limits: limits)
   StateStoreResult[StateStore](status: StateStoreError.None,
     completed: StateStore(head: data, limits: limits))
 
@@ -119,6 +120,16 @@ proc snapshot*(store: StateStore): StateStoreResult[StateStoreSnapshot] =
     return StateStoreResult[StateStoreSnapshot](status: StateStoreError.Uninitialized)
   StateStoreResult[StateStoreSnapshot](status: StateStoreError.None,
     completed: StateStoreSnapshot(data: store.head))
+
+## Start an independently updateable complete-map branch from this retained version, without hashing.
+## Inherit its original resource policy; future writes cannot mutate the source or loosen its ceilings.
+proc forkStateStore*(source: StateStoreSnapshot): StateStoreResult[StateStore] =
+  let data = source.data
+  if data == nil:
+    # Default snapshots cannot authorize a store with a fabricated empty map or default policy.
+    return StateStoreResult[StateStore](status: StateStoreError.Uninitialized)
+  StateStoreResult[StateStore](status: StateStoreError.None,
+    completed: StateStore(head: data, limits: data.limits))
 
 ## Return copied root/count metadata, never a mutable reference into the retained map.
 proc commitment*(snapshot: StateStoreSnapshot): StateTrieCommitment {.requires: snapshot.data != nil.} =
@@ -254,7 +265,7 @@ proc apply*(store: var StateStore, writes: openArray[StateWrite]): StateStoreRes
   if committed.error != StateTrieError.None:
     # Node-policy or late hash failure drops the private candidate; the old head is still published.
     return StateStoreResult[StateStoreSnapshot](status: storeError(committed.error))
-  let data = SnapshotData(entries: candidate, commitment: committed.value)
+  let data = SnapshotData(entries: candidate, commitment: committed.value, limits: store.limits)
   store.head = data # This is the sole publication point, reached only after complete success.
   StateStoreResult[StateStoreSnapshot](status: StateStoreError.None,
     completed: StateStoreSnapshot(data: data))

@@ -96,7 +96,7 @@ proc contextInvocation*(context: InitialAccumulationContext): AccumulationContex
   AccumulationContextResult[PreparedAccumulationInvocation](status: AccumulationContextError.None,
     completed: data.invocation)
 
-## Retain the complete source map backing all service accounts/storage/preimages, without computing a partial root.
+## Retain the complete post-credit map backing all accounts/storage/preimages, never a partial root.
 ## Other chapters remain present; this view neither filters the map nor validates every unrelated account value.
 proc contextAccounts*(context: InitialAccumulationContext): AccumulationContextResult[
     StateStoreSnapshot] =
@@ -106,7 +106,7 @@ proc contextAccounts*(context: InitialAccumulationContext): AccumulationContextR
   AccumulationContextResult[StateStoreSnapshot](status: AccumulationContextError.None,
     completed: data.accounts)
 
-## Extract the invoking account already validated by the retained service preparation.
+## Extract the post-credit invoking account validated by the retained service preparation.
 proc contextSelf*(context: InitialAccumulationContext): AccumulationContextResult[ServiceMetadata] =
   let data = context.data
   if data == nil: return AccumulationContextResult[ServiceMetadata](status:
