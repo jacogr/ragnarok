@@ -778,6 +778,52 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
     return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid commit may publish.
   hostSuccess[AccumulationDispatchError](response)
 
+# Charge the fixed eject fee before memory capture or current-account validation/publication.
+proc ejectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 458, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve exact debt representation failures.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No memory, hash, account or store work occurs without full base affordability.
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # A complete fixed hash precedes every row eligibility check.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic
+    return hostSuccess[AccumulationDispatchError](
+        response) # Preserve r7 and implications after charged memory panic.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Explicit local copy policy cannot impersonate panic.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no hash.
+  var hash = default(array[32, byte])
+  for i in 0..<32:
+    hash[i] = captured.value[i] # Fixed independent value; no borrowed memory enters an effect owner.
+  let changed = recordAccumulationEject(context.effects, AccumulationEjectTarget(uint64(
+      cpu.registers[7])),
+    ServicePreimageHash(hash), context.parameters)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value
+    response.registers[7] = RegisterValue(0) # OK publishes deletion and credit together.
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO precedes HUH.
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH covers footprint, request shape and insufficient age.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Corrupt canonical state has no guest verdict.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Store policy leaves all prior versions valid.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # Hashing refusal cannot delete or credit any partial candidate.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid state includes unrepresentable balance addition.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -820,9 +866,11 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     upgradeResponse(context, cpu, memory) # Replace self metadata while retaining current code execution.
   of 21:
     transferResponse(context, cpu, memory) # Conditional fee and atomic deferred transfer publication.
+  of 22:
+    ejectResponse(context, cpu, memory) # Reclaim an eligible other account with one atomic credit/deletion.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 22..25:
+  of 1, 23..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
