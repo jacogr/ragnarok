@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "index"}
+# @@Verification={"group": "privacy", "expected": "index"}
 
 import ../../../src/codec/[work_package, work_report]
 var value = default(OwnedWorkItem)

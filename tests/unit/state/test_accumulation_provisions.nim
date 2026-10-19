@@ -4,7 +4,7 @@
 ## Native provide state-effect witnesses: requested target/blob ownership, checkpoint retention and bounded work.
 ## Hastur entry point covers protocol/local refusals, exact bytes, unchanged state, result guards and ARC release.
 
-## Verification: {"arc": "accumulation_provisions_arc_release"}
+# @@Verification={"arc": "accumulation_provisions_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation,

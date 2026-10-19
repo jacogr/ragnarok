@@ -6,7 +6,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-## Verification: {"arc": "entropy_transition_arc_release"}
+# @@Verification={"arc": "entropy_transition_arc_release"}
 
 import std/[assertions, syncio]
 import ../../support/[entropy_transition_fixture, arc_evidence]

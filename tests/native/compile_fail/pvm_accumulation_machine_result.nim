@@ -3,7 +3,7 @@
 
 ## Failed/default accumulation-machine results cannot bypass selected-success extraction.
 
-## Verification: {"group": "privacy", "expected": "completed"}
+# @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/state/accumulation_machine
 var outcome: AccumulationMachineResult[PreparedAccumulationMachine]

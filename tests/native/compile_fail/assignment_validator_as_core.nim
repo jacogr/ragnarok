@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "GuarantorIndex"}
+# @@Verification={"group": "nominal", "expected": "GuarantorIndex"}
 
 import ../../../src/codec/[state_availability, guarantees]
 var owner: AvailabilitySnapshot

@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "StateKey"}
+# @@Verification={"group": "nominal", "expected": "StateKey"}
 
 import ../../../src/codec/[state_service_values, bounded]
 discard captureServiceValue(ServiceIndex(0), default(ServicePreimageHash), @[], ByteLimit(0))

@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: AccountSlot but wanted: ServiceIndex"}
+# @@Verification={"group": "nominal", "expected": "got: AccountSlot but wanted: ServiceIndex"}
 
 import ../../../src/codec/state_accounts
 let metadata = ServiceMetadata(parent: AccountSlot(1))

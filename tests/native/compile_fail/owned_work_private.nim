@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "payloadLength"}
+# @@Verification={"group": "privacy", "expected": "payloadLength"}
 
 import ../../../src/codec/[owned, composite]
 let value = default(OwnedWorkInfo)

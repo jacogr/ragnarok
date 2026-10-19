@@ -6,7 +6,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-## Verification: {"arc": "quic_io_arc_release"}
+# @@Verification={"arc": "quic_io_arc_release"}
 
 import ../../support/arc_evidence
 import std/[assertions, syncio, monotimes, times, oserrors]

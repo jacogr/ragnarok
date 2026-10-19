@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "expected: OwnedHeader but got: OwnedUnsignedHeader"}
+# @@Verification={"group": "nominal", "expected": "expected: OwnedHeader but got: OwnedUnsignedHeader"}
 
 import ../../../src/codec/[header]
 

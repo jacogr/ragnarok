@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "ticketError"}
+# @@Verification={"group": "privacy", "expected": "ticketError"}
 
 import ../../../src/codec/block_codec
 var value = default(FrameResult[int])

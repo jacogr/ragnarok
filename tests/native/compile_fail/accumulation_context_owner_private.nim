@@ -4,7 +4,7 @@
 ## Negative compilation fixture: initial context provenance and result storage remain private.
 ## Direct field access must fail before a caller can forge or retag a context.
 
-## Verification: {"group": "privacy", "expected": "data"}
+# @@Verification={"group": "privacy", "expected": "data"}
 
 import ../../../src/state/accumulation_context
 let owner = default(InitialAccumulationContext)

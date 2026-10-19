@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "value"}
+# @@Verification={"group": "privacy", "expected": "value"}
 
 import ../../../src/codec/[state_disputes, state_trie]
 var value = default(DisputeStateResult[DisputeStateInfo])

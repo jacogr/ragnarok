@@ -3,7 +3,7 @@
 
 ## Callers cannot replace the retained bootstrap or CPU inside a prepared accumulation machine.
 
-## Verification: {"group": "privacy", "expected": "data"}
+# @@Verification={"group": "privacy", "expected": "data"}
 
 import ../../../src/state/accumulation_machine
 var prepared: PreparedAccumulationMachine

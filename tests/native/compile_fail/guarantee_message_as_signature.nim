@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: GuaranteeMessage but wanted: EdSignature"}
+# @@Verification={"group": "nominal", "expected": "got: GuaranteeMessage but wanted: EdSignature"}
 
 import ../../../src/crypto/[primitives, guarantee]
 let value: EdSignature = default(GuaranteeMessage)

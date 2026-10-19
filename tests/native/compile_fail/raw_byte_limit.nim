@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "[2] expected: ByteLimit but got: uint64", "early": ["decodeBytesBorrowed(", "[2] expected: ByteLimit but got: uint64"]}
+# @@Verification={"group": "nominal", "expected": "[2] expected: ByteLimit but got: uint64", "early": ["decodeBytesBorrowed(", "[2] expected: ByteLimit but got: uint64"]}
 
 import ../../../src/codec/[bounded, fixed_unsigned]
 let limit = 1'u64

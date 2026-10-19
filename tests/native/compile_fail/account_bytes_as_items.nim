@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: AccountStorageBytes but wanted: AccountStorageItems"}
+# @@Verification={"group": "nominal", "expected": "got: AccountStorageBytes but wanted: AccountStorageItems"}
 
 import ../../../src/codec/state_accounts
 let metadata = ServiceMetadata(storageItems: AccountStorageBytes(1))

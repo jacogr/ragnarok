@@ -4,7 +4,7 @@
 ## Independent host byte-range witnesses for natural bounds, page permissions and atomic writes.
 ## Checks complete byte contents, immutable aliases, input lifetimes and 1,000 ARC release cycles.
 
-## Verification: {"arc": "pvm_host_memory_arc_release"}
+# @@Verification={"arc": "pvm_host_memory_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step, output]

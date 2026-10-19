@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: AssuranceSignature but wanted: AssuranceAnchor"}
+# @@Verification={"group": "nominal", "expected": "got: AssuranceSignature but wanted: AssuranceAnchor"}
 
 import ../../../src/codec/assurances
 let value: AssuranceAnchor = default(AssuranceSignature)

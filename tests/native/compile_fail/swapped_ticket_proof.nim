@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: TicketAttempt but wanted: TicketProof"}
+# @@Verification={"group": "nominal", "expected": "got: TicketAttempt but wanted: TicketProof"}
 
 import ../../../src/codec/tickets
 let wrong = Ticket(proof: TicketAttempt(1))

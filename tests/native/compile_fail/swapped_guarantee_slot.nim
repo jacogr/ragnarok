@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: LookupSlot but wanted: GuaranteeSlot"}
+# @@Verification={"group": "nominal", "expected": "got: LookupSlot but wanted: GuaranteeSlot"}
 
 import ../../../src/codec/[guarantees, work_report]
 let wrong = Guarantee(slot: LookupSlot(1))

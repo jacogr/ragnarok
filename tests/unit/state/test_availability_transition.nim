@@ -7,7 +7,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-## Verification: {"arc": "availability_transition_arc_release"}
+# @@Verification={"arc": "availability_transition_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[availability, store]

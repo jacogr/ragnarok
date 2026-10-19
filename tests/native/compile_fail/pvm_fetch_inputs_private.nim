@@ -3,7 +3,7 @@
 
 ## External-input capture storage cannot be extracted or mutated through the public context handle.
 
-## Verification: {"group": "privacy", "expected": "inputData"}
+# @@Verification={"group": "privacy", "expected": "inputData"}
 
 import ../../../src/pvm/host_fetch
 let context = default(FetchContext)

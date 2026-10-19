@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "[2] expected: BitLimit but got: ByteLimit"}
+# @@Verification={"group": "nominal", "expected": "[2] expected: BitLimit but got: ByteLimit"}
 
 import ../../../src/codec/[bitstrings, bounded]
 var input: array[1, byte] = default(array[1, byte])

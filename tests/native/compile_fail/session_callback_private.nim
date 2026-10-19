@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "verifyPeer"}
+# @@Verification={"group": "privacy", "expected": "verifyPeer"}
 
 import ../../../src/quic/session
 discard session.verifyPeer

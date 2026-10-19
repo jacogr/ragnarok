@@ -4,7 +4,7 @@
 ## Native accpar/accone input preparation tests: independent contexts, exact bytes, gas and limits.
 ## Hastur main replays published/authored report projections and exercises ownership and ARC release.
 
-## Verification: {"arc": "accumulation_inputs_arc_release"}
+# @@Verification={"arc": "accumulation_inputs_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[accumulation_inputs, accumulation_operands, accumulation_queue]

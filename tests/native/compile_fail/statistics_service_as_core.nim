@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "StatisticsServiceIndex"}
+# @@Verification={"group": "nominal", "expected": "StatisticsServiceIndex"}
 
 import ../../../src/codec/state_statistics
 let owner = default(ActivitySnapshot)

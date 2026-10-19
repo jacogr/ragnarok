@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "ownership_compile", "expected": "'=dup' is not available for type <Server>", "build_name": "rpc-server-copy"}
+# @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <Server>", "build_name": "rpc-server-copy"}
 
 import ../../../src/rpc/server
 var original = default(Server)

@@ -7,7 +7,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-## Verification: {"arc": "history_transition_arc_release"}
+# @@Verification={"arc": "history_transition_arc_release"}
 
 import std/[assertions, syncio]
 import ../../support/[history_transition_fixture, arc_evidence]

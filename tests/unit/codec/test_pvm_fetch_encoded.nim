@@ -4,7 +4,7 @@
 ## Exact canonical package fetch witnesses with independent wire bytes and bounded capture.
 ## Exercises selector 7 prices, clipping, immutable ownership, host dispatch and ARC release.
 
-## Verification: {"arc": "pvm_fetch_encoded_arc_release"}
+# @@Verification={"arc": "pvm_fetch_encoded_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/codec/[work_package, work_report, work_digest, composite, bounded]

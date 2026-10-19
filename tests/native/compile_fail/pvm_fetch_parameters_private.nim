@@ -3,7 +3,7 @@
 
 ## Parameter capture storage cannot be extracted or mutated through the public context handle.
 
-## Verification: {"group": "privacy", "expected": "parameterData"}
+# @@Verification={"group": "privacy", "expected": "parameterData"}
 
 import ../../../src/pvm/host_fetch
 let context = default(FetchContext)

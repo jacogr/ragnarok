@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "length"}
+# @@Verification={"group": "privacy", "expected": "length"}
 
 import ../../../src/codec/[c2_records, composite]
 var value = default(OperandOutputInfo)

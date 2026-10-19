@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "[1] expected: JamNatural but got: uint64", "early": ["encode(", "[1] expected: JamNatural but got: uint64"]}
+# @@Verification={"group": "nominal", "expected": "[1] expected: JamNatural but got: uint64", "early": ["encode(", "[1] expected: JamNatural but got: uint64"]}
 
 import ../../../src/codec/natural
 let raw = 1'u64

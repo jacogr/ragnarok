@@ -4,7 +4,7 @@
 ## Independent optional fetch context witnesses for absence, charging, ownership and dispatch.
 ## Exercises immutable captures, unsupported selectors and fresh native ARC lifetimes.
 
-## Verification: {"arc": "pvm_fetch_context_arc_release"}
+# @@Verification={"arc": "pvm_fetch_context_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step, host_fetch]

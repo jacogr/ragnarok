@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "[2] expected: CodeAddress but got: JumpIndex", "early": ["instruction(", "[2] expected: CodeAddress but got: JumpIndex"]}
+# @@Verification={"group": "nominal", "expected": "[2] expected: CodeAddress but got: JumpIndex", "early": ["instruction(", "[2] expected: CodeAddress but got: JumpIndex"]}
 
 import ../../../src/pvm/program
 discard instruction(default(Program), JumpIndex(0))

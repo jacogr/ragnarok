@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "elementCount"}
+# @@Verification={"group": "privacy", "expected": "elementCount"}
 
 import ../../../src/codec/[composite, work_digest]
 let value = default(PreimageResult)

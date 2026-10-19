@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "storage"}
+# @@Verification={"group": "privacy", "expected": "storage"}
 
 import ../../../src/crypto/primitives
 let value = default(EdSeed)

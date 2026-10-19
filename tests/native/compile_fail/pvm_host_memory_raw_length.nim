@@ -3,7 +3,7 @@
 
 ## Compilation must reject raw integers in the host range length domain.
 
-## Verification: {"group": "nominal", "expected": "got: uint64 but wanted: MemoryLength"}
+# @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: MemoryLength"}
 
 import ../../../src/pvm/machine
 # A local policy record isolates the nominal field contract from unrelated owner validation.

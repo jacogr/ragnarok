@@ -3,7 +3,7 @@
 
 ## Dispatch result snapshots remain private behind selected-success accessors.
 
-## Verification: {"group": "privacy", "expected": "completed"}
+# @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/state/accumulation_dispatch
 var outcome: AccumulationDispatchResult

@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: StateEdKey but wanted: StateBsKey"}
+# @@Verification={"group": "nominal", "expected": "got: StateEdKey but wanted: StateBsKey"}
 
 import ../../../src/codec/state_safrole
 let key = default(StateEdKey)

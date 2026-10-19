@@ -3,7 +3,7 @@
 
 ## Package capture storage cannot be extracted or mutated through the public context handle.
 
-## Verification: {"group": "privacy", "expected": "packageData"}
+# @@Verification={"group": "privacy", "expected": "packageData"}
 
 import ../../../src/pvm/host_fetch
 let context = default(FetchContext)

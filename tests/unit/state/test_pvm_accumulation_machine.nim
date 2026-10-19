@@ -4,7 +4,7 @@
 ## Native fixed-entry accumulation initialization through actual service and bootstrap preparation.
 ## Verifies exact CPU/memory binding, resource and code failures, retained children and ARC release.
 
-## Verification: {"arc": "pvm_accumulation_machine_arc_release"}
+# @@Verification={"arc": "pvm_accumulation_machine_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_machine, accumulation_invocation, accumulation_service]

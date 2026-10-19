@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "[2] expected: CodeAddress but got: uint64", "early": ["instruction(", "[2] expected: CodeAddress but got: uint64"]}
+# @@Verification={"group": "nominal", "expected": "[2] expected: CodeAddress but got: uint64", "early": ["instruction(", "[2] expected: CodeAddress but got: uint64"]}
 
 import ../../../src/pvm/program
 discard instruction(default(Program), 0'u64)

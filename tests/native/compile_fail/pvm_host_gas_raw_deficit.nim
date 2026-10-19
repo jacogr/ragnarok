@@ -3,7 +3,7 @@
 
 ## Compilation must reject raw integers in the nominal terminal gas-deficit field.
 
-## Verification: {"group": "nominal", "expected": "got: uint64 but wanted: GasDeficit"}
+# @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: GasDeficit"}
 
 import ../../../src/pvm/machine
 discard MachineInfo(gasDeficit: 1'u64)

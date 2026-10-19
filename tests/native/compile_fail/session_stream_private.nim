@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "StreamState"}
+# @@Verification={"group": "privacy", "expected": "StreamState"}
 
 import ../../../src/quic/session
 var hidden: session.StreamState

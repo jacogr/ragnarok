@@ -4,7 +4,7 @@
 ## Independent exact-byte witnesses for fetch context and work-item summaries.
 ## Covers fixed bounds, clipping, charges, atomic copies, retained ownership and ARC release.
 
-## Verification: {"arc": "pvm_fetch_summaries_arc_release"}
+# @@Verification={"arc": "pvm_fetch_summaries_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/codec/[work_package, work_report, work_digest, composite, bounded]

@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: PrivilegeGas but wanted: ServiceIndex"}
+# @@Verification={"group": "nominal", "expected": "got: PrivilegeGas but wanted: ServiceIndex"}
 
 import ../../../src/codec/state_privileges
 let state = PrivilegeState(manager: PrivilegeGas(1))

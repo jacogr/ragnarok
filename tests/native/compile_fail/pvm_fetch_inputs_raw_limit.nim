@@ -3,7 +3,7 @@
 
 ## Raw byte counts cannot silently become external-input capture domains.
 
-## Verification: {"group": "nominal", "expected": "got: uint64 but wanted: FetchInputLimit"}
+# @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: FetchInputLimit"}
 
 import ../../../src/pvm/host_fetch
 

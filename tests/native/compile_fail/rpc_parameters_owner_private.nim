@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Negative compiler fixture: Checks that external mutation of Parameters storage is rejected at compile time.
-## Verification: {"group": "privacy", "expected": "numbers"}
+# @@Verification={"group": "privacy", "expected": "numbers"}
 
 import ../../../src/chain/parameters
 var snapshot = default(Parameters)

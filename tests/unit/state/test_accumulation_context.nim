@@ -4,7 +4,7 @@
 ## Native initial partialstate/I witnesses: chapter identity, limits, paired dimensions and signed provenance.
 ## Hastur entry point verifies retained immutable child views and complete ARC release without execution.
 
-## Verification: {"arc": "accumulation_context_arc_release"}
+# @@Verification={"arc": "accumulation_context_arc_release"}
 
 import std/[assertions, envvars, syncio]
 import ../../../src/state/[accumulation_context, accumulation_invocation, accumulation_service,

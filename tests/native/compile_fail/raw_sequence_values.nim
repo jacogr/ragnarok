@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "[1] expected: openArray but got: array[0..0, uint64]", "early": ["encodeSequence(", "[1] expected: openArray but got: array[0..0, uint64]"]}
+# @@Verification={"group": "nominal", "expected": "[1] expected: openArray but got: array[0..0, uint64]", "early": ["encodeSequence(", "[1] expected: openArray but got: array[0..0, uint64]"]}
 
 import ../../../src/codec/[bounded, fixed_unsigned]
 let values = [1'u64]

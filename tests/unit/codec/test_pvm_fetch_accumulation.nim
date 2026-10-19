@@ -4,7 +4,7 @@
 ## Independent C.2 transfer/operand fetch bytes, bounded capture and requested-length price tests.
 ## Exercises list framing, empty/absent values, immutable attachment, host dispatch and ARC release.
 
-## Verification: {"arc": "pvm_fetch_accumulation_arc_release"}
+# @@Verification={"arc": "pvm_fetch_accumulation_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/codec/[c2_records, bounded, composite, work_digest, work_package]

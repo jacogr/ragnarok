@@ -47,7 +47,7 @@ def validate_order(data):
 # Read one optional JSON declaration from the leading comments without interpreting Nim source.
 def source_metadata(path, required=False):
     """Return fixture-local verification metadata; reject duplicate, malformed or late declarations."""
-    prefix = '## Verification:'
+    prefix = '# @@Verification='
     declarations = []
     in_header = True
     for line in path.read_text().splitlines():

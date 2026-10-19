@@ -4,7 +4,7 @@
 ## Negative compilation fixture protecting the nominal context-dimension selector.
 ## A service identifier cannot select a regular/exceptional tuple position.
 
-## Verification: {"group": "nominal", "expected": "AccumulationDimension", "early": ["initialContext(", "[2] expected: AccumulationDimension but got: ServiceIndex"]}
+# @@Verification={"group": "nominal", "expected": "AccumulationDimension", "early": ["initialContext(", "[2] expected: AccumulationDimension but got: ServiceIndex"]}
 
 import ../../../src/state/accumulation_context
 import ../../../src/codec/composite

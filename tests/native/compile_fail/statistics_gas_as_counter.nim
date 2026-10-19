@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "ActivityGas"}
+# @@Verification={"group": "nominal", "expected": "ActivityGas"}
 
 import ../../../src/codec/state_statistics
 var record: ValidatorActivity

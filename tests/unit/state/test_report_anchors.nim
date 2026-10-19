@@ -7,7 +7,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-## Verification: {"arc": "report_anchors_arc_release"}
+# @@Verification={"arc": "report_anchors_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio]
 import ../../../src/state/[report_anchors, report_policy, guarantee_credentials, store]

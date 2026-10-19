@@ -4,7 +4,7 @@
 ## Negative compiler fixture for initialization result privacy and nominal allocation policy.
 ## The forbidden field access or raw limit below must fail compilation.
 
-## Verification: {"group": "privacy", "expected": "completed"}
+# @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/pvm/[initialize]
 let r = default(InitializationResult)

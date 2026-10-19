@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "opened"}
+# @@Verification={"group": "privacy", "expected": "opened"}
 
 import ../../../src/quic/io
 discard UdpEndpoint(opened: true)

@@ -4,7 +4,7 @@
 ## Native prepared-input to fetch integration with independent literal C.2 records and ARC evidence.
 ## Covers service selection, ordering, fresh limits, empty lists and retained context ownership.
 
-## Verification: {"arc": "pvm_fetch_invocation_arc_release"}
+# @@Verification={"arc": "pvm_fetch_invocation_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_fetch, accumulation_inputs, accumulation_operands,

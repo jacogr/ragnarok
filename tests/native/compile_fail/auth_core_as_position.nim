@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "AuthorizationCoreIndex"}
+# @@Verification={"group": "nominal", "expected": "AuthorizationCoreIndex"}
 
 import ../../../src/codec/state_authorization
 let owner = default(AuthorizationSnapshot)

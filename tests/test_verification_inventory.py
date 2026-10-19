@@ -133,7 +133,7 @@ class NativeArcDeclarations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             source = root/'test_example.nim'
-            source.write_text('## Purpose.\n## Verification: {"arc": "historical_arc_release"}\nassert true\n')
+            source.write_text('## Purpose.\n# @@Verification={"arc": "historical_arc_release"}\nassert true\n')
             plain = root/'test_plain.nim'
             plain.write_text('assert true\n')
             self.assertEqual(discover_arc_suites({'example': source, 'plain': plain}),
@@ -143,12 +143,12 @@ class NativeArcDeclarations(unittest.TestCase):
     def test_invalid_profiles(self):
         declarations = ('{"arc": ""}', '{"arc": "../outside"}', '{"arc": 1}',
                         '{"unknown": "report"}', '[]', '{}', '{"arc":"one","arc":"two"}',
-                        '{broken', '{"arc":"one"}\n## Verification: {"arc":"two"}')
+                        '{broken', '{"arc":"one"}\n# @@Verification={"arc":"two"}')
         for declaration in declarations:
             # Include duplicate JSON keys and duplicate header lines as separate overwrite hazards.
             with self.subTest(declaration=declaration), tempfile.TemporaryDirectory() as folder:
                 source = Path(folder)/'test_example.nim'
-                source.write_text('## Verification: '+declaration+'\nassert true\n')
+                source.write_text('# @@Verification='+declaration+'\nassert true\n')
                 with self.assertRaises(ValueError):
                     discover_arc_suites({'example': source})
 
@@ -159,7 +159,7 @@ class NativeArcDeclarations(unittest.TestCase):
             source.write_text('assert true\n')
             with self.assertRaisesRegex(ValueError, 'one verification declaration'):
                 source_metadata(source, required=True)
-            source.write_text('assert true\n## Verification: {"arc":"report"}\n')
+            source.write_text('assert true\n# @@Verification={"arc":"report"}\n')
             with self.assertRaisesRegex(ValueError, 'source header'):
                 source_metadata(source)
 
@@ -167,6 +167,6 @@ class NativeArcDeclarations(unittest.TestCase):
     def test_duplicate_report_keys(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder)/'fixture.nim'
-            source.write_text('## Verification: {"arc":"same_report"}\n')
+            source.write_text('# @@Verification={"arc":"same_report"}\n')
             with self.assertRaisesRegex(ValueError, 'Duplicate native ARC report key'):
                 discover_arc_suites({'first': source, 'second': source})

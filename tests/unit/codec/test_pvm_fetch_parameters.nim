@@ -4,7 +4,7 @@
 ## Exact GP parameter-layout witnesses and selector-0 configuration, gas and ownership tests.
 ## Exercises configured profiles, host dispatch, immutable attachment and native ARC release.
 
-## Verification: {"arc": "pvm_fetch_parameters_arc_release"}
+# @@Verification={"arc": "pvm_fetch_parameters_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/chain/parameters

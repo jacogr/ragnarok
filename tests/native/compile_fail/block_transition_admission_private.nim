@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "admissionReason"}
+# @@Verification={"group": "privacy", "expected": "admissionReason"}
 
 import ../../../src/state/block_transition
 var outcome = default(BlockTransitionResult)

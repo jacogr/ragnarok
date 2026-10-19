@@ -16,14 +16,14 @@ Declare the suite's source directory, library order, observer flags and fixture 
 `tools/native_requirements/<source-family>/<suite>.json`. Linking profiles are derived from these
 existing requirements; no central unit/link registration is needed. Keep independent profile fields
 alphabetical and retain ordered link options. If the suite must produce ARC evidence, declare its
-report key in the source header with `## Verification: {"arc": "example_arc_release"}`. The existing
+report key in the source header with `# @@Verification={"arc": "example_arc_release"}`. The existing
 ARC helper and fresh-evidence checks remain required. Fixtures use the feature adapters and shared
 preparation described in [infrastructure](infrastructure.md).
 
 Compiler rejection sources belong under `tests/native/compile_fail/`, with one source-local header:
 
 ```nim
-## Verification: {"group": "privacy", "expected": "privateField"}
+# @@Verification={"group": "privacy", "expected": "privateField"}
 ```
 
 Groups are `privacy`, `nominal`, `contracts`, `schemas` and `ownership_compile`. Expected diagnostics

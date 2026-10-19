@@ -4,7 +4,7 @@
 ## Native initial-accseq tests: independent prefixes/service bytes, gas boundaries and parent binding.
 ## Hastur entry point checks immutable retention, bounded refusals and complete ARC release.
 
-## Verification: {"arc": "accumulation_round_arc_release"}
+# @@Verification={"arc": "accumulation_round_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[accumulation_round, accumulation_inputs, accumulation_operands,

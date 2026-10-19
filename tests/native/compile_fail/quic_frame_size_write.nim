@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "size"}
+# @@Verification={"group": "privacy", "expected": "size"}
 
 import ../../../src/quic/protocol
 var result = default(FrameResult)

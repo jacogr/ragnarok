@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "winnersValue"}
+# @@Verification={"group": "privacy", "expected": "winnersValue"}
 
 import ../../../src/state/safrole_markers
 var hidden = default(SafroleMarkers)

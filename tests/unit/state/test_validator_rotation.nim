@@ -7,7 +7,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-## Verification: {"arc": "validator_rotation_arc_release"}
+# @@Verification={"arc": "validator_rotation_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/[validator_rotation_fixture, arc_evidence]

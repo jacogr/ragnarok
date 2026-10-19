@@ -7,7 +7,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-## Verification: {"arc": "block_admission_arc_release"}
+# @@Verification={"arc": "block_admission_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[block_admission, safrole_transition, safrole_authentication, store,

@@ -4,7 +4,7 @@
 ## Compiler-rejection fixture protecting private prepared operands and bound source provenance.
 ## Its top-level field access must fail semantic compilation rather than expose mutable storage.
 
-## Verification: {"group": "privacy", "expected": "status"}
+# @@Verification={"group": "privacy", "expected": "status"}
 
 import ../../../src/state/accumulation_operands
 let owner = default(AccumulationOperandResult[PreparedAccumulationOperands])

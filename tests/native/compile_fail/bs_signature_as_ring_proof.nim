@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: BsSignature but wanted: BsRingProof"}
+# @@Verification={"group": "nominal", "expected": "got: BsSignature but wanted: BsRingProof"}
 
 import ../../../src/bandersnatch/bandersnatch
 let value: BsRingProof = default(BsSignature)

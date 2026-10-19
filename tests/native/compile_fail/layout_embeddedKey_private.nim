@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "inlineKey"}
+# @@Verification={"group": "privacy", "expected": "inlineKey"}
 
 import ../../../src/codec/state_layout
 let value = default(StateNodeInfo)

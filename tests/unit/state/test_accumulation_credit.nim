@@ -4,7 +4,7 @@
 ## Native incoming-transfer credit witnesses over complete owned maps, including independent roots.
 ## Hastur entry point covers ordering, code alternatives, bootstrap/context integration, rollback and ARC.
 
-## Verification: {"arc": "accumulation_credit_arc_release"}
+# @@Verification={"arc": "accumulation_credit_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[accumulation_service, accumulation_skip, accumulation_invocation,

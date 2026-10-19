@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "status"}
+# @@Verification={"group": "privacy", "expected": "status"}
 
 import ../../../src/codec/[owned, composite]
 discard OwnedResult[int](status: OwnershipError.None, completed: 0)

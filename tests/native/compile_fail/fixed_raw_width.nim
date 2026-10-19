@@ -7,7 +7,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "[2] expected: ByteWidth but got: int64", "early": ["encodeFixed(", "[2] expected: ByteWidth but got: int64"]}
+# @@Verification={"group": "nominal", "expected": "[2] expected: ByteWidth but got: int64", "early": ["encodeFixed(", "[2] expected: ByteWidth but got: int64"]}
 
 import ../../../src/codec/fixed_unsigned
 let raw = 1

@@ -4,7 +4,7 @@
 ## Negative compiler fixture for bounded-execution metadata privacy and nominal limits.
 ## Intentionally rejects the forbidden field access or mismatched argument below.
 
-## Verification: {"group": "nominal", "expected": "[2] expected: ExecutionStepLimit but got: uint64", "early": ["execute(", "[2] expected: ExecutionStepLimit but got: uint64"]}
+# @@Verification={"group": "nominal", "expected": "[2] expected: ExecutionStepLimit but got: uint64", "early": ["execute(", "[2] expected: ExecutionStepLimit but got: uint64"]}
 
 import ../../../src/pvm/[machine, gas, step]
 discard execute(default(Machine), 1'u64, GasCycleLimit(1))

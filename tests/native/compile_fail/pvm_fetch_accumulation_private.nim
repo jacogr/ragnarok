@@ -3,7 +3,7 @@
 
 ## Accumulation capture storage cannot be extracted or mutated through the public context handle.
 
-## Verification: {"group": "privacy", "expected": "accumulationData"}
+# @@Verification={"group": "privacy", "expected": "accumulationData"}
 
 import ../../../src/pvm/host_fetch
 let context = default(FetchContext)

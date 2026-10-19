@@ -4,7 +4,7 @@
 ## Native accounts/Psi_A entry-gate tests: independent envelopes, immutable inputs and bound parent/slot.
 ## Hastur entry point covers refusal boundaries, backend failures and ARC release without executing a PVM.
 
-## Verification: {"arc": "accumulation_service_arc_release"}
+# @@Verification={"arc": "accumulation_service_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[accumulation_service, accumulation_round, accumulation_inputs,

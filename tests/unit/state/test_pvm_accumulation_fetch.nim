@@ -4,7 +4,7 @@
 ## Machine-derived accumulation fetch witnesses cover configuration, entropy, inputs and absent families.
 ## Exercises real host dispatch, resource refusals, immutable lifetime and ARC release.
 
-## Verification: {"arc": "pvm_accumulation_fetch_arc_release"}
+# @@Verification={"arc": "pvm_accumulation_fetch_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/state/[accumulation_machine, accumulation_fetch]

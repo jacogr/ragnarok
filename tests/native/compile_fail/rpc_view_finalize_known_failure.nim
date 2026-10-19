@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Negative compiler fixture: a known failed finality selection cannot expose a replacement history.
-## Verification: {"group": "contracts", "expected": "outcome.status"}
+# @@Verification={"group": "contracts", "expected": "outcome.status"}
 
 import std/assertions
 import ../../../src/chain/[genesis, provider]

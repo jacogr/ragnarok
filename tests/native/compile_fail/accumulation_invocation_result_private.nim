@@ -4,7 +4,7 @@
 ## Compiler rejection fixture protecting private bootstrap ownership and nominal scalar/resource domains.
 ## The top-level access or call must fail semantic compilation before any payload can be used.
 
-## Verification: {"group": "privacy", "expected": "completed"}
+# @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/state/[accumulation_invocation, store]
 import ../../../src/codec/[bounded, composite, header]

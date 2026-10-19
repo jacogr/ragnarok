@@ -3,7 +3,7 @@
 
 ## Reject direct access to private fallible host result storage.
 
-## Verification: {"group": "privacy", "expected": "response"}
+# @@Verification={"group": "privacy", "expected": "response"}
 
 import ../../../src/pvm/step
 

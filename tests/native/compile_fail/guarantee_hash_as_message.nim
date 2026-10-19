@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: Blake2bHash but wanted: GuaranteeMessage"}
+# @@Verification={"group": "nominal", "expected": "got: Blake2bHash but wanted: GuaranteeMessage"}
 
 import ../../../src/crypto/[primitives, guarantee]
 let value: GuaranteeMessage = default(Blake2bHash)

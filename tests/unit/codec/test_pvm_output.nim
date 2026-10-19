@@ -4,7 +4,7 @@
 ## Native witnesses for halted PVM return buffers and natural nonwrapping address ranges.
 ## Tests initializer/execution composition, page permissions, full preflight, local limits and ARC.
 
-## Verification: {"arc": "pvm_output_arc_release"}
+# @@Verification={"arc": "pvm_output_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, initialize, gas, step, output]

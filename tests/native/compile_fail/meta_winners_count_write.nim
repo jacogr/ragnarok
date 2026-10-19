@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "tickets"}
+# @@Verification={"group": "privacy", "expected": "tickets"}
 
 import ../../../src/codec/header
 var value = default(WinnersMarkerInfo)

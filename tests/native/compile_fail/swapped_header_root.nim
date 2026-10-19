@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: ExtrinsicRoot but wanted: PriorStateRoot"}
+# @@Verification={"group": "nominal", "expected": "got: ExtrinsicRoot but wanted: PriorStateRoot"}
 
 import ../../../src/codec/[header]
 

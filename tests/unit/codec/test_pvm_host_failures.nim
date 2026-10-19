@@ -4,7 +4,7 @@
 ## Fallible host-loop witnesses preserve typed fetch refusals without exposing partial machine state.
 ## Covers shared budgets, malformed replies, context side effects, guest outcomes and ARC release.
 
-## Verification: {"arc": "pvm_host_failures_arc_release"}
+# @@Verification={"arc": "pvm_host_failures_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step, host_fetch]

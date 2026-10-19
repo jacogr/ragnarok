@@ -7,10 +7,11 @@ names and failure-family budgets. Independent names remain alphabetical within e
 missing sections, duplicate keys/cases and incomplete execution remain errors. The inventory loader
 and JSON data are included in report provenance. Compiler guards do not import the runtime executor.
 
-ARC requirements live in the owning unit source header, after its purpose/API documentation:
+ARC requirements live in the owning unit source header, after its purpose/API documentation.
+Use a plain Nim comment so metadata stays out of generated documentation:
 
 ```nim
-## Verification: {"arc": "example_arc_release"}
+# @@Verification={"arc": "example_arc_release"}
 ```
 
 The declared report key preserves historical report names. Suites without ARC observations need

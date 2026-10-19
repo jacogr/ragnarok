@@ -3,7 +3,7 @@
 
 ## Raw byte counts cannot silently become package snapshot resource budgets.
 
-## Verification: {"group": "nominal", "expected": "got: uint64 but wanted: FetchPackageLimit"}
+# @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: FetchPackageLimit"}
 
 import ../../../src/pvm/host_fetch
 

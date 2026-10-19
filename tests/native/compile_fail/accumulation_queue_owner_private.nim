@@ -4,7 +4,7 @@
 ## Compiler-rejection fixture protecting private accumulation plan/result ownership.
 ## Its top-level field access attempts to expose private storage; compilation must fail.
 
-## Verification: {"group": "privacy", "expected": "data"}
+# @@Verification={"group": "privacy", "expected": "data"}
 
 import ../../../src/state/accumulation_queue
 let owner = default(AccumulationQueuePlan)

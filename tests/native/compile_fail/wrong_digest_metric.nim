@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "got: ImportCount but wanted: ExportCount"}
+# @@Verification={"group": "nominal", "expected": "got: ImportCount but wanted: ExportCount"}
 
 import ../../../src/codec/work_digest
 var wrong = default(ImportCount)

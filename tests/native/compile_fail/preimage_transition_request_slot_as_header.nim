@@ -4,7 +4,7 @@
 ## Negative compilation fixture separating protocol service/slot domains from transition API positions.
 ## The mismatched call must fail semantic compilation before publication or extraction.
 
-## Verification: {"group": "nominal", "expected": "HeaderSlot", "early": ["integratePreimages(", "[3] expected: HeaderSlot but got: RequestSlot"]}
+# @@Verification={"group": "nominal", "expected": "HeaderSlot", "early": ["integratePreimages(", "[3] expected: HeaderSlot but got: RequestSlot"]}
 
 import ../../../src/state/[preimages, store]
 import ../../../src/codec/[composite, state_requests]

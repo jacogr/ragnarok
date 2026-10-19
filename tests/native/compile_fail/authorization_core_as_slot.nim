@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "nominal", "expected": "AuthorizationCoreIndex", "early": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"]}
+# @@Verification={"group": "nominal", "expected": "AuthorizationCoreIndex", "early": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"]}
 
 import ../../../src/state/authorization
 import ../../../src/codec/state_authorization

@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "since"}
+# @@Verification={"group": "privacy", "expected": "since"}
 
 import ../../../src/codec/state_requests
 var history = default(RequestHistory)

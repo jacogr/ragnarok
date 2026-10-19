@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Negative compiler fixture: Reject external access to the retained genesis state owner.
-## Verification: {"group": "privacy", "expected": "state"}
+# @@Verification={"group": "privacy", "expected": "state"}
 
 import ../../../src/chain/genesis
 var view = default(Genesis)

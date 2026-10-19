@@ -4,7 +4,7 @@
 ## Independent present-value fetch witnesses for prices, clipping, atomicity and owned responses.
 ## Applies responses to a real host suspension and records fresh native ARC evidence.
 
-## Verification: {"arc": "pvm_fetch_arc_release"}
+# @@Verification={"arc": "pvm_fetch_arc_release"}
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step, host_fetch]

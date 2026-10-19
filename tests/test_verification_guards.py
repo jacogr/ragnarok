@@ -84,12 +84,12 @@ class CompilerFixtureDiscovery(unittest.TestCase):
             }
             for name, record in records.items():
                 # Deliberate insertion order differs from deterministic filename discovery.
-                (root/(name+'.nim')).write_text('## Verification: '+json.dumps(record)+'\nassert false\n')
+                (root/(name+'.nim')).write_text('# @@Verification='+json.dumps(record)+'\nassert false\n')
             observed = load_compiler_fixtures(root)
             self.assertEqual(list(observed), sorted(records))
             self.assertEqual(observed, records)
             extra = root/'extra_contract.nim'
-            extra.write_text('## Verification: {"group":"contracts","expected":"isPresent"}\n')
+            extra.write_text('# @@Verification={"group":"contracts","expected":"isPresent"}\n')
             self.assertIn('extra_contract', load_compiler_fixtures(root))
             extra.unlink()
             self.assertEqual(load_compiler_fixtures(root), records)
@@ -110,7 +110,7 @@ class CompilerFixtureDiscovery(unittest.TestCase):
             # Each shape targets a distinct silent-weakening or source-to-command injection hazard.
             with self.subTest(record=record), tempfile.TemporaryDirectory() as folder:
                 source = Path(folder)/'fixture.nim'
-                source.write_text(('## Verification: '+json.dumps(record)+'\n') if record is not None else 'assert false\n')
+                source.write_text(('# @@Verification='+json.dumps(record)+'\n') if record is not None else 'assert false\n')
                 with self.assertRaises(ValueError):
                     load_compiler_fixtures(folder)
 
@@ -122,13 +122,13 @@ class CompilerFixtureDiscovery(unittest.TestCase):
                 load_compiler_fixtures(root)
             child = root/'nested/fixture.nim'
             child.parent.mkdir()
-            child.write_text('## Verification: {"group":"privacy","expected":"hidden"}\n')
+            child.write_text('# @@Verification={"group":"privacy","expected":"hidden"}\n')
             with self.assertRaisesRegex(ValueError, 'fixture path'):
                 load_compiler_fixtures(root)
             child.unlink()
             for name in ('first', 'second'):
                 # Two lowering checks must not overwrite one another's caches, logs or binary paths.
-                (root/(name+'.nim')).write_text('## Verification: {"group":"ownership_compile",'
+                (root/(name+'.nim')).write_text('# @@Verification={"group":"ownership_compile",'
                                                '"expected":"dup","build_name":"same-build"}\n')
             with self.assertRaisesRegex(ValueError, 'build profile'):
                 load_compiler_fixtures(root)

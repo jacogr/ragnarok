@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "ownership_compile", "expected": "'=dup' is not available for type <Client>", "build_name": "telemetry-client-copy"}
+# @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <Client>", "build_name": "telemetry-client-copy"}
 
 import ../../../src/telemetry/client
 var original = default(Client)

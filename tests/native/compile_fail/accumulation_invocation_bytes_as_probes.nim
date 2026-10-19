@@ -4,7 +4,7 @@
 ## Compiler rejection fixture protecting private bootstrap ownership and nominal scalar/resource domains.
 ## The top-level access or call must fail semantic compilation before any payload can be used.
 
-## Verification: {"group": "nominal", "expected": "ServiceProbeLimit", "early": ["findUnusedAccumulationService(", "[3] expected: ServiceProbeLimit but got: ByteLimit"]}
+# @@Verification={"group": "nominal", "expected": "ServiceProbeLimit", "early": ["findUnusedAccumulationService(", "[3] expected: ServiceProbeLimit but got: ByteLimit"]}
 
 import ../../../src/state/[accumulation_invocation, store]
 import ../../../src/codec/[bounded, composite, header]

@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-## Verification: {"group": "privacy", "expected": "rotationReason"}
+# @@Verification={"group": "privacy", "expected": "rotationReason"}
 
 import ../../../src/state/safrole_transition
 var hidden = default(SafroleTransitionResult)

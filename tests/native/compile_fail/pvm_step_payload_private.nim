@@ -4,7 +4,7 @@
 ## Negative compiler fixture for step-result privacy or nominal simulation limits.
 ## This test intentionally fails at the forbidden field access or mismatched call below.
 
-## Verification: {"group": "privacy", "expected": "completed"}
+# @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/pvm/[machine, gas, step]
 let r = default(StepResult)

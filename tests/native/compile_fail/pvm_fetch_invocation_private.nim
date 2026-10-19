@@ -3,7 +3,7 @@
 
 ## External code cannot bypass the invocation-fetch selected-success accessor.
 
-## Verification: {"group": "privacy", "expected": "completed"}
+# @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/state/accumulation_fetch
 var outcome: InvocationFetchResult
