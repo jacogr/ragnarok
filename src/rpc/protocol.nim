@@ -595,8 +595,23 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
     session.pendingCount = kept
   "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $found & "}"
 
+## Snapshot connection-local subscription usage without draining queues or retaining selectors.
+## Pending bytes count serialized notification JSON only, excluding transport output and WS framing.
+proc subscriptionUsage(session: RpcSession): string =
+  var best = 0
+  var finalized = 0
+  for item in session.active:
+    if uint32(item.identity) != 0:
+      if item.finalized:
+        inc finalized # Count only occupied finalized-source selectors.
+      else:
+        inc best # All other occupied selectors follow best-head publication.
+  "{\"active\":" & $(best + finalized) & ",\"best\":" & $best &
+    ",\"finalized\":" & $finalized & ",\"pendingUpdates\":" & $session.pendingCount &
+    ",\"pendingBytes\":" & $session.pendingBytes & "}"
+
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
-proc clientInfo(info: ClientInfo, stateful: bool): string =
+proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): string =
   result = "{\"name\":\"Ragnarok\",\"version\":\"development\",\"implementation\":\"Nimony\""
   result.add(",\"compilerVersion\":\"0.6.3\",\"grayPaperVersion\":\"0.8.0\"")
   result.add(",\"os\":" & quote(Platform) & ",\"architecture\":" & quote(Architecture))
@@ -611,7 +626,13 @@ proc clientInfo(info: ClientInfo, stateful: bool): string =
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
   result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"finalizedBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
       (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeFinalizedBlock\",\"unsubscribeFinalizedBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\",\"subscribeServiceValue\",\"unsubscribeServiceValue\",\"subscribeServicePreimage\",\"unsubscribeServicePreimage\",\"subscribeServiceRequest\",\"unsubscribeServiceRequest\"" else: "") & "]")
-  result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
+  result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16")
+  result.add(",\"maxReplyBytes\":" & $MaxReplyBytes & ",\"maxBlobReplyBytes\":" &
+      $MaxBlobReplyBytes)
+  result.add(",\"maxSubscriptions\":" & $MaxSubscriptions & ",\"maxPendingUpdates\":" &
+      $MaxSubscriptionUpdates)
+  result.add(",\"maxPendingBytes\":" & $MaxSubscriptionQueueBytes & ",\"subscriptionState\":" &
+    (if stateful: subscriptionUsage(session) else: "null") & "}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
 proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: int,
@@ -899,7 +920,8 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
       if not info.parameters.ok: return error(id, 0, "Chain parameters unavailable; configure --chain")
       return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & parameterObject(
           info.parameters.value, info.chain.bestBlock) & "}"
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info, stateful) & "}"
+    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info, stateful,
+        session) & "}"
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 
 # Determine the exact encoded ID length for output reservation; invalid envelopes may reserve excess.

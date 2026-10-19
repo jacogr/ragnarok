@@ -906,3 +906,30 @@ checks finality events, silent repeat publication and slow-consumer disconnectio
 finality advancement. Live startup checks retain explicit unavailability in the absence of finality.
 Consensus finality production and live block-import integration remain outstanding; this is RPC
 routing for caller-certified events, not a consensus implementation.
+
+
+## Connection subscription diagnostics
+
+The Ragnarok extension `ragnarok_clientInfo()` now reports enforced limits in its `rpc` object:
+`maxReplyBytes` (65,535), `maxBlobReplyBytes` (32,768), `maxSubscriptions` (8),
+`maxPendingUpdates` (16) and `maxPendingBytes` (65,535), alongside the existing message/batch limits.
+These are local resource ceilings, not JAM protocol constants or negotiated allowances.
+
+`rpc.subscriptionState` is a connection-local object with `active`, `best`, `finalized`,
+`pendingUpdates` and `pendingBytes`. Active counts describe occupied selectors, grouped by their
+publication source. Pending counts describe the shared notification FIFO; pending bytes are exact
+serialized notification JSON bytes, excluding WS framing, queued replies and any notification already
+moved into the transport output buffer. They are not total connection memory or network backlog.
+A terminal error can remain pending after its selector is removed, so pending updates need not
+correspond to active subscriptions. The stateless adapter reports `subscriptionState: null`.
+
+Diagnostics scan at most eight selectors and read existing FIFO counters. They do not drain updates,
+allocate subscription IDs, expose selectors/keys or inspect other connections. A batch observes
+previously committed operations in order, including earlier subscription creation/cancellation.
+Native tests cover mixed best/finalized usage, exact pending bytes, dequeue, cancellation, terminal
+errors, connection isolation and retirement. Live WS tests verify the advertised limits and exact
+FIFO bytes in a subscribe-plus-clientInfo batch before transport drains the initial update.
+
+Remaining JIP-2 work requires real synchronization progress, work-package lifecycle evidence,
+submission routing or DA retrieval. These diagnostics describe available RPC state without claiming
+those capabilities. Consensus finality and importer integration also remain outstanding.
