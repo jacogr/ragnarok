@@ -89,5 +89,7 @@ networking behavior is unchanged and was not rerun locally. Linux CI verifies th
 
 Checkpoint/yield host handling now uses these state effects through the
 [PVM accumulation dispatcher](pvm-accumulation-dispatch.md), retaining both dimensions
-with actual terminal execution results. Next, select and normalize regular/exceptional
-outcomes; terminal state publication remains separate.
+with actual terminal execution results.
+[Terminal normalization](pvm-accumulation-outcome.md) now selects the final dimension
+and applies the halt-return rule. Remaining host mutations and terminal state
+publication remain separate.

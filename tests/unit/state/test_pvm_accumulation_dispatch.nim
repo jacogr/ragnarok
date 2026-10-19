@@ -9,7 +9,7 @@ import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumula
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, c2_records, state_outputs]
 import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
-import ../../support/[pvm_accumulation_context, arc_evidence]
+import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
 
 ## Prepare an actual bound service with ecalli at PC 5 and a dynamic return at PC 7.
 proc prepared(id: byte, credit = 10000'u64): PreparedAccumulationMachine =
@@ -93,39 +93,6 @@ let known = prepared(1)
 let knownPrice = uint64(blockGas(programOf(known.accumulationMachine.value).value,
   CodeAddress(5), GasCycleLimit(200)).value)
 assert run(prepared(1, knownPrice)).error == AccumulationDispatchError.UnsupportedHostCall
-## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
-## No upstream assembler runs, and each single-byte code count is proven before narrowing.
-proc effectProgram(instructions: openArray[seq[byte]], credit = 10000'u64,
-    includeContexts = true): PreparedAccumulationMachine =
-  var code = @[0'u8, 0, 0, 0, 0]
-  var starts = @[true, true, true, true, true]
-  for instruction in instructions:
-    # Borrow each complete authored instruction; arguments are never marked as opcodes.
-    assert instruction.len > 0
-    for i, octet in instruction:
-      code.add(octet)
-      starts.add(i == 0)
-  assert code.len < 128
-  var raw = @[0'u8, 0, byte(code.len)]
-  for octet in code:
-    raw.add(octet) # Instruction data precedes the packed LSB-first bitmask.
-  var mask = newSeq[byte]((code.len+7) div 8)
-  for i, marked in starts:
-    if marked:
-      mask[i div 8] = mask[i div 8] or byte(1 shl (i mod 8)) # Only true opcode positions are set.
-  for octet in mask:
-    raw.add(octet) # Padding bits remain canonical zero.
-  initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw), credit,
-    includeContexts = includeContexts),
-    InitializationLimits(envelope: InitializationByteLimit(256), program: ProgramByteLimit(128),
-      jumps: JumpCountLimit(0), pages: PageLimit(5))).value
-
-## Load a full 64-bit pointer; extended immediates avoid sign-extension aliases in address witnesses.
-proc pointer(address: uint64): seq[byte] =
-  result = @[20'u8, 7]
-  for i in 0..<8:
-    result.add(byte((address shr (8*i)) and 255)) # Independent LE encoding at every register bit.
-
 ## Fund a bounded actual engine run; copy policy is independent of gas and memory accessibility.
 proc runEffects(source: PreparedAccumulationMachine, copyLimit = 32'u64,
     steps = 100'u64, calls = 10'u64): AccumulationDispatchResult =
@@ -177,8 +144,8 @@ for id in [18'u8, 26]:
             i]) # Unrelated registers persist.
     checkYield(done, exceptional, false)
 # Yield then checkpoint then a different yield leaves independently retained X and Y values.
-let history = effectProgram([pointer(65536), yieldCall, checkpointCall,
-  pointer(196608), yieldCall, halt])
+let history = guestProgram([registerImmediate(7, 65536), yieldCall, checkpointCall,
+  registerImmediate(7, 196608), yieldCall, halt])
 let completed = runEffects(history)
 assert completed.value.exit == StepExit.Halt
 checkYield(completed, regular, true, 81)
@@ -190,28 +157,28 @@ assert uint64(machineInfo(history.accumulationMachine.value).value.gas) == 10000
 for finalId in [18'u8, 26]:
   # A final unaffordable call cannot replace an already divergent regular/exceptional pair.
   let cost = (if finalId == 18: 103'u64 else: 98'u64)
-  let instructions = [pointer(65536), yieldCall, checkpointCall, pointer(196608),
+  let instructions = [registerImmediate(7, 65536), yieldCall, checkpointCall, registerImmediate(7, 196608),
     yieldCall, @[10'u8, finalId], halt]
-  let prototype = effectProgram(instructions).accumulationMachine.value
+  let prototype = guestProgram(instructions).accumulationMachine.value
   let price = uint64(blockGas(programOf(prototype).value, CodeAddress(5), GasCycleLimit(1000)).value)
-  let done = runEffects(effectProgram(instructions, price+98+103+98+cost-1))
+  let done = runEffects(guestProgram(instructions, price+98+103+98+cost-1))
   assert done.value.exit == StepExit.OutOfGas
   assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 1
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == 0
   checkYield(done, regular, true, 81)
   checkYield(done, exceptional, true, 73)
 # Writable zero-filled bytes remain a present all-zero commitment; no implicit checkpoint is taken.
-let zeroYield = runEffects(effectProgram([pointer(196609), yieldCall, halt]))
+let zeroYield = runEffects(guestProgram([registerImmediate(7, 196609), yieldCall, halt]))
 checkYield(zeroYield, regular, true)
 checkYield(zeroYield, exceptional, false)
 # Adjacent readable RW pages permit a full cross-page read, preserving all zero bytes.
-let crossing = runEffects(effectProgram([pointer(196608'u64+4096-16), yieldCall, halt]))
+let crossing = runEffects(guestProgram([registerImmediate(7, 196608'u64+4096-16), yieldCall, halt]))
 checkYield(crossing, regular, true)
 for address in [0'u64, 65536'u64+4096-16, 196608'u64+8192-16, 0xffffffff'u64,
     0x100010000'u64, high(uint64)]:
   # Protected, sparse, boundary and high-bit intervals must not wrap or yield a readable prefix.
-  let failed = runEffects(effectProgram([pointer(65536), yieldCall, checkpointCall,
-    pointer(address), yieldCall, halt]))
+  let failed = runEffects(guestProgram([registerImmediate(7, 65536), yieldCall, checkpointCall,
+    registerImmediate(7, address), yieldCall, halt]))
   assert failed.value.exit == StepExit.Panic
   assert uint64(machineInfo(failed.value.machine).value.registers[7]) == address
   assert uint64(machineInfo(failed.value.machine).value.gasDeficit) == 0
@@ -221,7 +188,7 @@ for address in [0'u64, 65536'u64+4096-16, 196608'u64+8192-16, 0xffffffff'u64,
   checkYield(failed, regular, true, 73)
   checkYield(failed, exceptional, true, 73)
 # Guest trap after a new yield retains both dimensions for subsequent Psi_A outcome selection.
-let trapped = runEffects(effectProgram([checkpointCall, pointer(65536), yieldCall, @[0'u8]]))
+let trapped = runEffects(guestProgram([checkpointCall, registerImmediate(7, 65536), yieldCall, @[0'u8]]))
 assert trapped.value.exit == StepExit.Panic
 checkYield(trapped, regular, true, 73)
 checkYield(trapped, exceptional, false)
@@ -232,7 +199,7 @@ let yieldPrice = uint64(blockGas(programOf(prepared(26).accumulationMachine.valu
 assert runEffects(prepared(26, yieldPrice), copyLimit = 0).value.exit == StepExit.OutOfGas
 assert runEffects(history, calls = 2).executionError == StepError.HostCallLimitExceeded
 assert runEffects(history, steps = 2).executionError == StepError.StepLimitExceeded
-assert runEffects(effectProgram([halt], includeContexts = false)).error ==
+assert runEffects(guestProgram([halt], includeContexts = false)).error ==
   AccumulationDispatchError.InvalidContext
 var insufficient = pvmContextConfig()
 insufficient.totalBytes = ByteLimit(0)
