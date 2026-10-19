@@ -182,6 +182,7 @@
   "tests/native/preimage_transition_results.nim",
   "tests/native/pvm_accumulation_fetch_results.nim",
   "tests/native/pvm_accumulation_machine_results.nim",
+  "tests/native/pvm_accumulation_provision_results.nim",
   "tests/native/pvm_execution_results.nim",
   "tests/native/pvm_fetch_accumulation_results.nim",
   "tests/native/pvm_fetch_context_results.nim",

@@ -235,7 +235,7 @@ for malformed in [@[request(42, blob(1, 73), @[1'u8])],
     @[StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(99)), value: @[0'u8])]]:
   # Malformed request history and malformed other-service metadata are local errors, never HUH or WHO.
   let target = (if malformed[0].value.len == 1 and malformed[0].value[0] == 0: 99'u64 else: 42'u64)
-  assert run(source(target, extra = malformed)).error == AccumulationDispatchError.InvalidContext
+  assert run(source(target, extra = malformed)).error == AccumulationDispatchError.MalformedState
 let backendSource = source(42)
 for successful in [0.cint, 1.cint]:
   hashAfter(successful)

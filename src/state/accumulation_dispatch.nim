@@ -15,7 +15,7 @@ type
   ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
   AccumulationDispatchError* {.pure.} = enum
     Uninitialized, None, InvalidMachine, InvalidParameters, LimitExceeded, InvalidContext,
-    UnsupportedHostCall, ExecutionFailure, BackendFailure, GasRangeExceeded
+    UnsupportedHostCall, ExecutionFailure, MalformedState, BackendFailure, GasRangeExceeded
   ## Success alone retains a CPU outcome; engine failure carries only its enum-valued reason.
   AccumulationDispatchResult* = object
     case status: AccumulationDispatchError
@@ -135,7 +135,7 @@ proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     response.registers[7] = RegisterValue(high(uint64)-8) # Invalid protocol length is HUH before any memory read.
     return hostSuccess[AccumulationDispatchError](response)
   let copied = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(size),
-    context.copyLimit)
+    MemoryByteLimit(min(uint64(context.copyLimit), uint64(context.provisionLimits.perBlob))))
   case copied.error
   of MachineError.None:
     discard # A successful preflight owns the complete borrowed guest interval, including an empty interval.
@@ -170,6 +170,8 @@ proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.LimitExceeded) # No partial capture or machine escapes local refusal.
   of AccumulationEffectError.BackendFailure:
     return hostFailure(AccumulationDispatchError.BackendFailure) # Failed hashes never become unrequested verdicts.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Corrupt metadata/history remains an explicit local refusal.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Corrupt account/request state is not WHO or HUH.
   hostSuccess[AccumulationDispatchError](response)
