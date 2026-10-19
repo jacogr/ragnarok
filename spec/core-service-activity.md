@@ -107,3 +107,19 @@ The final seven runtime and five compiler guard checks pass. Pinned format/check
 Nim files and the Rust crate; `git diff --check` passes. Earlier compiler feedback was resolved by
 short independent policy predicates and explicit qualification of colliding nominal test types,
 without changing the pinned toolchain or formatters.
+
+## Native stack synchronization
+
+During submission, master advanced to `6162044cb8819d6a60fe1a0d1eb26318782137cf` and the five
+published parent layers were externally restacked. A read-only range-diff proved all five parent
+patches equivalent. Native `gh stack sync --remote origin` rebased/pushed the stack with its guarded
+leases; it preserved the unpublished projection patch exactly and resolved the stale-workflow
+push refusal without changing credentials or workflow files in this layer.
+
+On the synchronized tree, the selected native suite passes again with the same 1,000-cycle
+17,136-byte allocation and zero hash calls. Python/build tooling changed on trunk, so its discovery
+was rerun: 451 tests pass with seven skips. Inventory remains 115 failure families, 1,695 probes and
+180 native suites; pinned formatting checks 1,576 Nim files and the Rust crate. The projection,
+state/codec/crypto/native dependencies and guard inputs are byte-identical to the previously
+verified tree, so their seven runtime/five compiler guard evidence is retained. The PR diff contains
+only this layer's projection, contract and tests; unrelated landed UI work remains in its base.
