@@ -39,6 +39,7 @@ cover private storage. Fresh 1,000-cycle ARC evidence covers completion and both
 later callback refusals. The existing host execution/fetch/gas/response suites provide regression
 coverage. This is independent implementation evidence, not full host-function parity.
 
-Remaining: invocation context selection, absent fetch values, additional selectors, staged service
-state, complete gas-used accounting and end-to-end invocation policy. Next bounded chunk: resolve
-fetch absence semantics against pinned evidence and implement the entropy/trace context boundary.
+[Optional entropy/trace capture](pvm-fetch-context.md) now supplies the context boundary and
+resolves fetch absence using pinned notation. Remaining: complete invocation context selection,
+additional selectors, staged service state, gas-used accounting and end-to-end invocation policy.
+Next bounded chunk: fetch work-item payloads from validated work-package context.

@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Evaluate fetch for present entropy and authorizer-trace values with bounded atomic memory copies.
-## FetchEntropy types the fixed entropy input; FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
-## Inputs are borrowed only during the call; returned memory owns copies. See spec/pvm-fetch-bytes.md.
+## Evaluate fetch for captured optional entropy and trace, or directly borrowed present values.
+## Exposes FetchContext capture, selector responses and direct present-value responses.
+## FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
+## Capture owns bounded immutable context; responses own memory copies. See spec/pvm-fetch-context.md.
 
 import ./[machine, step]
 
@@ -12,7 +13,7 @@ type
   FetchEntropy* = distinct array[32, byte]
   # Local misuse and resource policy are not guest-visible host exits.
   FetchError* {.pure.} = enum
-    Uninitialized, None, UnsupportedSelector, InvalidMemory, LimitExceeded
+    Uninitialized, None, UnsupportedSelector, InvalidMemory, LimitExceeded, InvalidContext
   # Private tagged alternatives prevent reading a response after a local refusal.
   FetchResult* = object
     case status: FetchError
@@ -23,15 +24,69 @@ type
       # Failure carries no partly charged response or partial copy.
       discard
 
+type
+  # Explicit presence distinguishes an absent trace from a present zero-byte trace.
+  FetchPresence* {.pure.} = enum
+    Absent, Present
+  # Local cap on variable trace snapshot bytes; the fixed entropy field is always constant-size.
+  FetchTraceLimit* = distinct uint64
+  # Private acyclic owner retains only selected input values and has no references to caller storage.
+  FetchContextData = ref object
+    entropyPresence: FetchPresence
+    entropy: FetchEntropy
+    tracePresence: FetchPresence
+    trace: seq[byte]
+  # Public immutable handle; default is invalid, while explicit all-absent capture is valid.
+  FetchContext* = object
+    data: nil FetchContextData
+  # Capture failures carry only the local reason, never a partial owner or borrowed input span.
+  FetchContextResult* = object
+    case status: FetchError
+    of None:
+      # Extracted handles share an immutable snapshot with no writable storage accessor.
+      completed: FetchContext
+    else:
+      # Uninitialized and refused captures expose no snapshot.
+      discard
+
+# Inspect capture status without allowing result retagging.
+func error*(r: FetchContextResult): FetchError = r.status
+# Select the captured immutable context only after checking success.
+func value*(r: FetchContextResult): FetchContext
+    {.requires: r.status == FetchError.None.} = r.completed
+
+# Capture entropy and trace presence independently; borrow caller inputs only until this call returns.
+# Absent payload arguments are ignored and not copied. A present trace is bounded before allocation;
+# its length is already representable as int because the input is a valid openArray.
+proc captureFetchContext*(entropyPresence: FetchPresence, entropy: FetchEntropy,
+    tracePresence: FetchPresence, trace: openArray[byte],
+        limit: FetchTraceLimit): FetchContextResult =
+  if tracePresence == FetchPresence.Present and uint64(trace.len) > uint64(limit):
+    # A local capture cap cannot silently truncate a protocol value or turn it into absence.
+    return FetchContextResult(status: FetchError.LimitExceeded)
+  var copied = newSeq[byte](0)
+  if tracePresence == FetchPresence.Present:
+    # Allocate only the selected trace after checking the complete input length.
+    copied = newSeq[byte](trace.len)
+    for i in 0..<trace.len:
+      # Independent storage prevents caller mutation from changing later fetch responses.
+      copied[i] = trace[i]
+  let selectedEntropy = (if entropyPresence == FetchPresence.Present: entropy
+    else: FetchEntropy(default(array[32, byte])))
+  let owner = FetchContextData(entropyPresence: entropyPresence, entropy: selectedEntropy,
+    tracePresence: tracePresence, trace: copied)
+  FetchContextResult(status: FetchError.None, completed: FetchContext(data: owner))
+
 # Inspect a result without exposing mutable variant storage.
 func error*(r: FetchResult): FetchError = r.status
 # Select a completed protocol outcome only after checking success.
 func value*(r: FetchResult): HostResponse {.requires: r.status == FetchError.None.} = r.completed
 
-# Apply the present-value branch after the public wrapper chooses its fixed selector and prices.
+# Apply a selected value or absence after the wrapper chooses its selector and fixed prices.
 # Caller bytes must remain stable during this synchronous call; the source memory is immutable.
-proc fetchPresent(gas: MachineGas, registers: RegisterFile, memory: Memory,
-    bytes: openArray[byte], selector, base, rate: uint64, limit: MemoryByteLimit): FetchResult =
+proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
+    bytes: openArray[byte], present: bool, selector, base, rate: uint64,
+        limit: MemoryByteLimit): FetchResult =
   if uint64(registers[10]) != selector:
     # A known but unimplemented selector must never become an unknown/absent-value response.
     return FetchResult(status: FetchError.UnsupportedSelector)
@@ -49,6 +104,11 @@ proc fetchPresent(gas: MachineGas, registers: RegisterFile, memory: Memory,
       registers: registers, memory: memory))
   var response = HostResponse(action: HostAction.Continue, gas: MachineGas(uint64(gas) - cost),
     gasDeficit: GasDeficit(0), registers: registers, memory: memory)
+  if not present:
+    # GP notation defines |none| = 0: the copy interval is empty for every destination pointer.
+    # Requested-length charging above still applies; absence returns NONE, not zero-length success.
+    response.registers[7] = RegisterValue(high(uint64))
+    return FetchResult(status: FetchError.None, completed: response)
   let offset = min(uint64(registers[8]), uint64(bytes.len))
   let count = min(requested, uint64(bytes.len) - offset)
   # Clipping to the existing borrowed span proves both conversions and the inclusive end safe.
@@ -80,11 +140,37 @@ proc fetchPresent(gas: MachineGas, registers: RegisterFile, memory: Memory,
 # Dispatcher supplies the invocation's entropy and host identifier 2; absence is outside this API.
 proc fetchEntropyResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory,
     entropy: FetchEntropy, limit: MemoryByteLimit): FetchResult =
-  fetchPresent(gas, registers, memory, array[32, byte](entropy), 1, 103, 0, limit)
+  fetchValue(gas, registers, memory, array[32, byte](entropy), true, 1, 103, 0, limit)
 
 # Fetch selector 2 with a present trace (including empty): cost 80 + ceil(96*r9/1024).
 # This does not select invocation context. A local failure must be propagated by the dispatcher,
 # never converted to HostAction.Panic. Fallible executeWithHost callbacks can return hostFailure(error).
 proc fetchTraceResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory,
     trace: openArray[byte], limit: MemoryByteLimit): FetchResult =
-  fetchPresent(gas, registers, memory, trace, 2, 80, 96, limit)
+  fetchValue(gas, registers, memory, trace, true, 2, 80, 96, limit)
+
+# Select captured entropy/trace for host identifier 2; other known selectors remain local refusals.
+# Values >= 16 are protocol-unknown selectors (cost 80, NONE), not unknown host identifiers.
+# Invalid context/memory and local copy caps remain typed failures for fallible host dispatch.
+proc fetchContextResponse*(context: FetchContext, gas: MachineGas, registers: RegisterFile,
+    memory: Memory, limit: MemoryByteLimit): FetchResult =
+  let owner = context.data
+  if owner == nil:
+    # Default handles cannot masquerade as a valid invocation with both values absent.
+    return FetchResult(status: FetchError.InvalidContext)
+  let selector = uint64(registers[10])
+  case selector
+  of 1:
+    # Entropy is exactly 32 bytes when present; absence retains selector 1's fixed charge.
+    fetchValue(gas, registers, memory, array[32, byte](owner.entropy),
+      owner.entropyPresence == FetchPresence.Present, 1, 103, 0, limit)
+  of 2:
+    # Trace absence still charges the requested length at selector 2's rate.
+    fetchValue(gas, registers, memory, owner.trace,
+      owner.tracePresence == FetchPresence.Present, 2, 80, 96, limit)
+  else:
+    # Known selectors need their own context and encoding implementation, never a fabricated NONE.
+    if selector < 16:
+      return FetchResult(status: FetchError.UnsupportedSelector)
+    # The table's otherwise branch uses c = none and a zero-sized absent value.
+    fetchValue(gas, registers, memory, [], false, selector, 80, 0, limit)
