@@ -8,10 +8,13 @@ import ../../src/state/[accumulation_validators, validator_projection, accumulat
   accumulation_statistics, accumulation_recent, accumulation_ready, accumulation_history,
   accumulation_finalization, accumulation_outputs, accumulation_continuation_execution,
   accumulation_continuation_inputs, accumulation_continuation, accumulation_execution,
-  accumulation_round, accumulation_inputs, accumulation_service, accumulation_skip, accumulation_dispatch]
-import ../../src/codec/[bounded, composite, report_owned, work_digest, state_statistics,
+  accumulation_round, accumulation_inputs, accumulation_service, accumulation_skip,
+  accumulation_dispatch,
+  accumulation_effects]
+import ../../src/codec/[bounded, composite, header, report_owned, work_digest, state_statistics,
   state_outputs, state_workqueues, state_history, state_trie]
-import ./[accumulation_execution_context, accumulation_provision_integration]
+import ./[accumulation_execution_context, accumulation_provision_integration,
+  accumulation_batch_context, pvm_accumulation_provision]
 
 type
   ActivityFixture* = object ## Original serialized keys support independent full-map reconstruction around the one C(13) write.
@@ -50,7 +53,7 @@ proc queuePolicy(): AccumulationReadyConfig =
 
 proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
-    hugeRefinement = false, executed = false): ActivityFixture =
+    hugeRefinement = false, executed = false, provided = false): ActivityFixture =
   ## Actual parent commitments, signatures, availability, skipped executions and C(3/14/15/16)/timestamps precede activity.
   var entries = @[activityParentEntry()]
   var body: seq[byte] = @[]
@@ -69,16 +72,25 @@ proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blob
       RefineLoad(gasUsed: Gas(13), imports: ImportCount(17),
           extrinsicCount: work_digest.ExtrinsicCount(19),
         extrinsicSize: work_digest.ExtrinsicBytes(23), exports: ExportCount(29))]
-  let ending = if executed: ExecutionEnding.Halt else: ExecutionEnding.Missing
+  var program: seq[byte] = @[]
+  if provided:
+    program = @[0'u8]
+    for octet in batchEnvelope(BatchEnding.Halt): program.add(octet) # Real provides precede lookup integration.
+    entries.add(integrationRequest(99, @[81'u8])) # The guest's second provision is independent of the lookup blob.
+  let ending = if executed or provided: ExecutionEnding.Halt else: ExecutionEnding.Missing
   let fixture = executionFixture(base, first = ending,
-    second = ending, empty = not executed, report = available, incomingReports = guarantees,
+    second = ending, empty = not (executed or provided), firstProgram = program,
+    report = available, incomingReports = guarantees,
     extra = entries, preimageWire = body, targetSlot = slot, refinement = loads)
   let initial = fixture.round
   var skips: seq[SkippedAccumulation] = @[]
   var runs: seq[AccumulationDispatchResult] = @[]
   for index in 0..<initial.roundProjection.value.roundInputs.value.invocationServiceCount.value:
-    if executed:
-      runs.add(executionGuest(fixture, uint64(index))) # Real tiny guests contribute actual nonzero S gas.
+    if executed or provided:
+      let policy = if provided and index == 0: provisionPolicy(items = 2, perBlob = 1, total = 2)
+        else: default(AccumulationProvisionLimits) # Only the providing guest receives provision capture capacity.
+      runs.add(executionGuest(fixture, uint64(index), slot = HeaderSlot(slot),
+          provisions = policy)) # Real tiny guests contribute actual nonzero S gas.
     else:
       let service = prepareBlockAccumulationService(initial, InvocationServiceIndex(uint64(index)),
         AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
