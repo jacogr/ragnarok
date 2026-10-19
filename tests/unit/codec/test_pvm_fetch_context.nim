@@ -57,12 +57,10 @@ for selector in [1'u64, 2'u64, 16'u64, 17'u64, high(uint64)]:
             assert uint64(response.registers[i]) == (if i == 7 and credit >= price: high(uint64)
               else: uint64(regs[i]))
 
-for selector in 0'u64..<16:
-  if selector != 1 and selector != 2 and selector != 8 and selector != 9 and selector != 10 and
-      selector != 11 and selector != 12 and selector != 13:
-    # Recognized selectors without implemented context must not fall into the unknown/NONE branch.
-    assert fetchContextResponse(absent, MachineGas(10000), arguments(selector, 0, 0, 0),
-      original, MemoryByteLimit(0)).error == FetchError.UnsupportedSelector
+for selector in [0'u64, 3'u64, 4'u64, 5'u64, 6'u64, 14'u64, 15'u64]:
+  # Recognized selectors without implemented context must not fall into the unknown/NONE branch.
+  assert fetchContextResponse(absent, MachineGas(10000), arguments(selector, 0, 0, 0),
+    original, MemoryByteLimit(0)).error == FetchError.UnsupportedSelector
 
 for entropyPresence in [FetchPresence.Absent, FetchPresence.Present]:
   for tracePresence in [FetchPresence.Absent, FetchPresence.Present]:

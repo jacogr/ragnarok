@@ -12,16 +12,23 @@ case paramStr(1)
 of "context":
   # Even an absent package cannot repair an invalid base context.
   discard withFetchPackage(default(FetchContext), FetchPresence.Absent,
-    default(OwnedWorkPackage), FetchPackageLimit(0)).value
+    default(OwnedWorkPackage), FetchPackageLimit(0), FetchEncodingLimit(32768)).value
 of "owner":
   # A present default codec owner must not become a successful absent package.
   discard withFetchPackage(base, FetchPresence.Present, default(OwnedWorkPackage),
-      FetchPackageLimit(0)).value
+      FetchPackageLimit(0), FetchEncodingLimit(32768)).value
 else:
-  # The entire capture fails when the last payload exceeds the aggregate cap.
+  # Construct a valid owner before testing either independent capture budget.
   let value = WorkPackage(items: @[WorkItem(payload: @[1'u8])])
   var wire = default(array[1024, byte])
   let config = fullPackageConfig(ByteLimit(1024))
   let size = encodeWorkPackage(value, config, wire).value
   let package = decodeWorkPackage(wire.toOpenArray(0, size - 1), config).value.owner
-  discard withFetchPackage(base, FetchPresence.Present, package, FetchPackageLimit(0)).value
+  if paramStr(1) == "encoding":
+    # A short encoding budget exposes no context even when all raw blobs fit.
+    discard withFetchPackage(base, FetchPresence.Present, package, FetchPackageLimit(1),
+        FetchEncodingLimit(0)).value
+  else:
+    # Preserve the independent aggregate raw-blob refusal probe.
+    discard withFetchPackage(base, FetchPresence.Present, package, FetchPackageLimit(0),
+        FetchEncodingLimit(32768)).value

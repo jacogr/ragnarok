@@ -40,6 +40,7 @@ cycles exercise ownership. Existing package, fetch, context, host-failure and co
 suites remain regression controls, including tagged-result and nominal/privacy guards.
 No upstream source or vectors are copied.
 
-Remaining: full encoded package selector 7, external-input and accumulation fetch
-selectors, and complete service invocation assembly. Next bounded increment: capture
-and fetch the canonical encoded package with an explicit local storage bound.
+Selector 7 is now covered by [encoded package capture](pvm-fetch-encoded.md), which adds
+an explicit FetchEncodingLimit argument alongside the unchanged raw-blob cap.
+Remaining: external-input and accumulation fetch selectors, and complete service
+invocation assembly. Next bounded increment: external-input capture and fetch.

@@ -34,6 +34,17 @@
       "name": "pvm-fetch-package-limit",
       "diagnostic": "r.status == None",
       "description": "Package fetch capture refusal limit"
+    },
+    {
+      "identity": {
+        "reason": "encoding"
+      },
+      "arguments": [
+        "encoding"
+      ],
+      "name": "pvm-fetch-package-encoding",
+      "diagnostic": "r.status == None",
+      "description": "Package fetch capture refusal encoding"
     }
   ]
 }

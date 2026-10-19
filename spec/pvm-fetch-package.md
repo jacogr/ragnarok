@@ -18,7 +18,8 @@ It preflights configuration, token and all payload lengths against one FetchPack
 allocating any blob. Item metadata is fixed at sixteen entries, matching the validated codec
 bound. Selected bytes are copied once into private immutable storage; guest calls never decode
 or materialize a whole package or payload. The original codec owner need not remain alive.
-This intentionally copies only this selector family's blobs, not the full encoded package.
+The additional canonical encoding now has its own explicit FetchEncodingLimit; see
+[encoded package capture](pvm-fetch-encoded.md).
 The cap covers aggregate variable blob bytes; fixed metadata and retained entropy/trace have
 separate existing bounds. An absent attachment ignores its owner and clears only package data.
 A present default owner or invalid base context is InvalidContext; a short cap is LimitExceeded.
@@ -35,6 +36,6 @@ suites remain regression controls. No copied upstream source or vector is introd
 Selectors 10–12 now use [encoded metadata capture](pvm-fetch-summaries.md), with fixed
 storage bounds independent of the raw-blob cap.
 
-Remaining: full encoded package, extrinsics/imports, accumulation selectors and complete
+Remaining: extrinsics/imports, accumulation selectors and complete
 service invocation assembly. Positive gas-domain limitations remain documented in
-pvm-host-gas.md. Next bounded chunk: full encoded package fetch.
+pvm-host-gas.md. Next bounded chunk: external-input capture and fetch.

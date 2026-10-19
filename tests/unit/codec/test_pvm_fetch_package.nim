@@ -68,14 +68,15 @@ let sourceMemory = memory()
 for limit in 0'u64..<10:
   # The aggregate cap counts both package fields and every payload, including the late last item.
   assert withFetchPackage(original, FetchPresence.Present, package(), FetchPackageLimit(
-      limit)).error == FetchError.LimitExceeded
-let captured = withFetchPackage(original, FetchPresence.Present, package(), FetchPackageLimit(10)).value
+      limit), FetchEncodingLimit(32768)).error == FetchError.LimitExceeded
+let captured = withFetchPackage(original, FetchPresence.Present, package(), FetchPackageLimit(10),
+    FetchEncodingLimit(32768)).value
 let cleared = withFetchPackage(captured, FetchPresence.Absent, default(OwnedWorkPackage),
-    FetchPackageLimit(0)).value
+    FetchPackageLimit(0), FetchEncodingLimit(32768)).value
 assert withFetchPackage(original, FetchPresence.Present, default(OwnedWorkPackage),
-    FetchPackageLimit(10)).error == FetchError.InvalidContext
+    FetchPackageLimit(10), FetchEncodingLimit(32768)).error == FetchError.InvalidContext
 assert withFetchPackage(default(FetchContext), FetchPresence.Absent, package(), FetchPackageLimit(
-    10)).error == FetchError.InvalidContext
+    10), FetchEncodingLimit(32768)).error == FetchError.InvalidContext
 for context in [original, captured, cleared]:
   for selector in [1'u64, 2'u64]:
     # Sharing or clearing package state cannot replace the base entropy/trace snapshot.
@@ -147,7 +148,8 @@ block:
   let config = fullPackageConfig(ByteLimit(2048))
   let size = encodeWorkPackage(value, config, wire).value
   let sixteen = withFetchPackage(captured, FetchPresence.Present,
-    decodeWorkPackage(wire.toOpenArray(0, size - 1), config).value.owner, FetchPackageLimit(1)).value
+    decodeWorkPackage(wire.toOpenArray(0, size - 1), config).value.owner, FetchPackageLimit(1),
+        FetchEncodingLimit(32768)).value
   let reply = fetchContextResponse(sixteen, MachineGas(96), arguments(13, 15, 0, 1, 0),
     sourceMemory, MemoryByteLimit(1)).value
   assert pageImage(reply.memory, PageIndex(0)).value.bytes[0] == 99
@@ -174,7 +176,8 @@ proc dispatch(context: var FetchContext, stopped: StepOutcome): HostResult[Fetch
 
 # Owner destruction and guest execution release both copied payload storage and transient memory pages.
 proc cycle() =
-  var context = withFetchPackage(base(), FetchPresence.Present, package(), FetchPackageLimit(10)).value
+  var context = withFetchPackage(base(), FetchPresence.Present, package(), FetchPackageLimit(10),
+      FetchEncodingLimit(32768)).value
   let code = decodeProgram([0'u8, 0, 4, 10, 2, 50, 0, 5], CodeAddress(0), ProgramByteLimit(8),
       JumpCountLimit(0)).value
   for selector in [8'u64, 9'u64, 13'u64]:
