@@ -186,7 +186,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 self.assertEqual('--passL:-fuse-ld=lld' in arguments, system == 'Linux')
                 self.assertTrue(all('--passL:'+str(library) in arguments for library in libraries))
                 self.assertFalse(any('observed' in argument or 'observer' in argument for argument in arguments))
-                self.assertEqual(arguments[-1], str(ROOT/'src/quic/peer.nim'))
+                self.assertEqual(arguments[-1], str(ROOT/'src/ragnarok.nim'))
                 self.assertIn('--out:'+str(output), arguments)
 
 

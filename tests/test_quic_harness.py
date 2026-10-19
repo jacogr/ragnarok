@@ -92,6 +92,7 @@ class StartupTests(unittest.TestCase):
         # A disposable real UDP socket stands in for the native server's initial bind.
         def spawn(command, **kwargs):
             calls.append(list(command))
+            self.assertEqual(command[0], str(test_quic.ROOT/'build/ragnarok')) # Both roles launch the app.
             if command[1] == 'server':
                 # Reservation handoff must remain serialized until wait_server_ready returns.
                 self.assertTrue(test_quic.STARTUP_LOCK.locked())

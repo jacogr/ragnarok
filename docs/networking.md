@@ -5,7 +5,7 @@
 One bounded POSIX readiness dispatcher handles nonblocking UDP, bounded transport batches and application deadlines.
 Callbacks borrow stable owners synchronously; no thread is created per connection or stream.
 
-The retained peer executable in `src/quic/peer.nim` supports controlled authenticated exchanges,
+The retained peer executable in `src/ragnarok.nim` supports controlled authenticated exchanges,
 retained listeners, IPv6 bidirectional role engines, preferred/fallback arbitration and reconnect.
 Cancellation/backpressure keeps owners alive until their foreign borrows retire. Shutdown closes
 engines/sockets/selectors; the optional proof queue cancels outstanding slots and joins both workers.

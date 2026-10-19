@@ -96,6 +96,10 @@ proc close*(client: var Client) =
   client.length = 0
   client.offset = 0
 
+proc enabled*(client: Client): bool =
+  ## Observation adapters query this owner, not process-global command-line configuration.
+  client.enabled
+
 proc configure*(client: var Client, endpoint: string, metadata: Metadata): bool =
   ## Configure once before ticking. Unsupported endpoints and metadata fail without opening any socket.
   # Reconfiguration could replace native ownership or a partially sent frame.

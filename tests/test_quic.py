@@ -2,10 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build pinned isolated QUIC dependencies and verify authenticated JAMNP-S CE 143 peers.
+"""Provide TLS fixtures and bounded process checks for the unified JAMNP-S CE 143 application.
 
-Exposes peer_name, fixtures, thread_count, wait_server_ready, attempt for the verification
-harness.
+Exposes application_binaries, peer_name, fixtures, thread_count, wait_server_ready and attempt
+for the verification harness.
 """
 import json
 from pathlib import Path
@@ -27,6 +27,12 @@ SCENARIOS = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signat
 
 # Serialize only UDP reservation-to-readiness handoff; authenticated exchanges still run concurrently.
 STARTUP_LOCK = threading.Lock()
+
+
+# E2E defaults always use the built application; explicit overrides select isolated profiles/fixtures.
+def application_binaries(binaries=None):
+    """Resolve both network roles to the common app without resurrecting language-specific clients."""
+    return binaries or {'nim': ROOT/'build/ragnarok'}
 
 
 # Compute the literal pinned SAN formula independently using arbitrary precision, not native bit loops or standard base32.
@@ -112,8 +118,8 @@ def wait_server_ready(process, path, case, seconds=3):
 # Execute one independently bounded localhost peer pair and retain diagnostics without printing any private-key contents.
 def attempt(case, folder, binaries=None, logs=None):
     server_language, client_language, scenario = case
-    # Compiler-specific trial binaries reuse the exact baseline workload without overwriting normal peers.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    # Isolated app profiles reuse the exact baseline workload without overwriting the production binary.
+    binaries = application_binaries(binaries)
     client_identity = scenario if scenario in ('wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature') else 'b'
     server_identity = 'wrong-san' if scenario == 'bad-server-san' else 'a'
     expected = 'b' if scenario == 'wrong-server-key' else 'a'

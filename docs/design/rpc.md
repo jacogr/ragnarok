@@ -3,6 +3,10 @@
 [Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
 update their feature contract rather than appending progress here.
 
+`src/app/` owns the shared validated configuration and service lifetime used by both peer
+shapes. The `src/ragnarok.nim` entry point parses flags once; feature modules do not read
+process arguments. A single bounded startup chain snapshot feeds RPC and telemetry.
+
 An independent `src/ui/` static HTTP listener shares the peer dispatcher and owns bounded
 connections plus an optional pinned development root. Release assets are embedded in the binary;
 `--dev-ui-dir` explicitly selects disk serving. UI activation enables RPC; RPC's

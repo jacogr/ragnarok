@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
-from test_quic import BUILD, THREAD_BASELINES
+from test_quic import application_binaries, BUILD, THREAD_BASELINES
 from test_quic_mesh import ports
 from test_quic_soak import resources, check_growth
 
@@ -62,7 +62,7 @@ def clean(language, text):
 # One stable logical peer survives twelve peer deaths and successfully exchanges queries after each restart.
 def disruption(languages, folder, rounds, warmup, *, binaries=None, directory=None):
     # Isolated trial binaries retain the original recovery, resource and gate schedules.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     name = '-'.join(languages)
     directory = BUILD / 'resilience' / f'disruption-{name}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
@@ -167,7 +167,7 @@ def states(text):
 # Reproduce connection loss after authentication but before any stream callback can report failure.
 def closed_before_request(languages, folder, *, binaries=None, directory=None):
     # Compiler-specific paths do not change the authenticated-close schedule or resource ceilings.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     directory = BUILD / 'resilience' / f'closed-before-request-{"-".join(languages)}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     port = ports()[0]
@@ -215,7 +215,7 @@ def settle_probe(process, path, expected):
 # A retained IPv6 listener must refuse excess admission, release interrupted slots and resume healthy CE work.
 def overload(language, folder, rounds, warmup, *, binaries=None, directory=None):
     # Keep the original admission workload while routing every load source to the checked compiler build.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     directory = BUILD / 'resilience' / f'overload-{language}' if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     stop = directory / f'stop-{time.time_ns()}'

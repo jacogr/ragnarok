@@ -29,7 +29,7 @@ def build_command(compiler, output, crypto, bandersnatch, quic):
         flags += ['--passL:'+str(library), '--passL:-Wl,-rpath,'+str(library.parent)]
     return [str(compiler), 'c', *flags,
             '--nimcache:'+str(cache_directory(compiler, ROOT/'build', 'ragnarok')),
-            '--out:'+str(output), str(ROOT/'src/quic/peer.nim')]
+            '--out:'+str(output), str(ROOT/'src/ragnarok.nim')]
 
 
 # Reuse pristine native build helpers without invoking historical compilers, drivers or test observers.

@@ -8,7 +8,8 @@ Exposes VerificationProfiles for unittest discovery; test methods exercise the s
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -27,7 +28,7 @@ class VerificationProfiles(unittest.TestCase):
                     # Equal source names in different groups must never share executable or compiler outputs.
                     checks = NativeChecks(ROOT/'build/fixture-groups'/group)
                     with patch.object(checks, 'command', return_value=dict(exit_code=0)) as command:
-                        _, binary = checks.build(Path('/fixture/nimony'), ROOT/'src/quic/peer.nim', 'peer',
+                        _, binary = checks.build(Path('/fixture/nimony'), ROOT/'src/ragnarok.nim', 'peer',
                                                   quic_library=Path('/fixture/libquic'), defines=('integration',))
                     arguments = command.call_args.args[0]
                     self.assertEqual(binary.parent, checks.folder)
@@ -38,6 +39,26 @@ class VerificationProfiles(unittest.TestCase):
                     self.assertEqual('--passL:-fuse-ld=lld' in arguments, system == 'Linux')
                     caches.add(next(arg for arg in arguments if str(arg).startswith('--nimcache:')))
                 self.assertEqual(len(caches), 3)
+
+
+    def test_e2e_profiles_share_application_entry(self):
+        """Every feature profile builds the app, rather than reviving a QUIC or telemetry executable."""
+        import e2e_checks
+        profiles = [(e2e_checks.prepare_peer, 'ragnarok'),
+                    (e2e_checks.prepare_integrated_peer, 'ragnarok-integration'),
+                    (e2e_checks.prepare_offload_peer, 'ragnarok-offload')]
+        for prepare, name in profiles:
+            # The build/fixture boundaries are inert; assertions inspect the real scheduling callable.
+            with self.subTest(profile=name):
+                build = Mock(return_value=({'exit_code': 0}, Path('/fixture')/name))
+                context = SimpleNamespace(compiler=Path('/fixture/nimony'), crypto=Path('/fixture/crypto'),
+                    quic=Path('/fixture/quic'), bs=Path('/fixture/bs'), report={},
+                    checks=SimpleNamespace(build=build, folder=Path('/fixture/e2e')))
+                with patch('test_quic_offload.corpus', return_value=(Path('/fixture/wire'), {})):
+                    prepare(context)
+                build.assert_called_once()
+                self.assertEqual(build.call_args.args[1], ROOT/'src/ragnarok.nim')
+                self.assertEqual(build.call_args.args[2], name)
 
 
 # Direct execution uses the same safeguards as normal unittest discovery.
