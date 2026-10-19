@@ -1131,3 +1131,76 @@ proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePrei
     fail(AccumulationEffectError.MalformedState) # Prefix acceptance cannot hide trailing or malformed canonical state.
   AccumulationEffectResult[RequestHistory](status: AccumulationEffectError.None,
     completed: decoded.value.history)
+
+proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreimageHash,
+    length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
+  ## Create an empty current-self request or restore an unavailable history using the invocation's own slot.
+  ## NotRequested is HUH for other shapes; StorageFull is FULL after exact prospective funding. Balance and existing preimages never change.
+  ## Publish metadata/history atomically under inherited write limits; InvalidState rejects unrepresentable footprint counters.
+  # All refused/default operations carry only a reason, never a partially requested successor.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationEffects](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # A default pair supplies no request or invocation provenance.
+  if not parameters.valid:
+    fail(AccumulationEffectError.InvalidParameters) # Funding cannot use a fabricated schedule.
+  let previous = data.regular.data
+  assert previous != nil # Private pair construction retains initialized current contexts.
+  let prior = data.regular.effectRequestHistory(hash, length)
+  var history = requestedHistory()
+  var fresh = false
+  case prior.error
+  of AccumulationEffectError.NotRequested:
+    fresh = true # An absent pair adds one request and its two-item storage footprint.
+  of AccumulationEffectError.None:
+    if prior.value.state != RequestState.Unavailable:
+      fail(AccumulationEffectError.NotRequested) # Requested, available and restored shapes are HUH before funding.
+    let slot = previous.initial.contextInvocation.value.bootstrapInfo.value.slot
+    history = reavailableHistory(prior.value.availableFrom, prior.value.unavailableFrom,
+      RequestSlot(uint32(slot))) # Append the actual invocation time without age checks or timestamp repair.
+  else:
+    fail(prior.error) # Preserve malformed state and backend errors from the bounded current-history reader.
+  let self = previous.initial.contextInfo.value.service
+  let accountKey = chapterServiceKey(StateChapter(255), self)
+  let found = previous.accounts.lookup(accountKey)
+  if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # The genuine current caller must retain canonical metadata.
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if decoded.error != ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # No repair or default metadata can authorize a request.
+  var metadata = decoded.value.metadata
+  if fresh:
+    let added = 81'u64+uint64(uint32(length)) # E4 length plus fixed overhead is below 2^33.
+    if uint32(metadata.storageItems) > high(uint32)-2 or uint64(metadata.storageBytes) > high(uint64)-added:
+      fail(AccumulationEffectError.InvalidState) # Prove both serialized counter additions before forming them.
+    metadata.storageItems = AccountStorageItems(uint32(metadata.storageItems)+2)
+    metadata.storageBytes = AccountStorageBytes(uint64(metadata.storageBytes)+added)
+  if not funded(metadata, parameters):
+    fail(AccumulationEffectError.StorageFull) # FULL applies even to a restoration whose footprint did not change.
+  let request = serviceRequestEntry(self, hash, length, history,
+    RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
+        3), maxBytes: ByteLimit(13))))
+  if request.error != RequestError.None:
+    fail(AccumulationEffectError.BackendFailure) # No failed canonical namespace key can be published.
+  var writes = @[StateWrite(key: request.value.key, kind: StateWriteKind.Put,
+      value: request.value.value)]
+  if fresh:
+    let encoded = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
+    writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put,
+        value: encoded.value)) # Only creation changes metadata; restoration needs one write.
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply(writes)
+  case changed.error
+  of StateStoreError.None:
+    discard # One fully Merklized commit binds the new history to its exact prospective footprint.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Local store capacity never impersonates protocol FULL.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # Previous accounts and request histories survive failed hashing.
+  else:
+    fail(AccumulationEffectError.InvalidState) # No partial successor escapes other complete-map invariants.
+  let current = AccumulationEffectContext(data: successorData(previous, changed.value))
+  AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+    completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
+        exceptional: data.exceptional)))

@@ -886,6 +886,56 @@ proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
       (uint64(uint32(history.restoredAt)) shl 32)) # Two complete E4 times fill one E8 register without arithmetic carry.
   hostSuccess[AccumulationDispatchError](response)
 
+# Solicit charges first and validates length before hash capture and atomic current-self mutation.
+proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 2193, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve the shared signed-debt representation contract.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No length, memory, namespace or funding work before affordability.
+  let length = uint64(cpu.registers[8])
+  if length > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-8)
+    return hostSuccess[AccumulationDispatchError](
+        response) # HUH precedes memory/local copy policy and preserves r8.
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+      context.copyLimit)
+  case captured.error
+  of MachineError.None:
+    discard # Only a complete fixed hash authorizes a current-self request.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic
+    return hostSuccess[AccumulationDispatchError](
+        response) # Charged memory panic preserves both original registers and effects.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Explicit copy policy cannot become panic or FULL.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners supply no hash.
+  var hash = default(array[32, byte])
+  for i in 0..<32:
+    hash[i] = captured.value[i] # Copied fixed input cannot alias guest memory in a published successor.
+  let changed = recordAccumulationSolicit(context.effects, ServicePreimageHash(hash), RequestLength(
+      uint32(length)), context.parameters)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value
+    response.registers[7] = RegisterValue(0) # OK publishes the complete new/restored request.
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH rejects all other existing history shapes.
+  of AccumulationEffectError.StorageFull:
+    response.registers[7] = RegisterValue(high(uint64)-4) # FULL preserves all prior state and effects.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # Malformed canonical state has no fabricated guest verdict.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Inherited store ceilings remain local policy.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No partially solicited request survives hashing refusal.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Includes nonrepresentable footprint counters.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -932,9 +982,11 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     ejectResponse(context, cpu, memory) # Reclaim an eligible other account with one atomic credit/deletion.
   of 23:
     queryResponse(context, cpu, memory) # Exact current-self request history packed into two registers.
+  of 24:
+    solicitResponse(context, cpu, memory) # Create or restore a funded request under exact current invocation provenance.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 24..25:
+  of 1, 25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
