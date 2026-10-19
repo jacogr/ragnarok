@@ -32,6 +32,12 @@ of "account-write-key": discard context.effectAccountWriteKeyAt(AccumulationAcco
 of "account-write-index": discard pair.effectContext(
     AccumulationDimension.Regular).value.effectAccountWriteKeyAt(AccumulationAccountWriteIndex(high(
     uint64))).value # Initialized empty proofs still reject full-width invalid indices.
+of "deleted-count": discard context.effectDeletedAccountCount.value # Default effects have no initialized deletion set.
+of "deleted-at": discard context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(
+    0)).value # Default deletion facts expose no payload.
+of "deleted-index": discard pair.effectContext(AccumulationDimension.Regular).value.effectDeletedAccountAt(
+    AccumulationDeletedAccountIndex(high(
+    uint64))).value # Genuine initialized empty sets reject the full-width invalid ordinal.
 of "created-count": discard context.effectCreatedAccountCount.value # Defaults contain no initialized membership proof.
 of "created-at": discard context.effectCreatedAccountAt(AccumulationCreatedAccountIndex(
     0)).value # Defaults expose no created-account facts.

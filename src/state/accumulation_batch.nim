@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Merge common-source credits, selected self changes, created accounts and provisions on a private complete-map fork.
+## Merge common-source credits, supported selected account changes and provisions on a private complete-map fork.
 ## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
@@ -14,6 +14,7 @@ import ./[accumulation_inputs, accumulation_service, accumulation_invocation, ac
 type
   AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
     accounts*: ElementLimit ## Maximum invoking metadata records copied for credits or supported selected changes.
+    deletedAccounts*: ElementLimit ## Maximum selected eligible targets outside represented service work; zero preserves the gate.
     createdAccounts*: ElementLimit ## Maximum genuine children copied as fixed metadata plus empty request; zero preserves the gate.
     selfWrites*: ElementLimit ## Maximum unique nonmetadata self keys copied across all selected executions; zero preserves the gate.
     selfValueBytes*: ByteLimit ## Aggregate copied final self values; deletions consume a key but no value bytes.
@@ -31,7 +32,7 @@ type
     DuplicateService,   ## A service occurs more than once across executions and skips.
     InvalidIndex,       ## The plan-owned execution ordinal is outside the retained outcomes.
     StaleState,         ## The publication store no longer retains this plan's exact prior version.
-    UnsupportedAccountEffects, ## Selected changes exceed proven self/creation scope or conflict on physical keys.
+    UnsupportedAccountEffects, ## Selected changes exceed proven account scope or conflict on physical keys.
     LimitExceeded,      ## Batch descriptors or account writes exceed local preparation ceilings.
     TerminalFailure,    ## Terminal preparation or provision fulfillment refused; inspect its nested reason.
     StoreFailure        ## The private account-write phase refused; inspect storeError.
@@ -40,6 +41,7 @@ type
     skipped*: int         ## Unique services with certified non-executing outcomes.
     completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
     accountWrites*: int   ## Invoking metadata records prepared for credits or supported selected changes.
+    deletedAccounts*: int ## Existing accounts removed together with the selected beneficiary credit.
     createdAccounts*: int ## New foreign accounts published with the selected creator debit.
     selfWrites*: int      ## Unique nonmetadata keys prepared from selected self-write provenance.
     selfValueBytes*: uint64 ## Copied final self values, excluding fixed metadata and terminal provisions.
@@ -51,7 +53,7 @@ type
     writes: seq[StateWrite]
     metadataWrites: int
     selfBytes: uint64
-    selfWriteCount, createdCount: int
+    selfWriteCount, createdCount, deletedCount: int
     terminal: PreparedTerminalAccumulationProvisions
     skipped: int
     completeInputs: bool
@@ -133,7 +135,8 @@ proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[Accumu
   AccumulationBatchResult[AccumulationBatchInfo](status: AccumulationBatchError.None,
     completed: AccumulationBatchInfo(executions: data.terminal.terminalProvisionInfo.value.provisions.contexts,
       skipped: data.skipped, completeInputs: data.completeInputs,
-      accountWrites: data.metadataWrites, createdAccounts: data.createdCount,
+      accountWrites: data.metadataWrites, deletedAccounts: data.deletedCount,
+      createdAccounts: data.createdCount,
       selfWrites: data.selfWriteCount,
       selfValueBytes: data.selfBytes, terminal: data.terminal.terminalProvisionInfo.value))
 
@@ -220,6 +223,7 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   var selfWrites = 0'u64
   var selfBytes = 0'u64
   var createdCount = 0'u64
+  var deletedCount = 0'u64
   for index, service in services:
     # Skips retain their credited initial map; executions must use one terminal-selected scope/account owner.
     var accounts = service.serviceState.value
@@ -232,6 +236,29 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
           scope.value == AccumulationAccountScope.Unsupported:
         fail(AccumulationBatchError.UnsupportedAccountEffects) # Restored equal bytes cannot erase unsupported mutation ancestry.
       accounts = context.effectAccounts.value
+      let removed = context.effectDeletedAccountCount.value
+      if uint64(removed) > uint64(limits.deletedAccounts)-deletedCount:
+        fail(AccumulationBatchError.LimitExceeded) # Bound fixed deletion work before descriptor growth.
+      for ordinal in 0..<removed:
+        if writes.len > high(int) div sizeof(StateWrite)-3:
+          fail(AccumulationBatchError.LimitExceeded) # At most metadata/request/preimage deletions accompany one target.
+        let target = context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(uint64(
+            ordinal))).value
+        for id in ids:
+          if uint32(id) == uint32(target.service):
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # Participating executions/skips need explicit deletion-versus-work semantics.
+        let key = chapterServiceKey(StateChapter(255), target.service)
+        if prior.lookup(key).error != StateStoreError.None:
+          fail(AccumulationBatchError.UnsupportedAccountEffects) # New-and-removed accounts are outside this existing-account deletion contract.
+        for deletedKey in [key, target.requestKey, target.preimageKey]:
+          if accounts.lookup(deletedKey).error != StateStoreError.MissingKey:
+            fail(AccumulationBatchError.UnsupportedAccountEffects) # Recreated metadata or rewritten components cannot be silently discarded.
+        writes.add(StateWrite(key: key, kind: StateWriteKind.Delete))
+        writes.add(StateWrite(key: target.requestKey, kind: StateWriteKind.Delete))
+        if compareAccountKey(target.requestKey, target.preimageKey) != 0:
+          writes.add(StateWrite(key: target.preimageKey,
+              kind: StateWriteKind.Delete)) # Preserve the parked namespace alias without duplicate descriptors.
+        inc deletedCount
       let children = context.effectCreatedAccountCount.value
       if uint64(children) > uint64(limits.createdAccounts)-createdCount:
         fail(AccumulationBatchError.LimitExceeded) # Bound all fixed child records before any copied payloads.
@@ -295,7 +322,8 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   AccumulationBatchResult[PreparedAccumulationBatch](status: AccumulationBatchError.None,
     completed: PreparedAccumulationBatch(data: BatchData(inputs: inputs, prior: prior,
       writes: writes, metadataWrites: metadataWrites, selfBytes: selfBytes,
-      selfWriteCount: int(selfWrites), createdCount: int(createdCount),
+      selfWriteCount: int(selfWrites), createdCount: int(createdCount), deletedCount: int(
+          deletedCount),
       terminal: selected.value, skipped: skipped.len,
       completeInputs: serviceCount == count.value)))
 
@@ -318,7 +346,7 @@ proc prepareCompleteAccumulationBatch*(inputs: PreparedAccumulationInputs,
 
 proc applyAccumulationBatch*(state: var StateStore, plan: PreparedAccumulationBatch):
     AccumulationBatchResult[StateStoreSnapshot] =
-  ## Apply selected self metadata/credits then fnprovide privately; only complete success publishes the caller's store.
+  ## Apply selected account writes then fnprovide privately; only complete success publishes the caller's store.
   ## Exact prior identity prevents lost updates and duplicate incoming credit; phase-local store limits are inherited.
   let data = plan.data
   if data == nil:

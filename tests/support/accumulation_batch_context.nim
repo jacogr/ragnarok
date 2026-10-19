@@ -128,11 +128,13 @@ proc batchParameters(): Parameters =
 
 proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128),
     copyLimit = MemoryByteLimit(32), parameters = batchParameters(), transferLimit = ElementLimit(0),
-    accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(0),
+    accountWriteKeys = ElementLimit(0),
+    createdAccounts = ElementLimit(0),
+    deletedAccounts = ElementLimit(0),
     serviceProbes = ServiceProbeLimit(0), entropy = default(StateEntropyWord)):
     AccumulationDispatchResult =
   ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
-  ## Explicit copy/profile/outgoing/self-key/creation policies support new integrations; defaults retain the earlier supported path.
+  ## Explicit finite execution policies support integrations; defaults retain the earlier supported path.
   let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(index),
     fixture.state.snapshot.value, slot, AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512),
         preimageBytes: ByteLimit(1024))).value
@@ -146,12 +148,13 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
     ExecutionStepLimit(200), HostCallLimit(32), GasCycleLimit(10000), pvmContextConfig(),
     provisionPolicy(items = 2, perBlob = 1, total = 2), transferLimit = transferLimit,
     accountWriteKeys = accountWriteKeys, createdAccounts = createdAccounts,
-        serviceProbes = serviceProbes)
+    deletedAccounts = deletedAccounts, serviceProbes = serviceProbes)
 
 proc batchPolicy*(accounts = 2'u64, selfWrites = 0'u64,
-    selfValueBytes = 0'u64, createdAccounts = 0'u64): AccumulationBatchLimits =
+    selfValueBytes = 0'u64, createdAccounts = 0'u64,
+    deletedAccounts = 0'u64): AccumulationBatchLimits =
   ## Account and union ceilings remain independent, with the latter including duplicate contributions from both services.
-  AccumulationBatchLimits(accounts: ElementLimit(accounts), createdAccounts: ElementLimit(
-      createdAccounts), selfWrites: ElementLimit(selfWrites),
-    selfValueBytes: ByteLimit(selfValueBytes),
+  AccumulationBatchLimits(accounts: ElementLimit(accounts),
+    deletedAccounts: ElementLimit(deletedAccounts), createdAccounts: ElementLimit(createdAccounts),
+    selfWrites: ElementLimit(selfWrites), selfValueBytes: ByteLimit(selfValueBytes),
     provisions: integrationPolicy(contexts = 2, items = 4, perBlob = 1, total = 4, encoded = 13))
