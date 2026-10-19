@@ -1,0 +1,18 @@
+{
+  "source": "tests/native/ready_reconciliation_results.nim",
+  "build_name": "ready-reconciliation-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "ready-reconciliation-default", "diagnostic": "outcome.status == None", "description": "Ready reconciliation default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "ready-reconciliation-refused", "diagnostic": "outcome.status == None", "description": "Ready reconciliation refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "ready-reconciliation-info", "diagnostic": "outcome.status == None", "description": "Ready reconciliation info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "ready-reconciliation-source", "diagnostic": "outcome.status == None", "description": "Ready reconciliation source extraction guard"},
+    {"identity": {"reason": "prior"}, "arguments": ["prior"], "name": "ready-reconciliation-prior", "diagnostic": "outcome.status == None", "description": "Ready reconciliation prior extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "ready-reconciliation-entry", "diagnostic": "outcome.status == None", "description": "Ready reconciliation entry extraction guard"},
+    {"identity": {"reason": "queue"}, "arguments": ["queue"], "name": "ready-reconciliation-queue", "diagnostic": "outcome.status == None", "description": "Ready reconciliation queue extraction guard"},
+    {"identity": {"reason": "published-source"}, "arguments": ["published-source"], "name": "ready-reconciliation-published-source", "diagnostic": "outcome.status == None", "description": "Ready reconciliation published-source extraction guard"},
+    {"identity": {"reason": "published-state"}, "arguments": ["published-state"], "name": "ready-reconciliation-published-state", "diagnostic": "outcome.status == None", "description": "Ready reconciliation published-state extraction guard"},
+    {"identity": {"reason": "codec-error"}, "arguments": ["codec-error"], "name": "ready-reconciliation-codec-error", "diagnostic": "outcome.status == CodecFailure", "description": "Ready reconciliation codec-error extraction guard"},
+    {"identity": {"reason": "state-error"}, "arguments": ["state-error"], "name": "ready-reconciliation-state-error", "diagnostic": "outcome.status == StateFailure", "description": "Ready reconciliation state-error extraction guard"}
+  ]
+}

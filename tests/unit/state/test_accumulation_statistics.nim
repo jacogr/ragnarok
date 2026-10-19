@@ -5,7 +5,8 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_publication, block_activity, service_activity,
+import ../../../src/state/[ready_reconciliation, accumulation_publication, block_activity,
+  service_activity,
   accumulation_accounts,
   accumulation_statistics,
   accumulation_finalization, accumulation_outputs,
@@ -15,7 +16,8 @@ import ../../../src/state/[accumulation_publication, block_activity, service_act
 import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_account_timestamps,
-  service_activity_context, block_activity_context, accumulation_publication_context, arc_evidence]
+  service_activity_context, block_activity_context, accumulation_publication_context,
+  ready_reconciliation_context, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -76,6 +78,7 @@ proc main() {.raises.} =
   var wire = newSeq[byte](raw.len)
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
+  checkReadyProjection(base)
   checkActivityProjection(base)
   checkAccountProjection() # Pure malformed/missing/current account cases cannot fabricate a block certificate.
   let source = finished(reentryFixture(base))
@@ -179,6 +182,7 @@ proc main() {.raises.} =
     detachedActivity = checkServiceActivity(stats, incoming = true)
   assert detachedActivity.serviceActivityInfo.value.services == 3
   assert detachedActivity.serviceActivitySource.value.statisticsInfo.value.reports == 4
+  var publishedReady = default(PublishedReadyReconciliation)
   var publishedAccumulation = default(PublishedAccumulation)
   var publishedActivity = default(PublishedBlockActivity)
   for empty in [true, false]:
@@ -193,12 +197,26 @@ proc main() {.raises.} =
     publishedActivity = checkBlockActivity(services, fixture.initial.entries, empty)
     let activity = prepareBlockActivity(services, blockPolicy()).value
     publishedAccumulation = checkAccumulationPublication(activity, fixture.initial.entries, empty)
+    publishedReady = checkReadySource(publishedAccumulation, fixture.initial.entries)
   assert publishedActivity.publishedActivitySource.value.blockActivityInfo.value.services == 3
   assert publishedActivity.publishedActivityState.value.commitment.entries >
       0 # Published owner alone retains the entire original graph.
   assert publishedAccumulation.publishedAccumulationSource.value.accumulationPublicationInfo.value.accounts.services == 2
   assert publishedAccumulation.publishedAccumulationState.value.commitment.entries >
       0 # The combined owner retains its exact complete source graph.
+  block pending_ready_suffix:
+    let fixture = reentryFixture(blockTemplate(base), stopped = true, extra = @[blockPrior()])
+    let finalized = finished(fixture)
+    let limits = policy(rounds = 2, gasRows = 2, reports = 1, digests = 1)
+    let stats = prepareAccumulationStatistics(finalized, limits).value
+    let activity = prepareBlockActivity(prepareServiceActivity(stats, activityPolicy()).value,
+        blockPolicy()).value
+    let batch = prepareAccumulationPublication(activity, publicationPolicy()).value
+    let coordinated = publishAccumulation(batch).value
+    publishedReady = checkReadySource(coordinated, fixture.initial.entries, pending = true)
+  assert publishedReady.publishedReadySource.value.readyReconciliationInfo.value.reports == 3
+  assert publishedReady.publishedReadyState.value.commitment.entries >
+      0 # Detached queue owner retains the exact complete coordinated source graph.
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))
