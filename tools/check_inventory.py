@@ -4,33 +4,13 @@
 
 """Validate project-owned verification inputs without provisioning or executing native dependencies.
 
-Exposes validate_registration, validate_inventory and a CLI that fails on missing or
-inconsistent verification registrations.
+Exposes validate_inventory and a CLI that fails on missing or
+inconsistent verification declarations.
 """
-import ast
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-# Suite files must have exactly one explicit scheduler call; discovery never implicitly runs new probes.
-def validate_registration(suites, source):
-    tree = ast.parse(source)
-    runner = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run_failures')
-    names = []
-    for node in ast.walk(runner):
-        # Only the shared suite calls participate; specialized fixture/control paths stay explicit.
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'run_failure_suite':
-            if not node.args or not isinstance(node.args[-1], ast.Constant) or not isinstance(node.args[-1].value, str):
-                # Require reviewable literal registration rather than computed names that hide omissions.
-                raise ValueError('Failure suite registration must use a literal family name')
-            names.append(node.args[-1].value)
-    if len(names) != len(set(names)) or set(names) != set(suites):
-        # Report both directions so a misspelling or forgotten runner call is immediately actionable.
-        raise ValueError('Failure registration mismatch: missing files='+str(sorted(set(names)-set(suites)))
-                         +', unscheduled files='+str(sorted(set(suites)-set(names)))
-                         +', duplicate calls='+str(len(names)-len(set(names))))
 
 
 # Resolve local inventories only; pinned dependency trees retain their existing setup/provenance checks.
@@ -42,7 +22,6 @@ def validate_inventory():
     from compiler_fixtures import COMPILER_FIXTURES
     from runtime_provenance import runtime_sources
     runtime_sources()
-    validate_registration(FAILURE_SUITES, (ROOT/'tools/test_runtime.py').read_text())
     expected = {unit_source(name) for name in UNIT_SUITES}
     for source in expected:
         # Each positive native source requires its own checked-in output contract.

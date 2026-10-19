@@ -87,7 +87,7 @@ line. Suite defaults specify argument fields, labels and diagnostics; exceptiona
 those values explicitly. The loader expands and validates expected identities and distinct log names before any probes run. Fixture-dependent probes, offload completion checks,
 language-policy observations and store positive controls remain explicit in the runner.
 
-Runtime provenance is discovered by `tools/runtime_provenance.py`, using source-family extension
+Runtime, E2E and compiler-guard provenance use the same expansion, discovered by `tools/runtime_provenance.py`, using source-family extension
 rules for `src/`, `native/`, `tools/`, `tests/`, `spec/` and CI workflows, plus all files in
 `tests/fixtures/` and `vectors/`. The result is sorted and deduplicated before hashing. Build
 outputs, Python caches, hidden artifacts and Cargo target directories are excluded. The Makefile
@@ -97,16 +97,16 @@ escaping paths and incomplete evidence lists fail preflight; vendor provisioning
 
 Run `make check-inventory` for a fast, Python-only preflight before opening a verification PR.
 It validates per-family fields, build profiles, source paths, case counts, diagnostics and global
-build/probe log uniqueness, then checks that every family file has exactly one explicit runner
-call. It also checks native source/output coverage, compiler-rejection inputs and project-owned
+build/probe log uniqueness. Every validated family file is scheduled exactly once in lexical order. It also checks native source/output coverage, compiler-rejection inputs and project-owned
 provenance paths. It runs before setup in the normal verification targets. Every Linux CI job, including E2E,
 also exposes it as a separate required step before its workload. A failed inventory check stops
 that job before native setup. Vendor input bytes
 remain the responsibility of the existing pinned-submodule setup and runtime provenance checks.
 
 Add a failure family as `tools/failure_suites/<family>.json`, retaining one case per line and
-an explicit `run_failure_suite` call at the intended position. The declaration itself owns the
-expected identity plan; no separate count registration is needed. Alphabetical file loading does not change execution order. All family
+automatic scheduling from the validated directory. The declaration itself owns the
+expected identity plan; no separate scheduler or count registration is needed. Ordinary families
+are independent and execute in lexical order; each family retains its ordered cases and build options. All family
 files are automatically included in runtime provenance; no central list of JSON files is needed.
 
 Provenance preflight checks the discovered project input families against the exact expansion
@@ -143,3 +143,12 @@ Registration runs no oracle or native process. Expected corpus identities exist 
 missing/duplicate verdicts and duplicate task/report keys are errors. All independent expected
 values, trace coverage predicates, build refusals and exact output/hash comparisons remain in
 the owning corpus task.
+
+E2E orchestration uses `tools/e2e_plan.py`: ordered callable declarations supply both execution
+and pre-execution completeness expectations. Setup tasks retain shared peer-build dependencies;
+workload functions publish their returned verdict under their own name, and selftests retain
+named suite rows. Missing, duplicate, substituted or failed selftests cannot satisfy the plan.
+Direct offload selftests share the same callables, exact flags, marker checks and shutdown limits
+with E2E; neither path maintains another list of their names. Registration performs no native or
+network work. Failed builds never execute stale binaries, and failed offload selftests still
+prevent the subsequent live offload workload.

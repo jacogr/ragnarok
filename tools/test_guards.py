@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 from native_checks import NativeChecks, ROOT, announce
+from runtime_provenance import runtime_sources
 from native_tests import unit_jobs
 from setup_nimony import cache_directory
 from compiler_fixtures import PRIVATE, NOMINAL, CONTRACTS, EARLY_NOMINAL, SCHEMAS, OWNERSHIP
@@ -230,9 +231,8 @@ def main():
         metadata = compiler.parent.parent/'NIGHTLY.txt'
         report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
         report['project_revision'] = command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
-        sources = [Path(__file__), ROOT/'tools/compiler_fixtures.py', ROOT/'tools/verification_inventory.py', ROOT/'tools/native_checks.py', ROOT/'tools/native_dependencies.py', ROOT/'tools/build_crypto.py', ROOT/'tools/build_bandersnatch.py', ROOT/'tools/build_quic.py',
-                   ROOT/'spec/toolchain.json', ROOT/'spec/bandersnatch-pins.json',
-                   *sorted((ROOT/'tests/native/compile_fail').glob('*.nim'))]
+        # Shared source-family discovery covers new transitive modules and helpers automatically.
+        sources = runtime_sources()
         report['sources'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in sources}
         sys.path.insert(0, str(ROOT/'tests'))

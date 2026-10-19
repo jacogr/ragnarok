@@ -38,7 +38,7 @@ or invalid declarations before setup, and report checks reject missing, duplicat
 ## Runtime failures and independent corpora
 
 Add ordinary runtime probes to `tools/failure_suites/<family>.json`, one case per line, with
-one explicit scheduler call in `tools/test_runtime.py`. Preflight checks scheduler/file agreement.
+automatic alphabetical scheduling from those validated files. No runner edit or second family list is needed.
 The declared cases supply expected identities before execution; never infer expectations from
 observed results. Specialized drivers own typed enum cases tagged with `# @@ProbeCases` and expose
 `--list-cases`; add their origin/diagnostic combinations to the specialized source-owned plan.
@@ -50,6 +50,18 @@ comparison and explicit scheduling. Register a named `<feature>_corpus` callable
 module's `@CORPORA.case`; return its verdict instead of separately assigning a report key. The
 registration supplies both scheduling and completeness expectations. Preserve shared-build
 dependencies in the feature/task order.
+
+## E2E tasks and shared provenance
+
+Declare E2E workloads and selftests as named `@PLAN.workload` and `@PLAN.selftest` callables in
+`tools/e2e_checks.py`. Their names supply both scheduling and required report identities; return
+verdicts instead of adding a parallel coverage list. Use ordered `@PLAN.setup` tasks for shared
+peer builds. Keep resource limits, workload order and cleanup in the owning task. Direct offload
+selftest callables are shared with the E2E plan through a context adapter.
+
+Runtime, E2E and compiler-guard reports share `runtime_provenance.runtime_sources()` discovery.
+New project modules, helpers and fixtures are included automatically; retain explicit pinned
+upstream input contracts and generated-fixture hashes.
 
 ## Harness ownership
 
@@ -72,6 +84,5 @@ All files are independently discovered by the existing Python verification comma
 Run `make check-inventory` for registration changes and the selected native suite or affected
 Python harness/reference tests for local behavior changes. Broaden to an entire verification group
 for cross-cutting changes or failures; CI retains complete verification. Documentation-only edits
-need relevant lint/link checks, not a native rebuild. Add new tooling/test sources to runtime
-provenance; the preflight catches omissions. Keep retained historical counts unchanged, and
+need relevant lint/link checks, not a native rebuild. New tooling/test sources enter shared provenance automatically; preflight catches invalid inputs. Keep retained historical counts unchanged, and
 report actual local results separately from CI status.

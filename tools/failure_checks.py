@@ -3,7 +3,7 @@
 
 """Run strict assertion probes and fixed state-result suites without changing native diagnostics.
 
-Exposes validated FAILURE_SUITES, strict probe_failure and run_failure_suite orchestration with
+Exposes validated FAILURE_SUITES, strict probe_failure and discovered run_failure_suites with
 retained diagnostics.
 """
 import json
@@ -164,3 +164,11 @@ def run_failure_suite(compiler, report, libraries, build, command, group):
         case = case_details(suite, case)
         probe_failure(command, report[group], [binary, *case['arguments']], case['name'],
                       case['diagnostic'], case['description'], **case['identity'])
+
+
+# Ordinary families are independent; discovery schedules each exactly once in stable lexical order.
+def run_failure_suites(compiler, report, libraries, build, command):
+    """Run every validated family without a second list of scheduler calls."""
+    for group in FAILURE_SUITES:
+        # Each family retains its declared build inputs, probe order and strict diagnostic predicate.
+        run_failure_suite(compiler, report, libraries, build, command, group)

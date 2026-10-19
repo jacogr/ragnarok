@@ -27,7 +27,8 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
 
 - Keep source-owned verification plans deterministic and feature-grouped. Ordinary failure-family
   files own expected identities; specialized drivers own typed mode declarations and variant plans.
-  Named corpus callables own scheduling/report identities. Do not recreate a central name/count
+  Named corpus and E2E callables own scheduling/report identities. Ordinary failure files
+  schedule themselves through lexical discovery; do not add per-family runner calls. Do not recreate a central name/count
   registry. Preserve genuinely ordered build options and dependency/task execution order; run
   `make check-inventory` for changes to these declarations.
 
@@ -37,7 +38,7 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
   duplicate/misplaced profiles. Do not recreate a shared append-only requirement manifest.
 
 - Apply module/feature grouping and lexicographic insertion to other unordered requirement/source
-  registries too. Runtime provenance discovers project source/configuration and fixture directories;
+  registries too. Shared runtime/E2E/compiler-guard provenance discovers project source/configuration and fixture directories;
   new helpers, per-suite requirement files and failure-family files need no provenance registration.
   Preserve genuinely ordered values, including native library/link/include order, positional
   diagnostic records and runtime scenario steps. Document and test any new ordering exception.

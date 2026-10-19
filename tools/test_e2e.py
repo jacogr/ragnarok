@@ -15,24 +15,19 @@ import subprocess
 import sys
 import time
 from native_checks import NativeChecks, ROOT, announce
-from e2e_checks import run
+from runtime_provenance import runtime_sources
+from e2e_checks import PLAN, run
 
 BUILD = ROOT/'build/tests/e2e'
-# Each lifecycle has a distinct required verdict; an omitted workload is never an implicit pass.
-WORKLOADS = ('rpc', 'telemetry', 'quic_peer', 'quic_peer_controls', 'quic_service', 'quic_integration_service',
-             'quic_mesh', 'quic_mesh_disruption', 'quic_endpoint_soak', 'quic_admission',
-             'quic_closed_before_request', 'quic_offload')
-# Entry-point and shutdown selftests remain covered once, alongside the binaries used by live workloads.
-SELFTESTS = ('quic_peer_parser', 'quic_peer_io', 'quic_peer_mesh_policy',
-             'quic_peer_integration', 'offload_capacity', 'offload_held_shutdown')
+# Compatibility views derive from executable task declarations; there is no second coverage list.
+WORKLOADS = PLAN.names('workload')
+SELFTESTS = PLAN.names('selftest')
 
 
-# Require every real scenario and every entry-point selftest, not just a nonempty report.
+# Completeness and execution share one pre-execution plan, independent of observed successes.
 def passed(report):
-    return (len(report['suites']) == len(SELFTESTS)
-            and {row['name'] for row in report['suites']} == set(SELFTESTS)
-            and all(row['passed'] for row in report['suites'])
-            and all(report.get(name, {}).get('passed', False) for name in WORKLOADS))
+    """Require every declared lifecycle and selftest to have passed in this invocation."""
+    return PLAN.passed(report)
 
 
 # Provision this group's own native bridges and fixtures; no earlier unit run or binary is required.
@@ -50,17 +45,8 @@ def main():
         # Preserve compiler/revision and native pin evidence independently of any other CI job.
         metadata = compiler.parent.parent/'NIGHTLY.txt'
         report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
-        sources = [Path(__file__), ROOT/'tools/e2e_checks.py', ROOT/'tools/native_checks.py', ROOT/'tools/native_dependencies.py', ROOT/'tools/build_crypto.py', ROOT/'tools/build_bandersnatch.py', ROOT/'tools/build_quic.py',
-                   ROOT/'spec/toolchain.json', ROOT/'spec/quic-proof-pins.json',
-                   ROOT/'spec/bandersnatch-pins.json', *sorted((ROOT/'src/quic').glob('*.nim')),
-                   *sorted((ROOT/'src/telemetry').glob('*.nim')), ROOT/'tests/telemetry_checks.py', ROOT/'tests/fixtures/telemetry-dev.json',
-                   *sorted((ROOT/'src/rpc').glob('*.nim')), *sorted((ROOT/'src/chain').glob('*.nim')), ROOT/'tests/rpc_checks.py',
-                   ROOT/'tests/fixtures/rpc-parameters.json', ROOT/'tests/fixtures/rpc-parameters-result.json',
-                   ROOT/'tests/fixtures/rpc-genesis.json', ROOT/'tests/fixtures/rpc-genesis-result.json',
-                   ROOT/'tests/fixtures/rpc-services.json', ROOT/'tests/fixtures/rpc-services-result.json',
-                   *[ROOT/'tests'/name for name in ('nimony_peer.py', 'test_quic_service.py',
-                     'test_quic_mesh.py', 'test_quic_resilience.py', 'test_quic_soak.py',
-                     'test_quic_offload.py', 'test_integration.py')]]
+        # Shared source-family discovery covers new transitive modules and helpers automatically.
+        sources = runtime_sources()
         report['sources'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in sources}
         report['compiler'] = checks.command([compiler, '--version'], 'compiler')

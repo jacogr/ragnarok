@@ -15,7 +15,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from check_inventory import validate_registration
 from runtime_provenance import validate_coverage, discover_project_sources, runtime_sources
 from failure_checks import FAILURE_SUITES, load_suites
 
@@ -76,18 +75,14 @@ class InventoryPreflight(unittest.TestCase):
                 with self.subTest(collision=collision), self.assertRaisesRegex(ValueError, 'Duplicate failure log'):
                     load_suites(folder)
 
-    # Deleted files, unscheduled additions, duplicate calls and computed names cannot silently alter coverage.
-    def test_registration_mismatches(self):
-        suites = {'first': {}, 'second': {}}
-        def runner(calls):
-            # Only syntax is inspected; deliberately inert arguments must never be executed.
-            return 'def run_failures():\n'+''.join('    run_failure_suite(None, '+name+')\n' for name in calls)
-        validate_registration(suites, runner(["'second'", "'first'"]))
-        for names in (["'first'"], ["'first'", "'second'", "'third'"],
-                      ["'first'", "'second'", "'first'"], ['computed_name']):
-            # File order does not schedule probes, but each declared family requires one literal call.
-            with self.subTest(names=names), self.assertRaises(ValueError):
-                validate_registration(suites, runner(names))
+    # Discovery schedules every validated family once, including additions without a runner edit.
+    def test_discovered_failure_scheduling(self):
+        from unittest.mock import patch
+        from failure_checks import run_failure_suites
+        families = {'first': {}, 'new_family': {}, 'second': {}}
+        with patch('failure_checks.FAILURE_SUITES', families), patch('failure_checks.run_failure_suite') as run:
+            run_failure_suites(None, {}, {}, None, None)
+        self.assertEqual([call.args[-1] for call in run.call_args_list], list(families))
         with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, 'No failure suites'):
             load_suites(Path(temporary))
 
