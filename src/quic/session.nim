@@ -15,9 +15,9 @@ import ./offload
 import ../telemetry/options
 import ../rpc/server
 
-# Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.
-# Harness readiness and cancellation gates must observe progress while this process still owns live sockets.
 template progress*() {.varargs.} =
+  ## Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.
+  ## Harness readiness and cancellation gates must observe progress while this process still owns live sockets.
   # Format each public diagnostic field through syncio, preserving exact existing marker bytes.
   for field in unpack(): stdout.write(field)
   stdout.write('\n')
@@ -476,8 +476,8 @@ proc offloadTick(peer: ptr Peer) =
         break
     if not matched: progress "OFFLOAD_STALE ", $completion.id # A vanished/reused stream cannot receive old completion.
 
-# Own one bounded authentication/exchange attempt and release readiness before native callback destruction.
 proc runPeer*(): bool {.raises.} =
+  ## Own one bounded authentication/exchange attempt and release readiness before native callback destruction.
   # Trusted CLI inputs still have explicit shape and narrowing checks.
   if peerParamCount() notin [7, 8]: return false # Reject malformed trusted invocation before endpoint setup.
   let port = parseInt(paramStr(2))
@@ -695,8 +695,8 @@ proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
   if extent.complete: assert extent.valid and fin and input.len == (if server: 37 else: 7)
   if fin and input.len < (if server: 5 else: 4): assert not extent.valid # Partial-header EOF is immediate rejection.
 
-# Deterministic malformed-input coverage remains independently testable before native transport setup.
 proc peerSelfTest*() =
+  ## Deterministic malformed-input coverage remains independently testable before native transport setup.
   assert checkedLength([0'u8, 0, 0, 0], 0).value == 0
   assert checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None
   # Known valid frames exercise every partial prefix with and without FIN, complementing random malformed inputs.
@@ -737,8 +737,8 @@ proc preferred(local, remote: array[32, byte]): bool {.raises: [].} =
     if local[index] != remote[index]: less = local[index] < remote[index]; break
   (local[31] > 127) xor (remote[31] > 127) xor less
 
-# Test ordering, both final-byte high bits and direction symmetry without any cryptographic secret material.
 proc meshSelfTest*() =
+  ## Test ordering, both final-byte high bits and direction symmetry without any cryptographic secret material.
   # Exercise all high-bit combinations with both possible lexicographic orders.
   for highA in [0'u8, 128'u8]:
     # Vary the remote high bit independently of the local high bit.
@@ -830,8 +830,8 @@ proc meshPoll(incoming, outgoing: var Peer): bool =
     if rpcServer != nil: rpcServer[].tick(peers) # Re-establish the borrow after mutable transport queries.
   observeMesh(incoming, outgoing) # Final counter changes remain observable even if polling reports failure.
 
-# Retain two IPv6 engines through sixteen externally gated reconnects and simultaneous CE queries.
 proc runMesh*(): bool {.raises.} =
+  ## Retain two IPv6 engines through sixteen externally gated reconnects and simultaneous CE queries.
   # Validate all trusted controls before opening sockets or narrowing ports.
   if peerParamCount() != 9: return false
   let localPort = parseInt(paramStr(2))

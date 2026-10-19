@@ -17,20 +17,16 @@ const IntegrationEnabled* = defined(integration)
 const WireCap* = 1024 * 1024 + 256
 
 type
-  # Requested CE preimage key has its own domain even though Blake2b supplies the underlying bytes.
-  PreimageKey* = distinct array[32, byte]
-  # Failure alternatives carry no snapshot, byte buffer or consumed extent.
-  IntegrationError* {.pure.} = enum
+  PreimageKey* = distinct array[32, byte] ## Requested CE preimage key has its own domain even though Blake2b supplies the underlying bytes.
+  IntegrationError* {.pure.} = enum ## Failure alternatives carry no snapshot, byte buffer or consumed extent.
     Uninitialized, None, Codec, Trailing, HashMismatch, Owner, Crypto
   # Immutable acyclic data retains the validated codec owner and its matching serialization.
   VerifiedData = ref object
     owner: OwnedFrame
     wire: seq[byte]
-  # Stream/alias handles retain one private snapshot until the last consumer retires.
-  VerifiedDigest* = object
+  VerifiedDigest* = object ## Stream/alias handles retain one private snapshot until the last consumer retires.
     data: nil VerifiedData
-  # Default failures cannot accidentally yield a decoded digest or a response buffer.
-  IntegrationResult*[T] = object
+  IntegrationResult*[T] = object ## Default failures cannot accidentally yield a decoded digest or a response buffer.
     case status: IntegrationError
     of None:
       completed: T
@@ -40,30 +36,31 @@ type
   BankData = ref object
     wires: array[8, seq[byte]]
     keys: array[8, PreimageKey]
-  # Immutable bank handles may be retained across streams without a reference back to a peer.
-  IntegrationBank* = object
+  IntegrationBank* = object ## Immutable bank handles may be retained across streams without a reference back to a peer.
     data: nil BankData
 
-# Read only the reason; defaults/backend failures cannot be retagged as successful integration values.
-func error*[T](value: IntegrationResult[T]): IntegrationError = value.status
-# Only successful integration results carry a key, snapshot, child owner or completed byte count.
+func error*[T](value: IntegrationResult[T]): IntegrationError =
+  ## Read only the reason; defaults/backend failures cannot be retagged as successful integration values.
+  value.status
 func value*[T](value: IntegrationResult[T]): T {.inline, requires: value.status ==
-    IntegrationError.None.} = value.completed
+    IntegrationError.None.} =
+  ## Only successful integration results carry a key, snapshot, child owner or completed byte count.
+  value.completed
 
-# Obtain a retained immutable codec child; a default integration owner has no child.
 proc verifiedOwner*(value: VerifiedDigest): IntegrationResult[OwnedFrame] =
+  ## Obtain a retained immutable codec child; a default integration owner has no child.
   let data = value.data
   if data == nil: return IntegrationResult[OwnedFrame](status: IntegrationError.Owner) # No default child exists.
   IntegrationResult[OwnedFrame](status: IntegrationError.None, completed: data.owner)
 
-# Inspect exact serialized size without returning mutable snapshot bytes.
 proc wireLength*(value: VerifiedDigest): IntegrationResult[int] =
+  ## Inspect exact serialized size without returning mutable snapshot bytes.
   let data = value.data
   if data == nil: return IntegrationResult[int](status: IntegrationError.Owner) # A retired/default handle has no wire.
   IntegrationResult[int](status: IntegrationError.None, completed: data.wire.len)
 
-# Copy a complete wire into caller-owned storage, preflighting capacity before any output mutation.
 proc copyVerifiedWire*(value: VerifiedDigest, output: var openArray[byte]): IntegrationResult[int] =
+  ## Copy a complete wire into caller-owned storage, preflighting capacity before any output mutation.
   let data = value.data
   if data == nil: return IntegrationResult[int](status: IntegrationError.Owner) # Never read a missing snapshot.
   if output.len < data.wire.len: return IntegrationResult[int](
@@ -71,15 +68,15 @@ proc copyVerifiedWire*(value: VerifiedDigest, output: var openArray[byte]): Inte
   for i, b in data.wire: output[i] = b # Only caller storage is writable.
   IntegrationResult[int](status: IntegrationError.None, completed: data.wire.len)
 
-# Select a copied fixed key only from a fully published bank and a valid fixture ordinal.
 proc fixtureKey*(bank: IntegrationBank, index: int): IntegrationResult[PreimageKey] =
+  ## Select a copied fixed key only from a fully published bank and a valid fixture ordinal.
   let data = bank.data
   if data == nil or index < 0 or index >= 8: return IntegrationResult[PreimageKey](
       status: IntegrationError.Owner)
   IntegrationResult[PreimageKey](status: IntegrationError.None, completed: data.keys[index])
 
-# Extract a defensive wire copy for the fixture workload's intentional scratch overwrite.
 proc fixtureBytes*(bank: IntegrationBank, index: int): IntegrationResult[seq[byte]] =
+  ## Extract a defensive wire copy for the fixture workload's intentional scratch overwrite.
   let data = bank.data
   if data == nil or index < 0 or index >= 8: return IntegrationResult[seq[byte]](
       status: IntegrationError.Owner)
@@ -87,8 +84,8 @@ proc fixtureBytes*(bank: IntegrationBank, index: int): IntegrationResult[seq[byt
   for i, b in data.wires[index]: copied[i] = b # No mutable bank backing storage is exported.
   IntegrationResult[seq[byte]](status: IntegrationError.None, completed: copied)
 
-# Hash exact raw preimage bytes using the existing M2 adapter; no codec field is reinterpreted as a hash assertion.
 proc preimageKey*(input: openArray[byte]): IntegrationResult[PreimageKey] {.raises: [].} =
+  ## Hash exact raw preimage bytes using the existing M2 adapter; no codec field is reinterpreted as a hash assertion.
   when defined(integration):
     let digest = blake2b256(input)
     # Backend failure contains no default digest to import as a valid requested key.
@@ -100,8 +97,8 @@ proc preimageKey*(input: openArray[byte]): IntegrationResult[PreimageKey] {.rais
     # Ordinary QUIC binaries do not claim the integrated path or link extra crypto symbols.
     IntegrationResult[PreimageKey](status: IntegrationError.Crypto)
 
-# Load only eight trusted bounded public fixtures before opening transport callbacks.
 proc loadBank*(bank: var IntegrationBank, directory: string): bool =
+  ## Load only eight trusted bounded public fixtures before opening transport callbacks.
   # An empty control cannot silently select the current directory.
   if directory.len == 0: return false
   let candidate = BankData(wires: default(array[8, seq[byte]]), keys: default(array[8, PreimageKey]))
@@ -124,8 +121,8 @@ proc loadBank*(bank: var IntegrationBank, directory: string): bool =
   bank = IntegrationBank(data: candidate)
   true
 
-# Look up an exact fixed-width key; minus one never indexes bank storage.
 proc findFixture*(bank: IntegrationBank, key: openArray[byte]): int {.raises: [].} =
+  ## Look up an exact fixed-width key; minus one never indexes bank storage.
   let data = bank.data
   if data == nil: return -1 # Default banks never select their all-zero placeholder keys.
   if key.len != 32: return -1 # No key truncation/padding.
@@ -136,10 +133,10 @@ proc findFixture*(bank: IntegrationBank, key: openArray[byte]): int {.raises: []
     if matches: return index
   -1
 
-# Capture one complete digest, overwrite the borrowed receive/scratch bytes, then hash its owner's serialization.
-# This actively proves that asynchronous consumers do not retain source-buffer coordinates or mutable aliases.
 proc captureDigest*(input: var openArray[byte], expected: PreimageKey): IntegrationResult[
     VerifiedDigest] {.raises: [].} =
+  ## Capture one complete digest, overwrite the borrowed receive/scratch bytes, then hash its owner's serialization.
+  ## This actively proves that asynchronous consumers do not retain source-buffer coordinates or mutable aliases.
   let parsed = decodeOwnedDigest(input, ByteLimit(1024 * 1024))
   if parsed.error != OwnershipError.None: return IntegrationResult[VerifiedDigest](
       status: IntegrationError.Codec) # No owner after malformed wire.
@@ -162,8 +159,8 @@ proc captureDigest*(input: var openArray[byte], expected: PreimageKey): Integrat
   IntegrationResult[VerifiedDigest](status: IntegrationError.None,
     completed: VerifiedDigest(data: VerifiedData(owner: parsed.value, wire: wire)))
 
-# Fuzz the composition boundary with bounded arbitrary wire and its actual independently retained request key.
 proc integrationSelfTest*() =
+  ## Fuzz the composition boundary with bounded arbitrary wire and its actual independently retained request key.
   assert IntegrationEnabled # Ordinary QUIC binaries cannot claim this linked crypto test.
   var defaultResult = default(IntegrationResult[VerifiedDigest])
   assert defaultResult.error == IntegrationError.Uninitialized

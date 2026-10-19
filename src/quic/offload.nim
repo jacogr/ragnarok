@@ -10,22 +10,21 @@ const OffloadEnabled* = defined(offload)
 # Nominal generations cannot be confused with native stream handles or fixture indices.
 type
   JobId* = distinct uint64
-  # A failed proof cannot authorize a reply; this outcome contains no output on failure.
-  OffloadOutcome* = enum Failed, Verified
-  # Generation is never reused during one pool lifetime, including after cancellation.
-  OffloadCompletion* = object
+  OffloadOutcome* = enum Failed, Verified ## A failed proof cannot authorize a reply; this outcome contains no output on failure.
+  OffloadCompletion* = object ## Generation is never reused during one pool lifetime, including after cancellation.
     id*: JobId
     outcome*: OffloadOutcome
-  # Pending has no readable completion or generation; callers must select the ready branch.
-  OffloadPollResult* = object
+  OffloadPollResult* = object ## Pending has no readable completion or generation; callers must select the ready branch.
     case hasCompletion: bool
     of true: completed: OffloadCompletion
     of false: discard
-# Select readiness without permitting forged completions or public discriminator mutation.
-func ready*(value: OffloadPollResult): bool = value.hasCompletion
-# A pending/default poll has no readable completion; callers must establish readiness first.
+func ready*(value: OffloadPollResult): bool =
+  ## Select readiness without permitting forged completions or public discriminator mutation.
+  value.hasCompletion
 func completion*(value: OffloadPollResult): OffloadCompletion {.inline,
-    requires: value.hasCompletion.} = value.completed
+    requires: value.hasCompletion.} =
+  ## A pending/default poll has no readable completion; callers must establish readiness first.
+  value.completed
 # Compare/print only job generations; implicit integer conversion remains forbidden.
 proc `==`*(a, b: JobId): bool {.borrow.}
 # Diagnostic printing preserves the generation without permitting implicit integer conversion.
@@ -51,8 +50,7 @@ when OffloadEnabled:
       phase: Phase
       cancelled: bool
       outcome: OffloadOutcome
-    # Stack-stable owner; initialization/destruction must happen once on the I/O thread.
-    OffloadPool* = object
+    OffloadPool* = object ## Stack-stable owner; initialization/destruction must happen once on the I/O thread.
       lock: Lock
       changed: Cond
       workers: array[2, RawThread]
@@ -129,8 +127,8 @@ when OffloadEnabled:
         pool.slots[index].outcome = outcome
         pool.slots[index].phase = Done # Uncollected completion still occupies capacity.
       release(pool.lock)
-  # Read one trusted harness fixture before starting threads. Network bytes never choose this file/domain.
   proc startPool*(pool: var OffloadPool): bool {.raises.} =
+    ## Read one trusted harness fixture before starting threads. Network bytes never choose this file/domain.
     let wire = readFile(getEnv("RAGNAROK_OFFLOAD_FIXTURE"))
     if wire.len != 1012: return false # Fixed capacity/root/proof/context/output fixture layout.
     for i in 0..<4: pool.capacity = pool.capacity or (int(byte(wire[i])) shl (
@@ -170,13 +168,13 @@ when OffloadEnabled:
       release(pool.lock)
       for i in 0..<2: join(pool.workers[i]) # Both worker-owned Rust setups retire before the shared mutex.
       deinitCond(pool.changed); deinitLock(pool.lock) # Failed setup retires successful siblings too.
-  # Count actual crypto activity under the same mutex; held/queued jobs are deliberately excluded.
   proc busyPool*(pool: var OffloadPool): int {.raises: [].} =
+    ## Count actual crypto activity under the same mutex; held/queued jobs are deliberately excluded.
     acquire(pool.lock)
     result = pool.busy
     release(pool.lock)
-  # Stop admission, cancel queued/completed work, unblock test holds, and join before releasing mutexes.
   proc stopPool*(pool: var OffloadPool) =
+    ## Stop admission, cancel queued/completed work, unblock test holds, and join before releasing mutexes.
     acquire(pool.lock)
     pool.stopping = true
     pool.held = false
@@ -189,8 +187,8 @@ when OffloadEnabled:
     for i in 0..<2: join(pool.workers[i]) # Both worker-owned Rust setups retire before the shared mutex.
     deinitCond(pool.changed); deinitLock(pool.lock)
     progress "OFFLOAD_JOINED 2" # Every Rust setup and worker has retired before the pool owner.
-  # Admission copies a temporary value into a free slot; zero is the explicit rejected generation.
   proc submitPool*(pool: var OffloadPool, invalid: bool): JobId {.raises: [].} =
+    ## Admission copies a temporary value into a free slot; zero is the explicit rejected generation.
     acquire(pool.lock)
     defer: release(pool.lock)
     if pool.stopping: return JobId(0) # No new work after teardown begins.
@@ -206,8 +204,8 @@ when OffloadEnabled:
         signal(pool.changed)
         return slot.id
     JobId(0) # Queued, running and uncollected completions all count toward the four-slot cap.
-  # Cancel by generation; a reused stream or slot can never cancel another job.
   proc cancelPool*(pool: var OffloadPool, id: JobId) {.raises: [].} =
+    ## Cancel by generation; a reused stream or slot can never cancel another job.
     if id == JobId(0): return # Streams without an admitted job own no pool resource.
     acquire(pool.lock)
     defer: release(pool.lock)
@@ -218,8 +216,8 @@ when OffloadEnabled:
         if slot.phase == Running: slot.cancelled = true # Retain original bytes until FFI completion.
         else: slot[] = Slot() # Queued/done work has no active borrower.
         return
-  # Poll a bounded completion on the I/O thread; workers never touch networking or diagnostics.
   proc collectPool*(pool: var OffloadPool): OffloadPollResult {.raises: [].} =
+    ## Poll a bounded completion on the I/O thread; workers never touch networking or diagnostics.
     acquire(pool.lock)
     defer: release(pool.lock)
     for index in 0..<4:
@@ -230,8 +228,8 @@ when OffloadEnabled:
         slot[] = Slot() # Capacity becomes reusable only after collecting/discarding the result.
         return
     OffloadPollResult() # No completion means no default success is observable.
-  # Observe held versus actual Rust execution separately, and release only the explicit test barrier.
   proc tickPool*(pool: var OffloadPool) =
+    ## Observe held versus actual Rust execution separately, and release only the explicit test barrier.
     let held = pool.gate.len > 0 and not fileExists(pool.gate)
     acquire(pool.lock)
     defer: release(pool.lock)
@@ -263,8 +261,9 @@ else:
   proc tickPool*(pool: var OffloadPool) = discard # No worker diagnostics.
 
 when not OffloadEnabled:
-  # An ordinary peer can never claim concurrent crypto activity.
-  proc busyPool*(pool: var OffloadPool): int {.raises: [].} = 0
+  proc busyPool*(pool: var OffloadPool): int {.raises: [].} =
+    ## An ordinary peer can never claim concurrent crypto activity.
+    0
 
 when OffloadEnabled:
   # Inspect completion capacity without consuming a result; used only by the bounded ownership selftest.
@@ -274,8 +273,8 @@ when OffloadEnabled:
     for slot in pool.slots:
       if slot.phase == phase: inc result # Observe ownership without consuming or releasing a job.
     release(pool.lock)
-  # Exercise default result safety, completed capacity and collection before any QUIC engine exists.
   proc offloadSelfTest*() {.raises.} =
+    ## Exercise default result safety, completed capacity and collection before any QUIC engine exists.
     var pool = default(OffloadPool)
     assert startPool(pool)
     defer: stopPool(pool)
@@ -315,8 +314,8 @@ when OffloadEnabled:
     assert not collectPool(pool).ready
     progress "OFFLOAD_EXHAUSTED"
     progress "OFFLOAD_SELFTEST 4"
-  # Exercise join with two held running owners plus two queued owners, before any FFI borrow begins.
   proc offloadHeldShutdownTest*() {.raises.} =
+    ## Exercise join with two held running owners plus two queued owners, before any FFI borrow begins.
     var pool = default(OffloadPool)
     assert startPool(pool)
     defer: stopPool(pool)
@@ -329,9 +328,11 @@ when OffloadEnabled:
     tickPool(pool)
     progress "OFFLOAD_HELD_SHUTDOWN 4" # Deferred stop releases holds, drops queued work and joins both workers.
 else:
-  # Ordinary binaries cannot claim worker lifecycle coverage.
-  proc offloadSelfTest*() = discard
+  proc offloadSelfTest*() =
+    ## Ordinary binaries cannot claim worker lifecycle coverage.
+    discard
 
 when not OffloadEnabled:
-  # Ordinary binaries cannot claim held-worker shutdown coverage.
-  proc offloadHeldShutdownTest*() = discard
+  proc offloadHeldShutdownTest*() =
+    ## Ordinary binaries cannot claim held-worker shutdown coverage.
+    discard
