@@ -1,0 +1,85 @@
+{
+  "build_name": "preimage-transition-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Preimage transition selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "preimage-transition-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Preimage transition selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "refused"
+      },
+      "name": "preimage-transition-refused"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Preimage transition selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "info"
+      },
+      "name": "preimage-transition-info"
+    },
+    {
+      "arguments": [
+        "prior"
+      ],
+      "description": "Preimage transition selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "prior"
+      },
+      "name": "preimage-transition-prior"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Preimage transition selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "source"
+      },
+      "name": "preimage-transition-source"
+    },
+    {
+      "arguments": [
+        "provision"
+      ],
+      "description": "Preimage transition selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "provision"
+      },
+      "name": "preimage-transition-provision"
+    },
+    {
+      "arguments": [
+        "publish"
+      ],
+      "description": "Preimage transition selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "publish"
+      },
+      "name": "preimage-transition-publish"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "source": "tests/native/preimage_transition_results.nim"
+}
