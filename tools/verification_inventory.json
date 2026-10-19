@@ -1,5 +1,6 @@
 {
   "UNIT_SUITES": [
+    "accumulation_context",
     "accumulation_inputs",
     "accumulation_invocation",
     "accumulation_operands",
@@ -136,6 +137,11 @@
     "account_result_read_private": "completed",
     "account_result_retag": "status",
     "account_result_value_write": "value",
+    "accumulation_context_bound_private": "data",
+    "accumulation_context_owner_private": "data",
+    "accumulation_context_pair_private": "initial",
+    "accumulation_context_result_private": "completed",
+    "accumulation_context_tag_private": "status",
     "accumulation_input_kind_private": "inputKind",
     "accumulation_input_operand_private": "operandValue",
     "accumulation_input_owner_private": "data",
@@ -887,6 +893,7 @@
     "account_bytes_as_items": "got: AccountStorageBytes but wanted: AccountStorageItems",
     "account_gas_as_balance": "got: Gas but wanted: AccountBalance",
     "account_slot_as_parent": "got: AccountSlot but wanted: ServiceIndex",
+    "accumulation_context_service_as_dimension": "AccumulationDimension",
     "accumulation_input_group_as_input": "[3] expected: InvocationInputIndex but got: OperandServiceIndex",
     "accumulation_input_service_as_group": "[2] expected: InvocationServiceIndex but got: ServiceIndex",
     "accumulation_invocation_bytes_as_probes": "ServiceProbeLimit",
@@ -1126,6 +1133,7 @@
     "entry-owner"
   ],
   "EARLY_NOMINAL": {
+    "accumulation_context_service_as_dimension": ["initialContext(", "[2] expected: AccumulationDimension but got: ServiceIndex"],
     "accumulation_input_group_as_input": ["invocationInputAt(", "[3] expected: InvocationInputIndex but got: OperandServiceIndex"],
     "accumulation_input_service_as_group": ["invocationServiceAt(", "[2] expected: InvocationServiceIndex but got: ServiceIndex"],
     "accumulation_invocation_bytes_as_probes": ["findUnusedAccumulationService(", "[3] expected: ServiceProbeLimit but got: ByteLimit"],
@@ -1183,6 +1191,7 @@
   ],
   "FAILURE_COUNTS": {
     "accounts": 16,
+    "accumulation_context": 12,
     "accumulation_inputs": 8,
     "accumulation_invocation": 8,
     "accumulation_operands": 9,
@@ -1321,6 +1330,7 @@
     "workqueues_corpus"
   ],
   "ARC_SUITES": {
+    "accumulation_context": "accumulation_context_arc_release",
     "accumulation_inputs": "accumulation_inputs_arc_release",
     "accumulation_invocation": "accumulation_invocation_arc_release",
     "accumulation_operands": "accumulation_operands_arc_release",
@@ -1406,6 +1416,7 @@
     "work_package": "package_arc_release"
   },
   "UNIT_LINKS": {
+    "accumulation_context": "observer",
     "accumulation_inputs": "observer",
     "accumulation_invocation": "observer",
     "accumulation_operands": "observer",
