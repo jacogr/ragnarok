@@ -40,10 +40,11 @@ integration must call this boundary; no live importer, fork choice or consensus 
 `publishFinalized` installs that immutable selection between dispatcher ticks. One additional snapshot
 owner preserves finalized-state lookup after rolling-history eviction. Neither genesis nor best-head
 publication establishes finality; the consensus source must explicitly supply it. `finalizedBlock()`
-and client information read this selection, while finalized subscription routing remains separate.
+and client information read this selection. Each subscription retains its publication source; best and finalized
+events route independently through shared bounded queues. Repeated finality publication is silent.
 
 Each WS connection owns a private `RpcSession` with a fixed subscription table and bounded FIFO
-of serialized best-block, statistics, service-data, service-value, service-preimage and service-request notifications, limited by message count and bytes. Request dispatch commits subscription changes only when
+of serialized best-block, finalized-block, statistics, service-data, service-value, service-preimage and service-request notifications, limited by message count and bytes. Request dispatch commits subscription changes only when
 its reply fits the response budget. Publication queues descriptors and validated C(13) bytes without retaining snapshot owners;
 overflow closes only the affected connection. The dispatcher writes replies before notifications,
 one frame per turn, preserving partial-write offsets. Statistics are decoded once per connection

@@ -41,11 +41,12 @@ type
   ## Connection-local subscription identity; zero is reserved for an unused fixed table entry.
   SubscriptionId = distinct uint32
   ## Supported chain subscriptions share capacity and IDs, but use their own cancellation method.
-  SubscriptionKind {.pure.} = enum BestBlock, Statistics, ServiceData, ServiceValue,
+  SubscriptionKind {.pure.} = enum BestBlock, FinalizedBlock, Statistics, ServiceData, ServiceValue,
     ServicePreimage, ServiceRequest
   ## One active subscription; zero identity marks a vacant entry regardless of its default kind.
   Subscription = object
     identity: SubscriptionId
+    finalized: bool           # Route updates only from the selected best or finalized publication stream.
     kind: SubscriptionKind
     service: ServiceIndex     # Nominal account selector, used by service subscription families.
     length: RequestLength     # Fixed request selector; never used as an allocation size.
@@ -352,6 +353,7 @@ proc error(id: string, code: int, message: string): string =
 ## Build a JIP-2 notification with either a complete result or a terminal human-readable error.
 proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure: string): string =
   let methodName = if kind == SubscriptionKind.BestBlock: "subscribeBestBlock"
+    elif kind == SubscriptionKind.FinalizedBlock: "subscribeFinalizedBlock"
     elif kind == SubscriptionKind.Statistics: "subscribeStatistics"
     elif kind == SubscriptionKind.ServiceData: "subscribeServiceData" elif kind ==
         SubscriptionKind.ServiceValue: "subscribeServiceValue" elif kind ==
@@ -418,17 +420,18 @@ proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: stri
   inc session.pendingCount
   session.pendingBytes += text.len
 
-## Queue all active updates atomically, or leave the session intact if either queue limit is exceeded.
+## Queue updates only for the selected publication stream atomically, or leave the session intact if either queue limit is exceeded.
 ## Decode statistics at most once per session, only when requested; failed statistics emit a terminal
 ## error for those subscribers. Service subscribers read validated accounts and optional bounded values;
 ## only the affected subscriber is terminated on a read failure. Other subscriptions continue. No state snapshots are retained.
-proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): bool =
+proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult,
+    finalized = false): bool =
   if head.error != GenesisError.None:
     return false # Failed captures never expose a descriptor or mutate pending updates.
   var count = 0
   var wantsStatistics = false
   for item in session.active:
-    if uint32(item.identity) != 0:
+    if uint32(item.identity) != 0 and item.finalized == finalized:
       inc count # Reserve slots before deriving any values.
       if item.kind == SubscriptionKind.Statistics:
         wantsStatistics = true # Share one C(13) decode among every statistics subscriber on this connection.
@@ -442,7 +445,7 @@ proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): boo
   var failed = default(array[MaxSubscriptions, bool])
   var bytes = session.pendingBytes
   for index, item in session.active:
-    if uint32(item.identity) != 0:
+    if uint32(item.identity) != 0 and item.finalized == finalized:
       let value = if item.kind == SubscriptionKind.ServiceRequest:
           requestUpdate(head.value, item.service, item.hash, item.length)
         elif item.kind == SubscriptionKind.Statistics: activity
@@ -463,7 +466,7 @@ proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult): boo
       bytes += messages[index].len
   for index in 0..<MaxSubscriptions:
     let item = session.active[index] # Retain an immutable selector copy before mutating the queue/table.
-    if uint32(item.identity) != 0:
+    if uint32(item.identity) != 0 and item.finalized == finalized:
       session.enqueueUpdate(item.identity, messages[index]) # Commit only after the entire publication fits.
       if failed[index]:
         session.active[index] = default(Subscription) # Its queued error is terminal; unrelated subscriptions survive.
@@ -494,14 +497,18 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
         "unsubscribeServicePreimage"]: SubscriptionKind.ServicePreimage
     elif methodName in ["subscribeServiceRequest",
         "unsubscribeServiceRequest"]: SubscriptionKind.ServiceRequest
+    elif methodName in ["subscribeFinalizedBlock",
+        "unsubscribeFinalizedBlock"]: SubscriptionKind.FinalizedBlock
     else: SubscriptionKind.BestBlock # Dispatch admits only the explicitly supported method families.
-  if methodName in ["subscribeBestBlock", "subscribeStatistics", "subscribeServiceData",
-      "subscribeServiceValue", "subscribeServicePreimage", "subscribeServiceRequest"]:
+  if methodName in ["subscribeBestBlock", "subscribeFinalizedBlock", "subscribeStatistics",
+      "subscribeServiceData", "subscribeServiceValue", "subscribeServicePreimage",
+          "subscribeServiceRequest"]:
+    var finalized = kind == SubscriptionKind.FinalizedBlock
     var service = 0'u32
     var length = 0'u32 # Parse exactly before constructing the nominal request selector.
     var hash = default(ServicePreimageHash) # Preimage and request selectors populate this fixed identity.
     var key: seq[byte] = @[] # Initialized for all kinds, and populated only after bounded canonical decoding.
-    if kind != SubscriptionKind.BestBlock:
+    if kind notin [SubscriptionKind.BestBlock, SubscriptionKind.FinalizedBlock]:
       let count = if kind == SubscriptionKind.ServiceRequest: 4
         elif kind in [SubscriptionKind.ServiceValue, SubscriptionKind.ServicePreimage]: 3
         elif kind == SubscriptionKind.ServiceData: 2 else: 1
@@ -529,13 +536,12 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
       let flag = values[parameters + count]
       if flag.kind != literalValue or flag.text notin ["true", "false"]:
         return error(id, -32602, "Expected finalized boolean") # Never interpret numbers, null or containers as flags.
-      if flag.text == "true":
-        return error(id, 0, "Finalized chain view unavailable") # Do not substitute best-chain state for finality.
+      finalized = flag.text == "true" # Preserve the requested stream; never substitute best state.
     elif parameters >= 0 and values[parameters].next != parameters + 1:
       return error(id, -32602, "Expected no parameters") # Best-block subscriptions have no finalized flag.
-    let head = info.chain.bestBlock
+    let head = if finalized: info.chain.finalizedBlock else: info.chain.bestBlock
     if head.error != GenesisError.None:
-      return error(id, 0, "Chain view unavailable") # Do not accept a subscription without a chain source.
+      return error(id, 0, if finalized: "Finalized chain view unavailable" else: "Chain view unavailable") # Do not accept a subscription without a chain source.
     var free = -1
     for index in 0..<MaxSubscriptions:
       if uint32(session.active[index].identity) == 0:
@@ -562,8 +568,8 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
     if message.len > MaxSubscriptionQueueBytes - session.pendingBytes:
       return error(id, 0, "Subscription capacity exhausted") # Byte refusal cannot consume an ID or discard older updates.
     inc session.lastId
-    session.active[free] = Subscription(identity: identity, kind: kind, service: ServiceIndex(
-        service), key: key, hash: hash, length: RequestLength(length))
+    session.active[free] = Subscription(identity: identity, kind: kind, finalized: finalized,
+        service: ServiceIndex(service), key: key, hash: hash, length: RequestLength(length))
     session.enqueueUpdate(identity, message)
     return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $session.lastId & "}"
   var number = 0'u32
@@ -604,7 +610,7 @@ proc clientInfo(info: ClientInfo, stateful: bool): string =
     descriptor(info.chain.finalizedBlock.value) else: "null"))
   result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
   result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"finalizedBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
-      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\",\"subscribeServiceValue\",\"unsubscribeServiceValue\",\"subscribeServicePreimage\",\"unsubscribeServicePreimage\",\"subscribeServiceRequest\",\"unsubscribeServiceRequest\"" else: "") & "]")
+      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeFinalizedBlock\",\"unsubscribeFinalizedBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\",\"subscribeServiceValue\",\"unsubscribeServiceValue\",\"subscribeServicePreimage\",\"unsubscribeServicePreimage\",\"subscribeServiceRequest\",\"unsubscribeServiceRequest\"" else: "") & "]")
   result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16}}")
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
@@ -637,6 +643,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     i = token.next
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
   if stateful and methodName in ["subscribeBestBlock", "unsubscribeBestBlock",
+      "subscribeFinalizedBlock", "unsubscribeFinalizedBlock",
       "subscribeStatistics", "unsubscribeStatistics", "subscribeServiceData",
       "unsubscribeServiceData", "subscribeServiceValue", "unsubscribeServiceValue",
       "subscribeServicePreimage", "unsubscribeServicePreimage", "subscribeServiceRequest",

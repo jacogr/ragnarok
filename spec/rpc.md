@@ -128,8 +128,8 @@ its existing metadata extraction contract.
 
 Both hash methods require exactly one canonical padded Base64 string decoding to 32 bytes.
 Malformed hashes or argument lists return `-32602`. `bestBlock` takes no arguments. Existing
-batch and notification behavior applies. Finalized queries remain unsupported; best-block
-subscriptions are described below.
+batch and notification behavior applies. Explicit finalized queries and both subscription sources
+are described below.
 The active validator count also uses this retained state; other parameter gaps are described above.
 
 The genesis loader checks strict bounded JSON, exact 31-byte hex keys, hex values, duplicate decoded
@@ -615,7 +615,7 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request methods are enabled; finalized subscriptions remain unavailable.
+Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request methods are enabled; finalized subscriptions use explicitly published finality as described below.
 `ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
 The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
 `respond(text, info, session)` with its connection-owned `RpcSession`.
@@ -667,8 +667,8 @@ views and other subscription families remain separate bounded work.
 
 `subscribeStatistics(false)` and `unsubscribeStatistics(id)` implement the best-chain part of the
 pinned JIP-2 Methods / subscribeStatistics definition. Exactly one Boolean is required when
-subscribing. `true` returns error 0 (`Finalized chain view unavailable`); the server never silently
-substitutes the best chain. Finalized tracking remains unavailable until a finality source exists.
+subscribing. `true` selects explicitly published finality; without it, error 0 (`Finalized chain view unavailable`)
+is returned. The server never silently substitutes the best chain.
 The method names are advertised by `ragnarok_clientInfo` on stateful WS connections.
 
 The initial update follows the subscription response. Each successfully published head produces
@@ -716,8 +716,8 @@ cancellation. Importer integration, finalized views and the other subscription f
 
 `subscribeServiceData(id, false)` and `unsubscribeServiceData(subscription)` implement the best-chain
 part of pinned JIP-2 Methods / subscribeServiceData. Subscribe requires a uint32 service ID followed
-by exactly one Boolean. Invalid IDs/arguments return `-32602`; `true` returns error 0 because a
-finalized view is unavailable. An absent chain returns error 0, independently of service absence.
+by exactly one Boolean. Invalid IDs/arguments return `-32602`; `true` selects the finalized view
+and returns error 0 only while that view is unavailable. An absent chain returns error 0, independently of service absence.
 Both methods are advertised on stateful WS connections and use the existing connection-local
 subscription IDs, table, FIFO, cancellation, notification-form call and batch rules.
 
@@ -757,7 +757,7 @@ finalized refusal and cancellation. Importer integration and finalized tracking 
 best-chain part of pinned JIP-2 Methods / subscribeServiceValue. The required arguments are a uint32
 service ID, a canonical padded Base64 key and a Boolean. Empty keys are valid; keys larger than
 4,096 decoded bytes, malformed encodings, narrowing/float IDs and invalid argument shapes return
-`-32602` before allocating a subscription. Finalized tracking (`true`) returns error 0, and the
+`-32602` before allocating a subscription. Finalized tracking (`true`) without an explicitly published finalized head returns error 0, and the
 stateless adapter continues to reject subscription methods.
 
 Each connection-owned selector retains its nominal service ID and an immutable owned key of at
@@ -800,7 +800,7 @@ finalized refusal and cancellation. Importer integration and finalized tracking 
 pinned JIP-2 Methods / subscribeServicePreimage. The three required arguments are an exact uint32
 service ID, a canonical padded Base64 hash of exactly 32 bytes, and a Boolean. Invalid argument
 shapes, hash widths/encodings and service IDs return `-32602` without consuming an ID. Finalized
-tracking (`true`) returns error 0; the stateless adapter remains query-only.
+tracking (`true`) without an explicitly published finalized head returns error 0; the stateless adapter remains query-only.
 
 Each selector retains a fixed nominal `ServicePreimageHash`, with no decoded key or snapshot owner.
 The initial notification and every published best head carry the usual Chain Subscription Update
@@ -826,7 +826,7 @@ Finality and live importer integration remain outstanding.
 `subscribeServiceRequest(id, hash, len, false)` and `unsubscribeServiceRequest(subscription)`
 implement pinned JIP-2 Methods / subscribeServiceRequest. Required arguments are an exact uint32
 service ID, a canonical padded Base64 32-byte preimage hash, an exact uint32 length and a Boolean.
-Invalid shapes or selectors return `-32602` without consuming an ID. Finalized tracking (`true`)
+Invalid shapes or selectors return `-32602` without consuming an ID. Finalized tracking (`true`) without an explicitly published finalized head
 returns error 0; the stateless adapter remains query-only.
 
 Each selector owns a fixed nominal hash and `RequestLength`; the length never sizes an allocation.
@@ -876,5 +876,33 @@ Native tests cover independent best/finalized heads, immutable previous readers,
 unknown hashes, regressions, window eviction, replacement and query batches/notifications. Socket
 coverage verifies dispatcher publication and the returned descriptor; compiler probes protect the
 new tagged result. Live startup checks confirm finality remains unavailable with and without genesis.
-No consensus engine calls this handoff yet. Finalized subscriptions and finality-source integration
-remain outstanding; the next bounded RPC increment can route subscriptions to explicit finality events.
+No consensus engine calls this handoff yet. Finality-source integration remains outstanding; finalized subscriptions use this handoff as described below.
+
+
+## Finalized subscription routing
+
+Pinned JIP-2 Methods / subscribeFinalizedBlock and the finalized flags on statistics and service
+subscriptions now use the explicit finalized-head boundary. `subscribeFinalizedBlock()` and
+`unsubscribeFinalizedBlock(subscription)` have the same initial-descriptor and cancellation policy
+as the best-block pair. `subscribeStatistics(true)` and all four service subscription methods with
+`finalized: true` read the finalized snapshot for both initial values and subsequent updates.
+Without published finality, creation returns error 0 without allocating an ID; configured genesis
+alone still supplies no finality. The stateless adapter remains query-only.
+
+Each private selector records its publication source. `publishBlock` queues only best subscriptions;
+`publishFinalized` queues only finalized subscriptions. A repeated finalized hash is silent. Unknown
+or regressing finality changes neither state nor queues. When finality skips multiple blocks, one
+update describes the newly selected head; this does not replay intermediate history. Query and
+value-validation semantics, including null versus empty and terminal errors, are unchanged.
+
+Sources share eight active slots, monotonic IDs, sixteen pending messages and the 65,535-byte queue.
+Capacity is preflighted only for subscribers matching the event source. Publication overflow closes
+only that connection while preserving the selected head. Cancellation remains per family/ID;
+best-block cancellation cannot cancel a finalized-block subscription. No selector retains state.
+
+Native coverage verifies each family against a finalized snapshot older than the best head, both
+directions of stream isolation, shared queue limits and cancellation. Connected socket coverage
+checks finality events, silent repeat publication and slow-consumer disconnection without blocking
+finality advancement. Live startup checks retain explicit unavailability in the absence of finality.
+Consensus finality production and live block-import integration remain outstanding; this is RPC
+routing for caller-certified events, not a consensus implementation.

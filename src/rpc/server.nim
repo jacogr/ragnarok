@@ -163,14 +163,22 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
 
 ## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.
 ## Requires a known retained chain block; failures leave the view intact. No finality proof is verified.
-## This query-only handoff emits no subscription events and never changes the selected best head.
+## A new finalized head emits only finalized subscription events; repeats are silent and best is unchanged.
 proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
   if not server.opened:
     return ViewFinalizeError.Uninitialized # Closed listeners cannot receive state publications.
   let update = server.chain.finalizeView(hash)
   if update.error != ViewFinalizeError.None:
     return update.error # Preserve the entire view on a rejected selection.
+  let previous = server.chain.finalizedBlock
+  if previous.error == GenesisError.None:
+    if array[32, byte](previous.value.blockHash) == array[32, byte](hash):
+      return ViewFinalizeError.None # Idempotent publication must not duplicate notifications.
   server.chain = update.value
+  for slot in mitems(server.connections):
+    if slot.opened and slot.upgraded and not slot.closing:
+      if not slot.session.queueChainUpdates(server.chain.finalizedBlock, finalized = true):
+        slot.close() # Finality still advances; only the slow consumer is disconnected.
   ViewFinalizeError.None
 
 # Queue a bounded close frame, then allow only its partial writes until the absolute deadline.

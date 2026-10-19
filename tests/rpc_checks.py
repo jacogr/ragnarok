@@ -218,6 +218,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 assert 'finalizedBlock' in result['result']['rpc']['methods']
                 send(connection, json.dumps(dict(jsonrpc='2.0', method='finalizedBlock', params=[], id=75)))
                 assert json.loads(receive(connection)[1])['error']['code'] == 0 # Startup has no certified finality, even with configured genesis.
+                assert 'subscribeFinalizedBlock' in result['result']['rpc']['methods']
+                send(connection, json.dumps(dict(jsonrpc='2.0', method='subscribeFinalizedBlock', params=[], id=76)))
+                assert json.loads(receive(connection)[1])['error']['code'] == 0 # Startup has no finality source, so no subscription ID is allocated.
                 parameter_call = dict(jsonrpc='2.0', method='parameters', params=[], id=19)
                 send(connection, json.dumps(parameter_call))
                 parameters = json.loads(receive(connection)[1])
