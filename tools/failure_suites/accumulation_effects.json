@@ -297,6 +297,17 @@
         "origin": "request-absent"
       },
       "name": "accumulation-effect-request-absent"
+    },
+    {
+      "arguments": [
+        "solicit"
+      ],
+      "description": "Accumulation solicit selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "solicit"
+      },
+      "name": "accumulation-effect-solicit"
     }
   ],
   "crypto_library": "crypto",
