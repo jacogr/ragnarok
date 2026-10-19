@@ -3,18 +3,20 @@
 
 ## Execute a prepared accumulation CPU with its own fetch environment and implemented host calls.
 ## Guarded results separate guest outcomes, engine refusals and unavailable host functionality.
-## Retains storage/checkpoint/yield/provide implications beside guest outcomes.
+## Retains storage/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_fetch]
-import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values, bounded]
+import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
+    state_privileges, bounded]
 import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects, store]
 
 type
   AccumulationDispatchError* {.pure.} = enum ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
     Uninitialized, None, InvalidMachine, InvalidParameters, LimitExceeded, InvalidContext,
-    UnsupportedHostCall, ExecutionFailure, MalformedState, BackendFailure, GasRangeExceeded
+    UnsupportedHostCall, ExecutionFailure, MalformedState, BackendFailure, GasRangeExceeded,
+    AmbiguousPrivileges ## Conflicting allowance values for one service require a specification decision.
   AccumulationDispatchResult* = object ## Success alone retains a CPU outcome; engine failure carries only its enum-valued reason.
     case status: AccumulationDispatchError
     of None:
@@ -27,6 +29,7 @@ type
   ## Callback-local immutable fetch ownership cannot be substituted by the guest or caller.
   DispatchContext = object
     parameters: Parameters
+    privileges: PrivilegeConfig
     fetch: FetchContext
     copyLimit: MemoryByteLimit
     effects: AccumulationEffects
@@ -389,6 +392,91 @@ proc infoResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners cannot authorize a fabricated write.
   hostSuccess[AccumulationDispatchError](response)
 
+# Decode a completely captured fixed E4/E8 guest field without narrowing high role bits.
+func privilegeNumber(bytes: seq[byte], offset, width: int): uint64 =
+  result = 0
+  for i in 0..<width:
+    result = result or (uint64(bytes[offset+i]) shl (8*i)) # Callers prove each complete four/eight-byte field.
+
+# Charge bless's complete 69-bit item cost before memory, authorization and role validation.
+proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let count = uint64(cpu.registers[12])
+  let lowProduct = (count and 0xffffffff'u64)*20+422 # Below 2^37; retain its carry into the upper product.
+  let highProduct = (count shr 32)*20+(lowProduct shr 32) # Below 2^37, preserving the complete item charge.
+  let low = ((highProduct and 0xffffffff'u64) shl 32) or (lowProduct and 0xffffffff'u64)
+  let charged = chargedResponse(cpu, memory, low, highProduct shr 32)
+  if charged.kind != HostResultKind.Response:
+    return charged # Unrepresentable signed debt remains a local refusal.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No input capture or manager lookup before affordability.
+  let cores = context.parameters.get(coreCount)
+  if cores != uint64(context.privileges.cores):
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Protocol core count must match prepared privilege layout.
+  let assigners = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(4*cores),
+      context.copyLimit)
+  case assigners.error
+  of MachineError.None:
+    discard # The complete positional core array is captured before authorization.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Invalid core-array memory precedes HUH and WHO.
+    return hostSuccess[AccumulationDispatchError](response)
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture bounds are not guest codes.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid memory owner authorizes roles.
+  if count > uint64(context.privileges.maxAlways) or count > uint64(high(int) div sizeof(
+      AlwaysAccumulate)):
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Bound input record work before reading/sorting.
+  # Funded 422+20*count<=UINT64_MAX proves 12*count fits uint64 before forming the guest byte extent.
+  let pairs = readBytes(memory, MemoryAddress(uint64(cpu.registers[11])), MemoryLength(12*count),
+      context.copyLimit)
+  case pairs.error
+  of MachineError.None:
+    discard # All record bytes are captured before authority or role-domain checks.
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Empty record arrays accept every pointer, including UINT64_MAX.
+    return hostSuccess[AccumulationDispatchError](response)
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # No partial execution on capture policy failure.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No fabricated successful input.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  if uint32(current.effectInfo.value.service) != uint32(
+      current.effectPrivileges.value.privilegeInfo.value.manager):
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes all proposed role-domain checks.
+    return hostSuccess[AccumulationDispatchError](response)
+  for index in [7, 9, 10]:
+    if uint64(cpu.registers[index]) > uint64(high(uint32)):
+      response.registers[7] = RegisterValue(high(uint64)-3) # WHO; no self sentinel or low-bit truncation exists here.
+      return hostSuccess[AccumulationDispatchError](response)
+  var roles = PrivilegeState(manager: ServiceIndex(uint32(uint64(cpu.registers[7]))),
+    delegator: ServiceIndex(uint32(uint64(cpu.registers[9]))), registrar: ServiceIndex(uint32(
+        uint64(cpu.registers[10]))),
+    assigners: newSeq[ServiceIndex](int(cores)), always: newSeq[AlwaysAccumulate](int(count)))
+  for i in 0..<roles.assigners.len:
+    roles.assigners[i] = ServiceIndex(uint32(privilegeNumber(assigners.value, i*4, 4))) # Complete E4 domain.
+  for i in 0..<roles.always.len:
+    roles.always[i] = AlwaysAccumulate(service: ServiceIndex(uint32(privilegeNumber(pairs.value,
+        i*12, 4))),
+      gas: PrivilegeGas(privilegeNumber(pairs.value, i*12+4,
+          8))) # Proven captured extents bound every field index.
+  let changed = recordAccumulationBless(context.effects, roles, context.privileges)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value # Both typed roles and serialized C(12) become one immutable successor.
+    response.registers[7] = RegisterValue(0) # OK, including handoff to another manager.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # No fabricated protocol resource code.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # No partial roles on failed Merklization.
+  of AccumulationEffectError.AmbiguousPrivileges:
+    return hostFailure(AccumulationDispatchError.AmbiguousPrivileges) # Preserve the conflicting-dictionary specification gate.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No inconsistent state/authority may publish.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -417,11 +505,13 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     writeResponse(context, cpu, memory) # Self-only storage changes retain private implication versions.
   of 6:
     infoResponse(context, cpu, memory) # Fixed account facts observe the current regular map.
+  of 15:
+    blessResponse(context, cpu, memory) # Manager-authorized immutable role and allowance replacement.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 15..17, 19..25:
+  of 1, 16..17, 19..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
@@ -462,8 +552,10 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
   let initialized = prepareAccumulationEffects(initial.value)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
-  var context = DispatchContext(parameters: parameters, fetch: captured.value, copyLimit: copyLimit,
-      effects: initialized.value, provisionLimits: provisionLimits)
+  var context = DispatchContext(parameters: parameters, privileges: contextConfig.privileges,
+      fetch: captured.value, copyLimit: copyLimit,
+
+effects: initialized.value, provisionLimits: provisionLimits)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
     steps, calls, cycles)
   case evaluated.error
