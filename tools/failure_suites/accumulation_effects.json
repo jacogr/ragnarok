@@ -132,6 +132,17 @@
         "origin": "storage"
       },
       "name": "accumulation-effect-storage"
+    },
+    {
+      "arguments": [
+        "account-info"
+      ],
+      "description": "Accumulation account info selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "account-info"
+      },
+      "name": "accumulation-effect-account-info"
     }
   ],
   "crypto_library": "crypto",

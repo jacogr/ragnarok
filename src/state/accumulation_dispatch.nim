@@ -342,6 +342,53 @@ proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid domains expose no successor.
   hostSuccess[AccumulationDispatchError](response)
 
+## Charge account info before lookup, then publish only the clipped atomic guest-memory write.
+proc infoResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  var response = chargedResponse(cpu, memory, 703, 0).value # Fixed cost always has representable debt.
+  if response.action == HostAction.OutOfGas:
+    return hostSuccess[AccumulationDispatchError](response) # No lookup or memory work before affordability.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let raw = uint64(cpu.registers[7])
+  var target = current.effectInfo.value.service
+  if raw != high(uint64):
+    if raw > uint64(high(uint32)):
+      response.registers[7] = RegisterValue(high(uint64)) # Full-width absent target cannot alias low service bits.
+      return hostSuccess[AccumulationDispatchError](response)
+    target = ServiceIndex(uint32(raw)) # Validate the complete domain before narrowing.
+  let encoded = current.effectAccountInfo(target, context.parameters)
+  case encoded.error
+  of AccumulationEffectError.None:
+    discard # The fixed complete record is owned by value, independently of the account map.
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)) # NONE has an empty output interval, valid at every pointer.
+    return hostSuccess[AccumulationDispatchError](response)
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # No truncated or saturated dependent fields.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid private owners expose no partial execution.
+  let first = min(uint64(cpu.registers[9]), uint64(AccumulationAccountInfoBytes))
+  let count = min(uint64(cpu.registers[10]), uint64(AccumulationAccountInfoBytes)-first)
+  if count > uint64(context.copyLimit):
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Policy bounds the selected bytes, not the fixed record size.
+  var slice = newSeq[byte](int(count)) # count<=96 proves native extent and every subsequent index.
+  let bytes = encoded.value
+  for i in 0..<slice.len:
+    slice[i] = bytes[int(first)+i] # Clip before addition; no full-width offset narrowing can wrap.
+  let written = writeBytes(memory, MemoryAddress(uint64(cpu.registers[8])), slice,
+      context.copyLimit)
+  case written.error
+  of MachineError.None:
+    response.memory = written.value # All effective pages were writable before any successor was published.
+    response.registers[7] = RegisterValue(AccumulationAccountInfoBytes)
+  of MachineError.Fault, MachineError.InvalidRange:
+    response.action = HostAction.Panic # Preserve r7 and all guest bytes on any inaccessible output byte.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local budget is never guest panic.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners cannot authorize a fabricated write.
+  hostSuccess[AccumulationDispatchError](response)
+
 ## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
@@ -368,11 +415,13 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     accountReadResponse(context, cpu, memory, true) # Storage keys use the distinct canonical raw-key namespace.
   of 5:
     writeResponse(context, cpu, memory) # Self-only storage changes retain private implication versions.
+  of 6:
+    infoResponse(context, cpu, memory) # Fixed account facts observe the current regular map.
   of 18, 26:
     effectResponse(context, cpu, memory, uint64(stopped.hostCall) == 18) # Exact accumulation-only IDs.
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
-  of 1, 6, 15..17, 19..25:
+  of 1, 15..17, 19..25:
     # These calls belong to accumulation's F but are not implemented by this adapter yet.
     hostFailure(AccumulationDispatchError.UnsupportedHostCall)
   else:
