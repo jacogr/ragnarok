@@ -137,7 +137,7 @@ class InventoryPreflight(unittest.TestCase):
             names = ('Makefile', '.github/workflows/extra.yaml', 'src/telemetry/new.nim',
                      'native/bridge.h', 'native/extra/src/lib.rs', 'native/extra/Cargo.lock',
                      'spec/extra-pins.json', 'tools/nested/helper.py', 'tools/nested/profile.json',
-                     'tools/new-requirements.txt', 'tests/support/helper.nim', 'tests/nested/oracle.py',
+                     'tools/new-requirements.txt', 'tools/ui_browser.mjs', 'tests/support/helper.nim', 'tests/nested/oracle.py',
                      'tests/unit/state/test_new.output', 'tests/fixtures/new.bin',
                      'tests/fixtures/new.LICENSE', 'src/ui/static/nested/asset.bin', 'vectors/new.json')
             ignored = ('build/ui/generated.js', 'build/result.json', 'vendor/dependency/helper.py', 'tools/__pycache__/cache.py',

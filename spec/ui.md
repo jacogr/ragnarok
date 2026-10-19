@@ -4,20 +4,24 @@ Append `--with-ui` to an existing `build/ragnarok server`, `client` or `mesh` co
 The independent HTTP listener serves assets embedded in the client binary at
 `http://127.0.0.1:8888/`; `--ui-port NUMBER` changes the port (decimal 1–65535).
 It requires no runtime asset directory, extraction or working-directory convention.
-The checked-in index remains a placeholder for the future UI.
+The embedded browser prototype is compiled from Nimony; see [the browser contract](ui-browser.md).
 
 For development, append `--dev-ui-dir /path/to/static` alongside `--with-ui`.
-This replaces the embedded asset source with files from that directory; edits are visible
-on the next request. Missing development files return 404 without falling back to the bundle.
+This replaces the embedded asset source with precompressed `.gz` files from that directory;
+rebuilt files are visible on the next request. Use `build/ui` after `make ui-assets`.
+Missing development files return 404 without falling back to the bundle.
 The old `--ui-dir` spelling is removed. The development flag alone never starts the listener.
 
-`make ui-assets` stages the static distribution from `src/ui/static/` into `build/ui/` and
-generates `build/ui_assets.nim`, containing immutable sorted URL paths and byte-exact asset constants.
+`make ui-assets` compiles `src/ui/client.nim` to JavaScript, combines it with the static
+assets in `src/ui/static/`, gzips each asset into `<filename>.<ext>.gz` under `build/ui/`
+and generates `build/ui_assets.nim`, containing immutable sorted URL paths and byte-exact asset constants.
 Make runs this step before production builds, native verification and source module checks.
-The generated source changes when asset paths or bytes change, so the compiler sees asset edits.
+Only gzip bytes are staged and embedded; original bytes are build-time inputs. Gzip metadata
+has no timestamp or filename, so identical inputs rebuild identically. The generated source
+changes when asset paths or bytes change, so the compiler sees asset edits.
 Generated outputs remain under ignored `build/`; `make clean` removes them. Asset sources are
-part of runtime verification provenance. A future frontend build can supply the distribution;
-no frontend framework or JavaScript dependency is introduced for the current placeholder.
+part of runtime verification provenance. The browser client has no frontend framework or
+JavaScript package dependency; Node/Playwright are used only for browser verification.
 
 `--with-ui` also enables the WebSocket RPC listener, default `ws://127.0.0.1:19800/`;
 `--rpc-port NUMBER` selects its port. `--with-rpc` enables RPC independently.
@@ -35,8 +39,15 @@ are rejected. Nonbrowser RPC clients may omit Origin. RPC remains WebSocket only
 The HTTP listener supports GET/HEAD, query strings, percent-encoded paths and `index.html`
 for directory targets ending in `/`. Common web assets have explicit MIME types. File responses have Content-Length,
 Connection: close and X-Content-Type-Options: nosniff.
-Missing files return 404, malformed requests/traversal return 400, and other methods return
-405. There is no directory listing, SPA fallback, write endpoint or request body support.
+Requests retain normal URLs: `/app.js` serves `app.js.gz` with the original JavaScript MIME
+type, `Content-Encoding: gzip`, compressed `Content-Length` and `Vary: Accept-Encoding`.
+HEAD returns the same metadata without a body. The server performs no compression or
+uncompressed fallback. Requests must advertise gzip acceptance; missing/empty Accept-Encoding,
+unsupported codings and explicit `gzip;q=0` exclusions return 406. Quality weights, wildcard
+acceptance and explicit overrides follow [HTTP content-coding negotiation](https://www.rfc-editor.org/rfc/rfc9110.html#section-12.5.3),
+with this service deliberately requiring opt-in even when the header is absent.
+Missing gzip files return 404 even if the original file exists; malformed requests/traversal
+return 400, and other methods return 405. There is no directory listing, SPA fallback, write endpoint or request body support.
 Development paths open relative to the pinned root descriptor without following symlinks;
 only regular files can be served. Select a directory containing only public development UI assets.
 Release requests look up immutable embedded paths and send their bytes in bounded chunks.
@@ -53,7 +64,7 @@ RPC E2E workload cover paths, symlink rejection, HTTP metadata/errors, multi-chu
 UI-implied RPC, browser Origin controls, embedded serving from unrelated working directories,
 and live development edits without embedded fallback. Build-tool tests cover deterministic output,
 binary/empty assets, stale-file removal and invalid source rejection. The UI ownership rejection fixture guards copying.
-Future work: replace the placeholder with UI assets that call the existing RPC methods.
+The browser prototype calls `ragnarok_clientInfo`; its scope and evidence are recorded separately.
 
 Initial disk-server verification on 2026-10-19 (macOS arm64, pinned Nimony 0.6.3): production `make`,
 UI/RPC native suites, UI composite ownership rejection, 68 affected Python harness tests,
@@ -73,3 +84,13 @@ and `build/tests/ui-e2e/results.json`. Canonical Linux CI remains separate.
 
 Static asset relocation to `src/ui/static/`: the generated embedded manifest is byte-identical;
 14 affected tooling/provenance/RPC-harness tests and inventory passed locally.
+
+Gzip-only revision verified locally on 2026-10-19 (macOS arm64, same pinned compiler):
+production build, native UI suite, 51 affected Python harness tests, deterministic gzip/prefix-path
+generator tests, formatting and inventory passed. `make check-ui` executed the page from gzip
+HTML/CSS/JavaScript with correct encoding, MIME, compressed length and Vary headers. The live
+development workload passed a multi-chunk incompressible gzip file, GET/HEAD metadata, rejected
+encoding cases, missing-sidecar isolation despite an original file, symlink rejection, concurrent
+RPC/QUIC progress and clean shutdown. No runtime compression library or identity asset is added.
+Evidence: `build/ci/ui-gzip-*.log`, `build/tests/ui-browser/peer/browser/results.json` and
+`build/tests/ui-gzip-dev/results.json`. Canonical Linux CI remains separate.
