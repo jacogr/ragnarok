@@ -136,3 +136,12 @@ native entry are Interrupted. Copy/duplication and live-address relocation are
 checked independently. Startup allocates host identity before starting the thread.
 Tests cover real publication/recovery, detached producer lifetime, ticket isolation,
 backpressure, restart and 1,000 host buffer/ticket retirement cycles.
+
+## Staged cancellation and retained observation
+
+Only matching Staged requests may cancel before dispatch; cancellation retires sole
+bytes on their host and retains Done capacity until acknowledgement/join. Running,
+Executing and Done publication outcomes never become Cancelled. Peek observes only
+a matching Done receipt without collecting or retrying it. Foreign, stale and
+restart tickets expose no outcome. Tests cross actual publication, cancellation
+shutdown, repeated observation and 1,000 staged buffer/ticket retirement cycles.

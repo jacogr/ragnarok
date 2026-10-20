@@ -39,7 +39,7 @@ type
     lock: Lock
     changed: Cond
     thread: RawThread
-    started, stopping: bool
+    started, stopping, cancelled: bool
     phase: ApplicationCheckpointWorkerPhase
     next: uint64
     identity: nil WorkerIdentity
@@ -117,6 +117,7 @@ proc start*(worker: var ApplicationCheckpointWorker,
   initLock(worker.lock)
   initCond(worker.changed)
   worker.stopping = false
+  worker.cancelled = false
   worker.phase = ApplicationCheckpointWorkerPhase.Idle
   worker.next = 0
   worker.limit = ByteLimit(0)
@@ -156,6 +157,7 @@ proc stage*(worker: var ApplicationCheckpointWorker, prepared: var PreparedAppli
       status: ApplicationCheckpointWorkerError.Exhausted) # No request generation wraps to revive a stale ticket.
   inc worker.next
   worker.prepared = move(prepared)
+  worker.cancelled = false
   worker.limit = limit
   worker.outcome = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
   worker.phase = ApplicationCheckpointWorkerPhase.Staged
@@ -175,6 +177,29 @@ proc begin*(worker: var ApplicationCheckpointWorker, ticket: ApplicationCheckpoi
   worker.phase = ApplicationCheckpointWorkerPhase.Running
   signal(worker.changed)
   true
+proc cancel*(worker: var ApplicationCheckpointWorker, ticket: ApplicationCheckpointTicket): bool =
+  ## Only a matching staged-only request may become Cancelled; dispatched or completed publication remains observable.
+  if not worker.started: return false
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if not worker.matches(ticket) or worker.phase != ApplicationCheckpointWorkerPhase.Staged:
+    return false # Foreign/stale/running/executing/done authority cannot hide a possible publication.
+  worker.prepared = default(PreparedApplicationCheckpoint) # No native activation has borrowed these host-owned bytes.
+  worker.cancelled = true
+  worker.phase = ApplicationCheckpointWorkerPhase.Done # Acknowledgement still owns the single capacity slot.
+  true
+proc peek*(worker: var ApplicationCheckpointWorker,
+    ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
+  ## Inspect only a matching Done outcome without releasing capacity or publishing a retry.
+  if not worker.started: return default(ApplicationCheckpointCompletion)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if not worker.matches(ticket) or worker.phase != ApplicationCheckpointWorkerPhase.Done:
+    return default(ApplicationCheckpointCompletion) # Wrong/not-ready tickets reveal no other request's outcome.
+  if worker.cancelled:
+    return ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Cancelled)
+  ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Completed,
+      outcome: worker.outcome)
 proc collect*(worker: var ApplicationCheckpointWorker,
     ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
   ## Collect only Done after all worker-local aliases retire, then release the sole buffer on its host allocator thread.
@@ -183,8 +208,12 @@ proc collect*(worker: var ApplicationCheckpointWorker,
   defer: release(worker.lock)
   if not worker.matches(ticket) or worker.phase != ApplicationCheckpointWorkerPhase.Done:
     return default(ApplicationCheckpointCompletion) # Not-ready or foreign requests retain the slot and its owner.
-  result = ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Completed,
-      outcome: worker.outcome) # Actual returned success or refusal remains distinct from cancellation.
+  if worker.cancelled:
+    result = ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Cancelled) # Unstarted cancellation has no publication receipt.
+  else:
+    result = ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Completed,
+        outcome: worker.outcome) # Actual returned success or refusal remains distinct from cancellation.
+  worker.cancelled = false
   worker.outcome = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
   worker.prepared = default(PreparedApplicationCheckpoint)
   worker.phase = ApplicationCheckpointWorkerPhase.Idle
@@ -200,8 +229,12 @@ proc close*(worker: var ApplicationCheckpointWorker): ApplicationCheckpointShutd
   release(worker.lock)
   worker.thread.join()
   if worker.phase == ApplicationCheckpointWorkerPhase.Done:
-    result.finished = ApplicationCheckpointCompletion(
-        status: ApplicationCheckpointCompletionKind.Completed,
+    if worker.cancelled:
+      result.finished = ApplicationCheckpointCompletion(
+          status: ApplicationCheckpointCompletionKind.Cancelled) # Preserve an explicit staged cancellation after joined retirement.
+    else:
+      result.finished = ApplicationCheckpointCompletion(
+          status: ApplicationCheckpointCompletionKind.Completed,
 
 outcome: worker.outcome) # Joined shutdown preserves an actual returned publication receipt.
   elif worker.phase == ApplicationCheckpointWorkerPhase.Executing:
@@ -217,6 +250,7 @@ outcome: worker.outcome) # Joined shutdown preserves an actual returned publicat
   worker.prepared = default(PreparedApplicationCheckpoint)
   worker.phase = ApplicationCheckpointWorkerPhase.Idle
   worker.started = false
+  worker.cancelled = false
   worker.identity = nil
   result.retirement = worker.writer.close() # Keep a native close error separate from the possibly committed operation.
   deinitCond(worker.changed)
