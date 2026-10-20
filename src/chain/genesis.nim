@@ -3,7 +3,8 @@
 
 ## Immutable complete-map block snapshots, including the configured genesis compatibility adapter.
 ## Exposes GenesisResult, guarded snapshot accessors, read-only lookup, serviceCount/serviceAt
-## and captureBlockSnapshot/captureGenesis. The supplied map is trusted as complete;
+## and captureBlockSnapshot/captureGenesis. Capture accepts raw entries or retains an exact StateStoreSnapshot;
+## stateSnapshot returns that immutable version with its inherited policy. The supplied map is trusted as complete;
 ## structural validation does not
 ## establish consensus or validate every chapter. Optional C(4) supplies a cached RPC ticket limit;
 ## C(8) also supplies erasure geometry.
@@ -79,6 +80,10 @@ func sameParameters*(left, right: BlockSnapshot): bool {.requires: left.ready an
       return false # Every encoded fetch field participates, not only cores and epoch length.
   true
 
+func stateSnapshot*(value: BlockSnapshot): StateStoreSnapshot {.requires: value.ready.} =
+  ## Retain the exact complete-map version for state application without rebuilding or loosening its policy.
+  value.state
+
 func header*(value: BlockSnapshot): OwnedHeader {.requires: value.ready.} =
   ## Retain the validated immutable sealed-header owner, independent of the genesis handle lifetime.
   value.sealedHeader
@@ -142,13 +147,11 @@ proc keyAfter*(value: BlockSnapshot, key: StateKey): StateKeyIndex {.requires: v
       high = middle # Preserve the first possible strictly greater key.
   StateKeyIndex(low)
 
-## Capture a bounded sorted key index only after the complete map has validated.
-proc captureKeys(entries: openArray[StateEntry]): seq[StateKey] =
-  result = newSeq[StateKey](entries.len)
-  for index in 0..<entries.len:
-    # Copy fixed keys; no value bytes or caller-owned arrays are retained here.
-    result[index] = entries[index].key
-  result.sort(compareStateKey) # Store validation has already rejected duplicates.
+## Copy the store's already sorted fixed keys without copying values or sorting a second time.
+proc captureKeys(state: StateStoreSnapshot): seq[StateKey] =
+  result = newSeq[StateKey](state.commitment.entries)
+  for index in 0..<result.len:
+    result[index] = state.keyAt(StateEntryIndex(index)).value # Commitment and owner establish the exact extent.
 
 ## Sort numeric IDs rather than the little-endian interleaved serialized account keys.
 proc compareService(left, right: ServiceIndex): int =
@@ -158,18 +161,21 @@ proc compareService(left, right: ServiceIndex): int =
 
 ## Discover only exact C(255, service) keys with complete supported metadata in a validated bounded map.
 ## Borrow input solely during capture; the returned scalar sequence owns no caller aliases.
-proc discoverServices(entries: openArray[StateEntry]): seq[ServiceIndex] =
+proc discoverServices(state: StateStoreSnapshot): seq[ServiceIndex] =
   result = @[]
-  for entry in entries:
+  for index in 0..<state.commitment.entries:
+    let entryKey = state.keyAt(StateEntryIndex(index)).value
     # Hash-derived storage keys cannot be classified as accounts from one prefix byte alone.
-    let key = array[31, byte](entry.key)
-    if key[0] != 255 or entry.value.len != ServiceMetadataBytes: continue
+    let key = array[31, byte](entryKey)
+    if key[0] != 255: continue # Only account-prefixed keys can contribute a service ID.
     var service = 0'u32
     for i in 0..<4: # C(255, service) interleaves four little-endian ID octets at odd offsets.
       service = service or (uint32(key[1 + i * 2]) shl (8 * i))
     if key != array[31, byte](chapterServiceKey(StateChapter(255), ServiceIndex(service))):
       continue # Every fixed zero octet must match the maintained key constructor too.
-    let metadata = decodeServiceMetadata(entry.value, ByteLimit(ServiceMetadataBytes))
+    let found = state.lookup(entryKey).value
+    if found.byteLength != ServiceMetadataBytes: continue # Bound metadata before copying any bytes.
+    let metadata = decodeServiceMetadata(found.bytes, ByteLimit(ServiceMetadataBytes))
     if metadata.error != ServiceMetadataError.None:
       continue # Best-effort discovery excludes malformed or unsupported records.
     result.add(ServiceIndex(service))
@@ -223,26 +229,36 @@ proc captureTicketAttempts(state: StateStoreSnapshot, cores: CoreCount,
   # The 4096-slot ceiling proves multiplication and ceiling-division addition cannot overflow.
   RpcTicketAttempts((2 * slots + pending - 1) div pending)
 
-proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry],
+proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
     parameters: Parameters): BlockSnapshotResult =
   ## Capture a structurally checked header and supplied posterior map, using its active roster and time.
-  ## Input bytes are borrowed only during this call; no signature or whole-state validation is claimed.
+  ## Retain the exact immutable map without Merklization; borrowed header bytes become an owned codec value.
+  ## This checks framing and local bounds, not signatures, execution, completeness or finality.
   let cores = parameters.get(coreCount)
-  if cores > 341 or wire.len == 0 or wire.len > 256 * 1024 or entries.len > 16384:
+  if cores > 341 or wire.len == 0 or wire.len > 256 * 1024:
     return invalidGenesis() # Bound profile, header and map before owned construction.
+  if forkStateStore(state).error != StateStoreError.None:
+    return invalidGenesis() # A default owner cannot stand for a complete empty map.
+  if state.commitment.entries > 16384 or state.commitment.nodes > 1048576:
+    return invalidGenesis() # Retained stores may have a larger policy than chain capture permits.
+  var remaining = 4 * 1024 * 1024
+  for index in 0..<state.commitment.entries:
+    let key = state.keyAt(StateEntryIndex(index)).value
+    let size = state.lookup(key).value.byteLength
+    if size > remaining:
+      return invalidGenesis() # Subtraction bounds both each value and the aggregate before any copy.
+    remaining -= size
   var roster: seq[byte] = @[]
   var time: seq[byte] = @[]
   # Required context is obtained from actual serialized state, never inferred from core count.
-  for entry in entries:
-    let key = array[31, byte](entry.key)
-    if key == array[31, byte](chapterKey(StateChapter(8))):
-      # Apply the roster decoder's byte ceiling before copying caller-owned storage.
-      if entry.value.len > 1024 * 1024: return invalidGenesis()
-      roster = entry.value # Active author population.
-    elif key == array[31, byte](chapterKey(StateChapter(11))):
-      # The complete time chapter is one E4 slot; reject other extents before copying.
-      if entry.value.len != 4: return invalidGenesis()
-      time = entry.value # State/header slot consistency.
+  let active = state.lookup(chapterKey(StateChapter(8)))
+  if active.error != StateStoreError.None or active.value.byteLength > 1024 * 1024:
+    return invalidGenesis() # Missing or oversized required rosters never reach a copy.
+  roster = active.value.bytes
+  let clockBytes = state.lookup(chapterKey(StateChapter(11)))
+  if clockBytes.error != StateStoreError.None or clockBytes.value.byteLength != 4:
+    return invalidGenesis() # Required time is exactly one E4 slot.
+  time = clockBytes.value.bytes
   let validators = decodeStateValidators(roster, ValidatorStateConfig(cores: CoreCount(cores),
     validators: ElementLimit(1023), maxBytes: ByteLimit(1024 * 1024)))
   if validators.error != StateComponentError.None: return invalidGenesis() # Missing or malformed C(8).
@@ -262,18 +278,11 @@ proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry]
   if info.value.consumed != wire.len or uint32(info.value.unsigned.slot) != uint32(
       clock.value.value):
     return invalidGenesis() # Header and state describe one exact configured genesis slot.
-  let retained = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(
-    items: ElementLimit(16384), perValue: ByteLimit(4 * 1024 * 1024),
-    totalValueBytes: ByteLimit(4 * 1024 * 1024), nodes: TrieNodeLimit(1048576)),
-    writes: ElementLimit(0), writeValueBytes: ByteLimit(0)))
-  if retained.error != StateStoreError.None: return invalidGenesis() # Includes duplicate decoded keys.
-  let saved = snapshot(retained.value)
-  if saved.error != StateStoreError.None: return invalidGenesis() # Never publish a default store.
   let hashed = blake2b256(wire)
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
-  GenesisResult(status: GenesisError.None, completed: BlockSnapshot(ready: true, state: saved.value,
+  GenesisResult(status: GenesisError.None, completed: BlockSnapshot(ready: true, state: state,
     pieceLength: capturePieceLength(ValidatorCount(count.value)),
-    ticketLimit: captureTicketAttempts(saved.value, CoreCount(cores), EpochSlots(parameters.get(
+    ticketLimit: captureTicketAttempts(state, CoreCount(cores), EpochSlots(parameters.get(
         epochPeriod))),
     sealedHeader: decoded.value.owner, activePopulation: ValidatorCount(count.value),
     identity: BlockHash(array[32, byte](hashed.value)),
@@ -281,7 +290,20 @@ proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry]
     priorCommitment: StateRoot(array[32, byte](info.value.unsigned.priorState)),
     configuration: parameters, epochLength: EpochSlots(parameters.get(
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
-            keys: captureKeys(entries), services: discoverServices(entries)))
+            keys: captureKeys(state), services: discoverServices(state)))
+
+proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry],
+    parameters: Parameters): BlockSnapshotResult =
+  ## Copy and commit a borrowed complete map once, then share structural capture with applied-state owners.
+  if parameters.get(coreCount) > 341 or wire.len == 0 or wire.len > 256 * 1024 or entries.len > 16384:
+    return invalidGenesis() # Bound input before Merklization and retained allocation.
+  let retained = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(
+    items: ElementLimit(16384), perValue: ByteLimit(4 * 1024 * 1024),
+    totalValueBytes: ByteLimit(4 * 1024 * 1024), nodes: TrieNodeLimit(1048576)),
+    writes: ElementLimit(0), writeValueBytes: ByteLimit(0)))
+  if retained.error != StateStoreError.None:
+    return invalidGenesis() # Includes duplicate keys, local limits and primitive refusal.
+  captureBlockSnapshot(wire, retained.value.snapshot.value, parameters)
 
 proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
     parameters: Parameters): GenesisResult =
