@@ -108,7 +108,7 @@ import os
 import sys
 name = Path(__file__).name
 with Path('calls').open('a') as output:
-    output.write(name+(' --group failures' if '--group' in sys.argv else '')+'\\n')
+    output.write(name+(' --group failures' if '--group' in sys.argv else ' --rpc-test' if '--rpc-test' in sys.argv else '')+'\\n')
 # A malformed inventory must stop Make before it invokes provisioning or native verification.
 if name == 'check_inventory.py' and os.environ.get('FAIL_INVENTORY'):
     sys.exit(7)
@@ -145,6 +145,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             self.assertEqual(calls.count('setup_nimony.py'), 1)
             self.assertEqual(calls.count('check_inventory.py'), 1)
             self.assertEqual(calls.count('build_ui.py'), 1)
+            self.assertEqual(calls.count('build_ui.py --rpc-test'), 1)
             self.assertNotIn('setup_minifier.py', calls)
             self.assertEqual(calls.count('build_info.py'), 1)
             self.assertLess(calls.index('setup_nimony.py'), calls.index('build_info.py'))

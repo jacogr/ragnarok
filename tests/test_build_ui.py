@@ -6,6 +6,7 @@
 Exposes unittest discovery cases for the Python build tool; HTTP behavior remains in native/E2E tests.
 """
 import ast
+import argparse
 import gzip
 from pathlib import Path
 import tempfile
@@ -137,7 +138,7 @@ class UiMinification(unittest.TestCase):
                 self.assertEqual(build_ui.minify_enabled(environment), enabled)
         with self.assertRaisesRegex(ValueError, 'UI_MINIFY'):
             build_ui.minify_enabled({'UI_MINIFY': 'yes'})
-        with patch.dict(build_ui.os.environ, {}, clear=True), patch.object(
+        with patch.object(build_ui.argparse.ArgumentParser, 'parse_args', return_value=argparse.Namespace(rpc_test=False)), patch.dict(build_ui.os.environ, {}, clear=True), patch.object(
                 build_ui, 'compile_client', return_value=b'js'), patch.object(
                 build_ui, 'build', return_value=3) as bundle, patch.object(
                 build_ui, 'minifier_tool', side_effect=AssertionError('development needs no minifier')):

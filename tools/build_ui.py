@@ -8,6 +8,7 @@ Exposes build for deterministic asset staging/embedding. Make invokes main befor
 the pinned Nimony JS backend compiles src/ui/client.nim alongside src/ui/static/ assets.
 """
 from pathlib import Path
+import argparse
 import gzip
 import io
 import os
@@ -124,16 +125,17 @@ def build(source, stage, manifest, generated=None, minifier=None):
 
 
 # The application is compiled by Nimony; bootstrap Nim is used only to build jorogumo itself.
-def compile_client():
+def compile_client(source=None, folder=None):
     """Compile the browser-only UI and retain diagnostics; backend identity separates compiler caches."""
     compiler, _ = native_tools()
     backend, identity = web_tools()
-    folder = ROOT/'build/ui-client'
+    source = ROOT/'src/ui/client.nim' if source is None else Path(source)
+    folder = ROOT/'build/ui-client' if folder is None else Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     output = folder/'app.js'
     cache = cache_directory(compiler, folder, 'browser-'+identity[:16])
     command = [str(compiler), 'j', '--browser', '-d:release', '--mm:arc', '-d:ragnarokBrowser',
-               '--nimcache:'+str(cache), '--out:'+str(output), str(ROOT/'src/ui/client.nim')]
+               '--nimcache:'+str(cache), '--out:'+str(output), str(source)]
     environment = {**os.environ, 'PATH': str(backend.parent)+os.pathsep+os.environ['PATH']}
     with (folder/'compile.log').open('w') as log:
         subprocess.run(command, cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, check=True)
@@ -143,7 +145,18 @@ def compile_client():
 # Make owns tool preparation; this step emits the complete distribution and embedded manifest.
 def main():
     """Build the repository-owned static distribution and its compile-time manifest."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--rpc-test', action='store_true', help='Compile the isolated browser RPC regression fixture')
+    arguments = parser.parse_args()
     minifier = minifier_tool() if minify_enabled(os.environ) else None
+    if arguments.rpc_test:
+        # Browser-only fixtures use the same compiler/backend/minification as production without entering the bundle.
+        folder = ROOT/'build/tests/ui-rpc'
+        data = compile_client(ROOT/'tests/browser/rpc_client.nim', folder)
+        if minifier is not None: data = minified(minifier, 'rpc-test.js', data)
+        write_changed(folder/'rpc-test.js', data)
+        print('Browser RPC regression fixture: '+str(folder/'rpc-test.js'))
+        return
     count = build(ROOT/'src/ui/static', ROOT/'build/ui', ROOT/'build/ui_assets.nim',
                   {'app.js': compile_client()}, minifier=minifier)
     print(f'Embedded UI manifest: {count} assets; minified={minifier is not None}; staged in build/ui/')
