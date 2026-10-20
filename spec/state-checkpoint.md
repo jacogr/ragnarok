@@ -154,3 +154,21 @@ without being embedded in a fabricated JAM state mapping.
 Native checks cover binary/empty exact writes, preflight and real rename rollback,
 all path/ceiling boundaries and 1,000 synchronized ARC cycles. Existing full-state
 publication and real kernel short-write controls remain required affected consumers.
+
+## Shared bounded byte reads
+
+`readBoundedFile(path, ByteLimit)` shares the same fixed-chunk ceiling-plus-one
+reader without interpreting a checkpoint or generation record. Private
+`BoundedFileResult` alternatives expose bytes only after true EOF and descriptor
+retirement. Raw empty files are successful; higher-level formats keep their own
+nonempty/header/consumption rules. State loading maps raw lifecycle failures
+exactly, then invokes the unchanged strict full-map decoder. No mutable file
+storage or descriptor escapes; successful outputs survive later replacement.
+The reader opens with nonblocking/close-on-exec flags, checks the opened inode
+is a regular file, and refuses FIFOs/devices/directories before reading. File
+size metadata never controls allocation. Regular-file storage latency remains
+synchronous; this does not claim a wall-clock I/O deadline.
+
+Raw-file tests cross chunk boundaries, check binary/empty/exact/short/max limits,
+invalid/missing/directory paths, output mutation/retention and 1,000 read/refusal
+ARC cycles. The complete-state file suite remains the affected integration control.

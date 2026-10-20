@@ -4,7 +4,6 @@
 ## Bounded startup-only full-checkpoint reads close every file before returning owned state.
 ## Filesystem operations are synchronous and never belong in networking callbacks.
 
-import std/syncio
 import ../lib/atomic_file
 import ./[checkpoint, store]
 import ../codec/[bounded, state_trie]
@@ -34,39 +33,23 @@ func checkpointError*[T](outcome: CheckpointFileResult[T]): CheckpointError {.re
   ## Preserve an actual inner decoder refusal; other alternatives have no such diagnostic.
   outcome.reason
 
-proc readBounded(path: string, limit: ByteLimit): CheckpointFileResult[seq[byte]] =
-  ## Read at most the ceiling plus one detection byte, without trusting file size or allocating it upfront.
-  if path.len == 0 or path.len > high(int) - 16:
-    return CheckpointFileResult[seq[byte]](status: CheckpointFileError.InvalidPath)
-  for character in path:
-    if character == char(0):
-      return CheckpointFileResult[seq[byte]](status: CheckpointFileError.InvalidPath) # C paths must not silently truncate the caller's identity.
-  var file: File = nil
-  if not open(file, path, fmRead):
-    return CheckpointFileResult[seq[byte]](status: CheckpointFileError.IoFailure)
-  defer: close(file) # Every success, decode refusal, read failure and size refusal retires this exact descriptor.
-  let maximum = min(uint64(limit), uint64(high(int)))
-  var bytes: seq[byte] = @[]
-  var buffer = default(array[4096, byte])
-  while true:
-    let remaining = maximum - uint64(bytes.len)
-    let requested = int(min(remaining, 4095'u64)) + 1
-    let count = readBuffer(file, addr buffer[0], requested)
-    if count < 0 or file.failed:
-      return CheckpointFileResult[seq[byte]](status: CheckpointFileError.IoFailure) # EOF is accepted only without the native error flag.
-    if count == 0: break # Only actual EOF authorizes complete decoding.
-    if uint64(count) > remaining:
-      return CheckpointFileResult[seq[byte]](status: CheckpointFileError.LimitExceeded) # Detect concurrent growth without retaining a byte beyond the ceiling.
-    for index in 0..<count:
-      bytes.add(buffer[index]) # remaining and the fixed request cap prove host extent and buffer indexing.
-  CheckpointFileResult[seq[byte]](status: CheckpointFileError.None, completed: bytes)
+func fileError(reason: AtomicFileError): CheckpointFileError =
+  ## Preserve raw I/O lifecycle outcomes without granting a checkpoint payload or format authority.
+  case reason
+  of AtomicFileError.Uninitialized: CheckpointFileError.Uninitialized # Defaults remain uninitialized.
+  of AtomicFileError.None: CheckpointFileError.None # Only actual completed I/O is successful.
+  of AtomicFileError.InvalidPath: CheckpointFileError.InvalidPath # Preserve destination identity refusal.
+  of AtomicFileError.IoFailure: CheckpointFileError.IoFailure # Preserve actual filesystem failures.
+  of AtomicFileError.LimitExceeded: CheckpointFileError.LimitExceeded # No refused prefix becomes a payload.
+  of AtomicFileError.PublishedUnsynced: CheckpointFileError.PublishedUnsynced # Visibility never implies confirmed durability.
 
 proc loadFullCheckpoint*(path: string, limits: StateStoreLimits,
     limit: ByteLimit): CheckpointFileResult[StateStore] =
   ## Return state only after bounded EOF, strict canonical decoding and complete-root verification.
-  let read = readBounded(path, limit)
-  if read.error != CheckpointFileError.None:
-    return CheckpointFileResult[StateStore](status: read.error) # All raw-reader failures are payload-free path/I/O/size alternatives.
+  let read = readBoundedFile(path, limit)
+  if read.error != AtomicFileError.None:
+    return CheckpointFileResult[StateStore](status: fileError(
+        read.error)) # All raw-reader failures are payload-free path/I/O/size alternatives.
   let decoded = decodeFullCheckpoint(read.value, limits, limit)
   if decoded.error != CheckpointError.None:
     return CheckpointFileResult[StateStore](status: CheckpointFileError.InvalidCheckpoint,
@@ -88,21 +71,10 @@ proc saveFullCheckpoint*(path: string, snapshot: StateStoreSnapshot,
     return CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.InvalidCheckpoint,
       reason: encoded.error) # A refusal occurs before temporary-file or directory ownership starts.
   let published = replaceAtomicFile(path, encoded.value, limit)
-  case published
-  of AtomicFileError.None:
-    CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.None,
-        completed: snapshot) # Only completed durable publication exposes the original snapshot.
-  of AtomicFileError.Uninitialized:
-    CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.Uninitialized) # Preserve a default raw boundary refusal.
-  of AtomicFileError.InvalidPath:
-    CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.InvalidPath) # Keep destination preflight distinct from I/O.
-  of AtomicFileError.IoFailure:
-    CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.IoFailure) # Retain actual filesystem refusal.
-  of AtomicFileError.LimitExceeded:
-    CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.LimitExceeded) # A short budget contains no successful prefix.
-  of AtomicFileError.PublishedUnsynced:
-    CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.PublishedUnsynced) # Visible bytes do not authorize a durability success.
-  # Every raw outcome preserves its exact lifecycle meaning; only completed publication exposes the snapshot.
+  if published != AtomicFileError.None:
+    return CheckpointFileResult[StateStoreSnapshot](status: fileError(
+        published)) # Every raw refusal preserves its exact lifecycle meaning.
+  CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.None, completed: snapshot)
 
 proc loadFullCheckpoint*(path: string, expected: StateRoot, limits: StateStoreLimits,
     limit: ByteLimit): CheckpointFileResult[StateStore] =

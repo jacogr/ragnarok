@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Synchronous bounded atomic byte publication preserves exact caller bytes and explicit durability outcomes.
+## Bounded whole-file reads and atomic byte publication preserve exact bytes and explicit durability outcomes.
 ## Callers serialize writers, keep the directory namespace stable and retain immutable input through the call.
 
 import std/posix/posix
@@ -10,8 +10,60 @@ import ../codec/bounded
 type AtomicFileError* {.pure.} = enum ## Success is explicit; visible-but-unsynced publication never becomes None.
   Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, PublishedUnsynced
 
-proc openDirectory(path: cstring, flags: cint): cint {.importc: "open", cdecl, header: "<fcntl.h>".}
-  ## The SDK supplies open's actual variadic ABI; directory reads require only its two mandatory arguments.
+type BoundedFileResult* = object ## Only actual bounded EOF exposes owned bytes; default/refused alternatives have no prefix.
+  case status: AtomicFileError
+  of None:
+    completed: seq[byte]
+  else:
+    discard # File read failures contain no partial buffer or open descriptor.
+
+func error*(outcome: BoundedFileResult): AtomicFileError =
+  ## Observe only completion/refusal, without exposing unvalidated bytes.
+  outcome.status
+func value*(outcome: BoundedFileResult): seq[byte] {.inline,
+    requires: outcome.status == AtomicFileError.None.} =
+  ## Caller-owned bytes are extractable only after complete EOF and descriptor retirement.
+  outcome.completed
+
+proc openDescriptor(path: cstring, flags: cint): cint {.importc: "open", cdecl,
+    header: "<fcntl.h>".}
+  ## The SDK supplies open's actual variadic ABI; non-creation opens use its two mandatory arguments.
+
+proc readBoundedFile*(path: string, limit: ByteLimit): BoundedFileResult =
+  ## Open nonblocking, require a regular persistence file and read at most the ceiling plus one detection byte.
+  if path.len == 0 or path.len > high(int) - 16:
+    return BoundedFileResult(status: AtomicFileError.InvalidPath)
+  for character in path:
+    if character == char(0):
+      return BoundedFileResult(status: AtomicFileError.InvalidPath) # No C path truncation may change the selected identity.
+  var nativePath = path
+  var descriptor = openDescriptor(nativePath.toCString(), O_RDONLY or O_CLOEXEC or O_NONBLOCK)
+  if descriptor < 0:
+    return BoundedFileResult(status: AtomicFileError.IoFailure)
+  defer:
+    if descriptor >= 0: discard posix.close(descriptor) # Every read/kind/ceiling refusal still retires this exact descriptor.
+  var metadata = default(Stat)
+  if posix.fstat(descriptor, metadata) != 0 or not S_ISREG(metadata.st_mode):
+    return BoundedFileResult(status: AtomicFileError.IoFailure) # Directory/FIFO/device input cannot become an empty successful record.
+  let maximum = min(uint64(limit), uint64(high(int)))
+  var bytes: seq[byte] = @[]
+  var buffer = default(array[4096, byte])
+  while true:
+    let remaining = maximum - uint64(bytes.len)
+    let requested = int(min(remaining, 4095'u64)) + 1
+    let count = posix.read(descriptor, addr buffer[0], requested)
+    if count < 0:
+      return BoundedFileResult(status: AtomicFileError.IoFailure) # A native error cannot be interpreted as EOF or a successful prefix.
+    if count == 0: break # Only actual regular-file EOF authorizes complete bytes.
+    if uint64(count) > remaining:
+      return BoundedFileResult(status: AtomicFileError.LimitExceeded) # Detect growth without retaining an octet beyond the ceiling.
+    for index in 0..<count:
+      bytes.add(buffer[index]) # The fixed request and remaining capacity prove indexing and host extent.
+  let closing = descriptor
+  descriptor = -1 # Never retry a possibly reused descriptor after an interrupted close.
+  if posix.close(closing) != 0:
+    return BoundedFileResult(status: AtomicFileError.IoFailure) # A reported retirement failure must not authorize returned bytes.
+  BoundedFileResult(status: AtomicFileError.None, completed: bytes)
 
 proc temporaryFile(path: cstring): cint {.importc: "mkstemp", cdecl, header: "<stdlib.h>".}
   ## Standard libc atomically creates a unique private 0600 file and fills the six-byte suffix.
@@ -41,7 +93,7 @@ proc replaceAtomicFile*(path: string, bytes: openArray[byte],
     if character == char(0): return AtomicFileError.InvalidPath # A C path must preserve the caller's exact destination identity.
   if uint64(bytes.len) > uint64(limit): return AtomicFileError.LimitExceeded # No filesystem resource exists before complete payload admission.
   var directoryPath = parent(path)
-  let directory = openDirectory(directoryPath.toCString(), O_RDONLY)
+  let directory = openDescriptor(directoryPath.toCString(), O_RDONLY)
   if directory < 0:
     return AtomicFileError.IoFailure # The previous target remains untouched when its parent cannot open.
   defer: discard posix.close(directory) # The exact parent descriptor remains alive until after rename synchronization.

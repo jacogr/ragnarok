@@ -1,0 +1,39 @@
+{
+  "build_name": "state-bounded-file-read-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Bounded file read extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-bounded-file-read-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Bounded file read extraction missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "state-bounded-file-read-missing"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Bounded file read extraction refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "state-bounded-file-read-refused"
+    }
+  ],
+  "source": "tests/native/state_bounded_file_read_results.nim"
+}
