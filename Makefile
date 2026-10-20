@@ -42,8 +42,9 @@ web-toolchain: toolchain
 	$(PYTHON) tools/setup_web.py
 
 # Browser automation is test-only; reuse installed Chrome or provision pinned Chromium.
-browser-tools:
+browser-tools: web-toolchain $(if $(filter 1,$(UI_MINIFY)),ui-minifier)
 	$(PYTHON) tools/setup_browser.py
+	$(PYTHON) tools/build_ui.py --rpc-test
 
 # Focused real-browser verification reuses the owning RPC E2E workload and peer build.
 check-ui: build browser-tools

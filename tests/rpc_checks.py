@@ -236,7 +236,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     environment = {**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': str(root/'build/browser/browsers')}
                     subprocess.run(['node', str(root/'tools/ui_browser.mjs'),
                                     f'http://127.0.0.1:{ui_port}/', f'ws://127.0.0.1:{rpc_port}/',
-                                    str(browser_folder)], cwd=root, env=environment, stdout=log_file,
+                                    str(browser_folder), *(['--subscriptions'] if expected_genesis is not None else [])], cwd=root, env=environment, stdout=log_file,
                                    stderr=subprocess.STDOUT, check=True, timeout=60)
             with connect(rpc_port, f'http://127.0.0.1:{ui_port}' if ui else None) as connection:
                 request = dict(jsonrpc='2.0', method='ragnarok_clientInfo', id='client')

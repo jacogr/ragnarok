@@ -19,7 +19,9 @@ def main():
     folder = ROOT/'build/tests/ui-browser'
     folder.mkdir(parents=True, exist_ok=True)
     certificates = fixtures(folder/'certificates')
-    result = run(ROOT/'build/ragnarok', certificates, folder/'peer', ui=True, browser=True)
+    chain = folder/'chain.json'
+    chain.write_bytes((ROOT/'tests/fixtures/rpc-genesis.json').read_bytes())
+    result = run(ROOT/'build/ragnarok', certificates, folder/'peer', chain=chain, ui=True, browser=True)
     (folder/'results.json').write_text(json.dumps(result, indent=2)+'\n')
     assert result['passed']
     print('PASS Nimony browser prototype with production ragnarok_clientInfo')

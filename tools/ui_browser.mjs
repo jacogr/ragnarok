@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {readFile, mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
+import {checkRpcClient, checkLiveRpcClient} from './ui_rpc_checks.mjs';
 
 const [uiUrl, rpcUrl, folder] = process.argv.slice(2);
 assert(uiUrl && rpcUrl && folder, 'Expected UI URL, RPC URL and evidence directory');
@@ -50,6 +51,9 @@ try {
   await responseCount(1);
   await page.locator('#refresh').click();
   await responseCount(2);
+  // Two synchronous clicks issue overlapping calls before either WebSocket reply can arrive.
+  await page.evaluate(() => { document.getElementById('refresh').click(); document.getElementById('refresh').click(); });
+  await responseCount(4);
   await page.screenshot({path: path.join(folder, 'desktop.png'), fullPage: true});
   await page.setViewportSize({width: 390, height: 844});
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -60,15 +64,15 @@ try {
   assert.equal(await page.locator('#status').textContent(), 'Disconnected');
   assert(await page.locator('#refresh').isDisabled());
   await page.locator('#connect').click();
-  await responseCount(3);
+  await responseCount(5);
   await page.locator('#endpoint').fill('http://127.0.0.1/');
   await page.locator('#connect').click();
   assert.equal(await page.locator('#status').textContent(), 'Invalid WebSocket URL');
   assert(await page.locator('#refresh').isDisabled());
   await page.locator('#endpoint').fill(rpcUrl);
   await page.locator('#connect').click();
-  await responseCount(4);
-  assert.equal(requests.length, 4);
+  await responseCount(6);
+  assert.equal(requests.length, 6);
   assert(requests.every(request => request.method === 'ragnarok_clientInfo' && request.jsonrpc === '2.0' && request.params.length === 0));
   for (const asset of ['/', '/style.css', '/app.js']) {
     const observed = assets.find(response => response.path === asset);
@@ -77,6 +81,8 @@ try {
     assert.equal(observed.headers.vary, 'Accept-Encoding');
   }
   assert.deepEqual(errors, []);
+  await checkRpcClient(browser, root, folder);
+  if (process.argv.includes('--subscriptions')) await checkLiveRpcClient(browser, root, folder, uiUrl, rpcUrl);
   await writeFile(path.join(folder, 'results.json'), JSON.stringify({passed: true, browser: await browser.version(), requests, errors, assets}, null, 2));
   console.log('PASS browser DOM, clientInfo, refresh, reconnect, invalid URL and responsive layout');
 } catch (error) {
