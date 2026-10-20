@@ -28,6 +28,8 @@ in the corresponding `spec/<feature>.md`, not this index or an unrelated module'
 
 ## Shared boundaries
 
+Shared utilities live in `src/lib/`, including the [JSON writer](../src/lib/json_writer.nim).
+
 Protocol logic remains native Nim. Private acyclic ARC owners retain immutable snapshots;
 borrowed operations have explicit lifetimes, and failed/default results expose no success payload.
 Full and light modes retain separate storage contracts; see [state design](design/state.md).

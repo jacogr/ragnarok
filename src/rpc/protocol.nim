@@ -12,7 +12,7 @@
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
-import ../json_writer
+import ../lib/json_writer
 import ../version
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]

@@ -9,7 +9,7 @@ import std/[assertions, syncio, envvars, strutils]
 import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/rpc/protocol
-import ../../../src/json_writer
+import ../../../src/lib/json_writer
 import ../../../src/codec/[header, bounded, report_owned, state_layout, state_trie]
 import ../../../src/state/[store, accumulation_state, accumulation_chain, accumulation_completion,
   accumulation_finalization, accumulation_times, accumulation_statistics, accumulation_validators,
