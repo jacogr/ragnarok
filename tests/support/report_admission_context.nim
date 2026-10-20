@@ -140,10 +140,10 @@ type Context* = object
 
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
     withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
-        byte] = @[], ready: ReadyRow = @[]): Context =
+        byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[]): Context =
   ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
-  ## Optional ready rows are committed in the genuine parent before block admission.
+  ## Optional ready rows enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()
@@ -247,7 +247,11 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   let written = encodeGuarantees(guarantees, cfg.packages.availability.guarantee, encoded)
   assert written.error == GuaranteeError.None
   encoded.setLen(written.value)
-  var body = @[0'u8, 0]
+  var body = @[0'u8]
+  if preimageWire.len == 0:
+    body.add(0'u8) # Preserve the original empty preimage extrinsic by default.
+  else:
+    for octet in preimageWire: body.add(octet) # Explicit authored preimages enter the real signed extrinsic commitment.
   for octet in encoded: body.add(octet) # Copy complete guarantee encoding.
   if withAvailable:
     var votes = newSeq[Assurance](5)

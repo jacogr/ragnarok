@@ -54,7 +54,8 @@ result/privacy/nominal guards and the registered native suite; run inventory, Py
 pinned formatting. Reuse unchanged finalizer, collector and PVM evidence.
 
 [Account timestamps](pvm-accumulation-timestamps.md) now update existing active accounts privately.
-C(13) coordination with other activity, queue/history updates,
+[Service activity](pvm-service-activity.md) now coordinates refinement/provision fields with these deltas.
+Complete C(13) assembly, queue/history updates,
 transfer/account/privilege integration and whole-block publication remain open. M1 framing is
 complete; full state serialization and accumulation/block parity remain open.
 

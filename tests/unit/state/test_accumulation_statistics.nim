@@ -5,14 +5,15 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_accounts, accumulation_statistics,
+import ../../../src/state/[service_activity, accumulation_accounts, accumulation_statistics,
   accumulation_finalization, accumulation_outputs,
   accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
   accumulation_execution,
   accumulation_inputs, accumulation_service, accumulation_dispatch, accumulation_skip, store]
 import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
-  accumulation_continuation_execution_context, accumulation_account_timestamps, arc_evidence]
+  accumulation_continuation_execution_context, accumulation_account_timestamps,
+  service_activity_context, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -73,6 +74,7 @@ proc main() {.raises.} =
   var wire = newSeq[byte](raw.len)
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
+  checkActivityProjection(base)
   checkAccountProjection() # Pure malformed/missing/current account cases cannot fabricate a block certificate.
   let source = finished(reentryFixture(base))
   failHash(3)
@@ -165,6 +167,16 @@ proc main() {.raises.} =
   checkAccountTimestamps(allowance, [42'u32, 99'u32])
   checkAccountTimestamps(omitted, [42'u32])
   checkAccountTimestamps(noActivity, [])
+  discard checkServiceActivity(plan)
+  discard checkServiceActivity(skipped)
+  discard checkServiceActivity(noActivity)
+  var detachedActivity = default(PreparedServiceActivity)
+  block service_activity_callers:
+    let local = finished(reentryFixture(base, incomingReports = 1, preimageWire = activityPreimages()))
+    let stats = prepareAccumulationStatistics(local, policy()).value
+    detachedActivity = checkServiceActivity(stats, incoming = true)
+  assert detachedActivity.serviceActivityInfo.value.services == 3
+  assert detachedActivity.serviceActivitySource.value.statisticsInfo.value.reports == 4
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))
