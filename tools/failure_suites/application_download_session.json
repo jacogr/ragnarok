@@ -1,0 +1,67 @@
+{
+  "build_name": "application-download-session-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Download session extraction guard default",
+      "diagnostic": "outcome.successful",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-download-session-default"
+    },
+    {
+      "arguments": [
+        "schedule"
+      ],
+      "description": "Download session extraction guard schedule",
+      "diagnostic": "reason.status == ScheduleFailure",
+      "identity": {
+        "reason": "schedule"
+      },
+      "name": "application-download-session-schedule"
+    },
+    {
+      "arguments": [
+        "download"
+      ],
+      "description": "Download session extraction guard download",
+      "diagnostic": "reason.status == DownloadFailure",
+      "identity": {
+        "reason": "download"
+      },
+      "name": "application-download-session-download"
+    },
+    {
+      "arguments": [
+        "stream"
+      ],
+      "description": "Download session extraction guard stream",
+      "diagnostic": "reason.status == StreamFailure",
+      "identity": {
+        "reason": "stream"
+      },
+      "name": "application-download-session-stream"
+    },
+    {
+      "arguments": [
+        "success-reason"
+      ],
+      "description": "Successful session admission refuses failure extraction",
+      "diagnostic": "not outcome.successful",
+      "identity": {
+        "reason": "success-reason"
+      },
+      "name": "application-download-session-success-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_download_session_results.nim"
+}
