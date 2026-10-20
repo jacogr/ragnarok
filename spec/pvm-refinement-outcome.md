@@ -38,7 +38,7 @@ metadata/envelope/program bootstrap gates remain local. Work-package I's Oversiz
 BadExports and zero-segment replacement belong to report construction, not this
 normalizer. No report publication, input/state-freshness authentication, light-state
 support or state composition change is implied. Inner-machine lifecycle hosts 9/14
-now run with explicit local policies; hosts 10–13 remain gated. See
+now run with explicit local policies; host 12 maps [inner pages](pvm-inner-pages.md); hosts 10/11/13 remain gated. See
 [the lifecycle contract](pvm-inner-lifecycle.md).
 
 Completion: real bound guests for halt/readability/empty/panic/page-fault/host and

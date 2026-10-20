@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 refinement hosts 9/14 own immutable invocation-local inner-machine lifecycle.
-## Exposes bounded empty-map capture, copied inspection and atomic response/successor transitions.
+## GP 0.8.0 refinement hosts 9/12/14 own immutable invocation-local inner-machine lifecycle and pages.
+## Exposes bounded empty-map capture, copied inspection and atomic lifecycle/page response-successor transitions.
 
 import ./[machine, program, step]
 
@@ -175,3 +175,81 @@ proc expungeInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: R
       bytes: data.bytes-removed, limits: data.limits)) # Only accounted retained bytes are subtracted.
     transition.response.registers[7] = RegisterValue(uint64(found.value.pc))
   InnerMachineResult[InnerMachineTransition](status: InnerMachineError.None, completed: transition)
+
+proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory): InnerMachineResult[InnerMachineTransition] =
+  ## Apply Omega_Z with exact representable gas, ordered protocol checks and an atomic immutable RAM successor.
+  template fail(reason: InnerMachineError) =
+    return InnerMachineResult[InnerMachineTransition](status: reason)
+  let data = machines.data
+  if data == nil: fail(InnerMachineError.InvalidContext)
+  if memory.pageImage(PageIndex(0)).error != MachineError.None: fail(
+      InnerMachineError.InvalidMemory)
+  let count = uint64(registers[9])
+  let mode = uint64(registers[10])
+  var base = 80'u64
+  var linear = 0'u64
+  case mode
+  of 0:
+    base = 212
+    linear = 118 # Free/clear is priced even if no pages were previously present.
+  of 1, 2:
+    base = 275
+    linear = 121 # Both zero-filled allocation modes share one price.
+  of 3, 4:
+    base = 130
+    linear = 29 # Permission-only updates retain all existing byte values.
+  else:
+    discard # Invalid modes pay the constant invalid price, regardless of the count.
+  if linear != 0 and count > (high(uint64)-base) div linear:
+    fail(InnerMachineError.LimitExceeded) # The mathematical gas cost cannot be represented; never wrap before WHO/HUH.
+  let cost = base+count*linear
+  let credit = uint64(gas)
+  if credit < cost and cost-credit > 0x8000000000000000'u64:
+    fail(InnerMachineError.LimitExceeded) # The existing terminal gas representation cannot carry a larger negative magnitude.
+  var transition = InnerMachineTransition(machines: machines,
+    response: HostResponse(action: HostAction.Continue, gas: MachineGas(0),
+      gasDeficit: GasDeficit(0), registers: registers, memory: memory))
+  template done() =
+    return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.None,
+        completed: transition)
+  if credit < cost:
+    transition.response.action = HostAction.OutOfGas
+    transition.response.gasDeficit = GasDeficit(cost-credit)
+    done() # Underfunding precedes every guest identity, geometry or permission test.
+  transition.response.gas = MachineGas(credit-cost)
+  let id = uint64(registers[7])
+  let found = machines.innerMachine(InnerMachineId(id))
+  if found.error == InnerMachineError.Missing:
+    transition.response.registers[7] = RegisterValue(high(uint64)-3)
+    done() # WHO precedes invalid mode, inaccessible pages and malformed page bounds.
+  let first = uint64(registers[8])
+  if mode > 4 or first < 16 or first >= 0x100000 or count >= 0x100000-first:
+    transition.response.registers[7] = RegisterValue(high(uint64)-8)
+    done() # Strict p+c<2^20 is proven without forming an untrusted sum.
+  let past = first+count # Prior subtraction check proved this natural sum strictly below 2^20.
+  let source = found.value
+  if mode > 2:
+    for ordinal in first..<past:
+      if source.memory.pageImage(PageIndex(uint32(ordinal))).value.access ==
+          PageAccess.Inaccessible:
+        transition.response.registers[7] = RegisterValue(high(uint64)-8)
+        done() # Inspect the whole interval before any successor; no prefix remapping on HUH.
+  let access = if mode == 0: PageAccess.Inaccessible
+    elif mode in [1'u64, 3]: PageAccess.ReadOnly else: PageAccess.ReadWrite
+  let changed = source.memory.withPageRange(PageIndex(uint32(first)), PageIndex(uint32(past)),
+    access, if mode < 3: PageContent.Zeroed else: PageContent.Preserved)
+  if changed.error == MachineError.LimitExceeded: fail(InnerMachineError.LimitExceeded)
+  if changed.error != MachineError.None: fail(InnerMachineError.InvalidContext)
+  var slots = newSeqOfCap[InnerData](data.slots.len)
+  for slot in data.slots:
+    if slot.id == id:
+      var info = slot.info
+      info.memory = changed.value # Replace RAM alone; code, PC and block-charged flag retain original provenance.
+      slots.add(InnerData(info: info, size: slot.size, id: slot.id))
+    else:
+      slots.add(slot) # Other machines remain shared immutable owners.
+  transition.machines = InnerMachines(data: MapData(slots: slots, bytes: data.bytes,
+      limits: data.limits))
+  transition.response.registers[7] = RegisterValue(0)
+  done()

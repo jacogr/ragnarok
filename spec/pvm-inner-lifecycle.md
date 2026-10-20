@@ -41,7 +41,8 @@ outcome regression guards and five exact compiler privacy/nominal rejections pas
 Verification inventory, nineteen inventory/provenance Python tests and pinned
 formatting pass. These are local macOS results; exact-head Linux CI is independent.
 
-Hosts 10–13 (peek/poke/pages/invoke) remain typed gates. No nested execution,
+Host 12 now follows [the page-management contract](pvm-inner-pages.md).
+Hosts 10/11/13 (peek/poke/invoke) remain typed gates. No nested execution,
 report construction, state composition or publication changes. Next: inner memory
 transfer/page management, then invoke and work-package report integration.
 M1 framing is complete; full state serialization and complete refinement remain open.

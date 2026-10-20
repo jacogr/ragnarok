@@ -160,19 +160,21 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       return hostSuccess[RefinementDispatchError](selected.response)
     hostFailure(if exported.error == RefinementExportError.LimitExceeded: RefinementDispatchError.LimitExceeded
       else: RefinementDispatchError.InvalidContext) # No partially appended output on local failure.
-  of 9, 14:
+  of 9, 12, 14:
     let changed = if uint64(stopped.hostCall) == 9:
       createInnerMachine(context.machines, cpu.gas, cpu.registers, memory)
+    elif uint64(stopped.hostCall) == 12:
+      innerPagesResponse(context.machines, cpu.gas, cpu.registers, memory)
     else:
       expungeInnerMachine(context.machines, cpu.gas, cpu.registers,
-          memory) # Both lifecycle calls use one invocation-local map.
+          memory) # Lifecycle and page calls use one invocation-local map.
     if changed.error == InnerMachineError.None:
       context.machines = changed.value.machines
       return hostSuccess[RefinementDispatchError](
           changed.value.response) # Response and immutable map move together.
     hostFailure(if changed.error == InnerMachineError.LimitExceeded: RefinementDispatchError.LimitExceeded
       else: RefinementDispatchError.InvalidContext) # A local capture refusal cannot become protocol HUH/FULL.
-  of 10..13:
+  of 10, 11, 13:
     hostFailure(RefinementDispatchError.UnsupportedHostCall) # Known inner-machine hosts are not protocol-unknown identifiers.
   else:
     hostSuccess[RefinementDispatchError](unknownHostResponse(cpu.gas, cpu.registers,

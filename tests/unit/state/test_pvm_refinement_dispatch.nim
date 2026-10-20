@@ -153,7 +153,7 @@ for selector in [1'u64, 2, 4, 6, 13]:
     else: @[51'u8, 52, 0, 0]
   assert bytes == expected, "captured fetch selection and immutable input bytes"
 # Known unsupported hosts retain a typed gate, while all unrelated IDs use F's WHAT branch, even on OOG.
-for id in 10'u8..13'u8:
+for id in [10'u8, 11, 13]:
   assert run(prepare(cpu([@[10'u8, id], @[50'u8, 0]], registers(), 0)).value).error ==
       RefinementDispatchError.UnsupportedHostCall
 for id in [3'u8, 6, 15, 27, 28, 127, 255]:

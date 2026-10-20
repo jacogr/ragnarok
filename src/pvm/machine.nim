@@ -6,7 +6,7 @@
 ##
 ## Exposes immutable Memory/Machine snapshots, page capture/replacement, checked scalar
 ## load/store, bounded host readBytes/writeBytes, programOf/memoryOf child access, copied state
-## updates, writable-page range counting/mapping and terminal-state capture.
+## updates, writable-page range counting/mapping, atomic zero/remap/free ranges and terminal-state capture.
 
 import ./program
 
@@ -25,6 +25,8 @@ type
   RegisterFile* = array[13, RegisterValue] ## Every machine snapshot contains exactly thirteen copied register values.
   PageAccess* {.pure.} = enum ## Writable pages are also readable; inaccessible pages may retain bytes for later remapping.
     Inaccessible, ReadOnly, ReadWrite
+  PageContent* {.pure.} = enum ## Trusted page-range updates explicitly choose retained bytes or all-zero replacement.
+    Preserved, Zeroed
   PageImage* = object ## Caller-owned page input is copied and never retained by reference.
     index*: PageIndex
     access*: PageAccess
@@ -225,6 +227,43 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
     inc ordinal
   for i in stop..<data.pages.len:
     pages.add(data.pages[i]) # The exclusive endpoint and entire suffix remain untouched.
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+
+proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
+    content: PageContent): MachineResult[Memory] =
+  ## Atomically clear or remap [first,past), retaining all outside bytes and the original page budget.
+  ## This trusted environment operation imposes no host geometry/gas/previous-access rules itself.
+  let data = memory.data
+  if data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if uint32(first) > uint32(past) or uint32(past) > 0x100000'u32:
+    return MachineResult[Memory](status: MachineError.InvalidRange) # Validate both ordinals before subtraction or lookup.
+  if uint32(first) == uint32(past):
+    return MachineResult[Memory](status: MachineError.None,
+        completed: memory) # Empty intervals preserve the exact owner.
+  let start = lowerBound(data, uint32(first))
+  let stop = lowerBound(data, uint32(past))
+  let dropped = access == PageAccess.Inaccessible and content == PageContent.Zeroed
+  let interval = if dropped: 0'u64 else: uint64(uint32(past)-uint32(first))
+  let total = uint64(data.pages.len-(stop-start))+interval
+  if total > uint64(uint32(data.limit)) or total > uint64(high(int) div sizeof(PageData)):
+    return MachineResult[Memory](status: MachineError.LimitExceeded) # All prospective pages count before any private allocation.
+  var pages = newSeqOfCap[PageData](int(total))
+  for index in 0..<start: pages.add(data.pages[index]) # Preserve immutable outside prefix owners.
+  if not dropped:
+    var ordinal = uint32(first)
+    var at = start
+    while ordinal < uint32(past):
+      var image = PageImage(index: PageIndex(ordinal), access: access,
+        bytes: default(array[4096, byte]))
+      if at < stop and uint32(data.pages[at].image.index) == ordinal:
+        if content == PageContent.Preserved:
+          image.bytes = data.pages[at].image.bytes # Read-only/inaccessible retained bytes survive trusted remapping.
+        inc at # Each present old page is consumed exactly once in the ordered interval.
+      pages.add(PageData(image: image))
+      inc ordinal # The validated exclusive endpoint bounds every ordinal below 2^20.
+  for index in stop..<data.pages.len: pages.add(data.pages[
+      index]) # Dropped zero/inaccessible pages become implicit sparse zeros.
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
