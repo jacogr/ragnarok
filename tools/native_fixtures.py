@@ -381,6 +381,24 @@ def unit_block_download_fixture(folder, certificates):
     return {'default': (None, inputs, files)}, {'files': {str(path): digest for path, digest in files}}
 
 
+# Pin both independent server identities for the bounded download catalog and dispatcher.
+@PROVIDERS.fixture(group='runtime', order=25, inputs=('certificates',))
+def unit_download_peers_fixture(folder, certificates):
+    """Return the signed-report and two-identity manifest without suite-name dispatch."""
+    report = ROOT/'tests/fixtures/state-report.bin'
+    inputs = {'RAGNAROK_STATE_REPORT': report,
+              'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
+              'RAGNAROK_TEST_CERT_B': certificates/'b.cert.pem',
+              'RAGNAROK_TEST_KEY': certificates/'a.key.pem',
+              'RAGNAROK_TEST_KEY_B': certificates/'b.key.pem',
+              'RAGNAROK_TEST_PEER_A': certificates/'a.pub',
+              'RAGNAROK_TEST_PEER_B': certificates/'b.pub'}
+    files = tuple((path, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'
+                   if path == report else hashlib.sha256(path.read_bytes()).hexdigest())
+                  for path in inputs.values())
+    return {'default': (None, inputs, files)}, {'files': {str(path): digest for path, digest in files}}
+
+
 # Every CE child retains its original/reload byte identity, including later siblings.
 @PROVIDERS.fixture(group='runtime', order=30, inputs=('integration',))
 def unit_integration_fixture(folder, integration):

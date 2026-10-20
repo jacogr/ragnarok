@@ -429,7 +429,7 @@ class NativeUnitHarness(unittest.TestCase):
     def test_runtime_fixture_required(self):
         with temporary_folder() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
-                for name in ('application_block_download', 'application_download_session', 'pvm_step', 'pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
+                for name in ('application_block_download', 'application_download_peers', 'application_download_session', 'pvm_step', 'pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
                              'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state',
                              'safrole_authentication', 'safrole_auth_state', 'safrole_transition',
                              'extrinsic_commitment', 'block_admission', 'disputes_transition',
@@ -441,7 +441,7 @@ class NativeUnitHarness(unittest.TestCase):
     # A changed later CE child must fail even when every earlier input and all paths remain valid.
     def test_runtime_fixture_integrity(self):
         with temporary_folder() as folder:
-            for name in ('a.cert.pem', 'a.key.pem'):
+            for name in ('a.cert.pem', 'a.key.pem', 'a.pub', 'b.cert.pem', 'b.key.pem', 'b.pub'):
                 # Certificate contents are irrelevant for manifest-only tooling checks.
                 (folder/name).write_bytes(b'fixture')
             original, reload = folder/'original', folder/'reload'
