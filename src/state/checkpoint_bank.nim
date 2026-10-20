@@ -15,7 +15,7 @@ type
     prefix: string
   CheckpointBankError* {.pure.} = enum ## Only complete head-selected and trusted restoration exposes state.
     Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, Busy, PublishedUnsynced,
-      InvalidHead, InvalidCheckpoint, RootMismatch, AlreadyInitialized, StagedUnsynced
+      InvalidHead, InvalidCheckpoint, RootMismatch, AlreadyInitialized, StagedUnsynced, StaleHead
   CheckpointBankResult*[T] = object ## Format reasons occupy only their matching failed alternatives.
     case status: CheckpointBankError
     of None:
@@ -149,4 +149,51 @@ proc initialize*(bank: var CheckpointBank, snapshot: StateStoreSnapshot,
   if committed != AtomicFileError.None:
     return CheckpointBankResult[CheckpointHead](status: bankError(
         committed)) # PublishedUnsynced remains distinct from staging uncertainty and successful adoption.
+  CheckpointBankResult[CheckpointHead](status: CheckpointBankError.None, completed: head)
+
+proc advance*(bank: var CheckpointBank, expected: CheckpointHead,
+    snapshot: StateStoreSnapshot, limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
+  ## Compare the exact expected selector, anchor its durability, then stage the inactive slot and publish its successor.
+  if not bank.opened: return default(CheckpointBankResult[
+      CheckpointHead]) # An inactive namespace authorizes no operation.
+  if not expected.ready:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
+        headReason: CheckpointHeadError.Uninitialized)
+  let encoded = encodeFullCheckpoint(snapshot, limit)
+  if encoded.error != CheckpointError.None:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidCheckpoint,
+        stateReason: encoded.error) # Preflight the complete candidate before any write.
+  let selected = bank.selectedHead()
+  if selected.error == CheckpointBankError.InvalidHead:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
+        headReason: selected.headError)
+  if selected.error != CheckpointBankError.None:
+    return CheckpointBankResult[CheckpointHead](status: selected.error) # No missing/corrupt head can authorize implicit bootstrap.
+  let current = selected.value
+  if uint64(current.generation) != uint64(expected.generation) or current.slot != expected.slot or
+      array[32, byte](current.root) != array[32, byte](expected.root):
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.StaleHead) # Every selector field participates in the local compare-and-publish contract.
+  let successor = nextCheckpointHead(current, snapshot.commitment.root)
+  if successor.error != CheckpointHeadError.None:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
+        headReason: successor.error) # Exhaustion cannot wrap or overwrite an inactive slot.
+  let head = successor.value
+  let metadata = encodeCheckpointHead(head, ByteLimit(CheckpointHeadBytes))
+  if metadata.error != CheckpointHeadError.None:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
+        headReason: metadata.error)
+  let anchored = bank.selector.synchronize()
+  if anchored != AtomicFileError.None:
+    return CheckpointBankResult[CheckpointHead](status: bankError(
+        anchored)) # An older durable head must not reference data about to be overwritten after startup/uncertain publication.
+  let staged = replaceAtomicFile(bank.slotPath(head.slot), encoded.value, limit)
+  if staged == AtomicFileError.PublishedUnsynced:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.StagedUnsynced) # The old selector remains selected; uncertain inactive data is not a committed head.
+  if staged != AtomicFileError.None:
+    return CheckpointBankResult[CheckpointHead](status: bankError(
+        staged)) # Pre-selector failure preserves the selected generation.
+  let committed = bank.selector.replace(metadata.value, ByteLimit(CheckpointHeadBytes))
+  if committed != AtomicFileError.None:
+    return CheckpointBankResult[CheckpointHead](status: bankError(
+        committed)) # A visible-but-unsynced selector has no successful adoption payload.
   CheckpointBankResult[CheckpointHead](status: CheckpointBankError.None, completed: head)

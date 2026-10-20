@@ -261,3 +261,25 @@ Native tests include default/closed/invalid inputs, actual slot rename failure,
 unchanged existing head/data on reinitialization, malformed/directory heads and
 1,000 synced bootstrap/refusal/restoration ARC cycles. Power-loss and uncertain
 sync behavior need separate evidence.
+
+## Expected-head two-slot advancement
+
+`advance(expectedHead, completeSnapshot, slotByteLimit)` compares all current
+selector fields (generation, slot and complete root) with the explicit caller token.
+A mismatch is `StaleHead`; an absent selector never bootstraps implicitly. This is
+a local compare-and-publish token, not proof of a valid chain transition. The caller
+retains responsibility for candidate authority and canonical adoption.
+
+After candidate/header preflight and checked generation advancement, the writer
+synchronizes the currently visible selector and parent before overwriting the
+inactive slot. This barrier also covers startup and a prior visible-but-unsynced
+head. It then durably publishes the inactive complete checkpoint and only then
+atomically publishes the new selector. Slot uncertainty returns `StagedUnsynced`
+without changing the selector; head uncertainty returns `PublishedUnsynced` with
+no successful successor payload. Every later advance rechecks and resynchronizes
+the actual visible selection. The owner caches neither a head nor a canonical map.
+
+Tests verify both slot alternations, exact prior-file preservation, every stale
+field, default/closed/invalid/ceiling/exhaustion refusals before writes, real
+inactive-slot rename rollback and 1,000 advance/stale-refusal/restore ARC cycles.
+Selector short-write rollback and uncertainty require separate native witnesses.
