@@ -46,10 +46,12 @@ The [startup contract](../../spec/application-download-startup.md) records the c
 configuration schema and remaining production boundaries.
 
 `app/preparation_worker.nim` provides one reusable native execution thread and one outstanding
-input lease. Plain ARC requires every alias of the captured chain/input graph to remain untouched
-until collection or joined shutdown. It returns the existing opaque finalized certificate for host
-adoption. Concurrent Services/RPC dispatcher integration still requires ownership isolation; see
-the [exclusive worker contract](../../spec/application-preparation-worker.md).
+input lease. Services manages that lease by pausing RPC before submission and guarding canonical
+access until collection or joined shutdown. UI and unrelated QUIC work remain available; RPC
+sockets and queues resume afterward. Existing external ARC aliases must remain untouched throughout
+the lease. The worker returns the existing opaque finalized certificate for explicit host adoption.
+The [managed lease contract](../../spec/application-preparation-lease.md) records this exclusion
+boundary; connecting it to the download dispatcher remains integration work.
 
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate

@@ -23,8 +23,11 @@ type
     offset: int
     session: RpcSession # Per-connection IDs and bounded notifications, released on disconnect.
     deadline, messageDeadline: int64
-  Server* = object
+  RpcChainLease* = ref object ## Opaque host-only identity authorizing one chain pause; never shared with a worker.
+    marker: uint8
+  Server* = object ## Non-copyable listener; an exclusive chain pause retains sockets without exposing request contexts.
     opened: bool
+    lease: nil RpcChainLease
     fd: cint
     connections: array[MaxConnections, Connection]
     started: int64
@@ -85,8 +88,14 @@ else:
 
 # Composite owner is explicitly non-copyable: copying slots would duplicate native descriptor ownership.
 proc `=copy`*(destination: var Server, source: Server) {.error: "RPC Server owns socket descriptors".}
+proc `=dup`*(source: Server): Server {.error.}
+  ## Native listener and suspension ownership cannot be duplicated.
+proc requireChainReleased(server: Server) {.requires: server.lease == nil.} =
+  ## Retiring shared canonical aliases during worker execution is a host lifecycle defect.
+  discard
 proc `=destroy`*(server: Server) =
-  ## ARC destruction closes every live descriptor, including partial startup and exception paths.
+  ## ARC destruction closes descriptors only after every exclusive chain lease has ended.
+  requireChainReleased(server)
   if server.opened:
     # Default instances never close stdin.
     discard posix.close(server.fd)
@@ -98,6 +107,23 @@ proc `=destroy`*(server: Server) =
   `=destroy`(server.connections)
   `=destroy`(server.role)
   `=destroy`(server.chain) # The retained state map is an ARC owner too.
+  `=destroy`(server.lease)
+
+func chainPaused*(server: Server): bool =
+  ## Scalar host-only observation does not copy a canonical snapshot.
+  server.lease != nil
+
+proc pauseChain*(server: var Server): nil RpcChainLease =
+  ## Freeze all RPC canonical access between ticks; an existing lease grants no second token.
+  if server.lease != nil: return nil # Nested callers cannot recover another owner's resume authority.
+  server.lease = RpcChainLease(marker: 1)
+  server.lease
+
+proc resumeChain*(server: var Server, lease: nil RpcChainLease): bool =
+  ## Resume only the exact retained host token after worker collection or join has ended all ARC access.
+  if lease == nil or server.lease != lease: return false # Foreign/default/stale authority is inert.
+  server.lease = nil
+  true
 
 # Retire one slot exactly once and release queued data; close is not retried after EINTR.
 proc close(slot: var Connection) =
@@ -109,7 +135,7 @@ proc close(slot: var Connection) =
   slot.messageDeadline = 0
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
 
-proc close*(server: var Server) =
+proc close*(server: var Server) {.requires: server.lease == nil.} =
   ## Explicit shutdown is idempotent and leaves ARC with no live native handles.
   for slot in mitems(server.connections):
     # Release accepted sockets before listener.
@@ -134,8 +160,8 @@ proc start*(server: var Server, port: uint16, role: string,
     parameters = unavailableParameters(), genesis = unavailableGenesis(),
         uiPort: uint16 = 0): bool =
   ## Bind loopback only; port zero disables RPC. Startup failure is reported to the peer CLI.
-  if server.opened:
-    # A second start cannot leak or replace a live listener.
+  if server.opened or server.lease != nil:
+    # A second or paused start cannot leak or replace a live listener.
     return false
   if port == 0:
     # Disabled by default, with no allocation or clock work.
@@ -183,7 +209,7 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
   ## current view and forward advanceView's reason. Success replaces the chain and queues subscription updates,
   ## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
   ## This is not a thread-safe import/validation API.
-  if not server.opened:
+  if not server.opened or server.lease != nil:
     return ViewAdvanceError.Uninitialized # Shutdown cannot be bypassed by publishing another snapshot.
   let update = server.chain.advanceView(child)
   if update.error != ViewAdvanceError.None:
@@ -196,7 +222,7 @@ proc publishAccumulation*(server: var Server, state: var StateStore,
     source: PreparedFinalAccumulation, limits: AccumulationCompositionLimits): RpcAccumulationResult =
   ## Adopt state and this server's history together on the dispatcher thread, then queue accepted best-head events.
   ## Refusal preserves state, history, pending replies and subscription queues. Overflow after success only disconnects its consumer.
-  if not server.opened:
+  if not server.opened or server.lease != nil:
     return RpcAccumulationResult(status: RpcAccumulationError.Unavailable) # Closed/disabled listeners authorize no state or source work.
   let adopted = applyAccumulationChain(state, server.chain, source, limits)
   if adopted.error != AccumulationChainError.None:
@@ -209,7 +235,7 @@ proc publishAccumulation*(server: var Server, state: var StateStore, view: var C
     source: PreparedFinalAccumulation, limits: AccumulationCompositionLimits): RpcAccumulationResult =
   ## Join an application-owned state/history pair only while RPC retains the same entire selected view.
   ## Publish all three handles before queue work; refusal preserves histories, finality and pending events.
-  if not server.opened:
+  if not server.opened or server.lease != nil:
     return RpcAccumulationResult(status: RpcAccumulationError.Unavailable) # An unavailable listener never triggers a silent fallback.
   if not sameChainView(server.chain, view):
     return RpcAccumulationResult(status: RpcAccumulationError.StaleView) # Match history, exact map owners, profiles and finality before hashing.
@@ -225,7 +251,7 @@ proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
   ## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.
   ## Requires a known retained chain block; failures leave the view intact. No finality proof is verified.
   ## A new finalized head emits only finalized subscription events; repeats are silent and best is unchanged.
-  if not server.opened:
+  if not server.opened or server.lease != nil:
     return ViewFinalizeError.Uninitialized # Closed listeners cannot receive state publications.
   let update = server.chain.finalizeView(hash)
   if update.error != ViewFinalizeError.None:
@@ -336,7 +362,7 @@ proc process(slot: var Connection, info: ClientInfo, now: int64, uiPort: uint16 
 
 proc tick*(server: var Server, peers: uint32) =
   ## One accept, one bounded read, one frame and one write per slot per turn; called by the existing peer loop.
-  if not server.opened:
+  if not server.opened or server.lease != nil:
     # Default peer operation does no additional syscall or clock work.
     return
   let now = getMonoTime().ticks div 1_000_000
