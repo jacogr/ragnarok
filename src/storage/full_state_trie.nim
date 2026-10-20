@@ -6,6 +6,7 @@
 ## Exposes complete revisions, retained lookup values, explicit limits and guarded results.
 
 import std/[algorithm, assertions]
+import ./node_records
 import ../codec/[state_trie, state_layout, bounded]
 
 type
@@ -291,3 +292,80 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
   assert data != nil # A successful construction owns an initialized revision.
   TrieResult[FullStateTrie](status: TrieError.None,
     completed: FullStateTrie(data: RevisionData(root: data.root, limits: limits)))
+
+proc omitted(node, base: nil TrieNode): bool =
+  ## Equal complete commitments reuse an existing physical subtree; leaves may move after collapse.
+  if node == nil: return true # Empty children need no physical record.
+  if base == nil: return false # A nonempty subtree needs materialization against an empty base.
+  if array[32, byte](node.digest) == array[32, byte](base.digest): return true
+  if node.leaf:
+    let previous = find(base, node.key)
+    return previous != nil and array[32, byte](previous.digest) == array[32, byte](node.digest)
+  false
+
+proc baseChild(base: nil TrieNode, depth: int, right: bool): nil TrieNode =
+  ## Align immutable base subtrees with the candidate path, including singleton expansion.
+  if base == nil: return nil # No base record can be reused on this path.
+  if base.leaf:
+    if one(base.key, depth) == right: return base # The singleton occupies exactly one side.
+    return nil
+  if right: base.right else: base.left
+
+proc exportSize(node, base: nil TrieNode, depth: int, limits: TrieExportLimits,
+    count, bytes: var uint64): TrieError =
+  ## Preflight detached record/value extents without allocating or hashing any node.
+  if omitted(node, base): return TrieError.None
+  assert node != nil # Omitted empty nodes returned before this bound access.
+  if count >= uint64(limits.records) or count >= uint64(high(int) div sizeof(TrieRecord)):
+    return TrieError.LimitExceeded # Check descriptor count before increment or later allocation.
+  inc count
+  if node.leaf:
+    if uint64(node.payload.len) > uint64(limits.valueBytes)-bytes:
+      return TrieError.LimitExceeded # Aggregate payload subtraction prevents wrapping.
+    bytes += uint64(node.payload.len)
+  else:
+    let left = exportSize(node.left, baseChild(base, depth, false), depth+1, limits, count, bytes)
+    if left != TrieError.None: return left # A refused child cannot expose a partial export.
+    return exportSize(node.right, baseChild(base, depth, true), depth+1, limits, count, bytes)
+  TrieError.None
+
+proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecord]) =
+  ## Emit children before parents, deep-copying values and retaining no canonical graph aliases.
+  if not omitted(node, base):
+    assert node != nil # Preflight and omission establish a complete physical node.
+    if node.leaf:
+      var copied = newSeq[byte](node.payload.len)
+      for i, octet in node.payload: copied[i] = octet # Published backing never escapes.
+      output.add(TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
+        key: node.key, payload: copied))
+    else:
+      exportNodes(node.left, baseChild(base, depth, false), depth+1, output)
+      exportNodes(node.right, baseChild(base, depth, true), depth+1, output)
+      let left = node.left
+      let right = node.right
+      output.add(TrieRecord(kind: TrieRecordKind.Branch, digest: node.digest,
+        left: (if left == nil: default(StateNodeHash) else: left.digest),
+        right: (if right == nil: default(StateNodeHash) else: right.digest)))
+
+proc exportTrieChanges*(base, target: FullStateTrie,
+    limits: TrieExportLimits): TrieResult[TrieExport] =
+  ## Detach only records missing from an explicit complete base; neither root grants chain authority.
+  let prior = base.data
+  let selected = target.data
+  if prior == nil or selected == nil:
+    return TrieResult[TrieExport](status: TrieError.Uninitialized) # Defaults cannot describe a complete base/target.
+  var count = 0'u64
+  var bytes = 0'u64
+  let checked = exportSize(selected.root, prior.root, 0, limits, count, bytes)
+  if checked != TrieError.None: return TrieResult[TrieExport](status: checked)
+  var records: seq[TrieRecord] = @[]
+  exportNodes(selected.root, prior.root, 0, records) # Only preflighted detached extents are allocated.
+  let metadata = target.commitment
+  TrieResult[TrieExport](status: TrieError.None, completed: TrieExport(base: base.commitment.root,
+    root: metadata.root, entries: uint64(metadata.entries), nodes: metadata.nodes,
+        records: records))
+
+proc exportFullTrie*(target: FullStateTrie, limits: TrieExportLimits): TrieResult[TrieExport] =
+  ## Materialize a standalone physical revision against the empty complete-map root.
+  let empty = newFullStateTrie([], default(FullStateTrieLimits)).value
+  exportTrieChanges(empty, target, limits)
