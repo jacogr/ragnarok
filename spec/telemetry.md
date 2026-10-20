@@ -7,6 +7,9 @@ This is a JIP-3 version-1 subset, not a claim of full telemetry or validator fun
 
 ## Run
 
+Production and collector E2E runs use the shared `src/ragnarok.nim` entry point.
+Application configuration/startup lives under `src/app/`; see the [application contract](application.md).
+
 Append `--with-telemetry --telemetry HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
 accept numeric IPv4, `localhost` (IPv4 loopback), and bracketed IPv6 literals such as
 `--telemetry '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
@@ -164,8 +167,9 @@ on both IPv4 and IPv6, then completes one, closes it, reuses its slot, and check
 and overflow
 losses during destruction.
 `make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
-`make check-e2e` includes IPv4 and IPv6 reset/reconnect collectors and a real certificate-backed proof-peer
-exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome
+`make check-e2e` includes IPv4 and IPv6 collector resets against real application servers,
+with certificate-backed registration, empty-peer status and subsequent authenticated exchanges.
+It also covers a certificate-backed proof-peer exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome
 spanning a collector reset. A real outgoing peer also starts behind a bound UDP gate: only after
 a TCP reset, identical registration and dropped-prefix replay does the harness forward its opaque
 datagrams. Authentication must reference the original, now-covered attempt ID; both peers must

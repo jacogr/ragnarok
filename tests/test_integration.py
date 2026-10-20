@@ -13,7 +13,7 @@ import os
 import re
 import socket
 import subprocess
-from test_quic import ROOT, THREAD_BASELINES
+from test_quic import application_binaries, ROOT, THREAD_BASELINES
 from test_codec import reference_encode
 from digest_checks import wire_for
 from test_quic_service import wait_service
@@ -57,7 +57,7 @@ def corpus():
 # One persistent listener processes simultaneous independent clients through every composed failure/lifetime path.
 def service(language, certificates, wires, rounds, warmup, *, binaries=None, directory=None):
     # Trial binaries reuse the exact fixture/stream workload and keep their outputs isolated.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     observe = partial(wait_service, thread_limit=THREAD_BASELINES[language])
     directory = BUILD / language if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)

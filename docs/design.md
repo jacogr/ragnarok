@@ -13,6 +13,7 @@ boundaries; it is not a running list of feature increments.
 
 | Module | Design |
 | --- | --- |
+| Application entry and services | [Application design](design/app.md) |
 | Codecs and ownership | [Codec design](design/codec.md) |
 | Cryptographic primitives | [Crypto design](design/crypto.md) |
 | PVM | [PVM design](design/pvm.md) |

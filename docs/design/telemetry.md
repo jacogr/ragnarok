@@ -3,6 +3,10 @@
 [Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
 update their feature contract rather than appending progress here.
 
+Application options and certificate/chain setup live under `src/app/`, shared with RPC and UI.
+`src/telemetry/observer.nim` translates transport events using the exporter owner's enabled state
+without reading CLI flags. Collector E2E checks launch `src/ragnarok.nim`, including reconnects.
+
 An optional `src/telemetry/` exporter sends JIP-3 registration, status and correlated outgoing connection
 events, incoming handshake lifecycles and observed incoming/outgoing disconnections. Incoming TLS callbacks
 borrow a fixed 64-slot correlation table and exporter through engine teardown; saturation only

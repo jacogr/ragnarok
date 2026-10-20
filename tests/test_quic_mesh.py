@@ -11,7 +11,7 @@ import os
 import socket
 import subprocess
 import time
-from test_quic import BUILD, THREAD_BASELINES
+from test_quic import application_binaries, BUILD, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
 
 
@@ -53,7 +53,7 @@ def observe(processes, logs, marker, peaks, seconds=15, thread_limits=None):
 # Keep both logical peer processes and all four role engines alive for the complete externally gated workload.
 def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, directory=None, telemetry=None, checkpoint=None):
     # Compiler-specific binary/log paths preserve the same retained engine and gate schedules.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     name = '-'.join(languages) + ('-bad-pin' if bad_pin else '')
     directory = BUILD / 'mesh' / name if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)

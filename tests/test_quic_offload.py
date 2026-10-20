@@ -13,7 +13,7 @@ import re
 import socket
 import subprocess
 import time
-from test_quic import ROOT, THREAD_BASELINES
+from test_quic import application_binaries, ROOT, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
 import test_bandersnatch as bs
 
@@ -80,7 +80,7 @@ def selftests(binary, fixture, directory):
 # One process survives repeated queue pressure, cancellation and proof errors without replacing its listener/workers.
 def exercise(language, certificates, fixture, rounds, warmup, repeats, *, binaries=None, directory=None):
     # Use only explicitly selected checked peers; queue pressure, deadlines and finite budgets are unchanged.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     fixed_threads = THREAD_BASELINES[language] + 2
     directory = BUILD / language if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)

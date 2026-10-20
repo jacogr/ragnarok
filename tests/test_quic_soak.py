@@ -14,7 +14,7 @@ import re
 import socket
 import subprocess
 import time
-from test_quic import BUILD, thread_count, THREAD_BASELINES
+from test_quic import application_binaries, BUILD, thread_count, THREAD_BASELINES
 
 
 # Observe resident memory, OS threads and open descriptors without reading their contents.
@@ -85,7 +85,7 @@ def check_growth(samples, warmup, language, *, retained_engine=True):
 def pairing(server_language, client_language, folder, rounds, warmup, *, binaries=None, directory=None):
     name = f'{server_language}-{client_language}'
     # Isolated compiler builds reuse this exact lifecycle schedule and all original resource limits.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     directory = BUILD / 'soak' / name if directory is None else directory
     directory.mkdir(parents=True, exist_ok=True)
     gate = directory / f'gate-{time.time_ns()}'

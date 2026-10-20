@@ -88,39 +88,64 @@ def stop(process):
 
 
 # A collector reset must cause a fresh registration, then new status frames, without killing the peer.
-def reconnect(binary, ipv6=False):
+def reconnect(binary, certificates, chain, folder, ipv6=False):
+    """Reset a real application's collector, then authenticate and exchange through that same node."""
+    folder.mkdir(parents=True, exist_ok=True)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        port = reservation.getsockname()[1]
     with listener(ipv6) as server:
         host = '[::1]' if ipv6 else '127.0.0.1'
         endpoint = f'{host}:{server.getsockname()[1]}'
-        process = subprocess.Popen([str(binary), endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        try:
-            first, _ = server.accept()
-            with first:
-                first.settimeout(5)
-                hello = frame(first)
-                assert hello[0] == 1 and hello[25:27] == b'\x02\0'
-                attempt = frame(first)
-                assert attempt[8] == 24 # The driver emits attempt ID zero before its first status.
-                status = frame(first)
-                assert len(status) == 43 and status[8] == 10
-                assert struct.unpack_from('<I', status, 9)[0] == 7
-                # RST exercises SIGPIPE/error isolation and retry timing on both supported hosts.
-                first.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
-            second, _ = server.accept()
-            with second:
-                second.settimeout(5)
-                assert frame(second) == hello
-                skipped = frame(second)
-                assert skipped[8] == 0 and int.from_bytes(skipped[17:25], 'little') >= 2
-                outcome = frame(second)
-                assert outcome[8] == 26 and int.from_bytes(outcome[9:17], 'little') == 0
-                assert frame(second)[8] == 10
-            stdout, stderr = process.communicate(timeout=5)
-            assert process.returncode == 0, (stdout, stderr)
-        finally:
-            # Keep cleanup independent of success, decode errors and socket timeouts.
-            stop(process)
-    return dict(passed=True, registrations=2, statuses=2)
+        with (folder/'node.log').open('wb') as log:
+            process = subprocess.Popen([str(binary), 'server', str(port),
+                str(certificates/'a.cert.pem'), str(certificates/'a.key.pem'),
+                str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '15000',
+                '--with-telemetry', '--telemetry', endpoint, '--chain', str(chain)],
+                stdout=log, stderr=subprocess.STDOUT)
+            try:
+                first, _ = server.accept()
+                with first:
+                    first.settimeout(5)
+                    hello = frame(first)
+                    assert hello[0] == 1 and hello[155:187] == (certificates/'a.pub').read_bytes()
+                    status = frame(first)
+                    assert len(status) == 43 and status[8] == 10
+                    assert struct.unpack_from('<I', status, 9)[0] == 0 # Actual node has no peers yet.
+                    first.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+                second, _ = server.accept()
+                with second:
+                    second.settimeout(5)
+                    assert frame(second) == hello # Restart registration preserves the real identity/chain.
+                    skipped = frame(second)
+                    assert skipped[8] == 0 and len(skipped) == 25
+                    prefix = int.from_bytes(skipped[17:25], 'little')
+                    assert 0 < prefix < 128
+                    capture = EventCapture(second)
+                    capture.position = prefix
+                    _, status = capture.event()
+                    assert status[8] == 10 and int.from_bytes(status[9:13], 'little') == 0
+                    # The consolidated entry point drives both ends; no exporter-only fixture process exists.
+                    client = subprocess.run([str(binary), 'client', str(port),
+                        str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
+                        str(certificates/'a.pub'), 'jamnp-s/1/245becfe', '4000', 'clean'],
+                        capture_output=True, timeout=7)
+                    (folder/'client.log').write_bytes(client.stdout + client.stderr)
+                    assert client.returncode == 0 and b'EXCHANGE_OK 8' in client.stdout
+                    attempt, incoming = capture.lifecycle(21)
+                    assert incoming[9:25] == bytes.fromhex('00000000000000000000ffff7f000001')
+                    _, accepted = capture.lifecycle(23)
+                    assert int.from_bytes(accepted[9:17], 'little') == attempt
+                    assert accepted[17:] == (certificates/'b.pub').read_bytes()
+                    _, closed = capture.lifecycle(27)
+                    assert closed[9:41] == (certificates/'b.pub').read_bytes()
+                    capture.end() # Duplicate outcomes, closes or additional loss remain failures.
+                assert process.wait(timeout=5) == 0, (folder/'node.log').read_text()
+                assert 'EXCHANGE_OK 8' in (folder/'node.log').read_text()
+            finally:
+                stop(process) # All assertion and timeout paths retire the application process.
+    return dict(passed=True, registrations=2, statuses=2, skipped_prefix=prefix,
+                incoming_attempt=attempt, exchanged_requests=8)
 
 
 # Hold one real dial behind a bound UDP socket until the collector has replayed its lost prefix.

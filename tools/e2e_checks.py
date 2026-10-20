@@ -24,7 +24,7 @@ def prepare_peer(context):
     report = context.report
     crypto_library = context.crypto
     quic_library = context.quic
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer', crypto_library, quic_library=quic_library)
+    compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok', crypto_library, quic_library=quic_library)
     report['quic_peer_build'] = compiled
     context.peer = compiled, binary
 
@@ -123,13 +123,10 @@ def rpc(context):
 def telemetry(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
-    build = context.checks.build
-    compiler = context.compiler
     quic_fixtures = context.certificates
     compiled, binary = context.peer
     observed = dict(passed=False)
-    telemetry_build, telemetry_binary = build(compiler, ROOT/'tests/native/telemetry_driver.nim', 'telemetry-driver')
-    if compiled['exit_code'] == 0 and telemetry_build['exit_code'] == 0:
+    if compiled['exit_code'] == 0:
         from telemetry_incoming import incoming_reconnect
         from telemetry_checks import reconnect, peer_registration, dial_failure, peer_loss, incoming_failure, incoming_lifetimes, mesh_lifetimes, mesh_shutdown, capacity_refusal, mesh_collector_isolation, pending_reconnect
         try:
@@ -137,8 +134,8 @@ def telemetry(context):
             pending = pending_reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-pending-reconnect')
             incoming_reset = incoming_reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-incoming-reconnect')
             incoming_rejected = incoming_reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-incoming-rejected', rejected=True)
-            observed = reconnect(telemetry_binary)
-            observed6 = reconnect(telemetry_binary, ipv6=True)
+            observed = reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-reconnect')
+            observed6 = reconnect(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-reconnect-ipv6', ipv6=True)
             peer = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry', startup_delay=2.1)
             peer6 = peer_registration(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry-ipv6', ipv6=True)
             failed = dial_failure(binary, quic_fixtures, ROOT/'tests/fixtures/telemetry-dev.json', BUILD/'telemetry')
@@ -168,7 +165,7 @@ def prepare_integrated_peer(context):
     compiler = context.compiler
     crypto_library = context.crypto
     quic_library = context.quic
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-integration', crypto_library,
+    compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok-integration', crypto_library,
                              quic_library=quic_library, defines=('integration',))
     context.integrated = compiled, binary
 
@@ -192,7 +189,7 @@ def quic_service(context):
         from test_quic_service import service as retained_service
         try:
             # One server engine survives sixteen waves, including malformed peers and two forced peer deaths.
-            result = retained_service('nim', quic_fixtures, 16, 4, binaries={'nim': BUILD/'quic-peer'},
+            result = retained_service('nim', quic_fixtures, 16, 4, binaries={'nim': context.peer[1]},
                                       directory=BUILD/'retained-service')
             observed = dict(passed=True, result=result)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
@@ -238,9 +235,9 @@ def quic_mesh(context):
         try:
             # Reuse exact original rounds, warmup, wrong-identity gate and finite resource limits.
             result = mesh_pairing(('nim', 'nim'), quic_fixtures, 16, 4,
-                                  binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh')
+                                  binaries={'nim': context.peer[1]}, directory=BUILD/'mesh')
             bad_pin = mesh_pairing(('nim', 'nim'), quic_fixtures, 1, 0, bad_pin=True,
-                                   binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh-bad-pin')
+                                   binaries={'nim': context.peer[1]}, directory=BUILD/'mesh-bad-pin')
             observed = dict(passed=True, result=result, bad_pin=bad_pin)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # All live endpoints retire in harness finalizers; a failed arbitration remains a failed gate.
@@ -262,7 +259,7 @@ def quic_mesh_disruption(context):
         try:
             # One keeper retains its two engines through twelve killed peers and a final healthy generation.
             result = mesh_disruption(('nim', 'nim'), quic_fixtures, 12, 4,
-                                     binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'mesh-disruption')
+                                     binaries={'nim': context.peer[1]}, directory=BUILD/'mesh-disruption')
             observed = dict(passed=True, result=result)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # Recovery must settle all eight pending operations before reconnect; ordinary mesh success cannot hide failure.
@@ -284,7 +281,7 @@ def quic_endpoint_soak(context):
         try:
             # Preserve the original forty sessions, eight warmup samples, mixed streams and finite budgets.
             result = endpoint_soak('nim', 'nim', quic_fixtures, 40, 8,
-                                   binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'endpoint-soak')
+                                   binaries={'nim': context.peer[1]}, directory=BUILD/'endpoint-soak')
             observed = dict(passed=True, result=result)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # Finalizers retain resource evidence and kill live peers; later corpus success cannot hide failure.
@@ -305,7 +302,7 @@ def quic_admission(context):
         from test_quic_resilience import overload as admission
         try:
             # Keep the original twelve waves/four warmup samples and exact connection/stream ceilings.
-            result = admission('nim', quic_fixtures, 12, 4, binaries={'nim': BUILD/'quic-peer'},
+            result = admission('nim', quic_fixtures, 12, 4, binaries={'nim': context.peer[1]},
                                directory=BUILD/'admission')
             observed = dict(passed=True, result=result)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
@@ -328,7 +325,7 @@ def quic_closed_before_request(context):
         try:
             # Idle clients open no application streams; connection close must settle the authenticated failure.
             result = closed_before_request(('nim', 'nim'), quic_fixtures,
-                                           binaries={'nim': BUILD/'quic-peer'}, directory=BUILD/'closed-before-request')
+                                           binaries={'nim': context.peer[1]}, directory=BUILD/'closed-before-request')
             observed = dict(passed=True, result=result)
         except (AssertionError, OSError, subprocess.TimeoutExpired) as error:
             # A stale AUTH_OK marker cannot turn connection loss into successful application exchange.
@@ -350,7 +347,7 @@ def prepare_offload_peer(context):
     quic_library = context.quic
     from test_quic_offload import corpus as offload_fixture
     offload_wire, offload_metadata = offload_fixture(BUILD/'offload')
-    compiled, binary = build(compiler, ROOT/'src/quic/peer.nim', 'quic-peer-offload', crypto_library,
+    compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok-offload', crypto_library,
                              native_libraries=(bs_library,), quic_library=quic_library, defines=('offload',))
     report['quic_offload_build'] = compiled
     context.offload = compiled, binary

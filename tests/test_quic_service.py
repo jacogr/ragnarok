@@ -13,7 +13,7 @@ import re
 import socket
 import subprocess
 import time
-from test_quic import BUILD, THREAD_BASELINES
+from test_quic import application_binaries, BUILD, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
 
 
@@ -49,7 +49,7 @@ def wait_service(server, log, predicate, peaks, seconds=10, thread_limit=1):
 # Exercise the Nim listener with independent client identities and reconnect waves.
 def service(language, folder, rounds, warmup, *, binaries=None, directory=None):
     # Compiler-specific binaries and logs preserve the same workload without overwriting normal build products.
-    binaries = binaries or {name: BUILD / f'{name}-peer' for name in THREAD_BASELINES}
+    binaries = application_binaries(binaries)
     thread_limit = THREAD_BASELINES[language]
     # A fixed startup pool is measured separately; native streams may never add threads.
     wait = partial(wait_service, thread_limit=thread_limit)

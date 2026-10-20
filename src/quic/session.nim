@@ -12,7 +12,8 @@ import ./transport
 import ./protocol
 import ./integration
 import ./offload
-import ../telemetry/options
+import ../app/[options, services]
+import ../telemetry/observer
 import ../rpc/server
 import ../ui/server
 
@@ -478,18 +479,20 @@ proc offloadTick(peer: ptr Peer) =
         break
     if not matched: progress "OFFLOAD_STALE ", $completion.id # A vanished/reused stream cannot receive old completion.
 
-proc runPeer*(): bool {.raises.} =
+proc runPeer*(options: Options): bool {.raises.} =
   ## Own one bounded authentication/exchange attempt and release readiness before native callback destruction.
   # Trusted CLI inputs still have explicit shape and narrowing checks.
-  if peerParamCount() notin [7, 8]: return false # Reject malformed trusted invocation before endpoint setup.
-  let port = parseInt(paramStr(2))
-  let timeout = parseInt(paramStr(7))
-  let timeoutLimit = if peerParamCount() == 8 and paramStr(8) == "offload": 300000 else: 120000
+  if not options.valid() or options.argumentCount() notin [7,
+      8]: return false # Reject malformed trusted invocation before endpoint setup.
+  let port = parseInt(options.argument(2))
+  let timeout = parseInt(options.argument(7))
+  let timeoutLimit = if options.argumentCount() == 8 and options.argument(8) ==
+      "offload": 300000 else: 120000
   # Guard host-to-native conversions before any endpoint is created.
   if port < 1 or port > 65535 or timeout < 1 or timeout > timeoutLimit: return false
-  let server = paramStr(1) == "server"
-  if not server and paramStr(1) != "client": return false # Never infer an unknown role.
-  let mode = if peerParamCount() == 8: paramStr(8) else: "valid"
+  let server = options.argument(1) == "server"
+  if not server and options.argument(1) != "client": return false # Never infer an unknown role.
+  let mode = if options.argumentCount() == 8: options.argument(8) else: "valid"
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
   if mode in ["service", "integration", "overload", "offload"] and not server: return false
   let integrated = mode in ["integration", "integrated"]
@@ -517,42 +520,33 @@ proc runPeer*(): bool {.raises.} =
   defer:
     if peer.offloading: stopPool(peer.pool) # Transport teardown runs first and cancels every remaining stream job.
   # Expected identity bytes remain owned by Peer across all TLS verification callbacks.
-  if paramStr(5) != "-":
-    let text = readFile(paramStr(5))
+  if options.argument(5) != "-":
+    let text = readFile(options.argument(5))
     if text.len != 32: return false # Fixture identity has exact Ed25519 width.
     peer.expected = newSeq[byte](32)
     for i in 0..<32: peer.expected[i] = byte(text[i]) # Copy public identity bytes, not PEM strings.
   if not server and peer.expected.len != 32: return false # Every dialer pins the server identity.
-  var ui = default(UiServer)
-  defer: ui.close() # Static listener and file descriptors retire with the peer session.
-  if not ui.start(uiPort(), devUiDirectory()):
-    stderr.writeLine("Invalid UI listener or --dev-ui-dir")
-    return false
-  var rpc = default(Server)
-  defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
-  let chainText = loadChainText() # One bounded startup snapshot feeds both optional services.
-  if not rpc.setupRpc(paramStr(1), chainText):
-    stderr.writeLine("Invalid RPC listener or --chain parameters")
-    return false # No listener remains open on configuration failure.
-  var telemetry = default(Client)
-  defer: telemetry.close() # Best-effort telemetry never delays peer shutdown.
+  var services = default(Services)
+  defer: services.close() # Transport teardown below ends every borrow before service retirement.
+  if not services.start(options, options.argument(1)):
+    return false # Shared startup reports the owning service and retires partial listeners.
   # Cleanup must also run after poll/setup failures; both stack owners remain alive until final native callbacks finish.
   defer:
     peer.stopping = true
     closeTransport(peer.transport)
     if peer.telemetry != nil: # SSL destruction can settle unfinished incoming attempts.
       peer.telemetry = nil
-      telemetry.observe(0) # One nonblocking send while the exporter still owns its descriptor.
-  if not openTransport(peer.transport, server, peer.attack == "soak", uint16(port), paramStr(3),
-      paramStr(4), paramStr(6), addr peer, verifyPeer,
+      services.telemetry.observe(0) # One nonblocking send while the exporter still owns its descriptor.
+  if not openTransport(peer.transport, server, peer.attack == "soak", uint16(port),
+      options.argument(3), options.argument(4), options.argument(6), addr peer, verifyPeer,
           onStream, peer.service, ipv6 = load, profile = (
               if peer.overload or peer.offloading: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
   # Derive the telemetry peer identity/address from this endpoint, with an explicit chain file.
-  if not telemetry.setup(paramStr(3), localPort(peer.transport), load, chainText):
+  if not services.configureTelemetry(options, options.argument(3), localPort(peer.transport), load):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
-  if server and requested(): # Install before processing the first UDP packet.
-    peer.telemetry = addr telemetry
+  if server and options.telemetryEnabled(): # Install before processing the first UDP packet.
+    peer.telemetry = addr services.telemetry
     if not observeHandshakes(peer.transport, onHandshake) or
         not observePeers(peer.transport, onPeer): return false # Startup retires any partial observer setup.
   var telemetryAttempt = EventId(0)
@@ -560,21 +554,21 @@ proc runPeer*(): bool {.raises.} =
   # Settle a still-pending dial on timeout, synchronous failure, cancellation or an early return.
   defer:
     if telemetryPending:
-      telemetry.finishDial(telemetryAttempt, authenticatedConnections(peer.transport) > 0)
+      services.telemetry.finishDial(telemetryAttempt, authenticatedConnections(peer.transport) > 0)
     if not server and authenticatedConnections(peer.transport) > 0 and closedConnections(
         peer.transport) > 0:
       # This endpoint dials exactly one pinned peer; a close counter alone could also mean handshake failure.
       # Observe once, after final grace polling but before transport destruction triggers final teardown callbacks.
-      telemetry.finishConnection(peer.expected)
+      services.telemetry.finishConnection(peer.expected)
     let finalPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (
         if transportStatus(peer.transport) == 1 and peerMetric(peer.transport, 0) >
             0: 1'u32 else: 0'u32)
-    telemetry.observe(finalPeers) # One bounded best-effort send; shutdown never waits for the collector.
+    services.telemetry.observe(finalPeers) # One bounded best-effort send; shutdown never waits for the collector.
   if server:
     progress "READY" # Announce only after listener binding and native setup.
   else:
-    telemetry.observe(0) # Queue registration before any lifecycle frame on the new collector stream.
-    telemetryAttempt = telemetry.startDial(peer.expected, uint16(port), load)
+    services.telemetry.observe(0) # Queue registration before any lifecycle frame on the new collector stream.
+    telemetryAttempt = services.telemetry.startDial(peer.expected, uint16(port), load)
     telemetryPending = true
     if not connectTransport(peer.transport, uint16(port)): return false # Defer records this failed attempt.
 
@@ -596,9 +590,9 @@ proc runPeer*(): bool {.raises.} =
     # Server metrics count authenticated peers; client status also requires a live slot after a close.
     let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
         peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
-    telemetry.observe(telemetryPeers)
-    rpc.tick(telemetryPeers) # Each turn performs bounded, nonblocking RPC work.
-    ui.tick() # A separate HTTP listener shares the bounded dispatcher cadence.
+    services.telemetry.observe(telemetryPeers)
+    services.rpc.tick(telemetryPeers) # Each turn performs bounded, nonblocking RPC work.
+    services.ui.tick() # A separate HTTP listener shares the bounded dispatcher cadence.
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
     if peer.service:
@@ -630,7 +624,7 @@ proc runPeer*(): bool {.raises.} =
     let status = transportStatus(peer.transport)
     if telemetryPending and peerMetric(peer.transport, 4) > 0:
       # Lifetime handshake evidence survives authentication and close occurring in the same native poll.
-      telemetry.finishDial(telemetryAttempt, true)
+      services.telemetry.finishDial(telemetryAttempt, true)
       telemetryPending = false
     # Reusable IPv6 engines become idle after close; this CLI attempt cannot reconnect or finish without a live peer.
     if not server and peerMetric(peer.transport, 2) > 0 and peerMetric(peer.transport, 0) == 0:
@@ -840,16 +834,16 @@ proc meshPoll(incoming, outgoing: var Peer): bool =
   if uiServer != nil: uiServer[].tick() # One static HTTP owner serves the retained pair.
   observeMesh(incoming, outgoing) # Final counter changes remain observable even if polling reports failure.
 
-proc runMesh*(): bool {.raises.} =
+proc runMesh*(options: Options): bool {.raises.} =
   ## Retain two IPv6 engines through sixteen externally gated reconnects and simultaneous CE queries.
   # Validate all trusted controls before opening sockets or narrowing ports.
-  if peerParamCount() != 9: return false
-  let localPort = parseInt(paramStr(2))
-  let remotePort = parseInt(paramStr(3))
+  if not options.valid() or options.argumentCount() != 9: return false
+  let localPort = parseInt(options.argument(2))
+  let remotePort = parseInt(options.argument(3))
   let rounds = parseInt(getEnv("RAGNAROK_MESH_ROUNDS", "16"))
   if localPort notin 1..65535 or remotePort notin 1..65535 or rounds notin 1..64: return false
-  let localKey = readFile(paramStr(6))
-  let remoteKey = readFile(paramStr(7))
+  let localKey = readFile(options.argument(6))
+  let remoteKey = readFile(options.argument(7))
   if localKey.len != 32 or remoteKey.len != 32 or localKey == remoteKey: return false # No self/ambiguous peer.
   var a, b = default(array[32, byte])
   var expected = newSeq[byte](32)
@@ -859,28 +853,19 @@ proc runMesh*(): bool {.raises.} =
   let initiator = preferred(a, b)
   let disrupted = getEnv("RAGNAROK_MESH_DISRUPT") == "1"
   let profile = if disrupted: CrashRecovery else: RetainedPeer
-  let gate = paramStr(9)
+  let gate = options.argument(9)
   let dispatcher = newDispatcher()
   defer: dispatcher.close() # Both borrowed endpoint registrations retire first, in reverse defer order.
   var incoming = Peer(server: true, mesh: true, expected: expected, attack: "valid")
   var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
-  var ui = default(UiServer)
-  defer: ui.close() # Static listener and file descriptors retire with the peer session.
-  if not ui.start(uiPort(), devUiDirectory()):
-    stderr.writeLine("Invalid UI listener or --dev-ui-dir")
-    return false
-  var rpc = default(Server)
-  defer: rpc.close() # The dispatcher borrows this stable owner only until the session returns.
-  let chainText = loadChainText() # One bounded startup snapshot feeds both optional services.
-  if not rpc.setupRpc(paramStr(1), chainText):
-    stderr.writeLine("Invalid RPC listener or --chain parameters")
-    return false # No listener remains open on configuration failure.
-  var telemetry = default(Client)
-  defer: telemetry.close() # The single exporter outlives both engines and their final synchronous callbacks.
+  var services = default(Services)
+  defer: services.close() # The single service owner outlives both retained engines.
+  if not services.start(options, options.argument(1)):
+    return false # Shared startup reports the owning service and retires partial listeners.
   defer:
     observeMeshDial(outgoing) # Observe real closes before destruction can change native counters.
     if outgoing.meshDial.pending:
-      telemetry.finishDial(outgoing.meshDial.attempt,
+      services.telemetry.finishDial(outgoing.meshDial.attempt,
           false) # Settle cancellation/timeout without inventing a close.
       outgoing.meshDial.pending = false
     incoming.stopping = true; outgoing.stopping = true
@@ -888,25 +873,25 @@ proc runMesh*(): bool {.raises.} =
     closeTransport(incoming.transport) # TLS globals and incoming correlation storage remain alive.
     if incoming.telemetry != nil:
       incoming.telemetry = nil; outgoing.telemetry = nil # End callback borrows only after both engines retire.
-      telemetry.observe(0) # One final nonblocking send; shutdown never waits for delivery.
+      services.telemetry.observe(0) # One final nonblocking send; shutdown never waits for delivery.
   # The listener is persistent; outgoing binds once to an ephemeral IPv6 port and keeps it across reconnects.
-  if not openTransport(incoming.transport, true, false, uint16(localPort), paramStr(4), paramStr(5),
-      paramStr(8), addr incoming, verifyPeer, onStream, ipv6 = true,
+  if not openTransport(incoming.transport, true, false, uint16(localPort), options.argument(4),
+      options.argument(5), options.argument(8), addr incoming, verifyPeer, onStream, ipv6 = true,
           dispatcher = dispatcher, profile = profile): return false
-  if not openTransport(outgoing.transport, false, false, 0, paramStr(4), paramStr(5),
-      paramStr(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
+  if not openTransport(outgoing.transport, false, false, 0, options.argument(4), options.argument(
+      5), options.argument(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
           dispatcher = dispatcher, profile = profile): return false
   # Register the listening identity/address once, independent of the ephemeral outgoing UDP socket.
-  if not telemetry.setup(paramStr(4), uint16(localPort), true, chainText):
+  if not services.configureTelemetry(options, options.argument(4), uint16(localPort), true):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
-  if requested():
-    incoming.telemetry = addr telemetry; outgoing.telemetry = addr telemetry
+  if options.telemetryEnabled():
+    incoming.telemetry = addr services.telemetry; outgoing.telemetry = addr services.telemetry
     if not observeHandshakes(incoming.transport, onHandshake) or
         not observePeers(incoming.transport, onPeer): return false # Defer retires partial observer setup.
-    telemetry.observe(0) # Registration precedes queued lifecycle events from either engine.
-  incoming.ui = addr ui # Same stable local lifetime as the RPC owner.
-  incoming.rpc = addr rpc # Borrow ends with the local mesh dispatcher; no callback retains it.
+    services.telemetry.observe(0) # Registration precedes queued lifecycle events from either engine.
+  incoming.ui = addr services.ui # Same stable local lifetime as the RPC owner.
+  incoming.rpc = addr services.rpc # Borrow ends with the local mesh dispatcher; no callback retains it.
   progress "MESH_READY ", int(initiator)
   var authenticatedIn, authenticatedOut = 0'u64
   # All rounds retain these exact stack/socket/dispatcher/TLS/engine owners.

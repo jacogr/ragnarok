@@ -8,10 +8,14 @@ C/Rust bridges under [`native/`](../native/) provide cryptographic primitives an
 integration. The current executable is a development proof peer; full client operation remains
 future work.
 
+[`ragnarok.nim`](ragnarok.nim) is the shared native application entry point for production
+and E2E builds; [`app/`](app/) owns validated options and telemetry/RPC/UI startup.
+
 ## Modules
 
 | Path | Purpose | Further reading |
 | --- | --- | --- |
+| [`app/`](app/) | Shared application configuration and optional service ownership | [Application design](../docs/design/app.md) |
 | [`bandersnatch/`](bandersnatch/) | Typed release-reference IETF VRF/RingVRF adapter and domain policy | [Crypto guide](../docs/crypto.md) |
 | [`chain/`](chain/) | Chain configuration, genesis capture and immutable query/publication views | [RPC and chain design](../docs/design/rpc.md) |
 | [`codec/`](codec/) | Canonical codecs, consensus-facing types and immutable owned snapshots | [Codec guide](../docs/codec.md) |
