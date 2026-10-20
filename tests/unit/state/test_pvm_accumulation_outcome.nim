@@ -121,9 +121,23 @@ assert instructionOog.outcomeInfo.value.termination == AccumulationTermination.O
 assert uint64(instructionOog.outcomeInfo.value.gasUsed) == 0
 checkYield(instructionOog, false)
 for executed in [run(guestProgram([halt]), steps = 0), run(guestProgram([yieldCall, halt]),
-    calls = 0), run(guestProgram([@[10'u8, 1], halt]))]:
-  # Engine budgets and unsupported host calls refuse locally; none may become a normalized guest failure.
+    calls = 0), run(guestProgram([registerImmediate(7, 51), @[10'u8, 1], halt]))]:
+  # Engine and heap-allocation budgets refuse locally; none may become a normalized guest failure.
   assert normalizeAccumulationOutcome(executed).error == AccumulationOutcomeError.InvalidExecution
+# Adopted heap OOG is a completed guest outcome with drained credit and no artificial signed debt.
+let heapInstructions = @[registerImmediate(7, 51), @[10'u8, 1], halt]
+let heapPrototype = guestProgram(heapInstructions).accumulationMachine.value
+let heapPrice = uint64(blockGas(programOf(heapPrototype).value, CodeAddress(5), GasCycleLimit(1000)).value)
+let heapCredit = heapPrice+395
+let heapExecution = run(guestProgram(heapInstructions, heapCredit))
+assert heapExecution.error == AccumulationDispatchError.None and heapExecution.value.exit ==
+    StepExit.OutOfGas
+assert uint64(machineInfo(heapExecution.value.machine).value.gasDeficit) == 0
+let heapOutcome = normalizeAccumulationOutcome(heapExecution).value
+assert heapOutcome.outcomeInfo.value.termination == AccumulationTermination.OutOfGas and
+    uint64(heapOutcome.outcomeInfo.value.gasUsed) == heapCredit,
+  "heap OOG consumes the full initial credit and remains normalizable"
+checkYield(heapOutcome, false)
 # Capture/normalization only retains immutable owners and copied fields; no backend call is required.
 failHash(1)
 let retained = normalizeAccumulationOutcome(debtExecution).value

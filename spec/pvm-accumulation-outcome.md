@@ -66,3 +66,16 @@ requested-provision effects. Actual nonempty sets can be normalized on other ret
 branches; the hash-return gate remains until its specification decision. Remaining
 account/accumulation host calls, grow_heap and selected-provision publication remain
 separate work.
+
+
+## Reviewed upstream disposition
+
+On 2026-10-19, review confirmed [GP #533](https://github.com/gavofyork/graypaper/pull/533)
+merged on 2026-07-22 at `0c0664eb52ba92afd8d21cef96c0e1da506eddfe`.
+Its C hash-return branch explicitly projects provisions from X. Thus this is
+resolved upstream, pending scoped adoption here; the pinned 0.8.0 source and
+AmbiguousProvisions refusal remain unchanged in the grow_heap layer. The next
+bounded increment should adopt that projection and test divergent X/Y provision
+sets with genuine hash-return execution and terminal publication. The maintainer's
+current adoption decision covers grow_heap gas and stack fixes only; see
+[the heap authority record](pvm-accumulation-heap.md).

@@ -1,0 +1,30 @@
+{
+  "authority": "Maintainer instruction in this chat on 2026-10-19: adopt both merged grow_heap fixes; leave repository pins unchanged.",
+  "fixes": [
+    {
+      "commit": "0c0664eb52ba92afd8d21cef96c0e1da506eddfe",
+      "merged_at": "2026-07-22T10:21:34Z",
+      "pr": 533,
+      "source": "text/pvm_invocations.tex",
+      "source_sha256": "e36d6aaf4b84f06632cd427e5d9a04cff082b47cb4bc1e37a34ad68bec3ea6fd",
+      "url": "https://github.com/gavofyork/graypaper/pull/533"
+    },
+    {
+      "commit": "b76e637c0901f1beb6fc7a63f4e64f8707b94baf",
+      "merged_at": "2026-07-22T10:21:56Z",
+      "pr": 538,
+      "source": "text/pvm_invocations.tex",
+      "source_sha256": "5e1dffd0b17c8c2196ffc307b08b408bf567b46343fc6a4ff4125e210ac6ec49",
+      "url": "https://github.com/gavofyork/graypaper/pull/538"
+    }
+  ],
+  "reviewed_on": "2026-10-19",
+  "scope": "grow_heap only; no blanket adoption of the other changes in these PRs",
+  "semantics": {
+    "gas": "max(available-cost, 0), no signed deficit; on OOG preserve registers/memory/context",
+    "growth": "return requested; cost=275+121*(requested-current)",
+    "heap_ceiling": "round stack reservation up to 65536-byte zones",
+    "no_growth": "requested<=current or requested>ceiling returns current; cost=275"
+  },
+  "vectors_commit": "d3c089c9a1d5352ad353626d7a2db8589f137b2a"
+}

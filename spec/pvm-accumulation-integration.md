@@ -22,8 +22,9 @@ Use one shared authored envelope builder and extend existing batch fixtures with
 optional copied envelopes and explicit execution policies, retaining all defaults.
 No new production API, wire format, runtime policy or dependency is introduced.
 
-Grow_heap stays UnsupportedHostCall: preserve the existing gas-exhaustion and
-stack-rounding gates. Preserve AmbiguousPrivileges, AmbiguousProvisions, exact
+[Grow_heap integration](pvm-accumulation-heap.md) now follows the explicitly adopted
+merged #533 gas/result ordering and #538 stack reservation with unchanged pins.
+Preserve AmbiguousPrivileges, AmbiguousProvisions, exact
 gas-debt representation and parked request-namespace boundaries. Refused plans
 must publish no credits, request changes or pending provisions. Test stale prior,
 backend refusal, immutable retained sources and fresh 1,000-cycle ARC release.
@@ -32,13 +33,13 @@ transfer-aware recursion or whole-STF parity. M1 framing is complete; full state
 serialization/accumulation parity remains open.
 
 Next bounded work: define service-scoped account-effect publication/provenance
-before removing UnsupportedAccountEffects; retain grow_heap gating.
+before removing UnsupportedAccountEffects; see the later heap adoption extension.
 
 ## Remaining boundaries after the merge
 
 | Boundary | Preserved behavior and next prerequisite |
 | --- | --- |
-| grow_heap (1) | UnsupportedHostCall; GP/vector exhaustion and 64 KiB stack-rounding differences remain in pvm-heap-memory.md. Maintainer explicitly keeps this gated. |
+| grow_heap (1) | Implemented under the maintainer-adopted merged #533/#538 fixes; see [heap integration](pvm-accumulation-heap.md). |
 | Selected account effects | UnsupportedAccountEffects; require bounded service-scoped writes and cross-service conflict/provenance rules before publication. Equal roots alone do not permit substitution. |
 | Transfer-aware recursion | UnsupportedTransfers in report-only continuation; requires outgoing collection and recursive input/gas integration. |
 | Conflicting bless allowances | AmbiguousPrivileges; pinned set-to-dictionary semantics remain unresolved. |

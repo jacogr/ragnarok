@@ -33,7 +33,7 @@ class OutcomeSpecificationGate(unittest.TestCase):
                          pins['source_sha256']['text/pvm.tex'])
         self.assertIn(r"u = \gascounter - \max(\gascounter', 0)", source.read_text())
 
-    @unittest.skip('GP 0.8.0 C hash-return branch needs a defined provision projection from imXY')
+    @unittest.skip('Merged GP #533 resolves C to X; scoped local provision-projection adoption remains pending')
     def test_nonempty_hash_return_provisions(self):
-        """A future provide dispatcher must resolve this gate before claiming this branch's parity."""
-        self.fail('Choose a supported specification revision/decision and test divergent X/Y provision sets')
+        """Adopt the reviewed X projection and verify divergent X/Y provisions before claiming parity."""
+        self.fail('Adopt the merged #533 X projection under a scoped decision and test divergent X/Y provision sets')

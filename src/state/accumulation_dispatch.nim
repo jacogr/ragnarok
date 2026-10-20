@@ -35,6 +35,7 @@ type
     queues: AuthorizationConfig
     privileges: PrivilegeConfig
     fetch: FetchContext
+    heap: AccumulationHeapBounds
     copyLimit: MemoryByteLimit
     effects: AccumulationEffects
     provisionLimits: AccumulationProvisionLimits
@@ -57,6 +58,43 @@ func executionError*(outcome: AccumulationDispatchResult): StepError {.inline,
     requires: outcome.status == AccumulationDispatchError.ExecutionFailure.} =
   ## Inspect the original execution-budget or instruction refusal without a fabricated guest result.
   outcome.reason
+
+# Apply adopted GP #533 gas/result ordering and #538 envelope-derived stack reservation.
+proc heapResponse(context: DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let counted = memory.writablePageCount(context.heap.first, context.heap.past)
+  if counted.error != MachineError.None:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid memory owner supplies a synthetic endpoint.
+  let first = uint64(uint32(context.heap.first))
+  let past = uint64(uint32(context.heap.past))
+  let count = uint64(uint32(counted.value))
+  if first > past or count > past-first:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Prove the endpoint addition before performing it.
+  let current = first+count
+  let requested = uint64(cpu.registers[7])
+  var returned = current
+  var cost = 275'u64
+  if requested > current and requested <= past:
+    # Both endpoints are <=2^20; the bounded difference times 121 plus 275 fits uint64.
+    cost += (requested-current)*121
+    returned = requested
+  if uint64(cpu.gas) < cost:
+    # #533 drains remaining credit and preserves registers/memory/context before row mutations; no signed debt.
+    return hostSuccess[AccumulationDispatchError](HostResponse(action: HostAction.OutOfGas,
+      gas: MachineGas(0), gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory))
+  let grown = memory.withWritablePages(context.heap.first, PageIndex(uint32(returned)))
+  case grown.error
+  of MachineError.None:
+    discard # Mapping preflight succeeded and all retained bytes/outside access remain immutable.
+  of MachineError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local allocation capacity is distinct from protocol gas.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # No partial memory response escapes invariant failure.
+  var response = HostResponse(action: HostAction.Continue,
+    gas: MachineGas(uint64(cpu.gas)-cost), gasDeficit: GasDeficit(0),
+    registers: cpu.registers, memory: grown.value)
+  response.registers[7] = RegisterValue(returned)
+  hostSuccess[AccumulationDispatchError](response)
 
 ## Charge checkpoint/yield before reading memory or changing implications; debt preserves exact magnitude.
 ## Effects are callback-local immutable versions, discarded if later execution refuses locally.
@@ -1036,8 +1074,7 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
   of 27:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
   of 1:
-    # These calls belong to accumulation's F but are not implemented by this adapter yet.
-    hostFailure(AccumulationDispatchError.UnsupportedHostCall)
+    heapResponse(context, cpu, memory) # Bounded heap query/growth under the explicitly adopted merged fixes.
   else:
     # Refine-only IDs 7..14 and all other full-width IDs take accumulation's unknown branch.
     hostSuccess[AccumulationDispatchError](unknownHostResponse(cpu.gas, cpu.registers, memory))
@@ -1086,6 +1123,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
   var context = DispatchContext(parameters: parameters, staging: contextConfig.staging,
       queues: contextConfig.queues, privileges: contextConfig.privileges, fetch: captured.value,
+      heap: prepared.machineHeapBounds.value,
           copyLimit: copyLimit,
 
 effects: initialized.value, provisionLimits: provisionLimits, serviceProbes: serviceProbes,

@@ -14,7 +14,8 @@ through bounded immutable state-value slices. Checkpoint (18), yield (26) and [p
 retain versioned implication effects.
 Read (4), write (5) and info (6) use their current-account adapters;
 [bless (15)](pvm-accumulation-bless.md) versions current privileges and C(12) together.
-Known accumulation calls 1, 16–17 and 19–25 are local
+The [grow_heap extension (1)](pvm-accumulation-heap.md) adopts the merged #533/#538
+rules with unchanged pins. In the original dispatch increment, calls 16–17 and 19–25 were local
 `UnsupportedHostCall` failures, even when their eventual protocol implementation
 might exhaust gas. Refine-only calls 7–14 and all other identifiers use F's unknown
 branch: charge 1000 and set r7 to WHAT, including on gas exhaustion. IDs are compared
@@ -46,7 +47,7 @@ nonwrapping host memory operation. Success replaces only X's yield and returns O
 (0); an all-zero hash is present. Unreadable or out-of-address-space intervals panic
 after charging, preserving r7 and both dimensions. Local copy-limit exhaustion
 refuses without exposing CPU state or effects. Checkpoint does not need copy credit.
-No host call changes memory or unrelated registers.
+Neither checkpoint nor yield changes memory or unrelated registers.
 
 Each execution initializes its private effects from that exact machine bootstrap.
 Later local host/engine refusal discards all private versions; a completed guest
@@ -61,7 +62,7 @@ trapping after yield, policy refusal after earlier effects, repeatability and
 1,000 ARC release cycles. Privacy and runtime probes cover the effects accessor.
 These are authored equation witnesses, not published complete Psi_A vectors.
 
-Remaining work includes grow_heap's documented semantic decision, other account and
+The later heap extension records the adopted semantic decision. Original remaining account and
 accumulation calls, terminal regular/exceptional selection, result normalization and
 state publication. The existing signed gas-domain gate remains open.
 [Terminal normalization](pvm-accumulation-outcome.md) now selects the retained
