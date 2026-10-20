@@ -88,6 +88,17 @@
         "reason": "save-refused"
       },
       "name": "state-checkpoint-file-save-refused"
+    },
+    {
+      "arguments": [
+        "root-refused"
+      ],
+      "description": "Trusted checkpoint extraction refusal",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "root-refused"
+      },
+      "name": "state-checkpoint-file-root-refused"
     }
   ],
   "crypto_library": "crypto",

@@ -7,7 +7,7 @@
 import std/syncio
 import std/posix/posix
 import ./[checkpoint, store]
-import ../codec/bounded
+import ../codec/[bounded, state_trie]
 
 type
   CheckpointFileError* {.pure.} = enum ## I/O and format refusals cannot publish partial restored state.
@@ -142,3 +142,17 @@ proc saveFullCheckpoint*(path: string, snapshot: StateStoreSnapshot,
     return CheckpointFileResult[StateStoreSnapshot](
         status: CheckpointFileError.PublishedUnsynced) # New complete bytes are visible, but durability must not be claimed.
   CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.None, completed: snapshot)
+
+proc loadFullCheckpoint*(path: string, expected: StateRoot, limits: StateStoreLimits,
+    limit: ByteLimit): CheckpointFileResult[StateStore] =
+  ## Anchor bounded file restoration to a complete-state commitment supplied independently of the file.
+  let loaded = loadFullCheckpoint(path, limits, limit)
+  if loaded.error != CheckpointFileError.None:
+    return loaded # A trust check must not replace a genuine file/decoder refusal with success.
+  let actual = array[32, byte](loaded.value.snapshot.value.commitment.root)
+  let wanted = array[32, byte](expected)
+  for index in 0..<32:
+    if actual[index] != wanted[index]:
+      return CheckpointFileResult[StateStore](status: CheckpointFileError.InvalidCheckpoint,
+        reason: CheckpointError.RootMismatch) # Drop the complete but unauthorized candidate before any caller can adopt it.
+  loaded
