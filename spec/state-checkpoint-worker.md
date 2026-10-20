@@ -115,3 +115,16 @@ or cancelled buffers leave the selector and old slot exact and create no inactiv
 canonical file; completed publication survives without a host acknowledgement.
 These witnesses cover process retirement at known boundaries, not mid-write kill,
 power loss or cross-process ARC occupancy.
+
+## Real kernel write refusals through the worker
+
+Child-only RLIMIT_FSIZE ceilings now reach the real native worker: three zero/partial
+inactive-data refusals and three selector refusals after complete durable staging.
+The worker must return Completed with the actual typed IoFailure, rather than a
+cancelled receipt or success. Exact/ample selector-size controls must publish.
+Joined worker close precedes independent child and parent recovery. Both verify
+the selected root/map, exact old selected bytes and complete orphan data only where
+staging actually succeeded. Final private-directory removal detects leftover
+operation temporaries. The shared test-only SDK ceiling setup preserves the prior
+synchronous bank witnesses; no live worker/lock crosses fork and no power-loss or
+post-rename directory-sync failure is claimed.
