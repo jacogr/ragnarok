@@ -1,0 +1,34 @@
+{
+  "build_name": "application-download-loop-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Download dispatcher runtime contract default",
+      "diagnostic": "dispatcher.hasCompletion",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-download-loop-default"
+    },
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Download dispatcher runtime contract unclosed",
+      "diagnostic": "contains([Uninitialized, Closed], dispatcher.status)",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "application-download-loop-unclosed"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_download_loop_results.nim"
+}
