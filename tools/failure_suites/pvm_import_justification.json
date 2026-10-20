@@ -1,0 +1,74 @@
+{
+  "source": "tests/native/pvm_import_justification.nim",
+  "build_name": "pvm-import-justification",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-import-justification-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Import justification default"
+    },
+    {
+      "identity": {
+        "origin": "mismatch"
+      },
+      "arguments": [
+        "mismatch"
+      ],
+      "name": "pvm-import-justification-mismatch",
+      "diagnostic": "outcome.status == None",
+      "description": "Import justification mismatch"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-import-justification-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Import justification index"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-import-justification-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Import justification limit"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-import-justification-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Import justification owner"
+    },
+    {
+      "identity": {
+        "origin": "proof"
+      },
+      "arguments": [
+        "proof"
+      ],
+      "name": "pvm-import-justification-proof",
+      "diagnostic": "outcome.status == None",
+      "description": "Import justification proof"
+    }
+  ]
+}
