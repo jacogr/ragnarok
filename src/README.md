@@ -22,6 +22,7 @@ and telemetry/RPC/UI startup.
 | [`chain/`](chain/) | Chain configuration, genesis capture and immutable query/publication views | [RPC and chain design](../docs/design/rpc.md) |
 | [`codec/`](codec/) | Canonical codecs, consensus-facing types and immutable owned snapshots | [Codec guide](../docs/codec.md) |
 | [`crypto/`](crypto/) | Blake2b-256, Ed25519, Keccak-256 and signing contexts | [Crypto guide](../docs/crypto.md) |
+| [`lib/`](lib/) | Shared utilities, including the structured JSON writer | [Shared boundaries](../docs/design.md#shared-boundaries) |
 | [`pvm/`](pvm/) | Program decoding, machine snapshots and bounded execution foundations | [PVM design](../docs/design/pvm.md) |
 | [`quic/`](quic/) | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload | [Networking guide](../docs/networking.md) |
 | [`rpc/`](rpc/) | Optional WebSocket JSON-RPC queries and bounded subscriptions | [RPC contract](../spec/rpc.md) |
