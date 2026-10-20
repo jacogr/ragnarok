@@ -5,8 +5,8 @@
 ## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
-import ../codec/[bounded, composite, header, state_accounts, state_authorization, state_privileges,
-    state_layout, state_trie]
+import ../codec/[natural, bounded, composite, header, state_accounts, state_authorization,
+    state_privileges, state_layout, state_trie]
 import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_context,
   accumulation_effects, accumulation_dispatch, accumulation_outcome, accumulation_provisions,
   accumulation_skip, accumulation_transfers,
@@ -19,8 +19,10 @@ type
     createdAccounts*: ElementLimit ## Maximum captured creation facts inspected, including prior-ID recreations.
     selfWrites*: ElementLimit ## Maximum unique nonmetadata self keys copied across all selected executions; zero preserves the gate.
     selfValueBytes*: ByteLimit ## Aggregate copied final self values; deletions consume a key but no value bytes.
-    assignCores*: ElementLimit ## Complete positional core work when selected assignments exist; zero preserves the gate.
-    assignBytes*: ByteLimit ## Aggregate canonical C(2)/C(12) capture/output ceiling.
+    assignCores*: ElementLimit ## Complete positional core work when selected assign/bless exists; zero preserves the gate.
+    assignBytes*: ByteLimit ## Aggregate C(2) plus the larger original/output C(12) byte ceiling.
+    managerEntries*: ElementLimit ## Larger original/selected manager allowance dictionary; zero permits only empty dictionaries.
+    managerBytes*: ByteLimit ## Aggregate original and selected manager C(12) bytes; zero preserves bless publication gate.
     provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
   AccumulationBatchError* {.pure.} = enum ## Refusals expose only their reasons; no earlier credit, candidate root or partial terminal set escapes.
     Uninitialized,      ## Default result or plan without initialized ownership.
@@ -43,7 +45,7 @@ type
     executions*: int      ## Unique services with genuine completed executions.
     skipped*: int         ## Unique services with certified non-executing outcomes.
     completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
-    assignmentWrites*: int ## Two canonical global chapter writes when any selected assign requires publication.
+    assignmentWrites*: int ## Two canonical global chapter writes when selected assign/bless requires publication.
     accountWrites*: int   ## Invoking metadata records prepared for credits or supported selected changes.
     deletedAccounts*: int ## Prior accounts absent from selected final domains and actually removed.
     createdAccounts*: int ## Prior-absent foreign accounts actually published with the selected creator debit.
@@ -220,7 +222,22 @@ proc hasDeletedAccount(context: AccumulationEffectContext, service: ServiceIndex
     if uint32(target.service) == uint32(service): return true
   false
 
-# Select only each original assigner's terminal queue/role; unsupported manager and validator effects stay gated by account scope.
+# Look up privileges by original authority; skipped/absent services retain the initial roles.
+proc selectedPrivileges(selected: PreparedTerminalAccumulationProvisions,
+    service: ServiceIndex, initial: PrivilegeSnapshot): PrivilegeSnapshot =
+  for index in 0..<selected.terminalProvisionInfo.value.provisions.contexts:
+    let outcome = selected.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(uint64(index))).value
+    if uint32(outcome.outcomeInfo.value.service) == uint32(service):
+      return outcome.outcomeContext.value.effectPrivileges.value # Terminal normalization already selected the exact checkpoint.
+  initial
+
+# GP accpar R preserves the original owner's handoff unless the original manager changed the role.
+func selectedRole(original, manager, owner: ServiceIndex): ServiceIndex =
+  if uint32(manager) == uint32(original): owner
+  else: manager # A changed manager choice wins independently of execution order.
+
+# Merge manager roles/allowances and original-assigner queues; validator staging remains gated.
+
 proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
     initial: InitialAccumulationContext, limits: AccumulationBatchLimits): AccumulationBatchResult[
         seq[StateWrite]] =
@@ -229,20 +246,25 @@ proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
     return AccumulationBatchResult[seq[StateWrite]](status: reason)
   let count = selected.terminalProvisionInfo.value.provisions.contexts
   var assigned = false
+  var blessed = false
   for index in 0..<count:
     let context = selected.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(uint64(
         index))).value.outcomeContext.value
     assigned = assigned or context.effectInfo.value.hasAssignments
-  if not assigned:
+    blessed = blessed or context.effectInfo.value.hasPrivileges
+  if not assigned and not blessed:
     return AccumulationBatchResult[seq[StateWrite]](status: AccumulationBatchError.None,
         completed: @[]) # Preserve the no-assignment path without decoding/copying global chapters.
   let privileges = initial.contextPrivileges.value
   let queues = initial.contextQueues.value
   let info = privileges.privilegeInfo.value
+  let manager = selectedPrivileges(selected, info.manager, privileges)
+  let managerInfo = manager.privilegeInfo.value
   let cores = info.cores
+  let allowances = managerInfo.always
   if uint64(cores) > uint64(limits.assignCores) or cores > high(int) div 2560 or
       cores > high(int) div sizeof(AuthorizerRow) or cores > high(int) div sizeof(ServiceIndex) or
-      info.always > high(int) div sizeof(AlwaysAccumulate):
+      allowances > high(int) div sizeof(AlwaysAccumulate):
     fail(AccumulationBatchError.LimitExceeded) # Prove native row/hash/dictionary extents before allocation under wrapping arithmetic.
   let prior = initial.contextAccounts.value
   let rawQueues = prior.lookup(chapterKey(StateChapter(2)))
@@ -251,12 +273,27 @@ proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
     fail(AccumulationBatchError.UnsupportedAccountEffects) # Initial context ownership must retain both exact complete components.
   let queueBytes = uint64(rawQueues.value.byteLength)
   let roleBytes = uint64(rawRoles.value.byteLength)
-  if queueBytes > uint64(limits.assignBytes) or roleBytes > uint64(limits.assignBytes)-queueBytes:
-    fail(AccumulationBatchError.LimitExceeded) # Fixed queue and unchanged-cardinality role encodings bound the complete output too.
+  # Canonical C(12) uses fixed role widths and a compact count; its size depends only on dictionary cardinality.
+  let selectedCount = uint64(allowances)
+  let countBytes = uint64(natural.encode(JamNatural(selectedCount)).len)
+  if selectedCount > (high(uint64)-4*uint64(cores+3)-countBytes) div 12:
+    fail(AccumulationBatchError.LimitExceeded) # Prove the full serialized extent before multiplication/addition.
+  let outputRoleBytes = 4*uint64(cores+3)+countBytes+12*selectedCount
+  if blessed and (uint64(max(info.always, allowances)) > uint64(limits.managerEntries) or
+      roleBytes > uint64(limits.managerBytes) or outputRoleBytes > uint64(
+          limits.managerBytes)-roleBytes):
+    fail(AccumulationBatchError.LimitExceeded) # Both source/output dictionaries are bounded before copying entries.
+  let retainedRoleBytes = max(roleBytes, outputRoleBytes)
+  if queueBytes > uint64(limits.assignBytes) or retainedRoleBytes > uint64(
+      limits.assignBytes)-queueBytes:
+    fail(AccumulationBatchError.LimitExceeded) # Bound complete original/output global bytes, including manager dictionary growth.
   var rows = newSeq[AuthorizerRow](cores)
-  var roles = PrivilegeState(manager: info.manager, delegator: info.delegator,
-    registrar: info.registrar,
-    assigners: newSeq[ServiceIndex](cores), always: newSeq[AlwaysAccumulate](info.always))
+  let delegator = selectedPrivileges(selected, info.delegator, privileges).privilegeInfo.value
+  let registrar = selectedPrivileges(selected, info.registrar, privileges).privilegeInfo.value
+  var roles = PrivilegeState(manager: managerInfo.manager,
+    delegator: selectedRole(info.delegator, managerInfo.delegator, delegator.delegator),
+    registrar: selectedRole(info.registrar, managerInfo.registrar, registrar.registrar),
+    assigners: newSeq[ServiceIndex](cores), always: newSeq[AlwaysAccumulate](allowances))
   for core in 0..<cores:
     let owner = privileges.privilegeAssignerAt(PrivilegeCoreIndex(uint64(core))).value
     var selectedQueues = queues
@@ -267,21 +304,23 @@ proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
         let context = outcome.outcomeContext.value
         selectedQueues = context.effectQueues.value
         selectedRoles = context.effectPrivileges.value # Match original authority, never execution order or a new handoff destination.
-    roles.assigners[core] = selectedRoles.privilegeAssignerAt(PrivilegeCoreIndex(uint64(core))).value
+    roles.assigners[core] = selectedRole(owner,
+      manager.privilegeAssignerAt(PrivilegeCoreIndex(uint64(core))).value,
+      selectedRoles.privilegeAssignerAt(PrivilegeCoreIndex(uint64(core))).value)
     rows[core] = newSeq[AuthorizerHash](80)
     for position in 0..<80:
       rows[core][position] = selectedQueues.authorizerAt(AuthorizationCoreIndex(uint64(core)),
           AuthorizationIndex(uint64(position))).value
-  for index in 0..<info.always:
-    roles.always[index] = privileges.alwaysAccumulateAt(PrivilegeEntryIndex(uint64(
-        index))).value # Preserve the original canonical allowance dictionary and all unrelated roles.
+  for index in 0..<allowances:
+    roles.always[index] = manager.alwaysAccumulateAt(PrivilegeEntryIndex(uint64(
+        index))).value # Retain the original manager's selected canonical dictionary, including empty/shrunk results.
   let config = AuthorizationConfig(cores: CoreCount(uint64(cores)), maxHashes: ElementLimit(uint64(
       cores)*80), maxBytes: ByteLimit(queueBytes))
   let encodedQueues = authorizationEntry(AuthorizationKind.Queues, rows, config)
   let encodedRoles = privilegeStateEntry(roles, PrivilegeConfig(cores: config.cores,
-    maxAlways: ElementLimit(uint64(info.always)), maxBytes: ByteLimit(roleBytes)))
+    maxAlways: ElementLimit(uint64(allowances)), maxBytes: ByteLimit(outputRoleBytes)))
   if encodedQueues.error != AuthorizationError.None or encodedRoles.error != PrivilegeError.None:
-    fail(AccumulationBatchError.UnsupportedAccountEffects) # Genuine selected assign leaves every component's fixed shape and dictionary cardinality intact.
+    fail(AccumulationBatchError.UnsupportedAccountEffects) # Global shapes and exact canonical size remain independently codec-checked.
   AccumulationBatchResult[seq[StateWrite]](status: AccumulationBatchError.None,
     completed: @[StateWrite(key: encodedQueues.value.key, kind: StateWriteKind.Put,
         value: encodedQueues.value.value),

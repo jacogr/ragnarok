@@ -169,8 +169,8 @@ proc checkStoreLimit() =
   assert refused.error == AccumulationBatchError.StoreFailure and refused.storeError ==
       StateStoreError.LimitExceeded
   assert sameStateSnapshot(state.snapshot.value, prior)
-proc checkUnsupported() =
-  ## A real manager bless followed by a successful assign cannot erase broader unsupported ancestry.
+proc checkManagerGate() =
+  ## A real bless followed by assign retains manager provenance and requires an explicit publication budget.
   var payload = newSeq[byte](96)
   payload[0] = 42
   payload[4] = 99
@@ -186,9 +186,10 @@ proc checkUnsupported() =
   assert a.error == AccumulationDispatchError.None
   let selected = normalizeAccumulationOutcome(a).value.outcomeContext.value
   assert selected.effectInfo.value.hasAssignments, "assign after bless succeeds"
-  assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported, "manager ancestry remains unsupported"
+  assert selected.effectAccountScope.value == AccumulationAccountScope.Initial
+  assert selected.effectInfo.value.hasPrivileges, "assign preserves bless provenance"
   assert prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value, [a, b], [],
-      HeaderSlot(128), policy()).error == AccumulationBatchError.UnsupportedAccountEffects
+      HeaderSlot(128), policy()).error == AccumulationBatchError.LimitExceeded
 proc main() =
   ## Exercise both original core owners, distinct terminal branches and restored-equal provenance.
   check(Halt, Halt)
@@ -199,7 +200,7 @@ proc main() =
   check(Restore, Halt)
   checkSubset()
   checkStoreLimit()
-  checkUnsupported()
+  checkManagerGate()
   let before = getOccupiedMem()
   for iteration in 0..<1000:
     let source = batchFixture()

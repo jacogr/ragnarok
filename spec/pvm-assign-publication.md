@@ -32,7 +32,8 @@ complete-map roots and ARC release. Extend the genuine signed-block pipeline to
 consume the changed posterior queue in C(1). Keep unsupported manager/validator
 mutation regressions and existing account/transfer/provision tests passing.
 
-Next: selected manager privilege publication and precedence. M1 framing remains
+The following [manager publication increment](pvm-manager-publication.md) implements
+selected manager privileges and precedence. Next: selected validator staging publication. M1 framing remains
 complete; full state serialization and block parity remain open. Full/light map
 separation and remaining whole-block validity gates are unchanged.
 

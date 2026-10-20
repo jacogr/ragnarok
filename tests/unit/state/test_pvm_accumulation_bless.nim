@@ -157,6 +157,7 @@ for count in [0'u64, 1, 2, 3]:
     let cpu = machineInfo(completed.value.machine).value
     if available < cost:
       assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == cost-available, "completed.value.exit == StepExit.OutOfGas and uint64(cpu.g"
+      assert not normalizeAccumulationOutcome(completed).value.outcomeContext.value.effectInfo.value.hasPrivileges, "unfunded bless has no provenance"
       assert uint64(cpu.registers[7]) == 42, "uint64(cpu.registers[7]) == 42 # No memory capture or stat" # No memory capture or state mutation before affordability.
     else:
       assert completed.value.exit == StepExit.Halt and uint64(cpu.gas) == available-cost, "completed.value.exit == StepExit.Halt and uint64(cpu.gas) "
@@ -188,7 +189,21 @@ for checkpoint in [false, true]:
   let completed = run(source(suffix = suffix))
   assert completed.value.exit == StepExit.Panic, "completed.value.exit == StepExit.Panic"
   let selected = normalizeAccumulationOutcome(completed).value.outcomeContext.value
+  assert selected.effectInfo.value.hasPrivileges == checkpoint, "bless provenance follows terminal checkpoint"
   assert selected.effectPrivileges.value.privilegeInfo.value.always == (if checkpoint: 1 else: 0), "selected.effectPrivileges.value.privilegeInfo.value.always"
+# A later unaffordable host call selects exactly the checkpoint's privilege provenance.
+for checkpoint in [false, true]:
+  var suffix: seq[seq[byte]] = @[]
+  if checkpoint:
+    suffix.add(@[10'u8, 18]) # Retain the successful bless before the later exhaustion.
+  suffix.add(registerImmediate(12, 1000000))
+  suffix.add(@[10'u8, 15]) # Full host charge exhausts gas before authority or memory checks.
+  suffix.add(@[50'u8, 0]) # The suspended call retains a valid continuation instruction even though gas is exhausted.
+  let completed = run(source(suffix = suffix))
+  assert completed.error == AccumulationDispatchError.None and completed.value.exit ==
+      StepExit.OutOfGas
+  let selected = normalizeAccumulationOutcome(completed).value.outcomeContext.value
+  assert selected.effectInfo.value.hasPrivileges == checkpoint
 # A successful manager handoff makes the original service unauthorized for its next bless call.
 let handed = run(source(manager = 99, suffix = @[registerImmediate(7, 42), @[10'u8, 15], @[50'u8, 0]]))
 assert uint64(machineInfo(handed.value.machine).value.registers[7]) == high(uint64)-8, "uint64(machineInfo(handed.value.machine).value.registers[7"
@@ -199,6 +214,7 @@ let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
   registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert preserved.error == AccumulationDispatchError.None and preserved.value.exit == StepExit.Halt, "preserved.error == AccumulationDispatchError.None and pres"
 checkRoles(context(preserved), 42, singleton)
+assert context(preserved).effectInfo.value.hasPrivileges, "yield and storage retain successful bless provenance"
 assert context(preserved).effectInfo.value.hasYield, "context(preserved).effectInfo.value.hasYield"
 # The encoded chapter's ceiling is independent of input capture and raw item limits.
 var smallProfile = config()

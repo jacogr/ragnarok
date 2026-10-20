@@ -282,12 +282,12 @@ proc main() {.raises.} =
       0 # Published owner alone retains the complete original and posterior graph.
   checkAssignPublication(base) # Explicit quotas now authorize selected global queue/assigner publication.
   var detachedAuthorization = default(PublishedBlockAuthorization)
-  for mode in 0..<5:
+  for mode in 0..<6:
     # Genuine empty/one/two-guarantee sources distinguish original uses, duplicate/full pools and retained posterior queues.
     let guarantees = if mode == 0: 0 elif mode == 2: 2 else: 1
     let copies = if mode == 3: 3 elif mode == 4: 8 else: 1
     let fixture = authorizationFixture(base, guarantees, copies, empty = mode == 0,
-        assigned = mode == 4)
+        assigned = mode == 4, managed = mode == 5)
     let stats = prepareAccumulationStatistics(fixture.finalized, policy()).value
     let activity = prepareBlockActivity(prepareServiceActivity(stats, activityPolicy()).value,
       blockPolicy()).value
@@ -297,7 +297,7 @@ proc main() {.raises.} =
     let recent = publishRecentHistory(prepareRecentHistory(ready, recentPolicy()).value).value
     let supplied = publishBlockPreimages(prepareBlockPreimages(recent, blockPreimagePolicy()).value).value
     detachedAuthorization = checkBlockAuthorization(supplied, fixture.entries, guarantees, copies,
-        assigned = mode == 4)
+        assigned = mode == 4, managed = mode == 5)
   assert detachedAuthorization.publishedAuthorizationSource.value.blockAuthorizationInfo.value.guarantees == 1
   assert detachedAuthorization.publishedAuthorizationState.value.commitment.entries >
       0 # Published owner alone retains completed source context and the private successor.
