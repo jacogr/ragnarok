@@ -178,6 +178,6 @@ let before = getOccupiedMem()
 for iteration in 0..<1000: cycle() # Every scoped owner retires before the next occupancy observation.
 let after = getOccupiedMem()
 assert before == after
-recordArcRelease("application_download_schedule_arc_release", 1000, before, after)
+recordArcRelease("application_download_schedule", 1000, before, after)
 echo "Application download schedule passed"
 echo "ARC_RELEASE cycles=1000 unchanged"
