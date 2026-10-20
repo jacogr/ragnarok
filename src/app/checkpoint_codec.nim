@@ -72,3 +72,38 @@ proc encodeApplicationCheckpoint*(owner: ApplicationChain,
   for index, octet in payload:
     bytes[ApplicationCheckpointIdentityBytes + index] = octet # Strict complete-map framing follows the fixed prefix without extra trailing data.
   ApplicationCheckpointResult[seq[byte]](status: ApplicationCheckpointError.None, completed: bytes)
+
+proc decodeApplicationCheckpoint*(bytes: openArray[byte], expected: ApplicationCheckpointIdentity,
+    limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointResult[StateStore] =
+  ## Check independent complete context before allocating a restored map; the file's own metadata never supplies trust.
+  if not expected.ready:
+    return ApplicationCheckpointResult[StateStore](
+      status: ApplicationCheckpointError.IdentityFailure,
+      identityReason: ApplicationCheckpointIdentityError.Uninitialized) # Default context cannot authorize a default/empty root.
+  if uint64(bytes.len) > uint64(limit):
+    return ApplicationCheckpointResult[StateStore](status: ApplicationCheckpointError.LimitExceeded)
+  if bytes.len < ApplicationCheckpointIdentityBytes:
+    return ApplicationCheckpointResult[StateStore](
+      status: ApplicationCheckpointError.IdentityFailure,
+      identityReason: ApplicationCheckpointIdentityError.InvalidFormat) # Prove the fixed prefix before creating a borrowed slice.
+  let identity = decodeApplicationCheckpointIdentity(bytes.toOpenArray(0,
+      ApplicationCheckpointIdentityBytes - 1),
+    ByteLimit(uint64(ApplicationCheckpointIdentityBytes)))
+  if identity.error != ApplicationCheckpointIdentityError.None:
+    return ApplicationCheckpointResult[StateStore](
+        status: ApplicationCheckpointError.IdentityFailure, identityReason: identity.error)
+  if not sameApplicationCheckpoint(identity.value, expected):
+    return ApplicationCheckpointResult[StateStore](
+        status: ApplicationCheckpointError.ContextMismatch) # Even checksum-valid metadata cannot select another block/profile/time/root.
+  let restored = decodeFullCheckpoint(bytes.toOpenArray(ApplicationCheckpointIdentityBytes,
+      bytes.len - 1),
+    expected.stateRoot, limits, ByteLimit(uint64(limit) - uint64(
+        ApplicationCheckpointIdentityBytes)))
+  if restored.error == CheckpointError.LimitExceeded:
+    return ApplicationCheckpointResult[StateStore](
+        status: ApplicationCheckpointError.LimitExceeded) # Both byte and complete-map resource ceilings remain effective.
+  if restored.error != CheckpointError.None:
+    return ApplicationCheckpointResult[StateStore](
+        status: ApplicationCheckpointError.CheckpointFailure, checkpointReason: restored.error)
+  ApplicationCheckpointResult[StateStore](status: ApplicationCheckpointError.None,
+      completed: restored.value)

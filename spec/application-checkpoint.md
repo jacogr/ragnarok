@@ -60,3 +60,16 @@ Independent golden bytes come from original fixture keys/values and published RP
 root/header expectations. The native suite checks exact whole bytes, every short
 output budget, context/map changes and repeated release. No file I/O, canonical
 adoption, new database schema or storage integration occurs in this layer.
+
+## Context-bound complete-map restoration
+
+Decode requires a separate initialized expected identity and explicit store/byte
+limits. Validate the fixed metadata first, compare every context field, then
+restore the exact remaining complete-map checkpoint against the independently
+expected posterior root. A checksum-valid mismatched context refuses before map
+allocation. Truncation, trailing bytes, invalid identity, changed map/root and
+resource refusals expose no recovered payload. Successful maps own their values
+and inherit only the caller's explicit policy; no header/history or canonical
+application owner is adopted. The native suite checks every cut/tamper, every
+context mismatch, complete original entries/counts/roots, input detachment and
+1,000 complete-graph release cycles.
