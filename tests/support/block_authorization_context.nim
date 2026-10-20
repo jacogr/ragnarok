@@ -35,6 +35,14 @@ proc assignProgram(): seq[byte] =
   let code = guestEnvelope([registerImmediate(7, 0), registerImmediate(8, 196608),
     registerImmediate(9, 42), @[10'u8, 16], @[50'u8, 0]], writable = payload)
   for octet in code: result.add(octet)
+proc managerProgram(): seq[byte] =
+  ## The signed manager guest hands off its role and removes both original allowances without changing queues.
+  let code = guestEnvelope([registerImmediate(7, 99), registerImmediate(8, 196608),
+    registerImmediate(9, 17), registerImmediate(10, 23), registerImmediate(11, 196608),
+    registerImmediate(12, 0), @[10'u8, 15], @[50'u8, 0]],
+    writable = @[42'u8, 0, 0, 0, 99, 0, 0, 0])
+  result = @[0'u8]
+  for octet in code: result.add(octet) # Stored service code retains the empty metadata prefix.
 proc assignParameters(): Parameters =
   ## Real assign validates both chain core count and the pinned eighty-member queue length.
   var bytes = encodeParameters(pvmParameters())
@@ -70,22 +78,25 @@ proc checkAssignPublication*(base: OwnedReport) =
   assert sameStateSnapshot(fixture.state.snapshot.value,
       prior) # Private publication never mutates the original signed source.
 proc authorizationFixture*(base: OwnedReport, guarantees, copies: int,
-    empty = false, assigned = false): AuthorizationFixture =
+    empty = false, assigned = false, managed = false): AuthorizationFixture =
   ## Execute one genuine initial round, then certify the stopped continuation without replaying any effects.
-  let program = if assigned: assignProgram() else: newSeq[byte]()
+  let program = if assigned: assignProgram() elif managed: managerProgram() else: newSeq[byte]()
   let fixture = executionFixture(blockTemplate(base), empty = empty, firstProgram = program,
-    incomingReports = guarantees, poolCopies = copies, refinementGas = 11, assigner = 42, extra = @[
-        blockPrior()])
+    incomingReports = guarantees, poolCopies = copies, refinementGas = 11, assigner = 42,
+        manager = (if managed: 42'u32 else: 0'u32), extra = @[blockPrior()])
   var runs: seq[AccumulationDispatchResult] = @[]
   if not empty:
-    let params = if assigned: assignParameters() else: pvmParameters()
+    let params = if assigned or managed: assignParameters() else: pvmParameters()
     runs.add(executionGuest(fixture, 0, parameters = params, copyLimit = MemoryByteLimit(
         if assigned: 2560'u64 else: 32'u64)))
     runs.add(executionGuest(fixture, 1)) # Both services execute maintained ordinary halt paths.
   var enabled = executionLimits()
-  if assigned:
+  if assigned or managed:
     enabled.batch.assignCores = ElementLimit(2)
     enabled.batch.assignBytes = ByteLimit(10000) # The signed source includes its original always-accumulate dictionary.
+  if managed:
+    enabled.batch.managerEntries = ElementLimit(2)
+    enabled.batch.managerBytes = ByteLimit(66) # Original two-entry C(12) plus selected empty-dictionary C(12).
   let completed = completeBlockAccumulation(fixture.round, runs, [], enabled).value
   let continuation = planAccumulationContinuation(completed,
     AccumulationContinuationLimits(executions: ElementLimit(2), reports: ElementLimit(4),
@@ -100,9 +111,13 @@ proc authorizationFixture*(base: OwnedReport, guarantees, copies: int,
         0), maxBytes: ByteLimit(1)))).value
   AuthorizationFixture(finalized: finalized, entries: fixture.entries)
 proc checkBlockAuthorization*(source: PublishedBlockPreimages, original: openArray[StateEntry],
-    guarantees, copies: int, assigned = false): PublishedBlockAuthorization =
+    guarantees, copies: int, assigned = false, managed = false): PublishedBlockAuthorization =
   ## Literal whole C(1) expectations distinguish incoming guaranteed cores from accumulated work and use actual posterior C(2).
   let prior = source.publishedPreimageState.value
+  if managed:
+    let roles = prior.lookup(chapterKey(StateChapter(12))).value.bytes
+    assert roles == @[99'u8, 0, 0, 0, 42, 0, 0, 0, 99, 0, 0, 0, 17, 0, 0, 0, 23, 0, 0, 0, 0],
+      "selected manager/roles and allowance removal survive signed block publication"
   let poolKey = chapterKey(StateChapter(1))
   let queueKey = chapterKey(StateChapter(2))
   let originalPools = decodeAuthorization(AuthorizationKind.Pools,

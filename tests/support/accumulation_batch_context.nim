@@ -88,10 +88,12 @@ proc batchInputSet*(incoming = true): PreparedAccumulationInputs =
 proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
     writes = 64'u64, incoming = true, firstEnvelope: seq[byte] = @[],
     secondEnvelope: seq[byte] = @[], extra: seq[StateEntry] = @[],
-    assigners: seq[ServiceIndex] = @[], manager = 0'u32): BatchFixture =
+    assigners: seq[ServiceIndex] = @[], manager = 0'u32,
+    always: seq[AlwaysAccumulate] = @[], allowanceLimit = 0'u64): BatchFixture =
   ## Capture both ready-code services and independent canonical requests in the same complete immutable prior.
   ## Optional copied envelopes/extra entries authorize cross-host witnesses without changing default callers.
-  let config = pvmContextConfig()
+  var config = pvmContextConfig()
+  config.privileges.maxAlways = ElementLimit(allowanceLimit) # Explicit manager fixtures opt into allowance capture; earlier callers retain zero capacity.
   assert assigners.len == 0 or assigners.len == 2 # Optional current roles enter the same authenticated fixture map.
   let selectedAssigners = if assigners.len == 0: @[ServiceIndex(0), ServiceIndex(0)] else: assigners
   var entries = @[
@@ -99,7 +101,7 @@ proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
         AuthorizerHash](80)], config.queues).value,
     validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6), config.staging).value,
     privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
-        assigners: selectedAssigners), config.privileges).value,
+        assigners: selectedAssigners, always: always), config.privileges).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 8]),
     serviceStorageEntry(ServiceIndex(42), @[1'u8], @[2'u8], ServiceEntryLimits(keyBytes: ByteLimit(
         1), valueBytes: ByteLimit(1))).value,
@@ -133,7 +135,7 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
     copyLimit = MemoryByteLimit(32), parameters = batchParameters(), transferLimit = ElementLimit(0),
     accountWriteKeys = ElementLimit(0),
     createdAccounts = ElementLimit(0),
-    deletedAccounts = ElementLimit(0),
+    deletedAccounts = ElementLimit(0), allowanceLimit = 0'u64,
     serviceProbes = ServiceProbeLimit(0), entropy = default(StateEntropyWord)):
     AccumulationDispatchResult =
   ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
@@ -145,10 +147,12 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
   let prepared = initializeAccumulationMachine(invoked, InitializationLimits(
       envelope: InitializationByteLimit(512),
     program: ProgramByteLimit(256), jumps: JumpCountLimit(0), pages: PageLimit(5))).value
+  var config = pvmContextConfig()
+  config.privileges.maxAlways = ElementLimit(allowanceLimit) # Real bless guests explicitly opt into bounded dictionary growth/shrinkage.
   executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512),
       operand: OperandLimits(maxBytes: ByteLimit(512))), copyLimit,
-    ExecutionStepLimit(200), HostCallLimit(32), GasCycleLimit(10000), pvmContextConfig(),
+    ExecutionStepLimit(200), HostCallLimit(32), GasCycleLimit(10000), config,
     provisionPolicy(items = 2, perBlob = 1, total = 2), transferLimit = transferLimit,
     accountWriteKeys = accountWriteKeys, createdAccounts = createdAccounts,
     deletedAccounts = deletedAccounts, serviceProbes = serviceProbes)
