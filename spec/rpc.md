@@ -294,6 +294,15 @@ trailing commas, permissive escapes/numbers). The event adapter enforces string 
 a single root and resource limits before retaining each event. Decoded strings are checked
 for valid UTF-8, and stdlib error state is checked even when it emits a string event.
 
+Output uses `src/json_writer.nim` to build typed values, ordered objects and arrays. String
+escaping and punctuation belong to that module; integer serialization keeps the original
+signed/unsigned width. `trustedJson` embeds only parser-validated IDs or complete internally
+serialized replies/notification payloads. RPC retains its existing pre-allocation blob limits,
+list/page budgets, final response bounds and subscription commit checks. The pinned Nimony
+`std/json` typed writer lacks full-width unsigned and raw-number support, so it cannot replace
+this boundary without narrowing values or normalizing request IDs. Browser requests use native
+`JSON.stringify`. Telemetry reads chainspec JSON with `std/parsejson`; JIP-3 output is binary.
+
 The server accepts masked client frames, fragmented text with interleaved ping/pong, and valid
 close handshakes. UTF-8 validation covers the complete reassembled text, so a fragment may split
 one Unicode scalar. Server frames are unmasked. Framing violations close with 1002, binary data

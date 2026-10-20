@@ -9,6 +9,7 @@
 
 import std/[assertions, syncio, base64]
 import ../../../src/version
+import ../../../src/json_writer
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../support/report_context import unhex
 from ../../../src/codec/state_requests import serviceRequestKey, RequestError, error, value
@@ -18,6 +19,31 @@ from ../../../src/codec/state_service_values import serviceStorageKey, servicePr
     ServiceValueError, error, value
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
+
+# Structured output preserves integer endpoints and distinguishes data strings from embedded JSON.
+assert $json(high(uint64)) == "18446744073709551615"
+assert $json(low(int64)) == "-9223372036854775808"
+assert $json(high(uint32)) == "4294967295"
+assert $json(0'u64) == "0"
+assert $json(true) == "true"
+assert $json(false) == "false"
+assert $jsonNull() == "null"
+assert $JsonValue() == "null"
+assert $json(JsonObject()) == "{}"
+var jsonItems = JsonArray()
+assert jsonItems.len == 2 and $json(jsonItems) == "[]"
+jsonItems.add(json("null"))
+jsonItems.add(jsonNull())
+jsonItems.add(jsonObject([("maximum", json(high(uint64)))]))
+assert $json(jsonItems) == "[\"null\",null,{\"maximum\":18446744073709551615}]"
+assert jsonItems.len == ($json(jsonItems)).len
+var jsonFields = JsonObject()
+jsonFields.add("a\"b", json("\x00\x1f\n\t\"\\ café 😀"))
+jsonFields.add("items", json(jsonItems))
+assert $json(jsonFields) == "{\"a\\\"b\":\"\\u0000\\u001F\\u000A\\u0009\\\"\\\\ café 😀\",\"items\":[\"null\",null,{\"maximum\":18446744073709551615}]}"
+# Only validated complete values use the explicit embedding boundary; lexemes stay untouched.
+for lexeme in ["-0", "1.50", "1e+300", "184467440737095516160"]:
+  assert $jsonObject([("id", trustedJson(lexeme))]) == "{\"id\":" & lexeme & "}"
 
 # Construct independently masked client frames; test payloads stay within the medium-length format.
 proc masked(payload: string, opcode = 1, final = true): string =
@@ -56,6 +82,8 @@ for id in ["184467440737095516160", "-0", "1.5", "1e300", "null", "\"a\\\"b\"",
     "\"\\ud83d\\ude00\""]:
   let response = respond(request.replace("7}", id & "}"), info)
   assert "\"result\"" in response and "\"error\"" notin response
+  if id[0] != '"':
+    assert "\"id\":" & id & "," in response # Echo the exact validated numeric/null token.
 # Malformed syntax must fail atomically instead of partially dispatching a request or batch.
 for bad in ["", "[1,]", "{1:2}", "{\"x\":1,}", "01", "1.", "+1", "NaN", "1e", "-", "{}{}",
     "\"\\x41\"", "\"\\ud800\"", "\"\\udc00\"", "\"\x01\"", "\"unterminated", request & " trailing"]:

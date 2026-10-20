@@ -95,13 +95,16 @@ when defined(ragnarokBrowser):
     clearPending()
     text("status", "Request timed out")
 
+  # The browser owns JSON serialization; the only dynamic field is a bounded numeric request ID.
+  proc infoRequest(id: int): string {.importjs:
+    "JSON.stringify({jsonrpc: '2.0', method: 'ragnarok_clientInfo', params: [], id: #})".}
+
   # Send exactly the requested prototype endpoint, with bounded monotonically changing IDs.
   proc requestInfo() =
     if not connected or pending: return
     if requestId >= 2_147_483_647: requestId = 1 # Avoid 32-bit integer wrap in the browser target.
     else: inc requestId
-    let request = "{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\",\"params\":[],\"id\":" &
-        $requestId & "}"
+    let request = infoRequest(requestId)
     if sendSocket(request):
       pending = true
       disabled("refresh", true)
