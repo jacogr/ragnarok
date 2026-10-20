@@ -55,3 +55,33 @@ Evidence remains under `build/download-worker-*`. This establishes bounded worke
 and lifecycle/network progress locally, not sustained load, a hard shutdown-time bound or canonical
 Linux CI. Explicit shutdown can wait for non-preemptible execution to finish. Existing external
 aliases still obey the exclusive borrow contract. No remote CI was requested.
+
+## Signed worker reuse contract
+
+The component workload reuses one stable raw receiver, Services owner and native worker for
+100 fully received signed inputs: 50 genuine certificates queued and explicitly cancelled before
+adoption, interleaved with 50 cancellations requested only after execution reaches Done. No early
+cancellation can satisfy those completed-job iterations. An additional outstanding job is retired
+by joined close without collection. Each iteration checks stale-ticket rejection, retained RPC
+exclusion at Done, restored producer admission and idle handoff after collection, and unchanged
+exact canonical parent. All captured graph aliases remain untouched during the lease.
+
+Run `make unit SUITE=application_block_download`. The exact output contract includes
+`WORKER_REUSE cycles=100 passed`, separate from the existing 1000 reception-only ARC cycles.
+The worker workload does not assert exact `getOccupiedMem` equality: the pinned allocator defers
+foreign-thread free accounting until the owning allocation class consumes its remote queue.
+That host-only counter is not a complete worker-heap or process-memory measurement.
+
+This is a component lifecycle/reuse workload, not sustained live-network load or a measurement of
+running-PVM cancellation latency. Non-preemptible execution still governs joined shutdown time.
+Next: sustained live-network load, independent memory observations and running-work responsiveness,
+then broader bootstrap/endpoints and persistent full/light state. M1 framing remains complete;
+full state serialization/JAM parity remains open.
+
+Local verification on 2026-10-20 (macOS arm64, pinned Nimony, checked ARC/Clang/LTO):
+`application_block_download` passes the 100-job reuse workload, existing exact framing/refusal,
+real TLS transfer/deferred adoption, and 1000 reception-only ARC release checks. Formatting,
+inventory discovery and whitespace checks pass. Production code and verification registries are
+unchanged; existing production/guard evidence remains applicable to those identical sources.
+Logs: `build/worker-soak-unit-final.log`, `build/worker-soak-final-format.log` and
+`build/worker-soak-final-inventory.log`. Canonical Linux CI remains separate; no remote CI requested.

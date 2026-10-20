@@ -1,2 +1,3 @@
 Application block download passed
 ARC_RELEASE cycles=1000 unchanged
+WORKER_REUSE cycles=100 passed
