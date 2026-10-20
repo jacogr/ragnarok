@@ -6,13 +6,14 @@
 ## stable for apply. Snapshot retention is caller-controlled, with no disk storage or
 ## incremental trie yet.
 ##
-## Exposes StateStore/StateStoreSnapshot handles, snapshot, lookup, commitment and atomic apply over
+## Exposes StateStore/StateStoreSnapshot handles, snapshot, lookup, sorted keyAt, commitment and atomic apply over
 ## complete serialized mappings, bounded owner-bound copySlice, plus forkStateStore with inherited ceilings for private working branches.
 
 import std/[algorithm, assertions]
 import ../codec/[state_trie, state_layout, bounded]
 
 type
+  StateEntryIndex* = distinct int ## Sorted ordinal interpreted only against the supplied immutable complete-map snapshot.
   StateStoreLimits* = object ## Independent batch ceilings supplement the existing complete-map Merklization limits.
     trie*: StateTrieLimits
     writes*: ElementLimit
@@ -135,6 +136,15 @@ proc commitment*(snapshot: StateStoreSnapshot): StateTrieCommitment {.requires: 
   let data = snapshot.data
   assert data != nil # Retain one stable owner for the contract-proved access.
   data.commitment
+
+proc keyAt*(snapshot: StateStoreSnapshot, index: StateEntryIndex): StateStoreResult[StateKey] =
+  ## Copy one sorted serialized key; reject defaults and invalid ordinals without exposing map storage.
+  let data = snapshot.data
+  if data == nil:
+    return StateStoreResult[StateKey](status: StateStoreError.Uninitialized) # No default map exists.
+  if int(index) < 0 or int(index) >= data.entries.len:
+    return StateStoreResult[StateKey](status: StateStoreError.InvalidRange) # Never clip or wrap a coordinate.
+  StateStoreResult[StateKey](status: StateStoreError.None, completed: data.entries[int(index)].key)
 
 proc lookup*(snapshot: StateStoreSnapshot, key: StateKey): StateStoreResult[StateValue] =
   ## Find a full key in a published sorted map. Missing and present-empty values are distinct.

@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/chain_state_snapshot_results.nim",
+  "build_name": "chain-state-snapshot-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "block"}, "arguments": ["block"], "name": "chain-state-snapshot-block", "diagnostic": "value.ready", "description": "Chain state snapshot block extraction guard"},
+    {"identity": {"reason": "owner"}, "arguments": ["owner"], "name": "chain-state-snapshot-owner", "diagnostic": "outcome.status == None", "description": "Chain state snapshot owner extraction guard"},
+    {"identity": {"reason": "range"}, "arguments": ["range"], "name": "chain-state-snapshot-range", "diagnostic": "outcome.status == None", "description": "Chain state snapshot range extraction guard"}
+  ]
+}
