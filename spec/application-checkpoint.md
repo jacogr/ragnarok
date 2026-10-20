@@ -85,3 +85,16 @@ publication path. Ready publication delegates the existing atomic raw primitive,
 including exact/narrower limits and visible-but-unsynced outcomes. Native witnesses
 cover detached source lifetime, exact bytes, moved-source refusal, old-file
 preservation and 1,000 preparation/transfer release cycles.
+
+## Bounded single-file publication and recovery
+
+Synchronous file adapters publish captured identity and complete map in one atomic
+replacement through the existing raw primitive. No separate manifest can lag its
+selected map. Prepared or source-owner publication returns fixed identity only on
+durable success; visible-but-unsynced remains a distinct payload-free outcome.
+Recovery requires independent context before opening a file, bounded regular-file
+EOF and checked close before decode, and explicit complete-map resource policy.
+Exact native/identity/checkpoint/context failures remain typed. These are startup/
+offline APIs, not dispatcher callbacks or canonical chain adoption. Tests cover
+exact old-file preservation on refusal, mismatched trust, native paths, corruption
+and repeated complete recovery ownership release.

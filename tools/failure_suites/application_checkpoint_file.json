@@ -1,0 +1,62 @@
+{
+  "build_name": "application-checkpoint-file-results",
+  "cases": [
+    {
+      "arguments": [
+        "default-save"
+      ],
+      "description": "Application checkpoint file default-save",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default-save"
+      },
+      "name": "application-checkpoint-file-default-save"
+    },
+    {
+      "arguments": [
+        "default-load"
+      ],
+      "description": "Application checkpoint file default-load",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default-load"
+      },
+      "name": "application-checkpoint-file-default-load"
+    },
+    {
+      "arguments": [
+        "failed-load"
+      ],
+      "description": "Application checkpoint file failed-load",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "failed-load"
+      },
+      "name": "application-checkpoint-file-failed-load"
+    },
+    {
+      "arguments": [
+        "identity-reason"
+      ],
+      "description": "Application checkpoint file identity-reason",
+      "diagnostic": "outcome.status == IdentityFailure",
+      "identity": {
+        "reason": "identity-reason"
+      },
+      "name": "application-checkpoint-file-identity-reason"
+    },
+    {
+      "arguments": [
+        "checkpoint-reason"
+      ],
+      "description": "Application checkpoint file checkpoint-reason",
+      "diagnostic": "outcome.status == CheckpointFailure",
+      "identity": {
+        "reason": "checkpoint-reason"
+      },
+      "name": "application-checkpoint-file-checkpoint-reason"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_checkpoint_file_results.nim"
+}
