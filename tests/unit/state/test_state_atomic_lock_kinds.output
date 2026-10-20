@@ -1,0 +1,1 @@
+PASS lock inode admission: nonblocking FIFO refusal, no symlink following and regular ownership

@@ -334,3 +334,17 @@ prepared owner; it need not borrow the canonical state graph. Native tests cover
 retired sources, exact/short ceilings, default/moved/closed owners, unchanged prior
 files and 1,000 prepared advance/restore ARC cycles. Existing snapshot bootstrap,
 advance and real kernel write rollback suites remain affected integration controls.
+
+## Regular lock-inode admission
+
+Raw and composite checkpoint owners open lock paths with `O_NONBLOCK` and SDK
+`O_NOFOLLOW`, then require the opened inode to be regular before attempting advisory
+locking. FIFO/device/directory/symlink lock paths refuse without adopting ownership,
+following a link or changing an existing inode. Nonblocking FIFO open plus kind
+validation cannot wait for another FIFO peer. Ordinary regular lock-file contention,
+0600 creation and stable inode preservation remain unchanged.
+
+Tests use real FIFO/directory/regular-target and dangling symlink paths, ensure the
+refused inode/target is preserved, reacquire normal ownership after cleanup, and
+repeat 1,000 special-file refusal/release ARC cycles. Storage latency for real regular
+files is still synchronous; these flags do not promise a wall-clock I/O deadline.
