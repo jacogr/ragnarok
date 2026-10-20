@@ -1,0 +1,133 @@
+{
+  "build_name": "application-preparation-lease-results",
+  "cases": [
+    {
+      "arguments": [
+        "view"
+      ],
+      "description": "Managed preparation contract view",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "view"
+      },
+      "name": "application-preparation-lease-view"
+    },
+    {
+      "arguments": [
+        "snapshot"
+      ],
+      "description": "Managed preparation contract snapshot",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "snapshot"
+      },
+      "name": "application-preparation-lease-snapshot"
+    },
+    {
+      "arguments": [
+        "apply"
+      ],
+      "description": "Managed preparation contract apply",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "apply"
+      },
+      "name": "application-preparation-lease-apply"
+    },
+    {
+      "arguments": [
+        "enqueue"
+      ],
+      "description": "Managed preparation contract enqueue",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "enqueue"
+      },
+      "name": "application-preparation-lease-enqueue"
+    },
+    {
+      "arguments": [
+        "candidate"
+      ],
+      "description": "Managed preparation contract candidate",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "candidate"
+      },
+      "name": "application-preparation-lease-candidate"
+    },
+    {
+      "arguments": [
+        "begin-input"
+      ],
+      "description": "Managed preparation contract begin-input",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "begin-input"
+      },
+      "name": "application-preparation-lease-begin-input"
+    },
+    {
+      "arguments": [
+        "enqueue-input"
+      ],
+      "description": "Managed preparation contract enqueue-input",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "enqueue-input"
+      },
+      "name": "application-preparation-lease-enqueue-input"
+    },
+    {
+      "arguments": [
+        "rpc-close"
+      ],
+      "description": "Managed preparation contract rpc-close",
+      "diagnostic": "server.lease == nil",
+      "identity": {
+        "reason": "rpc-close"
+      },
+      "name": "application-preparation-lease-rpc-close"
+    },
+    {
+      "arguments": [
+        "rpc-destroy"
+      ],
+      "description": "Managed preparation contract rpc-destroy",
+      "diagnostic": "server.lease == nil",
+      "identity": {
+        "reason": "rpc-destroy"
+      },
+      "name": "application-preparation-lease-rpc-destroy"
+    },
+    {
+      "arguments": [
+        "services-destroy"
+      ],
+      "description": "Managed preparation contract services-destroy",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "services-destroy"
+      },
+      "name": "application-preparation-lease-services-destroy"
+    },
+    {
+      "arguments": [
+        "default-begin"
+      ],
+      "description": "Managed preparation contract default-begin",
+      "diagnostic": "preparationAvailable(services)",
+      "identity": {
+        "reason": "default-begin"
+      },
+      "name": "application-preparation-lease-default-begin"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_preparation_lease_results.nim"
+}

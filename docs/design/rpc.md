@@ -32,6 +32,12 @@ core configuration and current/previous rosters before returning its exact bytes
 also owns a bounded sorted serialized-key index for binary-search pagination; key access returns
 fixed copies without exporting state-map storage. It retains sorted IDs from exact valid account entries for bounded `listServices` responses. RPC and telemetry share the same startup file snapshot. See [RPC scope](../../spec/rpc.md).
 
+RPC's explicit `pauseChain`/`resumeChain` lease freezes request processing and publication while
+Services lends the canonical graph to its preparation worker. Only the exact retained token can
+resume the listener; close/destruction require release. Existing sockets and serialized queues
+remain owned by the listener, with their wall-clock deadlines unchanged. This exclusion does not
+make shared ARC handles safe for concurrent use. See the [managed lease](../../spec/application-preparation-lease.md).
+
 `src/chain/provider.nim` owns the immutable `ChainView` boundary for best-block selection,
 exact hash/parent lookup and bounded retained-report lookup. The startup adapter seeds the
 view with configured genesis; `advanceView` creates a new history of at most eight direct-child

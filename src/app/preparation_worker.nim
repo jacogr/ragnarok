@@ -122,7 +122,7 @@ proc phase*(worker: var PreparationWorker): PreparationPhase =
 
 proc submit*(worker: var PreparationWorker, input: var BlockInput, id: BlockInputId,
     chain: var ApplicationChain): PreparationAdmission =
-  ## Borrow stable input/chain exclusively, including ALL aliases, until collect or close; no host service tick is allowed.
+  ## Borrow stable input/chain exclusively, including ALL aliases, until collect or close; no canonical host work is allowed.
   if not worker.started: return PreparationAdmission(status: PreparationError.Closed)
   acquire(worker.lock)
   defer: release(worker.lock)
