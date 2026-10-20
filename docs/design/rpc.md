@@ -14,7 +14,9 @@ WebSocket upgrade policy admits the enabled UI's exact loopback origins. See [UI
 
 An optional `src/rpc/` WebSocket JSON-RPC listener shares the existing peer dispatcher. It owns
 at most eight nonblocking loopback connections and bounded input/output buffers. The first
-method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Other chain queries
+method, `ragnarok_clientInfo`, reports implementation and observed runtime metadata. Its
+`version` / `revision` and `compilerVersion` / `compilerRevision` fields use the shared immutable
+application build identity, alongside the embedded UTC `buildTimestamp`. Other chain queries
 start with a genesis-only immutable view when an explicit genesis pair is supplied. Best-block
 subscriptions receive that initial descriptor and subsequent dispatcher publications. `parameters()` reads an immutable
 GP 0.8.0 parameter snapshot from the explicit chainspec and the retained active validator count

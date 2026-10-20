@@ -134,7 +134,7 @@ class InventoryPreflight(unittest.TestCase):
     def test_new_inputs_and_generated_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            names = ('Makefile', '.github/workflows/extra.yaml', 'src/telemetry/new.nim',
+            names = ('Makefile', '.github/workflows/extra.yaml', 'src/telemetry/new.nim', 'src/version.json',
                      'native/bridge.h', 'native/extra/src/lib.rs', 'native/extra/Cargo.lock',
                      'spec/extra-pins.json', 'tools/nested/helper.py', 'tools/nested/profile.json',
                      'tools/new-requirements.txt', 'tools/ui_browser.mjs', 'tests/support/helper.nim', 'tests/nested/oracle.py',

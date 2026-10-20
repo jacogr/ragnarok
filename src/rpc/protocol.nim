@@ -12,6 +12,7 @@
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
+import ../app/version
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]
 import ../state/store
@@ -610,8 +611,11 @@ proc subscriptionUsage(session: RpcSession): string =
 
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
 proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): string =
-  result = "{\"name\":\"Ragnarok\",\"version\":\"development\",\"implementation\":\"Nimony\""
-  result.add(",\"compilerVersion\":\"0.6.3\",\"grayPaperVersion\":\"0.8.0\"")
+  result = "{\"name\":\"Ragnarok\",\"version\":" & quote(AppVersion)
+  result.add(",\"revision\":" & quote(AppRevision) & ",\"implementation\":\"Nimony\"")
+  result.add(",\"compilerVersion\":" & quote(CompilerVersion))
+  result.add(",\"compilerRevision\":" & quote(CompilerRevision) & ",\"grayPaperVersion\":\"0.8.0\"")
+  result.add(",\"buildTimestamp\":" & quote(BuildTimestamp))
   result.add(",\"os\":" & quote(Platform) & ",\"architecture\":" & quote(Architecture))
   result.add(",\"role\":" & quote(info.role) & ",\"uptimeMs\":" & $info.uptimeMs)
   result.add(",\"connectedPeers\":" & $info.peers)

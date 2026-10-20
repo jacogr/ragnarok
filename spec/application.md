@@ -27,6 +27,28 @@ before service retirement. Startup errors close partially opened services, with 
 cleanup covering raising filesystem failures. One captured chain snapshot feeds both services.
 The exporter adapter reads that exporter's enabled state instead of global CLI flags.
 
+## Build identity
+
+`build/ragnarok --version` prints the application version and full source revision, then
+`Nimony <version> <full compiler revision>` and `Built <UTC timestamp>`. Both CLI and
+`ragnarok_clientInfo` use immutable constants from `app/version.nim`, generated into ignored `build/build_info.nim` by Make.
+RPC `version` is the application label, `revision` its source identity, and `compilerVersion` /
+`compilerRevision` identify the validated nightly in `spec/toolchain.json`.
+`buildTimestamp` is a UTC ISO 8601 instant compiled into the app, unchanged across runs/requests.
+No runtime Git or compiler installation is needed to query a shipped binary.
+
+The checked-in [`src/version.json`](../src/version.json) owns the application version
+(currently `development` until release numbering is chosen). Packaging can override it with
+`RAGNAROK_VERSION=0.1.0 make`. Source identity is full Git HEAD with `-dirty` when tracked or
+untracked source changes exist (ignored build output does not mark it dirty). Archive packaging
+can supply `RAGNAROK_REVISION=<source commit>`; without Git or an override it reports `unknown`.
+Labels/revision overrides must contain 1–128 printable ASCII characters. Re-run Make after
+changing packaging variables; these values are compiled into the binary, never read at runtime.
+The timestamp captures build generation time in UTC. Reproducible builds may set the standard
+`SOURCE_DATE_EPOCH` variable to Unix seconds; malformed or out-of-range values fail preparation.
+`setup` and `check-modules` refresh metadata after verifying the compiler pin, covering production,
+unit, compiler-guard and E2E builds without additional manual steps.
+
 ## Removed executable paths
 
 `src/quic/peer.nim` is removed; callers compile `src/ragnarok.nim` directly. The mixed CLI/setup
@@ -54,6 +76,8 @@ required; every profile builds the same app source.
 - Full `make check-e2e` through the consolidated entry point, including real collector resets,
   retained mesh, RPC/UI browser, CLI failures, CE matrix, service/resilience/soak and proof offload.
 - Affected Python build/profile/inventory/E2E/collector harness tests, inventory and formatting.
+- Build metadata generation/JSON source/provenance tests, native `rpc`, version override and
+  fixed `SOURCE_DATE_EPOCH` builds, with live WebSocket identity matched to `--version`.
 
 Local verification on 2026-10-19, macOS arm64, pinned Nimony 0.6.3: production build, `--help`,
 all 129 source-module checks, native `app_options`/`telemetry`, composite Services copy rejection,

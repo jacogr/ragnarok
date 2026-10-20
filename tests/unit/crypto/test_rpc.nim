@@ -8,6 +8,7 @@
 ## interface.
 
 import std/[assertions, syncio, base64]
+import ../../../src/app/version
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../support/report_context import unhex
 from ../../../src/codec/state_requests import serviceRequestKey, RequestError, error, value
@@ -31,6 +32,12 @@ proc masked(payload: string, opcode = 1, final = true): string =
 let info = ClientInfo(uptimeMs: 12, peers: 3, role: "server", port: 19800)
 let request = "{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\",\"id\":7}"
 let answer = respond(request, info)
+# RPC identity uses the same immutable build inputs as the application version command.
+assert "\"version\":" & quote(AppVersion) in answer
+assert "\"revision\":" & quote(AppRevision) in answer
+assert "\"compilerVersion\":" & quote(CompilerVersion) in answer
+assert "\"compilerRevision\":" & quote(CompilerRevision) in answer
+assert "\"buildTimestamp\":" & quote(BuildTimestamp) in answer
 assert "\"id\":7" in answer and "\"connectedPeers\":3" in answer and "\"uptimeMs\":12" in answer
 assert "\"transport\":\"websocket\"" in answer and "\"bestBlock\":null" in answer
 assert respond("{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\"}", info) == ""

@@ -15,7 +15,7 @@ and E2E builds; [`app/`](app/) owns validated options and telemetry/RPC/UI start
 
 | Path | Purpose | Further reading |
 | --- | --- | --- |
-| [`app/`](app/) | Shared application configuration and optional service ownership | [Application design](../docs/design/app.md) |
+| [`app/`](app/) | Shared application configuration, build identity and optional service ownership | [Application design](../docs/design/app.md) |
 | [`bandersnatch/`](bandersnatch/) | Typed release-reference IETF VRF/RingVRF adapter and domain policy | [Crypto guide](../docs/crypto.md) |
 | [`chain/`](chain/) | Chain configuration, genesis capture and immutable query/publication views | [RPC and chain design](../docs/design/rpc.md) |
 | [`codec/`](codec/) | Canonical codecs, consensus-facing types and immutable owned snapshots | [Codec guide](../docs/codec.md) |
@@ -33,7 +33,10 @@ distinguish implemented foundations from complete client milestones.
 
 ## Development proof peer
 
-`make` builds `build/ragnarok` with integration and bounded proof offload enabled. See the
+`make` builds `build/ragnarok` with integration and bounded proof offload enabled.
+The version lives in [`version.json`](version.json); packaging can override it with
+`RAGNAROK_VERSION=0.1.0 make`. `build/ragnarok --version` prints the version, application and
+compiler Git revisions, and embedded UTC build timestamp. RPC exposes the same identity. See the
 [networking guide](../docs/networking.md) for peer commands, certificates and fixtures. The
 options below extend an existing `server`, `client` or retained `mesh` invocation; they do not
 start a complete JAM node.
