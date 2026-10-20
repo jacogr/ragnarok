@@ -1,0 +1,87 @@
+{
+  "source": "tests/native/application_block_input_results.nim",
+  "build_name": "application-block-input-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "reason": "admission-default"
+      },
+      "arguments": [
+        "admission-default"
+      ],
+      "name": "application-block-input-admission-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Block input selected extraction guard admission-default"
+    },
+    {
+      "identity": {
+        "reason": "admission-refused"
+      },
+      "arguments": [
+        "admission-refused"
+      ],
+      "name": "application-block-input-admission-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Block input selected extraction guard admission-refused"
+    },
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "application-block-input-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Block input selected extraction guard default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "application-block-input-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Block input selected extraction guard refused"
+    },
+    {
+      "identity": {
+        "reason": "codec"
+      },
+      "arguments": [
+        "codec"
+      ],
+      "name": "application-block-input-codec",
+      "diagnostic": "outcome.status == DecodeFailure",
+      "description": "Block input selected extraction guard codec"
+    },
+    {
+      "identity": {
+        "reason": "preparation"
+      },
+      "arguments": [
+        "preparation"
+      ],
+      "name": "application-block-input-preparation",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "description": "Block input selected extraction guard preparation"
+    },
+    {
+      "identity": {
+        "reason": "enqueue"
+      },
+      "arguments": [
+        "enqueue"
+      ],
+      "name": "application-block-input-enqueue",
+      "diagnostic": "outcome.status == EnqueueFailure",
+      "description": "Block input selected extraction guard enqueue"
+    }
+  ]
+}
