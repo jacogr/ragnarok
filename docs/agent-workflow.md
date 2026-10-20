@@ -9,23 +9,35 @@ Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
   compile a minimal example when support is uncertain. Use Make to provision the pinned tools;
   keep temporary probes and logs under ignored `build/`, using the affected build's compiler flags.
   Consult [Nimony compatibility](nimony-compatibility.md) for previously observed differences.
+- Let the owning Make setup prerequisites finish before dependent checks; direct compiler probes
+  may also need generated build metadata/assets. Reuse a suitable clean, provisioned checkout across
+  increments after verifying its branch, pins and configuration. Do not recreate toolchains or clone
+  dependencies merely for a new layer; preserve other worktrees and unpublished work.
 - Search named production modules first with `rg`; exclude `vendor/` and `build/` unless investigating
   those trees. Read relevant sections and batch independent reads. Expand only when evidence points
   elsewhere; load skills and supporting references only when their instructions apply. Reuse guidance
   already read for the current scope; reread when it changes or new work makes another rule relevant.
 - Bound tool output at its source: select needed fields and summarize large results inside the
   command before returning them. Keep full evidence under `build/` instead of printing whole logs.
+  If a read is truncated, narrow the next read to the missing symbol/section rather than repeating
+  the same bulk output. On failure, inspect the originating diagnostic before wrapper tracebacks.
+- Wait for running commands with bounded waits that permit progress updates; avoid repeated short
+  polls returning unchanged logs. Inspect output when completion or new evidence changes the next action.
 - Start performance investigations with a bounded representative benchmark using matching inputs
   and build profiles. Broaden when results are inconclusive or do not cover the affected workload.
 - Prefer small patches with inspectable diffs. Use a transformation script when its scope is clear
   and verify every transformed pattern before compilation.
 - Resolve compiler/API failures with the smallest relevant probe or check before rerunning a large
   suite. Finish with the affected Make suites and consumer checks; a probe does not replace them.
+  Probe nullable borrows across mutable calls and resource-owner copies early. Ownership rejection
+  requires the actual lowering diagnostic; successful semantic checking does not establish safety.
 - Reuse a passing result while its covered source, dependencies and build configuration remain
   unchanged. Explain why a new change or failure requires broader verification.
 - Keep a compact working record of scope, authorization, branch/PR, decisions, modified files,
-  verification results, unresolved failures and next action. Show concise verdicts and actionable
-  error excerpts; retain full logs and exit status.
+  verification results, unresolved failures and next action. Include the absolute active checkout,
+  exact head/immediate parent and evidence paths with covered source/dependency/configuration identity.
+  Carry forward current constraints and unresolved facts, not a transcript of commands, full logs
+  or abandoned attempts. Show concise verdicts and actionable error excerpts; retain exit status.
 
 ## Resume existing work
 
@@ -34,6 +46,10 @@ remote heads and relevant branch history. A checkout on an older master may coex
 feature work or squash-merged equivalents. Fetch current heads, identify the actual continuation
 point and preserve unpublished changes before selecting a branch. Start source reading from that
 point instead of rediscovering work already completed on another branch.
+
+For repeated "next stacked" requests, start from that working record, verify the published parent
+heads and select the next bounded increment. Reopen architecture/protocol guidance only for a new
+boundary or changed instruction; refresh evidence when its covered inputs change.
 
 ## GitHub
 

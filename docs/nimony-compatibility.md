@@ -4,7 +4,8 @@ Consult this reference when introducing unfamiliar compiler or stdlib APIs. The 
 [spec/toolchain.json](../spec/toolchain.json); the longer [nightly trial](nimony-trial.md) records
 ownership, arithmetic and migration evidence.
 
-These observations came from the structured JSON refactor on macOS ARM64 with Nimony 0.6.3,
+These observations came from the structured JSON refactor and CE 128 stream integration on
+macOS ARM64 with Nimony 0.6.3,
 revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`. Recheck affected entries when changing the pin.
 They describe the exercised APIs and target, rather than compiler-wide support guarantees.
 
@@ -15,6 +16,8 @@ They describe the exercised APIs and target, rather than compiler-wide support g
 | Generic checking | A `proc encode[T: SomeInteger](value: T): string = $value`-shaped body failed overload resolution during generic checking in the attempted writer. | Concrete integer overloads compiled and passed the RPC suite. This observation does not establish that integer generics are unsupported; probe generic alternatives separately. |
 | Tuple arguments | An array literal of unnamed `(string, JsonValue)` tuples did not match the attempted `openArray[tuple[key: string, value: JsonValue]]` parameter. | `openArray[(string, JsonValue)]` with indexed tuple access compiled in `jsonObject`. Probe named conversions before relying on them elsewhere. |
 | JSON output | Inspection of the pinned `std/json` typed writer found signed integer output and no full-width unsigned or raw-number overload. Its API differs from Nim 2's `%*` examples. | `src/json_writer.nim` preserves unsigned decimal values and validated numeric lexemes. `spec/rpc.md` documents the trust boundary; RPC tests cover `uint64` maximum and exact ID spelling. |
+| Nullable mutable borrows | In the CE 128 callback, checking a `nil ptr BlockDownload` local once did not preserve the non-null proof across successive calls taking its pointee by `var`. | After checking the nullable local, bind an explicitly typed `ptr BlockDownload` local. The [verified callback](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/support/block_download_transport.nim) passes the native transfer suite without casting away receiver nilability. |
+| Scalar-only exclusive owners | Error copy/dup declarations alone did not reject the exercised scalar-only controller copy during full compilation. | The final [stream controller](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/src/quic/block_download_stream.nim) combines explicit copy/dup prohibitions with a destructor checking actual callback retirement. Its [lowering probe](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/native/compile_fail/application_download_stream_copy.nim) rejects `'=dup' is not available for type <BlockDownloadStream>`. Verify each exclusive owner; do not add artificial cleanup to ordinary scalar views. |
 
 ## Before integrating a new pattern
 
