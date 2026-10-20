@@ -97,6 +97,7 @@ type
     initial: InitialAccumulationContext
     accounts: StateStoreSnapshot
     accountScope: AccumulationAccountScope
+    designated: bool # Successful designate provenance follows exact implication/checkpoint ownership.
     blessed: bool  # Successful bless provenance follows the same exact implication/checkpoint owner.
     assigned: bool # Successful assign provenance follows exact implication/checkpoint ownership.
     accountKeys: AccountKeysData
@@ -139,6 +140,7 @@ type
     nextService*: ServiceIndex ## Current allocation cursor; historical initial provenance remains separate.
     transfers*, provisions*: int
     hasYield*: bool
+    hasStaging*: bool ## A selected successful designate requires bounded original-delegator roster publication.
     hasPrivileges*: bool   ## A selected successful bless requires bounded manager-role/dictionary publication.
     hasAssignments*: bool  ## A selected successful assign requires bounded positional queue/assigner publication.
   AccumulationEffectResult*[T] = object ## Successful alternatives alone carry complete retained handles, facts or a present yield value.
@@ -171,7 +173,8 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
   EffectData(deleted: previous.deleted, deletedLimit: previous.deletedLimit,
     created: previous.created, createdLimit: previous.createdLimit,
     accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
-    accountScope: scope, blessed: previous.blessed, assigned: previous.assigned,
+    accountScope: scope, designated: previous.designated, blessed: previous.blessed,
+    assigned: previous.assigned,
     initial: previous.initial, accounts: accounts,
     nextService: previous.nextService,
     staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
@@ -415,7 +418,7 @@ proc effectInfo*(context: AccumulationEffectContext): AccumulationEffectResult[
   let source = data.initial.contextInfo.value
   AccumulationEffectResult[AccumulationEffectInfo](status: AccumulationEffectError.None,
     completed: AccumulationEffectInfo(service: source.service, nextService: data.nextService,
-      hasPrivileges: data.blessed, hasAssignments: data.assigned,
+      hasStaging: data.designated, hasPrivileges: data.blessed, hasAssignments: data.assigned,
       transfers: data.transfers.values.len, provisions: data.provisions.values.len,
       hasYield: data.output.present))
 
@@ -473,7 +476,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
         status: AccumulationEffectError.InvalidContexts)
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
-    blessed: false, assigned: false,
+    designated: false, blessed: false, assigned: false,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
     created: CreatedAccountsData(values: @[]), createdLimit: createdAccounts,
     deleted: DeletedAccountsData(values: @[]), deletedLimit: deletedAccounts,
@@ -1003,7 +1006,8 @@ proc recordAccumulationDesignate*(effects: AccumulationEffects, validators: open
     fail(AccumulationEffectError.BackendFailure) # Prior serialized state and typed roster remain valid.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let candidate = successorData(previous, changed.value)
+  let candidate = successorData(previous, changed.value, globalOnly = true)
+  candidate.designated = true # This proven C(7)-only mutation preserves account scope without erasing unsupported ancestry.
   candidate.staging = decoded.value.value
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,

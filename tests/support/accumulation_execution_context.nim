@@ -68,7 +68,7 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
         RefineLoad] = @[],
     parentPools: seq[AuthorizerRow] = @[], authorizationQueue: seq[byte] = @[],
     omitAuthorizationQueue = false, withDispute = false,
-    storeWrites = 1000'u64, manager = 0'u32): ExecutionFixture =
+    storeWrites = 1000'u64, manager = 0'u32, delegator = 0'u32): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
   ## Optional allowances, balances, ready rows and belt peaks enter the parent; incoming reports/preimages enter the genuinely signed child.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
@@ -84,7 +84,7 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
   for index in 0..<assigners.len: assigners[index] = ServiceIndex(
       assigner) # Optional authority enters the signed parent before real assign calls.
   let privileges = privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
-      assigners: assigners,
+      delegator: ServiceIndex(delegator), assigners: assigners,
     always: allowances), executionRoundConfig().privileges).value
   var entries = @[privileges]
   if not omitAuthorizationQueue:
