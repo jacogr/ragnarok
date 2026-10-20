@@ -121,6 +121,28 @@
         "reason": "default-begin"
       },
       "name": "application-preparation-lease-default-begin"
+    },
+    {
+      "arguments": [
+        "checkpoint-identity"
+      ],
+      "description": "Managed checkpoint lease contract checkpoint-identity",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "checkpoint-identity"
+      },
+      "name": "application-preparation-lease-checkpoint-identity"
+    },
+    {
+      "arguments": [
+        "checkpoint-prepare"
+      ],
+      "description": "Managed checkpoint lease contract checkpoint-prepare",
+      "diagnostic": "not services.preparing",
+      "identity": {
+        "reason": "checkpoint-prepare"
+      },
+      "name": "application-preparation-lease-checkpoint-prepare"
     }
   ],
   "crypto_library": "observer",

@@ -4,6 +4,7 @@
 ## Checked canonical/lifecycle guards must reject access even after execution finishes but before collection.
 import std/[assertions, cmdline, syncio]
 import ../../src/app/[services, options, preparation_worker, block_input, candidate]
+import ../../src/app/[checkpoint_identity, checkpoint_transfer, checkpoint_codec]
 import ../../src/rpc/server
 import ../../src/codec/[bounded, block_codec, report_owned, header]
 import ../../src/state/[accumulation_finalization, accumulation_completion]
@@ -31,6 +32,11 @@ proc main() {.raises.} =
   assert parseOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
     "--state-write-bytes", "1000000"], options)
   assert owner.start(options, "guard")
+  let captured = owner.checkpointIdentity
+  assert captured.error == ApplicationCheckpointIdentityError.None
+  block:
+    var prepared = owner.prepareCheckpoint(ByteLimit(1000000))
+    assert prepared.error == ApplicationCheckpointError.None # Genuine positive capture/preparation occurs before the managed graph lease.
   let admitted = owner.beginBlockInput(input, ByteLimit(1), [], BlockInputLimits(
       blockBytes: ByteLimit(1)), preparationLimits())
   assert admitted.error == BlockInputError.None
@@ -38,6 +44,9 @@ proc main() {.raises.} =
   let job = owner.beginPreparation(input, admitted.value)
   assert job.error == PreparationError.None
   case mode
+  of "checkpoint-identity": discard owner.checkpointIdentity # No canonical capture may inspect a leased graph.
+  of "checkpoint-prepare": discard owner.prepareCheckpoint(ByteLimit(
+      1000000)) # No serialization may traverse a leased graph.
   of "view": discard owner.chainView # No new selected-history alias may escape.
   of "snapshot": discard owner.stateSnapshot # No complete-map alias may escape.
   of "apply": discard owner.applyAccumulation(default(PreparedFinalAccumulation), default(

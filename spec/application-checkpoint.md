@@ -165,3 +165,14 @@ relocation and implicit copies are rejected. No shutdown path silently retries a
 possible publication or adopts restored state. Native tests cross real completed
 publication, staged cancellation, retained observation, restart and repeated full
 native lifetime retirement, with strict accessor/lifecycle and copy/private checks.
+
+## Services canonical capture boundary
+
+Services exposes fixed identity capture and explicit bounded prepared-envelope
+creation only when its existing canonical preparation lease is inactive. Both
+operations traverse the selected application pair synchronously outside transport
+callbacks; missing/default/closed state remains a typed refusal. After preparation,
+only independent bytes and fixed identity remain. Strict runtime witnesses start a
+real managed execution lease and reject both APIs before graph access, with genuine
+successful controls before the lease. Native tests cover configured capture,
+explicit short budgets, close/restart and 1,000 detached preparation lifetimes.
