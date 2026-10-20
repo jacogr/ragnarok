@@ -9,16 +9,19 @@ import ../../src/codec/[bounded, composite, work_package, work_digest]
 import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pvm_import_inputs]
 
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.
-  Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic
+  Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas, CheckpointOutOfGas
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to its own empty output; real accumulation entry5 writes RO key11 and RW value21/22/23.
   assert mode != ComputedStorageMode.Disabled
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
     refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
-  if mode in {ComputedStorageMode.CheckpointCommit, ComputedStorageMode.CheckpointPanic}:
+  let checkpoint = mode in {ComputedStorageMode.CheckpointCommit,
+      ComputedStorageMode.CheckpointPanic, ComputedStorageMode.CheckpointOutOfGas}
+  if checkpoint:
+    body.add(@[10'u8, 18]) # Retain the first write only after the real checkpoint precharge succeeds.
+  if checkpoint or mode == ComputedStorageMode.OutOfGas:
     # Checkpoint changes r7, so independently reload every actual pointer/length before the later write.
-    body.add(@[10'u8, 18])
     for instruction in [refinementImmediate(7, 65536), refinementImmediate(8, 1),
       refinementImmediate(9, 196609), refinementImmediate(10, 2), @[10'u8, 5]]:
       body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
@@ -34,7 +37,7 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   for instruction in body: result.add(instruction) # Every operand remains unmarked in the real program mask.
   result.add(refinementImmediate(8, 0))
   result.add(@[50'u8, 0])
-proc computedStorageBudget*(fixture: InputFixture): InputFixture =
+proc computedStorageBudget*(fixture: InputFixture, mode: ComputedStorageMode): InputFixture =
   ## Re-author the single empty-manifest original package with enough accumulation gas before its first refinement/report.
   result = fixture
   let info = fixture.package.workPackageInfo.value
@@ -50,10 +53,13 @@ proc computedStorageBudget*(fixture: InputFixture): InputFixture =
       PackageError.None
   assert fixture.package.copyPackageBlob(PackageBlob.Configuration, configuration).error ==
       PackageError.None
+  # Include prepaid instruction-block work (100 pipeline cycles per host) before the first write and checkpoint.
+  let credit = if mode in {ComputedStorageMode.OutOfGas,
+      ComputedStorageMode.CheckpointOutOfGas}: 3500'u64 else: 10000'u64
   let authored = WorkPackage(host: info.host, codeHash: info.codeHash, context: info.context,
     authorization: authorization, configuration: configuration, items: @[WorkItem(
       service: item.service,
-      codeHash: item.codeHash, refineGas: item.refineGas, accumulateGas: Gas(10000),
+      codeHash: item.codeHash, refineGas: item.refineGas, accumulateGas: Gas(credit),
           exports: item.exports, payload: payload)])
   var wire = newSeq[byte](4096)
   let config = fullPackageConfig(ByteLimit(4096))
