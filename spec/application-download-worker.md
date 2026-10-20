@@ -155,3 +155,36 @@ canonical Linux CI or a long-running memory guarantee. No remote CI was requeste
 The #316 restack additionally passes 56 native harness tests, 13 fixture-contract tests and both
 `application_preparation_worker` / `application_preparation_lease` native suites. Its unchanged
 runtime-source and layer-patch checks are recorded in `build/pr316-restack-evidence.json`.
+
+## Running preparation progress
+
+A new independent fixture commits a single service's actual entry-5 static self-loop, its complete
+code preimage and 40000000 gas allowance before signing the original parent and child. Explicit
+trusted candidate round/step policies permit the loop to run until guest gas exhaustion; no sleep,
+held thread or forged Running state enters production preparation. Before the existing resource
+workload, one native round must observe Running, flush a real unsolicited TLS stream, enter
+Cancelling at the explicit deadline and observe its native reset while the worker remains Running.
+The graph/RPC lease stays held until actual Done collection. No expired candidate may publish.
+
+The same signed loop is then downloaded again and must genuinely prepare, queue and adopt on a
+later host turn. Canonical C(13) must identify service 42, no accumulated report digests and gas
+consumption within one bounded block-pricing allowance (1000) of its 40000000 credit. A missing-code
+skip or cheap panic cannot satisfy this positive control. The strict E2E transcript additionally requires
+`DOWNLOAD_RUNNING resets=1 cancelled=1 adopted=1`. Existing short-job cancellation and 33 joined
+resource observations remain required. Production code, pins and wire bytes are unchanged.
+This demonstrates host/native progress during an observed Running preparation with a real busy
+guest and recovery afterward; it is not guest preemption or a hard cancellation/shutdown-time
+bound. M1 framing remains complete; full serialization/JAM parity and persistent full/light stores
+remain open. Next: broader bootstrap/endpoints and durable state integration.
+
+Local verification on 2026-10-20, macOS arm64 with pinned checked ARC/Clang/LTO and production native
+libraries: the registered E2E workload passes Running-before-deadline and Running-after-native-reset
+assertions, exact cancellation with unchanged canonical parent, and positive adoption with the
+near-full-credit C(13) gas check. C(13)'s accumulation count denotes accumulated report digests;
+it is zero for this allowance-only fixture, while its nonzero gas row certifies actual execution.
+The original 32 short-job cancellation/reset rounds, final adoption and all 33 joined resource
+observations remain passing (post-warmup idle RSS range 114688 bytes, descriptor range zero,
+idle threads one). Evidence is `build/running-download-e2e/results.json` and the logs under
+`build/running-download-*`. Five adapter/resource tests, including rejection of the old transcript
+without the Running marker, plus four E2E-plan tests, formatting, inventory and whitespace checks
+pass. No remote CI was requested; Linux CI remains separate from this selected local run.

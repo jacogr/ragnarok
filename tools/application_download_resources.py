@@ -74,7 +74,8 @@ def observe(binary, directory, environment):
                     (gate/str(iteration)).touch()
                 result['exit_code'] = process.wait(timeout=5)
             text = log.read_text()
-            expected = [f'DOWNLOAD_IDLE {index}' for index in range(ROUNDS + 1)]
+            expected = ['DOWNLOAD_RUNNING resets=1 cancelled=1 adopted=1']
+            expected.extend(f'DOWNLOAD_IDLE {index}' for index in range(ROUNDS + 1))
             expected.append('DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1')
             if result['exit_code'] != 0 or text != '\n'.join(expected)+'\n':
                 raise ValueError('Incomplete or unexpected download workload transcript')

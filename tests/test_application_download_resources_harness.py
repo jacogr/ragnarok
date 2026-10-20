@@ -42,13 +42,14 @@ class DownloadResourcesHarness(unittest.TestCase):
         with self.assertRaises(ValueError):
             growth(samples[:-1])
 
-    def child(self, folder, ending, code=0):
+    def child(self, folder, ending, code=0, running=True):
         """Write an executable fixture which obeys all resource gates before its selected terminal output."""
         binary = folder/'driver'
         binary.write_text(f'''#!{sys.executable}
 import os,time
 from pathlib import Path
 gate=Path(os.environ['RAGNAROK_DOWNLOAD_LOAD_GATE'])
+if {running!r}: print('DOWNLOAD_RUNNING resets=1 cancelled=1 adopted=1',flush=True)
 for index in range(33):
  print('DOWNLOAD_IDLE '+str(index),flush=True)
  while not (gate/str(index)).exists(): time.sleep(0.001)
@@ -61,12 +62,13 @@ raise SystemExit({code})
     def test_transcript_exit_and_cleanup(self):
         """A live gated process must finish exactly; extra output and error exits remain failures."""
         marker = 'DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1'
-        for ending, code, expected in [(marker, 0, True), (marker+'\nextra', 0, False),
-                                       (marker, 3, False), ('incomplete', 0, False)]:
+        for ending, code, expected, running in [(marker, 0, True, True), (marker+'\nextra', 0, False, True),
+                                       (marker, 3, False, True), ('incomplete', 0, False, True),
+                                       (marker, 0, False, False)]:
             # Real subprocesses exercise gates and reaping; deterministic OS doubles isolate verdict behavior.
-            with self.subTest(ending=ending, code=code), tempfile.TemporaryDirectory() as temporary:
+            with self.subTest(ending=ending, code=code, running=running), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
-                binary = self.child(folder, ending, code)
+                binary = self.child(folder, ending, code, running)
                 launched = []
                 original = subprocess.Popen
                 def launch(*args, **kwargs):
