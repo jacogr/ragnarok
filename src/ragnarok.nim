@@ -32,6 +32,8 @@ proc main(): int =
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
+      stdout.writeLine("         --with-state --chain FILE --state-writes COUNT --state-write-bytes BYTES")
+      stdout.writeLine("State limits are explicit unsigned budgets; supplied complete state is structurally checked.")
       return 0
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if options.argumentCount() >= 1 and options.argument(1) == "mesh":

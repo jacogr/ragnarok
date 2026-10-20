@@ -118,6 +118,22 @@ def rpc(context):
     return observed
 
 
+@PLAN.workload
+def application_state(context):
+    """Verify explicit executable policy selection in both peer shapes and enabled RPC."""
+    compiled, binary = context.peer
+    observed = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        from application_state_checks import run as state_checks
+        try:
+            observed = state_checks(binary, context.certificates, context.checks.folder/'application-state')
+        except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+            # A startup, protocol or cleanup failure remains this workload's independent failed verdict.
+            observed = dict(passed=False, failure=str(error))
+    announce('Executable canonical state policy', observed['passed'])
+    return observed
+
+
 # Preserve this task and its original checks in dependency order.
 @PLAN.workload
 def telemetry(context):

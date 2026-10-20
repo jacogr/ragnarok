@@ -86,7 +86,7 @@ def ready(process, log):
 
 
 # Exercise RPC on a real retained peer while an independent QUIC client completes application work.
-def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False, dev_ui=False, browser=False):
+def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False, dev_ui=False, browser=False, state_policy=None):
     folder.mkdir(parents=True, exist_ok=True)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
@@ -122,6 +122,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
             command += ['--dev-ui-dir', str(static)]
     if chain is not None:
         command += ['--chain', str(chain)] # The same CLI supports RPC with and without telemetry.
+    if state_policy is not None:
+        # Explicit executable mutation budgets activate the same canonical service seed as component callers.
+        command += ['--with-state', '--state-writes', str(state_policy[0]), '--state-write-bytes', str(state_policy[1])]
     if telemetry:
         command += ['--with-telemetry', '--telemetry', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
     expected_genesis = None

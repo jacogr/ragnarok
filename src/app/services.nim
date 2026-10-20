@@ -140,8 +140,13 @@ proc startServices(services: var Services, options: Options, role: string,
   true
 
 proc start*(services: var Services, options: Options, role: string): bool {.raises.} =
-  ## Preserve development peer startup without inferring a mutable complete-state policy.
-  startServices(services, options, role, false, genesisStoreLimits())
+  ## Select canonical startup only from validated explicit CLI policy; legacy commands retain optional genesis behavior.
+  var limits = genesisStoreLimits()
+  if options.stateEnabled:
+    limits.writes = options.stateWrites # Fixed trie ceilings never imply a mutable budget.
+    limits.writeValueBytes = options.stateWriteBytes
+    return startServices(services, options, role, true, limits)
+  startServices(services, options, role, false, limits)
 
 proc start*(services: var Services, options: Options, role: string,
     limits: StateStoreLimits): bool {.raises.} =

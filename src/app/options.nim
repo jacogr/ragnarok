@@ -6,16 +6,19 @@
 ## clears the output; private fields and read accessors prevent partial configuration from escaping.
 
 import std/[strutils, assertions]
+import ../codec/bounded
 
 const
-  Switches = ["--with-ui", "--with-rpc", "--with-telemetry"]
-  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir"]
+  Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state"]
+  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes"]
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
-  parsed, telemetry, rpc, ui: bool
+  parsed, telemetry, rpc, ui, state: bool
   positional: seq[string]
   endpoint, chain, directory: string
   rpcNumber, uiNumber: uint16
+  writeCount: ElementLimit
+  writeBytes: ByteLimit
 
 proc valid*(options: Options): bool =
   ## A failed/default configuration has no executable command or enabled services.
@@ -34,6 +37,18 @@ proc telemetryEnabled*(options: Options): bool =
   ## Endpoint configuration alone never enables the exporter.
   options.parsed and options.telemetry
 
+func stateEnabled*(options: Options): bool =
+  ## Only a complete explicit state policy activates canonical application ownership.
+  options.parsed and options.state
+
+func stateWrites*(options: Options): ElementLimit {.requires: options.parsed and options.state.} =
+  ## Extract the caller's exact write-count budget only from a validated active policy.
+  options.writeCount
+
+func stateWriteBytes*(options: Options): ByteLimit {.requires: options.parsed and options.state.} =
+  ## Extract the independent write-value byte budget; zero permits no written value bytes.
+  options.writeBytes
+
 proc rpcPort*(options: Options): uint16 =
   ## UI implies RPC; configuration alone leaves the listener disabled.
   if options.parsed and (options.rpc or options.ui): options.rpcNumber else: 0'u16
@@ -47,7 +62,7 @@ proc telemetryEndpoint*(options: Options): string =
   options.endpoint
 
 proc chainPath*(options: Options): string =
-  ## RPC and telemetry share this one explicit startup source.
+  ## Canonical state, RPC and telemetry share this one explicit startup source.
   options.chain
 
 proc devUiDirectory*(options: Options): string =
@@ -63,6 +78,17 @@ proc portValue(text: string): uint16 =
     port = port * 10 + ord(digit) - ord('0')
   if port notin 1..65535: return 0
   uint16(port)
+
+proc decimalLimit(text: string, value: var uint64): bool =
+  ## Parse bounded unsigned decimal without wrapping; zero is valid and never doubles as a failure sentinel.
+  value = 0
+  if text.len == 0 or text.len > 20: return false
+  for character in text:
+    if character notin {'0'..'9'}: return false # Reject signs, whitespace and non-ASCII numerals.
+    let digit = uint64(ord(character) - ord('0'))
+    if value > (high(uint64) - digit) div 10: return false # Prove the next multiply/add before either can wrap.
+    value = value * 10 + digit
+  true
 
 proc parseOptions*(arguments: seq[string], options: var Options): bool =
   ## Parse unique trailing controls atomically; repeated invocations own independent configuration.
@@ -85,6 +111,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--with-telemetry": candidate.telemetry = true
       of "--with-rpc": candidate.rpc = true
       of "--with-ui": candidate.ui = true
+      of "--with-state": candidate.state = true
       else: return false # Switch classification above makes this branch unreachable.
       inc i
     elif name in Values:
@@ -95,6 +122,11 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--telemetry": candidate.endpoint = value
       of "--chain": candidate.chain = value
       of "--dev-ui-dir": candidate.directory = value
+      of "--state-writes", "--state-write-bytes":
+        var number = 0'u64
+        if not decimalLimit(value, number): return false # No partial or wrapped budget escapes the candidate.
+        if name == "--state-writes": candidate.writeCount = ElementLimit(number)
+        else: candidate.writeBytes = ByteLimit(number)
       of "--rpc-port", "--ui-port":
         let port = portValue(value)
         if port == 0: return false # Never narrow a malformed or overflowing port.
@@ -103,11 +135,18 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       else: return false # All value-taking controls have an explicit assignment above.
       i += 2
     else: return false # Trailing controls never become protocol fixture modes.
+  let hasWrites = "--state-writes" in seen
+  let hasBytes = "--state-write-bytes" in seen
+  if candidate.state:
+    if candidate.chain.len == 0 or not hasWrites or
+        not hasBytes: return false # Activation requires all explicit inputs.
+  elif hasWrites or hasBytes:
+    return false # Unselected policy controls must not be silently ignored.
   if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0): return false
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
-      candidate.ui): return false
+      candidate.ui or candidate.state): return false
   if candidate.ui and candidate.uiNumber == candidate.rpcNumber: return false
-  if candidate.telemetry or candidate.rpc or candidate.ui:
+  if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state:
     if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh"]:
       return false # Socket services belong to network commands, never no-socket selftests.
   candidate.parsed = true
