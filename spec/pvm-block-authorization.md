@@ -30,17 +30,20 @@ privacy rejection. Existing six-vector authorization replay and failure suite
 remain regression checks. No pins or authorization-kernel behavior change.
 
 This is a scoped pool publication, not full block validity or a partial light-state
-API. A genuine assign execution currently changes its selected private C(2),
-but accumulation batch publication rejects that broader effect as
-UnsupportedAccountEffects. The regression test requires both the exact changed
-queue and this refusal; no completed owner or silently unchanged successor is
-fabricated. This layer reads posterior C(2) from its retained complete source and
-will consume updated queues once their publication is supported. It does not
-remove that existing batch gate. Next: selected global accumulation-effect
-publication, beginning with authorization queues. M1 framing remains complete; full
+API. At this layer's original revision, a genuine assign execution changed its
+selected private C(2), but accumulation batch publication rejected that broader
+effect as UnsupportedAccountEffects. The original gate probe required the exact
+changed queue and this refusal; no completed owner or silently unchanged successor
+was fabricated. This layer reads posterior C(2) from its retained complete source
+and now consumes updated queues under the explicit quotas in
+[selected assign publication](pvm-assign-publication.md). The signed-source tests
+there exercise the changed posterior queue through C(1) publication. Broader
+manager/validator mutations remain gated. Next: selected manager privilege
+publication and precedence. M1 framing remains complete; full
 state serialization and block parity remain open.
 
-Observed local verification (macOS, pinned Nimony/ARC and native crypto):
+Observed local verification at the original layer revision (macOS, pinned
+Nimony/ARC and native crypto):
 
 - The selected `accumulation_statistics` suite passed all five signed-source
   pool cases, literal whole C(1) bytes, complete-map roots/preservation,

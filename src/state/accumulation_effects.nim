@@ -97,6 +97,7 @@ type
     initial: InitialAccumulationContext
     accounts: StateStoreSnapshot
     accountScope: AccumulationAccountScope
+    assigned: bool # Successful assign provenance follows exact implication/checkpoint ownership.
     accountKeys: AccountKeysData
     accountKeyLimit: ElementLimit
     created: CreatedAccountsData
@@ -137,6 +138,7 @@ type
     nextService*: ServiceIndex ## Current allocation cursor; historical initial provenance remains separate.
     transfers*, provisions*: int
     hasYield*: bool
+    hasAssignments*: bool  ## A selected successful assign requires bounded positional queue/assigner publication.
   AccumulationEffectResult*[T] = object ## Successful alternatives alone carry complete retained handles, facts or a present yield value.
     case status: AccumulationEffectError
     of None:
@@ -154,9 +156,9 @@ func value*[T](outcome: AccumulationEffectResult[T]): T {.inline,
 
 # Build an unpublished successor sharing frozen components; each operation replaces only its selected fields.
 proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
-    selfMetadata = false): EffectData =
+    selfMetadata = false, assignmentOnly = false): EffectData =
   var scope = previous.accountScope
-  if not sameStateSnapshot(previous.accounts, accounts):
+  if not assignmentOnly and not sameStateSnapshot(previous.accounts, accounts):
     # Only upgrade and transfer commits certify self-only metadata successors; unsupported ancestry is sticky.
     if selfMetadata and scope != AccumulationAccountScope.Unsupported:
       if scope notin {AccumulationAccountScope.SelfEntries,
@@ -167,7 +169,7 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
   EffectData(deleted: previous.deleted, deletedLimit: previous.deletedLimit,
     created: previous.created, createdLimit: previous.createdLimit,
     accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
-    accountScope: scope, initial: previous.initial, accounts: accounts,
+    accountScope: scope, assigned: previous.assigned, initial: previous.initial, accounts: accounts,
     nextService: previous.nextService,
     staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
     output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
@@ -410,6 +412,7 @@ proc effectInfo*(context: AccumulationEffectContext): AccumulationEffectResult[
   let source = data.initial.contextInfo.value
   AccumulationEffectResult[AccumulationEffectInfo](status: AccumulationEffectError.None,
     completed: AccumulationEffectInfo(service: source.service, nextService: data.nextService,
+      hasAssignments: data.assigned,
       transfers: data.transfers.values.len, provisions: data.provisions.values.len,
       hasYield: data.output.present))
 
@@ -467,6 +470,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
         status: AccumulationEffectError.InvalidContexts)
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
+    assigned: false,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
     created: CreatedAccountsData(values: @[]), createdLimit: createdAccounts,
     deleted: DeletedAccountsData(values: @[]), deletedLimit: deletedAccounts,
@@ -946,7 +950,8 @@ proc recordAccumulationAssign*(effects: AccumulationEffects, core: Authorization
     fail(AccumulationEffectError.BackendFailure) # Original accounts and both typed owners survive hash failure.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let candidate = successorData(previous, changed.value)
+  let candidate = successorData(previous, changed.value, assignmentOnly = true)
+  candidate.assigned = true # Only this proven C(2)/C(12)-only operation may preserve account scope across a new map.
   candidate.queues = nextQueues.value.snapshot
   candidate.privileges = nextRoles.value.snapshot
   let current = AccumulationEffectContext(data: candidate)

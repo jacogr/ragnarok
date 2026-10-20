@@ -173,6 +173,8 @@ for checkpoint in [false, true]:
   let completed = run(source(credit = price(valid)+2000, suffix = suffix))
   assert completed.error == AccumulationDispatchError.None and completed.value.exit ==
       StepExit.OutOfGas, "second assign exhausts gas"
+  assert normalizeAccumulationOutcome(completed).value.outcomeContext.value.effectInfo.value.hasAssignments ==
+      checkpoint, "OOG selects assignment provenance with the exact checkpoint"
   checkState(normalizeAccumulationOutcome(completed).value.outcomeContext.value, 0,
     (if checkpoint: 99'u32 else: 42'u32), (if checkpoint: payload() else: zeros)) # OOG selects the exact complete checkpoint.
 # Preserve accepted queues across later storage and yield mutations through all EffectData constructors.
@@ -182,6 +184,7 @@ let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
 assert preserved.error == AccumulationDispatchError.None, "assign/yield/storage execution succeeds"
 checkState(context(preserved), 0, 99, payload())
 assert context(preserved).effectInfo.value.hasYield, "yield remains present after storage"
+assert context(preserved).effectInfo.value.hasAssignments, "yield and storage retain assignment provenance"
 # The direct API repeats authority checks, captures borrowed hashes, and retains initial owners.
 let initial = done.effects.effectContext(AccumulationDimension.Exceptional).value
 let prepared = prepareAccumulationEffects(done.effects.effectsSource.value).value
