@@ -1,0 +1,118 @@
+{
+  "source": "tests/native/pvm_computed_profile.nim",
+  "build_name": "pvm-computed-profile",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-profile-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-profile-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile source"
+    },
+    {
+      "identity": {
+        "origin": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "pvm-computed-profile-context",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile context"
+    },
+    {
+      "identity": {
+        "origin": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "pvm-computed-profile-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile state"
+    },
+    {
+      "identity": {
+        "origin": "parent"
+      },
+      "arguments": [
+        "parent"
+      ],
+      "name": "pvm-computed-profile-parent",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile parent"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-computed-profile-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile parameters"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-profile-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile owner"
+    },
+    {
+      "identity": {
+        "origin": "facts"
+      },
+      "arguments": [
+        "facts"
+      ],
+      "name": "pvm-computed-profile-facts",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile facts"
+    },
+    {
+      "identity": {
+        "origin": "projection"
+      },
+      "arguments": [
+        "projection"
+      ],
+      "name": "pvm-computed-profile-projection",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile projection"
+    },
+    {
+      "identity": {
+        "origin": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "pvm-computed-profile-invalid",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed profile invalid"
+    }
+  ]
+}

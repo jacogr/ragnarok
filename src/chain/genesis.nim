@@ -23,6 +23,13 @@ type
   ServiceListIndex* = distinct int ## An ordinal in the retained service list, distinct from a service ID or state key.
   StateKeyIndex* = distinct int ## Ordinal in the retained sorted serialized-key index, bound to its genesis owner.
   BlockHash* = distinct array[32, byte] ## Block identity is a full sealed-header hash, never a state root.
+  BlockSnapshotContext* = object ## Copied fixed context excludes RPC indexes; mutable copies are facts, never a snapshot certificate.
+    state*: StateStoreSnapshot
+    parameters*: Parameters
+    header*: OwnedHeader
+    hash*: BlockHash
+    slot*: uint32
+    validators*: ValidatorCount
   BlockSnapshot* = object ## Private immutable retained state with copied descriptor fields; no mutable store escapes.
     ready: bool
     state: StateStoreSnapshot
@@ -58,6 +65,12 @@ func value*(value: GenesisResult): BlockSnapshot {.requires: value.status ==
     GenesisError.None.} =
   ## Extract only a successful chain snapshot.
   value.completed
+func blockSnapshotContext*(outcome: BlockSnapshotResult): BlockSnapshotContext
+    {.requires: outcome.status == GenesisError.None.} =
+  ## Project fixed facts/immutable handles directly, without copying the snapshot's key/service indexes.
+  BlockSnapshotContext(state: outcome.completed.state, parameters: outcome.completed.configuration,
+    header: outcome.completed.sealedHeader, hash: outcome.completed.identity,
+    slot: outcome.completed.timeslot, validators: outcome.completed.activePopulation)
 func unavailableGenesis*(): GenesisResult =
   ## Construct an explicit unavailable result for absent snapshot/configuration.
   GenesisResult(status: GenesisError.Unavailable)

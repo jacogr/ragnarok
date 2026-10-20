@@ -50,8 +50,8 @@ backend prefix failure/retry, original/caller-copy/detached lifetime, full-width
 indices and 1000-cycle ARC release; compiler privacy/nominal guards and strict
 optimized result/accessor probes with genuine positive controls.
 
-Next: original parameter/active-roster/guarantor assignment eligibility and
-availability/signing integration. M1 framing is complete; full state serialization
+Next: [complete configured parameter binding](pvm-computed-profile.md), then posterior
+active-roster/guarantor assignment eligibility and availability/signing integration. M1 framing is complete; full state serialization
 and whole-block parity remain open.
 
 Local evidence: checked optimized macOS ARM64 `make unit SUITE=pvm_computed_lookup`
