@@ -68,7 +68,8 @@ remains separate evidence and is not requested by opening this PR.
 
 ## Remaining work
 
-This supplies reusable session selection/retry policy. Production peer-session
+The [joined session owner](application-download-session.md) now binds scheduler
+leases to private reception and actual native-close barriers. Production peer-session
 catalog wiring, command dispatch and execution workers remain open; no live
 production synchronization loop is claimed. Peer authentication, native stream
 routing and state adoption retain their existing owners. Durable restart,

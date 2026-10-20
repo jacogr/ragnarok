@@ -5,8 +5,9 @@
 
 import std/[assertions, envvars]
 import ../../src/codec/bounded
-import ../../src/app/block_download
-import ../../src/quic/[transport, protocol, block_download_stream]
+import ../../src/app/[block_download, download_schedule, services]
+import ../../src/state/accumulation_completion
+import ../../src/quic/[transport, protocol, block_download_stream, block_download_session]
 
 type
   DownloadTransferMode* = enum ## Each fixture mode changes only server wire/lifecycle behavior.
@@ -223,3 +224,101 @@ proc exchangeBlock*(download: var BlockDownload, id: BlockDownloadId,
   else:
     assert download.stage == BlockDownloadStage.Idle, "cancelled stage " &
         $download.stage # Explicit no-FIN cancellation retires partial reception.
+
+
+type SessionClient = object ## Stable native fixture owner borrows only the joined production session.
+  transport: Transport
+  session: nil ptr BlockDownloadSession
+  attempt: nil DownloadSessionAttempt
+  stream: NativeStream
+
+proc `=copy`(destination: var SessionClient, source: SessionClient) {.error.}
+  ## Callback pointers and transport destruction belong to one fixture owner.
+
+proc sessionEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
+  ## Route the actual selected token/peer through production code, with no direct receiver access.
+  let client = cast[ptr SessionClient](user)
+  let borrowed = client.session
+  let token = client.attempt
+  if borrowed == nil or token == nil:
+    assert false, "missing session callback context"
+    return # No callback can precede setup or outlive the retained session.
+  let session: ptr BlockDownloadSession = borrowed
+  if event == 0:
+    client.stream = stream
+    var limits = DownloadStreamLimits(readBytes: ByteLimit(73), writeBytes: ByteLimit(3),
+      timeout: DownloadTimeout(100))
+    let wrong = session[].bindStream(token, DownloadPeerId(0), stream, limits, DownloadTick(100))
+    assert wrong.error == DownloadSessionError.WrongPeer
+    let absent = session[].bindStream(token, token.peer, NativeStream(nil), limits, DownloadTick(100))
+    assert absent.streamError == DownloadStreamError.InvalidStream
+    limits.readBytes = ByteLimit(0)
+    let invalid = session[].bindStream(token, token.peer, stream, limits, DownloadTick(100))
+    assert invalid.streamError == DownloadStreamError.InvalidPolicy
+    limits.readBytes = ByteLimit(73)
+    assert session[].bindStream(token, token.peer, stream, limits, DownloadTick(100)).error ==
+        DownloadSessionError.None
+    assert session[].bindStream(token, token.peer, stream, limits, DownloadTick(100)).streamError ==
+        DownloadStreamError.Busy
+    assert session[].finish(token, DownloadAttemptOutcome.Retry,
+      DownloadScheduleTick(100)).error == DownloadSessionError.AwaitingClose
+    assert session[].discardInput(token).error == DownloadSessionError.AwaitingClose
+  else:
+    assert not session[].streamEvent(token, DownloadPeerId(0), stream, event)
+    assert not session[].streamEvent(token, token.peer, NativeStream(nil), event)
+    assert session[].streamEvent(token, token.peer, stream, event)
+    if event == 3:
+      client.stream = NativeStream(nil)
+      assert not session[].streamActive
+      assert not session[].streamEvent(token, token.peer, stream,
+          3) # Close replay is inert even before terminal acknowledgement.
+
+proc exchangeSession*(session: var BlockDownloadSession, owner: var Services,
+    token: DownloadSessionAttempt, expected: array[42, byte], response: seq[byte],
+        mode: DownloadTransferMode) =
+  ## Reuse the independent wire responder; only the joined controller owns reception/callback identity.
+  var client = SessionClient(session: addr session, attempt: token, stream: NativeStream(nil))
+  var server = DownloadServer(expected: expected, mode: mode)
+  server.response = if mode == Oversized: @[255'u8, 255, 255, 255]
+    elif mode == EmptyReply: @[0'u8, 0, 0, 0]
+    else: response # Failure bytes remain independent of the joined controller.
+  defer:
+    client.transport.closeTransport() # Actual native close retires the session's barrier before this borrow leaves scope.
+    assert not session.streamActive and client.stream == NativeStream(nil)
+    server.transport.closeTransport()
+  let cert = getEnv("RAGNAROK_TEST_CERT")
+  let key = getEnv("RAGNAROK_TEST_KEY")
+  assert server.transport.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+    addr server, verify, serverEvent)
+  assert client.transport.openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000",
+    addr client, verify, sessionEvent)
+  assert client.transport.connectTransport(server.transport.localPort)
+  var opened = false
+  var settled = false
+  for poll in 0..<2000:
+    assert server.transport.pollTransport(1) and client.transport.pollTransport(1)
+    if not opened and client.transport.authenticatedConnections > 0:
+      client.transport.openStream()
+      opened = true # The local peer catalog only supplies authenticated transports.
+    if mode in [NoFin, Deadline, ResetEvent] and session.receivedBytes == uint64(response.len):
+      if mode == Deadline:
+        assert session.expire(token, client.stream, DownloadTick(
+            200)) # Exact native deadline retains close ownership.
+      elif mode == ResetEvent:
+        assert session.streamEvent(token, token.peer, client.stream,
+            4) # Injected reset-event dispatch does not claim a wire RESET_STREAM.
+      else:
+        assert session.cancel(token, client.stream) # Cancellation never supplies an implicit response FIN.
+      assert session.streamActive and session.busy
+      assert session.finish(token, DownloadAttemptOutcome.Retry,
+        DownloadScheduleTick(200)).error == DownloadSessionError.AwaitingClose
+      settled = true
+      break
+    if session.stage in [BlockDownloadStage.Ready, BlockDownloadStage.Empty,
+        BlockDownloadStage.Failed]:
+      settled = true
+      break # Bytes/FIN, rather than handshake success, determine the terminal receiver state.
+  assert opened and settled and server.requestFin
+  if session.streamActive:
+    let barred = session.enqueue(token, owner, default(AccumulationCompositionLimits))
+    assert barred.error == DownloadSessionError.AwaitingClose # Native close precedes even an invalid preparation policy.
