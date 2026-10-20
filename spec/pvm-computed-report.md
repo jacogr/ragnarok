@@ -37,7 +37,8 @@ retained/workspace policy, original configured core/shard ceiling, no hashes,
 copy/source/lifetime, compiler privacy/nominal rejection, optimized result guards
 and fresh ARC release.
 
-Next: root/state trust integration and source-bound guarantee/report publication.
+Next: [source-bound guarantee transcripts](pvm-computed-guarantee.md), then root/state trust
+integration and guarantee/report publication.
 Assembly alone does not certify import package-to-root correspondence, root/state
 freshness, distribution/assurance, active-roster equality or signing eligibility.
 Production recovery, faster transforms and whole-block parity remain open. M1
