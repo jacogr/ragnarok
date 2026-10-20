@@ -37,6 +37,8 @@ defaults:
 env:
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
+  # Exercise the shipped minified JS/CSS in every native/browser verification job.
+  UI_MINIFY: "1"
 
 # Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:

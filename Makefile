@@ -17,11 +17,13 @@ export PYTHONUNBUFFERED := 1
 export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(open("spec/bandersnatch-pins.json"))["rust"])')
 # Bound compatible codec runs and independent compiler checks to the Linux runner's four CPUs.
 export COMPILE_CHECK_JOBS ?= 4
+# Local builds retain readable assets; CI uses the native JS/CSS minifier. Override with 0 or 1.
+export UI_MINIFY ?= $(if $(filter 1 true,$(CI)),1,0)
 # Optional one-suite selection is passed through the environment, never interpolated as shell code.
 export SUITE ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
-.PHONY: build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -47,8 +49,12 @@ browser-tools:
 check-ui: build browser-tools
 	$(PYTHON) tools/test_ui_browser.py
 
+# Provision one checksum-pinned native executable only when minification is requested.
+ui-minifier:
+	$(PYTHON) tools/setup_minifier.py
+
 # Stage static build output and embed every asset into a generated compile-time manifest.
-ui-assets: web-toolchain
+ui-assets: web-toolchain $(if $(filter 1,$(UI_MINIFY)),ui-minifier)
 	$(PYTHON) tools/build_ui.py
 
 # Formatting needs pinned Rust/rustfmt, but no dependency downloads or native library builds.
@@ -172,7 +178,7 @@ summary-e2e:
 help:
 	@printf '%s\n' 'make / make build  Provision dependencies and build build/ragnarok' \
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
-	  'make ui-assets     Stage UI assets in build/ui and generate their embedded manifest' \
+	  'make ui-assets     Stage/embed UI assets (UI_MINIFY=1 minifies JS/CSS; default in CI)' \
 	  'make check-ui      Run the compiled UI against production WebSocket RPC in a browser' \
 	  'make clean         Remove build/ completely' \
 	  'make check / test  Provision dependencies and run complete verification' \

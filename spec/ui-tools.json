@@ -1,0 +1,29 @@
+{
+  "platforms": {
+    "linux_amd64": {
+      "binary_sha256": "e1698a3d5c6c0798fee4fd3b5cc816651f460c63d390a7a26ea4beb0b1884100",
+      "download": {
+        "sha256": "9573bb2233aab0f9ea7647d5cca9726113cc1768de61d66b17267f4db84488f6",
+        "url": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.2.tgz"
+      },
+      "machines": [
+        "x86_64",
+        "AMD64"
+      ],
+      "system": "Linux"
+    },
+    "macos_arm64": {
+      "binary_sha256": "10b6243df618d374bb2d5c9cfbe7052e1405f6aa4e53a6164f11a91b9f2e1384",
+      "download": {
+        "sha256": "1980cde09749094452b20d36ff267585ccb3f72749c7bc97291cd9996ccf5a2a",
+        "url": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.28.2.tgz"
+      },
+      "machines": [
+        "arm64",
+        "aarch64"
+      ],
+      "system": "Darwin"
+    }
+  },
+  "version": "0.28.2"
+}

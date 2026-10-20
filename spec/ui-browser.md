@@ -46,7 +46,9 @@ verification, and rerun `make check-ui` on the packaged backend before removing 
 `make ui-assets` invokes `nimony j --browser -d:release --mm:arc -d:ragnarokBrowser`, with the
 verified backend on that subprocess's PATH. `src/ui/client.nim` contains the application;
 `src/ui/static/` contains HTML/CSS. The result is `build/ui/{index.html.gz,style.css.gz,app.js.gz}` and
-the existing byte-exact embedded manifest. Ordinary builds and source checks depend on this
+the existing byte-exact embedded manifest. Local builds retain readable JS/CSS; CI and
+`UI_MINIFY=1` use the checksum-pinned native esbuild executable before gzip, as described in
+[UI build configuration](ui.md). Ordinary builds and source checks depend on this
 step. The backend executable hash separates JavaScript compiler caches. `make clean` removes
 all generated code, tools, source archives and test dependencies. Build diagnostics remain in
 `build/web-toolchain/bootstrap.log` and `build/ui-client/compile.log`.
