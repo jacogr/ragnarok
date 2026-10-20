@@ -220,14 +220,16 @@ class NativePreparationHarness(unittest.TestCase):
                     self.assertEqual(set(block[name][1]),
                                      {'RAGNAROK_TEST_CERT', 'RAGNAROK_TEST_KEY', 'RAGNAROK_STATE_REPORT'})
                     self.assertEqual(len(observed['files']), 3)
-            peers, observed = native_preparation.prepare_selected_fixture(folder, 'application_download_peers', folder)
-            self.assertEqual(set(peers), {'application_download_peers'})
-            self.assertEqual(len(peers['application_download_peers'][2]), 7)
-            self.assertEqual(len(observed['files']), 7)
-            for path, digest in peers['application_download_peers'][2]:
-                # Every freshly supplied identity input must be represented, rather than trusting inherited paths.
-                if path.name != 'state-report.bin':
-                    self.assertEqual(digest, hashlib.sha256(path.read_bytes()).hexdigest())
+            for name in ('application_download_loop', 'application_download_peers'):
+                # Both consumers require independently hashed complete peer manifests.
+                peers, observed = native_preparation.prepare_selected_fixture(folder, name, folder)
+                self.assertEqual(set(peers), {name})
+                self.assertEqual(len(peers[name][2]), 7)
+                self.assertEqual(len(observed['files']), 7)
+                for path, digest in peers[name][2]:
+                    # Every freshly supplied identity input must be represented, rather than trusting inherited paths.
+                    if path.name != 'state-report.bin':
+                        self.assertEqual(digest, hashlib.sha256(path.read_bytes()).hexdigest())
             original, reload = folder/'original', folder/'reload'
             original.mkdir(); reload.mkdir()
             for index in range(8):
