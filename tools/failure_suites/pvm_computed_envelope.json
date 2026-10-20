@@ -1,0 +1,132 @@
+{
+  "source": "tests/native/pvm_computed_envelope.nim",
+  "build_name": "pvm-computed-envelope",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-envelope-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-envelope-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope source"
+    },
+    {
+      "identity": {
+        "origin": "report"
+      },
+      "arguments": [
+        "report"
+      ],
+      "name": "pvm-computed-envelope-report",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope report"
+    },
+    {
+      "identity": {
+        "origin": "wire"
+      },
+      "arguments": [
+        "wire"
+      ],
+      "name": "pvm-computed-envelope-wire",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope wire"
+    },
+    {
+      "identity": {
+        "origin": "reporters"
+      },
+      "arguments": [
+        "reporters"
+      ],
+      "name": "pvm-computed-envelope-reporters",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope reporters"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-computed-envelope-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope index"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-envelope-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope owner"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-computed-envelope-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope info"
+    },
+    {
+      "identity": {
+        "origin": "guarantee"
+      },
+      "arguments": [
+        "guarantee"
+      ],
+      "name": "pvm-computed-envelope-guarantee",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope guarantee"
+    },
+    {
+      "identity": {
+        "origin": "bytes"
+      },
+      "arguments": [
+        "bytes"
+      ],
+      "name": "pvm-computed-envelope-bytes",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope bytes"
+    },
+    {
+      "identity": {
+        "origin": "key"
+      },
+      "arguments": [
+        "key"
+      ],
+      "name": "pvm-computed-envelope-key",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed envelope key"
+    }
+  ]
+}
