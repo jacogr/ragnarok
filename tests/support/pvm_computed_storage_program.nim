@@ -12,7 +12,7 @@ type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection;
   Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
     CheckpointOutOfGas,
   FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail,
-    FetchDelete, FetchBranchPanic, FetchReadBack
+    FetchDelete, FetchBranchPanic, FetchReadBack, FetchReadTail
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
@@ -23,12 +23,13 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList,
       ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex,
       ComputedStorageMode.FetchTail, ComputedStorageMode.FetchDelete,
-      ComputedStorageMode.FetchBranchPanic, ComputedStorageMode.FetchReadBack}:
+      ComputedStorageMode.FetchBranchPanic, ComputedStorageMode.FetchReadBack,
+      ComputedStorageMode.FetchReadTail}:
     # Compact load_imm instructions keep the real dual-entry envelope below128 bytes; fetch skips the C.2 operand tag.
     body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 1], @[51'u8, 9, 3], @[51'u8, 10, 15]]
     let wide = mode in {ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex}
     let returnedWord = wide or mode == ComputedStorageMode.FetchTail
-    if mode == ComputedStorageMode.FetchReadBack:
+    if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail}:
       body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 1],
         @[51'u8, 10, 14]] # Selector14 ignores item registers; the count comes from the actual full list.
     elif mode in {ComputedStorageMode.FetchDelete, ComputedStorageMode.FetchBranchPanic}:
@@ -71,12 +72,18 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 0, 0, 3],
           @[51'u8, 10, valueBytes], @[10'u8, 5]]:
         body.add(instruction) # Fetch returns a length in r7, so reload every storage pointer and length independently.
-  if mode == ComputedStorageMode.FetchReadBack:
+  if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail}:
+    let offset = if mode == ComputedStorageMode.FetchReadTail: 2'u8 else: 0'u8
+    let length = if mode == ComputedStorageMode.FetchReadTail: 11'u8 else: 3'u8
     for instruction in [refinementImmediate(7, high(uint64)), @[51'u8, 8, 0, 0, 1],
-        @[51'u8, 9, 1], @[51'u8, 10, 3, 0, 3], @[51'u8, 11, 0], @[51'u8, 12, 3],
-        @[10'u8, 4], @[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 3, 0, 3],
-        @[51'u8, 10, 3], @[10'u8, 5]]:
-      body.add(instruction) # Read the current regular self storage into disjoint RW+3, then persist only those actual read bytes.
+        @[51'u8, 9, 1], @[51'u8, 10, 3, 0, 3], @[51'u8, 11, offset], @[51'u8, 12, 3],
+        @[10'u8, 4]]:
+      body.add(instruction) # Read current regular self storage into disjoint zeroed RW+3; clipping leaves the remaining bytes untouched.
+    if mode == ComputedStorageMode.FetchReadTail:
+      body.add(@[62'u8, 7, 6, 0, 3]) # Preserve all eight returned length bytes atRW+6 before reloading the final storage arguments.
+    for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 3, 0, 3],
+        @[51'u8, 10, length], @[10'u8, 5]]:
+      body.add(instruction) # Persist only actual read bytes, including the full return word in the clipped-read mode.
   let checkpoint = mode in {ComputedStorageMode.CheckpointCommit,
       ComputedStorageMode.CheckpointPanic, ComputedStorageMode.CheckpointOutOfGas}
   if checkpoint:
@@ -86,8 +93,8 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     for instruction in [refinementImmediate(7, 65536), refinementImmediate(8, 1),
       refinementImmediate(9, 196609), refinementImmediate(10, 2), @[10'u8, 5]]:
       body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
-  if mode == ComputedStorageMode.FetchReadBack:
-    body.add(@[51'u8, 8, 0]) # Only this longer guest uses compact empty-yield setup to keep the authored code below128 bytes.
+  if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail}:
+    body.add(@[51'u8, 8, 0]) # Only the longer read-back guests use compact empty-yield setup to keep the authored code below128 bytes.
   else:
     body.add(refinementImmediate(8, 0)) # Preserve every predecessor guest byte and its instruction boundaries.
   if mode == ComputedStorageMode.FetchBranchPanic:

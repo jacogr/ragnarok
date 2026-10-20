@@ -21,10 +21,11 @@ proc finalizationFixture*(withReady = true, withComposition = false,
     limits.accountWriteKeys = ElementLimit(1)
     limits.completion.batch.selfWrites = ElementLimit(1)
     let bytes = if storage in {ComputedStorageMode.FetchWideOffset,
-        ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail}: 11'u64 else: 3'u64
+        ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail,
+            ComputedStorageMode.FetchReadTail}: 11'u64 else: 3'u64
     limits.completion.batch.selfValueBytes = ByteLimit(bytes)
-  if storage == ComputedStorageMode.FetchReadBack:
-    limits.steps = ExecutionStepLimit(32) # Admit only the new24-instruction read-after-write guest before its original execution.
+  if storage in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail}:
+    limits.steps = ExecutionStepLimit(32) # Admit only the new24/25-instruction read-after-write guests before their original execution.
   let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
       withComposition = withComposition, withChain = withChain, storage = storage), limits)
   if executed.error != ComputedExecutionError.None:
