@@ -4,6 +4,7 @@
 ## Locked two-slot full-state recovery follows one checksummed local selector and independent caller trust.
 ## Synchronous host-thread calls retain no canonical state graph between operations.
 
+import std/posix/posix
 import ../lib/[atomic_file, atomic_file_writer]
 import ../codec/[bounded, state_trie]
 import ./[checkpoint_head, checkpoint, store]
@@ -14,7 +15,7 @@ type
     prefix: string
   CheckpointBankError* {.pure.} = enum ## Only complete head-selected and trusted restoration exposes state.
     Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, Busy, PublishedUnsynced,
-      InvalidHead, InvalidCheckpoint, RootMismatch
+      InvalidHead, InvalidCheckpoint, RootMismatch, AlreadyInitialized, StagedUnsynced
   CheckpointBankResult*[T] = object ## Format reasons occupy only their matching failed alternatives.
     case status: CheckpointBankError
     of None:
@@ -116,3 +117,36 @@ proc restore*(bank: var CheckpointBank, expected: StateRoot, limits: StateStoreL
     return CheckpointBankResult[StateStore](status: CheckpointBankError.InvalidCheckpoint,
         stateReason: restored.error)
   CheckpointBankResult[StateStore](status: CheckpointBankError.None, completed: restored.value)
+
+proc initialize*(bank: var CheckpointBank, snapshot: StateStoreSnapshot,
+    limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
+  ## Explicitly bootstrap an absent selector: durably stage slot zero before publishing generation zero.
+  if not bank.opened: return default(CheckpointBankResult[
+      CheckpointHead]) # Inactive resources cannot touch the namespace.
+  let encoded = encodeFullCheckpoint(snapshot, limit)
+  if encoded.error != CheckpointError.None:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidCheckpoint,
+        stateReason: encoded.error) # Validate all complete-map bytes before writing any file.
+  var headPath = bank.prefix & ".head"
+  var metadata = default(Stat)
+  if posix.lstat(headPath.toCString(), metadata) == 0:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.AlreadyInitialized) # Existing valid, malformed, directory or dangling-link selectors cannot be replaced by bootstrap.
+  if posix.errno() != ENOENT:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.IoFailure) # Only true absence authorizes a new selector, never an unknown native failure.
+  let head = newCheckpointHead(CheckpointGeneration(0), CheckpointSlot.First,
+      snapshot.commitment.root)
+  let selection = encodeCheckpointHead(head, ByteLimit(CheckpointHeadBytes))
+  if selection.error != CheckpointHeadError.None:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
+        headReason: selection.error) # Backend failure cannot leave a newly staged slot.
+  let staged = replaceAtomicFile(bank.slotPath(CheckpointSlot.First), encoded.value, limit)
+  if staged == AtomicFileError.PublishedUnsynced:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.StagedUnsynced) # A possibly durable orphan is not a committed selector and cannot authorize success.
+  if staged != AtomicFileError.None:
+    return CheckpointBankResult[CheckpointHead](status: bankError(
+        staged)) # Pre-selector failure leaves no selected generation.
+  let committed = bank.selector.replace(selection.value, ByteLimit(CheckpointHeadBytes))
+  if committed != AtomicFileError.None:
+    return CheckpointBankResult[CheckpointHead](status: bankError(
+        committed)) # PublishedUnsynced remains distinct from staging uncertainty and successful adoption.
+  CheckpointBankResult[CheckpointHead](status: CheckpointBankError.None, completed: head)

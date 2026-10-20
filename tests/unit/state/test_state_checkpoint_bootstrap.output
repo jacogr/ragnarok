@@ -1,0 +1,1 @@
+PASS checkpoint bootstrap: durable slot before selector, explicit absence and no head replacement

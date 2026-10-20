@@ -239,3 +239,25 @@ It does not authenticate content or itself decide whether a head should be adopt
 Native checks cover binary/empty files, missing/invalid/directory/FIFO paths, default
 and closed ownership, preserved exact bytes and 1,000 repeated sync/refusal ARC cycles.
 Real local fsync success is not a simulated power-loss or failed-directory-sync witness.
+
+## Explicit absent-head bootstrap
+
+`initialize` accepts an initialized complete snapshot and an explicit slot byte ceiling.
+It preflights both encodings, accepts only actual selector absence under the bank lock,
+durably publishes slot zero and only then publishes generation-zero metadata. A selector
+of any existing kind (including malformed files, directories and dangling symlinks)
+returns `AlreadyInitialized`; no automatic reset or repair is attempted. Explicit
+bootstrap may replace unselected orphan slot data, never an existing selector.
+
+A staged file whose directory sync is uncertain returns `StagedUnsynced` without
+writing a selector. A selector rename with uncertain directory sync instead returns
+`PublishedUnsynced`; neither grants a head payload or permission to adopt state.
+Pre-selector failures leave no selected generation. Successful initialization
+exposes the exact committed head; subsequent restoration still requires independent
+root authority. No canonical snapshot is retained. Production preserves the selector
+and lock namespaces; test-only teardown is not an automatic recovery policy.
+
+Native tests include default/closed/invalid inputs, actual slot rename failure,
+unchanged existing head/data on reinitialization, malformed/directory heads and
+1,000 synced bootstrap/refusal/restoration ARC cycles. Power-loss and uncertain
+sync behavior need separate evidence.
