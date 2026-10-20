@@ -1,0 +1,63 @@
+{
+  "source": "tests/native/pvm_extrinsic_inputs.nim",
+  "build_name": "pvm-extrinsic-inputs",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-extrinsic-inputs-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Extrinsic inputs default"
+    },
+    {
+      "identity": {
+        "origin": "mismatch"
+      },
+      "arguments": [
+        "mismatch"
+      ],
+      "name": "pvm-extrinsic-inputs-mismatch",
+      "diagnostic": "outcome.status == None",
+      "description": "Extrinsic inputs mismatch"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-extrinsic-inputs-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Extrinsic inputs limit"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-extrinsic-inputs-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Extrinsic inputs owner"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-extrinsic-inputs-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Extrinsic inputs index"
+    }
+  ]
+}
