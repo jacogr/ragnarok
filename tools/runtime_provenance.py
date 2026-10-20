@@ -3,10 +3,13 @@
 
 """Discover deterministic runtime provenance inputs and reject missing or escaping evidence paths.
 
-Exposes discover_project_sources, runtime_sources and validate_coverage. Project source/configuration
-and fixture directories are discovered; selected pinned upstream inputs retain explicit identities.
+Exposes discover_project_sources, pinned_fixture_sources, runtime_sources and validate_coverage.
+Project source/configuration and fixture directories are discovered; pin tables supply exact
+JAM/Bandersnatch fixture membership and selected upstream inputs retain explicit identities.
 """
+import json
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 # Historical measurement tooling is not part of the supported verification path.
@@ -54,6 +57,39 @@ def discover_project_sources(root):
     return sources
 
 
+# Pin tables own exact fixture membership; adding a pinned input must not require a runner edit.
+def pinned_fixture_sources(root):
+    """Return declared JAM/Bandersnatch fixture paths, retaining missing bytes for later hashing."""
+    from verification_inventory import unique_object
+    root = Path(root)
+    files = {}
+    # These are existing schema locations, not another list of fixture filenames or directory contents.
+    schemas = (('spec/pins.json', ('vectors', 'files')),
+               ('spec/bandersnatch-pins.json', ('fixture_files',)))
+    for manifest, fields in schemas:
+        record = json.loads((root/manifest).read_text(), object_pairs_hook=unique_object)
+        for field in fields:
+            # Missing or malformed sections cannot silently turn a pin table into empty coverage.
+            if not isinstance(record, dict) or field not in record:
+                raise ValueError('Missing pinned fixture table: '+manifest)
+            record = record[field]
+        if not isinstance(record, dict) or not record:
+            raise ValueError('Invalid pinned fixture table: '+manifest)
+        for name, digest in record.items():
+            # Only canonical, contained repository paths can become report keys, even before vendor setup.
+            if (not name or name.startswith('/') or "\\" in name
+                    or any(part in ('', '.', '..') for part in name.split('/'))
+                    or not (root/name).resolve().is_relative_to(root.resolve())):
+                raise ValueError('Invalid pinned fixture path: '+name)
+            if not isinstance(digest, str) or re.fullmatch(r'[0-9a-f]{64}', digest) is None:
+                raise ValueError('Invalid pinned fixture checksum: '+name)
+            if name in files and files[name] != digest:
+                # Overlapping pin tables may agree on an input, but conflicting expectations must fail preflight.
+                raise ValueError('Conflicting pinned fixture checksums: '+name)
+            files[name] = digest
+    return sorted(root/name for name in files)
+
+
 # Keep preflight and runtime hashing on the same sorted, unique expansion without a literal file manifest.
 def runtime_sources():
     """Return all required provenance inputs; allow pinned vendor files to be provisioned after preflight."""
@@ -62,6 +98,7 @@ def runtime_sources():
     # Existing fixture contracts retain mandatory paths even if a required file has been removed.
     sources.update(unit_fixture_sources())
     sources.update(ROOT/path for path in UPSTREAM_INPUTS)
+    sources.update(pinned_fixture_sources(ROOT))
     sources.difference_update(ROOT/path for path in EXCLUSIONS)
     result = sorted(sources)
     validate_coverage(ROOT, result)
