@@ -60,7 +60,7 @@ class NimonyCISafeguards(unittest.TestCase):
                        'check-telemetry-interop-ci'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
-        self.assertEqual(text.count('needs:'), 1)
+        self.assertEqual(text.count('needs:'), 2)
         self.assertIn('needs: unit', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
@@ -84,6 +84,28 @@ class NimonyCISafeguards(unittest.TestCase):
         command = re.search(r'        run: ([^\n]+)', gate).group(1)
         for result in ['success', 'failure', 'cancelled', 'skipped']:
             # Exercise the actual aggregate command so a skipped/failed matrix cannot become green.
+            with self.subTest(result=result):
+                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
+                self.assertEqual(status == 0, result == 'success')
+
+    # Every contract partition is scheduled, and its stable aggregate rejects failure, cancellation and skip.
+    def test_ci_contract_partition_gate(self):
+        from failure_plans import parse_failure_shard
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = text.split('  failures:\n', 1)[1].split('  failures-status:\n', 1)[0]
+        values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', section).group(1)+']')
+        partitions = [parse_failure_shard(value) for value in values]
+        count = partitions[0][1]
+        self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
+        self.assertIn('FAILURE_SHARD: ${{ matrix.shard }}', section)
+        gate = text.split('  failures-status:\n', 1)[1].split('  e2e:\n', 1)[0]
+        self.assertIn('name: Runtime failure and contract tests', gate)
+        self.assertIn('needs: failures', gate)
+        self.assertIn('if: always()', gate)
+        self.assertIn('SHARDS_RESULT: ${{ needs.failures.result }}', gate)
+        command = re.search(r'        run: ([^\n]+)', gate).group(1)
+        for result in ['success', 'failure', 'cancelled', 'skipped']:
+            # Execute the actual gate command rather than inferring success from job presence.
             with self.subTest(result=result):
                 status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
                 self.assertEqual(status == 0, result == 'success')

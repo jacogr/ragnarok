@@ -176,9 +176,16 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   failures:
-    name: Runtime failure and contract tests
+    name: Contract shard ${{ matrix.shard }}
     timeout-minutes: 30
-    strategy: *os-strategy
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: *ci-os
+        shard: ["1/2", "2/2"]
+    env:
+      FAILURE_SHARD: ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -192,7 +199,7 @@ jobs:
         if: always()
         uses: *upload-artifact
         with:
-          name: ${{ matrix.os }}-failures-${{ github.run_attempt }}
+          name: ${{ matrix.os }}-failures-${{ strategy.job-index }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -203,6 +210,19 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+
+  # Preserve the stable contract gate and require every partition, including specialized controls.
+  failures-status:
+    name: Runtime failure and contract tests
+    needs: failures
+    if: always()
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Require every contract shard
+        env:
+          SHARDS_RESULT: ${{ needs.failures.result }}
+        run: test "$SHARDS_RESULT" = success
 
   e2e:
     name: End-to-end networking tests

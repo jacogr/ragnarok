@@ -16,9 +16,9 @@ from pathlib import Path
 import sys
 from native_checks import NativeChecks, announce
 from corpus_catalog import CORPUS_NAMES, run_corpora
-from failure_checks import probe_failure, run_failure_suites
+from failure_checks import probe_failure, run_failure_suites, FAILURE_SUITES
 from failure_plans import (FAILURE_PLANS, FAILURE_COUNTS, SPECIAL_CASES, SPECIAL_DRIVERS,
-                           check_driver_modes)
+                           check_driver_modes, failure_partition, parse_failure_shard, failure_libraries)
 from native_tests import UNIT_SUITES, unit_work_directory, unit_command, unit_environment, unit_evidence, unit_cache_lock, unit_partition, parse_unit_shard, ARC_SUITES
 from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures, prepare_partition_fixtures
 
@@ -49,7 +49,15 @@ def unit_passed(report):
 
 # Missing, duplicate or failed contract probes cannot be masked by successful sibling families.
 def failures_passed(report):
-    for family, expected in FAILURE_PLANS.items():
+    try:
+        # Scope is derived before execution and is never inferred from whichever probes happened to pass.
+        plans, specialized = failure_partition(report.get('failure_shard'))
+    except ValueError:
+        return False
+    if set(FAILURE_PLANS).intersection(report) != set(plans):
+        # Extra sibling-shard results cannot conceal a wrong or incomplete partition declaration.
+        return False
+    for family, expected in plans.items():
         # Each historical workload must produce exactly its original ordered set of distinct records.
         rows = report.get(family, [])
         identities = [json.dumps({key: value for key, value in row.items()
@@ -59,10 +67,15 @@ def failures_passed(report):
                 or not all(row.get('passed') is True for row in rows)):
             # Incomplete evidence remains a failing job even when all emitted rows happened to pass.
             return False
-    return (report.get('store_controls', {}).get('passed') is True
-            and set(report.get('probe_cases', {})) == set(SPECIAL_DRIVERS)
-            and all(row.get('passed') is True for row in report['probe_cases'].values())
-            and 'suites' not in report
+    if specialized:
+        # All specialized enumerations and store positive controls remain mandatory for their owner.
+        controls = (report.get('store_controls', {}).get('passed') is True
+                    and set(report.get('probe_cases', {})) == set(SPECIAL_DRIVERS)
+                    and all(row.get('passed') is True for row in report['probe_cases'].values()))
+    else:
+        # Ordinary partitions cannot borrow a specialized verdict they did not execute.
+        controls = 'store_controls' not in report and 'probe_cases' not in report
+    return (controls and 'suites' not in report
             and not any(key.endswith('_corpus') for key in report))
 
 
@@ -106,14 +119,19 @@ def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_
 
 
 # Execute strict crash/contract probes separately; compilation alone cannot prove these preconditions.
-def run_failures(compiler, report, libraries, availability_fixture, composition_fixture):
+def run_failures(compiler, report, libraries, availability_fixture, composition_fixture, shard=None):
+    plans, specialized = failure_partition(shard)
+    groups = tuple(family for family in plans if family in FAILURE_SUITES)
+    # Discovered families keep their ordered probes, independent binaries and exact diagnostic predicates.
+    run_failure_suites(compiler, report, libraries, build, command, groups=groups)
+    if not specialized:
+        # Specialized controls and their native resource setup execute once, in the final partition.
+        return
     from bandersnatch_native import OWNER_DEFINES
     crypto_library = libraries['crypto']
     crypto_observer = libraries['observer']
     bs_library = libraries['bandersnatch']
     bs_libraries = (libraries['bandersnatch_observer'], bs_library)
-    # Independent family files own scheduling; lexical discovery cannot omit a newly added family.
-    run_failure_suites(compiler, report, libraries, build, command)
     # Public store payloads/views require their own contracts, independent of ordinary success suites.
     compiled, binary = build(compiler, ROOT/'tests/native/state_store_results.nim', 'state-store-results', crypto_library)
     report['store_build'] = compiled
@@ -216,13 +234,18 @@ def main():
     parser.add_argument('--group', choices=('unit', 'failures'), default='unit')
     parser.add_argument('--unit-shard', type=parse_unit_shard, default=os.environ.get('UNIT_SHARD'),
                         help='Run one discovered unit partition, index/count (at most eight)')
+    parser.add_argument('--failure-shard', type=parse_failure_shard, default=os.environ.get('FAILURE_SHARD'),
+                        help='Run one discovered contract partition, index/count (at most four)')
     args = parser.parse_args()
     if args.unit_shard is not None and args.group != 'unit':
         # Runtime rejection probes retain their separate complete execution contract.
         parser.error('--unit-shard applies only to the unit group')
+    if args.failure_shard is not None and args.group != 'failures':
+        # Ordinary unit/corpus verification must not inherit a contract-only partial selection.
+        parser.error('--failure-shard applies only to the failures group')
     # Private reports, caches and logs allow the two workloads to run on independent CI runners.
     BUILD = ROOT/('build/tests/runtime' if args.group == 'unit' else 'build/tests/failures')
-    checks = NativeChecks(BUILD)
+    checks = NativeChecks(BUILD, reuse_builds=args.group == 'failures')
     command, build = checks.command, checks.build
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -238,7 +261,11 @@ def main():
             report['unit_shard'] = args.unit_shard
     else:
         # Every runtime family must be populated by this invocation, including after a prior successful run.
-        report.update({family: [] for family in FAILURE_COUNTS})
+        plans, specialized = failure_partition(args.failure_shard)
+        report.update({family: [] for family in plans})
+        if args.failure_shard is not None:
+            # A green partition is visibly partial until the aggregate CI check has passed.
+            report['failure_shard'] = args.failure_shard
     metadata = compiler.parent.parent/'NIGHTLY.txt'
     report['nightly_metadata'] = metadata.read_text() if metadata.is_file() else None
     report['nimony_version'] = command([compiler, '--version'], 'nimony-version')
@@ -267,21 +294,28 @@ def main():
         required = {library for name in selected_suites for library in NATIVE_REQUIREMENTS[name]['libraries']}
         libraries, quic_fixtures, native_evidence = prepare_libraries(
             BUILD, required=None if needs_corpora else required)
+    elif args.group == 'failures' and args.failure_shard is not None:
+        # Ordinary partitions avoid preparing unrelated transport and Rust resources.
+        libraries, quic_fixtures, native_evidence = prepare_libraries(
+            BUILD, required=failure_libraries(args.failure_shard))
     else:
-        # Complete local runs and the failure group preserve the established aggregate preparation path.
+        # Complete local runs preserve the established aggregate preparation path.
         libraries, quic_fixtures, native_evidence = prepare_libraries(BUILD)
     report.update(native_evidence)
     integration_wires = integration_reload = None
-    if needs_corpora or args.group == 'failures':
+    if (args.group == 'unit' and needs_corpora) or (args.group == 'failures' and specialized):
         # Only independent corpora/failure verification need unconditional CE preparation.
         integration_wires, integration_reload, report['integration_fixtures'] = prepare_integration(BUILD)
-    from state_availability_oracle import record as availability_record
-    availability_fixture = BUILD/'availability-report.bin'
-    availability_fixture.write_bytes(availability_record(0)['report'])
-    # Composition ownership probes consume independent literal chapters, not native round-trip fixtures.
-    from state_composition_oracle import chapters as composition_chapters
-    composition_fixture = BUILD/'composition-chapters.txt'
-    composition_fixture.write_text('\n'.join(raw.hex() for raw in composition_chapters())+'\n')
+    availability_fixture = composition_fixture = None
+    if args.group == 'unit' or specialized:
+        # Only the specialized contract owner consumes these independent refusal witnesses.
+        from state_availability_oracle import record as availability_record
+        availability_fixture = BUILD/'availability-report.bin'
+        availability_fixture.write_bytes(availability_record(0)['report'])
+        # Composition ownership probes consume independent literal chapters, not native round-trip fixtures.
+        from state_composition_oracle import chapters as composition_chapters
+        composition_fixture = BUILD/'composition-chapters.txt'
+        composition_fixture.write_text('\n'.join(raw.hex() for raw in composition_chapters())+'\n')
     if args.group == 'unit':
         # Expensive state replay/rotation fixtures belong only to the ordinary native suites.
         # Every ordinary suite now has one native runner path; omitted/extra identities are a migration failure.
@@ -300,7 +334,7 @@ def main():
         step_passed = unit_passed(report)
     else:
         # Contract checks keep their diagnostic predicates and positive controls unchanged.
-        run_failures(compiler, report, libraries, availability_fixture, composition_fixture)
+        run_failures(compiler, report, libraries, availability_fixture, composition_fixture, args.failure_shard)
         step_passed = failures_passed(report)
     if args.group == 'failures':
         # Preserve the protected-result verdict in its owning job only.

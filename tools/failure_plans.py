@@ -82,6 +82,47 @@ FAILURE_PLANS = dict(sorted(FAILURE_PLANS.items()))
 FAILURE_COUNTS = {family: len(cases) for family, cases in FAILURE_PLANS.items()}
 
 
+# Partition discovered ordinary families once; specialized controls stay together in the final shard.
+def failure_partition(shard=None):
+    if shard is None:
+        # The default local command retains the complete historical workload and verdict.
+        return FAILURE_PLANS, True
+    if (not isinstance(shard, (tuple, list)) or len(shard) != 2
+            or any(type(value) is not int for value in shard)
+            or not 1 <= shard[0] <= shard[1] <= 4):
+        # Invalid subsets cannot silently become successful partial verification.
+        raise ValueError('Failure shard must be index/count with 1 <= index <= count <= 4')
+    index, count = shard
+    families = set(tuple(FAILURE_SUITES)[index-1::count])
+    specialized = index == count
+    plans = {family: cases for family, cases in FAILURE_PLANS.items()
+             if family in families or (specialized and family in SPECIAL_CASES)}
+    return plans, specialized
+
+
+# Parse the bounded source-derived partition used by CI and retained verification reports.
+def parse_failure_shard(value):
+    shard = tuple(int(part) for part in value.split('/'))
+    failure_partition(shard)
+    return shard
+
+
+# Ordinary shards prepare only declared native dependencies; the specialized owner retains full setup.
+def failure_libraries(shard=None):
+    plans, specialized = failure_partition(shard)
+    if specialized:
+        return None
+    required = set()
+    for family in plans:
+        # Ordered linking remains in the family; preparation needs only the union of its provider names.
+        suite = FAILURE_SUITES[family]
+        required.update(suite.get('native_libraries', ()))
+        for field in ('crypto_library', 'quic_library'):
+            if suite.get(field) is not None:
+                required.add(suite[field])
+    return required
+
+
 # A compiled driver's enumeration must match its pre-execution source declaration exactly.
 def check_driver_modes(command, binary, family, report):
     result = command([binary, '--list-cases'], family+'-declared-cases')

@@ -167,8 +167,12 @@ def run_failure_suite(compiler, report, libraries, build, command, group):
 
 
 # Ordinary families are independent; discovery schedules each exactly once in stable lexical order.
-def run_failure_suites(compiler, report, libraries, build, command):
-    """Run every validated family without a second list of scheduler calls."""
-    for group in FAILURE_SUITES:
+def run_failure_suites(compiler, report, libraries, build, command, groups=None):
+    """Run the selected validated families without a second list of scheduler calls."""
+    selected = tuple(FAILURE_SUITES) if groups is None else tuple(groups)
+    if len(selected) != len(set(selected)) or not set(selected) <= set(FAILURE_SUITES):
+        # A malformed partition cannot repeat a family or execute an unregistered probe.
+        raise ValueError('Invalid runtime failure family selection')
+    for group in selected:
         # Each family retains its declared build inputs, probe order and strict diagnostic predicate.
         run_failure_suite(compiler, report, libraries, build, command, group)

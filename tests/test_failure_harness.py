@@ -15,7 +15,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from failure_checks import FAILURE_SUITES, case_details, load_suites, probe_failure, run_failure_suite
+from failure_checks import FAILURE_SUITES, case_details, load_suites, probe_failure, run_failure_suite, run_failure_suites
 
 
 # Test process-boundary failures without compiling native code or replacing independent references.
@@ -49,6 +49,14 @@ class FailureHarness(unittest.TestCase):
         command.assert_called_once_with(['binary'], 'probe', environment)
         self.assertEqual(rows, [])
         announce.assert_not_called()
+
+    # A family selection cannot accidentally duplicate, substitute or execute an unknown declaration.
+    def test_family_selection_rejection(self):
+        for groups in [('store-not-a-family',), ('validator_state', 'validator_state')]:
+            # Invalid subsets fail before any compiler or child probe is launched.
+            with patch('failure_checks.run_failure_suite') as run, self.assertRaises(ValueError):
+                run_failure_suites(None, {}, {}, None, None, groups=groups)
+            run.assert_not_called()
 
     # Compile failures must remain visible and must never execute an older binary at the same path.
     def test_failed_build_does_not_execute(self):

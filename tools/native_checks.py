@@ -7,6 +7,10 @@ Exposes NativeChecks and announce for checked compilation, process execution and
 diagnostics.
 """
 from pathlib import Path
+from contextlib import contextmanager, nullcontext
+import fcntl
+import hashlib
+import json
 import platform
 import subprocess
 import time
@@ -19,8 +23,9 @@ class NativeChecks:
     """Own one group's output directory; callers prepare it before running commands."""
 
     # Store a group-owned workspace without doing I/O during import or command planning.
-    def __init__(self, folder):
+    def __init__(self, folder, reuse_builds=False):
         self.folder = Path(folder)
+        self.reuse_builds = reuse_builds
 
     # Retain exact arguments, elapsed time, exit status and diagnostics, including expected failures.
     def command(self, arguments, name, environment=None, cwd=ROOT, timeout=180):
@@ -33,6 +38,20 @@ class NativeChecks:
         return dict(command=[str(arg) for arg in arguments], exit_code=result.returncode,
                     elapsed_seconds=round(time.monotonic()-started, 6),
                     log=str(log.relative_to(ROOT)), output=output)
+
+
+    # Only opted-in serial groups share intermediates; a killed/failed build must release the lock.
+    @contextmanager
+    def _build_lock(self, compiler):
+        path = cache_directory(compiler, self.folder, 'builds').parent/'builds.lock'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('a') as lock:
+            # Linux/macOS release descriptor locks even when a command or parent process fails.
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
 
     # Keep ARC, Clang, guards, LTO and explicit native ABI profiles identical across verification groups.
@@ -57,8 +76,30 @@ class NativeChecks:
         flags += ['-d:'+name for name in defines]
         flags += ['--passC:'+flag for flag in cflags]
         binary = self.folder/name
-        result = self.command([compiler, 'c', *flags, f'--nimcache:{cache_directory(compiler, self.folder, name)}',
-                          f'--out:{binary}', source], name+'-build')
+        cache_name = name
+        if self.reuse_builds:
+            # Identical flags and native bytes can share frontend work; every main keeps its own binary.
+            inputs = [Path(path).resolve() for path in (crypto_library, quic_library, *native_libraries)
+                      if path is not None]
+            includes = [('crypto', crypto_library is not None), ('quic', quic_library is not None),
+                        ('bandersnatch', bool(native_libraries))]
+            for directory, used in includes:
+                # Header content changes must invalidate a profile just like changed native libraries.
+                if used:
+                    inputs.extend(sorted((ROOT/'native'/directory).glob('*.h')))
+            profile = dict(directory=str(Path(source).resolve().parent), flags=flags,
+                           native={str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs})
+            identity = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()[:16]
+            cache_name = 'profile-'+identity
+        with self._build_lock(compiler) if self.reuse_builds else nullcontext():
+            # Other verification groups retain their existing per-build cache and scheduling behavior.
+            if self.reuse_builds:
+                print('BUILD '+name, flush=True)
+            result = self.command([compiler, 'c', *flags,
+                                   f'--nimcache:{cache_directory(compiler, self.folder, cache_name)}',
+                                   f'--out:{binary}', source], name+'-build')
+            if self.reuse_builds:
+                print(f'Completed build {name} in {result["elapsed_seconds"]:.2f}s', flush=True)
         return result, binary
 
 
