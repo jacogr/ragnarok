@@ -35,6 +35,10 @@ proc main() {.raises.} =
   elif mode == "admission":
     let absent = default(CheckpointAdmission)
     discard absent.value # Default admission grants no ticket.
+  elif mode == "retry-refused":
+    var worker = default(CheckpointWorker)
+    discard worker.retry(default(CheckpointTicket), default(
+        CheckpointHead)).value # A closed owner grants no renewed request authority.
   elif mode == "completion":
     let absent = default(CheckpointCompletion)
     extractCompletion(absent) # Default completion has no bank outcome.

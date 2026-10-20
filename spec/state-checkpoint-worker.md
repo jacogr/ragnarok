@@ -28,8 +28,8 @@ already completed publication is never labelled cancelled. A joined worker that 
 on the filesystem; shutdown joins rather than pretending a running write rolled
 back. Explicit close and independently checked composite noncopyability apply.
 
-This first layer does not integrate executable/Services startup or provide an
-explicit retry API. Full/light storage contracts remain separate.
+Executable/Services startup and policy integration remain separate. Full/light
+storage contracts remain separate.
 
 ## Explicit staged cancellation
 
@@ -45,3 +45,19 @@ and no inactive canonical file, reject foreign/stale tickets, retain Done capaci
 then perform real publication after dispatch and require its actual completed receipt.
 One thousand cancellation cycles measure host buffer/ticket release. Joined close
 preserves a cancelled acknowledgement independently of native retirement errors.
+
+## Inspecting and retrying a stale selector
+
+`peek(ticket)` returns only a matching Done receipt, preserving both the sole buffer
+and acknowledgement capacity. `retry(ticket, newExpectedHead)` accepts only a
+completed advancement refused specifically as StaleHead. That refusal performed
+no publication. The same private bytes and original byte ceiling remain; a fresh
+nonwrapping request ticket replaces old authority and explicit begin is required.
+
+A default/foreign/stale/cancelled/active ticket, missing expectation, successful
+write or any I/O/publication uncertainty cannot authorize this shortcut. Actual
+success is never duplicated; uncertainty requires explicit collection and recovery.
+No local selector comparison establishes chain-transition authority. Tests retain
+exact refusals across failed retry admission, invalidate all old tickets, cancel
+restaged work, preserve real success receipts and run 1,000 stale/read/retry/publish
+cycles with host-only ARC release evidence.
