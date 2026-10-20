@@ -1,0 +1,118 @@
+{
+  "source": "tests/native/pvm_computed_recent.nim",
+  "build_name": "pvm-computed-recent",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-recent-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-recent-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent source"
+    },
+    {
+      "identity": {
+        "origin": "config"
+      },
+      "arguments": [
+        "config"
+      ],
+      "name": "pvm-computed-recent-config",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent config"
+    },
+    {
+      "identity": {
+        "origin": "missing"
+      },
+      "arguments": [
+        "missing"
+      ],
+      "name": "pvm-computed-recent-missing",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent missing"
+    },
+    {
+      "identity": {
+        "origin": "chapter"
+      },
+      "arguments": [
+        "chapter"
+      ],
+      "name": "pvm-computed-recent-chapter",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent chapter"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-recent-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent limit"
+    },
+    {
+      "identity": {
+        "origin": "anchor"
+      },
+      "arguments": [
+        "anchor"
+      ],
+      "name": "pvm-computed-recent-anchor",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent anchor"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-recent-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent owner"
+    },
+    {
+      "identity": {
+        "origin": "history"
+      },
+      "arguments": [
+        "history"
+      ],
+      "name": "pvm-computed-recent-history",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent history"
+    },
+    {
+      "identity": {
+        "origin": "record"
+      },
+      "arguments": [
+        "record"
+      ],
+      "name": "pvm-computed-recent-record",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed recent record"
+    }
+  ]
+}
