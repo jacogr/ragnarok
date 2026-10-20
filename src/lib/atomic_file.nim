@@ -125,3 +125,35 @@ proc replaceAtomicFile*(path: string, bytes: openArray[byte],
   if synchronize(directory) != 0:
     return AtomicFileError.PublishedUnsynced # New complete bytes are visible, but durability must not be claimed.
   AtomicFileError.None
+
+proc syncAtomicFile*(path: string): AtomicFileError =
+  ## Confirm an already visible regular file and its parent directory before a caller reuses older transaction data.
+  if path.len == 0 or path.len > high(int) - 16:
+    return AtomicFileError.InvalidPath # Preserve the shared native path admission contract without suffix allocation.
+  for character in path:
+    if character == char(0): return AtomicFileError.InvalidPath # The synced identity must match the caller's complete path.
+  var nativePath = path
+  var descriptor = openDescriptor(nativePath.toCString(), O_RDONLY or O_CLOEXEC or O_NONBLOCK)
+  if descriptor < 0: return AtomicFileError.IoFailure
+  defer:
+    if descriptor >= 0: discard posix.close(descriptor) # Every kind/sync refusal retires this exact opened descriptor once.
+  var metadata = default(Stat)
+  if posix.fstat(descriptor, metadata) != 0 or not S_ISREG(metadata.st_mode):
+    return AtomicFileError.IoFailure # Never block on or claim persistence for a directory, pipe or device.
+  if synchronize(descriptor) != 0: return AtomicFileError.IoFailure # No pathname or content is replaced by this recovery operation.
+  let closing = descriptor
+  descriptor = -1 # Interrupted close cannot justify a retry on a reused descriptor number.
+  if posix.close(closing) != 0: return AtomicFileError.IoFailure
+  var directoryPath = parent(path)
+  var directory = openDescriptor(directoryPath.toCString(), O_RDONLY or O_CLOEXEC or O_NONBLOCK)
+  if directory < 0: return AtomicFileError.IoFailure
+  defer:
+    if directory >= 0: discard posix.close(directory) # Directory-kind/sync failures still retire the native handle.
+  var directoryMetadata = default(Stat)
+  if posix.fstat(directory, directoryMetadata) != 0 or not S_ISDIR(directoryMetadata.st_mode):
+    return AtomicFileError.IoFailure # Only an actual parent directory can establish namespace durability.
+  if synchronize(directory) != 0: return AtomicFileError.IoFailure # Visible content is not a completed recovery boundary until the parent syncs too.
+  let closingDirectory = directory
+  directory = -1 # Retire once before authorizing success.
+  if posix.close(closingDirectory) != 0: return AtomicFileError.IoFailure
+  AtomicFileError.None

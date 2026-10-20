@@ -81,3 +81,8 @@ proc read*(writer: var AtomicFileWriter, limit: ByteLimit): BoundedFileResult =
   ## Return owned bounded EOF bytes without imposing a state/control-record schema.
   if not writer.active: return default(BoundedFileResult) # Default/closed reads expose no successful prefix.
   readBoundedFile(writer.path, limit)
+
+proc synchronize*(writer: var AtomicFileWriter): AtomicFileError =
+  ## While holding cooperative exclusion, establish durability of the currently visible complete file and parent.
+  if not writer.active: return AtomicFileError.Uninitialized # Default/closed owners cannot authorize a recovery boundary.
+  syncAtomicFile(writer.path)
