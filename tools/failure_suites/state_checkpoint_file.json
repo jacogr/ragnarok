@@ -1,0 +1,73 @@
+{
+  "build_name": "state-checkpoint-file-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Checkpoint file extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-checkpoint-file-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Checkpoint file extraction missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "state-checkpoint-file-missing"
+    },
+    {
+      "arguments": [
+        "oversized"
+      ],
+      "description": "Checkpoint file extraction oversized",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "oversized"
+      },
+      "name": "state-checkpoint-file-oversized"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Checkpoint file extraction invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-checkpoint-file-invalid"
+    },
+    {
+      "arguments": [
+        "reason-default"
+      ],
+      "description": "Checkpoint file extraction reason-default",
+      "diagnostic": "outcome.status == InvalidCheckpoint",
+      "identity": {
+        "reason": "reason-default"
+      },
+      "name": "state-checkpoint-file-reason-default"
+    },
+    {
+      "arguments": [
+        "reason-success"
+      ],
+      "description": "Checkpoint file extraction reason-success",
+      "diagnostic": "outcome.status == InvalidCheckpoint",
+      "identity": {
+        "reason": "reason-success"
+      },
+      "name": "state-checkpoint-file-reason-success"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_checkpoint_file_results.nim"
+}
