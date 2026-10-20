@@ -5,6 +5,24 @@ This folder owns the standalone incremental complete-state trie described in
 [`full_state_trie.nim`](full_state_trie.nim); its exact contract and verification live in
 [`spec/full-state-trie.md`](../../spec/full-state-trie.md).
 
+## Parallel work and integration boundary
+
+Storage and state development are independent workstreams until the maintainer explicitly
+authorizes integration. The storage workstream owns this folder and its dedicated trie tests and
+feature contract. State/checkpoint work continues with the existing `StateStore` and checkpoint
+APIs and must neither modify nor consume the new trie. This restriction also applies after the
+standalone PR merges; availability on master does not authorize adoption.
+
+State, PVM, checkpoint and application implementations must not import this module, add adapters
+or route execution through it yet. Storage work must likewise leave those implementations alone.
+Neither workstream should refactor the other's code in anticipation of integration. Sharing status
+or design information is welcome and grants no implementation authority across this boundary.
+
+“Future integration” describes a possible later, separately scoped task. It is not the next task
+for the state agent or permission for the storage agent to begin wiring consumers. The maintainer
+must explicitly open that task and agree its owner, current API/snapshot contracts and validation
+scope before either side crosses the boundary. See the [folder instructions](AGENTS.md).
+
 ## Complete-state revisions
 
 `newFullStateTrie(entries, limits)` copies serialized 31-byte keys and raw values into an
@@ -48,7 +66,8 @@ and a borrowed batch; callers control the number and lifetime of retained revisi
 failure follows the project's fail-stop policy. Handles belong to the single-threaded ARC execution
 contract; this module adds no cross-thread ownership protocol.
 
-`StateStore` integration is a later PR. Existing whole-map checkpoints remain the recovery/export
+`StateStore` integration is deferred under the explicit coordination boundary above. Existing
+whole-map checkpoints remain the recovery/export
 baseline; this module performs no disk I/O. Partial light state needs its own proof/trust contract
 and separate database. Future byte-storage backends can live beside this module while preserving
 the distinction between physical storage and protocol Merkle commitments.

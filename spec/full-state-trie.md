@@ -94,10 +94,24 @@ evidence are retained under `build/tests/native/`. Inventory, pinned formatting 
 checks pass. These observations cover the standalone module and its tests; exact-head Linux CI
 remains separate and remote checks have not been requested.
 
-## Next boundary
+## Deferred integration: explicit maintainer gate
 
-Integrate the proven trie behind `StateStore` while preserving snapshot identity, sorted
-checkpoint enumeration, ceilings and atomic publication. Whole-map checkpoint restoration may
-build the trie once; changed-node disk persistence follows later. This increment adds no store
-integration, disk format, worker, revision-reclamation policy or partial light-state API.
-M1 framing is complete; full state serialization and whole-block JAM parity remain open.
+The standalone storage and state/checkpoint workstreams continue in parallel. The storage
+workstream owns `src/storage/` and its dedicated trie verification/contract. State work continues
+with the existing `StateStore` and checkpoint implementation and must not modify or use this trie.
+The same no-adoption boundary applies to PVM and application code. Storage work must not change
+those consumers or prepare their integration either. These restrictions remain after merge.
+
+Integration is not an automatic next step for either agent. Only a separately scoped task explicitly
+authorized by the maintainer can open that boundary, with an agreed owner, current interface and
+snapshot contracts, and validation plan. Informational coordination grants no permission to add
+imports, adapters, alternate execution paths or anticipatory refactors across workstreams.
+
+If and when authorized, that task can evaluate integrating the trie behind `StateStore` while
+preserving snapshot identity, sorted checkpoint enumeration, ceilings and atomic publication.
+Whole-map checkpoint restoration could then build the trie once; changed-node disk persistence
+would remain a separate decision. This records a possible future direction, not current work.
+
+This increment adds no store integration, disk format, worker, revision-reclamation policy or
+partial light-state API. M1 framing is complete; full state serialization and whole-block JAM
+parity remain open.
