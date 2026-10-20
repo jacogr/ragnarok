@@ -27,6 +27,9 @@ Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
   and build profiles. Broaden when results are inconclusive or do not cover the affected workload.
 - Prefer small patches with inspectable diffs. Use a transformation script when its scope is clear
   and verify every transformed pattern before compilation.
+- Plan the boundary, tampering and ownership witnesses before the first expensive linked run.
+  Format the final source, then run the affected semantic check with its required defines/import
+  paths before linking native suites. Repeat checks when new cases or failures change the evidence.
 - Resolve compiler/API failures with the smallest relevant probe or check before rerunning a large
   suite. Finish with the affected Make suites and consumer checks; a probe does not replace them.
   Probe nullable borrows across mutable calls and resource-owner copies early. Ownership rejection
@@ -35,9 +38,16 @@ Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
   unchanged. Explain why a new change or failure requires broader verification.
 - Keep a compact working record of scope, authorization, branch/PR, decisions, modified files,
   verification results, unresolved failures and next action. Include the absolute active checkout,
-  exact head/immediate parent and evidence paths with covered source/dependency/configuration identity.
-  Carry forward current constraints and unresolved facts, not a transcript of commands, full logs
-  or abandoned attempts. Show concise verdicts and actionable error excerpts; retain exit status.
+  exact head/immediate parent, covered tree/build profile and evidence paths with source/dependency/
+  configuration identity. Reference relevant guidance/compatibility notes and the next bounded
+  increment. Carry forward current constraints and unresolved facts, not a transcript of commands,
+  full logs or abandoned attempts. Keep durable protocol evidence in the feature spec and link it.
+  Show concise verdicts and actionable error excerpts; retain full logs and exit status separately.
+- Reuse existing selected-check entry points. When a sequence becomes stable and recurring, prefer
+  a tested shared helper over near-identical temporary runner scripts. Preserve source-owned
+  discovery, exact diagnostics and separate runtime/compiler verdicts.
+- Keep progress updates short and tied to new evidence, decisions or blockers. During waits, use
+  brief required updates rather than repeating the plan or narrating speculative debugging.
 
 ## Resume existing work
 
@@ -93,6 +103,14 @@ gh stack push --remote origin
 gh stack submit --auto --open --remote origin
 ```
 
+Immediately before native submission/push, compare freshly read published heads with actual local
+branch tips (`git rev-parse`), not just saved catalog heads. For a deliberate native restack, verify
+that recorded remote heads remain unchanged and inspect the affected trees/patches before allowing
+its guarded rewrites. Make a failed check stop the same orchestration process before mutation;
+a Python assertion followed by an unconditional shell command does not provide that guarantee.
+On unexpected drift, preserve local commits, fetch and inspect the changes, then reconcile through
+native stack commands. Verify the resulting published heads and membership after submission.
+
 Regular PRs are the default; use drafts only when the maintainer requests them. The `--open`
 flag also marks existing PRs in the submitted stack ready for review.
 
@@ -115,7 +133,11 @@ blanket ours/theirs resolutions. This helper does not apply to native stacks.
 
 ## Verification and output
 
-- Implementation changes: selected native suite plus affected consumers/guards.
+- Implementation changes: selected native suite plus affected consumers/guards. Build runtime
+  misuse drivers successfully before exercising their failure cases; a compile-time contract
+  rejection is compiler evidence, not a passing runtime guard. Keep genuine positive controls.
+  Match compiler fixture expectations to an observed pinned diagnostic, including the intended
+  call/argument position where available, rather than guessing alias names.
 - Registry changes: inventory and relevant provenance/tooling tests.
 - Documentation/comments: relevant formatting/link checks, no native rebuild.
 - Workflow-only changes: affected CI safeguards and workflow lint; broaden for failures or behavior

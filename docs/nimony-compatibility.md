@@ -4,9 +4,9 @@ Consult this reference when introducing unfamiliar compiler or stdlib APIs. The 
 [spec/toolchain.json](../spec/toolchain.json); the longer [nightly trial](nimony-trial.md) records
 ownership, arithmetic and migration evidence.
 
-These observations came from the structured JSON refactor and CE 128 stream integration on
-macOS ARM64 with Nimony 0.6.3,
-revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`. Recheck affected entries when changing the pin.
+These observations came from the structured JSON refactor, CE 128 stream integration and PVM work
+on macOS ARM64 with Nimony 0.6.3, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`.
+Recheck affected entries when changing the pin.
 They describe the exercised APIs and target, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |
@@ -18,6 +18,25 @@ They describe the exercised APIs and target, rather than compiler-wide support g
 | JSON output | Inspection of the pinned `std/json` typed writer found signed integer output and no full-width unsigned or raw-number overload. Its API differs from Nim 2's `%*` examples. | `src/json_writer.nim` preserves unsigned decimal values and validated numeric lexemes. `spec/rpc.md` documents the trust boundary; RPC tests cover `uint64` maximum and exact ID spelling. |
 | Nullable mutable borrows | In the CE 128 callback, checking a `nil ptr BlockDownload` local once did not preserve the non-null proof across successive calls taking its pointee by `var`. | After checking the nullable local, bind an explicitly typed `ptr BlockDownload` local. The [verified callback](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/support/block_download_transport.nim) passes the native transfer suite without casting away receiver nilability. |
 | Scalar-only exclusive owners | Error copy/dup declarations alone did not reject the exercised scalar-only controller copy during full compilation. | The final [stream controller](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/src/quic/block_download_stream.nim) combines explicit copy/dup prohibitions with a destructor checking actual callback retirement. Its [lowering probe](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/native/compile_fail/application_download_stream_copy.nim) rejects `'=dup' is not available for type <BlockDownloadStream>`. Verify each exclusive owner; do not add artificial cleanup to ordinary scalar views. |
+
+## PVM integration observations
+
+The PVM work also exercised the pinned Nim formatter 2.2.12. Some wrapped long assertions acquired
+an attached operator such as `==ImportJustificationError.RootMismatch` and then failed semantic
+checking. This is an observed integration failure; a standalone trigger has not been minimized.
+Keep comparison expressions short, for example by assigning the checked result to a local before
+asserting its error, or using a short exact-reason assertion helper. Run semantic checking after
+formatting and before the expensive linked suite; a formatting pass alone does not prove validity.
+The formatted-source check and native import-justification suite passed with the helper approach.
+
+Nominal diagnostics can omit useful type detail. Generic hash-domain substitutions may print
+`ReportHash` on both sides, and a sequence mismatch may print `seq` without its element type.
+Preserve the actual diagnostic plus its intended call/argument position, and a compiling positive
+control for the accepted domain. Do not weaken a fixture into accepting an arbitrary compile error.
+Existing examples include `tests/native/compile_fail/swapped_report_root.nim` and
+`tests/native/compile_fail/history_segment_as_package.nim`; the trial records the generic hash
+rendering. PVM argument-position fixtures were verified in
+[the import-justification PR](https://github.com/jacogr/ragnarok/pull/284).
 
 ## Before integrating a new pattern
 
