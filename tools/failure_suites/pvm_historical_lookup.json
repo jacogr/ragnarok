@@ -1,0 +1,41 @@
+{
+  "source": "tests/native/pvm_historical_lookup_results.nim",
+  "build_name": "pvm-historical-lookup-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "context-default"
+      },
+      "arguments": [
+        "context-default"
+      ],
+      "name": "pvm-historical-lookup-context-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Historical lookup context-default"
+    },
+    {
+      "identity": {
+        "origin": "context-refused"
+      },
+      "arguments": [
+        "context-refused"
+      ],
+      "name": "pvm-historical-lookup-context-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Historical lookup context-refused"
+    },
+    {
+      "identity": {
+        "origin": "response-default"
+      },
+      "arguments": [
+        "response-default"
+      ],
+      "name": "pvm-historical-lookup-response-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Historical lookup response-default"
+    }
+  ]
+}
