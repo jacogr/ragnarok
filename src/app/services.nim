@@ -9,6 +9,8 @@ import std/[syncio, strutils, base64]
 import ./options
 import ./handoff
 import ./candidate
+import ./block_input
+import ../codec/bounded
 import ../codec/[block_codec, header]
 import ./chain as application_chain
 import ../state/[store, accumulation_finalization, accumulation_completion]
@@ -190,6 +192,17 @@ proc enqueueCandidate*(services: var Services, candidate: OwnedBlock,
     composition: AccumulationCompositionLimits): ApplicationCandidateResult =
   ## Prepare from this selected head and queue the genuine successor; publication waits for the next service tick.
   services.adoption.enqueueCandidate(services.canonical, candidate, ancestors, limits, composition)
+
+proc beginBlockInput*(services: Services, input: var BlockInput, extent: ByteLimit,
+    ancestors: openArray[OwnedHeader], resources: BlockInputLimits,
+    policies: ApplicationCandidateLimits): BlockInputAdmission =
+  ## Bind bounded reception to this exact canonical history without preparing or publishing a block.
+  input.begin(services.canonical, extent, ancestors, resources, policies)
+
+proc enqueueBlockInput*(services: var Services, input: var BlockInput, id: BlockInputId,
+    composition: AccumulationCompositionLimits): BlockInputResult =
+  ## Explicit producer work runs outside transport callbacks; finalized success waits for a later adoption tick.
+  input.enqueue(id, services.canonical, services.adoption, composition)
 
 proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnapshot] {.requires:
     services.accumulationStage == AccumulationHandoffStage.Finished.} =
