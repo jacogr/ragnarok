@@ -1,0 +1,52 @@
+{
+  "source": "tests/native/pvm_inner_pages_results.nim",
+  "build_name": "pvm-inner-pages-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default-owner"
+      },
+      "arguments": [
+        "default-owner"
+      ],
+      "name": "pvm-inner-pages-default-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner pages default-owner"
+    },
+    {
+      "identity": {
+        "origin": "invalid-memory"
+      },
+      "arguments": [
+        "invalid-memory"
+      ],
+      "name": "pvm-inner-pages-invalid-memory",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner pages invalid-memory"
+    },
+    {
+      "identity": {
+        "origin": "capacity"
+      },
+      "arguments": [
+        "capacity"
+      ],
+      "name": "pvm-inner-pages-capacity",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner pages capacity"
+    },
+    {
+      "identity": {
+        "origin": "gas-representation"
+      },
+      "arguments": [
+        "gas-representation"
+      ],
+      "name": "pvm-inner-pages-gas-representation",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner pages gas-representation"
+    }
+  ]
+}

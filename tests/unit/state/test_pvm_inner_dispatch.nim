@@ -69,7 +69,7 @@ assert run(panic).value.refinementInfo.value.kind == WorkKind.Panic
 let starved = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 6),
   @[10'u8, 9], halt], credit = 100, writable = innerBlob())
 assert run(starved).value.refinementInfo.value.kind == WorkKind.OutOfGas
-for id in 10'u8..13'u8:
+for id in [10'u8, 11, 13]:
   let unsupported = refinementFixture([@[10'u8, id], halt])
   assert run(unsupported).hostError == RefinementDispatchError.UnsupportedHostCall # Unported inner hosts stay explicit gates.
 # Fresh bootstraps, captured environments, inner maps and local-failure scratch runs all release under ARC.
