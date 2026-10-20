@@ -124,5 +124,10 @@ accounts also represented by other executions/skips. Grow_heap stays gated.
 [Deleted-account publication](pvm-deleted-accounts.md) now captures successful
 ejections under a separate zero-default execution/batch limit. It preserves
 creation proofs and publishes removals/beneficiary credits only for targets outside
-represented service work. Participating-target and prior-ID recreation conflicts,
-outgoing transfers, privilege changes and grow_heap remain gated.
+represented service work. Its bounded prior-ID recreation extension now projects
+matched delete/recreate histories from selected final membership: retain the prior
+foreign account and publish the invoker's actual selected reclaim/debit. Captured
+creation facts still consume the batch limit even when the foreign replacement
+is excluded from n; `batchInfo.createdAccounts` counts only prior-absent additions.
+Participating-target conflicts, outgoing transfers, privilege changes and grow_heap
+remain gated.

@@ -25,6 +25,7 @@ class DeletionSpecificationGate(unittest.TestCase):
                              pins['source_sha256'][relative])
         text = (ROOT / 'vendor/graypaper/text/accumulation.tex').read_text()
         self.assertIn(r'(\ps¬accounts \cup \mathbf{n}) \setminus \mathbf{m}', text)
+        self.assertIn(r'\keys{\ps¬accounts \setminus \set{s}}', text)
         self.assertIn('different services may not each contribute the same index', text)
         self.assertIn('the block must be considered invalid', text)
         invocation = (ROOT / 'vendor/graypaper/text/pvm_invocations.tex').read_text()
@@ -53,6 +54,13 @@ class DeletionSpecificationGate(unittest.TestCase):
         prior = {42, 99}
         selected_after_recreation = {42, 99}
         self.assertEqual(prior - selected_after_recreation, set())
+        original = {42: 10, 99: 20}
+        selected = {42: 29, 99: 1}
+        # n retains the invoker plus prior-absent services, excluding the recreated foreign ID.
+        contributed = {service: balance for service, balance in selected.items()
+                       if service not in set(original) - {42}}
+        self.assertEqual(contributed, {42: 29})
+        self.assertEqual(original | contributed, {42: 29, 99: 20})
 
     @unittest.skip('GP 0.8.0 participating skip needs collision-validity interpretation')
     def test_participating_skip_protocol_parity(self):

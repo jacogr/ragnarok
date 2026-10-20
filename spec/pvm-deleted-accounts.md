@@ -23,9 +23,10 @@ the actual beneficiary metadata and all supported account effects privately befo
 fnprovide; publish only after complete success.
 
 Deletion of a service represented by another execution or certified skip remains
-UnsupportedAccountEffects, including incoming-credit skips. Prior-present accounts
-that are recreated also remain gated. These are local supported-scope refusals,
-not new guest return codes or guessed deletion precedence. Explicit subset batches
+UnsupportedAccountEffects, including incoming-credit skips. These are local scope
+refusals, not guest return codes or guessed deletion precedence. Prior-present
+accounts recreated in the selected final domain use the bounded projection below.
+Explicit subset batches
 may delete an omitted service: that API intentionally publishes no omitted-service
 work/credit and does not certify complete accpar. Targets not participating in the
 batch can be deleted normally. No whole-map scan or generic account merger.
@@ -67,7 +68,8 @@ after creation preserve both traces; self writers/upgrades preserve membership s
 The common input/prior and slot proofs are unchanged. The sorted represented-service
 set includes executions and certified skips. Any deletion naming that set remains
 a local UnsupportedAccountEffects gate before account publication. Prior-present
-recreation is also refused by the selected-absence/common-prior checks. Final keys
+recreation requires matched creation/ejection provenance and final membership as
+specified in the bounded extension below. Final keys
 still pass the complete physical duplicate-key gate. Exact prior identity protects
 stale application and prevents double reclamation even if roots match.
 
@@ -145,7 +147,8 @@ contribution triggers collision invalidity needs an explicit interpretation too.
 Prior-ID recreation is distinct: a target deleted and recreated in one selected
 poststate is present in its final domain, so that execution does not contribute
 that target to m. An eject event journal alone cannot be used as the GP removal
-set in that case. The current selected-absence gate remains necessary.
+set in that case. A selected-domain check remains necessary; the bounded extension
+below implements the present-final projection.
 
 `tests/test_pvm_deletion_spec.py` pins both source hashes, verifies these relevant
 clauses, and models only the set/domain arithmetic with literal balances. Its
@@ -158,8 +161,8 @@ and retains independently checked explicit-subset publication.
 Disposition: retain the conservative local gate; do not report protocol invalidity
 or deletion precedence as implemented. Resolve the collision paragraph versus the
 post-union removal formula for participating skips before extending publication.
-Then address prior-ID recreation from selected final membership, including request
-replacement and self metadata provenance, as a separate bounded increment.
+The separate bounded increment below addresses prior-ID recreation from selected
+final membership, including request replacement and self metadata provenance.
 M1 framing remains complete; full serialization remains open.
 
 
@@ -174,3 +177,61 @@ The Make entry point attempted unrelated LSQUIC initialization; it was stopped
 and the new checkout returned to its prior uninitialized state. The existing
 focused native driver then passed using its declared crypto preparation. No
 production source, vendor gitlink, toolchain or registry changed.
+
+
+## Bounded prior-ID recreation projection
+
+Scope and authority: the same pinned GP 0.8.0 `eq:accpar` definitions of n and m.
+The successful-ejection journal proves mutation provenance, but m depends on the
+selected final domain. If a prior-present, nonparticipating target is recreated
+by a genuine captured new call and retains final metadata, it is not removed.
+The foreign recreated record is excluded from n because that ID existed in the
+common prior and is not the invoking service. Preserve the entire common-prior
+target representation; publish only the invoking service's actual selected
+metadata, including the reclaim and creation debit. No new balance adjustment is
+invented. This can preserve the old target while retaining its reclaimed balance
+in the invoker, as the two account projections explicitly specify.
+
+Require matched private creation/ejection facts and supported selected scope.
+Keep participating targets, absent-final children, duplicate physical writes and
+other unsupported histories gated. Aggregate created/deleted policy ceilings
+bound all captured facts inspected, including ignored recreation facts; batch
+info counts only accounts actually added or removed. This supersedes the earlier
+blanket prior-present recreation refusal, without resolving participating skips.
+
+Completion tests: real registrar-authorized delete/recreate with literal balances,
+independent complete maps, both execution orders, halt/panic/checkpoint selection,
+selected self-write/upgrade/provide composition (including a provision accepted
+against a local recreated request but ignored against the preserved prior request),
+short/exact captured-fact budgets, terminal extraction, detached/stale owners and early/late backend failure. Retain
+fresh 1,000-cycle ARC evidence and affected batch/creation/integration consumers.
+M1 framing remains complete; full serialization remains open.
+
+
+Local verification (2026-10-19): seven native suites passed: pvm_deleted_accounts,
+accumulation_batch, accumulation_complete_batch, pvm_created_accounts,
+pvm_self_account_writes, pvm_accumulation_integration and
+accumulation_terminal_provisions. All retained fresh stable 1,000-cycle ARC
+evidence; the expanded deletion/recreation workload used 244,576 occupied bytes
+before and after. Fifteen strict batch extraction guards and semantic checks of
+accumulation_execution, accumulation_outputs, accumulation_continuation_execution
+and accumulation_reentry_execution passed. Three independent Python checks passed
+with the participating-skip parity test intentionally pending. Inventory, affected
+pinned Nim formatting and whitespace checks passed. These are local macOS checks;
+exact-head CI remains separate. Vendor gitlinks and native bridges are unchanged.
+
+Evidence: `build/pvm-prior-id-recreation-native.log`,
+`build/pvm-prior-id-recreation-regressions.log`,
+`build/pvm-prior-id-recreation-final.log`,
+`build/pvm-prior-id-recreation-guards/results.json`, and matching Python, inventory
+and format logs. The final log includes passing guards/semantic checks followed
+by the superseded three-byte provision-fixture refusal; the native log records
+the final passing one-byte witness within unchanged copy policies. The scratch
+guard driver initially omitted its report list, then reran only unfinished checks.
+Compact signed immediates fixed the authored combined-program size without
+widening guest framing, and existing prepared native libraries were reused.
+
+Next bounded work: grow_heap host integration under explicit resource limits.
+Participating-target collision validity remains an independent specification gate.
+M1 framing stays complete; full serialization, complete accpar and whole-block
+publication remain open.
