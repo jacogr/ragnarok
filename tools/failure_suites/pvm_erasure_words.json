@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/pvm_erasure_words.nim",
+  "build_name": "pvm-erasure-words",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-erasure-words-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure words default"
+    },
+    {
+      "identity": {
+        "origin": "shards"
+      },
+      "arguments": [
+        "shards"
+      ],
+      "name": "pvm-erasure-words-shards",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure words shards"
+    },
+    {
+      "identity": {
+        "origin": "length"
+      },
+      "arguments": [
+        "length"
+      ],
+      "name": "pvm-erasure-words-length",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure words length"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-erasure-words-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure words limit"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-erasure-words-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure words index"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-erasure-words-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure words info"
+    },
+    {
+      "identity": {
+        "origin": "word"
+      },
+      "arguments": [
+        "word"
+      ],
+      "name": "pvm-erasure-words-word",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure words word"
+    }
+  ]
+}
