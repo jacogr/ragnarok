@@ -14,8 +14,6 @@ import ./integration
 import ./offload
 import ../app/[options, services]
 import ../telemetry/observer
-import ../rpc/server
-import ../ui/server
 
 template progress*() {.varargs.} =
   ## Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.
@@ -47,8 +45,6 @@ type
   # This stack owner outlives every synchronous native callback and its dispatcher/engine teardown.
   Peer = object
     transport: Transport
-    rpc: nil ptr Server
-    ui: nil ptr UiServer
     telemetry: nil ptr Client
     incoming: IncomingAttempts
     incomingPeers: IncomingPeers
@@ -591,8 +587,7 @@ proc runPeer*(options: Options): bool {.raises.} =
     let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
         peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
     services.telemetry.observe(telemetryPeers)
-    services.rpc.tick(telemetryPeers) # Each turn performs bounded, nonblocking RPC work.
-    services.ui.tick() # A separate HTTP listener shares the bounded dispatcher cadence.
+    services.tick(telemetryPeers) # Attempt one finalized handoff before bounded RPC/UI work.
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
     if peer.service:
@@ -822,16 +817,13 @@ proc dialMesh(outgoing: var Peer, port: uint16): bool =
   connectTransport(outgoing.transport, port)
 
 # Drive both role engines from one dispatcher and perform at most one exporter tick per turn.
-proc meshPoll(incoming, outgoing: var Peer): bool =
+proc meshPoll(incoming, outgoing: var Peer, services: var Services): bool =
+  ## Retire transport callbacks before one application handoff and shared RPC/UI dispatcher work.
   result = pollPair(incoming.transport, outgoing.transport) and not incoming.failed and
       not outgoing.failed
-  if incoming.rpc != nil: # One RPC owner samples the retained pair as one logical peer.
-    let peers = if peerMetric(incoming.transport, 0) > 0 or peerMetric(outgoing.transport, 0) >
-        0: 1'u32 else: 0'u32
-    let rpcServer = incoming.rpc
-    if rpcServer != nil: rpcServer[].tick(peers) # Re-establish the borrow after mutable transport queries.
-  let uiServer = incoming.ui # Re-establish a stable borrow for Nimony nil checking.
-  if uiServer != nil: uiServer[].tick() # One static HTTP owner serves the retained pair.
+  let peers = if peerMetric(incoming.transport, 0) > 0 or peerMetric(outgoing.transport, 0) >
+      0: 1'u32 else: 0'u32
+  services.tick(peers)
   observeMesh(incoming, outgoing) # Final counter changes remain observable even if polling reports failure.
 
 proc runMesh*(options: Options): bool {.raises.} =
@@ -890,8 +882,6 @@ proc runMesh*(options: Options): bool {.raises.} =
     if not observeHandshakes(incoming.transport, onHandshake) or
         not observePeers(incoming.transport, onPeer): return false # Defer retires partial observer setup.
     services.telemetry.observe(0) # Registration precedes queued lifecycle events from either engine.
-  incoming.ui = addr services.ui # Same stable local lifetime as the RPC owner.
-  incoming.rpc = addr services.rpc # Borrow ends with the local mesh dispatcher; no callback retains it.
   progress "MESH_READY ", int(initiator)
   var authenticatedIn, authenticatedOut = 0'u64
   # All rounds retain these exact stack/socket/dispatcher/TLS/engine owners.
@@ -899,7 +889,8 @@ proc runMesh*(options: Options): bool {.raises.} =
     var started = getMonoTime()
     # External barriers permit both simultaneous dials and post-retirement resource observations.
     while not fileExists(gate / ("start-" & $round)):
-      if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 15: return false
+      if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
+          15: return false
     # A final healthy generation proves recovery after the last forced loss without introducing another crash.
     let lossRound = disrupted and not fileExists(gate / "healthy-final")
     let fallback = round == 0 and getEnv("RAGNAROK_MESH_FALLBACK") == "1"
@@ -907,7 +898,7 @@ proc runMesh*(options: Options): bool {.raises.} =
     # A suppressed preferred dial lets the other peer initiate after the spec's example five-second timeout.
     if fallback:
       while (getMonoTime() - started).inMilliseconds < 5000:
-        if not meshPoll(incoming, outgoing): return false # Keep the listener responsive while waiting.
+        if not meshPoll(incoming, outgoing, services): return false # Keep the listener responsive while waiting.
       if not initiator and not dialMesh(outgoing, uint16(
           remotePort)): return false
     else:
@@ -926,48 +917,53 @@ proc runMesh*(options: Options): bool {.raises.} =
     # Duplicate arbitration runs only after both directions authenticate; fallback has only one live direction.
     while transportStatus(kept.transport) != 1 or peerMetric(incoming.transport, 4) <
         authenticatedIn or peerMetric(outgoing.transport, 4) < authenticatedOut:
-      if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
+      if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
+          10: return false
     if not fallback:
       progress "MESH_DUPLICATE ", round
       disconnectTransport(discarded.transport) # Local policy: keep the preferred-initiator direction.
     started = getMonoTime()
     # Never open application work on an engine whose duplicate close still owns a connection.
     while peerMetric(discarded.transport, 0) != 0:
-      if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
+      if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
+          10: return false
     if peerMetric(kept.transport, 0) != 1: return false # The selected connection must survive duplicate retirement.
     progress "MESH_CONNECTED ", round, " ", int(useOutgoing)
     # Four local queries share this connection with the remote peer's four queries.
     for query in 0..<4: openStream(kept.transport)
     started = getMonoTime()
     while kept.healthy != 8 or liveMesh(kept) != 0:
-      if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
+      if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
+          10: return false
     progress "MESH_EXCHANGED ", round, " ", kept.healthy
     # Opt-in crash rounds retain real incomplete request owners before the harness kills the other process.
     if lossRound:
       started = getMonoTime()
       # Both peers must finish and retire healthy work before either introduces incomplete streams into that phase.
       while not fileExists(gate / ("pending-" & $round)):
-        if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds >
+        if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
             15: return false
       kept.recovering = true
       kept.attack = "no-fin"
       for request in 0..<4: openStream(kept.transport) # Four outgoing requests accompany the peer's four pending queries.
       started = getMonoTime()
       while not pendingMesh(kept):
-        if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds >
+        if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
             10: return false
       progress "MESH_PENDING ", round, " 8"
     started = getMonoTime()
     # Hold a live connection for resource/thread sampling until the harness permits orderly close.
     while not fileExists(gate / ("close-" & $round)):
-      if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 15: return false
+      if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
+          15: return false
     # Crash rounds await negotiated idle expiry; graceful rounds still explicitly queue connection close.
     if not lossRound: disconnectTransport(kept.transport)
     started = getMonoTime()
     # Connection and stream owners must all retire before the next gate releases a reconnect.
     while peerMetric(incoming.transport, 0) != 0 or peerMetric(outgoing.transport, 0) != 0 or
         liveMesh(addr incoming) != 0 or liveMesh(addr outgoing) != 0:
-      if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 10: return false
+      if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
+          10: return false
     # Every pending request must settle exactly once when the vanished connection retires.
     if lossRound:
       if kept.rejected != 8: return false # Retained buffers cannot disappear without terminal outcomes.
@@ -980,5 +976,6 @@ proc runMesh*(options: Options): bool {.raises.} =
   let started = getMonoTime()
   # Retain the final idle owner scope for the last sample before normal ARC/native teardown.
   while not fileExists(gate / "stop"):
-    if not meshPoll(incoming, outgoing) or (getMonoTime() - started).inSeconds > 15: return false
+    if not meshPoll(incoming, outgoing, services) or (getMonoTime() - started).inSeconds >
+        15: return false
   true

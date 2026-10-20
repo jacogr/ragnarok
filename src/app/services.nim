@@ -7,6 +7,7 @@
 
 import std/[syncio, strutils, base64]
 import ./options
+import ./handoff
 import ./chain as application_chain
 import ../state/[store, accumulation_finalization, accumulation_completion]
 import ../chain/provider
@@ -22,6 +23,7 @@ type Services* = object ## Owns listeners/exporter; fields are borrowed by synch
   telemetry*: Client
   chainText: string
   canonical: ApplicationChain
+  adoption: AccumulationHandoff
   started, chainRpc: bool
 
 proc `=copy`*(destination: var Services, source: Services) {.error: "Application Services owns descriptors".}
@@ -32,6 +34,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.telemetry)
   `=destroy`(services.chainText)
   `=destroy`(services.canonical)
+  `=destroy`(services.adoption)
 
 proc close*(services: var Services) =
   ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
@@ -39,6 +42,7 @@ proc close*(services: var Services) =
   services.rpc.close()
   services.telemetry.close()
   services.rpc = default(Server) # Server.close retires sockets; replacement also releases its retained history/configuration.
+  services.adoption = default(AccumulationHandoff) # Retire pending or unacknowledged immutable owners on shutdown.
   services.canonical = default(ApplicationChain)
   services.started = false
   services.chainRpc = false
@@ -169,6 +173,33 @@ proc applyAccumulation*(services: var Services, source: PreparedFinalAccumulatio
         limits) # Join all three handles before notifications.
   else:
     services.canonical.applyAccumulation(source, limits) # Disabled/default canonical owners still use existing guarded adoption.
+
+func accumulationStage*(services: Services): AccumulationHandoffStage =
+  ## Observe producer backpressure independently of optional listener lifetime.
+  services.adoption.stage
+
+proc enqueueAccumulation*(services: var Services, source: PreparedFinalAccumulation,
+    limits: AccumulationCompositionLimits): AccumulationEnqueueError =
+  ## Hand one finalized candidate to the next dispatcher turn; canonical authority is rechecked at adoption.
+  services.adoption.enqueue(services.canonical, source, limits)
+
+proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnapshot] {.requires:
+    services.accumulationStage == AccumulationHandoffStage.Finished.} =
+  ## Acknowledge the exact retained outcome before accepting another candidate.
+  services.adoption.take()
+
+proc cancelAccumulation*(services: var Services): bool =
+  ## Cancel only unattempted work; finished outcomes still require acknowledgement or explicit shutdown.
+  services.adoption.cancel()
+
+proc tick*(services: var Services, peers: uint32) =
+  ## Attempt one pending adoption between native callbacks and before RPC/UI request/notification work.
+  if services.chainRpc:
+    services.adoption.process(services.canonical, services.rpc) # Enabled listener failure remains a completed refusal.
+  else:
+    services.adoption.process(services.canonical) # No listener is needed for explicit independent adoption.
+  services.rpc.tick(peers)
+  services.ui.tick()
 
 proc configureTelemetry*(services: var Services, options: Options, certificate: string,
     port: uint16, ipv6: bool): bool {.raises.} =

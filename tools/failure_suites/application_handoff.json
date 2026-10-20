@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/application_handoff_results.nim",
+  "build_name": "application-handoff-results",
+  "crypto_library": "crypto",
+  "quic_library": "quic",
+  "cases": [
+    {"identity": {"reason": "idle"}, "arguments": ["idle"], "name": "application-handoff-idle", "diagnostic": "handoff.status == Finished", "description": "Application handoff idle completion guard"},
+    {"identity": {"reason": "service"}, "arguments": ["service"], "name": "application-handoff-service", "diagnostic": "accumulationStage(services) == Finished", "description": "Application service idle completion guard"}
+  ]
+}

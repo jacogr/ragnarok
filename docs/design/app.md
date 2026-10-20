@@ -30,7 +30,10 @@ retained history, state ownership, parameter tuple and finality selection; subsc
 starts after all handles agree. Configured seed provisioning requires an explicit complete-state
 policy. Services can opt into that policy, share the exact seed with RPC and retire
 canonical ownership on close/restart. Both executable peer shapes select this path from
-validated state options; live import scheduling remains application integration work. See [the handoff contract](../../spec/application-chain.md).
+validated state options. `app/handoff.nim` retains one finalized candidate or one unacknowledged
+adoption outcome; both peer loops attempt at most one candidate per service tick before RPC/UI
+work. Producers acknowledge completion explicitly, and shutdown retires either alternative.
+Validated acquisition and execution scheduling remain application integration work. See [the handoff contract](../../spec/application-chain.md).
 
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate
