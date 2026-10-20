@@ -49,3 +49,20 @@ Native checks cover exact round trips, every truncated prefix and short input
 ceiling, all single-byte tampering, duplicate/reversed keys, trailers, uint64
 length attacks, all store ceilings, source mutation, independent branches,
 empty maps and 1,000 successful/refused restoration ARC cycles.
+
+## Bounded file loading
+
+`loadFullCheckpoint(path, limits, byteLimit)` is synchronous startup work. It
+rejects empty/NUL-containing paths, opens one descriptor and closes it on every
+return. Fixed 4 KiB reads request at most remaining capacity plus one detection
+byte; no file-size metadata is trusted. Native read errors differ from EOF, and
+bytes beyond the explicit/host ceiling are never retained. Only EOF permits the
+strict decoder to run. File failures have no state payload; decoder failures
+retain only their typed inner reason. Successful stores survive later file
+replacement/deletion independently. Concurrent in-place file mutation has no
+consistency guarantee; root verification remains mandatory. Atomic writer
+publication follows next. These APIs are not called from networking callbacks.
+
+Real-file native tests cross a read chunk, enforce exact/short/zero budgets,
+reject missing/directory/invalid paths and malformed files, preserve inner policy
+errors and retained owners, and repeat successful/refused loads for ARC cleanup.
