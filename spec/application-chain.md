@@ -73,3 +73,17 @@ failure-harness tooling tests, source-owned inventory, pinned Nim/Rust formattin
 the new local design link and Git whitespace checks pass. Logs are under
 `build/application-chain*`, with native output under `build/tests/native/selected/`.
 Exact-head Linux CI and full JAM/STF parity remain separate evidence.
+
+### Structured JSON writer integration
+
+The complete five-layer stack is rebased onto merged
+[PR #257](https://github.com/jacogr/ragnarok/pull/257), master commit
+`3fc89044d8f7ba1bac4ee1b4be70847892620399`. Git range-diff confirms all five
+implementation patches are unchanged. Publication continues to use the protocol
+layer's structured writer; no separate JSON output path was introduced.
+
+On that base, `make unit SUITE=rpc`, `make unit SUITE=rpc_accumulation` and
+`make unit SUITE=application_chain` pass, including writer regression checks,
+subscriber output, late-refusal/retry and public WebSocket handoff. The two
+1,000-cycle suites retain 458,992 and 551,232 occupied bytes respectively before
+and after. Pinned formatting passes. Logs use `build/application-chain-257-*`.
