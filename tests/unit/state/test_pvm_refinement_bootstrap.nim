@@ -168,7 +168,7 @@ assert prepareRefinementBootstrap(inconsistent, pkg, FetchItemIndex(0), CoreInde
 for successes in 0..3:
   failAfter(cint(successes)) # preimage key, request key, code content digest, canonical package digest.
   assert prepareRefinementBootstrap(originalState, pkg, FetchItemIndex(0), CoreIndex(5), parameters(
-      ), limits()).error == RefinementBootstrapError.BackendFailure
+    ), limits()).error == RefinementBootstrapError.BackendFailure
   failHash(0)
 # Full-width selections and independent local capture/initialization policies refuse before unsafe narrowing or publication.
 assert prepare(item = high(uint64)).error == RefinementBootstrapError.InvalidSelection
