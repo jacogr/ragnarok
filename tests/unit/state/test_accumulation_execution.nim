@@ -22,7 +22,9 @@ proc main() {.raises.} =
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
   let limits = executionLimits()
-  let fixture = executionFixture(base, report = true)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.signed.withAvailable = true
+  let fixture = executionFixture(base, executionOptions0)
   let first = executionGuest(fixture, 0)
   let second = executionGuest(fixture, 1)
   assert first.error == AccumulationDispatchError.None and second.error ==
@@ -57,7 +59,9 @@ proc main() {.raises.} =
   assert hashCalls() == 0
   failHash(0)
   # A checkpoint rollback retains actual gas spent before panic; gas is not rolled back with effects.
-  let panic = executionFixture(base, first = ExecutionEnding.Panic)
+  var executionOptions1 = executionFixtureConfig()
+  executionOptions1.first = ExecutionEnding.Panic
+  let panic = executionFixture(base, executionOptions1)
   let panicPlan = completeBlockAccumulation(panic.round,
     [executionGuest(panic, 0), executionGuest(panic, 1)], [], limits).value
   assert uint64(panicPlan.executionGasAt(InvocationServiceIndex(0)).value.gasUsed) == 203,
@@ -67,8 +71,10 @@ proc main() {.raises.} =
       0)).value.outcomeInfo.value
   assert panicOutcome.termination == AccumulationTermination.Panic
   # Basic-block out-of-gas retains the original credit; no unpaid block is charged. A skip also uses zero.
-  let mixed = executionFixture(base, first = ExecutionEnding.Exhausted,
-      second = ExecutionEnding.Missing)
+  var executionOptions2 = executionFixtureConfig()
+  executionOptions2.first = ExecutionEnding.Exhausted
+  executionOptions2.second = ExecutionEnding.Missing
+  let mixed = executionFixture(base, executionOptions2)
   let exhausted = executionGuest(mixed, 0)
   let skipped = executionSkip(mixed, 1)
   let mixedPlan = completeBlockAccumulation(mixed.round, [exhausted], [skipped], limits).value
@@ -79,14 +85,18 @@ proc main() {.raises.} =
       0)).value.outcomeInfo.value
   assert outOfGas.termination == AccumulationTermination.OutOfGas
   # Host out-of-gas differs: its negative posterior gas is capped at the entire initial credit.
-  let host = executionFixture(base, first = ExecutionEnding.HostExhausted,
-      second = ExecutionEnding.Missing)
+  var executionOptions3 = executionFixtureConfig()
+  executionOptions3.first = ExecutionEnding.HostExhausted
+  executionOptions3.second = ExecutionEnding.Missing
+  let host = executionFixture(base, executionOptions3)
   let hostPlan = completeBlockAccumulation(host.round, [executionGuest(host, 0)], [executionSkip(
       host, 1)], limits).value
   assert uint64(hostPlan.executionInfo.value.gasUsed) == 200
   assert uint64(hostPlan.executionGasAt(InvocationServiceIndex(0)).value.gasUsed) == 200
-  let allSkip = executionFixture(base, first = ExecutionEnding.Missing,
-      second = ExecutionEnding.Missing)
+  var executionOptions4 = executionFixtureConfig()
+  executionOptions4.first = ExecutionEnding.Missing
+  executionOptions4.second = ExecutionEnding.Missing
+  let allSkip = executionFixture(base, executionOptions4)
   let allSkipA = executionSkip(allSkip, 0)
   let allSkipB = executionSkip(allSkip, 1)
   failHash(1)
@@ -95,7 +105,9 @@ proc main() {.raises.} =
   assert uint32(skippedPlan.executionGasAt(InvocationServiceIndex(0)).value.service) == 42
   assert hashCalls() == 0
   failHash(0)
-  let empty = executionFixture(base, empty = true)
+  var executionOptions5 = executionFixtureConfig()
+  executionOptions5.empty = true
+  let empty = executionFixture(base, executionOptions5)
   failHash(1)
   let emptyPlan = completeBlockAccumulation(empty.round, [], [], executionLimits(0)).value
   assert emptyPlan.executionInfo.value.services == 0

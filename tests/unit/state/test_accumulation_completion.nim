@@ -114,8 +114,11 @@ proc checkStagingPublication(base: OwnedReport) =
   for octet in guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 6),
     @[10'u8, 17], @[50'u8, 0]], writable = payload):
     code.add(octet) # Preserve ordinary metadata/envelope framing in the signed parent.
-  let fixture = executionFixture(base, firstProgram = code, delegator = 42,
-    extra = @[activityParentEntry()])
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.firstProgram = code
+  executionOptions0.delegator = 42
+  executionOptions0.signed.extra = @[activityParentEntry()]
+  let fixture = executionFixture(base, executionOptions0)
   let prior = fixture.state.snapshot.value
   var execution = runnerLimits()
   execution.copyBytes = MemoryByteLimit(2016)
@@ -259,7 +262,9 @@ proc main() {.raises.} =
   discard compare(yieldedStop, yieldedExpected, original(yieldedRoot), limits)
   var retainedFinal: PreparedFinalAccumulation
   block:
-    let local = executionFixture(base, extra = @[activityParentEntry()])
+    var executionOptions1 = executionFixtureConfig()
+    executionOptions1.signed.extra = @[activityParentEntry()]
+    let local = executionFixture(base, executionOptions1)
     let ran = runBlockAccumulation(local.round, runnerParameters(), runnerLimits()).value
     let terminal = driveAccumulation(ran, runnerParameters(), completionDriverLimits()).value
     retainedFinal = prepareFinalAccumulation(terminal,

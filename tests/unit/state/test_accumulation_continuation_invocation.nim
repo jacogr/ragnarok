@@ -21,8 +21,11 @@ proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 # The first batch reserves the whole budget in allowances; real 22-gas halts release a report-only continuation.
 proc context(base: OwnedReport, missing = false): PreparedAccumulationContinuationInputs =
   let ending = if missing: ExecutionEnding.Missing else: ExecutionEnding.Halt
-  var fixture = executionFixture(base, first = ending,
-    ready = @[ReadyItem(report: reportFor(base, 0, [100'u64]), dependencies: @[])])
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = ending
+  executionOptions0.signed.ready = @[ReadyItem(report: reportFor(base, 0, [100'u64]),
+      dependencies: @[])]
+  var fixture = executionFixture(base, executionOptions0)
   var roundConfig = executionRoundConfig()
   roundConfig.blockGas = Gas(200000)
   fixture.round = planBlockInitialAccumulation(fixture.round.roundBlockQueue.value,

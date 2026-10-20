@@ -82,12 +82,15 @@ proc queued(base: OwnedReport, id: byte, gas: uint64): ReadyItem =
 proc fixture(base: OwnedReport, reports: ReadyRow = @[], stop = TransferStop.Halt,
     checkpoint = true, zeroGas = false, missing = false, budget = 200000'u64): ExecutionFixture =
   ## Sign the actual complete parent with both programs, a funded sender and an uninvoked destination account.
-  result = executionFixture(base, first = (if missing: ExecutionEnding.Missing else: ExecutionEnding.Halt),
-    firstProgram = code(true, stop, checkpoint, zeroGas), secondProgram = code(false,
-        zeroGas = zeroGas),
-    ready = reports, secondBalance = 20,
-    extra = @[serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(balance: AccountBalance(10)),
-        ByteLimit(89)).value])
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = (if missing: ExecutionEnding.Missing else: ExecutionEnding.Halt)
+  executionOptions0.firstProgram = code(true, stop, checkpoint, zeroGas)
+  executionOptions0.secondProgram = code(false, zeroGas = zeroGas)
+  executionOptions0.signed.ready = reports
+  executionOptions0.secondBalance = 20
+  executionOptions0.signed.extra = @[serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(
+      balance: AccountBalance(10)), ByteLimit(89)).value]
+  result = executionFixture(base, executionOptions0)
   var config = executionRoundConfig()
   config.blockGas = Gas(budget)
   result.round = planBlockInitialAccumulation(result.round.roundBlockQueue.value, config).value

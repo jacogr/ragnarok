@@ -187,7 +187,10 @@ proc boundaries(base: OwnedReport): InitialAccumulationRound =
 ## Signed parent roots include the exact C(12) bytes; mutation after capture cannot change the bound plan.
 proc boundCases(base: OwnedReport): PreparedAccumulationInputs =
   var chapter = entry(@[AlwaysAccumulate(service: ServiceIndex(99), gas: PrivilegeGas(5))])
-  let context = authored(base, withAvailable = true, extra = @[chapter])
+  var signedOptions0 = signedBlockFixtureConfig()
+  signedOptions0.withAvailable = true
+  signedOptions0.extra = @[chapter]
+  let context = authored(base, signedOptions0)
   let admission = planBlockReports(context.staged, context.older, config()).value
   let bound = planBlockAccumulationQueue(admission, queueConfig()).value
   let root = context.original.snapshot.value.commitment.root
@@ -214,7 +217,10 @@ proc boundCases(base: OwnedReport): PreparedAccumulationInputs =
       if mode == 1: damaged.value.setLen(1) # Incomplete fixed role/assigner fields.
       else: damaged.value.add(0) # Valid prefix with an unauthorized suffix.
       extra.add(damaged)
-    let badContext = authored(base, withAvailable = true, extra = extra)
+    var signedOptions1 = signedBlockFixtureConfig()
+    signedOptions1.withAvailable = true
+    signedOptions1.extra = extra
+    let badContext = authored(base, signedOptions1)
     let badQueue = planBlockAccumulationQueue(planBlockReports(badContext.staged,
       badContext.older, config()).value, queueConfig()).value
     let error = planBlockInitialAccumulation(badQueue, cfg()).error

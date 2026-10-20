@@ -79,7 +79,10 @@ proc main() {.raises.} =
   var wire = newSeq[byte](raw.len)
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
-  let fixture = executionFixture(base, firstProgram = program(YieldHalt), secondProgram = program(ReturnOverride))
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.firstProgram = program(YieldHalt)
+  executionOptions0.secondProgram = program(ReturnOverride)
+  let fixture = executionFixture(base, executionOptions0)
   let first = executionGuest(fixture, 0)
   let second = executionGuest(fixture, 1)
   let completed = completeBlockAccumulation(fixture.round, [second, first], [], executionLimits()).value
@@ -127,7 +130,10 @@ proc main() {.raises.} =
   assert array[32, byte](ordered.outputsRoot.value) == expectedRoot
   for ending in [YieldPanic, CheckpointPanic, ZeroReturn, UnreadableReturn]:
     # A non-executing peer contributes no pair; one selected presence distinguishes all terminal alternatives.
-    let source = executionFixture(base, second = ExecutionEnding.Missing, firstProgram = program(ending))
+    var executionOptions1 = executionFixtureConfig()
+    executionOptions1.second = ExecutionEnding.Missing
+    executionOptions1.firstProgram = program(ending)
+    let source = executionFixture(base, executionOptions1)
     let result = completeBlockAccumulation(source.round, [executionGuest(source, 0)], [
         executionSkip(source, 1)], executionLimits()).value
     failHash(3)
@@ -146,7 +152,10 @@ proc main() {.raises.} =
       assert array[32, byte](outputs.outputsRoot.value) == array[32, byte](keccak256(leaf(42,
           expected)).value)
     failHash(0)
-  let duplicate = executionFixture(base, firstProgram = program(YieldHalt), secondProgram = program(YieldHalt))
+  var executionOptions2 = executionFixtureConfig()
+  executionOptions2.firstProgram = program(YieldHalt)
+  executionOptions2.secondProgram = program(YieldHalt)
+  let duplicate = executionFixture(base, executionOptions2)
   let duplicateSource = completeBlockAccumulation(duplicate.round,
     [executionGuest(duplicate, 1), executionGuest(duplicate, 0)], [], executionLimits()).value
   let duplicateOutputs = prepareAccumulationOutputs(duplicateSource, policy()).value
@@ -176,11 +185,15 @@ proc main() {.raises.} =
   let defaultResult = default(AccumulationOutputsResult[PreparedAccumulationOutputs])
   assert defaultResult.error == AccumulationOutputsError.Uninitialized
   failHash(0)
-  let allSkip = executionFixture(base, first = ExecutionEnding.Missing,
-      second = ExecutionEnding.Missing)
+  var executionOptions4 = executionFixtureConfig()
+  executionOptions4.first = ExecutionEnding.Missing
+  executionOptions4.second = ExecutionEnding.Missing
+  let allSkip = executionFixture(base, executionOptions4)
   let allSkipSource = completeBlockAccumulation(allSkip.round, [],
     [executionSkip(allSkip, 0), executionSkip(allSkip, 1)], executionLimits()).value
-  let empty = executionFixture(base, empty = true)
+  var executionOptions5 = executionFixtureConfig()
+  executionOptions5.empty = true
+  let empty = executionFixture(base, executionOptions5)
   let emptySource = completeBlockAccumulation(empty.round, [], [], executionLimits(0)).value
   failHash(3)
   for source in [allSkipSource, emptySource]:
@@ -192,7 +205,10 @@ proc main() {.raises.} =
   failHash(0)
   var retained: PreparedAccumulationOutputs
   block:
-    let local = executionFixture(base, firstProgram = program(YieldHalt), secondProgram = program(ReturnOverride))
+    var executionOptions6 = executionFixtureConfig()
+    executionOptions6.firstProgram = program(YieldHalt)
+    executionOptions6.secondProgram = program(ReturnOverride)
+    let local = executionFixture(base, executionOptions6)
     let source = completeBlockAccumulation(local.round,
       [executionGuest(local, 0), executionGuest(local, 1)], [], executionLimits()).value
     retained = prepareAccumulationOutputs(source, policy()).value

@@ -164,7 +164,11 @@ proc boundCase(base: OwnedReport): PreparedAccumulationInvocation =
     ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(1))).value
   let privileges = privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](2)),
       roundConfig().privileges).value
-  let context = authored(base, withAvailable = true, extra = @[privileges, code], accountCode = raw)
+  var signedOptions0 = signedBlockFixtureConfig()
+  signedOptions0.withAvailable = true
+  signedOptions0.extra = @[privileges, code]
+  signedOptions0.accountCode = raw
+  let context = authored(base, signedOptions0)
   let admitted = planBlockReports(context.staged, context.older, config()).value
   let queue = planBlockAccumulationQueue(admitted, queueConfig()).value
   let round = planBlockInitialAccumulation(queue, roundConfig()).value

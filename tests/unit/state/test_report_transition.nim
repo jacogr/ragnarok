@@ -45,7 +45,9 @@ proc expected(context: Context): seq[byte] =
 
 ## Success publishes all previous stages and exact report assignments while preserving every unrelated byte.
 proc success(base: OwnedReport) =
-  let context = authored(base, withDispute = true)
+  var signedOptions0 = signedBlockFixtureConfig()
+  signedOptions0.withDispute = true
+  let context = authored(base, signedOptions0)
   let parent = context.original.snapshot.value
   let staged = context.staged.value.snapshot
   assert parent.lookup(chapterKey(StateChapter(5))).value.bytes != staged.lookup(chapterKey(
@@ -86,7 +88,10 @@ proc success(base: OwnedReport) =
 ## Each actual later report refusal must discard C(5), authenticated Safrole state and any timeout-cleared C(10).
 proc reportRefusals(base: OwnedReport) =
   for mode in [1, 3, 4, 6, 7, 8, 9, 10, 12, 13]:
-    let context = authored(base, mode, withDispute = true)
+    var signedOptions1 = signedBlockFixtureConfig()
+    signedOptions1.mode = mode
+    signedOptions1.withDispute = true
+    let context = authored(base, signedOptions1)
     assert context.original.snapshot.value.lookup(chapterKey(StateChapter(5))).value.bytes !=
         context.staged.value.snapshot.lookup(chapterKey(StateChapter(5))).value.bytes
     var state = context.original
@@ -133,7 +138,9 @@ proc reportRefusals(base: OwnedReport) =
 
 ## Publication budgets and final Merklization must refuse without leaking any successfully checked stage.
 proc publicationRefusals(base: OwnedReport) =
-  let context = authored(base, withDispute = true)
+  var signedOptions3 = signedBlockFixtureConfig()
+  signedOptions3.withDispute = true
+  let context = authored(base, signedOptions3)
   var successful = context.original
   failHash(0)
   let accepted = advanceBlockReports(successful, context.candidate, context.parent, context.older,
@@ -153,7 +160,10 @@ proc publicationRefusals(base: OwnedReport) =
           StateStoreError.BackendFailure # No fake success root on a final digest refusal.
     unchanged(context, refused.snapshot.value)
     failHash(0)
-  let bounded = authored(base, maxWriteBytes = 132, withDispute = true)
+  var signedOptions4 = signedBlockFixtureConfig()
+  signedOptions4.maxWriteBytes = 132
+  signedOptions4.withDispute = true
+  let bounded = authored(base, signedOptions4)
   assert expected(bounded).len > 132 # Earlier stage writes fit, but complete new assignments do not.
   var refused = bounded.original
   let resource = advanceBlockReports(refused, bounded.candidate, bounded.parent, bounded.older,
@@ -161,7 +171,9 @@ proc publicationRefusals(base: OwnedReport) =
   assert resource.error == BlockReportError.PublicationFailure and resource.publicationError ==
       StateStoreError.LimitExceeded
   unchanged(bounded, refused.snapshot.value)
-  let timed = authored(base, 11)
+  var signedOptions5 = signedBlockFixtureConfig()
+  signedOptions5.mode = 11
+  let timed = authored(base, signedOptions5)
   var timedState = timed.original
   let timeout = advanceBlockReports(timedState, timed.candidate, timed.parent, timed.older,
       transitionConfig())
@@ -171,7 +183,11 @@ proc publicationRefusals(base: OwnedReport) =
 
 ## Empty-report publication preserves the exact earlier-stage root and requires no redundant map hashing.
 proc emptyBatch(base: OwnedReport) =
-  let context = authored(base, reports = 0, maxWriteBytes = 132, withDispute = true)
+  var signedOptions6 = signedBlockFixtureConfig()
+  signedOptions6.reports = 0
+  signedOptions6.maxWriteBytes = 132
+  signedOptions6.withDispute = true
+  let context = authored(base, signedOptions6)
   var staged = context.original
   failHash(0)
   let prefix = stage(staged, context.candidate, context.parent)
@@ -196,7 +212,9 @@ proc cycle(context: Context, expected: BlockReportError) =
 
 ## A retained success must outlive its fixture's stores, block/header handles and mutable source descriptors.
 proc escaped(base: OwnedReport): BlockReportUpdate =
-  let context = authored(base, withDispute = true)
+  var signedOptions7 = signedBlockFixtureConfig()
+  signedOptions7.withDispute = true
+  let context = authored(base, signedOptions7)
   var state = context.original
   advanceBlockReports(state, context.candidate, context.parent, context.older, transitionConfig()).value
 
@@ -213,8 +231,13 @@ proc main() {.raises.} =
   let retained = escaped(base)
   assert retained.reports.reportCredentials.value.verifiedGuaranteeCount.value == 2
   assert retained.snapshot.lookup(chapterKey(StateChapter(10))).error == StateStoreError.None
-  let good = authored(base, withDispute = true)
-  let bad = authored(base, 1, withDispute = true)
+  var signedOptions8 = signedBlockFixtureConfig()
+  signedOptions8.withDispute = true
+  let good = authored(base, signedOptions8)
+  var signedOptions9 = signedBlockFixtureConfig()
+  signedOptions9.mode = 1
+  signedOptions9.withDispute = true
+  let bad = authored(base, signedOptions9)
   cycle(good, BlockReportError.None)
   cycle(bad, BlockReportError.ReportFailure)
   let before = getOccupiedMem()

@@ -141,13 +141,36 @@ type Context* = object
   parent*: OwnedHeader
   source*: seq[StateEntry]
 
-proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
-    withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
-        byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[],
-            poolCopies = 1, refinementGas = high(uint64),
-    historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32, withTicket = false,
-    shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[RefineLoad] = @[],
-        parentPools: seq[AuthorizerRow] = @[], storeWrites = 1000'u64): Context =
+type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is separate from execution configuration.
+  mode*: int                       ## Intentional report/parent damage selector; zero authors a valid block.
+  reports*: int                    ## Number of newly guaranteed reports.
+  maxWriteBytes*: uint64           ## Inherited store write-byte ceiling.
+  withDispute*: bool               ## Include genuine new-offender evidence.
+  withAvailable*: bool             ## Assure a previously assigned report.
+  extra*: seq[StateEntry]          ## Additional original-parent entries, committed before signing.
+  accountCode*: seq[byte]          ## Optional code preimage bound to signed reports and the account.
+  ready*: ReadyRow                 ## Original parent ready row.
+  preimageWire*: seq[byte]         ## Exact child preimage extrinsic, including intentional malformed cases.
+  poolCopies*: int                 ## Number of original authorizer duplicates per core.
+  refinementGas*: uint64           ## Gas observation encoded in each signed report digest.
+  historyPeaks*: seq[HistoryPeak]  ## Original parent history belt.
+  targetSlot*: uint32              ## Explicit child slot; zero chooses the existing scenario default.
+  withTicket*: bool                ## Include a real RingVRF ticket.
+  shiftPending*: bool              ## Rotate pending identities while preserving parent active identities.
+  guaranteeSlot*: uint32           ## Explicit signed guarantee slot; zero selects child time.
+  refinement*: seq[RefineLoad]     ## Optional per-digest refinement observations.
+  parentPools*: seq[AuthorizerRow] ## Explicit canonical original authorizer pools.
+  storeWrites*: uint64             ## Inherited store mutation-count ceiling.
+
+proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
+  ## Preserve the existing tiny signed profile and resource defaults in one place.
+  SignedBlockFixtureConfig(mode: 0, reports: 2, maxWriteBytes: 1000000'u64, withDispute: false,
+      withAvailable: false, extra: @[], accountCode: @[], ready: @[], preimageWire: @[],
+      poolCopies: 1, refinementGas: high(uint64), historyPeaks: @[], targetSlot: 0'u32,
+      withTicket: false, shiftPending: false, guaranteeSlot: 0'u32, refinement: @[], parentPools: @[],
+      storeWrites: 1000'u64)
+
+proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context =
   ## Author a signed advancing block (slot 2 by default), then run real disputes/Safrole/assurance processing.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
   ## Optional ready rows and belt peaks enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
@@ -175,35 +198,36 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
     roster[i].ed25519 = StateEdKey(array[32, byte](publicKey(ed).value))
     roster[i].bandersnatch = StateBsKey(public)
   var pending = roster
-  if shiftPending:
+  if options.shiftPending:
     # Old active/previous positions remain unchanged while the next epoch receives shifted key identities.
     pending = newSeq[StateValidator](roster.len)
     for index in 0..<pending.len: pending[index] = roster[(index+1) mod roster.len]
   var schedule = newSeq[StateBsKey](12)
   for i in 0..<12: schedule[i] = StateBsKey(public) # Every authored fallback slot has the real seal key.
   # Preserve existing fixtures by default; optional code rebinding happens before any root or signature.
-  let selectedBase = if accountCode.len == 0: base
-    else: withCode(base, accountCode) # Bind optional authored code to every signed report and account.
+  let selectedBase = if options.accountCode.len == 0: base
+    else: withCode(base, options.accountCode) # Bind optional authored code to every signed report and account.
   let sample = reportFor(selectedBase, 0, [10'u64])
   var entries = entriesFor([sample])
   var pools = newSeq[AuthorizerRow](2)
-  assert poolCopies >= 1 and poolCopies <= 8 # Authored duplicates stay inside the protocol's pool cardinality.
+  assert options.poolCopies >= 1 and options.poolCopies <=
+      8 # Authored duplicates stay inside the protocol's pool cardinality.
   for i in 0..<2:
-    pools[i] = newSeq[AuthorizerHash](poolCopies)
-    for ordinal in 0..<poolCopies: pools[i][ordinal] = ownedReportInfo(
+    pools[i] = newSeq[AuthorizerHash](options.poolCopies)
+    for ordinal in 0..<options.poolCopies: pools[i][ordinal] = ownedReportInfo(
         sample).value.authorizer # Both cores admit the same authenticated authorizer, with optional oldest-only removal witnesses.
-  if parentPools.len > 0: pools = parentPools # Explicit canonical pools enter the original signed parent.
-  if mode == 1: pools[1] = @[] # Later report fails after the first valid policy record.
+  if options.parentPools.len > 0: pools = options.parentPools # Explicit canonical pools enter the original signed parent.
+  if options.mode == 1: pools[1] = @[] # Later report fails after the first valid policy record.
   entries[0] = authorizationEntry(AuthorizationKind.Pools, pools, cfg.policy.pools).value
   let history = HistoryState(blocks: @[HistoryBlock(header: HistoryHeaderHash(parentHash),
     state: default(HistoryStateRoot), superPeak: default(HistorySuperPeak), slot: HistorySlot(1),
-        packages: @[])], peaks: historyPeaks)
-  if mode != 9: entries.add(historyStateEntry(history,
+        packages: @[])], peaks: options.historyPeaks)
+  if options.mode != 9: entries.add(historyStateEntry(history,
       cfg.anchors.history).value) # Missing history must not be synthesized.
-  if mode == 10: entries[^1].value.add(0) # An exact parent value cannot carry a suffix.
+  if options.mode == 10: entries[^1].value.add(0) # An exact parent value cannot carry a suffix.
   var ringRoot = default(StateRingRoot)
   var ticketWire = @[0'u8]
-  if withTicket:
+  if options.withTicket:
     # One genuine RingVRF proof shares the exact committed pending roster and zero parent entropy[2].
     let setup = newSetup(6).value
     var members = newSeq[byte](6*32)
@@ -231,7 +255,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   var judgments = DisputeState()
   var evidence = Disputes(culprits: @[])
   var punished: seq[OffenderKey] = @[]
-  if withDispute:
+  if options.withDispute:
     var seedBytes = default(array[32, byte])
     seedBytes[0] = 16
     let seed = importSeed(seedBytes).value
@@ -244,8 +268,8 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
       signature: DisputeSignature(array[64, byte](sign(seed, message).value)))] # Real new-offender evidence.
   entries.add(disputeStateEntry(judgments, cfg.judgments).value)
   var assignments = newSeq[AvailabilityAssignment](2)
-  if mode in [7, 11, 12] or withAvailable:
-    let oldReport = if mode == 12: report(selectedBase, 0, default(state_trie.StateRoot),
+  if options.mode in [7, 11, 12] or options.withAvailable:
+    let oldReport = if options.mode == 12: report(selectedBase, 0, default(state_trie.StateRoot),
         parentHash, lookupHash, 0)
       else: sample # Only mode 12 reuses the incoming package identity in the parent table.
     let prior = certify([oldReport], 1).verifiedGuaranteeAt(0).value
@@ -253,47 +277,49 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
         1)) # Occupied at slot 2; timeout modes below use slot 6.
   entries.add(availabilityStateEntry(assignments, cfg.packages.availability).value)
   var readyRows = newSeq[ReadyRow](12)
-  readyRows[0] = ready # Optional already-queued reports enter the signed parent commitment before admission.
+  readyRows[0] = options.ready # Optional already-queued reports enter the signed parent commitment before admission.
   entries.add(readyStateEntry(readyRows, cfg.packages.queues).value)
   var accumulated = newSeq[AccumulatedRow](12)
-  if mode == 6:
+  if options.mode == 6:
     var duplicate = PackageHash(bytes: default(array[32, byte]))
     duplicate.bytes[0] = 11
     accumulated[11] = @[duplicate] # A later incoming package duplicates parent pipeline state.
   entries.add(accumulatedStateEntry(accumulated, cfg.packages.queues).value)
-  if mode == 13: entries.delete(entries.len-2) # Parent ready chapter is mandatory even on an empty batch.
+  if options.mode == 13: entries.delete(entries.len-2) # Parent ready chapter is mandatory even on an empty batch.
   entries.add(StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4,
       2])) # Opaque state must survive publication and rollback.
   # Extra chapters enter the parent root committed by the signed candidate and report guarantees.
-  for entry in extra: entries.add(entry)
+  for entry in options.extra: entries.add(entry)
   var bounds = limits()
-  bounds.writeValueBytes = ByteLimit(maxWriteBytes)
-  bounds.writes = ElementLimit(storeWrites) # Optional inherited batch limits enter the original store before any stage.
+  bounds.writeValueBytes = ByteLimit(options.maxWriteBytes)
+  bounds.writes = ElementLimit(options.storeWrites) # Optional inherited batch limits enter the original store before any stage.
   let created = newStateStore(entries, bounds)
   assert created.error == StateStoreError.None, $created.error
   var state = created.value
   let root = state.snapshot.value.commitment.root
-  let target = if targetSlot != 0: targetSlot else: (if mode in [11, 12]: 6'u32 else: 2'u32)
-  var children = newSeq[OwnedReport](reports)
-  for i in 0..<reports: children[i] = report(selectedBase, i, root, parentHash, lookupHash,
-      mode, refinementGas, refinement) # Signed metadata includes corrected parent root and authored refinement work.
-  var guarantees = newSeq[Guarantee](reports)
-  let signedSlot = if guaranteeSlot == 0: target else: guaranteeSlot
+  let target = if options.targetSlot != 0: options.targetSlot else: (if options.mode in [11,
+      12]: 6'u32 else: 2'u32)
+  var children = newSeq[OwnedReport](options.reports)
+  for i in 0..<options.reports: children[i] = report(selectedBase, i, root, parentHash, lookupHash,
+      options.mode, options.refinementGas, options.refinement) # Signed metadata includes corrected parent root and authored refinement work.
+  var guarantees = newSeq[Guarantee](options.reports)
+  let signedSlot = if options.guaranteeSlot == 0: target else: options.guaranteeSlot
   let signed = certify(children, signedSlot, punished)
-  for i in 0..<reports: guarantees[i] = signed.verifiedGuaranteeAt(
+  for i in 0..<options.reports: guarantees[i] = signed.verifiedGuaranteeAt(
       i).value # Real Ed25519 signatures, never observer successes.
-  if mode == 8: guarantees[^1].credentials[0].signature = default(GuaranteeSignature) # Later invalid credential.
+  if options.mode == 8: guarantees[^1].credentials[0].signature = default(
+      GuaranteeSignature) # Later invalid credential.
   var encoded = newSeq[byte](100000)
   let written = encodeGuarantees(guarantees, cfg.packages.availability.guarantee, encoded)
   assert written.error == GuaranteeError.None
   encoded.setLen(written.value)
   var body = ticketWire
-  if preimageWire.len == 0:
+  if options.preimageWire.len == 0:
     body.add(0'u8) # Preserve the original empty preimage extrinsic by default.
   else:
-    for octet in preimageWire: body.add(octet) # Explicit authored preimages enter the real signed extrinsic commitment.
+    for octet in options.preimageWire: body.add(octet) # Explicit authored preimages enter the real signed extrinsic commitment.
   for octet in encoded: body.add(octet) # Copy complete guarantee encoding.
-  if withAvailable:
+  if options.withAvailable:
     var votes = newSeq[Assurance](5)
     # Five genuine parent-validator signatures assure the old core-zero report before new assignments.
     for i in 0..<5:
@@ -331,7 +357,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
       epochKeys[index] = EpochValidator(bandersnatch: HeaderBsKey(public),
         ed25519: HeaderEdKey(array[32, byte](pending[index].ed25519)))
     candidate.unsigned.epoch = presentEpoch(default(EpochEntropy), default(TicketsEntropy), epochKeys)
-  if withDispute:
+  if options.withDispute:
     candidate.unsigned.offenders = @[HeaderEdKey(array[32, byte](punished[
         0]))] # Signed literal marker matches this block's evidence.
   let input = transcript("jam_fallback_seal", default(array[32, byte]))

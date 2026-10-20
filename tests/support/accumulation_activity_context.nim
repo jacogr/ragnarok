@@ -81,13 +81,25 @@ proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blob
     for octet in batchEnvelope(BatchEnding.Halt): program.add(octet) # Real provides precede lookup integration.
     entries.add(integrationRequest(99, @[81'u8])) # The guest's second provision is independent of the lookup blob.
   let ending = if executed or provided: ExecutionEnding.Halt else: ExecutionEnding.Missing
-  let fixture = executionFixture(base, first = ending,
-    second = ending, empty = not (executed or provided), firstProgram = program,
-    report = available, incomingReports = guarantees,
-    extra = entries, preimageWire = body, targetSlot = slot, refinement = loads,
-    parentPools = parentPools, authorizationQueue = authorizationQueue,
-    omitAuthorizationQueue = omitAuthorizationQueue, withDispute = withDispute,
-    withTicket = withTicket, shiftPending = shiftPending, storeWrites = storeWrites)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = ending
+  executionOptions0.second = ending
+  executionOptions0.empty = not (executed or provided)
+  executionOptions0.firstProgram = program
+  executionOptions0.signed.withAvailable = available
+  executionOptions0.signed.reports = guarantees
+  executionOptions0.signed.extra = entries
+  executionOptions0.signed.preimageWire = body
+  executionOptions0.signed.targetSlot = slot
+  executionOptions0.signed.refinement = loads
+  executionOptions0.signed.parentPools = parentPools
+  executionOptions0.authorizationQueue = authorizationQueue
+  executionOptions0.omitAuthorizationQueue = omitAuthorizationQueue
+  executionOptions0.signed.withDispute = withDispute
+  executionOptions0.signed.withTicket = withTicket
+  executionOptions0.signed.shiftPending = shiftPending
+  executionOptions0.signed.storeWrites = storeWrites
+  let fixture = executionFixture(base, executionOptions0)
   let initial = fixture.round
   var skips: seq[SkippedAccumulation] = @[]
   var runs: seq[AccumulationDispatchResult] = @[]

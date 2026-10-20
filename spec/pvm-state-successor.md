@@ -31,15 +31,15 @@ parent publication and stale/foreign refusal; precise phase/hash/quota rollback;
 continuation/reentry/yield/staging preservation; staging/active population
 independence with exact and one-below limits; runtime/compiler guards and ARC.
 
-This is the first convergence tranche. The older scoped PVM block adapters remain
-compatibility/test consumers; they are not another canonical whole-block entry.
-Next: migrate their remaining witnesses to state composition, remove duplicated
-orchestration adapters and consolidate shared signed/execution fixture configuration.
-Retain reusable projections and all state validity/ownership coverage. M1 framing
-remains complete; full state serialization and whole-block parity remain open.
-Full/light state separation and existing independent specification gates remain.
+This establishes the shared successor boundary. The follow-up
+[orchestration consolidation](pvm-state-consolidation.md) migrates the older scoped
+PVM witnesses, retires their duplicate publication chain and shares signed fixture
+configuration. Reusable projections and state validity/ownership coverage remain.
+M1 framing remains complete; full state serialization and whole-block parity remain
+open. Full/light separation and independent specification gates are unchanged.
 
-Observed local verification (macOS, pinned Nimony/ARC and native crypto):
+Observed local verification for the first tranche (#247, macOS, pinned Nimony/ARC
+and native crypto):
 
 - `accumulation_completion` passed direct finalized-owner / stopped-wrapper /
   independently assembled phase-chain full-map parity for signed ordinary,

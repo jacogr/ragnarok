@@ -29,8 +29,12 @@ proc queued(base: OwnedReport, ordinal: byte, gases: openArray[uint64]): ReadyIt
 proc source(base: OwnedReport, reports: ReadyRow, allowance = 208'u64,
     extraBudget = 0'u64, skip = false): CompletedBlockAccumulation =
   let ending = (if skip: ExecutionEnding.Missing else: ExecutionEnding.Panic)
-  var fixture = executionFixture(base, first = ending, second = ending, allowanceGas = allowance,
-      ready = reports)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = ending
+  executionOptions0.second = ending
+  executionOptions0.allowanceGas = allowance
+  executionOptions0.signed.ready = reports
+  var fixture = executionFixture(base, executionOptions0)
   var config = executionRoundConfig()
   config.blockGas = Gas(allowance*2+extraBudget) # Tiny authored values are fixed before capture, not untrusted arithmetic.
   fixture.round = planBlockInitialAccumulation(fixture.round.roundBlockQueue.value, config).value
@@ -151,7 +155,9 @@ proc main() {.raises.} =
   assert doneInfo.pendingReports == 0 and not doneInfo.dispatch
   assert uint64(doneInfo.completedPrefix) == 1 and uint64(doneInfo.prefix) == 0
   failHash(0)
-  let emptyFixture = executionFixture(base, empty = true)
+  var executionOptions1 = executionFixtureConfig()
+  executionOptions1.empty = true
+  let emptyFixture = executionFixture(base, executionOptions1)
   let empty = completeBlockAccumulation(emptyFixture.round, [], [], executionLimits(0)).value
   failHash(3)
   let emptyInfo = planAccumulationContinuation(empty, limits(executions = 0, reports = 0,

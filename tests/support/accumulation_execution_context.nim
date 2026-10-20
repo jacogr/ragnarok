@@ -17,6 +17,8 @@ import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ./[report_context, report_admission_context, pvm_accumulation_context,
   accumulation_provision_integration]
 
+export report_admission_context.SignedBlockFixtureConfig
+
 type
   ExecutionEnding* {.pure.} = enum ## Independently authored code and credits distinguish each real terminal alternative.
     Halt,   ## One jump-indirect halt costs 22 gas under the pinned pipeline.
@@ -57,59 +59,71 @@ proc code(ending: ExecutionEnding): seq[byte] =
   else: pvmEnvelope() # Five trap opcodes precede the actual entry-5 halt instruction.
   for octet in envelope: result.add(octet)
 
-proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
-    second = ExecutionEnding.Halt, empty = false, report = false, firstProgram: seq[byte] = @[],
-    secondProgram: seq[byte] = @[], allowanceGas = 100000'u64,
-    ready: ReadyRow = @[], extra: seq[StateEntry] = @[], secondBalance = 0'u64,
-    incomingReports = 0, preimageWire: seq[byte] = @[], assigner = 0'u32,
-        poolCopies = 1, refinementGas = high(uint64),
-    historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32,
-    withTicket = false, shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[
-        RefineLoad] = @[],
-    parentPools: seq[AuthorizerRow] = @[], authorizationQueue: seq[byte] = @[],
-    omitAuthorizationQueue = false, withDispute = false,
-    storeWrites = 1000'u64, manager = 0'u32, delegator = 0'u32): ExecutionFixture =
+type ExecutionFixtureConfig* = object ## PVM guest choices own execution data and retain one shared signed-block configuration.
+  first*: ExecutionEnding           ## First guest terminal behavior when no custom program is supplied.
+  second*: ExecutionEnding          ## Second guest terminal behavior when no custom program is supplied.
+  empty*: bool                      ## Omit both always-accumulate allowances.
+  firstProgram*: seq[byte]          ## Optional complete first-service code preimage.
+  secondProgram*: seq[byte]         ## Optional complete second-service code preimage.
+  allowanceGas*: uint64             ## Gas assigned to each ordinary always-accumulate service.
+  secondBalance*: uint64            ## Original balance of the second service.
+  assigner*: uint32                 ## Original assigner service for both cores.
+  authorizationQueue*: seq[byte]    ## Optional exact C(2), including malformed-state witnesses.
+  omitAuthorizationQueue*: bool     ## Omit original C(2) for missing-state witnesses.
+  manager*: uint32                  ## Original manager service.
+  delegator*: uint32                ## Original validator-staging authority.
+  signed*: SignedBlockFixtureConfig ## Same state-owned configuration used by signed block witnesses.
+
+proc executionFixtureConfig*(): ExecutionFixtureConfig =
+  ## Preserve existing guest defaults and the no-incoming-report signed profile.
+  var signed = signedBlockFixtureConfig()
+  signed.reports = 0
+  ExecutionFixtureConfig(first: ExecutionEnding.Halt, second: ExecutionEnding.Halt, empty: false,
+      firstProgram: @[], secondProgram: @[], allowanceGas: 100000'u64, secondBalance: 0'u64,
+      assigner: 0'u32, authorizationQueue: @[], omitAuthorizationQueue: false, manager: 0'u32,
+      delegator: 0'u32, signed: signed)
+
+proc executionFixture*(base: OwnedReport, options = executionFixtureConfig()): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
   ## Optional allowances, balances, ready rows and belt peaks enter the parent; incoming reports/preimages enter the genuinely signed child.
-  let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
-  let secondCode = (if secondProgram.len == 0: code(second) else: secondProgram)
+  let firstCode = (if options.firstProgram.len == 0: code(options.first) else: options.firstProgram)
+  let secondCode = (if options.secondProgram.len == 0: code(
+      options.second) else: options.secondProgram)
   var allowances: seq[AlwaysAccumulate] = @[]
-  if not empty:
-    for ordinal, ending in [first, second]:
+  if not options.empty:
+    for ordinal, ending in [options.first, options.second]:
       let service = ServiceIndex(if ordinal == 0: 42 else: 99)
       let gas = (if ending == ExecutionEnding.Exhausted: 1'u64 elif ending ==
-          ExecutionEnding.HostExhausted: 200'u64 else: allowanceGas)
+          ExecutionEnding.HostExhausted: 200'u64 else: options.allowanceGas)
       allowances.add(AlwaysAccumulate(service: service, gas: PrivilegeGas(gas)))
   var assigners = newSeq[ServiceIndex](2)
   for index in 0..<assigners.len: assigners[index] = ServiceIndex(
-      assigner) # Optional authority enters the signed parent before real assign calls.
-  let privileges = privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
-      delegator: ServiceIndex(delegator), assigners: assigners,
+      options.assigner) # Optional authority enters the signed parent before real assign calls.
+  let privileges = privilegeStateEntry(PrivilegeState(manager: ServiceIndex(options.manager),
+      delegator: ServiceIndex(options.delegator), assigners: assigners,
     always: allowances), executionRoundConfig().privileges).value
   var entries = @[privileges]
-  if not omitAuthorizationQueue:
+  if not options.omitAuthorizationQueue:
     let queues = authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
         AuthorizerHash](80)], pvmContextConfig().queues).value
-    entries.add(StateEntry(key: queues.key, value: (if authorizationQueue.len == 0:
-      queues.value else: authorizationQueue))) # Explicit malformed fixtures are committed honestly before the tested decoder stage.
+    entries.add(StateEntry(key: queues.key, value: (if options.authorizationQueue.len == 0:
+      queues.value else: options.authorizationQueue))) # Explicit malformed fixtures are committed honestly before the tested decoder stage.
   for ordinal, raw in [firstCode, secondCode]:
     let service = ServiceIndex(if ordinal == 0: 42 else: 99)
     let hash = array[32, byte](blake2b256(raw).value)
     if ordinal == 1:
       entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
-          balance: AccountBalance(secondBalance)), ByteLimit(89)).value)
-    let ending = (if ordinal == 0: first else: second)
+          balance: AccountBalance(options.secondBalance)), ByteLimit(89)).value)
+    let ending = (if ordinal == 0: options.first else: options.second)
     if ending != ExecutionEnding.Missing:
       entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), raw,
         ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(raw.len))).value)
-  for entry in extra:
+  for entry in options.signed.extra:
     entries.add(entry) # Additional effect witnesses enter the genuine parent before its commitment/signatures.
-  let context = authored(base, reports = incomingReports, withAvailable = report, extra = entries,
-      accountCode = firstCode, ready = ready, preimageWire = preimageWire, poolCopies = poolCopies,
-      refinementGas = refinementGas, historyPeaks = historyPeaks, targetSlot = targetSlot,
-    withTicket = withTicket, shiftPending = shiftPending, guaranteeSlot = guaranteeSlot,
-      refinement = refinement, parentPools = parentPools,
-    withDispute = withDispute, storeWrites = storeWrites)
+  var signed = options.signed
+  signed.extra = entries
+  signed.accountCode = firstCode
+  let context = authored(base, signed)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,

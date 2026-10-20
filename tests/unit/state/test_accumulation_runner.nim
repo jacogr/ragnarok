@@ -59,13 +59,20 @@ proc main() {.raises.} =
   let base = decodeOwnedReport(wire, 2).value
   let parameters = runnerParameters()
   let limits = runnerLimits()
-  let fixture = executionFixture(base, report = true)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.signed.withAvailable = true
+  let fixture = executionFixture(base, executionOptions0)
   parity(fixture, ExecutionEnding.Halt, ExecutionEnding.Halt)
   for ending in [ExecutionEnding.Panic, ExecutionEnding.Exhausted, ExecutionEnding.HostExhausted,
       ExecutionEnding.Missing]:
-    parity(executionFixture(base, first = ending, second = ExecutionEnding.Missing),
+    var executionOptions1 = executionFixtureConfig()
+    executionOptions1.first = ending
+    executionOptions1.second = ExecutionEnding.Missing
+    parity(executionFixture(base, executionOptions1),
       ending, ExecutionEnding.Missing) # Includes both out-of-gas charging branches and all-skip coverage.
-  let empty = executionFixture(base, empty = true)
+  var executionOptions2 = executionFixtureConfig()
+  executionOptions2.empty = true
+  let empty = executionFixture(base, executionOptions2)
   var zero = limits
   zero.completion.services = ElementLimit(0)
   let emptyPlan = runBlockAccumulation(empty.round, parameters, zero).value
@@ -118,7 +125,9 @@ proc main() {.raises.} =
   assert incomplete.error == AccumulationRunnerError.CompletionFailure, $incomplete.error
   assert incomplete.completionFailure.batchFailure.error == AccumulationBatchError.LimitExceeded
   # A later service's larger checkpoint program exceeds a ceiling that the first ready guest passes.
-  let late = executionFixture(base, second = ExecutionEnding.Panic)
+  var executionOptions3 = executionFixtureConfig()
+  executionOptions3.second = ExecutionEnding.Panic
+  let late = executionFixture(base, executionOptions3)
   let latePrior = late.state.snapshot.value
   policy = limits
   policy.steps = ExecutionStepLimit(1)
@@ -140,13 +149,19 @@ proc main() {.raises.} =
   assert oversized.executionInfo.value.batch.skipped == 2 and uint64(
       oversized.executionInfo.value.gasUsed) == 0
   # Real provides use existing checkpoint/union machinery; failure cannot return an earlier successful guest.
-  let malformed = executionFixture(base, firstProgram = @[255'u8])
+  var executionOptions4 = executionFixtureConfig()
+  executionOptions4.firstProgram = @[255'u8]
+  let malformed = executionFixture(base, executionOptions4)
   assert runBlockAccumulation(malformed.round, parameters,
       limits).value.executionInfo.value.batch.skipped == 1
-  let invalidEnvelope = executionFixture(base, firstProgram = @[0'u8, 1])
+  var executionOptions5 = executionFixtureConfig()
+  executionOptions5.firstProgram = @[0'u8, 1]
+  let invalidEnvelope = executionFixture(base, executionOptions5)
   assert runBlockAccumulation(invalidEnvelope.round, parameters, limits).machineError ==
     AccumulationMachineError.InvalidEnvelope
-  let missingContexts = executionFixture(base, omitAuthorizationQueue = true)
+  var executionOptions6 = executionFixtureConfig()
+  executionOptions6.omitAuthorizationQueue = true
+  let missingContexts = executionFixture(base, executionOptions6)
   assert runBlockAccumulation(missingContexts.round, parameters, limits).contextError ==
       AccumulationContextError.MissingState
   failHash(1)
@@ -160,10 +175,11 @@ proc main() {.raises.} =
   assert invocationBackend.error == AccumulationRunnerError.InvocationFailure,
       $invocationBackend.error
   assert invocationBackend.invocationError == AccumulationInvocationError.BackendFailure
-  let provided = executionFixture(base, firstProgram = runnerProgram(BatchEnding.Halt),
-    secondProgram = runnerProgram(BatchEnding.Panic), extra = @[integrationRequest(42, @[
-        73'u8]),
-      integrationRequest(99, @[81'u8])])
+  var executionOptions7 = executionFixtureConfig()
+  executionOptions7.firstProgram = runnerProgram(BatchEnding.Halt)
+  executionOptions7.secondProgram = runnerProgram(BatchEnding.Panic)
+  executionOptions7.signed.extra = @[integrationRequest(42, @[73'u8]), integrationRequest(99, @[81'u8])]
+  let provided = executionFixture(base, executionOptions7)
   policy = limits
   policy.steps = ExecutionStepLimit(100)
   policy.calls = HostCallLimit(10)

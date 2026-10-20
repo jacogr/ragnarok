@@ -135,8 +135,10 @@ proc checkCoreSource*(base: OwnedReport) =
   let templateReport = authoredCore(base, segments = 64, bundle = 7)
   var retained = PreparedCoreActivity()
   for mode in 0..<3:
-    let context = authored(templateReport, reports = (if mode == 2: 0 else: 2),
-        withAvailable = mode != 0)
+    var signedOptions0 = signedBlockFixtureConfig()
+    signedOptions0.reports = (if mode == 2: 0 else: 2)
+    signedOptions0.withAvailable = mode != 0
+    let context = authored(templateReport, signedOptions0)
     let admission = planBlockReports(context.staged, context.older, config()).value
     failHash(3)
     let plan = prepareCoreActivity(admission, corePolicy()).value

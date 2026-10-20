@@ -93,7 +93,9 @@ proc boundaries(base: OwnedReport) =
       ReportAnchorError.BrokenAncestry
   # Later-stage refusals preserve the complete original staged map.
   for mode in [1, 3, 4, 6, 7, 8, 9, 10, 13]:
-    let broken = authored(base, mode)
+    var signedOptions1 = signedBlockFixtureConfig()
+    signedOptions1.mode = mode
+    let broken = authored(base, signedOptions1)
     let outcome = planBlockReports(broken.staged, broken.older, config())
     case mode
     of 1:
@@ -122,16 +124,22 @@ proc boundaries(base: OwnedReport) =
           ReportPackageError.MissingState # No omitted parent-pipeline fallback.
     else:
       assert outcome.error == ReportAdmissionError.InvalidState # Exact history refuses suffix.
-  let expired = authored(base, 11)
+  var signedOptions2 = signedBlockFixtureConfig()
+  signedOptions2.mode = 11
+  let expired = authored(base, signedOptions2)
   assert availabilityInfo(expired.staged.value.availability.assuredAssignments).value.present == 0
   assert planBlockReports(expired.staged, expired.older, config()).error ==
       ReportAdmissionError.None # Use actual timeout-cleared table, not parent C(10).
-  let duplicateExpired = authored(base, 12)
+  var signedOptions3 = signedBlockFixtureConfig()
+  signedOptions3.mode = 12
+  let duplicateExpired = authored(base, signedOptions3)
   assert availabilityInfo(duplicateExpired.staged.value.availability.assuredAssignments).value.present == 0
   let duplicate = planBlockReports(duplicateExpired.staged, duplicateExpired.older, config())
   assert duplicate.error == ReportAdmissionError.PackageFailure and duplicate.packageError ==
       ReportPackageError.DuplicatePackage # A freed core does not erase parent package exclusion.
-  let empty = authored(base, reports = 0)
+  var signedOptions4 = signedBlockFixtureConfig()
+  signedOptions4.reports = 0
+  let empty = authored(base, signedOptions4)
   assert planBlockReports(empty.staged, empty.older, config()).error ==
       ReportAdmissionError.None # Empty batch still binds all context.
   failHash(1)
@@ -142,7 +150,9 @@ proc boundaries(base: OwnedReport) =
   var detached = certificate.reportAssignments.value.reportAssignmentEntry.value
   detached.value[0] = detached.value[0] xor 1
   assert availabilityInfo(certificate.reportAssignments.value.reportAssignmentState.value).value.present == 2
-  let refused = authored(base, 1)
+  var signedOptions5 = signedBlockFixtureConfig()
+  signedOptions5.mode = 1
+  let refused = authored(base, signedOptions5)
   cycle(context, ReportAdmissionError.None)
   cycle(refused, ReportAdmissionError.PolicyFailure)
   let before = getOccupiedMem()

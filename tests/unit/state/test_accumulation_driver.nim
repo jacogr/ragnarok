@@ -138,7 +138,9 @@ proc main() {.raises.} =
   let base = decodeOwnedReport(wire, 2).value
   let parameters = runnerParameters()
   let policy = limits()
-  let empty = executionFixture(base, empty = true)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.empty = true
+  let empty = executionFixture(base, executionOptions0)
   let emptyInitial = runBlockAccumulation(empty.round, parameters, policy.execution).value
   failHash(1)
   let idle = driveAccumulation(emptyInitial, parameters, limits(0)).value
