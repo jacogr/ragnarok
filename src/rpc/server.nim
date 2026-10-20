@@ -3,13 +3,14 @@
 
 ## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
 ##
-## Exposes the Server owner, publishBlock/publishFinalized handoffs and start/tick/close lifecycle.
+## Exposes the Server owner, publishBlock/publishAccumulation/publishFinalized handoffs and start/tick/close lifecycle.
 ## The caller services bounded connection slots and per-connection chain subscription queues.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol]
 import ../chain/[parameters, genesis, provider]
+import ../state/[store, accumulation_chain, accumulation_completion, accumulation_finalization]
 
 const MaxConnections* = 8
 
@@ -31,6 +32,30 @@ type
     role: string
     chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
     parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
+
+type
+  RpcAccumulationError* {.pure.} = enum ## Default/closed listeners and rejected state-chain adoption expose no child.
+    Uninitialized, None, Unavailable, ChainFailure
+  RpcAccumulationResult* = object ## Only success retains the published child; failed adoption retains its actual selected cause.
+    case status: RpcAccumulationError
+    of None:
+      completed: BlockSnapshot
+    of ChainFailure:
+      chainReason: AccumulationChainResult
+    else:
+      discard # Defaults and unavailable listeners carry no usable publication payload.
+
+func error*(outcome: RpcAccumulationResult): RpcAccumulationError =
+  ## Inspect publication status without exposing a mutable discriminator.
+  outcome.status
+func value*(outcome: RpcAccumulationResult): BlockSnapshot {.inline,
+    requires: outcome.status == RpcAccumulationError.None.} =
+  ## Retain only the exact child installed in both state and RPC history.
+  outcome.completed
+func chainFailure*(outcome: RpcAccumulationResult): AccumulationChainResult {.inline,
+    requires: outcome.status == RpcAccumulationError.ChainFailure.} =
+  ## Inspect only an actual failed state/chain adoption, preserving its nested guarded causes.
+  outcome.chainReason
 
 # POSIX APIs borrow bounded stack values only for their synchronous nonblocking syscall.
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
@@ -145,6 +170,13 @@ proc start*(server: var Server, port: uint16, role: string,
   server.chain = genesisView(genesis)
   true
 
+# Queue only after a successful publication; overflow retires one consumer without rolling back the head.
+proc queueBestUpdates(server: var Server, child: BlockSnapshotResult) =
+  for slot in mitems(server.connections):
+    if slot.opened and slot.upgraded and not slot.closing: # Only usable WS connections receive events.
+      if not slot.session.queueChainUpdates(child):
+        slot.close() # Disconnect only the overflowing consumer; never drop events or reject the accepted head.
+
 proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceError =
   ## Publish a caller-validated direct child between ticks on the same dispatcher thread.
   ## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
@@ -157,11 +189,21 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
   if update.error != ViewAdvanceError.None:
     return update.error # Never install a partial or rejected history.
   server.chain = update.value
-  for slot in mitems(server.connections):
-    if slot.opened and slot.upgraded and not slot.closing: # Only usable WS connections receive events.
-      if not slot.session.queueChainUpdates(child):
-        slot.close() # Disconnect only the overflowing consumer; never drop updates or reject the chain head.
+  server.queueBestUpdates(child)
   ViewAdvanceError.None
+
+proc publishAccumulation*(server: var Server, state: var StateStore,
+    source: PreparedFinalAccumulation, limits: AccumulationCompositionLimits): RpcAccumulationResult =
+  ## Adopt state and this server's history together on the dispatcher thread, then queue accepted best-head events.
+  ## Refusal preserves state, history, pending replies and subscription queues. Overflow after success only disconnects its consumer.
+  if not server.opened:
+    return RpcAccumulationResult(status: RpcAccumulationError.Unavailable) # Closed/disabled listeners authorize no state or source work.
+  let adopted = applyAccumulationChain(state, server.chain, source, limits)
+  if adopted.error != AccumulationChainError.None:
+    return RpcAccumulationResult(status: RpcAccumulationError.ChainFailure,
+      chainReason: adopted) # Private composition/capture/append failure sends no subscriber events.
+  server.queueBestUpdates(server.chain.bestBlock) # Both handles already own the accepted child before any notification work.
+  RpcAccumulationResult(status: RpcAccumulationError.None, completed: adopted.value)
 
 proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
   ## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.

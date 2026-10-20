@@ -1,0 +1,11 @@
+{
+  "source": "tests/native/rpc_accumulation_results.nim",
+  "build_name": "rpc-accumulation-results",
+  "crypto_library": "crypto",
+  "native_libraries": ["bandersnatch"],
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "rpc-accumulation-default", "diagnostic": "outcome.status == None", "description": "RPC accumulation default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "rpc-accumulation-refused", "diagnostic": "outcome.status == None", "description": "RPC accumulation refused extraction guard"},
+    {"identity": {"reason": "chain"}, "arguments": ["chain"], "name": "rpc-accumulation-chain", "diagnostic": "outcome.status == ChainFailure", "description": "RPC accumulation chain extraction guard"}
+  ]
+}
