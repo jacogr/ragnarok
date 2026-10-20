@@ -1,0 +1,15 @@
+# GitHub automation
+
+[Project overview](../README.md) · [Testing guide](../docs/testing.md)
+
+[`workflows/ci.yml`](workflows/ci.yml) defines GitHub Actions verification and evidence collection.
+It runs the maintained Make targets on native Linux runners, with separate jobs for source
+compilation, Python references/tooling, native units/corpora, runtime failures, compiler guards,
+E2E networking and JAM Tart telemetry interoperability.
+
+Pushes to `master` request full verification. Pull requests run checks when a maintainer adds
+`ci:unit`, `ci:e2e` or `ci:full`; opening a PR or pushing another commit does not request a run.
+The workflow also supports manual dispatch with a selected scope.
+
+Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
+[requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
