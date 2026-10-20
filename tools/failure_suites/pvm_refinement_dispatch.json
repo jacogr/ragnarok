@@ -1,0 +1,74 @@
+{
+  "source": "tests/native/pvm_refinement_dispatch_results.nim",
+  "build_name": "pvm-refinement-dispatch-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "prepared-default"
+      },
+      "arguments": [
+        "prepared-default"
+      ],
+      "name": "pvm-refinement-dispatch-prepared-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement dispatch prepared-default"
+    },
+    {
+      "identity": {
+        "origin": "prepared-refused"
+      },
+      "arguments": [
+        "prepared-refused"
+      ],
+      "name": "pvm-refinement-dispatch-prepared-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement dispatch prepared-refused"
+    },
+    {
+      "identity": {
+        "origin": "run-default"
+      },
+      "arguments": [
+        "run-default"
+      ],
+      "name": "pvm-refinement-dispatch-run-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement dispatch run-default"
+    },
+    {
+      "identity": {
+        "origin": "run-refused"
+      },
+      "arguments": [
+        "run-refused"
+      ],
+      "name": "pvm-refinement-dispatch-run-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement dispatch run-refused"
+    },
+    {
+      "identity": {
+        "origin": "engine-default"
+      },
+      "arguments": [
+        "engine-default"
+      ],
+      "name": "pvm-refinement-dispatch-engine-default",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Refinement dispatch engine-default"
+    },
+    {
+      "identity": {
+        "origin": "engine-refused"
+      },
+      "arguments": [
+        "engine-refused"
+      ],
+      "name": "pvm-refinement-dispatch-engine-refused",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Refinement dispatch engine-refused"
+    }
+  ]
+}
