@@ -1,0 +1,63 @@
+{
+  "source": "tests/native/pvm_report_identity.nim",
+  "build_name": "pvm-report-identity",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-report-identity-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Report identity default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-report-identity-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Report identity source"
+    },
+    {
+      "identity": {
+        "origin": "lookup"
+      },
+      "arguments": [
+        "lookup"
+      ],
+      "name": "pvm-report-identity-lookup",
+      "diagnostic": "outcome.status == None",
+      "description": "Report identity lookup"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-report-identity-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Report identity limit"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-report-identity-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Report identity owner"
+    }
+  ]
+}
