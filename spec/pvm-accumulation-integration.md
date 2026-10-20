@@ -12,8 +12,9 @@ Execute authored request lifecycles and retained-transfer/upgrade mutations
 against genuine common-source inputs and prior maps. Check gas and actual guest
 terminals, current request/metadata readers, selected checkpoint owners, exact
 incoming-credit balances and terminal provision fulfillment. Selected account
-mutations remain UnsupportedAccountEffects; even a net-equal map or zero-value outgoing transfer with a distinct
-owner is conservatively refused. Mutations discarded by an uncheckpointed panic
+mutations without a supported provenance proof remain UnsupportedAccountEffects;
+equal map bytes do not replace that proof. The later bounded publication layers
+support self metadata/entries, creations, deletions and selected transfer debits. Mutations discarded by an uncheckpointed panic
 must permit the supported batch, without publishing their requests or transfers.
 Pending provisions at a pre-mutation checkpoint must survive rollback and be
 fulfilled exactly once from the supported common-source batch.
@@ -34,19 +35,21 @@ serialization/accumulation parity remains open.
 
 [Outgoing collection](pvm-outgoing-collection.md) now retains terminal-selected
 transfer sequences under independent source, transfer and memo-byte ceilings.
-It preserves ordered duplicates and source ownership; account projection and
-recursive transfer execution retain their existing gates.
+It preserves ordered duplicates and source ownership. [Transfer debit
+publication](pvm-transfer-publication.md) now projects only each participant's
+selected own record; recursive transfer execution retains its existing gate.
 
-Next bounded work: define service-scoped account-effect publication/provenance
-before removing UnsupportedAccountEffects; see the later heap adoption extension.
+Next bounded work: bind outgoing collection to completed common-source rounds
+and prepare recursive transfer inputs/gas. Unsupported account ancestry and
+participating-target deletion conflicts retain their existing local gates.
 
 ## Remaining boundaries after the merge
 
 | Boundary | Preserved behavior and next prerequisite |
 | --- | --- |
 | grow_heap (1) | Implemented under the maintainer-adopted merged #533/#538 fixes; see [heap integration](pvm-accumulation-heap.md). |
-| Selected account effects | UnsupportedAccountEffects; require bounded service-scoped writes and cross-service conflict/provenance rules before publication. Equal roots alone do not permit substitution. |
-| Transfer-aware recursion | UnsupportedTransfers in report-only continuation; requires outgoing collection and recursive input/gas integration. |
+| Selected account effects | Bounded self metadata/entries, creation/deletion proofs and [transfer debits](pvm-transfer-publication.md) publish through common-source batches. Unsupported ancestry and participating-target deletion conflicts remain gated; equal roots alone do not permit substitution. |
+| Transfer-aware recursion | UnsupportedTransfers in report-only continuation; bounded outgoing collection is implemented, while completed-round binding and recursive input/gas integration remain open. |
 | Conflicting bless allowances | AmbiguousPrivileges; pinned set-to-dictionary semantics remain unresolved. |
 | 32-byte halt return with provisions | Implemented using the adopted [regular X projection](pvm-hash-return-provisions.md); the historical AmbiguousProvisions value is no longer emitted. |
 | Negative host-gas debt outside the signed domain | GasRangeExceeded; no truncation or clamping. |

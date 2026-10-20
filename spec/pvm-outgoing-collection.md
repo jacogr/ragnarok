@@ -30,8 +30,9 @@ owners, late invalid input, exact/short ceilings, huge indices, ordered duplicat
 opaque memos, full-width gas, source-array replacement, detached sources and
 1,000 ARC cycles. Add strict runtime extraction and privacy/nominal guards.
 
-Outgoing account projection and transfer-aware recursion remain separate work;
-existing `UnsupportedAccountEffects` and `UnsupportedTransfers` gates remain.
+[Transfer debit publication](pvm-transfer-publication.md) now projects only each
+invoking service's selected own record. Unsupported account ancestry remains
+gated; transfer-aware recursion still returns `UnsupportedTransfers`.
 M1 framing is complete; full state serialization remains open. Pins are unchanged.
 
 ## Local verification (2026-10-19)
@@ -51,6 +52,6 @@ Earlier failed compiler/probe attempts remain diagnostic history. These are
 local macOS results; exact-head Linux CI is separate. Prepared dependencies
 were reused without running unrelated setup.
 
-Next bounded work: publish only the invoking service's selected transfer debit
-with common-source account provenance before admitting transfer-bearing batches.
-Then bind the collected transfers into recursive input/gas preparation.
+The next publication layer now admits supported transfer-bearing batches using
+common-source account provenance. Next bounded work: bind collection to completed
+rounds and prepare recursive transfer inputs/gas.
