@@ -21,15 +21,19 @@ export COMPILE_CHECK_JOBS ?= 4
 export SUITE ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
 
-.PHONY: browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
 	$(PYTHON) tools/build.py
 
 # Every native build/test target owns its source and pinned Rust/Cargo preparation.
-setup: check-inventory toolchain sources rust-tools ui-assets
+setup: check-inventory toolchain sources rust-tools ui-assets build-info
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
+
+# Refresh source/release metadata even when all native dependencies are already provisioned.
+build-info: toolchain
+	$(PYTHON) tools/build_info.py
 
 # Build the missing JS tool at the exact backend revision recorded by the compiler.
 web-toolchain: toolchain
@@ -84,7 +88,7 @@ test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
-check-modules: check-inventory toolchain ui-assets
+check-modules: check-inventory toolchain ui-assets build-info
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
 check-unit: setup format-check

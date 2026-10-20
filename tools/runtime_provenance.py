@@ -16,7 +16,7 @@ SOURCE_SCOPES = {
     '.github/workflows': {'.yaml', '.yml'},
     'native': {'.c', '.cc', '.cpp', '.h', '.hpp', '.rs', '.toml', '.lock'},
     'spec': {'.json'},
-    'src': {'.nim'},
+    'src': {'.json', '.nim'},
     'tests': {'.py', '.nim', '.output', '.c', '.cc', '.cpp', '.h', '.hpp'},
     'tools': {'.py', '.json', '.txt', '.mjs'},
 }
