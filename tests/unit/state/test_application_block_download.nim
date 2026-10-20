@@ -7,7 +7,7 @@
 
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[block_download, block_input, services, options, chain, candidate, handoff]
+import ../../../src/app/[block_download, block_input, services, options, chain, candidate, handoff, download_schedule]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, header, report_owned, assurances]
 import ../../../src/state/[store, accumulation_finalization]
@@ -193,7 +193,16 @@ proc network(owner: var Services, frame: seq[byte]) =
   var download = default(BlockDownload)
   let expected = expectedRequest(owner)
   let before = owner.stateSnapshot.value
+  var schedule = default(DownloadSchedule)
+  assert schedule.configure([DownloadPeerId(11)],
+    DownloadScheduleLimits(peers: ElementLimit(1), attempts: 7,
+      retryDelay: DownloadRetryDelay(1)), DownloadScheduleTick(0)) == DownloadScheduleError.None
+  var tick = 0'u64
   for mode in [Oversized, PrematureClose, NoFin, Deadline, ResetEvent, EmptyReply, Healthy]:
+    let selected = schedule.select(DownloadScheduleTick(tick))
+    assert selected.error == DownloadScheduleError.None
+    let attempt = selected.value
+    assert attempt.peer == DownloadPeerId(11) # The fixture reuses one authenticated peer identity across transports.
     let id = download.begin(owner, frame)
     failHash(1)
     exchangeBlock(download, id, expected, frame, mode)
@@ -214,6 +223,9 @@ proc network(owner: var Services, frame: seq[byte]) =
       failHash(0)
       owner.tick(0)
       assert owner.takeAccumulation.error == ApplicationChainError.None
+      assert schedule.finish(attempt, DownloadAttemptOutcome.Adopted,
+        DownloadScheduleTick(tick)) == DownloadScheduleError.None
+      assert schedule.select(DownloadScheduleTick(tick)).error == DownloadScheduleError.Completed
       failHash(1)
       let stale = download.enqueue(pending, owner, completionLimits().composition)
       assert stale.failure.preparationFailure.error == BlockInputError.StateChanged
@@ -224,6 +236,11 @@ proc network(owner: var Services, frame: seq[byte]) =
       assert download.cancel(id) # The failed native frame remains observable until explicit acknowledgement.
     else:
       assert download.stage == BlockDownloadStage.Idle # Explicit unfinished-response cancellation already retired input.
+    if mode != Healthy:
+      let outcome = if mode == EmptyReply: DownloadAttemptOutcome.Empty else: DownloadAttemptOutcome.Retry
+      assert schedule.finish(attempt, outcome, DownloadScheduleTick(tick)) ==
+          DownloadScheduleError.None
+    inc tick # Every retry is explicitly scheduled after the previous native callbacks retire.
 
 proc cycle(chain: ApplicationChain, frame: seq[byte], complete: bool) =
   ## Repeated complete/partial framing releases fixed buffers and retained context without executing any guest.

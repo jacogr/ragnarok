@@ -1,0 +1,39 @@
+{
+  "build_name": "application-download-schedule-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Scheduling selected extraction guard default",
+      "diagnostic": "selection.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-download-schedule-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Scheduling selected extraction guard refused",
+      "diagnostic": "selection.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "application-download-schedule-refused"
+    },
+    {
+      "arguments": [
+        "peer"
+      ],
+      "description": "Scheduling selected extraction guard peer",
+      "diagnostic": "not attempt.owner == nil",
+      "identity": {
+        "reason": "peer"
+      },
+      "name": "application-download-schedule-peer"
+    }
+  ],
+  "source": "tests/native/application_download_schedule_results.nim"
+}

@@ -66,7 +66,8 @@ separate and is not requested by opening this PR.
 
 ## Remaining work
 
-Session peer selection and retry scheduling, production command wiring and bounded
-execution workers remain open. This controller does no decoding, hashing, PVM work,
-canonical adoption or serving/finality selection. M1 framing is complete; full state
+The [download scheduler](application-download-schedule.md) now supplies bounded peer
+rotation, cooldowns and attempt leases. Production peer-catalog/command wiring and
+bounded execution workers remain open. This controller does no decoding, hashing,
+PVM work, canonical adoption or serving/finality selection. M1 framing is complete; full state
 serialization and JAM/STF parity remain open.
