@@ -223,3 +223,19 @@ Successful restored maps survive later disk changes and are not retained by the 
 This read-only increment does not initialize or advance a bank; durable two-file
 publication and explicit recovery decisions follow. Native tests cover each refusal,
 contention/reopen, copied paths and 1,000 lock/read/restore ARC cycles.
+
+## Recovery synchronization before reuse
+
+`syncAtomicFile` synchronizes an already visible regular file, retires its descriptor,
+then synchronizes and retires its actual parent directory descriptor. The owned raw
+writer exposes this only while its cooperative namespace lock is active. No bytes or
+paths are replaced. Every native/kind/retirement failure refuses success; a directory,
+FIFO or device cannot become a successful persistence file. File size is irrelevant.
+
+This supplies a recovery barrier before reusing an older transaction slot after
+startup or uncertain selector publication. A visible selector must be made durable
+before overwriting data that an older durable selector could still reference.
+It does not authenticate content or itself decide whether a head should be adopted.
+Native checks cover binary/empty files, missing/invalid/directory/FIFO paths, default
+and closed ownership, preserved exact bytes and 1,000 repeated sync/refusal ARC cycles.
+Real local fsync success is not a simulated power-loss or failed-directory-sync witness.
