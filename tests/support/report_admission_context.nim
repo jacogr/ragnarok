@@ -97,7 +97,7 @@ proc transcript(domain: string, seed: array[32, byte]): seq[byte] =
 
 ## Copy a template into an authored report whose recent/lookup tuples refer to the same actual parent chain.
 proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash, lookupHash: array[
-    32, byte], mode: int): OwnedReport =
+    32, byte], mode: int, refinementGas = high(uint64)): OwnedReport =
   let raw = reportBytes(reportFor(base, core, [10'u64]))
   var value = decodeReportBorrowed(raw, 2).value
   value.header.packageHash.bytes = default(array[32, byte])
@@ -109,6 +109,7 @@ proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash
   value.header.lookupAnchor.bytes = lookupHash
   value.header.lookupSlot = LookupSlot(0)
   value.header.lookupStateRoot.bytes = default(array[32, byte])
+  value.digests[0].refine.gasUsed = Gas(refinementGas) # Optional bounded activity keeps multi-report aggregation inside its natural domain.
   value.prerequisiteCount = 0
   value.lookupCount = 0
   if mode == 3: value.header.stateRoot.bytes[0] = value.header.stateRoot.bytes[
@@ -140,7 +141,8 @@ type Context* = object
 
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
     withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
-        byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[]): Context =
+        byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[],
+            poolCopies = 1, refinementGas = high(uint64)): Context =
   ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
   ## Optional ready rows enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
@@ -175,7 +177,11 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   let sample = reportFor(selectedBase, 0, [10'u64])
   var entries = entriesFor([sample])
   var pools = newSeq[AuthorizerRow](2)
-  for i in 0..<2: pools[i] = @[ownedReportInfo(sample).value.authorizer] # Both cores admit this authorizer.
+  assert poolCopies >= 1 and poolCopies <= 8 # Authored duplicates stay inside the protocol's pool cardinality.
+  for i in 0..<2:
+    pools[i] = newSeq[AuthorizerHash](poolCopies)
+    for ordinal in 0..<poolCopies: pools[i][ordinal] = ownedReportInfo(
+        sample).value.authorizer # Both cores admit the same authenticated authorizer, with optional oldest-only removal witnesses.
   if mode == 1: pools[1] = @[] # Later report fails after the first valid policy record.
   entries[0] = authorizationEntry(AuthorizationKind.Pools, pools, cfg.policy.pools).value
   let history = HistoryState(blocks: @[HistoryBlock(header: HistoryHeaderHash(parentHash),
@@ -237,7 +243,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   let target = if mode in [11, 12]: 6'u32 else: 2'u32
   var children = newSeq[OwnedReport](reports)
   for i in 0..<reports: children[i] = report(selectedBase, i, root, parentHash, lookupHash,
-      mode) # Signed metadata includes corrected parent root.
+      mode, refinementGas) # Signed metadata includes corrected parent root and authored refinement work.
   var guarantees = newSeq[Guarantee](reports)
   let signed = certify(children, target, punished)
   for i in 0..<reports: guarantees[i] = signed.verifiedGuaranteeAt(

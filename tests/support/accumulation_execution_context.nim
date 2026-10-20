@@ -61,7 +61,8 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     second = ExecutionEnding.Halt, empty = false, report = false, firstProgram: seq[byte] = @[],
     secondProgram: seq[byte] = @[], allowanceGas = 100000'u64,
     ready: ReadyRow = @[], extra: seq[StateEntry] = @[], secondBalance = 0'u64,
-    incomingReports = 0, preimageWire: seq[byte] = @[]): ExecutionFixture =
+    incomingReports = 0, preimageWire: seq[byte] = @[], assigner = 0'u32,
+        poolCopies = 1, refinementGas = high(uint64)): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
   ## Optional allowances, balances and ready rows enter the parent; incoming reports/preimages enter the genuinely signed child.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
@@ -73,7 +74,10 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
       let gas = (if ending == ExecutionEnding.Exhausted: 1'u64 elif ending ==
           ExecutionEnding.HostExhausted: 200'u64 else: allowanceGas)
       allowances.add(AlwaysAccumulate(service: service, gas: PrivilegeGas(gas)))
-  let privileges = privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](2),
+  var assigners = newSeq[ServiceIndex](2)
+  for index in 0..<assigners.len: assigners[index] = ServiceIndex(
+      assigner) # Optional authority enters the signed parent before real assign calls.
+  let privileges = privilegeStateEntry(PrivilegeState(assigners: assigners,
     always: allowances), executionRoundConfig().privileges).value
   var entries = @[privileges,
     authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
@@ -92,7 +96,8 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
   for entry in extra:
     entries.add(entry) # Additional effect witnesses enter the genuine parent before its commitment/signatures.
   let context = authored(base, reports = incomingReports, withAvailable = report, extra = entries,
-      accountCode = firstCode, ready = ready, preimageWire = preimageWire)
+      accountCode = firstCode, ready = ready, preimageWire = preimageWire, poolCopies = poolCopies,
+      refinementGas = refinementGas)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,
