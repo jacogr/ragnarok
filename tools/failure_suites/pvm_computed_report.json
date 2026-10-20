@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/pvm_computed_report.nim",
+  "build_name": "pvm-computed-report",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-report-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed report default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-report-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed report source"
+    },
+    {
+      "identity": {
+        "origin": "domain"
+      },
+      "arguments": [
+        "domain"
+      ],
+      "name": "pvm-computed-report-domain",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed report domain"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-report-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed report limit"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-computed-report-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed report info"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-report-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed report owner"
+    },
+    {
+      "identity": {
+        "origin": "bytes"
+      },
+      "arguments": [
+        "bytes"
+      ],
+      "name": "pvm-computed-report-bytes",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed report bytes"
+    }
+  ]
+}
