@@ -11,7 +11,7 @@ import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pv
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.
   Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
     CheckpointOutOfGas,
-  FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail
+  FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail, FetchDelete
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
@@ -21,12 +21,16 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
       ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList,
       ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex,
-      ComputedStorageMode.FetchTail}:
+      ComputedStorageMode.FetchTail, ComputedStorageMode.FetchDelete}:
     # Compact load_imm instructions keep the real dual-entry envelope below128 bytes; fetch skips the C.2 operand tag.
     body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 1], @[51'u8, 9, 3], @[51'u8, 10, 15]]
     let wide = mode in {ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex}
     let returnedWord = wide or mode == ComputedStorageMode.FetchTail
-    if mode == ComputedStorageMode.FetchTail:
+    if mode == ComputedStorageMode.FetchDelete:
+      body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 1], @[51'u8, 10, 14],
+        refinementImmediate(11, high(uint64)), refinementImmediate(12, high(
+            uint64))] # Fetch the actual compact input count; selector14 ignores both item registers.
+    elif mode == ComputedStorageMode.FetchTail:
       body = @[refinementImmediate(7, high(uint64)), @[51'u8, 8, 0], @[51'u8, 9, 0],
         @[51'u8, 10, 15], @[51'u8, 11, 0]] # A zero-request query returns the actual record length without copying to the invalid destination.
     elif wide:
@@ -51,9 +55,15 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     if returnedWord:
       body.add(@[62'u8, 7, 3, 0, 3]) # Real store_u64 persists all eight r7 bytes atRW196611 while preserving initialRW21/22/23.
     let valueBytes = if returnedWord: 11'u8 else: 3'u8
-    for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 0, 0, 3],
-        @[51'u8, 10, valueBytes], @[10'u8, 5]]:
-      body.add(instruction) # Fetch returns a length in r7, so reload every storage pointer and length independently.
+    if mode == ComputedStorageMode.FetchDelete:
+      for instruction in [@[52'u8, 10, 0, 0, 3], @[154'u8, 170, 2], @[150'u8, 170, 3],
+          @[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], refinementImmediate(9, high(uint64)),
+          @[148'u8, 169, 0, 0, 3], @[10'u8, 5]]:
+        body.add(instruction) # Derive len=(2-count)*3; real cmov selects RW only for a nonempty value, leaving MAX ignored on deletion.
+    else:
+      for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 0, 0, 3],
+          @[51'u8, 10, valueBytes], @[10'u8, 5]]:
+        body.add(instruction) # Fetch returns a length in r7, so reload every storage pointer and length independently.
   let checkpoint = mode in {ComputedStorageMode.CheckpointCommit,
       ComputedStorageMode.CheckpointPanic, ComputedStorageMode.CheckpointOutOfGas}
   if checkpoint:
