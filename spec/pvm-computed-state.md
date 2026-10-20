@@ -44,8 +44,8 @@ backend refusal, retained source/state/admission and detached lifetime, caller-s
 mutation isolation and 1000-cycle ARC release. Compiler privacy/nominal rejections
 and strict optimized result/accessor guards include genuine positive controls.
 
-Next: bind recent/lookup anchor tuples and ancestry to admitted chain context
-before signing eligibility and guarantee publication. M1 framing is complete;
+Next: [source-derived recent anchor](pvm-computed-recent.md), then lookup-anchor
+ancestry against admitted chain context before signing eligibility and guarantee publication. M1 framing is complete;
 full state serialization and whole-block parity remain open.
 
 Local evidence: checked optimized macOS ARM64 `make unit SUITE=pvm_computed_state`
