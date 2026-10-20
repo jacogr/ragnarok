@@ -48,7 +48,7 @@ for case in ('state_availability', 'state_availability_private', 'state_workqueu
              'state_workqueues_private', 'accumulation_activity', 'accumulation_execution',
              'accumulation_finalization',
              'accumulation_history',
-             'accumulation_outputs',
+             'accumulation_outputs', 'accumulation_preimages',
              'accumulation_continuation', 'accumulation_continuation_execution',
              'accumulation_continuation_inputs',
              'accumulation_continuation_invocation', 'accumulation_ready', 'accumulation_recent',

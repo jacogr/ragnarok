@@ -8,7 +8,7 @@ import ../../src/state/[accumulation_round, accumulation_inputs, accumulation_op
   accumulation_batch, accumulation_queue,
   report_admission,
   accumulation_service, accumulation_invocation, accumulation_machine, accumulation_dispatch,
-  accumulation_skip, accumulation_execution, store]
+  accumulation_skip, accumulation_execution, accumulation_effects, store]
 import ../../src/codec/[bounded, composite, header, report_owned, work_digest, state_accounts,
   state_service_values, state_privileges, state_workqueues, state_authorization, state_trie,
   state_safrole, state_history, c2_records]
@@ -119,7 +119,8 @@ proc executionService*(fixture: ExecutionFixture, index: uint64, slot = HeaderSl
 proc executionGuest*(fixture: ExecutionFixture, index: uint64, slot = HeaderSlot(
     2), wrongEntropy = false, parameters: Parameters = pvmParameters(),
     copyLimit = MemoryByteLimit(32), transferLimit = ElementLimit(0),
-    steps = ExecutionStepLimit(20), calls = HostCallLimit(4)): AccumulationDispatchResult =
+    steps = ExecutionStepLimit(20), calls = HostCallLimit(4),
+    provisions = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
   ## Run the real PVM against one original service; no terminal or gas observation is forged.
   let service = prepareBlockAccumulationService(fixture.round, InvocationServiceIndex(index),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
@@ -138,7 +139,7 @@ proc executionGuest*(fixture: ExecutionFixture, index: uint64, slot = HeaderSlot
   executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512), operand: OperandLimits(
         maxBytes: ByteLimit(512))),
-    copyLimit, steps, calls, GasCycleLimit(1000), contexts,
+    copyLimit, steps, calls, GasCycleLimit(1000), contexts, provisions,
     transferLimit = transferLimit)
 
 proc executionSkip*(fixture: ExecutionFixture, index: uint64): SkippedAccumulation =
