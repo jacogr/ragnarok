@@ -1,0 +1,1 @@
+PASS application checkpoint process exits: staged, cancelled and durable unacknowledged envelopes recover exactly
