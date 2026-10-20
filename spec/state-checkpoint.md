@@ -300,3 +300,21 @@ operation temporaries were removed on the functioning test filesystem. No live
 lock owner crosses fork, every child closes its own owner, and forked ARC memory
 is not reported as parent allocator-release evidence. This covers pre-rename
 write failure, not power loss or a post-rename directory-sync failure.
+
+## Exclusive detached checkpoint transfers
+
+`prepareFullCheckpoint` encodes one complete snapshot into a private noncopyable
+`PreparedCheckpoint` whose success alternative owns independent bytes and a scalar
+complete root. Default/refused alternatives carry only the original codec reason.
+No source snapshot alias survives preparation, and no mutable buffer accessor exists.
+Successful root/size access is guarded. Explicit move transfers the sole prepared
+owner and resets its source; actual ARC lowering rejects implicit copies.
+
+Prepared publication writes exact bytes through the existing bounded atomic file
+primitive and never touches the retired source graph. It preserves native publication
+uncertainty; failed/default prepared owners authorize no I/O. Preparation is synchronous
+computation work, suitable for startup or an already permitted computation worker.
+The detached owner can later move to a bounded I/O worker without freezing all aliases
+of the live canonical complete map under plain ARC. No background worker is added here.
+Native witnesses cover source retirement, exact/short publication, moved/default/refused
+owners, unchanged published bytes and 1,000 prepare/move/release ARC cycles.
