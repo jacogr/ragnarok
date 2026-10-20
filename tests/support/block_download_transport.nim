@@ -4,20 +4,20 @@
 ## Independent one-stream LSQUIC responder exercises real CE 128 bytes/FIN and close/cancellation lifetimes.
 
 import std/[assertions, envvars]
+import ../../src/codec/bounded
 import ../../src/app/block_download
-import ../../src/quic/[transport, protocol]
+import ../../src/quic/[transport, protocol, block_download_stream]
 
 type
   DownloadTransferMode* = enum ## Each fixture mode changes only server wire/lifecycle behavior.
-    Healthy, Oversized, PrematureClose, NoFin
+    Healthy, EmptyReply, Oversized, PrematureClose, NoFin, Deadline, ResetEvent
   DownloadClient = object ## Stable callback owner borrows the producer until both engines finish native teardown.
     transport: Transport
     download: nil ptr BlockDownload
     id: BlockDownloadId
     stream: NativeStream
-    request: array[42, byte]
-    offset, received: int
-    reset, writeFin: bool
+    route: BlockDownloadStream
+    reset, fragmented: bool
   DownloadServer = object ## One independent responder retains expected request and actual write offsets through close.
     transport: Transport
     stream: NativeStream
@@ -39,57 +39,68 @@ proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, r
 proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Perform at most one small native read/write per callback; preparation never occurs here.
   let client = cast[ptr DownloadClient](user)
-  let receiver = client.download
-  if receiver == nil:
+  let borrowed = client.download
+  if borrowed == nil:
     assert false, "missing stable producer borrow"
     return # Native callbacks must never outlive or precede producer binding.
-  case event
-  of 0:
+  let receiver: ptr BlockDownload = borrowed # Preserve a checked non-null borrow across successive mutable receiver calls.
+  if event == 0:
     assert client.stream == NativeStream(nil)
     client.stream = stream
-    wantRead(stream, 1)
-    wantWrite(stream, 1)
-  of 1:
-    var buffer = default(array[73, byte])
-    let count = streamRead(stream, addr buffer[0], csize_t(buffer.len))
-    if count == -2: return # Native would-block retains the same callback/input generation.
-    if count < 0:
-      client.reset = true
-      discard receiver[].cancel(client.id)
-      streamAbort(stream)
-      return # A reset has no implicit FIN or usable application prefix.
-    if count == 0:
-      readDone(stream)
-      wantRead(stream, 0)
-      discard receiver[].append(client.id, [], true) # Only actual EOF supplies response FIN.
-    else:
-      assert count <= int64(buffer.len)
-      client.received += int(count)
-      let received = receiver[].append(client.id, buffer.toOpenArray(0, int(count) - 1), false)
-      if received != BlockDownloadError.None: streamAbort(
-          stream) # Framing failure aborts only this native stream.
-  of 2:
-    if client.offset < client.request.len:
-      let count = streamWrite(stream, addr client.request[client.offset], csize_t(min(3,
-          client.request.len - client.offset)))
-      if count == -2: return # The next write callback resumes the exact retained offset.
-      assert count >= 0 and count <= int64(client.request.len - client.offset)
-      client.offset += int(count)
-    if client.offset == client.request.len and not client.writeFin:
-      client.writeFin = true
-      wantWrite(stream, 0)
-      streamFin(stream)
-      assert receiver[].requestFinished(client.id) == BlockDownloadError.None
-  of 3:
-    client.stream = NativeStream(nil)
-    if receiver[].stage == BlockDownloadStage.Receiving:
-      discard receiver[].cancel(client.id) # Premature close cannot authorize candidate preparation.
-  of 4:
-    client.reset = true
-    if receiver[].stage == BlockDownloadStage.Receiving:
-      discard receiver[].cancel(client.id) # Keep an already selected framing failure observable for acknowledgement.
+    var limits = DownloadStreamLimits(readBytes: ByteLimit(73), writeBytes: ByteLimit(3),
+      timeout: DownloadTimeout(100))
+    assert client.route.bindStream(receiver[], client.id, NativeStream(nil), limits,
+      DownloadTick(100)) == DownloadStreamError.InvalidStream
+    limits.readBytes = ByteLimit(0)
+    assert client.route.bindStream(receiver[], client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.InvalidPolicy
+    limits.readBytes = ByteLimit(4097)
+    assert client.route.bindStream(receiver[], client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.InvalidPolicy
+    limits.readBytes = ByteLimit(73)
+    limits.writeBytes = ByteLimit(43)
+    assert client.route.bindStream(receiver[], client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.InvalidPolicy
+    limits.writeBytes = ByteLimit(0)
+    assert client.route.bindStream(receiver[], client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.InvalidPolicy
+    limits.writeBytes = ByteLimit(3)
+    limits.timeout = DownloadTimeout(0)
+    assert client.route.bindStream(receiver[], client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.InvalidPolicy
+    limits.timeout = DownloadTimeout(100)
+    var absent = default(BlockDownload)
+    assert client.route.bindStream(absent, client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.NotReceiving
+    assert client.route.bindStream(receiver[], BlockDownloadId(0), stream, limits,
+      DownloadTick(100)) == DownloadStreamError.StaleDownload
+    if client.fragmented:
+      limits.readBytes = ByteLimit(1)
+      limits.writeBytes = ByteLimit(1) # Force individual E4 header bytes and every request offset through native callbacks.
+    assert client.route.bindStream(receiver[], client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.None
+    assert client.route.bindStream(receiver[], client.id, stream, limits,
+      DownloadTick(100)) == DownloadStreamError.Busy
+    assert not client.route.expire(receiver[], client.id, stream, DownloadTick(99))
+    assert not client.route.expire(receiver[], client.id, stream, DownloadTick(199))
   else:
-    assert false, "undefined native client event" # Bridge ABI changes must fail the fixture.
+    # Native callbacks retain the exact mapping installed at open; synthetic foreign events are inert.
+    var foreign = default(BlockDownload)
+    assert not client.route.streamEvent(foreign, client.id, stream, 3)
+    assert not client.route.streamEvent(receiver[], BlockDownloadId(0), stream, 3)
+    assert not client.route.streamEvent(receiver[], client.id, NativeStream(nil), 3)
+    assert not client.route.cancel(foreign, client.id, stream)
+    assert not client.route.expire(foreign, client.id, stream, DownloadTick(high(uint64)))
+    assert not client.route.streamEvent(receiver[], client.id, stream, 99)
+    assert client.route.streamEvent(receiver[], client.id, stream, event)
+    if event == 3:
+      client.stream = NativeStream(nil)
+      assert not client.route.active
+      assert not client.route.streamEvent(receiver[], client.id, stream, 1)
+      assert not client.route.streamEvent(receiver[], client.id, stream, 2)
+      assert not client.route.streamEvent(receiver[], client.id, stream, 3)
+    elif event == 4:
+      client.reset = true # The callback is recorded independently of explicit cancellation tests.
 
 proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Independently validate all 42 request bytes and actual request FIN before writing a fixture response.
@@ -129,7 +140,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     if server.offset == server.response.len and not server.writeFin:
       wantWrite(stream, 0)
       server.writeFin = true
-      if server.mode == NoFin:
+      if server.mode in [NoFin, Deadline, ResetEvent]:
         discard streamFlush(stream) # Exact body bytes deliberately do not terminate this direction.
       else:
         streamFin(stream) # Normal framing/oversized header modes still terminate their actual wire.
@@ -147,12 +158,15 @@ proc exchangeBlock*(download: var BlockDownload, id: BlockDownloadId,
   var client = default(DownloadClient)
   client.download = addr download
   client.id = id
-  client.request = download.request(id).value
+  client.fragmented = mode == EmptyReply
   server.expected = expected
   server.mode = mode
-  server.response = if mode == Oversized: @[255'u8, 255, 255, 255] else: response
+  server.response = if mode == Oversized: @[255'u8, 255, 255, 255]
+    elif mode == EmptyReply: @[0'u8, 0, 0, 0]
+    else: response # Every response remains independent of the production controller.
   defer:
     client.transport.closeTransport() # The borrowed download and both callback owners remain live through final close.
+    assert not client.route.active and client.stream == NativeStream(nil)
     server.transport.closeTransport()
   let cert = getEnv("RAGNAROK_TEST_CERT")
   let key = getEnv("RAGNAROK_TEST_KEY")
@@ -168,14 +182,29 @@ proc exchangeBlock*(download: var BlockDownload, id: BlockDownloadId,
     if not opened and client.transport.authenticatedConnections > 0:
       client.transport.openStream()
       opened = true # Open one actual CE stream only after authenticated transport admission.
-    if mode == NoFin and client.received == response.len:
+    if mode in [NoFin, Deadline, ResetEvent] and client.route.receivedBytes == uint64(response.len):
       assert download.stage == BlockDownloadStage.Receiving
-      assert download.cancel(id)
-      if client.stream != NativeStream(nil): streamAbort(
-          client.stream) # Explicit cancellation retires a complete-but-unfinished body.
+      if mode == Deadline:
+        assert client.route.expire(download, id, client.stream, DownloadTick(200))
+        assert not client.route.expire(download, id, client.stream, DownloadTick(high(uint64)))
+      elif mode == ResetEvent:
+        assert client.route.streamEvent(download, id, client.stream, 4)
+        assert client.route.streamEvent(download, id, client.stream, 4)
+      else:
+        assert client.route.cancel(download, id, client.stream) # Explicit cancellation has no implicit FIN.
+      assert download.stage == BlockDownloadStage.Idle and client.route.active
+      assert client.route.streamEvent(download, id, client.stream, 1)
+      assert client.route.streamEvent(download, id, client.stream, 2)
+      assert client.route.receivedBytes == uint64(
+          response.len) # Stopping callbacks perform no further native I/O.
+      let limits = DownloadStreamLimits(readBytes: ByteLimit(73), writeBytes: ByteLimit(3),
+        timeout: DownloadTimeout(100))
+      assert client.route.bindStream(download, id, client.stream, limits,
+        DownloadTick(200)) == DownloadStreamError.Busy
       settled = true
       break
-    if download.stage in [BlockDownloadStage.Ready, BlockDownloadStage.Failed] or client.reset:
+    if download.stage in [BlockDownloadStage.Ready, BlockDownloadStage.Empty,
+        BlockDownloadStage.Failed] or client.reset:
       settled = true
       break # Return only an observed actual response/reset outcome, never merely a successful handshake.
   assert opened and settled and server.requestFin, "mode " & $mode & " opened=" & $opened &
@@ -183,6 +212,8 @@ proc exchangeBlock*(download: var BlockDownload, id: BlockDownloadId,
   if mode == Healthy:
     assert download.stage == BlockDownloadStage.Ready, "healthy stage " &
         $download.stage # Only both clean FIN observations authorize producer work.
+  elif mode == EmptyReply:
+    assert download.stage == BlockDownloadStage.Empty # E4(0) plus real FIN carries a valid empty block sequence.
   elif mode == Oversized:
     assert download.stage == BlockDownloadStage.Failed, "oversized stage " & $download.stage
     assert download.failure.error == BlockDownloadError.LimitExceeded
