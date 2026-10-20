@@ -1,0 +1,72 @@
+{
+  "source": "tests/native/storage_frame_results.nim",
+  "build_name": "storage-frame-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-frame-bytes-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage frame bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "failed"
+      },
+      "arguments": [
+        "bytes",
+        "failed"
+      ],
+      "name": "storage-frame-bytes-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage frame bytes failed guard"
+    },
+    {
+      "identity": {
+        "member": "frame",
+        "origin": "default"
+      },
+      "arguments": [
+        "frame",
+        "default"
+      ],
+      "name": "storage-frame-frame-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage frame frame default guard"
+    },
+    {
+      "identity": {
+        "member": "frame",
+        "origin": "failed"
+      },
+      "arguments": [
+        "frame",
+        "failed"
+      ],
+      "name": "storage-frame-frame-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage frame frame failed guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "reason",
+        "default"
+      ],
+      "name": "storage-frame-reason-default",
+      "diagnostic": "outcome.status == InvalidRecords",
+      "description": "Storage frame reason default guard"
+    }
+  ]
+}

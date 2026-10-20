@@ -85,3 +85,15 @@ Only the full-state schema is implemented. A future light database needs a separ
 proof/trust contract; no light-state API, CLI mode or path-selection adapter is added. The native
 `storage_identity` suite checks a frozen independent hashlib witness, every truncated prefix and
 every one-byte corruption, exact/short limits, trailers, defaults and valid-but-foreign chains.
+
+## Append-only journal framing
+
+`journal_codec.nim` wraps each physical batch with uint64 little-endian body length and nonzero
+local generation, followed by the body and Blake2b-256 of all preceding frame bytes. The checksum
+covers root/count metadata and publication order as well as records. A frame extent helper can
+split a bounded journal but confers no content validation. Decode requires exact consumption,
+checks integrity before allocating records, and preserves selected physical codec failures.
+
+`storage_journal_codec` checks an independent complete struct/hashlib witness, every prefix and
+every octet corrupted, max-width length attacks, exact/short ceilings, zero generations and
+multiple-frame splitting without accepting trailers as one frame. No disk IO occurs in this layer.
