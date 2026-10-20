@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 
-CORPORA = CorpusGroup()
+# This feature owns its shared-build execution position and additional fixture inputs.
+CORPORA = CorpusGroup(order=10)
 
 
 # Replay the early independent request families with their original adapters and expected bytes.

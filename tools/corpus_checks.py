@@ -47,8 +47,10 @@ def run_corpus(build, command, compiler, driver, build_name, source, lines, expe
 class CorpusGroup:
     """Own ordered named callables; one function declaration supplies scheduling and expected report identity."""
 
-    def __init__(self):
-        """Create an empty feature-owned plan without executing or preparing any corpus."""
+    def __init__(self, *, order=None, resources=()):
+        """Own a dependency rank and ordered resource names without preparing or executing any corpus."""
+        self.order = order
+        self.resources = tuple(resources)
         self.tasks = {}
 
     def case(self, function):

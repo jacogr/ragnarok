@@ -16,8 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 from corpus_checks import CorpusGroup
-BANDERSNATCH = CorpusGroup()
-CRYPTO = CorpusGroup()
+# This feature owns its shared-build execution position and additional fixture inputs.
+BANDERSNATCH = CorpusGroup(order=40)
+CRYPTO = CorpusGroup(order=60)
 
 # Preserve this native corpus and all original independent reference checks.
 @BANDERSNATCH.case

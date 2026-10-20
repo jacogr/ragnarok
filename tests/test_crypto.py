@@ -72,7 +72,7 @@ def test(binary):
     fixture = ROOT / 'vectors/official/crypto'
     assert hashlib.sha256((fixture / 'rfc8032.json').read_bytes()).hexdigest() == PINS['rfc8032']['fixture_sha256']
     assert hashlib.sha256((ROOT / PINS['wycheproof']['submodule_path'] / PINS['wycheproof']['path']).read_bytes()).hexdigest() == PINS['wycheproof']['sha256']
-    assert hashlib.sha256((ROOT / PINS['wycheproof']['submodule_path'] / 'LICENSE').read_bytes()).hexdigest() == PINS['wycheproof']['license_sha256']
+    assert hashlib.sha256((ROOT / PINS['wycheproof']['submodule_path'] / PINS['wycheproof']['license_path']).read_bytes()).hexdigest() == PINS['wycheproof']['license_sha256']
     vectors = json.loads((fixture / 'rfc8032.json').read_text())
     # Every RFC pure-Ed25519 seed/public/message/signature tuple is tested byte for byte.
     for v in vectors:
