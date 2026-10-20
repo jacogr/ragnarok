@@ -1,0 +1,154 @@
+{
+  "source": "tests/native/pvm_computed_finalization.nim",
+  "build_name": "pvm-computed-finalization",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-finalization-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed finalization default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-finalization-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed finalization source"
+    },
+    {
+      "identity": {
+        "origin": "driver"
+      },
+      "arguments": [
+        "driver"
+      ],
+      "name": "pvm-computed-finalization-driver",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed finalization driver"
+    },
+    {
+      "identity": {
+        "origin": "finalizer"
+      },
+      "arguments": [
+        "finalizer"
+      ],
+      "name": "pvm-computed-finalization-finalizer",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed finalization finalizer"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-finalization-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed finalization owner"
+    },
+    {
+      "identity": {
+        "origin": "stopped"
+      },
+      "arguments": [
+        "stopped"
+      ],
+      "name": "pvm-computed-finalization-stopped",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed finalization stopped"
+    },
+    {
+      "identity": {
+        "origin": "plan"
+      },
+      "arguments": [
+        "plan"
+      ],
+      "name": "pvm-computed-finalization-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed finalization plan"
+    },
+    {
+      "identity": {
+        "origin": "reason-driver-default"
+      },
+      "arguments": [
+        "reason-driver-default"
+      ],
+      "name": "pvm-computed-finalization-reason-driver-default",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Computed finalization reason-driver-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-driver-success"
+      },
+      "arguments": [
+        "reason-driver-success"
+      ],
+      "name": "pvm-computed-finalization-reason-driver-success",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Computed finalization reason-driver-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-driver-finalizer"
+      },
+      "arguments": [
+        "reason-driver-finalizer"
+      ],
+      "name": "pvm-computed-finalization-reason-driver-finalizer",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Computed finalization reason-driver-finalizer"
+    },
+    {
+      "identity": {
+        "origin": "reason-finalizer-default"
+      },
+      "arguments": [
+        "reason-finalizer-default"
+      ],
+      "name": "pvm-computed-finalization-reason-finalizer-default",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Computed finalization reason-finalizer-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-finalizer-success"
+      },
+      "arguments": [
+        "reason-finalizer-success"
+      ],
+      "name": "pvm-computed-finalization-reason-finalizer-success",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Computed finalization reason-finalizer-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-finalizer-driver"
+      },
+      "arguments": [
+        "reason-finalizer-driver"
+      ],
+      "name": "pvm-computed-finalization-reason-finalizer-driver",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Computed finalization reason-finalizer-driver"
+    }
+  ]
+}
