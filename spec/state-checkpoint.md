@@ -283,3 +283,20 @@ Tests verify both slot alternations, exact prior-file preservation, every stale
 field, default/closed/invalid/ceiling/exhaustion refusals before writes, real
 inactive-slot rename rollback and 1,000 advance/stale-refusal/restore ARC cycles.
 Selector short-write rollback and uncertainty require separate native witnesses.
+
+## Real two-stage write rollback
+
+A forked test writer uses child-only `RLIMIT_FSIZE` and a nonallocating SIGXFSZ
+handler. Three ceilings force zero/partial inactive writes; three ceilings allow
+the entire empty candidate checkpoint to become durable but force partial selector
+writes. Exact and ample selector ceilings publish normally. Setup/signal/process
+failures have separate verdicts and cannot substitute for expected typed I/O refusal.
+
+Child and joined-parent observations verify the correct selected map; the parent
+also checks exact old selector/data bytes, presence of fully staged orphan data
+only when the stage succeeded, and no partial canonical inactive file otherwise.
+Removing known files then successfully removing the dedicated directory proves
+operation temporaries were removed on the functioning test filesystem. No live
+lock owner crosses fork, every child closes its own owner, and forked ARC memory
+is not reported as parent allocator-release evidence. This covers pre-rename
+write failure, not power loss or a post-rename directory-sync failure.

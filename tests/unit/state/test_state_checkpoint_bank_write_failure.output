@@ -1,0 +1,1 @@
+PASS bank write failures: six kernel refusals across two stages, exact controls and selected-state rollback
