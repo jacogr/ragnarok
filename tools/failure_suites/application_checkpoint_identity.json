@@ -1,0 +1,73 @@
+{
+  "build_name": "application-checkpoint-identity-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Application checkpoint identity default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-checkpoint-identity-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Application checkpoint identity missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "application-checkpoint-identity-missing"
+    },
+    {
+      "arguments": [
+        "block"
+      ],
+      "description": "Application checkpoint identity block",
+      "diagnostic": "identity.initialized",
+      "identity": {
+        "reason": "block"
+      },
+      "name": "application-checkpoint-identity-block"
+    },
+    {
+      "arguments": [
+        "root"
+      ],
+      "description": "Application checkpoint identity root",
+      "diagnostic": "identity.initialized",
+      "identity": {
+        "reason": "root"
+      },
+      "name": "application-checkpoint-identity-root"
+    },
+    {
+      "arguments": [
+        "slot"
+      ],
+      "description": "Application checkpoint identity slot",
+      "diagnostic": "identity.initialized",
+      "identity": {
+        "reason": "slot"
+      },
+      "name": "application-checkpoint-identity-slot"
+    },
+    {
+      "arguments": [
+        "parameters"
+      ],
+      "description": "Application checkpoint identity parameters",
+      "diagnostic": "identity.initialized",
+      "identity": {
+        "reason": "parameters"
+      },
+      "name": "application-checkpoint-identity-parameters"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_checkpoint_identity_results.nim"
+}
