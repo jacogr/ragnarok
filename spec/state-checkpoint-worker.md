@@ -76,3 +76,19 @@ is untrusted metadata and cannot supply independent chain or checkpoint authorit
 No complete map crosses the worker boundary. Native checks include real reads,
 exact scalar receipts, corrupt/oversized metadata, cancellation and repeated host
 receipt release.
+
+## Trusted verification on the I/O worker
+
+`stageVerification(expectedRoot, storeLimits, byteLimit)` admits only scalar trust
+and recovery policy into the same bounded request slot. After explicit dispatch,
+the bank verifies its exact selected map against independent caller trust. All
+file bytes and complete-map ARC owners are created and destroyed on the native
+thread before Done; the completion carries only the existing fixed scalar head
+or precise typed failure. No restored state graph crosses allocator/thread ownership.
+
+Staged cancellation, fresh ticket identity, acknowledgement backpressure and joined
+receipt preservation apply unchanged. Verification cannot use the stale-write retry
+shortcut. It is read-only recovery validation, not canonical adoption or a substitute
+for caller-supplied trust. Tests cover wrong trust, independent byte/map ceilings,
+malformed selected data, cancellation, joined completion and repeated real verification.
+Host ARC evidence covers host receipts only, not native-thread allocator occupancy.
