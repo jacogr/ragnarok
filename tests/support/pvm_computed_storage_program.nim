@@ -9,13 +9,28 @@ import ../../src/codec/[bounded, composite, work_package, work_digest]
 import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pvm_import_inputs]
 
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.
-  Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas, CheckpointOutOfGas
+  Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
+    CheckpointOutOfGas,
+  FetchFirst, FetchSecond, FetchMissing
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
-  ## Jump from refinement entry0 to its own empty output; real accumulation entry5 writes RO key11 and RW value21/22/23.
+  ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
   assert mode != ComputedStorageMode.Disabled
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
     refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
+  if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
+      ComputedStorageMode.FetchMissing}:
+    # Compact load_imm instructions keep the real dual-entry envelope below128 bytes; fetch skips the C.2 operand tag.
+    body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 1], @[51'u8, 9, 3], @[51'u8, 10, 15]]
+    if mode == ComputedStorageMode.FetchMissing:
+      body.add(refinementImmediate(11, high(uint64))) # Preserve all64 index bits; an absent record must not wrap to the first.
+    else:
+      let index = if mode == ComputedStorageMode.FetchSecond: 1'u8 else: 0'u8
+      body.add(@[51'u8, 11, index]) # Both genuine report positions are selected by the guest, not by fixture injection.
+    body.add(@[10'u8, 2]) # Fetch actual invocation record bytes into RW196608 before the storage host reads them.
+    for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 0, 0, 3],
+        @[51'u8, 10, 3], @[10'u8, 5]]:
+      body.add(instruction) # Fetch returns a length in r7, so reload every storage pointer and length independently.
   let checkpoint = mode in {ComputedStorageMode.CheckpointCommit,
       ComputedStorageMode.CheckpointPanic, ComputedStorageMode.CheckpointOutOfGas}
   if checkpoint:
