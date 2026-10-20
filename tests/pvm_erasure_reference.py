@@ -3,6 +3,8 @@
 
 """Independent pinned-field Lagrange oracle; no production implementation or output is read."""
 
+from functools import lru_cache
+
 # Exponent lists transcribe the pinned Gray Paper table directly.
 EXPONENTS = [
     [0], [15, 13, 11, 10, 7, 6, 3, 1], [13, 12, 11, 10, 3, 2, 1],
@@ -42,6 +44,7 @@ def multiply(left, right):
     return product
 
 
+@lru_cache(maxsize=65536)
 def inverse(value):
     """Extended polynomial Euclid, independent of production exponentiation."""
     assert value
@@ -59,18 +62,33 @@ def inverse(value):
     return a
 
 
-def interpolate(indices, words, targets):
-    """Lagrange evaluation at arbitrary distinct coordinates, also used for erasure recovery."""
-    assert len(indices) == len(set(indices)) == len(words)
-    points = [polynomial(index) for index in indices]
-    values = [polynomial(word) for word in words]
-    weights = []
+@lru_cache(maxsize=8)
+def lagrange_points(indices):
+    """Reuse field coordinates and denominator inverses for identical interpolation geometry."""
+    points = tuple(polynomial(index) for index in indices)
+    denominators = []
     for i, point in enumerate(points):
         denominator = 1
         for j, other in enumerate(points):
+            # Distinct coordinates alone contribute to this Lagrange basis denominator.
             if i != j:
                 denominator = multiply(denominator, point ^ other)
-        weights.append(multiply(values[i], inverse(denominator)))
+        denominators.append(inverse(denominator))
+    return points, tuple(denominators)
+
+
+def interpolate(indices, words, targets):
+    """Lagrange evaluation with immutable cached inputs; each caller owns its returned list."""
+    assert len(indices) == len(set(indices)) == len(words)
+    return list(interpolated(tuple(indices), tuple(words), tuple(targets)))
+
+
+@lru_cache(maxsize=128)
+def interpolated(indices, words, targets):
+    """Reuse identical word columns without consulting production code or changing field arithmetic."""
+    points, denominators = lagrange_points(indices)
+    values = [polynomial(word) for word in words]
+    weights = [multiply(value, denominator) for value, denominator in zip(values, denominators)]
     answer = []
     known = dict(zip(indices, words))
     for target in targets:
@@ -83,9 +101,11 @@ def interpolate(indices, words, targets):
                 product = multiply(product, point ^ other)
             total = 0
             for other, weight in zip(points, weights):
-                total ^= multiply(weight, inverse(point ^ other))
+                # Zero coefficients contribute nothing; sparse literal columns need no field work.
+                if weight:
+                    total ^= multiply(weight, inverse(point ^ other))
             answer.append(COORDINATES[multiply(product, total)])
-    return answer
+    return tuple(answer)
 
 
 def original_count(validators):

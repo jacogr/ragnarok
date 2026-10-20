@@ -12,6 +12,19 @@ from pvm_erasure_reference import (BASIS, COORDINATES, inverse, interpolate, mes
 class ErasureReferenceTests(unittest.TestCase):
     """Keep independent field algebra, literal witnesses and recovery checks outside native execution."""
 
+    def test_cached_words_do_not_alias_callers(self):
+        """Repeated geometry must still distinguish word/target inputs and return caller-owned lists."""
+        indices, words, targets = [0, 1], [7, 11], [0, 1, 2]
+        expected = interpolate(indices, words, targets)
+        changed = interpolate(indices, [7, 12], targets)
+        self.assertNotEqual(changed, expected)
+        self.assertEqual(interpolate(indices, words, [2, 1, 0]), list(reversed(expected)))
+        original = expected[:]
+        expected[0] = 999
+        words[0] = 13
+        self.assertEqual(interpolate(indices, [7, 11], targets), original)
+        self.assertEqual(interpolate(indices, words, targets)[:2], words)
+
     def test_field(self):
         """Check basis invertibility and inversion for every nonzero index used by the transform."""
         self.assertEqual(len(COORDINATES), 65536)
