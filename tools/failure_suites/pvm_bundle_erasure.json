@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/pvm_bundle_erasure.nim",
+  "build_name": "pvm-bundle-erasure",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-bundle-erasure-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Bundle erasure default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-bundle-erasure-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Bundle erasure source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-bundle-erasure-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Bundle erasure limit"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-bundle-erasure-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Bundle erasure index"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-bundle-erasure-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Bundle erasure info"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-bundle-erasure-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Bundle erasure owner"
+    },
+    {
+      "identity": {
+        "origin": "chunk"
+      },
+      "arguments": [
+        "chunk"
+      ],
+      "name": "pvm-bundle-erasure-chunk",
+      "diagnostic": "outcome.status == None",
+      "description": "Bundle erasure chunk"
+    }
+  ]
+}
