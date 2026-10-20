@@ -39,6 +39,8 @@ exact/refused aggregate/commitment budgets, backend refusal and preflight before
 hashing, full-width index/source refusal, copy/provenance/lifetime isolation,
 compiler privacy/nominal guards, optimized result guards and fresh ARC release.
 
+Availability assembly continues in [pvm-availability-specifier.md](pvm-availability-specifier.md).
+
 Next: bundle chunk hashes, per-validator export/page Merkle roots and final
 availability-root assembly from this shared source. Production recovery, faster
 transforms and root/state trust integration remain open. M1 framing is complete;

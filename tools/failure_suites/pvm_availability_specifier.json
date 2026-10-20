@@ -1,0 +1,107 @@
+{
+  "source": "tests/native/pvm_availability_specifier.nim",
+  "build_name": "pvm-availability-specifier",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-availability-specifier-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-availability-specifier-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-availability-specifier-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier limit"
+    },
+    {
+      "identity": {
+        "origin": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "pvm-availability-specifier-backend",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier backend"
+    },
+    {
+      "identity": {
+        "origin": "late"
+      },
+      "arguments": [
+        "late"
+      ],
+      "name": "pvm-availability-specifier-late",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier late"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-availability-specifier-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier index"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-availability-specifier-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier info"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-availability-specifier-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier owner"
+    },
+    {
+      "identity": {
+        "origin": "shard"
+      },
+      "arguments": [
+        "shard"
+      ],
+      "name": "pvm-availability-specifier-shard",
+      "diagnostic": "outcome.status == None",
+      "description": "Availability specifier shard"
+    }
+  ]
+}
