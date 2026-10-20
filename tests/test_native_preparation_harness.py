@@ -170,6 +170,32 @@ class NativePreparationHarness(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'fixture refused'):
                 native_preparation.prepare_selected_fixture(Path('/fixture'), 'pvm_gas')
 
+    # Partition preparation invokes a shared feature provider once and returns only requested manifests.
+    def test_partition_fixture_provider_sharing(self):
+        names = ['accumulation_service', 'accumulation_skip', 'accumulation_complete_batch']
+        manifests = {name: ('fixture', Path('/fresh')/name, ()) for name in names[:2]}
+        with patch.object(native_preparation, '_selected_fixture_provider',
+                          return_value=(manifests, {'fresh': True})) as provider:
+            fixtures, evidence = native_preparation.prepare_partition_fixtures(Path('/fixture'), names)
+        provider.assert_called_once_with(Path('/fixture'), names[0], None)
+        self.assertEqual(fixtures, manifests)
+        self.assertEqual(evidence, {names[0]: {'fresh': True}})
+        with patch.object(native_preparation, '_selected_fixture_provider', return_value=({}, {})):
+            with self.assertRaisesRegex(ValueError, 'Missing partition fixture manifests'):
+                native_preparation.prepare_partition_fixtures(Path('/fixture'), names)
+
+    # A partition reuses already-prepared integration bytes instead of rebuilding the same CE driver.
+    def test_partition_integration_reuse(self):
+        manifest = (None, {}, ())
+        with patch.object(native_preparation, 'unit_runtime_fixtures',
+                          return_value={'quic_integration': manifest}) as runtime, patch.object(
+                native_preparation, '_selected_fixture_provider') as provider:
+            fixtures, _ = native_preparation.prepare_partition_fixtures(
+                Path('/fixture'), ['quic_integration'], integration=('wires', 'reload'))
+        runtime.assert_called_once_with(None, 'wires', 'reload', suite='quic_integration')
+        provider.assert_not_called()
+        self.assertEqual(fixtures, {'quic_integration': manifest})
+
     # QUIC transport hashes only certificates, while integration hashes all original/reload children without certificates.
     def test_selected_quic_fixture_isolation(self):
         with temporary_folder() as folder:

@@ -28,7 +28,12 @@ def summarize(report, kind):
             lines.append('| `'+row['source']+'` | '+('Pass' if row['passed'] else 'Fail')+' |')
     elif kind == 'runtime':
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
-        lines = ['## Native unit and codec verification', '', '**Status: '+report['status']+'**', '',
+        scope = ''
+        if report.get('unit_shard') is not None:
+            # A successful partition is not a claim that every other partition ran or passed.
+            index, count = report['unit_shard']
+            scope = f' — shard {index}/{count}'
+        lines = ['## Native unit and codec verification'+scope, '', '**Status: '+report['status']+'**', '',
                  f'- Native suites: {len(report["suites"])}', f'- Independent corpora: {len(corpora)}',
                  '',
                  'Passing implemented-scope tests is partial evidence, not full JAM client conformance.',

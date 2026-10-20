@@ -7,6 +7,8 @@ Exposes native suite planning, compiler commands, environments and evidence path
 standalone native test launcher, optionally selecting one discovered suite with bounded log output.
 """
 from pathlib import Path
+from contextlib import contextmanager
+import fcntl
 import json
 import hashlib
 import os
@@ -133,10 +135,23 @@ def unit_command(compiler, name=None, libraries=None):
     if platform.system() == 'Linux':
         # Keep the established Linux LTO linker rather than relying on the runner's defaults.
         flags.append('--passL:-fuse-ld=lld')
-    # Working-directory-specific caches cannot reuse older prebuilds with paths relative to the repository root.
-    # Isolated processes preserve each test's initialization/lifetime scope and keep generated drivers out of source.
+    # Serial suites with identical build inputs can reuse semantic intermediates; each main still
+    # compiles and runs separately. Separate profiles protect observer renames, defines and native ABIs.
+    inputs = []
+    if name in UNIT_LINKS:
+        # Rebuilt foreign code or edited headers must invalidate even an otherwise identical profile.
+        requirements = NATIVE_REQUIREMENTS[name]
+        inputs = [Path(libraries[key]).resolve() for key in requirements['libraries']]
+        for include in requirements['includes']:
+            # Header discovery follows the same maintained include directories used by the compiler.
+            inputs.extend(sorted((ROOT/'native'/include).glob('*.h')))
+    profile = dict(directory=str(target.parent if name is not None else target), flags=flags,
+                   native={str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs})
+    identity = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()[:16]
+    # The parallel codec pool keeps its own cache; it cannot race with serial profile reuse.
+    cache_name = 'working-codec' if name is None else 'working-profile-'+identity
     return [str(runner), '--bindir:'+str(compiler.parent),
-            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', 'working-unit-'+name if name in UNIT_LINKS else 'working-unit')),
+            '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', cache_name)),
             '--jobs:'+str(unit_jobs() if name is None else 1),
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
 
@@ -148,18 +163,38 @@ def unit_work_directory(compiler):
     return directory
 
 
+# Serialize access to compiler-owned intermediates and ARC observations across local invocations.
+@contextmanager
+def unit_cache_lock(compiler):
+    path = cache_directory(compiler, ROOT/'build/tests/native', 'unit').parent/'run.lock'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('a') as lock:
+        # The supported Linux/macOS hosts release this advisory lock even if a process is killed.
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            # Failed compilation, assertion or evidence validation cannot strand the next invocation.
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 # Locate evidence beside compiler-isolated caches, without placing generated observations in source.
 def unit_evidence_directory(compiler):
     return cache_directory(compiler, ROOT/'build/tests/native', 'unit').parent/'evidence'
 
 
 # Retire old observations before each native run so stale measurements cannot satisfy a new result.
-def unit_environment(compiler, name=None, base=None, fixtures=None):
+def unit_environment(compiler, name=None, base=None, fixtures=None, suites=None):
     directory = unit_evidence_directory(compiler)
     directory.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ if base is None else base)
     manifest = {**UNIT_FIXTURES, **(fixtures or {})}
-    for case in UNIT_SUITES if name is None else (name,):
+    selected = tuple(suites) if suites is not None else UNIT_SUITES if name is None else (name,)
+    if (not set(selected) <= set(UNIT_SUITES) or len(selected) != len(set(selected))
+            or (name is not None and selected != (name,))):
+        # A batch cannot retire or prepare evidence for an unknown, duplicate or conflicting selection.
+        raise ValueError('Invalid native unit environment scope')
+    for case in selected:
         # Other suite observations may belong to another completed per-suite invocation.
         if case in ARC_SUITES:
             (directory/(case+'.json')).unlink(missing_ok=True)
@@ -209,6 +244,30 @@ def unit_batches():
     return [('codec', pure, None)]+[(name, (name,), name) for name in UNIT_LINKS]
 
 
+# Partition discovered batches without registering suite names or compiling any test twice.
+def unit_partition(shard=None):
+    batches = unit_batches()
+    if shard is None:
+        # Local verification remains complete unless a caller explicitly selects a CI partition.
+        return batches, True
+    if (not isinstance(shard, (tuple, list)) or len(shard) != 2
+            or any(type(value) is not int for value in shard)
+            or not 1 <= shard[0] <= shard[1] <= 8):
+        # Invalid or empty partition declarations must fail before setup or verdict calculation.
+        raise ValueError('Unit shard must be index/count with 1 <= index <= count <= 8')
+    index, count = shard
+    # Spread serial linked/resource workloads lexically; codec discovery and corpora each run once.
+    selected = ([batches[0]] if index == 1 else []) + batches[index::count]
+    return selected, index == count
+
+
+# Parse the same bounded partition notation used by the CI matrix and retained report metadata.
+def parse_unit_shard(value):
+    shard = tuple(int(part) for part in value.split('/'))
+    unit_partition(shard)
+    return shard
+
+
 # Discover pure codecs once and link each remaining suite with its required native profile.
 def unit_plan(compiler, libraries):
     return [unit_command(compiler, target, libraries) for _, _, target in unit_batches()]
@@ -216,6 +275,13 @@ def unit_plan(compiler, libraries):
 
 # Execute only the selected scope, retaining its own fixture checks, exit status and fresh ARC evidence.
 def run_units(compiler, libraries, fixtures, suite=None):
+    with unit_cache_lock(compiler):
+        # Evidence retirement, execution and validation share the compiler cache's exclusive lifetime.
+        _run_units(compiler, libraries, fixtures, suite)
+
+
+# Execute an already-locked standalone selection without changing suite or evidence ownership.
+def _run_units(compiler, libraries, fixtures, suite):
     if suite is None:
         # Complete native verification retains the established batching, environment and streamed diagnostics.
         selected = unit_environment(compiler, fixtures=fixtures)

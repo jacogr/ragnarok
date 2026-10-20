@@ -6,9 +6,11 @@
 Exposes VerificationUnit for unittest discovery; test methods exercise the stated contracts.
 """
 import ast
+import io
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -26,6 +28,71 @@ class VerificationUnit(unittest.TestCase):
                                    'test_quic_resilience', 'test_quic_soak', 'e2e_checks'})
         functions = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
         self.assertNotIn('python_tests', functions)
+
+    # Reusing intermediates never skips a suite, its fresh ARC observation or independent corpora.
+    def test_serial_batch_execution_and_progress(self):
+        batches = [('first', ('one',), 'one'), ('second', ('two',), 'two')]
+        report = {'suites': []}
+        checked = dict(exit_code=0, output='', elapsed_seconds=1.25)
+        with patch.object(test_runtime, 'unit_partition', return_value=(batches, True)), patch.object(
+                test_runtime, 'unit_command', side_effect=lambda compiler, target, libraries: [target]), patch.object(
+                test_runtime, 'unit_environment', return_value={}), patch.object(
+                test_runtime, 'unit_work_directory', return_value=ROOT), patch.object(
+                test_runtime, 'command', return_value=checked) as command, patch.object(
+                test_runtime, 'ARC_SUITES', {'one': 'one_arc', 'two': 'two_arc'}), patch.object(
+                test_runtime, 'unit_evidence', return_value={'cycles': 1000}) as evidence, patch.object(
+                test_runtime, 'run_corpora') as corpora, patch('sys.stdout', new_callable=io.StringIO) as output:
+            test_runtime.run_unit(Path('/fixture/nimony'), report, {}, {}, None, None)
+        self.assertEqual([call.args[0] for call in command.call_args_list], [['one'], ['two']])
+        self.assertEqual([call.args[1] for call in evidence.call_args_list], ['one', 'two'])
+        self.assertEqual([row['name'] for row in report['suites']], ['one', 'two'])
+        self.assertTrue(all(row['passed'] for row in report['suites']))
+        self.assertEqual(report['one_arc'], {'cycles': 1000})
+        self.assertEqual(report['two_arc'], {'cycles': 1000})
+        corpora.assert_called_once()
+        self.assertIn('RUN first (Hastur)', output.getvalue())
+        self.assertIn('Completed second in 1.25s', output.getvalue())
+
+    # A shard must contain exactly its discovered suites and only its assigned independent corpora.
+    def test_partition_verdicts(self):
+        for index in range(1, 9):
+            # Every partition rejects omissions, duplicate substitutions, failed rows and foreign scope.
+            with self.subTest(index=index):
+                batches, corpora = test_runtime.unit_partition((index, 8))
+                names = [name for _, members, _ in batches for name in members]
+                rows = [dict(name=name, passed=True) for name in names]
+                report = dict(unit_shard=[index, 8], suites=rows,
+                              **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES if corpora})
+                self.assertTrue(test_runtime.unit_passed(report))
+                self.assertFalse(test_runtime.unit_passed({**report, 'suites': rows[1:]}))
+                self.assertFalse(test_runtime.unit_passed({**report, 'suites': rows[:-1]+[rows[0]]}))
+                self.assertFalse(test_runtime.unit_passed({**report, 'suites': [dict(name=names[0], passed=False)]+rows[1:]}))
+                self.assertFalse(test_runtime.unit_passed({**report, 'unit_shard': [0, 8]}))
+                self.assertFalse(test_runtime.unit_passed({**report, 'extra_corpus': dict(passed=True)}))
+                self.assertFalse(test_runtime.unit_passed({**report, 'unit_shard': [index % 8 + 1, 8]}))
+                if corpora:
+                    # The one corpus-owning shard cannot omit a corpus or mask its failed result.
+                    key = test_runtime.CORPUS_NAMES[0]
+                    missing = dict(report)
+                    del missing[key]
+                    self.assertFalse(test_runtime.unit_passed(missing))
+                    self.assertFalse(test_runtime.unit_passed({**report, key: dict(passed=False)}))
+
+    # A successful subset summary must visibly identify the partition that actually ran.
+    def test_partition_summary_scope(self):
+        from summarize_tests import summarize
+        report = dict(unit_shard=[2, 8], status='checks-passed', suites=[dict(name='fixture', passed=True)])
+        self.assertIn('shard 2/8', summarize(report, 'runtime'))
+
+    # Failures retain complete execution; invalid shard requests stop before compiler/setup work.
+    def test_invalid_partition_cli(self):
+        with patch.object(sys, 'argv', ['test_runtime.py', '--compiler', '/fixture/nimony',
+                                       '--group', 'failures', '--unit-shard', '1/8']), patch(
+                'sys.stderr', new_callable=io.StringIO), patch.object(test_runtime, 'NativeChecks') as checks:
+            with self.assertRaises(SystemExit) as stopped:
+                test_runtime.main()
+            self.assertEqual(stopped.exception.code, 2)
+            checks.assert_not_called()
 
     # All suite identities and reference corpora must appear exactly once in the unit-owned evidence.
     def test_unit_complete_inventory(self):
