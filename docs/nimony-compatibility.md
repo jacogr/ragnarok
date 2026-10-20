@@ -59,3 +59,15 @@ variadic SDK declaration and applies its ABI. A controlled-umask native test
 requires exact 0600 permissions and subsequent contention/reacquisition. Keep
 the pinned compiler/stdlib unchanged; use the narrow maintained OS declaration
 for creation calls. Directory opens without creation flags do not use the mode.
+
+## Disarming exclusive tagged moves
+
+An exclusive prepared checkpoint's generated move reset cleared its sequence but
+retained the `None` discriminator in inspected optimized C. A native regression
+therefore observed an apparently successful moved-from owner. Supply the public
+`=wasMoved` hook with `.nodestroy` to reset the discriminator to `Uninitialized`
+without freeing the transferred bytes; the pinned stdlib uses the same public
+hook pattern for resource owners. Root/size extraction and publication then reject
+the moved source. Test source observation, surviving destination bytes, actual
+ARC copy rejection and repeated release; successful semantic checking alone did
+not expose this lifecycle mismatch. No compiler/stdlib changes are needed.

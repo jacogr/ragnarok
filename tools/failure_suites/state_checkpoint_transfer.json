@@ -1,0 +1,40 @@
+{
+  "build_name": "state-checkpoint-transfer-results",
+  "cases": [
+    {
+      "arguments": [
+        "default-root"
+      ],
+      "description": "Prepared checkpoint extraction default-root",
+      "diagnostic": "checkpoint.status == None",
+      "identity": {
+        "reason": "default-root"
+      },
+      "name": "state-checkpoint-transfer-default-root"
+    },
+    {
+      "arguments": [
+        "refused-size"
+      ],
+      "description": "Prepared checkpoint extraction refused-size",
+      "diagnostic": "checkpoint.status == None",
+      "identity": {
+        "reason": "refused-size"
+      },
+      "name": "state-checkpoint-transfer-refused-size"
+    },
+    {
+      "arguments": [
+        "moved-root"
+      ],
+      "description": "Prepared checkpoint extraction moved-root",
+      "diagnostic": "checkpoint.status == None",
+      "identity": {
+        "reason": "moved-root"
+      },
+      "name": "state-checkpoint-transfer-moved-root"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_checkpoint_transfer_results.nim"
+}
