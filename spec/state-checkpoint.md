@@ -361,3 +361,14 @@ or scanning orphan slots. Failure preserves typed head/codec reasons and exposes
 no usable scalar receipt. Native witnesses cover exact selection, wrong trust,
 byte/map ceilings, malformed or missing selected data and repeated temporary map
 release, preserving exact on-disk bytes on read-only success/refusal.
+
+## Published complete-map checkpoint replay
+
+The checkpoint replay suite uses the existing independently hash-checked fourteen
+published complete mappings from seven pre/post pairs. A shared native fixture
+reader serves both storage replay and checkpoint replay without changing fixture
+preparation or pins. Every original key/value, root and node count is checked after
+checkpoint restoration. Exact re-encoding, independently supplied roots, exact and
+one-below byte/item ceilings and detached preparation are checked for each mapping.
+This is complete-map persistence evidence; it does not execute those blocks or
+establish whole-block JAM parity.
