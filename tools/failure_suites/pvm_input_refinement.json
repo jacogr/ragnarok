@@ -1,0 +1,140 @@
+{
+  "source": "tests/native/pvm_input_refinement.nim",
+  "build_name": "pvm-input-refinement",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-input-refinement-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement default"
+    },
+    {
+      "identity": {
+        "origin": "inputs"
+      },
+      "arguments": [
+        "inputs"
+      ],
+      "name": "pvm-input-refinement-inputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement inputs"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-input-refinement-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement limit"
+    },
+    {
+      "identity": {
+        "origin": "authorization"
+      },
+      "arguments": [
+        "authorization"
+      ],
+      "name": "pvm-input-refinement-authorization",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement authorization"
+    },
+    {
+      "identity": {
+        "origin": "refinement"
+      },
+      "arguments": [
+        "refinement"
+      ],
+      "name": "pvm-input-refinement-refinement",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement refinement"
+    },
+    {
+      "identity": {
+        "origin": "identity"
+      },
+      "arguments": [
+        "identity"
+      ],
+      "name": "pvm-input-refinement-identity",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement identity"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-input-refinement-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement owner"
+    },
+    {
+      "identity": {
+        "origin": "authorization-reason"
+      },
+      "arguments": [
+        "authorization-reason"
+      ],
+      "name": "pvm-input-refinement-authorization-reason",
+      "diagnostic": "outcome.status == AuthorizationFailure",
+      "description": "Input refinement authorization-reason"
+    },
+    {
+      "identity": {
+        "origin": "authorization-kind"
+      },
+      "arguments": [
+        "authorization-kind"
+      ],
+      "name": "pvm-input-refinement-authorization-kind",
+      "diagnostic": "outcome.status == AuthorizationRejected",
+      "description": "Input refinement authorization-kind"
+    },
+    {
+      "identity": {
+        "origin": "refinement-reason"
+      },
+      "arguments": [
+        "refinement-reason"
+      ],
+      "name": "pvm-input-refinement-refinement-reason",
+      "diagnostic": "outcome.status == RefinementFailure",
+      "description": "Input refinement refinement-reason"
+    },
+    {
+      "identity": {
+        "origin": "identity-reason"
+      },
+      "arguments": [
+        "identity-reason"
+      ],
+      "name": "pvm-input-refinement-identity-reason",
+      "diagnostic": "outcome.status == IdentityFailure",
+      "description": "Input refinement identity-reason"
+    },
+    {
+      "identity": {
+        "origin": "child"
+      },
+      "arguments": [
+        "child"
+      ],
+      "name": "pvm-input-refinement-child",
+      "diagnostic": "outcome.status == None",
+      "description": "Input refinement child"
+    }
+  ]
+}
