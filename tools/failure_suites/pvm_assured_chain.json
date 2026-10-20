@@ -1,0 +1,363 @@
+{
+  "source": "tests/native/pvm_assured_chain.nim",
+  "build_name": "pvm-assured-chain",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-assured-chain-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-assured-chain-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain source"
+    },
+    {
+      "identity": {
+        "origin": "stale"
+      },
+      "arguments": [
+        "stale"
+      ],
+      "name": "pvm-assured-chain-stale",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain stale"
+    },
+    {
+      "identity": {
+        "origin": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "pvm-assured-chain-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain state"
+    },
+    {
+      "identity": {
+        "origin": "view"
+      },
+      "arguments": [
+        "view"
+      ],
+      "name": "pvm-assured-chain-view",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain view"
+    },
+    {
+      "identity": {
+        "origin": "stale-view"
+      },
+      "arguments": [
+        "stale-view"
+      ],
+      "name": "pvm-assured-chain-stale-view",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain stale-view"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-assured-chain-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain parameters"
+    },
+    {
+      "identity": {
+        "origin": "capture"
+      },
+      "arguments": [
+        "capture"
+      ],
+      "name": "pvm-assured-chain-capture",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain capture"
+    },
+    {
+      "identity": {
+        "origin": "child"
+      },
+      "arguments": [
+        "child"
+      ],
+      "name": "pvm-assured-chain-child",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain child"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-assured-chain-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain owner"
+    },
+    {
+      "identity": {
+        "origin": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "pvm-assured-chain-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain snapshot"
+    },
+    {
+      "identity": {
+        "origin": "block"
+      },
+      "arguments": [
+        "block"
+      ],
+      "name": "pvm-assured-chain-block",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured chain block"
+    },
+    {
+      "identity": {
+        "origin": "stateError-default"
+      },
+      "arguments": [
+        "stateError-default"
+      ],
+      "name": "pvm-assured-chain-stateError-default",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Assured chain stateError-default"
+    },
+    {
+      "identity": {
+        "origin": "stateError-success"
+      },
+      "arguments": [
+        "stateError-success"
+      ],
+      "name": "pvm-assured-chain-stateError-success",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Assured chain stateError-success"
+    },
+    {
+      "identity": {
+        "origin": "stateError-source"
+      },
+      "arguments": [
+        "stateError-source"
+      ],
+      "name": "pvm-assured-chain-stateError-source",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Assured chain stateError-source"
+    },
+    {
+      "identity": {
+        "origin": "stateError-other"
+      },
+      "arguments": [
+        "stateError-other"
+      ],
+      "name": "pvm-assured-chain-stateError-other",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Assured chain stateError-other"
+    },
+    {
+      "identity": {
+        "origin": "publicationFailure-default"
+      },
+      "arguments": [
+        "publicationFailure-default"
+      ],
+      "name": "pvm-assured-chain-publicationFailure-default",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Assured chain publicationFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "publicationFailure-success"
+      },
+      "arguments": [
+        "publicationFailure-success"
+      ],
+      "name": "pvm-assured-chain-publicationFailure-success",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Assured chain publicationFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "publicationFailure-source"
+      },
+      "arguments": [
+        "publicationFailure-source"
+      ],
+      "name": "pvm-assured-chain-publicationFailure-source",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Assured chain publicationFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "publicationFailure-other"
+      },
+      "arguments": [
+        "publicationFailure-other"
+      ],
+      "name": "pvm-assured-chain-publicationFailure-other",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Assured chain publicationFailure-other"
+    },
+    {
+      "identity": {
+        "origin": "headerError-default"
+      },
+      "arguments": [
+        "headerError-default"
+      ],
+      "name": "pvm-assured-chain-headerError-default",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Assured chain headerError-default"
+    },
+    {
+      "identity": {
+        "origin": "headerError-success"
+      },
+      "arguments": [
+        "headerError-success"
+      ],
+      "name": "pvm-assured-chain-headerError-success",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Assured chain headerError-success"
+    },
+    {
+      "identity": {
+        "origin": "headerError-source"
+      },
+      "arguments": [
+        "headerError-source"
+      ],
+      "name": "pvm-assured-chain-headerError-source",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Assured chain headerError-source"
+    },
+    {
+      "identity": {
+        "origin": "headerError-other"
+      },
+      "arguments": [
+        "headerError-other"
+      ],
+      "name": "pvm-assured-chain-headerError-other",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Assured chain headerError-other"
+    },
+    {
+      "identity": {
+        "origin": "captureError-default"
+      },
+      "arguments": [
+        "captureError-default"
+      ],
+      "name": "pvm-assured-chain-captureError-default",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Assured chain captureError-default"
+    },
+    {
+      "identity": {
+        "origin": "captureError-success"
+      },
+      "arguments": [
+        "captureError-success"
+      ],
+      "name": "pvm-assured-chain-captureError-success",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Assured chain captureError-success"
+    },
+    {
+      "identity": {
+        "origin": "captureError-source"
+      },
+      "arguments": [
+        "captureError-source"
+      ],
+      "name": "pvm-assured-chain-captureError-source",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Assured chain captureError-source"
+    },
+    {
+      "identity": {
+        "origin": "captureError-other"
+      },
+      "arguments": [
+        "captureError-other"
+      ],
+      "name": "pvm-assured-chain-captureError-other",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Assured chain captureError-other"
+    },
+    {
+      "identity": {
+        "origin": "viewError-default"
+      },
+      "arguments": [
+        "viewError-default"
+      ],
+      "name": "pvm-assured-chain-viewError-default",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Assured chain viewError-default"
+    },
+    {
+      "identity": {
+        "origin": "viewError-success"
+      },
+      "arguments": [
+        "viewError-success"
+      ],
+      "name": "pvm-assured-chain-viewError-success",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Assured chain viewError-success"
+    },
+    {
+      "identity": {
+        "origin": "viewError-source"
+      },
+      "arguments": [
+        "viewError-source"
+      ],
+      "name": "pvm-assured-chain-viewError-source",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Assured chain viewError-source"
+    },
+    {
+      "identity": {
+        "origin": "viewError-other"
+      },
+      "arguments": [
+        "viewError-other"
+      ],
+      "name": "pvm-assured-chain-viewError-other",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Assured chain viewError-other"
+    }
+  ]
+}
