@@ -1,0 +1,40 @@
+{
+  "build_name": "application-download-peers-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Peer catalog runtime contract default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-download-peers-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Peer catalog runtime contract missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "application-download-peers-missing"
+    },
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Peer catalog runtime contract unclosed",
+      "diagnostic": "catalog.count == 0",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "application-download-peers-unclosed"
+    }
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_download_peers_results.nim"
+}

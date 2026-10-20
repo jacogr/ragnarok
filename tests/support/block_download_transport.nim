@@ -24,9 +24,9 @@ type
     stream: NativeStream
     expected, request: array[42, byte]
     response: seq[byte]
-    received, offset: int
+    received, offset, requests: int
     mode: DownloadTransferMode
-    requestFin, writeFin, reset: bool
+    requestFin, writeFin, reset, allowCancelled: bool
 
 proc `=copy`(destination: var DownloadClient, source: DownloadClient) {.error: "Test client owns transport".}
   ## Callback addresses stay stable while native streams borrow this owner.
@@ -109,6 +109,12 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   case event
   of 0:
     assert server.stream == NativeStream(nil)
+    server.received = 0
+    server.offset = 0
+    server.requestFin = false
+    server.writeFin = false
+    server.reset = false
+    server.request = default(array[42, byte]) # Serial catalog retries reuse a responder only after prior native close.
     server.stream = stream
     wantRead(stream, 1)
   of 1:
@@ -117,8 +123,15 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     if count == -2: return # No framing decision is made on incomplete transport input.
     if count < 0: server.reset = true; return # Peer cancellation never becomes a successful request.
     if count == 0:
+      if server.allowCancelled and server.received != 42:
+        server.reset = true
+        readDone(stream)
+        wantRead(stream, 0)
+        streamAbort(stream)
+        return # Catalog retry fixtures explicitly admit an aborted request before successful binding.
       assert server.received == 42 and server.request == server.expected
       server.requestFin = true
+      inc server.requests # Observe completed independent requests per authenticated server identity.
       readDone(stream)
       wantRead(stream, 0)
       if server.mode == PrematureClose:
@@ -322,3 +335,45 @@ proc exchangeSession*(session: var BlockDownloadSession, owner: var Services,
   if session.streamActive:
     let barred = session.enqueue(token, owner, default(AccumulationCompositionLimits))
     assert barred.error == DownloadSessionError.AwaitingClose # Native close precedes even an invalid preparation policy.
+
+
+type DownloadResponders* = object ## Two actual TLS identities distinguish target selection from merely naming a peer ID.
+  first, second: DownloadServer
+
+proc `=copy`(destination: var DownloadResponders, source: DownloadResponders) {.error.}
+  ## Each callback borrows its original fixed server address until explicit close.
+proc close*(servers: var DownloadResponders) =
+  ## Teardown remains safe after complete, partial or refused startup.
+  servers.first.transport.closeTransport()
+  servers.second.transport.closeTransport()
+proc openResponders*(servers: var DownloadResponders, expected: array[42, byte],
+    response: seq[byte], mode = Healthy): bool =
+  ## Start independent listeners with a/b certificate identities over the existing wire responder.
+  servers.first.expected = expected
+  servers.second.expected = expected
+  servers.first.response = response
+  servers.second.response = response
+  servers.first.allowCancelled = true
+  servers.second.allowCancelled = true
+  servers.first.mode = mode
+  servers.second.mode = mode
+  if not servers.first.transport.openTransport(true, false, 0,
+      getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000",
+      addr servers.first, verify, serverEvent): return false # Partial startup retains no listener.
+  if not servers.second.transport.openTransport(true, false, 0,
+      getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"), "jamnp-s/1/00000000",
+      addr servers.second, verify, serverEvent):
+    servers.close()
+    return false # Failed second startup must close the already opened first listener.
+  true
+proc port*(servers: DownloadResponders, second: bool): uint16 =
+  ## Return only the bound scalar endpoint selected by the test's explicit identity.
+  if second: servers.second.transport.localPort
+  else: servers.first.transport.localPort
+proc requestCount*(servers: DownloadResponders, second: bool): int =
+  ## Count actual exact request+FIN observations, independently of the catalog's chosen token.
+  if second: servers.second.requests
+  else: servers.first.requests
+proc poll*(servers: var DownloadResponders): bool =
+  ## Each host test tick polls both listeners once; no background worker or unbounded spin exists.
+  servers.first.transport.pollTransport(0) and servers.second.transport.pollTransport(0)

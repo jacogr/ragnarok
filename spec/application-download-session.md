@@ -68,7 +68,9 @@ remains separate evidence and is not requested by opening this PR.
 ## Remaining work
 
 The joined owner is a production component used by the native integration fixture.
-Peer-catalog/command-loop wiring and execution workers remain open. Authentication,
+The [authenticated peer catalog](application-download-peers.md) now owns pinned
+outgoing transports and maps selected tokens to their actual native streams.
+Command-loop wiring and execution workers remain open. Authentication,
 execution and canonical adoption retain their existing owners. Persistence,
 consensus and full/light databases remain open. M1 framing is complete; full state
 serialization and JAM/STF parity remain open.

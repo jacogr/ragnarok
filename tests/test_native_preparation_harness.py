@@ -203,7 +203,7 @@ class NativePreparationHarness(unittest.TestCase):
     # QUIC transport hashes only certificates, while integration hashes all original/reload children without certificates.
     def test_selected_quic_fixture_isolation(self):
         with temporary_folder() as folder:
-            for name in ('a.cert.pem', 'a.key.pem'):
+            for name in ('a.cert.pem', 'a.key.pem', 'a.pub', 'b.cert.pem', 'b.key.pem', 'b.pub'):
                 # Distinct literal bytes expose omitted or substituted inputs in the returned manifest.
                 (folder/name).write_bytes(name.encode())
             fixtures, evidence = native_preparation.prepare_selected_fixture(folder, 'quic_transport', folder)
@@ -211,12 +211,23 @@ class NativePreparationHarness(unittest.TestCase):
             self.assertEqual(len(fixtures['quic_transport'][2]), 2)
             self.assertEqual(len(evidence['files']), 2)
             # Block downloads require both fresh transport identities and the frozen independent report.
-            block, observed = native_preparation.prepare_selected_fixture(folder, 'application_block_download', folder)
-            self.assertEqual(set(block), {'application_block_download'})
-            self.assertEqual(len(block['application_block_download'][2]), 3)
-            self.assertEqual(set(block['application_block_download'][1]),
-                             {'RAGNAROK_TEST_CERT', 'RAGNAROK_TEST_KEY', 'RAGNAROK_STATE_REPORT'})
-            self.assertEqual(len(observed['files']), 3)
+            for name in ('application_block_download', 'application_download_session'):
+                # Each sibling must receive its own complete manifest without leaking the other suite's identity.
+                with self.subTest(suite=name):
+                    block, observed = native_preparation.prepare_selected_fixture(folder, name, folder)
+                    self.assertEqual(set(block), {name})
+                    self.assertEqual(len(block[name][2]), 3)
+                    self.assertEqual(set(block[name][1]),
+                                     {'RAGNAROK_TEST_CERT', 'RAGNAROK_TEST_KEY', 'RAGNAROK_STATE_REPORT'})
+                    self.assertEqual(len(observed['files']), 3)
+            peers, observed = native_preparation.prepare_selected_fixture(folder, 'application_download_peers', folder)
+            self.assertEqual(set(peers), {'application_download_peers'})
+            self.assertEqual(len(peers['application_download_peers'][2]), 7)
+            self.assertEqual(len(observed['files']), 7)
+            for path, digest in peers['application_download_peers'][2]:
+                # Every freshly supplied identity input must be represented, rather than trusting inherited paths.
+                if path.name != 'state-report.bin':
+                    self.assertEqual(digest, hashlib.sha256(path.read_bytes()).hexdigest())
             original, reload = folder/'original', folder/'reload'
             original.mkdir(); reload.mkdir()
             for index in range(8):
