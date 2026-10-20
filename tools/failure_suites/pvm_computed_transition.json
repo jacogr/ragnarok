@@ -1,0 +1,110 @@
+{
+  "source": "tests/native/pvm_computed_transition.nim",
+  "build_name": "pvm-computed-transition",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-transition-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-transition-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition source"
+    },
+    {
+      "identity": {
+        "origin": "transition"
+      },
+      "arguments": [
+        "transition"
+      ],
+      "name": "pvm-computed-transition-transition",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition transition"
+    },
+    {
+      "identity": {
+        "origin": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "pvm-computed-transition-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition state"
+    },
+    {
+      "identity": {
+        "origin": "profile"
+      },
+      "arguments": [
+        "profile"
+      ],
+      "name": "pvm-computed-transition-profile",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition profile"
+    },
+    {
+      "identity": {
+        "origin": "bounded"
+      },
+      "arguments": [
+        "bounded"
+      ],
+      "name": "pvm-computed-transition-bounded",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition bounded"
+    },
+    {
+      "identity": {
+        "origin": "candidate"
+      },
+      "arguments": [
+        "candidate"
+      ],
+      "name": "pvm-computed-transition-candidate",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition candidate"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-transition-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition owner"
+    },
+    {
+      "identity": {
+        "origin": "stage"
+      },
+      "arguments": [
+        "stage"
+      ],
+      "name": "pvm-computed-transition-stage",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed transition stage"
+    }
+  ]
+}
