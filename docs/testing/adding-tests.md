@@ -58,6 +58,14 @@ observed results. Specialized drivers own typed enum cases tagged with `# @@Prob
 `--list-cases`; add their origin/diagnostic combinations to the specialized source-owned plan.
 Preserve positive controls and intentional language-policy cases.
 
+Typed specialized drivers declare `# @@Verification={"group": "failure_driver"}` in the header
+of `tests/native/nimony_<family>_results.nim`, alongside their `@@ProbeCases` enum. Source discovery
+supplies family paths; removing the header from a typed probe fails preflight. Register a matching
+`run_<family>` handler in `tools/failure_controls.py` with `@CONTROLS.case`, its execution rank
+and source-based case planner. Each handler owns build flags, fixtures and exact predicates.
+Discovery requires one handler per marked source. Language/resource controls use the same local
+registration with explicit plans and identity fields. No central driver or handler list is needed.
+
 Independent expected values remain in `tests/` oracles. Corpus orchestration belongs in the
 appropriate `tools/corpus_*.py` module; preserve request hashes, build profiles, complete output
 comparison and explicit scheduling. Register a named `<feature>_corpus` callable with the owning

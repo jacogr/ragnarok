@@ -110,6 +110,17 @@ linking options, initializes request/hash evidence and calls the existing compar
 keep independent generation, corpus-specific metadata and coverage predicates. Expected hashes
 previously retained after build failure remain opt-in so failed reports preserve their schema.
 
+`tools/failure_drivers.py` discovers typed specialized probes from source-local
+`failure_driver` headers and validates their `@@ProbeCases` enums. `tools/failure_controls.py`
+registers handlers beside their ordered case plans, build profiles and exact failure predicates.
+Expected identities, diagnostic budgets and handler scheduling derive from those declarations.
+Preflight requires exact agreement between marked sources and registered driver handlers;
+missing metadata, duplicate handlers/orders/identities and unsupported enums fail before setup.
+Compiled `--list-cases` output must still match source declarations exactly. Store positive
+controls, offload lifecycle and assertion/bounds/wrapping checks retain their own registered
+handlers and original order. The runner delegates the specialized partition without a file list
+or parallel dispatch sequence.
+
 `tools/failure_checks.py` preserves the exact exit-code-1, expected-diagnostic and
 `[AssertionDefect]` predicate for ordinary runtime guard probes, including complete command logs
 and identity fields. `tools/failure_suites/<family>.json` lists fixed state-result builds and cases, one
