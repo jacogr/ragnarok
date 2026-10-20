@@ -8,16 +8,22 @@ application entry. Preserve GP 0.8.0, recorded vectors and JAMNP-S
 
 ## Contract and completion tests
 
-The command is `download PORT CERT KEY PEER ALPN TIMEOUT POLICY`, followed by
+The command is `download PORT CERT KEY PEER ALPN TIMEOUT POLICY [PORT PEER ...]`, followed by
 explicit `--with-state --chain FILE --state-writes N --state-write-bytes N`.
 PORT is an existing loopback peer; PEER is exactly 32 public Ed25519 bytes.
 TIMEOUT is a positive dispatcher-run duration up to 120000 milliseconds. It is
 sampled between bounded turns and cannot preempt synchronous state/PVM work. POLICY
 supplies every dispatcher, stage and composition value. No default network
-profile, gas configuration or execution budget is inferred. This first command
-supports one explicitly pinned peer (local ID 1), no ancestor provisioning, and
-one child. RPC/UI may share the canonical Services owner. Telemetry activation
-is rejected until concrete outgoing-endpoint lifecycle reporting is integrated.
+profile, gas configuration or execution budget is inferred. The command accepts
+one to sixteen explicitly pinned loopback peers (local IDs 1 through N in list order), no ancestor provisioning, and one child. Additional
+pairs share the first tuple's client certificate/key and ALPN. All ports use
+canonical positive decimal up to 65535; every public pin is exactly 32 bytes.
+Duplicate ports or public keys, partial pairs, more than sixteen peers, and a list
+larger than explicit `schedule.peers` are refused before Services starts. A failed
+native endpoint open closes every earlier opened endpoint. Retry order, attempt
+limits and deadlines remain the existing scheduler's policy; no discovery or
+implicit reconnection is added. RPC/UI may share the canonical Services owner.
+Telemetry activation is rejected until concrete outgoing-endpoint lifecycle reporting is integrated.
 
 Policy v1 is a bounded UTF-8-compatible ASCII key/value document beginning with
 `ragnarok-download-policy-v1`. Its explicit dotted keys follow DownloadLoopLimits;
@@ -88,6 +94,23 @@ opening this PR does not request it.
 
 ## Remaining work
 
-Peer lists/discovery, explicit ancestors, outgoing telemetry, serving/fork choice,
-bounded execution workers and persistent full/light stores remain open. M1
+Peer discovery, non-loopback endpoint configuration, explicit ancestors, outgoing
+telemetry, serving/fork choice and persistent full/light stores remain open.
+Bounded preparation workers and explicit peer lists are implemented. M1
 framing is complete; full state serialization/JAM parity remains open.
+
+## Bounded peer bootstrap verification
+
+The startup suite covers atomic list shape/capacity checks, canonical port
+refusals, duplicate endpoints/principals, missing additional pins and the sixteen
+peer preflight boundary. A forked pair of real TLS responders records an exact
+request plus FIN at each identity: the first replies with an empty CE response,
+the second supplies the signed child, and the command reports actual adoption.
+Existing single-peer wire, preparation refusal, timeout and policy ARC witnesses
+remain required. M1 framing is complete; complete state serialization and JAM
+parity remain open.
+
+Local checked ARC/Clang/LTO verification passes `make unit
+SUITE=application_download_startup`, `make build`, executable refusal/selftest
+controls, pinned formatting, inventory and whitespace checks. Logs are retained
+under `build/download-bootstrap-*`; this does not claim exact-head Linux CI.

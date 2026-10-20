@@ -347,11 +347,11 @@ proc close*(servers: var DownloadResponders) =
   servers.first.transport.closeTransport()
   servers.second.transport.closeTransport()
 proc openResponders*(servers: var DownloadResponders, expected: array[42, byte],
-    response: seq[byte], mode = Healthy): bool =
-  ## Start independent listeners with a/b certificate identities over the existing wire responder.
+    response: seq[byte], mode = Healthy, emptyFirst = false): bool =
+  ## Start independent a/b identities; optional empty first reply witnesses retry before a genuine child.
   servers.first.expected = expected
   servers.second.expected = expected
-  servers.first.response = response
+  servers.first.response = if emptyFirst: @[0'u8, 0, 0, 0] else: response
   servers.second.response = response
   servers.first.allowCancelled = true
   servers.second.allowCancelled = true
