@@ -1,0 +1,14 @@
+{
+  "source": "tests/native/core_service_activity_results.nim",
+  "build_name": "core-service-activity-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "core-service-activity-default", "diagnostic": "outcome.status == None", "description": "Core/service activity default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "core-service-activity-refused", "diagnostic": "outcome.status == None", "description": "Core/service activity refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "core-service-activity-info", "diagnostic": "outcome.status == None", "description": "Core/service activity info extraction guard"},
+    {"identity": {"reason": "core"}, "arguments": ["core"], "name": "core-service-activity-core", "diagnostic": "outcome.status == None", "description": "Core/service activity core extraction guard"},
+    {"identity": {"reason": "service"}, "arguments": ["service"], "name": "core-service-activity-service", "diagnostic": "outcome.status == None", "description": "Core/service activity service extraction guard"},
+    {"identity": {"reason": "core-index"}, "arguments": ["core-index"], "name": "core-service-activity-core-index", "diagnostic": "outcome.status == None", "description": "Core/service activity core-index extraction guard"},
+    {"identity": {"reason": "service-index"}, "arguments": ["service-index"], "name": "core-service-activity-service-index", "diagnostic": "outcome.status == None", "description": "Core/service activity service-index extraction guard"}
+  ]
+}
