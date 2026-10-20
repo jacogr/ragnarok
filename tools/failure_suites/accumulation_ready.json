@@ -1,0 +1,106 @@
+{
+  "source": "tests/native/accumulation_ready_results.nim",
+  "build_name": "accumulation-ready-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-ready-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation ready default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "accumulation-ready-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation ready refused extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "projection"
+      },
+      "arguments": [
+        "projection"
+      ],
+      "name": "accumulation-ready-projection",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation ready projection extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "accumulation-ready-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation ready source extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "ring"
+      },
+      "arguments": [
+        "ring"
+      ],
+      "name": "accumulation-ready-ring",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation ready ring extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "accumulation-ready-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation ready state extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "accumulation-ready-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Accumulation ready entry extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "wrong-codec"
+      },
+      "arguments": [
+        "wrong-codec"
+      ],
+      "name": "accumulation-ready-wrong-codec",
+      "diagnostic": "outcome.status == CodecFailure",
+      "description": "Accumulation ready wrong-codec extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "wrong-state"
+      },
+      "arguments": [
+        "wrong-state"
+      ],
+      "name": "accumulation-ready-wrong-state",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Accumulation ready wrong-state extraction guard"
+    }
+  ]
+}
