@@ -5,7 +5,8 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[service_activity, accumulation_accounts, accumulation_statistics,
+import ../../../src/state/[block_activity, service_activity, accumulation_accounts,
+  accumulation_statistics,
   accumulation_finalization, accumulation_outputs,
   accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
   accumulation_execution,
@@ -13,7 +14,7 @@ import ../../../src/state/[service_activity, accumulation_accounts, accumulation
 import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_account_timestamps,
-  service_activity_context, arc_evidence]
+  service_activity_context, block_activity_context, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -177,6 +178,20 @@ proc main() {.raises.} =
     detachedActivity = checkServiceActivity(stats, incoming = true)
   assert detachedActivity.serviceActivityInfo.value.services == 3
   assert detachedActivity.serviceActivitySource.value.statisticsInfo.value.reports == 4
+  var publishedActivity = default(PublishedBlockActivity)
+  for empty in [true, false]:
+    let preimages = if empty: newSeq[byte]() else: activityPreimages()
+    let fixture = reentryFixture(blockTemplate(base), empty = empty,
+      incomingReports = (if empty: 0 else: 1), preimageWire = preimages, extra = @[blockPrior()])
+    let finalized = finished(fixture)
+    let limits = if empty: policy(rounds = 2, gasRows = 0, reports = 0, digests = 0, services = 0)
+      else: policy() # Empty and active histories retain their existing independently verified traversal bounds.
+    let stats = prepareAccumulationStatistics(finalized, limits).value
+    let services = prepareServiceActivity(stats, activityPolicy()).value
+    publishedActivity = checkBlockActivity(services, fixture.initial.entries, empty)
+  assert publishedActivity.publishedActivitySource.value.blockActivityInfo.value.services == 3
+  assert publishedActivity.publishedActivityState.value.commitment.entries >
+      0 # Published owner alone retains the entire original graph.
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))
