@@ -206,7 +206,7 @@ proc main() {.raises.} =
   for iteration in 0..<1000: cycle(owner) # Stable fixture owners remain outside the repeated allocation interval.
   let after = getOccupiedMem()
   assert before == after
-  recordArcRelease("application_download_session_arc_release", 1000, before, after)
+  recordArcRelease("application_download_session", 1000, before, after)
   network(owner, frame, context)
   echo "Application download session passed"
   echo "ARC_RELEASE cycles=1000 unchanged"
