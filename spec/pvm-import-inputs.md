@@ -40,8 +40,9 @@ ceilings, exact local limits, copied/destructed caller inputs, full-width nomina
 indices, zero additional hash calls, optimized failed-result guards, compiler
 privacy/domain guards and fresh 1000-cycle ARC release.
 
-Next: execute refinement using these original owned inputs and explicit root trust
-policy, assemble auditable bundles and add erasure coding. State owns block
+Execution from original owned inputs is specified in
+[pvm-input-refinement.md](pvm-input-refinement.md). Next: authenticated root/state
+trust integration, auditable bundle assembly and erasure coding. State owns block
 composition/publication. M1 framing is complete; full state serialization and
 whole-block parity remain open.
 
