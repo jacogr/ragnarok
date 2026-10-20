@@ -1,0 +1,75 @@
+{
+  "source": "tests/native/pvm_refinement_export_results.nim",
+  "build_name": "pvm-refinement-export-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default-result"
+      },
+      "arguments": [
+        "default-result"
+      ],
+      "name": "pvm-refinement-export-default-result",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement export default-result"
+    },
+    {
+      "identity": {
+        "origin": "refused-result"
+      },
+      "arguments": [
+        "refused-result"
+      ],
+      "name": "pvm-refinement-export-refused-result",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement export refused-result"
+    },
+    {
+      "identity": {
+        "origin": "default-count"
+      },
+      "arguments": [
+        "default-count"
+      ],
+      "name": "pvm-refinement-export-default-count",
+      "diagnostic": "not exports.data == nil",
+      "description": "Refinement export default-count"
+    },
+    {
+      "identity": {
+        "origin": "default-segment"
+      },
+      "arguments": [
+        "default-segment"
+      ],
+      "name": "pvm-refinement-export-default-segment",
+      "diagnostic": "not exports.data == nil",
+      "description": "Refinement export default-segment"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index",
+        "huge"
+      ],
+      "name": "pvm-refinement-export-index",
+      "diagnostic": "uint64(index) < uint64(len(exports.data.segments))",
+      "description": "Refinement export index"
+    },
+    {
+      "identity": {
+        "origin": "index-empty"
+      },
+      "arguments": [
+        "index-empty"
+      ],
+      "name": "pvm-refinement-export-index-empty",
+      "diagnostic": "uint64(index) < uint64(len(exports.data.segments))",
+      "description": "Refinement export empty sequence index"
+    }
+  ]
+}
