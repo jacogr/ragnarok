@@ -25,8 +25,9 @@ destruction handle partial startup and disabled fields without retaining descrip
 optional listener lifetime. It inherits an explicitly supplied head's store policy and accepts
 opaque finalized successors through state-owned adoption. Enabled RPC joins only an identical
 retained history, state ownership, parameter tuple and finality selection; subscriber work
-starts after all handles agree. Startup seed provisioning and live import scheduling remain
-application integration work. See [the handoff contract](../../spec/application-chain.md).
+starts after all handles agree. Configured seed provisioning requires an explicit complete-state
+policy; executable/service lifecycle wiring and live import scheduling remain application
+integration work. See [the handoff contract](../../spec/application-chain.md).
 
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate

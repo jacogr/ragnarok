@@ -296,21 +296,31 @@ proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
             keys: captureKeys(state), services: discoverServices(state)))
 
+func genesisStoreLimits*(): StateStoreLimits =
+  ## Preserve the legacy read-only complete-map capture policy; callers must explicitly choose any write budget.
+  StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(16384),
+    perValue: ByteLimit(4 * 1024 * 1024), totalValueBytes: ByteLimit(4 * 1024 * 1024),
+    nodes: TrieNodeLimit(1048576)), writes: ElementLimit(0), writeValueBytes: ByteLimit(0))
+
 proc captureBlockSnapshot*(wire: openArray[byte], entries: openArray[StateEntry],
-    parameters: Parameters): BlockSnapshotResult =
-  ## Copy and commit a borrowed complete map once, then share structural capture with applied-state owners.
+    parameters: Parameters, limits = genesisStoreLimits()): BlockSnapshotResult =
+  ## Copy/commit a borrowed complete map once under an explicit policy, then share exact-owner structural capture.
+  ## Omitting limits preserves legacy readonly capture; explicit write budgets are retained unchanged.
   if parameters.get(coreCount) > 341 or wire.len == 0 or wire.len > 256 * 1024 or entries.len > 16384:
     return invalidGenesis() # Bound input before Merklization and retained allocation.
-  let retained = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(
-    items: ElementLimit(16384), perValue: ByteLimit(4 * 1024 * 1024),
-    totalValueBytes: ByteLimit(4 * 1024 * 1024), nodes: TrieNodeLimit(1048576)),
-    writes: ElementLimit(0), writeValueBytes: ByteLimit(0)))
+  let ceiling = genesisStoreLimits()
+  if uint64(limits.trie.items) > uint64(ceiling.trie.items) or
+      uint64(limits.trie.perValue) > uint64(ceiling.trie.perValue) or
+      uint64(limits.trie.totalValueBytes) > uint64(ceiling.trie.totalValueBytes) or
+      uint64(limits.trie.nodes) > uint64(ceiling.trie.nodes):
+    return invalidGenesis() # Explicit startup policies must fit fixed chain bounds; never silently clamp or widen them.
+  let retained = newStateStore(entries, limits)
   if retained.error != StateStoreError.None:
     return invalidGenesis() # Includes duplicate keys, local limits and primitive refusal.
   captureBlockSnapshot(wire, retained.value.snapshot.value, parameters)
 
 proc captureGenesis*(wire: openArray[byte], entries: openArray[StateEntry],
-    parameters: Parameters): GenesisResult =
+    parameters: Parameters, limits = genesisStoreLimits()): GenesisResult =
   ## Preserve the startup genesis loader contract using the general structurally checked snapshot capture.
   ## Neither entry point verifies execution, signatures, consensus or completeness of the supplied map.
-  captureBlockSnapshot(wire, entries, parameters)
+  captureBlockSnapshot(wire, entries, parameters, limits)

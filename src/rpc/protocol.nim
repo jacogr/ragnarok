@@ -186,8 +186,10 @@ proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
   output = move(bytes)
   true
 
-proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
-  ## Import an optional complete genesis pair using the same strict bounded JSON policy as parameters.
+proc configuredGenesis*(text: string, parameters: Parameters,
+    limits = genesisStoreLimits()): GenesisResult =
+  ## Import an optional complete genesis pair using strict bounded JSON and an explicitly inherited store policy.
+  ## The default remains legacy readonly capture; no mutation budget is inferred from protocol parameters.
   # Reject absent, oversized or non-UTF-8 input before token allocation.
   if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text): return invalidGenesis()
   var values: seq[Value] = @[]
@@ -230,7 +232,7 @@ proc configuredGenesis*(text: string, parameters: Parameters): GenesisResult =
     for j in 0..<31: key[j] = keyBytes[j] # Exact decoded key width was proved above.
     entries.add(StateEntry(key: StateKey(key), value: move(data)))
     i = values[i].next
-  captureGenesis(wire, entries, parameters)
+  captureGenesis(wire, entries, parameters, limits)
 
 # JIP-2 hash strings are canonical padded Base64, preserving exactly 32 bytes.
 proc validHash(text: string): bool =
