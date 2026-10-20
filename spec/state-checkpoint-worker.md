@@ -103,3 +103,15 @@ roots remain separate generations. A new locked bank restores the final map afte
 joined shutdown and checks every original key/value, root and node count. Fixture
 pins/preparation are unchanged; no source complete-map graph crosses the worker
 boundary, no storage trie is adopted, and published block execution is not claimed.
+
+## Abrupt process restart boundaries
+
+Child-only workers exit without collection, join or destructors at three known
+boundaries: staged before dispatch, cancelled before acknowledgement, and actually
+durable Done before acknowledgement. No live lock/thread crosses fork. After each
+real process exit the joined parent acquires a fresh bank, proving native lock
+release, and restores exactly the independently expected complete map. Unstarted
+or cancelled buffers leave the selector and old slot exact and create no inactive
+canonical file; completed publication survives without a host acknowledgement.
+These witnesses cover process retirement at known boundaries, not mid-write kill,
+power loss or cross-process ARC occupancy.

@@ -1,0 +1,1 @@
+PASS checkpoint worker restart: abrupt staged, cancelled and durable-completion process exits
