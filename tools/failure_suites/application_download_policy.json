@@ -1,0 +1,45 @@
+{
+  "build_name": "application-download-policy-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Startup policy extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-download-policy-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Startup policy extraction refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "application-download-policy-refused"
+    },
+    {
+      "arguments": [
+        "success-reason"
+      ],
+      "description": "Startup policy extraction success-reason",
+      "diagnostic": "not outcome.status == None",
+      "identity": {
+        "reason": "success-reason"
+      },
+      "name": "application-download-policy-success-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_download_policy_results.nim"
+}

@@ -147,8 +147,10 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       candidate.ui or candidate.state): return false
   if candidate.ui and candidate.uiNumber == candidate.rpcNumber: return false
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state:
-    if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh"]:
+    if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh", "download"]:
       return false # Socket services belong to network commands, never no-socket selftests.
+  if candidate.positional.len > 0 and candidate.positional[0] == "download":
+    if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.
   candidate.parsed = true
   options = candidate # Only a complete validated configuration replaces the cleared output.
   true

@@ -5,8 +5,8 @@ scope, verification and remaining work.
 
 `src/ragnarok.nim` is the sole native application entry point for production and E2E builds.
 It reads process arguments once, parses an owned `app/options.Options`, and dispatches bounded
-peer/mesh lifecycles and no-socket selftests. Configuration is passed explicitly; transport,
-telemetry, RPC and UI modules do not inspect command-line globals. The current commands remain
+peer/mesh lifecycles, explicit one-child downloads and no-socket selftests. Configuration is passed
+explicitly; transport, telemetry, RPC and UI modules do not inspect command-line globals. The current commands remain
 the development proof peer, providing the future client entry point without claiming full node
 execution, block import, consensus or validator operation.
 
@@ -37,6 +37,13 @@ work. Producers acknowledge completion explicitly, and shutdown retires either a
 using the retained head's parent/map/parameters and explicit stage policies, then queues only
 complete finalized success. Network acquisition and asynchronous execution scheduling remain
 application integration work. See [the handoff contract](../../spec/application-chain.md).
+
+`app/download_command.nim` owns stable Services and dispatcher lifetimes for the explicit
+`download` command. `app/download_policy.nim` loads a bounded, complete versioned policy file;
+no gas, stage, retry or network budget is inferred. One pinned loopback peer may supply one
+child, with preparation outside callbacks and success only after actual deferred adoption.
+The [startup contract](../../spec/application-download-startup.md) records the command,
+configuration schema and remaining production boundaries.
 
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate
