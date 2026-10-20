@@ -52,10 +52,15 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (folder/'ci.yml').read_text()
         self.assertNotIn('github.head_ref', text)
         self.assertNotIn('github.ref_name', text)
-        # Pushes check master once; PR updates retain their independent, unfiltered gate.
+        # PR labels are the only PR trigger; opening, pushing and rebasing cannot request runners.
         triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
-        self.assertEqual(triggers.strip(),
-                         'push:\n    branches: [master]\n  pull_request:\n  workflow_dispatch:')
+        self.assertIn('push:\n    branches: [master]\n', triggers)
+        self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
+        self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, full]\n        default: full', triggers)
+        self.assertNotIn('pull_request_target', triggers)
+        self.assertNotIn('synchronize', triggers)
+        self.assertNotIn('opened', triggers)
         for target in ('check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
@@ -68,6 +73,46 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('tools/setup_nimony.py', text)
         self.assertNotIn('cargo fetch', text)
 
+    # Scope guards must act on the label addition, never on persistent PR labels or a branch name.
+    def test_ci_request_scopes(self):
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        requested = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && "
+                     "(inputs.suite == 'unit' || inputs.suite == 'full')) || "
+                     "(github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || "
+                     "github.event.label.name == 'ci:full'))")
+        full = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && "
+                "inputs.suite == 'full') || (github.event_name == 'pull_request' && "
+                "github.event.label.name == 'ci:full')")
+        e2e = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && "
+               "(inputs.suite == 'e2e' || inputs.suite == 'full')) || "
+               "(github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || "
+               "github.event.label.name == 'ci:full'))")
+        self.assertIn('if: &requested ${{ '+requested+' }}', text)
+        self.assertIn('if: &full ${{ '+full+' }}', text)
+        for job, condition in [('modules', '&requested ${{ '+requested+' }}'),
+                               ('python', '*requested'), ('unit', '*requested'),
+                               ('guards', '&full ${{ '+full+' }}'), ('failures', '*full'),
+                               ('e2e', '${{ '+e2e+' }}'), ('telemetry-interop', '*full'),
+                               ('unit-status', '${{ always() && ('+requested+') }}'),
+                               ('failures-status', '${{ always() && ('+full+') }}')]:
+            # Gates retain the same selection as their matrix while still observing failed/cancelled jobs.
+            with self.subTest(job=job):
+                section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
+                                    text, re.MULTILINE | re.DOTALL).group(1)
+                actual = re.search(r'^    if: (.+)$', section, re.MULTILINE).group(1)
+                self.assertEqual(actual, condition)
+        self.assertNotIn('github.event.pull_request.labels', text)
+        self.assertIn('persist-credentials: false', text)
+        self.assertIn('permissions:\n  contents: read', text)
+
+    # Ignored labels cannot replace/cancel a pending requested run; selected requests share one PR group.
+    def test_ci_request_concurrency(self):
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && "
+                    "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
+                    "github.event.label.name != 'ci:e2e' && github.run_id || github.ref }}")
+        self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
+
     # The matrix covers every partition once, and the stable unit gate rejects every non-success result.
     def test_ci_unit_partition_gate(self):
         from native_tests import parse_unit_shard
@@ -79,7 +124,7 @@ class NimonyCISafeguards(unittest.TestCase):
         gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
         self.assertIn('name: Native unit and codec tests', gate)
         self.assertIn('needs: unit', gate)
-        self.assertIn('if: always()', gate)
+        self.assertIn('if: ${{ always() && (', gate)
         self.assertIn('SHARDS_RESULT: ${{ needs.unit.result }}', gate)
         command = re.search(r'        run: ([^\n]+)', gate).group(1)
         for result in ['success', 'failure', 'cancelled', 'skipped']:
@@ -101,7 +146,7 @@ class NimonyCISafeguards(unittest.TestCase):
         gate = text.split('  failures-status:\n', 1)[1].split('  e2e:\n', 1)[0]
         self.assertIn('name: Runtime failure and contract tests', gate)
         self.assertIn('needs: failures', gate)
-        self.assertIn('if: always()', gate)
+        self.assertIn('if: ${{ always() && (', gate)
         self.assertIn('SHARDS_RESULT: ${{ needs.failures.result }}', gate)
         command = re.search(r'        run: ([^\n]+)', gate).group(1)
         for result in ['success', 'failure', 'cancelled', 'skipped']:

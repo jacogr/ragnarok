@@ -6,19 +6,27 @@
 
 name: CI
 
-# Check master after pushes/merges; feature branches run through their PR only.
+# Check master after pushes/merges; PR workloads run only when explicitly labeled.
 "on":
   push:
     branches: [master]
   pull_request:
+    types: [labeled]
   workflow_dispatch:
+    inputs:
+      suite:
+        description: Verification scope
+        type: choice
+        options: [unit, e2e, full]
+        default: full
+        required: true
 
 permissions:
   contents: read
 
-# Retire obsolete runs while keeping independent branches/PRs separate.
+# New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -33,6 +41,7 @@ env:
 # Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:
   modules:
+    if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     name: Source compilation
     timeout-minutes: 30
     strategy: &os-strategy
@@ -75,6 +84,7 @@ jobs:
             build/tests/modules/results.json
 
   python:
+    if: *requested
     name: Python reference and tooling tests
     timeout-minutes: 15
     strategy: *os-strategy
@@ -100,6 +110,7 @@ jobs:
             build/tests/python/results.json
 
   guards:
+    if: &full ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
     name: Compiler rejection guards
     timeout-minutes: 30
     strategy: *os-strategy
@@ -127,6 +138,7 @@ jobs:
             build/bandersnatch/cargo-features.log
 
   unit:
+    if: *requested
     name: Unit shard ${{ matrix.shard }}
     timeout-minutes: 30
     strategy:
@@ -166,7 +178,7 @@ jobs:
   unit-status:
     name: Native unit and codec tests
     needs: unit
-    if: always()
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -176,6 +188,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   failures:
+    if: *full
     name: Contract shard ${{ matrix.shard }}
     timeout-minutes: 30
     strategy:
@@ -215,7 +228,7 @@ jobs:
   failures-status:
     name: Runtime failure and contract tests
     needs: failures
-    if: always()
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full')) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -225,6 +238,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   e2e:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
     name: End-to-end networking tests
     timeout-minutes: 60
     strategy: *os-strategy
@@ -275,6 +289,7 @@ jobs:
             build/quic/build.log
 
   telemetry-interop:
+    if: *full
     name: JAM Tart interoperability
     timeout-minutes: 60
     strategy: *os-strategy

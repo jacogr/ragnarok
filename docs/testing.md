@@ -26,6 +26,45 @@ Each group writes `results.json` and diagnostic logs in its evidence directory. 
 `make summary-modules` or `make summary-e2e` to summarize completed reports. A missing report
 is a failure, not evidence of coverage.
 
+## Requesting CI
+
+PR creation, pushes and stack rebases do not start CI. In the PR sidebar, add one label to
+request verification of the current PR merge revision:
+
+| Label | Requested checks |
+| --- | --- |
+| `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation |
+| `ci:e2e` | End-to-end networking tests only |
+| `ci:full` | All verification groups, including compiler guards, runtime contracts and JAM Tart interoperability |
+
+The label addition is the request; leaving a label on a PR does not enable automatic checks on
+later commits. Remove and reapply the label to request checks after another push or rebase.
+For stacks, request checks on the top PR when the combined changes are ready. For example:
+
+```sh
+gh pr edit <number> --add-label ci:full
+# After a later push/rebase, request a fresh run with two separate commands.
+gh pr edit <number> --remove-label ci:full
+gh pr edit <number> --add-label ci:full
+```
+
+A new request cancels an older run for the same PR; unrelated labels schedule no runners and
+cannot cancel requested checks. Results apply only to the tested revision. A focused run does
+not claim the deferred groups passed. Master pushes/merges always request full verification;
+newer master runs supersede older ones.
+
+For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
+choose `unit`, `e2e` or `full` (the default). CLI equivalent:
+
+```sh
+gh workflow run ci.yml --ref <branch> -f suite=full
+```
+
+Use the PR labels when PR-associated checks are needed. Manual branch dispatch is separate
+verification and may not satisfy required PR checks. If branch protection is introduced, require
+only the intended scope: a focused request deliberately skips full-only groups, and intermediate
+stack PRs may have no requested evidence. Local verification remains required before publishing.
+
 ## Focused local verification
 
 Use `make unit SUITE=natural` (substitute any discovered suite name) to execute just that native
@@ -40,7 +79,8 @@ library and integration-fixture preparation entirely.
 Choose checks from the changed behavior and affected consumers. Registry-only conflicts usually
 need `make check-inventory` and the affected inventory/provenance tooling tests. History-only
 reconciliation with an identical tree can reuse the explicitly recorded previous results.
-CI continues complete verification; focused local results must never be reported as a full pass.
+Master CI and `ci:full` requests retain complete verification; focused local or CI results must
+never be reported as a full pass.
 
 ## Coverage and adding tests
 
