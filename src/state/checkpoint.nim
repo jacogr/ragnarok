@@ -13,7 +13,7 @@ const
 
 type
   CheckpointError* {.pure.} = enum ## Refusals never expose partial bytes or a fabricated complete state.
-    Uninitialized, None, LimitExceeded
+    Uninitialized, None, LimitExceeded, InvalidFormat, NonCanonical, RootMismatch, BackendFailure
   CheckpointResult*[T] = object ## Private alternatives authorize extraction only after complete success.
     case status: CheckpointError
     of None:
@@ -77,3 +77,82 @@ proc encodeFullCheckpoint*(snapshot: StateStoreSnapshot,
       output[offset] = octet
       inc offset # Preflight included every retained value's exact length, including zero.
   CheckpointResult[seq[byte]](status: CheckpointError.None, completed: output)
+
+proc readNumber(input: openArray[byte], offset: int): uint64 =
+  ## Each caller proves eight input bytes before decoding the fixed little-endian field.
+  result = 0
+  for index in 0..<8:
+    result = result or (uint64(input[offset + index]) shl (8 *
+        index)) # Disjoint shifts preserve every bit without addition.
+
+proc before(left, right: array[31, byte]): bool =
+  ## Strict lexical order rejects duplicates and reverse-ordered records before allocating a map.
+  for index in 0..<31:
+    if left[index] < right[index]: return true # The first differing key octet fixes order.
+    if left[index] > right[index]: return false # Later suffixes cannot repair reverse order.
+  false
+
+proc decodeFullCheckpoint*(input: openArray[byte], limits: StateStoreLimits,
+    limit: ByteLimit): CheckpointResult[StateStore] =
+  ## Borrow stable input synchronously; validate its entire shape/policy before owning any entries.
+  if uint64(input.len) > uint64(limit):
+    return CheckpointResult[StateStore](status: CheckpointError.LimitExceeded)
+  if input.len < HeaderBytes:
+    return CheckpointResult[StateStore](status: CheckpointError.InvalidFormat) # No partial header or alternate version is accepted.
+  for index, character in CheckpointMagic:
+    if input[index] != byte(character):
+      return CheckpointResult[StateStore](status: CheckpointError.InvalidFormat) # Exact full-state domain excludes light/unknown envelopes.
+  let count = readNumber(input, CheckpointMagic.len)
+  if count > uint64((input.len - HeaderBytes) div 39):
+    return CheckpointResult[StateStore](status: CheckpointError.InvalidFormat) # Minimum record size proves count fits native indexing too.
+  if count > uint64(limits.trie.items):
+    return CheckpointResult[StateStore](status: CheckpointError.LimitExceeded)
+  var offset = HeaderBytes
+  var remaining = uint64(limits.trie.totalValueBytes)
+  var previous = default(array[31, byte])
+  var seen = false
+  for record in 0..<int(count):
+    if input.len - offset < 39:
+      return CheckpointResult[StateStore](status: CheckpointError.InvalidFormat) # Earlier variable payloads may consume later fixed fields.
+    var key = default(array[31, byte])
+    for index in 0..<31:
+      key[index] = input[offset + index] # The complete fixed record prefix was proved above.
+    if seen and not before(previous, key):
+      return CheckpointResult[StateStore](status: CheckpointError.NonCanonical) # Duplicates are refused rather than overwritten or sorted.
+    previous = key
+    seen = true
+    offset += 31
+    let size = readNumber(input, offset)
+    offset += 8
+    if size > uint64(input.len - offset):
+      return CheckpointResult[StateStore](status: CheckpointError.InvalidFormat) # Subtraction proves narrowing and the later offset addition.
+    if size > uint64(limits.trie.perValue) or size > remaining:
+      return CheckpointResult[StateStore](status: CheckpointError.LimitExceeded)
+    remaining -= size
+    offset += int(size)
+  if offset != input.len:
+    return CheckpointResult[StateStore](status: CheckpointError.InvalidFormat) # Exact consumption rejects trailers and concatenated checkpoints.
+  var entries = newSeq[StateEntry](int(count))
+  offset = HeaderBytes
+  for record in 0..<entries.len:
+    var key = default(array[31, byte])
+    for index in 0..<31:
+      key[index] = input[offset + index] # The first pass validated every repeated immutable coordinate.
+    offset += 31
+    let size = int(readNumber(input, offset))
+    offset += 8
+    var value = newSeq[byte](size)
+    for index in 0..<size:
+      value[index] = input[offset + index] # Own exact raw bytes; no view into the caller buffer escapes.
+    offset += size
+    entries[record] = StateEntry(key: StateKey(key), value: value)
+  let made = newStateStore(entries, limits)
+  if made.error != StateStoreError.None:
+    let reason = if made.error == StateStoreError.LimitExceeded: CheckpointError.LimitExceeded
+      else: CheckpointError.BackendFailure # Native/root-construction refusal cannot become a restored state.
+    return CheckpointResult[StateStore](status: reason)
+  let root = array[32, byte](made.value.snapshot.value.commitment.root)
+  for index in 0..<32:
+    if root[index] != input[CheckpointMagic.len + 8 + index]:
+      return CheckpointResult[StateStore](status: CheckpointError.RootMismatch) # Only a fully recomputed complete-map root authorizes publication.
+  CheckpointResult[StateStore](status: CheckpointError.None, completed: made.value)

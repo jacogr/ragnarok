@@ -8,7 +8,13 @@ import ../../src/state/[checkpoint, store]
 import ../../src/codec/bounded
 
 let mode = paramStr(1)
-if mode == "default":
+if mode == "decode-default":
+  let outcome = default(CheckpointResult[StateStore])
+  discard outcome.value # Generic restored stores have the same guarded absence contract.
+elif mode == "decode-refused":
+  discard decodeFullCheckpoint([], default(StateStoreLimits), ByteLimit(
+      100)).value # A malformed document cannot expose a partial map.
+elif mode == "default":
   let outcome = default(CheckpointResult[seq[byte]])
   discard outcome.value # Default construction never authorizes bytes.
 else:
