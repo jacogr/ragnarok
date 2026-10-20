@@ -12,11 +12,11 @@ import ./[pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_p
 
 type
   TerminalProvisionEnding* {.pure.} = enum ## Test-only terminal instructions drive genuine normalization paths.
-    Halt,     ## Return normally with both regular provision contributions.
-    Panic,    ## Trap after the second provide, selecting the earlier checkpoint.
-    Fault,    ## Access unmapped memory after the second provide.
-    OutOfGas, ## Underfund a final host call after both provides.
-    Ambiguous ## Return 32 readable bytes with nonempty provisions to exercise the specification gate.
+    Halt,      ## Return normally with both regular provision contributions.
+    Panic,     ## Trap after the second provide, selecting the earlier checkpoint.
+    Fault,     ## Access unmapped memory after the second provide.
+    OutOfGas,  ## Underfund a final host call after both provides.
+    HashReturn ## Return 32 readable bytes while retaining the regular provision projection.
 
 proc terminalPosteriorEntries*(): seq[StateEntry] =
   ## Requests and unrelated complete-map rows deliberately differ from invocation-owned account metadata.
@@ -25,10 +25,12 @@ proc terminalPosteriorEntries*(): seq[StateEntry] =
   result.add(provisionRequest(99, @[81'u8]))
 
 proc terminalProvisionExecution*(ending = TerminalProvisionEnding.Halt,
-    checkpoint = true, second = true): AccumulationDispatchResult =
+    checkpoint = true, second = true, first = true): AccumulationDispatchResult =
   ## Execute two authored provides around an optional checkpoint, then a real terminal instruction.
   var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 65536),
-    registerImmediate(9, 1), @[10'u8, 27]]
+    registerImmediate(9, 1)]
+  if first:
+    instructions.add(@[10'u8, 27]) # Optional first contribution distinguishes empty, X-only and shared X/Y sets.
   if checkpoint:
     instructions.add(@[10'u8, 18]) # Snapshot only the first provision into exceptional effects.
   if second:
@@ -44,9 +46,9 @@ proc terminalProvisionExecution*(ending = TerminalProvisionEnding.Halt,
     instructions.add(@[52'u8, 2, 0, 0, 4]) # Authored load from unmapped physical memory.
   of TerminalProvisionEnding.OutOfGas:
     instructions.add(@[10'u8, 28]) # Unknown host call costs 1000, funded below by only 999.
-  of TerminalProvisionEnding.Ambiguous:
+  of TerminalProvisionEnding.HashReturn:
     instructions.add(registerImmediate(7, 65536))
-    instructions.add(registerImmediate(8, 32)) # Readable return plus provisions preserves the normalizer's gate.
+    instructions.add(registerImmediate(8, 32)) # Adopted #533 retains regular provisions alongside the returned hash.
   instructions.add(@[50'u8, 0]) # Halt is also the paid successor of a funded final host call.
   let extra = @[serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
       89)).value,
@@ -55,7 +57,7 @@ proc terminalProvisionExecution*(ending = TerminalProvisionEnding.Halt,
   if ending == TerminalProvisionEnding.OutOfGas:
     let price = uint64(blockGas(programOf(prepared.accumulationMachine.value).value,
       CodeAddress(5), GasCycleLimit(1000)).value)
-    let credit = price+3983+(if checkpoint: 103'u64 else: 0'u64)+(
+    let credit = price+(if first: 3983'u64 else: 0'u64)+(if checkpoint: 103'u64 else: 0'u64)+(
         if second: 3983'u64 else: 0'u64)+999
     prepared = guestProgram(instructions, credit, extra = extra) # Every instruction cost is paid before the final host deficit.
   executeAccumulationMachine(prepared, pvmParameters(),

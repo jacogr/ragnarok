@@ -1,0 +1,13 @@
+{
+  "authority": "Maintainer request for the next stacked layer after identifying scoped #533 X-projection adoption as next work.",
+  "base_graypaper_commit": "07f041dabd073f9018b418e9ee72e79dd2185401",
+  "commit": "0c0664eb52ba92afd8d21cef96c0e1da506eddfe",
+  "merged_at": "2026-07-22T10:21:34Z",
+  "pr": 533,
+  "reviewed_on": "2026-10-19",
+  "scope": "C hash-return provisions project from regular X; other branches and unrelated host semantics unchanged",
+  "source": "text/pvm_invocations.tex",
+  "source_sha256": "e36d6aaf4b84f06632cd427e5d9a04cff082b47cb4bc1e37a34ad68bec3ea6fd",
+  "url": "https://github.com/gavofyork/graypaper/pull/533",
+  "vectors_commit": "d3c089c9a1d5352ad353626d7a2db8589f137b2a"
+}

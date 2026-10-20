@@ -24,7 +24,7 @@ No new production API, wire format, runtime policy or dependency is introduced.
 
 [Grow_heap integration](pvm-accumulation-heap.md) now follows the explicitly adopted
 merged #533 gas/result ordering and #538 stack reservation with unchanged pins.
-Preserve AmbiguousPrivileges, AmbiguousProvisions, exact
+Preserve AmbiguousPrivileges, exact
 gas-debt representation and parked request-namespace boundaries. Refused plans
 must publish no credits, request changes or pending provisions. Test stale prior,
 backend refusal, immutable retained sources and fresh 1,000-cycle ARC release.
@@ -43,7 +43,7 @@ before removing UnsupportedAccountEffects; see the later heap adoption extension
 | Selected account effects | UnsupportedAccountEffects; require bounded service-scoped writes and cross-service conflict/provenance rules before publication. Equal roots alone do not permit substitution. |
 | Transfer-aware recursion | UnsupportedTransfers in report-only continuation; requires outgoing collection and recursive input/gas integration. |
 | Conflicting bless allowances | AmbiguousPrivileges; pinned set-to-dictionary semantics remain unresolved. |
-| 32-byte halt return with provisions | AmbiguousProvisions; preserve explicit terminal normalization refusal. |
+| 32-byte halt return with provisions | Implemented using the adopted [regular X projection](pvm-hash-return-provisions.md); the historical AmbiguousProvisions value is no longer emitted. |
 | Negative host-gas debt outside the signed domain | GasRangeExceeded; no truncation or clamping. |
 | Request namespace adoption | Preserve the parked 0.8.0 behavior and pending compatible pin review; no interim length bound or alternate format. |
 

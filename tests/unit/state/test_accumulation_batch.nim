@@ -128,8 +128,8 @@ assert root(foreignPrior.state) == root(fixture.state)
 assert not sameStateSnapshot(foreignPrior.state.snapshot.value, prior)
 assert not sameAccumulationInputs(foreignInputs.inputs, fixture.inputs)
 let wrongSlot = batchExecution(fixture, 1, HeaderSlot(129))
-let gatedFixture = batchFixture(second = BatchEnding.Ambiguous)
-let gatedExecutions = @[batchExecution(gatedFixture, 0), batchExecution(gatedFixture, 1)]
+let hashFixture = batchFixture(second = BatchEnding.HashReturn)
+let hashExecutions = @[batchExecution(hashFixture, 0), batchExecution(hashFixture, 1)]
 failHash(1)
 assert prepareAccumulationBatch(default(PreparedAccumulationInputs), prior, [], HeaderSlot(128),
     policy).error == AccumulationBatchError.InvalidInputs
@@ -147,13 +147,50 @@ assert prepareAccumulationBatch(fixture.inputs, prior, [first, second], HeaderSl
 let invalidSlot = prepareAccumulationBatch(fixture.inputs, prior, [first, wrongSlot], HeaderSlot(
     128), policy)
 assert invalidSlot.terminalError == AccumulationTerminalProvisionError.InvalidSlot
-let gated = prepareAccumulationBatch(gatedFixture.inputs, gatedFixture.state.snapshot.value,
-    gatedExecutions, HeaderSlot(128), policy)
-assert gated.normalizationError == AccumulationOutcomeError.AmbiguousProvisions
 assert hashCalls() == 0
 let backend = prepareAccumulationBatch(fixture.inputs, prior, [first, second], HeaderSlot(128), policy)
 assert backend.provisionError == AccumulationProvisionError.BackendFailure
 failHash(0)
+# Adopted regular hash-return provisions flow through the exact common-source batch proof.
+let hashExpected = newStateStore(expectedRows(hashFixture), integrationStoreLimits()).value
+for reverse in [false, true]:
+  let ordered = if reverse: @[hashExecutions[1], hashExecutions[0]] else: hashExecutions
+  let selected = prepareCompleteAccumulationBatch(hashFixture.inputs,
+    hashFixture.state.snapshot.value,
+    ordered, [], HeaderSlot(128), policy).value
+  let index = if reverse: 0'u64 else: 1'u64
+  let info = selected.batchOutcomeAt(AccumulationProvisionSourceIndex(
+      index)).value.outcomeInfo.value
+  assert info.hasYield and info.provisions == 2, "batch keeps the hash-return service's regular provision set"
+  var state = hashFixture.state
+  discard applyAccumulationBatch(state, selected).value
+  assert root(state) == root(hashExpected), "both execution orders publish the same literal credits and fulfilled requests"
+# Calibrate the hash-return account phase independently before faulting each private publication phase.
+let hashPlan = prepareCompleteAccumulationBatch(hashFixture.inputs,
+  hashFixture.state.snapshot.value,
+  hashExecutions, [], HeaderSlot(128), policy).value
+var hashCredited = hashFixture.state
+var hashCreditWrites: seq[StateWrite] = @[]
+for entry in expectedRows(hashFixture):
+  for service in [42'u32, 99'u32]:
+    if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
+        ServiceIndex(service))):
+      hashCreditWrites.add(StateWrite(key: entry.key, kind: StateWriteKind.Put, value: entry.value))
+failHash(0)
+discard hashCredited.apply(hashCreditWrites).value
+let hashAccountHashes = hashCalls()
+assert hashAccountHashes > 0
+for allowance in [0.cint, hashAccountHashes]:
+  var state = hashFixture.state
+  let before = state.snapshot.value
+  hashAfter(allowance)
+  let refused = applyAccumulationBatch(state, hashPlan)
+  if allowance == 0:
+    assert refused.storeError == StateStoreError.BackendFailure, "early hash-return account phase failure is atomic"
+  else:
+    assert refused.provisionError == AccumulationProvisionError.BackendFailure, "late hash-return provision phase failure discards credited candidate"
+  failHash(0)
+  assert sameStateSnapshot(state.snapshot.value, before), "no credit, hash-return provision or candidate root escapes either refusal"
 let empty = prepareAccumulationBatch(fixture.inputs, prior, [], HeaderSlot(7), batchPolicy(
     accounts = 0)).value
 var emptyState = fixture.state
@@ -214,12 +251,14 @@ for allowance in [0.cint, accountHashes]:
   failHash(0)
 var retained: PreparedAccumulationBatch
 var detachedState: StateStore
+var detachedExpected = default(StateStore)
 block:
-  let source = batchFixture()
+  let source = batchFixture(second = BatchEnding.HashReturn)
   var executions = @[batchExecution(source, 0), batchExecution(source, 1)]
   retained = prepareAccumulationBatch(source.inputs, source.state.snapshot.value, executions,
       HeaderSlot(128), policy).value
   detachedState = source.state
+  detachedExpected = newStateStore(expectedRows(source), integrationStoreLimits()).value
   executions[0] = default(AccumulationDispatchResult)
   executions.setLen(0) # All original local input/execution handles can be released independently.
 var copied = retained.batchInfo.value
@@ -228,7 +267,12 @@ copied.terminal.slot = HeaderSlot(7)
 assert retained.batchInfo.value.accountWrites == 2
 assert uint32(retained.batchInfo.value.terminal.slot) == 128
 assert applyAccumulationBatch(detachedState, retained).error == AccumulationBatchError.None
-assert root(detachedState) == root(expected)
+assert root(detachedState) == root(detachedExpected)
+let detachedOutcome = retained.batchOutcomeAt(AccumulationProvisionSourceIndex(1)).value
+let detachedProvision = detachedOutcome.outcomeContext.value.effectProvisionAt(
+    AccumulationProvisionIndex(1)).value
+assert detachedProvision.copyProvisionBytes.value == @[81'u8],
+  "detached hash-return outcome retains regular provision bytes after all caller execution owners leave scope"
 when declared(effectAccounts):
   # Exercise the actual sibling PVM write API when present, never a forged effects/machine certificate.
   for ending in [BatchEnding.StorageHalt, BatchEnding.StorageCheckpointPanic]:
@@ -262,6 +306,12 @@ for iteration in 0..<1000:
   assert applyAccumulationBatch(state, prepared).error == AccumulationBatchError.StaleState
   assert hashCalls() == 0
   failHash(0)
+  let selected = prepareCompleteAccumulationBatch(hashFixture.inputs,
+    hashFixture.state.snapshot.value,
+    hashExecutions, [], HeaderSlot(128), policy).value
+  var hashState = hashFixture.state
+  discard applyAccumulationBatch(hashState, selected).value
+  assert root(hashState) == root(hashExpected), "fresh hash-return batch/yield/provision owners release every cycle"
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("accumulation_batch", 1000, before, after)

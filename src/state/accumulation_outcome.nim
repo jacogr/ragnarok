@@ -3,7 +3,7 @@
 
 ## Collapse completed accumulation execution into one immutable implication context and capped gas use.
 ## Exposes normalizeAccumulationOutcome, retained context/info extraction and guarded typed refusals.
-## See spec/pvm-accumulation-outcome.md for Psi_M/Psi_A scope and the provision-reference gate.
+## See spec/pvm-hash-return-provisions.md for the scoped adoption of GP #533's regular projection.
 
 import ../codec/[work_digest, composite, state_outputs]
 import ../pvm/[machine, step, output]
@@ -14,7 +14,8 @@ type
   AccumulationTermination* {.pure.} = enum ## Normalized protocol termination; a physical fault follows Psi_M's panic branch.
     Halt, Panic, OutOfGas
   AccumulationOutcomeError* {.pure.} = enum ## Local refusals contain no selected state, gas usage or output commitment.
-    Uninitialized, None, InvalidExecution, InvalidContext, AmbiguousProvisions
+    Uninitialized, None, InvalidExecution, InvalidContext,
+    AmbiguousProvisions ## Reserved historical refusal; the adopted #533 projection no longer emits it.
   AccumulationOutcomeInfo* = object ## Copied final metadata is inseparable from its selected immutable implication context.
     service*: ServiceIndex
     termination*: AccumulationTermination
@@ -102,11 +103,7 @@ proc normalizeAccumulationOutcome*(execution: AccumulationDispatchResult):
     if returned.error != OutputError.None:
       fail(AccumulationOutcomeError.InvalidExecution) # A private completed execution must have a valid CPU.
     if returned.value.len == 32:
-      # The pair-level provision reference has no defined projection; only the proven empty case is supported.
-      let regular = effects.effectContext(AccumulationDimension.Regular).value.effectInfo.value
-      let exceptional = effects.effectContext(AccumulationDimension.Exceptional).value.effectInfo.value
-      if regular.provisions != 0 or exceptional.provisions != 0:
-        fail(AccumulationOutcomeError.AmbiguousProvisions) # Never silently choose X or Y for nonempty sets.
+      # Adopted #533 C selects all regular X effects, including provisions; only its yield is overridden.
       var bytes = default(array[32, byte])
       for i in 0..<32:
         bytes[i] = returned.value[i] # Copy a present hash, including the all-zero hash.

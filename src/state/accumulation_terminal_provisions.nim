@@ -50,7 +50,7 @@ func normalizationError*[T](outcome: AccumulationTerminalProvisionResult[
     T]): AccumulationOutcomeError {.inline,
 
 requires: outcome.status == AccumulationTerminalProvisionError.NormalizationFailure.} =
-  ## Preserve the exact terminal normalization refusal, including its parked specification gate.
+  ## Preserve the exact terminal normalization refusal without exposing any earlier selected outcome.
   outcome.normalizationReason
 func provisionError*[T](outcome: AccumulationTerminalProvisionResult[
     T]): AccumulationProvisionError {.inline,
