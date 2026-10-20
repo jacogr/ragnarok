@@ -39,8 +39,9 @@ lookup/state/core binding, local input-copy caps and protocol authorization gate
 precedence, typed late child failures, replay/copy/lifetime isolation, compiler
 privacy/source rejection, optimized result/reason guards and fresh 1000-cycle ARC.
 
-Next: authenticated root/state trust integration and auditable bundle assembly,
-then erasure coding and complete work-report construction. M1 framing is complete;
+Auditable bundle assembly from this execution owner is specified in
+[pvm-auditable-bundle.md](pvm-auditable-bundle.md). Next: authenticated root/state
+trust integration, erasure coding and complete work-report construction. M1 framing is complete;
 full state serialization and whole-block parity remain open.
 
 Local evidence: checked optimized macOS `make unit SUITE=pvm_input_refinement`

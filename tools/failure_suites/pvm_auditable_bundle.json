@@ -1,0 +1,74 @@
+{
+  "source": "tests/native/pvm_auditable_bundle.nim",
+  "build_name": "pvm-auditable-bundle",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-auditable-bundle-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Auditable bundle default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-auditable-bundle-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Auditable bundle source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-auditable-bundle-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Auditable bundle limit"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-auditable-bundle-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Auditable bundle info"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-auditable-bundle-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Auditable bundle owner"
+    },
+    {
+      "identity": {
+        "origin": "bytes"
+      },
+      "arguments": [
+        "bytes"
+      ],
+      "name": "pvm-auditable-bundle-bytes",
+      "diagnostic": "outcome.status == None",
+      "description": "Auditable bundle bytes"
+    }
+  ]
+}
