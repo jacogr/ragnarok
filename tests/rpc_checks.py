@@ -245,6 +245,12 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 opcode, payload = receive(connection)
                 result = json.loads(payload)
                 assert opcode == 1 and result['id'] == 'client'
+                # The live WebSocket reports exactly the identity embedded in this executable's CLI.
+                identity = subprocess.check_output([str(binary), '--version'], text=True).splitlines()
+                metadata = result['result']
+                assert identity == [f"{metadata['name']} {metadata['version']} {metadata['revision']}",
+                                    f"{metadata['implementation']} {metadata['compilerVersion']} {metadata['compilerRevision']}",
+                                    f"Built {metadata['buildTimestamp']}"]
                 assert result['result']['rpc']['transport'] == 'websocket'
                 assert result['result']['connectedPeers'] == 0
                 expected_head = None if expected_genesis is None else {k: expected_genesis[k] for k in ('header_hash', 'slot')}

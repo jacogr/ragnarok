@@ -9,7 +9,9 @@ integration. The current executable is a development proof peer; full client ope
 future work.
 
 [`ragnarok.nim`](ragnarok.nim) is the shared native application entry point for production
-and E2E builds; [`app/`](app/) owns validated options and telemetry/RPC/UI startup.
+and E2E builds; [`version.nim`](version.nim) exposes embedded build identity from
+[`version.json`](version.json) and generated metadata. [`app/`](app/) owns validated options
+and telemetry/RPC/UI startup.
 
 ## Modules
 
@@ -33,7 +35,10 @@ distinguish implemented foundations from complete client milestones.
 
 ## Development proof peer
 
-`make` builds `build/ragnarok` with integration and bounded proof offload enabled. See the
+`make` builds `build/ragnarok` with integration and bounded proof offload enabled.
+The version lives in [`version.json`](version.json); packaging can override it with
+`RAGNAROK_VERSION=0.1.0 make`. `build/ragnarok --version` prints the version, application and
+compiler Git revisions, and embedded UTC build timestamp. RPC exposes the same identity. See the
 [networking guide](../docs/networking.md) for peer commands, certificates and fixtures. The
 options below extend an existing `server`, `client` or retained `mesh` invocation; they do not
 start a complete JAM node.

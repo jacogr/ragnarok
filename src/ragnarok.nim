@@ -11,6 +11,7 @@ import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
 import ./app/options
+import ./version
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
@@ -19,9 +20,16 @@ proc main(): int =
     for i in 1..paramCount(): arguments.add(paramStr(i)) # Copy process input once at the application boundary.
     var options = default(Options)
     if not parseOptions(arguments, options): return 2 # No invalid configuration reaches a service.
+    # Version inspection needs no certificates, listeners or service configuration.
+    if options.argumentCount() == 1 and options.argument(1) == "--version":
+      stdout.writeLine("Ragnarok " & AppVersion & " " & AppRevision)
+      stdout.writeLine("Nimony " & CompilerVersion & " " & CompilerRevision)
+      stdout.writeLine("Built " & BuildTimestamp)
+      return 0
     if options.argumentCount() == 1 and options.argument(1) == "--help":
       stdout.writeLine("Usage: ragnarok server|client PORT CERT KEY PEER ALPN TIMEOUT [MODE] [OPTIONS]")
       stdout.writeLine("       ragnarok mesh LOCAL_PORT REMOTE_PORT CERT KEY LOCAL_KEY PEER_KEY ALPN GATE [OPTIONS]")
+      stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
       return 0
