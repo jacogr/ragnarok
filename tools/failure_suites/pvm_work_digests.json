@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/pvm_work_digests.nim",
+  "build_name": "pvm-work-digests",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-work-digests-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Work digest default"
+    },
+    {
+      "identity": {
+        "origin": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "pvm-work-digests-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Work digest refused"
+    },
+    {
+      "identity": {
+        "origin": "invalid"
+      },
+      "arguments": [
+        "invalid"
+      ],
+      "name": "pvm-work-digests-invalid",
+      "diagnostic": "outcome.status == None",
+      "description": "Work digest invalid"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-work-digests-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Work digest owner"
+    },
+    {
+      "identity": {
+        "origin": "item"
+      },
+      "arguments": [
+        "item"
+      ],
+      "name": "pvm-work-digests-item",
+      "diagnostic": "outcome.status == None",
+      "description": "Work digest item"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-work-digests-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Work digest index"
+    },
+    {
+      "identity": {
+        "origin": "output"
+      },
+      "arguments": [
+        "output"
+      ],
+      "name": "pvm-work-digests-output",
+      "diagnostic": "outcome.status == None",
+      "description": "Work digest output"
+    }
+  ]
+}
