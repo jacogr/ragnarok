@@ -85,3 +85,35 @@ inventory discovery and whitespace checks pass. Production code and verification
 unchanged; existing production/guard evidence remains applicable to those identical sources.
 Logs: `build/worker-soak-unit-final.log`, `build/worker-soak-final-format.log` and
 `build/worker-soak-final-inventory.log`. Canonical Linux CI remains separate; no remote CI requested.
+
+## Live download cancellation workload
+
+The E2E plan owns `application_download_load`, a checked native driver with 32 authenticated,
+fully received signed downloads against fresh TLS responders and one stable Services owner.
+Each round reaches actual worker Done before an explicit attempt-deadline tick marks its output
+unwanted. A real unsolicited server stream must receive a directional reset while the managed
+lease is still held, before a later tick collects cancellation. Exhaustion must leave the exact
+canonical parent unchanged and handoff idle; joined dispatcher cleanup restores admission.
+A final fresh connection must queue and adopt a genuine child on separate host turns.
+
+Completion requires exact native output `DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1` and a
+zero exit, with all fixture hashes checked before execution. E2E registration owns this verdict;
+it is separate from native unit coverage. The normal entry point is `make check-e2e`.
+Protocol/dependency/compiler pins and production behavior remain unchanged.
+
+This workload proves repeated live reception, native progress during an uncollected graph lease,
+completed-output cancellation and recovery. Its explicit protocol ticks are deadline stimuli,
+not measured elapsed cancellation latency. It does not establish running-PVM preemption, a hard
+shutdown bound, sustained concurrent traffic throughput or whole-process memory stability.
+M1 framing is complete; full state serialization/JAM parity and persistent full/light stores
+remain open. Next: independent memory observations and responsiveness under longer-running work.
+
+Local verification on 2026-10-20, macOS arm64 with pinned checked ARC/Clang/LTO: the registered
+E2E callable builds and passes all 32 cancellation/reset rounds and final adoption using production
+crypto/Bandersnatch/QUIC libraries. Native pacing is flushed with bounded yielding responder turns
+before the deadline stimulus; a tight zero-time flush is not treated as proof of packet delivery.
+The exact marker and zero exit are retained in `build/download-load-e2e/results.json`; scoped setup
+and execution logs are under `build/download-load-*`. Two adapter tests reject failed builds,
+fixture changes, error exits and incomplete/extra/count-mismatched output. Four E2E-plan tests,
+inventory discovery, formatting and whitespace checks pass. This is selected local E2E evidence;
+other unchanged workloads retain prior evidence, and no remote CI was requested.

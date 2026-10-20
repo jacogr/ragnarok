@@ -136,6 +136,37 @@ def application_state(context):
     return observed
 
 
+@PLAN.workload
+def application_download_load(context):
+    """Repeat authenticated signed download cancellation and native reset progress before real adoption."""
+    import hashlib
+    import os
+    from native_fixtures import unit_runtime_fixtures
+    checks = context.checks
+    compiled, binary = checks.build(context.compiler, ROOT/'tests/native/application_download_load.nim',
+                                   'application-download-load', context.crypto,
+                                   native_libraries=(context.bs,), quic_library=context.quic)
+    observed = dict(build=compiled, passed=False)
+    if compiled['exit_code'] == 0:
+        # Reuse the signed-report/two-identity fixture adapter without reporting a native unit verdict.
+        _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
+            suite='application_download_loop')['application_download_loop']
+        for path, expected in files:
+            # Missing or altered independent inputs fail before launching the linked workload.
+            if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                raise ValueError('Download load fixture mismatch: '+str(path))
+        environment = dict(os.environ, **{name: str(path) for name, path in inputs.items()})
+        directory = checks.folder/'download-load-work'
+        directory.mkdir(exist_ok=True)
+        result = checks.command([binary], 'application-download-load-run', environment=environment,
+                                cwd=directory, timeout=180)
+        observed.update(run=result, fixtures={str(path): digest for path, digest in files},
+                        passed=result['exit_code'] == 0 and result['output'] ==
+                            'DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1\n')
+    announce('signed download cancellation and native reset load', observed['passed'])
+    return observed
+
+
 # Preserve this task and its original checks in dependency order.
 @PLAN.workload
 def telemetry(context):
