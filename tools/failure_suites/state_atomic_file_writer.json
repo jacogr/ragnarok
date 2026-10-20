@@ -1,0 +1,50 @@
+{
+  "build_name": "state-atomic-file-writer-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Raw file writer lifecycle unclosed",
+      "diagnostic": "not writer.active",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "state-atomic-file-writer-unclosed"
+    },
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Raw file writer lifecycle default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-atomic-file-writer-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Raw file writer lifecycle missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "state-atomic-file-writer-missing"
+    },
+    {
+      "arguments": [
+        "closed"
+      ],
+      "description": "Raw file writer lifecycle closed",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "closed"
+      },
+      "name": "state-atomic-file-writer-closed"
+    }
+  ],
+  "source": "tests/native/state_atomic_file_writer_results.nim"
+}
