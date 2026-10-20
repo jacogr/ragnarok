@@ -29,8 +29,9 @@ optimized refusal guards and compiler privacy/source/index rejection. Native
 suite, discovery/provenance checks and pinned formatting. Existing lower-layer
 production trees are unchanged, so prior lower-layer evidence is retained.
 
-Next: authenticated auditable bundle assembly, erasure coding and complete
-availability/work-report construction. Imported-root correspondence, input
+Auditable bundle assembly from executed input owners is specified in
+[pvm-auditable-bundle.md](pvm-auditable-bundle.md). Next: authenticated root/state
+trust integration, erasure coding and complete availability/work-report construction. Imported-root correspondence, input
 hash/proof authentication and state publication remain separate. State retains
 block composition/final publication. M1 framing is complete; full state
 serialization remains open.
