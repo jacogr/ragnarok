@@ -1,0 +1,118 @@
+{
+  "source": "tests/native/pvm_authorized_refinement.nim",
+  "build_name": "pvm-authorized-refinement",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-authorized-refinement-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorized refinement default"
+    },
+    {
+      "identity": {
+        "origin": "rejected"
+      },
+      "arguments": [
+        "rejected"
+      ],
+      "name": "pvm-authorized-refinement-rejected",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorized refinement rejected"
+    },
+    {
+      "identity": {
+        "origin": "refinement"
+      },
+      "arguments": [
+        "refinement"
+      ],
+      "name": "pvm-authorized-refinement-refinement",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorized refinement refinement"
+    },
+    {
+      "identity": {
+        "origin": "digest"
+      },
+      "arguments": [
+        "digest"
+      ],
+      "name": "pvm-authorized-refinement-digest",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorized refinement digest"
+    },
+    {
+      "identity": {
+        "origin": "success-auth"
+      },
+      "arguments": [
+        "success-auth"
+      ],
+      "name": "pvm-authorized-refinement-success-auth",
+      "diagnostic": "outcome.status == AuthorizationRejected",
+      "description": "Authorized refinement success-auth"
+    },
+    {
+      "identity": {
+        "origin": "success-refinement"
+      },
+      "arguments": [
+        "success-refinement"
+      ],
+      "name": "pvm-authorized-refinement-success-refinement",
+      "diagnostic": "outcome.status == RefinementFailure",
+      "description": "Authorized refinement success-refinement"
+    },
+    {
+      "identity": {
+        "origin": "success-digest"
+      },
+      "arguments": [
+        "success-digest"
+      ],
+      "name": "pvm-authorized-refinement-success-digest",
+      "diagnostic": "outcome.status == DigestFailure",
+      "description": "Authorized refinement success-digest"
+    },
+    {
+      "identity": {
+        "origin": "wrong-refinement"
+      },
+      "arguments": [
+        "wrong-refinement"
+      ],
+      "name": "pvm-authorized-refinement-wrong-refinement",
+      "diagnostic": "outcome.status == RefinementFailure",
+      "description": "Authorized refinement wrong-refinement"
+    },
+    {
+      "identity": {
+        "origin": "wrong-digest"
+      },
+      "arguments": [
+        "wrong-digest"
+      ],
+      "name": "pvm-authorized-refinement-wrong-digest",
+      "diagnostic": "outcome.status == DigestFailure",
+      "description": "Authorized refinement wrong-digest"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-authorized-refinement-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorized refinement owner"
+    }
+  ]
+}
