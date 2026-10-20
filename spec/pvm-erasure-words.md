@@ -36,6 +36,8 @@ parity/mixed subsets, systematic identity, all basis bits, zero/constant words,
 exact resource limits, malformed input lengths/domains/indices, copy/lifetime
 isolation, compiler privacy/nominal guards, optimized result guards and ARC release.
 
+Source-bound audit bundle encoding continues in [pvm-bundle-erasure.md](pvm-bundle-erasure.md).
+
 Next: source-bound bundle and export/page chunk encoding using the scalar
 transform, then availability-root assembly. Production recovery and faster
 transforms remain separate. Root/state trust integration remains open. M1
