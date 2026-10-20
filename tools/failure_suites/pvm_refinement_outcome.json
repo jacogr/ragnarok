@@ -1,0 +1,162 @@
+{
+  "source": "tests/native/pvm_refinement_outcome_results.nim",
+  "build_name": "pvm-refinement-outcome-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-refinement-outcome-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome default"
+    },
+    {
+      "identity": {
+        "origin": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "pvm-refinement-outcome-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome refused"
+    },
+    {
+      "identity": {
+        "origin": "capture"
+      },
+      "arguments": [
+        "capture"
+      ],
+      "name": "pvm-refinement-outcome-capture",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome capture"
+    },
+    {
+      "identity": {
+        "origin": "host"
+      },
+      "arguments": [
+        "host"
+      ],
+      "name": "pvm-refinement-outcome-host",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome host"
+    },
+    {
+      "identity": {
+        "origin": "engine"
+      },
+      "arguments": [
+        "engine"
+      ],
+      "name": "pvm-refinement-outcome-engine",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome engine"
+    },
+    {
+      "identity": {
+        "origin": "output"
+      },
+      "arguments": [
+        "output"
+      ],
+      "name": "pvm-refinement-outcome-output",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome output"
+    },
+    {
+      "identity": {
+        "origin": "wrong-bootstrap"
+      },
+      "arguments": [
+        "wrong-bootstrap"
+      ],
+      "name": "pvm-refinement-outcome-wrong-bootstrap",
+      "diagnostic": "outcome.status == BootstrapFailure",
+      "description": "Refinement outcome wrong-bootstrap"
+    },
+    {
+      "identity": {
+        "origin": "wrong-host"
+      },
+      "arguments": [
+        "wrong-host"
+      ],
+      "name": "pvm-refinement-outcome-wrong-host",
+      "diagnostic": "outcome.status == HostFailure",
+      "description": "Refinement outcome wrong-host"
+    },
+    {
+      "identity": {
+        "origin": "wrong-engine"
+      },
+      "arguments": [
+        "wrong-engine"
+      ],
+      "name": "pvm-refinement-outcome-wrong-engine",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Refinement outcome wrong-engine"
+    },
+    {
+      "identity": {
+        "origin": "success-bootstrap"
+      },
+      "arguments": [
+        "success-bootstrap"
+      ],
+      "name": "pvm-refinement-outcome-success-bootstrap",
+      "diagnostic": "outcome.status == BootstrapFailure",
+      "description": "Refinement outcome success-bootstrap"
+    },
+    {
+      "identity": {
+        "origin": "success-host"
+      },
+      "arguments": [
+        "success-host"
+      ],
+      "name": "pvm-refinement-outcome-success-host",
+      "diagnostic": "outcome.status == HostFailure",
+      "description": "Refinement outcome success-host"
+    },
+    {
+      "identity": {
+        "origin": "success-engine"
+      },
+      "arguments": [
+        "success-engine"
+      ],
+      "name": "pvm-refinement-outcome-success-engine",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Refinement outcome success-engine"
+    },
+    {
+      "identity": {
+        "origin": "protocol-output"
+      },
+      "arguments": [
+        "protocol-output"
+      ],
+      "name": "pvm-refinement-outcome-protocol-output",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome protocol-output"
+    },
+    {
+      "identity": {
+        "origin": "owner-default"
+      },
+      "arguments": [
+        "owner-default"
+      ],
+      "name": "pvm-refinement-outcome-owner-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement outcome owner-default"
+    }
+  ]
+}
