@@ -3,7 +3,7 @@
 Scope: detached changed-node persistence foundations under `src/storage/`. GP 0.8.0
 `07f041dabd073f9018b418e9ee72e79dd2185401` M/B/L remain authoritative; physical records
 are local storage data. No state/checkpoint/PVM/application consumer may adopt this work until
-explicitly authorized. This storage stack is limited to fifteen new PRs after #371.
+explicitly authorized. This storage stack is limited to twenty new PRs after #371.
 
 ## Detached revision exports
 
@@ -132,3 +132,22 @@ unchanged partial/corrupt files, FIFO/directory/regular-target/dangling symlink 
 subsequent valid reacquisition. Five strict runtime guards, four valid controls, four privacy
 rejections and actual `'=dup' is not available for type <FileRepository>` lowering pass.
 Power-loss behavior and actual file/directory-sync refusal remain separate evidence gaps.
+
+## Explicit interrupted-tail recovery
+
+`recoverFileRepository` requires an independently trusted exact last-complete generation/root
+token under the journal lock. Only an incomplete final frame or length prefix may be truncated.
+Complete corrupt frames, impossible/oversized lengths and mismatched generation/root tokens
+refuse without byte mutation. A complete visible successor is never dropped to satisfy an older
+token. Identity validation precedes recovery, and ordinary `openFileRepository` remains strict.
+
+Before truncation the verified prefix is synchronized with its parent; after truncation the same
+file/directory barrier precedes owner adoption. O_APPEND resumes at the new EOF despite the old
+read offset. Previously selected views remain independently valid. Header/bootstrap repair and
+complete-frame corruption repair are deliberately unsupported.
+
+`storage_journal_recovery` forks isolated real RLIMIT_FSIZE writers at zero/partial/final-byte
+ceilings and exact/ample controls. It separately verifies child poisoning, parent strict refusal,
+unchanged selected prefixes, exact trusted recovery, resumed publication/reopen, refusal to
+rollback complete frames and refusal to truncate complete checksum corruption. No live file owner
+crosses fork; no cross-process ARC or power-loss claim is made.

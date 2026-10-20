@@ -11,6 +11,7 @@ import ../codec/[state_trie, state_layout, bounded]
 const
   RecordMagic = "RAGNAROK-TRIE-V1\n"
   RecordHeaderBytes = RecordMagic.len + 88
+  TrieExportHeaderBytes* = RecordHeaderBytes ## Minimum exact body extent for one local physical batch.
 
 type
   RecordLimits* = object ## Separate complete target metadata, detached payloads and encoded extents.
