@@ -1,0 +1,74 @@
+{
+  "source": "tests/native/pvm_computed_guarantee.nim",
+  "build_name": "pvm-computed-guarantee",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-guarantee-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantee default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-guarantee-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantee source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-guarantee-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantee limit"
+    },
+    {
+      "identity": {
+        "origin": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "pvm-computed-guarantee-backend",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantee backend"
+    },
+    {
+      "identity": {
+        "origin": "report"
+      },
+      "arguments": [
+        "report"
+      ],
+      "name": "pvm-computed-guarantee-report",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantee report"
+    },
+    {
+      "identity": {
+        "origin": "message"
+      },
+      "arguments": [
+        "message"
+      ],
+      "name": "pvm-computed-guarantee-message",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantee message"
+    }
+  ]
+}
