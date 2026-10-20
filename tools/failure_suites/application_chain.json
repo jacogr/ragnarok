@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/application_chain_results.nim",
+  "build_name": "application-chain-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "application-chain-default", "diagnostic": "outcome.status == None", "description": "Application chain default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "application-chain-refused", "diagnostic": "outcome.status == None", "description": "Application chain refused extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "application-chain-state", "diagnostic": "outcome.status == StateFailure", "description": "Application chain state extraction guard"},
+    {"identity": {"reason": "chain"}, "arguments": ["chain"], "name": "application-chain-chain", "diagnostic": "outcome.status == ChainFailure", "description": "Application chain chain extraction guard"},
+    {"identity": {"reason": "rpc"}, "arguments": ["rpc"], "name": "application-chain-rpc", "diagnostic": "outcome.status == RpcFailure", "description": "Application chain rpc extraction guard"}
+  ]
+}

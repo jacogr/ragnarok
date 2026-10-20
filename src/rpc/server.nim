@@ -35,7 +35,7 @@ type
 
 type
   RpcAccumulationError* {.pure.} = enum ## Default/closed listeners and rejected state-chain adoption expose no child.
-    Uninitialized, None, Unavailable, ChainFailure
+    Uninitialized, None, Unavailable, StaleView, ChainFailure
   RpcAccumulationResult* = object ## Only success retains the published child; failed adoption retains its actual selected cause.
     case status: RpcAccumulationError
     of None:
@@ -203,6 +203,22 @@ proc publishAccumulation*(server: var Server, state: var StateStore,
     return RpcAccumulationResult(status: RpcAccumulationError.ChainFailure,
       chainReason: adopted) # Private composition/capture/append failure sends no subscriber events.
   server.queueBestUpdates(server.chain.bestBlock) # Both handles already own the accepted child before any notification work.
+  RpcAccumulationResult(status: RpcAccumulationError.None, completed: adopted.value)
+
+proc publishAccumulation*(server: var Server, state: var StateStore, view: var ChainView,
+    source: PreparedFinalAccumulation, limits: AccumulationCompositionLimits): RpcAccumulationResult =
+  ## Join an application-owned state/history pair only while RPC retains the same entire selected view.
+  ## Publish all three handles before queue work; refusal preserves histories, finality and pending events.
+  if not server.opened:
+    return RpcAccumulationResult(status: RpcAccumulationError.Unavailable) # An unavailable listener never triggers a silent fallback.
+  if not sameChainView(server.chain, view):
+    return RpcAccumulationResult(status: RpcAccumulationError.StaleView) # Match history, exact map owners, profiles and finality before hashing.
+  let adopted = applyAccumulationChain(state, view, source, limits)
+  if adopted.error != AccumulationChainError.None:
+    return RpcAccumulationResult(status: RpcAccumulationError.ChainFailure,
+      chainReason: adopted) # The application and RPC owners still retain their complete original views.
+  server.chain = view # State and application view already own this child; no fallible work precedes the third replacement.
+  server.queueBestUpdates(server.chain.bestBlock)
   RpcAccumulationResult(status: RpcAccumulationError.None, completed: adopted.value)
 
 proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
