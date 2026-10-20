@@ -1,0 +1,143 @@
+{
+  "source": "tests/native/pvm_computed_round.nim",
+  "build_name": "pvm-computed-round",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-round-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-round-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round source"
+    },
+    {
+      "identity": {
+        "origin": "profile"
+      },
+      "arguments": [
+        "profile"
+      ],
+      "name": "pvm-computed-round-profile",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round profile"
+    },
+    {
+      "identity": {
+        "origin": "queue"
+      },
+      "arguments": [
+        "queue"
+      ],
+      "name": "pvm-computed-round-queue",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round queue"
+    },
+    {
+      "identity": {
+        "origin": "round"
+      },
+      "arguments": [
+        "round"
+      ],
+      "name": "pvm-computed-round-round",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round round"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-round-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round owner"
+    },
+    {
+      "identity": {
+        "origin": "plan"
+      },
+      "arguments": [
+        "plan"
+      ],
+      "name": "pvm-computed-round-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round plan"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-computed-round-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed round parameters"
+    },
+    {
+      "identity": {
+        "origin": "reason-queue-success"
+      },
+      "arguments": [
+        "reason-queue-success"
+      ],
+      "name": "pvm-computed-round-reason-queue-success",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Computed round reason-queue-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-round-default"
+      },
+      "arguments": [
+        "reason-round-default"
+      ],
+      "name": "pvm-computed-round-reason-round-default",
+      "diagnostic": "outcome.status == RoundFailure",
+      "description": "Computed round reason-round-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-round-queue"
+      },
+      "arguments": [
+        "reason-round-queue"
+      ],
+      "name": "pvm-computed-round-reason-round-queue",
+      "diagnostic": "outcome.status == RoundFailure",
+      "description": "Computed round reason-round-queue"
+    },
+    {
+      "identity": {
+        "origin": "reason-queue-round"
+      },
+      "arguments": [
+        "reason-queue-round"
+      ],
+      "name": "pvm-computed-round-reason-queue-round",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Computed round reason-queue-round"
+    }
+  ]
+}

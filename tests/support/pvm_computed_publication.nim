@@ -8,9 +8,9 @@ import ../../src/state/[computed_admission, store]
 import ../../src/codec/state_trie
 import ./[pvm_computed_admission, report_context]
 
-proc publicationFixture*(withReady = false): AdmittedComputedReports =
+proc publicationFixture*(withReady = false, withRound = false): AdmittedComputedReports =
   ## Complete actual two-package execution, signed inclusion and maintained report admission before successor preparation.
-  let source = admissionFixture(withReady = withReady)
+  let source = admissionFixture(withReady = withReady, withRound = withRound)
   let admitted = admitComputedReports(source, computedAdmissionConfig(source))
   assert admitted.error == ComputedAdmissionError.None, "genuine computed admission for publication"
   admitted.value
