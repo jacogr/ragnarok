@@ -41,7 +41,7 @@ type
     lock: Lock
     changed: Cond
     thread: RawThread
-    started, stopping: bool
+    started, stopping, cancelled: bool
     phase: CheckpointWorkerPhase
     next: uint64
     identity: nil WorkerIdentity
@@ -123,6 +123,7 @@ proc start*(worker: var CheckpointWorker, prefix: string): CheckpointBankError {
   initLock(worker.lock)
   initCond(worker.changed)
   worker.stopping = false
+  worker.cancelled = false
   worker.phase = CheckpointWorkerPhase.Idle
   worker.next = 0
   worker.operation = CheckpointOperation.Bootstrap
@@ -165,6 +166,7 @@ proc stage*(worker: var CheckpointWorker, prepared: var PreparedCheckpoint,
       status: CheckpointWorkerError.Exhausted) # No request generation wraps to revive a stale ticket.
   inc worker.next
   worker.prepared = move(prepared)
+  worker.cancelled = false
   worker.operation = operation
   worker.expected = expected
   worker.limit = limit
@@ -186,6 +188,17 @@ proc begin*(worker: var CheckpointWorker, ticket: CheckpointTicket): bool =
   worker.phase = CheckpointWorkerPhase.Running
   signal(worker.changed)
   true
+proc cancel*(worker: var CheckpointWorker, ticket: CheckpointTicket): bool =
+  ## Cancel only a matching staged request before dispatch; already dispatched or completed publication is never hidden.
+  if not worker.started: return false # Closed/default workers own no cancellable slot.
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if not worker.matches(ticket) or worker.phase != CheckpointWorkerPhase.Staged:
+    return false # Foreign/stale/running/executing/done work cannot be reclassified as an unstarted cancellation.
+  worker.prepared = default(PreparedCheckpoint) # No native activation has accessed this sole host-owned buffer.
+  worker.cancelled = true
+  worker.phase = CheckpointWorkerPhase.Done # Keep capacity occupied until explicit matching collection or joined close.
+  true
 proc collect*(worker: var CheckpointWorker, ticket: CheckpointTicket): CheckpointCompletion =
   ## Collect only Done after all worker-local aliases retire, then release the sole buffer on its host allocator thread.
   if not worker.started: return default(CheckpointCompletion)
@@ -193,10 +206,15 @@ proc collect*(worker: var CheckpointWorker, ticket: CheckpointTicket): Checkpoin
   defer: release(worker.lock)
   if not worker.matches(ticket) or worker.phase != CheckpointWorkerPhase.Done:
     return default(CheckpointCompletion) # Not-ready or foreign requests retain the slot and its owner.
-  result = CheckpointCompletion(status: CheckpointCompletionKind.Completed, outcome: worker.outcome)
+  if worker.cancelled:
+    result = CheckpointCompletion(status: CheckpointCompletionKind.Cancelled) # A staged cancellation has no native publication outcome.
+  else:
+    result = CheckpointCompletion(status: CheckpointCompletionKind.Completed,
+        outcome: worker.outcome) # Preserve actual dispatched success or refusal.
   worker.outcome = default(CheckpointBankResult[CheckpointHead])
   worker.prepared = default(PreparedCheckpoint)
   worker.expected = default(CheckpointHead)
+  worker.cancelled = false
   worker.phase = CheckpointWorkerPhase.Idle
 proc close*(worker: var CheckpointWorker): CheckpointShutdown =
   ## Join before retiring the private buffer/bank; never label an already completed publication as cancelled.
@@ -210,7 +228,10 @@ proc close*(worker: var CheckpointWorker): CheckpointShutdown =
   release(worker.lock)
   worker.thread.join()
   if worker.phase == CheckpointWorkerPhase.Done:
-    result.finished = CheckpointCompletion(status: CheckpointCompletionKind.Completed,
+    if worker.cancelled:
+      result.finished = CheckpointCompletion(status: CheckpointCompletionKind.Cancelled) # Preserve an explicit staged cancellation through joined close too.
+    else:
+      result.finished = CheckpointCompletion(status: CheckpointCompletionKind.Completed,
         outcome: worker.outcome) # Preserve actual success or failure even when the host skipped collect.
   elif worker.phase == CheckpointWorkerPhase.Executing:
     result.finished = CheckpointCompletion(status: CheckpointCompletionKind.Interrupted) # A missing outcome after native entry must never be described as an unstarted/cancelled transaction.
@@ -224,6 +245,7 @@ proc close*(worker: var CheckpointWorker): CheckpointShutdown =
   worker.expected = default(CheckpointHead)
   worker.phase = CheckpointWorkerPhase.Idle
   worker.started = false
+  worker.cancelled = false
   worker.identity = nil
   result.retirement = worker.bank.close() # Keep a native close error separate from the possibly committed operation.
   deinitCond(worker.changed)
