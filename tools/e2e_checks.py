@@ -24,7 +24,9 @@ def prepare_peer(context):
     report = context.report
     crypto_library = context.crypto
     quic_library = context.quic
-    compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok', crypto_library, quic_library=quic_library)
+    # Download preparation imports Bandersnatch in every peer shape, including ordinary startup.
+    compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok', crypto_library,
+                             native_libraries=(context.bs,), quic_library=quic_library)
     report['quic_peer_build'] = compiled
     context.peer = compiled, binary
 
@@ -214,7 +216,7 @@ def prepare_integrated_peer(context):
     crypto_library = context.crypto
     quic_library = context.quic
     compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok-integration', crypto_library,
-                             quic_library=quic_library, defines=('integration',))
+                             native_libraries=(context.bs,), quic_library=quic_library, defines=('integration',))
     context.integrated = compiled, binary
 
 

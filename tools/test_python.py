@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 import re
 import sys
+import subprocess
+import time
 from native_checks import NativeChecks, ROOT, announce
 
 BUILD = ROOT/'build/tests/python'
@@ -17,9 +19,23 @@ BUILD = ROOT/'build/tests/python'
 
 # Allow five minutes for the full Python suite on busy CI hosts; native command limits stay unchanged.
 def python_tests():
-    return NativeChecks(BUILD).command(
-        [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'],
-        'python-tests', timeout=300)
+    arguments = [sys.executable, '-m', 'unittest', 'discover', '-v', '-s', 'tests', '-p', 'test_*.py']
+    started = time.monotonic()
+    try:
+        # Per-test progress identifies the stalled reference if discovery hits the unchanged deadline.
+        return NativeChecks(BUILD).command(arguments, 'python-tests', timeout=300)
+    except subprocess.TimeoutExpired as error:
+        # subprocess.run has killed/reaped discovery; retain its partial output and a failed report.
+        fragments = [error.stdout or '', error.stderr or '']
+        output = ''.join(part.decode(errors='replace') if isinstance(part, bytes) else part
+                         for part in fragments)
+        output += '\n'+str(error)+'\n'
+        log = BUILD/'python-tests.log'
+        log.write_text(output)
+        return dict(command=arguments, exit_code=124,
+                    elapsed_seconds=round(time.monotonic()-started, 6),
+                    log=str(log), output=output)
+
 
 
 # A fresh failed or empty discovery cannot reuse an earlier green report.
