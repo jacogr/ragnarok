@@ -20,7 +20,7 @@ proc finalizationFixture*(withReady = true, withComposition = false,
     limits.accountWriteKeys = ElementLimit(1)
     limits.completion.batch.selfWrites = ElementLimit(1)
     let bytes = if storage in {ComputedStorageMode.FetchWideOffset,
-        ComputedStorageMode.FetchWideIndex}: 11'u64 else: 3'u64
+        ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail}: 11'u64 else: 3'u64
     limits.completion.batch.selfValueBytes = ByteLimit(bytes)
   let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
       withComposition = withComposition, withChain = withChain, storage = storage), limits)
