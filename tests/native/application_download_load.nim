@@ -3,7 +3,7 @@
 
 ## E2E driver repeats signed TLS downloads and uncollected deadline cancellation before real adoption.
 
-import std/[assertions, syncio, envvars, monotimes, times]
+import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
 import ../../src/quic/[block_download_loop, block_download_peers, block_download_stream]
 import ../../src/app/[services, options, chain, candidate, handoff, block_download,
@@ -102,8 +102,19 @@ proc round(owner: var Services, expected: array[42, byte], frame: seq[byte],
   lease(owner, false)
   assert owner.preparationAvailable and owner.accumulationStage == AccumulationHandoffStage.Idle, "producer available after close"
 
+proc idle(gate: string, iteration: int) {.raises.} =
+  ## Publish only after round-local transports, worker and snapshots retire; wait for the OS observer.
+  echo "DOWNLOAD_IDLE " & $iteration
+  stdout.flushFile()
+  let started = getMonoTime()
+  while not fileExists(gate & "/" & $iteration):
+    assert (getMonoTime() - started).inSeconds < 20, "bounded external resource observation"
+    discard pauseMicros(1000) # Test-only gating parks one process without retaining a native round or graph lease.
+
 proc main() {.raises.} =
   ## Independent signed fixture bytes drive every real native request, worker and host adoption.
+  let gate = getEnv("RAGNAROK_DOWNLOAD_LOAD_GATE")
+  assert gate.len > 0, "external resource observer gate required"
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var report = newSeq[byte](raw.len)
   for index, octet in raw: report[index] = byte(octet) # Preserve the pinned independent report.
@@ -135,8 +146,10 @@ proc main() {.raises.} =
   for iteration in 0..<Rounds:
     round(owner, expected, frame, DownloadPeerKey(key),
         true) # Each round cancels actual Done output, then joins native cleanup.
+    idle(gate, iteration) # The process remains alive across every post-cleanup resource sample.
   round(owner, expected, frame, DownloadPeerKey(key),
       false) # The same canonical owner can still adopt after repeated cancellation.
+  idle(gate, Rounds) # Final adoption and its joined transport cleanup are observed separately.
   echo "DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1"
 
 try:
