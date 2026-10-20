@@ -1,0 +1,96 @@
+{
+  "source": "tests/native/pvm_erasure_layout.nim",
+  "build_name": "pvm-erasure-layout",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-erasure-layout-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-erasure-layout-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout source"
+    },
+    {
+      "identity": {
+        "origin": "shards"
+      },
+      "arguments": [
+        "shards"
+      ],
+      "name": "pvm-erasure-layout-shards",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout shards"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-erasure-layout-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout limit"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-erasure-layout-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout index"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-erasure-layout-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout info"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-erasure-layout-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout owner"
+    },
+    {
+      "identity": {
+        "origin": "chunk"
+      },
+      "arguments": [
+        "chunk"
+      ],
+      "name": "pvm-erasure-layout-chunk",
+      "diagnostic": "outcome.status == None",
+      "description": "Erasure layout chunk"
+    }
+  ]
+}

@@ -40,6 +40,8 @@ exact/insufficient local budgets, no additional hashes, copy/lifetime isolation,
 optimized failed-result guards, compiler privacy/source rejection and fresh
 1000-cycle ARC release.
 
+Systematic bundle input layout is continued in [pvm-erasure-layout.md](pvm-erasure-layout.md).
+
 Next: authenticated root/state trust integration, erasure coding and availability
 specification from original bundle/export owners. M1 framing is complete; full
 state serialization and whole-block parity remain open.
