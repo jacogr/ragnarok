@@ -10,7 +10,7 @@ import ./[accumulation_execution, accumulation_round, accumulation_queue, accumu
 
 type
   AccumulationContinuationLimits* = object ## Independent traversal ceilings include inspected but unaffordable work.
-    executions*: ElementLimit ## Maximum selected initial execution outcomes inspected for outgoing transfers.
+    executions*: ElementLimit ## Maximum completed execution outcomes inspected for outgoing transfers.
     transfers*: ElementLimit ## Maximum outgoing fixed records copied; zero authorizes no nonempty sequence.
     memoBytes*: ByteLimit ## Aggregate copied memo bytes, including repeated transfers.
     reports*: ElementLimit ## Maximum unprocessed reports inspected, including the first rejected report.
@@ -31,7 +31,7 @@ type
     InvalidSource, ## The supplied completion is uninitialized or has no valid queue-prefix provenance.
     InvalidIndex,  ## The full-width plan-local ordinal is outside its selected report range.
     LimitExceeded, ## Outcome, remaining-report or digest inspection exceeds its independent ceiling.
-    UnsupportedTransfers ## Reserved historical initial-continuation refusal; later reentry has its own transfer gate.
+    UnsupportedTransfers ## Reserved historical refusal; transfer support requires explicit count/memo policy.
   # Private acyclic storage keeps the actual completion and original immutable priority queue together.
   ContinuationData = ref object
     source: CompletedBlockAccumulation

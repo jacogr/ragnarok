@@ -3,6 +3,7 @@
   "build_name": "accumulation-reentry-results",
   "crypto_library": "crypto",
   "cases": [
+    {"identity": {"reason": "transfers"}, "arguments": ["transfers"], "name": "accumulation-reentry-transfers", "diagnostic": "outcome.status == None", "description": "Accumulation reentry transfers extraction guard"},
     {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-reentry-default", "diagnostic": "outcome.status == None", "description": "Accumulation reentry default extraction guard"},
     {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-reentry-refused", "diagnostic": "outcome.status == None", "description": "Accumulation reentry refused extraction guard"},
     {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-reentry-info", "diagnostic": "outcome.status == None", "description": "Accumulation reentry info extraction guard"},

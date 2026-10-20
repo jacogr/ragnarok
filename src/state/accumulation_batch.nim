@@ -8,7 +8,7 @@ import std/algorithm
 import ../codec/[bounded, composite, header, state_accounts, state_layout, state_trie]
 import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_context,
   accumulation_effects, accumulation_dispatch, accumulation_outcome, accumulation_provisions,
-  accumulation_skip,
+  accumulation_skip, accumulation_transfers,
   accumulation_terminal_provisions, store]
 
 type
@@ -46,6 +46,9 @@ type
     selfWrites*: int      ## Unique nonmetadata keys prepared from selected self-write provenance.
     selfValueBytes*: uint64 ## Copied final self values, excluding fixed metadata and terminal provisions.
     terminal*: AccumulationTerminalProvisionInfo ## Checked invocation slot and selected-provision accounting.
+  BatchTransferRow = object ## Private sort row keeps numeric service identity with its exact normalized outcome.
+    service: ServiceIndex
+    outcome: AccumulationOutcome
   # Acyclic owner retains exact input/prior provenance, private metadata writes and normalized terminal effects.
   BatchData = ref object
     inputs: PreparedAccumulationInputs
@@ -153,6 +156,45 @@ proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisi
         status: AccumulationBatchError.InvalidIndex) # Parent proves the full-width ordinal.
   AccumulationBatchResult[AccumulationOutcome](status: AccumulationBatchError.None,
       completed: retained.value)
+
+# Numeric service order is independent of execution order or serialized key bytes.
+func compareTransferRow(left, right: BatchTransferRow): int =
+  if uint32(left.service) < uint32(right.service): return -1 # Emit the entire smaller service's selected sequence first.
+  if uint32(left.service) > uint32(right.service): return 1
+  0
+
+proc prepareBatchAccumulationTransfers*(plan: PreparedAccumulationBatch,
+    limits: AccumulationTransferCollectionLimits): AccumulationBatchResult[
+        PreparedAccumulationTransfers] =
+  ## Collect this verified common-source batch's selected outcomes in numeric service order.
+  ## This does not certify admitted-round coverage or paid gas; those remain with actual completion owners.
+  let data = plan.data
+  if data == nil:
+    return AccumulationBatchResult[PreparedAccumulationTransfers](status:
+      AccumulationBatchError.Uninitialized) # A default batch is not an initialized empty collection.
+  let count = data.terminal.terminalProvisionInfo.value.provisions.contexts
+  if uint64(count) > uint64(limits.sources) or
+      count > high(int) div (sizeof(BatchTransferRow)+sizeof(AccumulationOutcome)):
+    return AccumulationBatchResult[PreparedAccumulationTransfers](status:
+      AccumulationBatchError.LimitExceeded) # Bound sort descriptors and captured immutable handles before allocation.
+  var rows = newSeq[BatchTransferRow](count)
+  for index in 0..<count:
+    let outcome = data.terminal.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(uint64(index))).value
+    rows[index] = BatchTransferRow(service: outcome.outcomeInfo.value.service,
+        outcome: outcome) # Batch preparation already proves unique source identity.
+  rows.sort(compareTransferRow)
+  var outcomes = newSeq[AccumulationOutcome](count)
+  for index, row in rows:
+    outcomes[index] = row.outcome # Preserve each selected append sequence while canonicalizing only service order.
+  let collected = prepareAccumulationTransfers(outcomes, limits)
+  if collected.error == AccumulationTransferCollectionError.LimitExceeded:
+    return AccumulationBatchResult[PreparedAccumulationTransfers](status:
+      AccumulationBatchError.LimitExceeded) # Duplicates still consume full item/memo capture budgets.
+  if collected.error != AccumulationTransferCollectionError.None:
+    return AccumulationBatchResult[PreparedAccumulationTransfers](status:
+      AccumulationBatchError.InvalidExecution) # Private normalized batch outcomes cannot legitimately be invalid.
+  AccumulationBatchResult[PreparedAccumulationTransfers](status:
+    AccumulationBatchError.None, completed: collected.value)
 
 # Inspect bounded immutable creation facts only after the caller has checked aggregate trace ceilings.
 proc hasCreatedAccount(context: AccumulationEffectContext, service: ServiceIndex): bool =

@@ -36,9 +36,9 @@ destination gas/input order and credit, no allowance recurrence, exact work limi
 default/source ownership and immutable extraction, atomic backend failure and
 1,000 ARC cycles. Add runtime extraction, privacy and nominal guards as relevant.
 
-Later reentry still refuses newly emitted transfers until its own selection/input
-binding is extended. This is initial recursive preparation, not full accseq, final
-processed-transfer publication or whole-block parity. M1 framing is complete;
+The original layer left later reentry gated; [transfer-aware reentry](pvm-transfer-reentry.md)
+now extends collection, gas and inputs through repeated rounds. Final
+processed-transfer statistics/publication and whole-block parity remain open. M1 framing is complete;
 full state serialization remains open.
 
 ## Local verification (2026-10-19)

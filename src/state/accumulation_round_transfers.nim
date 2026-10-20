@@ -4,10 +4,8 @@
 ## Bind canonical outgoing transfer collection and paid gas to an actual completed admitted initial round.
 ## No replacement outcome array, source state or caller-authored gas observation is accepted.
 
-import std/algorithm
-import ../codec/[composite, work_digest]
-import ./[accumulation_execution, accumulation_batch, accumulation_outcome,
-  accumulation_provisions, accumulation_transfers]
+import ../codec/work_digest
+import ./[accumulation_execution, accumulation_batch, accumulation_transfers]
 
 type
   AccumulationRoundTransferError* {.pure.} = enum ## Default/refused results retain no earlier collection, source or gas progress.
@@ -15,10 +13,6 @@ type
   AccumulationRoundTransferInfo* = object ## Copied observations keep exact collected cardinalities separate from paid outgoing gas.
     collection*: AccumulationTransferCollectionInfo
     gas*: Gas
-  # Fixed sort rows retain immutable outcomes; numeric identity alone determines cross-service order.
-  RoundTransferRow = object
-    service: ServiceIndex
-    outcome: AccumulationOutcome
   # Acyclic owner binds exact completed provenance and its canonical collection without mutable replacement fields.
   RoundTransferData = ref object
     source: CompletedBlockAccumulation
@@ -40,12 +34,6 @@ func value*[T](outcome: AccumulationRoundTransferResult[T]): T {.inline,
     requires: outcome.status == AccumulationRoundTransferError.None.} =
   ## Extract complete selected success under optimized native contracts.
   outcome.completed
-
-# Numeric service order is independent of caller execution order and serialized key bytes.
-func compareRow(left, right: RoundTransferRow): int =
-  if uint32(left.service) < uint32(right.service): return -1 # Smaller service emits its entire selected sequence first.
-  if uint32(left.service) > uint32(right.service): return 1
-  0
 
 proc roundTransferInfo*(plan: PreparedRoundAccumulationTransfers):
     AccumulationRoundTransferResult[AccumulationRoundTransferInfo] =
@@ -89,25 +77,11 @@ proc prepareRoundAccumulationTransfers*(source: CompletedBlockAccumulation,
   if completed.error != AccumulationExecutionError.None:
     fail(AccumulationRoundTransferError.InvalidSource) # No caller-authored replacement certificate or budget is accepted.
   let info = completed.value
-  let count = info.batch.executions
-  if uint64(count) > uint64(limits.sources) or
-      count > high(int) div (sizeof(RoundTransferRow)+sizeof(AccumulationOutcome)):
-    fail(AccumulationRoundTransferError.LimitExceeded) # Bound canonical sort descriptors and captured handles before allocation.
-  let batch = source.executionBatch.value
-  var rows = newSeq[RoundTransferRow](count)
-  for index in 0..<count:
-    let outcome = batch.batchOutcomeAt(AccumulationProvisionSourceIndex(uint64(index))).value
-    rows[index] = RoundTransferRow(service: outcome.outcomeInfo.value.service,
-        outcome: outcome) # Complete coverage already proves unique service identity.
-  rows.sort(compareRow)
-  var outcomes = newSeq[AccumulationOutcome](count)
-  for index, row in rows:
-    outcomes[index] = row.outcome # Canonical collection keeps each service's own append order unchanged.
-  let collected = prepareAccumulationTransfers(outcomes, limits)
-  if collected.error == AccumulationTransferCollectionError.LimitExceeded:
-    fail(AccumulationRoundTransferError.LimitExceeded) # Preserve the existing item/memo/native storage policy refusal.
-  if collected.error != AccumulationTransferCollectionError.None:
-    fail(AccumulationRoundTransferError.InvalidSource) # Private completed owners cannot legitimately supply invalid selected outcomes.
+  let collected = prepareBatchAccumulationTransfers(source.executionBatch.value, limits)
+  if collected.error == AccumulationBatchError.LimitExceeded:
+    fail(AccumulationRoundTransferError.LimitExceeded) # Shared canonical collection owns source/item/memo/native extent checks.
+  if collected.error != AccumulationBatchError.None:
+    fail(AccumulationRoundTransferError.InvalidSource) # Only this completion's actual initialized batch is accepted.
   let collection = collected.value
   var available = uint64(info.gasUsed)
   for index in 0..<collection.transferCollectionInfo.value.transfers:

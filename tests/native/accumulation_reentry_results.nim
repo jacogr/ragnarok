@@ -19,6 +19,7 @@ of "cycle-default":
     AccumulationReentryDepthLimit(1)).value # No fabricated completed cycle source.
 of "info": discard owner.reentryInfo.value # No fabricated empty/stopped selection.
 of "source": discard owner.reentrySource.value # No fabricated completed later round.
+of "transfers": discard owner.reentryTransfers.value # Defaults retain no outgoing owner.
 of "inputs": discard owner.reentryInputs.value # No fabricated selected groups.
 of "state": discard owner.reentryState.value # No partial successor map.
 of "report": discard owner.reentryReportAt(ContinuationReportIndex(0)).value # No fabricated report handle.

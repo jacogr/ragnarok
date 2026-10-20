@@ -5,7 +5,7 @@
 
 import std/cmdline
 import ../../src/state/[accumulation_batch, accumulation_provisions, accumulation_service,
-    accumulation_inputs, accumulation_skip, store]
+    accumulation_inputs, accumulation_skip, accumulation_transfers, store]
 import ../../src/codec/[bounded, header, state_layout]
 import ../support/accumulation_batch_context
 
@@ -18,6 +18,9 @@ let prior = fixture.state.snapshot.value
 var result = prepareAccumulationBatch(fixture.inputs, prior, [first, second], HeaderSlot(128),
     batchPolicy())
 case argument
+of "transfers":
+  discard prepareBatchAccumulationTransfers(default(PreparedAccumulationBatch), default(
+      AccumulationTransferCollectionLimits)).value # No raw collection from an uninitialized owner.
 of "default":
   result = default(AccumulationBatchResult[PreparedAccumulationBatch])
   discard result.value
