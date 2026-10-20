@@ -1,0 +1,15 @@
+{
+  "source": "tests/native/accumulation_chain_results.nim",
+  "build_name": "accumulation-chain-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-chain-default", "diagnostic": "outcome.status == None", "description": "Accumulation chain default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-chain-refused", "diagnostic": "outcome.status == None", "description": "Accumulation chain refused extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-chain-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation chain state extraction guard"},
+    {"identity": {"reason": "application"}, "arguments": ["application"], "name": "accumulation-chain-application", "diagnostic": "outcome.status == ApplicationFailure", "description": "Accumulation chain application extraction guard"},
+    {"identity": {"reason": "header"}, "arguments": ["header"], "name": "accumulation-chain-header", "diagnostic": "outcome.status == HeaderFailure", "description": "Accumulation chain header extraction guard"},
+    {"identity": {"reason": "capture"}, "arguments": ["capture"], "name": "accumulation-chain-capture", "diagnostic": "outcome.status == CaptureFailure", "description": "Accumulation chain capture extraction guard"},
+    {"identity": {"reason": "view"}, "arguments": ["view"], "name": "accumulation-chain-view", "diagnostic": "outcome.status == ViewFailure", "description": "Accumulation chain view extraction guard"},
+    {"identity": {"reason": "parameters"}, "arguments": ["parameters"], "name": "accumulation-chain-parameters", "diagnostic": "value.ready", "description": "Accumulation chain default parameters extraction guard"}
+  ]
+}
