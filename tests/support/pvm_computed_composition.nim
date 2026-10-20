@@ -3,13 +3,16 @@
 
 ## Actual finalized computed work with canonical original statistics and bounded maintained state-composition policies.
 
+import ./pvm_computed_storage_program
 import ../../src/state/[computed_finalization, accumulation_completion]
 import ../../src/codec/[bounded, assurances]
 import ./[pvm_computed_finalization, accumulation_completion_context]
 
-proc compositionFixture*(withComposition = true, withChain = false): FinalizedComputedAccumulation =
+proc compositionFixture*(withComposition = true, withChain = false,
+    storage = ComputedStorageMode.Disabled): FinalizedComputedAccumulation =
   ## Author original statistics before computation, then genuinely execute and stop the historical work.
-  let source = finalizationFixture(withComposition = withComposition, withChain = withChain)
+  let source = finalizationFixture(withComposition = withComposition, withChain = withChain,
+      storage = storage)
   finalizeComputedAccumulation(source, computedFinalizationConfig()).value
 proc computedCompositionLimits*(): AccumulationCompositionLimits =
   ## Adapt only the actual three-core domains and independent aggregate reporter/queue resource ceilings.

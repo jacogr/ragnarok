@@ -3,16 +3,38 @@
 
 ## Genuine completed computed service execution and bounded stopped-history/finalization policies.
 
+import std/[assertions, syncio]
+import ./pvm_computed_storage_program
 import ../../src/state/[computed_execution, computed_finalization, accumulation_driver,
+  accumulation_runner, accumulation_dispatch, accumulation_execution, accumulation_batch,
   accumulation_reentry, accumulation_continuation, accumulation_outputs]
 import ../../src/codec/[bounded, state_outputs]
 import ./[pvm_computed_execution, accumulation_execution_context]
 
 proc finalizationFixture*(withReady = true, withComposition = false,
-    withChain = false): ExecutedComputedAccumulation =
+    withChain = false, storage = ComputedStorageMode.Disabled): ExecutedComputedAccumulation =
   ## Execute the actual selected guest before any stopped-history/final-state construction.
-  executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
-      withComposition = withComposition, withChain = withChain), computedExecutionLimits()).value
+  var limits = computedExecutionLimits()
+  if storage != ComputedStorageMode.Disabled:
+    # Local provenance/publication policies admit exactly one self key and its three guest-memory bytes.
+    limits.accountWriteKeys = ElementLimit(1)
+    limits.completion.batch.selfWrites = ElementLimit(1)
+    limits.completion.batch.selfValueBytes = ByteLimit(3)
+  let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
+      withComposition = withComposition, withChain = withChain, storage = storage), limits)
+  if executed.error != ComputedExecutionError.None:
+    echo "computed execution ", executed.error
+    if executed.error == ComputedExecutionError.RunnerFailure:
+      let runner = executed.runnerFailure
+      echo "runner ", runner.error
+      if runner.error == AccumulationRunnerError.DispatchFailure: echo "dispatch ",
+          runner.dispatchFailure.error
+      if runner.error == AccumulationRunnerError.CompletionFailure:
+        echo "completion ", runner.completionFailure.error
+        if runner.completionFailure.error == AccumulationExecutionError.BatchFailure: echo "batch ",
+            runner.completionFailure.batchFailure.error
+  assert executed.error == ComputedExecutionError.None
+  executed.value
 proc computedFinalizationConfig*(): ComputedFinalizationConfig =
   ## Only an idle continuation is needed for this exhausted queue; retained history still counts both actual rounds.
   ComputedFinalizationConfig(driver: AccumulationDriverLimits(

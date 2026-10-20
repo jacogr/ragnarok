@@ -3,6 +3,7 @@
 
 ## Original-source admission policies retain semantic parameters while independently bounding resources.
 
+import ./pvm_computed_storage_program
 import std/assertions
 import ../../src/state/[computed_inclusion, computed_batch, computed_envelope, computed_credentials,
   computed_guarantors, computed_roster, computed_transition, computed_profile, report_admission,
@@ -31,11 +32,12 @@ proc computedAdmissionConfig*(source: IncludedComputedGuarantees): ReportAdmissi
   result.ancestors.header.authorValidators = ValidatorCount(9)
 proc admissionFixture*(distinctPackages = true, withReady = false,
     withRound = false, withExecution = false, invalidEntry = false,
-        withComposition = false, withChain = false): IncludedComputedGuarantees =
+        withComposition = false, withChain = false,
+            storage = ComputedStorageMode.Disabled): IncludedComputedGuarantees =
   ## Two distinct original packages are executed before signing; optional duplicates exercise actual package refusal.
   let batch = inclusionFixture(distinctPackages = distinctPackages, withReady = withReady,
       withRound = withRound, withExecution = withExecution, invalidEntry = invalidEntry,
-      withComposition = withComposition, withChain = withChain)
+      withComposition = withComposition, withChain = withChain, storage = storage)
   let first = batch.computedBatchSourceAt(ComputedBatchIndex(
       0)).value.computedEnvelopeGuarantee.value.report
   let second = batch.computedBatchSourceAt(ComputedBatchIndex(

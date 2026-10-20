@@ -3,6 +3,7 @@
 
 ## Execute multiple original cores against one genuine complete signed transition, then verify their actual credentials.
 
+import ./pvm_computed_storage_program
 import std/assertions
 import ../../src/state/[computed_batch, computed_envelope, computed_credentials,
   computed_guarantors,
@@ -16,12 +17,12 @@ proc batchLimits*(): ComputedBatchLimits =
     bytes: ByteLimit(100000), headerBytes: ByteLimit(4096))
 proc batchEnvelopes*(repeatReporter = false, distinctPackages = false, withReady = false,
     withRound = false, withExecution = false, invalidEntry = false, withComposition = false,
-        withChain = false): seq[ComputedGuaranteeEnvelope] =
+        withChain = false, storage = ComputedStorageMode.Disabled): seq[ComputedGuaranteeEnvelope] =
   ## Share the actual original map and posterior snapshot rather than rebuilding equal-root stand-ins.
   let fixture = rosterFixture(rotation = 4, repeatReporter = repeatReporter,
     additionalCores = [1'u64], distinctPackages = distinctPackages, withReady = withReady,
         withRound = withRound, withExecution = withExecution, invalidEntry = invalidEntry,
-            withComposition = withComposition, withChain = withChain)
+            withComposition = withComposition, withChain = withChain, storage = storage)
   let sources = @[fixture.source, fixture.siblings[0]]
   result = newSeq[ComputedGuaranteeEnvelope](sources.len)
   for i, source in sources:

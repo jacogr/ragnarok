@@ -3,6 +3,7 @@
 
 ## Commit original guest code before signing, then compute against the exact admitted parent map.
 
+import ./pvm_computed_storage_program
 import std/assertions
 import ../../src/state/[computed_profile, computed_lookup, computed_recent, computed_state,
   computed_links, computed_guarantee, computed_report, block_admission, block_transition,
@@ -70,15 +71,19 @@ proc transitionSource*(context: Context, original: InputFixture,
   assert configured.error == GenesisError.None, "genuine configured signed parent"
   bindComputedProfile(lookup, configured).value
 proc transitionFixture*(epoch = false, withReady = false,
-    withExecution = false, invalidEntry = false): ComputedTransitionFixture =
+    withExecution = false, invalidEntry = false, storage = ComputedStorageMode.Disabled): ComputedTransitionFixture =
   ## Preserve real signing and original map ownership; no fake keys or forged successful transition result.
   let halt = @[50'u8, 0]
   var instructions = @[refinementImmediate(8, 0), halt]
   if withExecution and not invalidEntry:
     # Five pinned opcode1 fallthrough blocks place the shared zero-output body at accumulation entry5.
     instructions = @[@[1'u8], @[1'u8], @[1'u8], @[1'u8], @[1'u8], refinementImmediate(8, 0), halt]
+  if storage != ComputedStorageMode.Disabled:
+    instructions = computedStorageInstructions(storage) # Separate original entries prevent refinement from invoking an accumulation-only host.
   let guest = reportGuest(instructions)
   var fixture = executionFixture([halt], [guest], external = false)
+  if storage != ComputedStorageMode.Disabled:
+    fixture = computedStorageBudget(fixture) # Historical ready and current reports share the actual declared gas, not a later patched observation.
   let templateLinks = transitionLinks(executionRun(fixture, core = 0).value)
   let templateReport = templateLinks.computedLinkSource.value.computedGuaranteeReport.value
   let base = decodeOwnedReport(templateReport.computedReportBytes.value, 2).value
@@ -105,6 +110,10 @@ proc transitionFixture*(epoch = false, withReady = false,
       options.extra.add(StateEntry(key: key, value: bytes))
   assert histories == 2, "both original historical code requests"
   var params = fixture.parameters.encodeParameters
+  if storage != ComputedStorageMode.Disabled:
+    for field, amount in [2'u64, 1'u64, 10'u64]:
+      for index in 0..<8: params[field*8+index] = byte((amount shr (8*index)) and
+          255) # Exact original E8 item/octet/base deposit schedule, before configured capture.
   params[24] = 2
   params[25] = 0
   for index in 30..<34: params[index] = 0 # Original epoch domain is twelve slots.
