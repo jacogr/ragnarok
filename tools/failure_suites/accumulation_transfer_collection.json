@@ -1,0 +1,95 @@
+{
+  "source": "tests/native/accumulation_transfer_collection_results.nim",
+  "build_name": "accumulation-transfer-collection-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "accumulation-transfer-collection-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "failed"
+      },
+      "arguments": [
+        "failed"
+      ],
+      "name": "accumulation-transfer-collection-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection failed extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "accumulation-transfer-collection-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection index extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "accumulation-transfer-collection-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection info extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "accumulation-transfer-collection-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection limit extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "accumulation-transfer-collection-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection source extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "source-index"
+      },
+      "arguments": [
+        "source-index"
+      ],
+      "name": "accumulation-transfer-collection-source-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection source-index extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "transfer"
+      },
+      "arguments": [
+        "transfer"
+      ],
+      "name": "accumulation-transfer-collection-transfer",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection transfer extraction guard"
+    }
+  ]
+}
