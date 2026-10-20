@@ -7,7 +7,8 @@
 
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[block_download, block_input, services, options, chain, candidate, handoff, download_schedule]
+import ../../../src/app/[block_download, block_input, services, options, chain, candidate, handoff,
+    download_schedule, preparation_worker]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, header, report_owned, assurances]
 import ../../../src/state/[store, accumulation_finalization]
@@ -254,6 +255,60 @@ proc cycle(chain: ApplicationChain, frame: seq[byte], complete: bool) =
         BlockDownloadError.None # A full E4 header plus body prefix owns bounded storage.
   assert download.cancel(id)
 
+proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
+  ## Yield during bounded asynchronous preparation polling without advancing simulated protocol clocks.
+
+proc asynchronous(frame: seq[byte]) {.raises.} =
+  ## Private raw reception cannot be cancelled, duplicated or reused while the managed worker borrows its input.
+  var owner = default(Services)
+  var options = default(Options)
+  assert parseOptions(@["server", "--with-state", "--chain",
+    "application-block-download-chain.json",
+    "--state-writes", "1000", "--state-write-bytes", "1000000"], options)
+  assert owner.start(options, "async raw")
+  defer: owner.close()
+  let before = owner.stateSnapshot.value
+  var download = default(BlockDownload)
+  for mode in 0..<3:
+    let admitted = download.begin(owner, [], resources(frame.len), preparationLimits())
+    assert admitted.error == BlockDownloadError.None
+    let id = admitted.value
+    assert download.append(id, frame, true) == BlockDownloadError.None
+    assert download.requestFinished(id) == BlockDownloadError.None
+    let submitted = download.beginPreparation(id, owner)
+    assert submitted.error == BlockDownloadError.None
+    assert download.stage == BlockDownloadStage.Preparing and owner.preparationActive
+    assert not download.cancel(id), "ordinary cancellation cannot free leased input"
+    assert download.beginPreparation(id, owner).error == BlockDownloadError.NotReady
+    assert download.request(id).error == BlockDownloadError.StaleDownload
+    assert download.append(id, [], true) == BlockDownloadError.StaleDownload
+    assert download.enqueue(id, owner, completionLimits().composition).error ==
+        BlockDownloadError.NotReady
+    if mode == 2:
+      assert download.retirePreparation(id, owner), "explicit retirement joins before clearing raw context"
+    else:
+      var done = false
+      for turn in 0..<20000:
+        owner.tick(0) # The managed Services gate drives only independent UI work during execution.
+        if owner.preparationPhase == PreparationPhase.Done:
+          done = true
+          break # Preserve the uncollected graph lease for exact cancellation or completion assertions.
+        discard pauseMicros(1000)
+      assert done, "bounded raw worker completion"
+      if mode == 1:
+        assert download.cancelPreparation(id, owner), "completed cancellation discards genuine execution output"
+      let completed = download.collectPreparation(id, owner, completionLimits().composition)
+      if mode == 1:
+        assert completed.failure.error == BlockDownloadError.Cancelled
+        assert download.cancel(id)
+      else:
+        assert completed.error == BlockDownloadError.None
+        assert sameStateSnapshot(before, completed.value.finalAccumulationParent.value)
+        assert owner.accumulationStage == AccumulationHandoffStage.Pending
+        assert owner.cancelAccumulation(), "test retires queued success without changing its seed"
+    assert not owner.preparationActive and not owner.rpc.chainPaused
+    assert sameStateSnapshot(before, owner.stateSnapshot.value)
+
 proc main() {.raises.} =
   ## Prepare the pinned signed fixture before private lifecycle assertions and real certificate-backed streams.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
@@ -270,6 +325,7 @@ proc main() {.raises.} =
   var owner = default(Services)
   assert owner.start(options, "test")
   defer: owner.close()
+  asynchronous(frame)
   fragments(owner, frame)
   framing(owner, frame)
   refusals(owner, context, frame)

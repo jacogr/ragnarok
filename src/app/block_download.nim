@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## CE 128 one-child request and bounded incremental response adapter over the existing raw-block input owner.
-## Native callbacks copy bytes/observe FIN; explicit producer enqueue performs validation and PVM work later.
+## Native callbacks copy bytes/observe FIN; producers explicitly enqueue or lend Ready input to a joined worker later.
 
-import ./[chain, candidate, block_input, services, handoff]
+import ./[chain, candidate, block_input, services, handoff, preparation_worker]
 import ../chain/[genesis, provider]
 import ../codec/[bounded, header]
 import ../state/[store, accumulation_finalization, accumulation_completion]
@@ -12,17 +12,21 @@ import ../state/[store, accumulation_finalization, accumulation_completion]
 type
   BlockDownloadId* = distinct uint64 ## Local receiver generations are unrelated to QUIC handles and block identities.
   BlockDownloadStage* {.pure.} = enum ## Terminal empty/failure outcomes remain observable until explicit acknowledgement.
-    Idle, Receiving, Ready, Empty, Failed
+    Idle, Receiving, Ready, Preparing, Empty, Failed
   BlockDownloadError* {.pure.} = enum ## Successful framing is distinct from a usable finalized successor.
     Uninitialized, None, Busy, MissingHead, ProfileMismatch, LimitExceeded, InvalidAncestor,
     Exhausted, StaleDownload, NotReady, Truncated, Trailing, EmptyResponse, InputFailure,
-    PreparationFailure
+    PreparationFailure, WorkerStartupFailure, WorkerFailure, Cancelled, HandoffFailure
   BlockDownloadFailure* = object ## Only the actual selected failed child is retained; no successful prefix survives refusal.
     case status: BlockDownloadError
     of InputFailure:
       inputReason: BlockInputError
     of PreparationFailure:
       preparationReason: BlockInputResult
+    of WorkerFailure:
+      workerReason: PreparationError
+    of HandoffFailure:
+      handoffReason: AccumulationEnqueueError
     else:
       discard # Plain framing/readiness reasons retain no child owners.
   BlockDownloadResult*[T] = object ## Defaults are failures; only checked success authorizes generation/request/certificate access.
@@ -34,7 +38,7 @@ type
   PendingDownload = object ## Native stream ownership remains with the caller; this context retains only immutable application handles.
     id: BlockDownloadId
     case status: BlockDownloadStage
-    of Receiving, Ready:
+    of Receiving, Ready, Preparing:
       original: ApplicationChain
       ancestors: seq[OwnedHeader]
       resources: BlockInputLimits
@@ -52,9 +56,22 @@ type
     next: uint64
     pending: PendingDownload
     input: BlockInput
+    ticket: PreparationTicket
 
 proc `=copy`*(destination: var BlockDownload, source: BlockDownload) {.error: "BlockDownload owns reception".}
   ## Composite ownership is explicit even though BlockInput already refuses copying.
+proc `=dup`*(source: BlockDownload): BlockDownload {.error.}
+  ## The nested receiver and worker borrow have exactly one stable owner.
+proc requirePreparationRetired(download: BlockDownload) {.requires:
+    download.pending.status != BlockDownloadStage.Preparing.} =
+  ## Destruction cannot release input/history still borrowed by the Services worker.
+  discard
+proc `=destroy`*(download: BlockDownload) =
+  ## Explicit collection/join must precede retirement of every captured ARC alias.
+  requirePreparationRetired(download)
+  `=destroy`(download.pending)
+  `=destroy`(download.input)
+  `=destroy`(download.ticket)
 proc `==`*(left, right: BlockDownloadId): bool {.borrow.}
   ## Compare only generations from this receiver's lifetime.
 
@@ -94,6 +111,15 @@ func preparationFailure*(reason: BlockDownloadFailure): BlockInputResult {.inlin
     requires: reason.status == BlockDownloadError.PreparationFailure.} =
   ## Preserve only the actual failed preparation child, including codec/stage-specific diagnostics.
   reason.preparationReason
+
+func workerError*(reason: BlockDownloadFailure): PreparationError {.inline,
+    requires: reason.status == BlockDownloadError.WorkerFailure.} =
+  ## Inspect only an actual worker admission refusal.
+  reason.workerReason
+func handoffError*(reason: BlockDownloadFailure): AccumulationEnqueueError {.inline,
+    requires: reason.status == BlockDownloadError.HandoffFailure.} =
+  ## Preserve only an actual host enqueue refusal after execution has retired.
+  reason.handoffReason
 
 func refused[T](reason: BlockDownloadError): BlockDownloadResult[T] =
   ## Construct a plain refusal without a successful payload or unrelated child error.
@@ -239,6 +265,7 @@ proc cancel*(download: var BlockDownload, id: BlockDownloadId): bool =
   ## Cancel/acknowledge only this generation; callers still abort/retire their native stream before reusing callback storage.
   if download.stage == BlockDownloadStage.Idle or download.pending.id !=
       id: return false # Stale cancellation is inert.
+  if download.stage == BlockDownloadStage.Preparing: return false # Cancellation must retain the worker lease until collection/join.
   if download.input.stage != BlockInputStage.Idle:
     discard download.input.cancel(download.pending.inputId) # Active/Ready alternatives retain the matching raw-input identity.
   download.pending = default(PendingDownload)
@@ -261,3 +288,74 @@ proc enqueue*(download: var BlockDownload, id: BlockDownloadId, owner: var Servi
     return BlockDownloadResult[PreparedFinalAccumulation](successful: false, refused: reason)
   download.pending = default(PendingDownload) # Success retains only the finalized certificate/handoff, never duplicate raw storage.
   BlockDownloadResult[PreparedFinalAccumulation](successful: true, completed: prepared.value)
+
+proc beginPreparation*(download: var BlockDownload, id: BlockDownloadId,
+    owner: var Services): BlockDownloadResult[PreparationTicket] =
+  ## Borrow exact Ready bytes only after the caller has retired native callbacks; never expose mutable input storage.
+  if download.pending.id != id or download.stage == BlockDownloadStage.Idle:
+    return refused[PreparationTicket](BlockDownloadError.StaleDownload)
+  if download.stage != BlockDownloadStage.Ready:
+    return refused[PreparationTicket](BlockDownloadError.NotReady)
+  if not owner.preparationAvailable:
+    return refused[PreparationTicket](BlockDownloadError.Busy) # Scalar gate prevents canonical graph access during another lease.
+  var admitted = default(PreparationAdmission)
+  try:
+    admitted = owner.beginPreparation(download.input, download.pending.inputId)
+  except:
+    let reason = BlockDownloadFailure(status: BlockDownloadError.WorkerStartupFailure)
+    discard download.fail(reason)
+    return BlockDownloadResult[PreparationTicket](successful: false,
+        refused: reason) # No worker borrow survives failed thread creation.
+  if admitted.error != PreparationError.None:
+    let reason = BlockDownloadFailure(status: BlockDownloadError.WorkerFailure,
+        workerReason: admitted.error)
+    discard download.fail(reason)
+    return BlockDownloadResult[PreparationTicket](successful: false, refused: reason)
+  download.ticket = admitted.value # Host-only identity never aliases the worker's ARC graph.
+  download.pending.status = BlockDownloadStage.Preparing # The active variants share all fields; no captured owner is retired.
+  BlockDownloadResult[PreparationTicket](successful: true, completed: admitted.value)
+
+proc cancelPreparation*(download: var BlockDownload, id: BlockDownloadId,
+    owner: var Services): bool =
+  ## Mark unwanted work without touching the input, retained parent or ancestor handles.
+  if download.pending.id != id or download.stage != BlockDownloadStage.Preparing: return false
+  owner.cancelPreparation(download.ticket)
+
+proc collectPreparation*(download: var BlockDownload, id: BlockDownloadId,
+    owner: var Services, composition: AccumulationCompositionLimits): BlockDownloadResult[
+        PreparedFinalAccumulation] =
+  ## End the managed lease before inspecting pipeline results or changing any raw/canonical owner.
+  if download.pending.id != id or download.stage != BlockDownloadStage.Preparing:
+    return refused[PreparedFinalAccumulation](BlockDownloadError.StaleDownload)
+  let completion = owner.collectPreparation(download.ticket)
+  if completion.kind == PreparationCompletionKind.Uninitialized:
+    return refused[PreparedFinalAccumulation](BlockDownloadError.NotReady) # Running/stale collection retains capacity and all graph aliases.
+  download.ticket = default(PreparationTicket)
+  if completion.kind == PreparationCompletionKind.Cancelled:
+    let reason = BlockDownloadFailure(status: BlockDownloadError.Cancelled)
+    discard download.fail(reason)
+    return BlockDownloadResult[PreparedFinalAccumulation](successful: false, refused: reason)
+  let prepared = completion.value
+  if prepared.error != BlockInputError.None:
+    let reason = BlockDownloadFailure(status: BlockDownloadError.PreparationFailure,
+        preparationReason: prepared)
+    discard download.fail(reason)
+    return BlockDownloadResult[PreparedFinalAccumulation](successful: false, refused: reason)
+  let queued = owner.enqueueAccumulation(prepared.value, composition)
+  if queued != AccumulationEnqueueError.None:
+    let reason = BlockDownloadFailure(status: BlockDownloadError.HandoffFailure,
+        handoffReason: queued)
+    discard download.fail(reason)
+    return BlockDownloadResult[PreparedFinalAccumulation](successful: false, refused: reason)
+  download.pending = default(PendingDownload) # All worker aliases retired before host adoption owns the certificate.
+  BlockDownloadResult[PreparedFinalAccumulation](successful: true, completed: prepared.value)
+
+proc retirePreparation*(download: var BlockDownload, id: BlockDownloadId,
+    owner: var Services): bool =
+  ## Explicit shutdown joins before dropping a queued/running/Done input lease and never enqueues a certificate.
+  if download.pending.id != id or download.stage != BlockDownloadStage.Preparing: return false
+  owner.stopPreparation()
+  download.ticket = default(PreparationTicket)
+  discard download.input.cancel(download.pending.inputId) # Joined shutdown permits either consumed or queued-cancelled raw input.
+  download.pending = default(PendingDownload)
+  true

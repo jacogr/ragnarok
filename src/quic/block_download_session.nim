@@ -5,7 +5,7 @@
 ## Explicit producer/host acknowledgement remains outside native callbacks and never infers adoption.
 
 import ./[transport, block_download_stream]
-import ../app/[download_schedule, block_download, block_input, candidate, services]
+import ../app/[download_schedule, block_download, block_input, candidate, services, preparation_worker]
 import ../codec/[bounded, header]
 import ../state/[accumulation_finalization, accumulation_completion]
 
@@ -179,6 +179,8 @@ proc discardInput*(session: var BlockDownloadSession,
   ## Explicitly discard unused raw input only after close, or before an unbound open attempt is retired.
   if not session.matches(attempt): return plain(DownloadSessionError.StaleAttempt)
   if session.streamActive: return plain(DownloadSessionError.AwaitingClose)
+  if session.stage == BlockDownloadStage.Preparing: return plain(
+      DownloadSessionError.Busy) # Worker access retains all raw/context owners.
   if session.queued: return plain(DownloadSessionError.AlreadyQueued) # Queued certificates belong to the Services handoff.
   discard session.download.cancel(attempt.generation)
   plain(DownloadSessionError.None)
@@ -207,7 +209,8 @@ proc finish*(session: var BlockDownloadSession, attempt: DownloadSessionAttempt,
   if session.streamActive: return plain(DownloadSessionError.AwaitingClose)
   if outcome == DownloadAttemptOutcome.Adopted and not session.queued:
     return plain(DownloadSessionError.NotQueued) # Empty/failed/unprepared input cannot claim adoption.
-  if session.stage in [BlockDownloadStage.Receiving, BlockDownloadStage.Ready]:
+  if session.stage in [BlockDownloadStage.Receiving, BlockDownloadStage.Ready,
+      BlockDownloadStage.Preparing]:
     return plain(DownloadSessionError.NotReady) # Host must explicitly discard unused input after close.
   let completed = session.schedule.finish(session.lease, outcome, now)
   if completed != DownloadScheduleError.None:
@@ -218,3 +221,42 @@ proc finish*(session: var BlockDownloadSession, attempt: DownloadSessionAttempt,
   session.lease = default(DownloadAttempt)
   session.queued = false
   plain(DownloadSessionError.None)
+
+proc beginPreparation*(session: var BlockDownloadSession, attempt: DownloadSessionAttempt,
+    owner: var Services): DownloadSessionResult[PreparationTicket] =
+  ## Native close and producer backpressure must precede lending the private raw receiver to execution.
+  if not session.matches(attempt): return refused[PreparationTicket](plain(
+      DownloadSessionError.StaleAttempt))
+  if session.streamActive: return refused[PreparationTicket](plain(
+      DownloadSessionError.AwaitingClose))
+  if session.queued: return refused[PreparationTicket](plain(DownloadSessionError.AlreadyQueued))
+  let admitted = session.download.beginPreparation(attempt.generation, owner)
+  if admitted.error != BlockDownloadError.None:
+    return refused[PreparationTicket](DownloadSessionFailure(
+        status: DownloadSessionError.DownloadFailure, downloadReason: admitted.failure))
+  DownloadSessionResult[PreparationTicket](successful: true, completed: admitted.value)
+
+proc cancelPreparation*(session: var BlockDownloadSession, attempt: DownloadSessionAttempt,
+    owner: var Services): bool =
+  ## Keep the exact scheduler generation and all input aliases until execution actually retires.
+  if not session.matches(attempt): return false
+  session.download.cancelPreparation(attempt.generation, owner)
+
+proc collectPreparation*(session: var BlockDownloadSession, attempt: DownloadSessionAttempt,
+    owner: var Services, composition: AccumulationCompositionLimits): DownloadSessionResult[
+        PreparedFinalAccumulation] =
+  ## Successful collection queues real finalized success; actual adoption still requires a later host result.
+  if not session.matches(attempt): return refused[PreparedFinalAccumulation](plain(
+      DownloadSessionError.StaleAttempt))
+  let completed = session.download.collectPreparation(attempt.generation, owner, composition)
+  if completed.error != BlockDownloadError.None:
+    return refused[PreparedFinalAccumulation](DownloadSessionFailure(
+        status: DownloadSessionError.DownloadFailure, downloadReason: completed.failure))
+  session.queued = true
+  DownloadSessionResult[PreparedFinalAccumulation](successful: true, completed: completed.value)
+
+proc retirePreparation*(session: var BlockDownloadSession, attempt: DownloadSessionAttempt,
+    owner: var Services): bool =
+  ## Joined shutdown ends the worker borrow before the session receiver or captured history can be destroyed.
+  if not session.matches(attempt): return false
+  session.download.retirePreparation(attempt.generation, owner)

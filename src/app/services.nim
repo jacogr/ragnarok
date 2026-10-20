@@ -49,12 +49,16 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.canonical)
   `=destroy`(services.adoption)
 
-proc close*(services: var Services) =
-  ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
-  services.worker.close() # Join before releasing RPC suspension or any canonical alias.
+proc stopPreparation*(services: var Services) =
+  ## Join and discard private execution before reopening canonical/RPC access; listeners and canonical state remain owned.
+  services.worker.close()
   services.preparing = false
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
+
+proc close*(services: var Services) =
+  ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
+  services.stopPreparation() # Join before releasing any canonical or listener alias.
   services.ui.close()
   services.rpc.close()
   services.telemetry.close()

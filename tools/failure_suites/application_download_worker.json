@@ -1,0 +1,45 @@
+{
+  "build_name": "application-download-worker-results",
+  "cases": [
+    {
+      "arguments": [
+        "worker"
+      ],
+      "description": "Download worker contract worker",
+      "diagnostic": "reason.status == WorkerFailure",
+      "identity": {
+        "reason": "worker"
+      },
+      "name": "application-download-worker-worker"
+    },
+    {
+      "arguments": [
+        "handoff"
+      ],
+      "description": "Download worker contract handoff",
+      "diagnostic": "reason.status == HandoffFailure",
+      "identity": {
+        "reason": "handoff"
+      },
+      "name": "application-download-worker-handoff"
+    },
+    {
+      "arguments": [
+        "destroy"
+      ],
+      "description": "Download worker contract destroy",
+      "diagnostic": "not download.pending.status == Preparing",
+      "identity": {
+        "reason": "destroy"
+      },
+      "name": "application-download-worker-destroy"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_download_worker_results.nim"
+}

@@ -377,3 +377,19 @@ proc requestCount*(servers: DownloadResponders, second: bool): int =
 proc poll*(servers: var DownloadResponders): bool =
   ## Each host test tick polls both listeners once; no background worker or unbounded spin exists.
   servers.first.transport.pollTransport(0) and servers.second.transport.pollTransport(0)
+
+proc unsolicited*(servers: var DownloadResponders): bool =
+  ## Emit an independent server-initiated empty stream; the catalog must reject it without touching leased CE input.
+  servers.second.transport.openStream()
+  let stream = servers.second.stream
+  if stream == NativeStream(nil): return false # An actual native stream is required; no fabricated reset count is used.
+  wantRead(stream, 0)
+  streamFin(stream)
+  for turn in 0..<8:
+    if not servers.second.transport.pollTransport(
+        0): return false # Flush real frames without polling the client catalog.
+  true
+
+func resetObserved*(servers: DownloadResponders): bool =
+  ## Observe only an actual native directional-reset callback on the independent responder.
+  servers.second.reset
