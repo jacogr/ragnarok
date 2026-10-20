@@ -3,9 +3,10 @@
 
 """Discover deterministic runtime provenance inputs and reject missing or escaping evidence paths.
 
-Exposes discover_project_sources, pinned_fixture_sources, runtime_sources and validate_coverage.
+Exposes discover_project_sources, pinned_fixture_sources, upstream_sources, runtime_sources
+and validate_coverage.
 Project source/configuration and fixture directories are discovered; pin tables supply exact
-JAM/Bandersnatch fixture membership and selected upstream inputs retain explicit identities.
+JAM/Bandersnatch fixtures and selected upstream document/corpus identities.
 """
 import json
 from pathlib import Path
@@ -24,9 +25,6 @@ SOURCE_SCOPES = {
     'tools': {'.py', '.json', '.txt', '.mjs'},
 }
 DATA_DIRECTORIES = ('src/ui/static', 'tests/fixtures', 'vectors')
-# These upstream documents/corpora were already hashed; never sweep entire dependency checkouts.
-UPSTREAM_INPUTS = ('vendor/jam-np/simple.md', 'vendor/wycheproof/LICENSE',
-                   'vendor/wycheproof/testvectors_v1/ed25519_test.json')
 
 
 # Skip caches and Rust build products even if a developer creates them inside a selected source tree.
@@ -57,6 +55,49 @@ def discover_project_sources(root):
     return sources
 
 
+# Validate components separately so metadata cannot escape its owning dependency through parent aliases.
+def pinned_path(root, name):
+    """Resolve a canonical pin-owned path without requiring provisioning to have happened."""
+    root = Path(root)
+    if (not isinstance(name, str) or not name or name.startswith('/') or "\\" in name
+            or any(part in ('', '.', '..') for part in name.split('/'))
+            or not (root/name).resolve().is_relative_to(root.resolve())):
+        raise ValueError('Invalid pinned fixture path: '+str(name))
+    return root/name
+
+
+# Feature schemas own the bounded upstream inputs; dependency directory contents are never swept.
+def upstream_sources(root):
+    """Read Wycheproof corpus/license and JAMNP document identities from their existing pin owners."""
+    from verification_inventory import unique_object
+    root = Path(root)
+    crypto = json.loads((root/'spec/crypto-pins.json').read_text(), object_pairs_hook=unique_object)
+    networking = json.loads((root/'spec/quic-proof-pins.json').read_text(), object_pairs_hook=unique_object)
+    try:
+        # Existing Wycheproof fields supply both member identities and their expected checksums.
+        proof = crypto['wycheproof']
+        sources = [(proof['submodule_path'], proof['path'], proof['sha256']),
+                   (proof['submodule_path'], proof['license_path'], proof['license_sha256'])]
+        network = networking['networking_source']
+        members = network['source_sha256']
+        if not isinstance(members, dict) or not members:
+            raise ValueError('Invalid networking source pin table')
+        sources.extend((network['path'], name, digest) for name, digest in members.items())
+    except (KeyError, TypeError) as error:
+        # Incomplete pin schemas must fail instead of silently dropping mandatory upstream evidence.
+        raise ValueError('Missing or invalid upstream pin metadata') from error
+    result = {}
+    for base, member, digest in sources:
+        # Validate each member inside its dependency, including symlink targets and not-yet-present files.
+        path = pinned_path(pinned_path(root, base), member)
+        if not isinstance(digest, str) or re.fullmatch(r'[0-9a-f]{64}', digest) is None:
+            raise ValueError('Invalid upstream checksum: '+str(path))
+        if path in result and result[path] != digest:
+            raise ValueError('Conflicting upstream checksums: '+str(path))
+        result[path] = digest
+    return sorted(result)
+
+
 # Pin tables own exact fixture membership; adding a pinned input must not require a runner edit.
 def pinned_fixture_sources(root):
     """Return declared JAM/Bandersnatch fixture paths, retaining missing bytes for later hashing."""
@@ -77,10 +118,7 @@ def pinned_fixture_sources(root):
             raise ValueError('Invalid pinned fixture table: '+manifest)
         for name, digest in record.items():
             # Only canonical, contained repository paths can become report keys, even before vendor setup.
-            if (not name or name.startswith('/') or "\\" in name
-                    or any(part in ('', '.', '..') for part in name.split('/'))
-                    or not (root/name).resolve().is_relative_to(root.resolve())):
-                raise ValueError('Invalid pinned fixture path: '+name)
+            pinned_path(root, name)
             if not isinstance(digest, str) or re.fullmatch(r'[0-9a-f]{64}', digest) is None:
                 raise ValueError('Invalid pinned fixture checksum: '+name)
             if name in files and files[name] != digest:
@@ -97,7 +135,7 @@ def runtime_sources():
     sources = discover_project_sources(ROOT)
     # Existing fixture contracts retain mandatory paths even if a required file has been removed.
     sources.update(unit_fixture_sources())
-    sources.update(ROOT/path for path in UPSTREAM_INPUTS)
+    sources.update(upstream_sources(ROOT))
     sources.update(pinned_fixture_sources(ROOT))
     sources.difference_update(ROOT/path for path in EXCLUSIONS)
     result = sorted(sources)

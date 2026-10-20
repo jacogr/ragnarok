@@ -1,6 +1,12 @@
 {
   "schema": 2,
   "networking_commit": "439c45aad135dc654b3de6f56d7d694fd02b7aa8",
+  "networking_source": {
+    "path": "vendor/jam-np",
+    "source_sha256": {
+      "simple.md": "7dc30407d19c11cc07e6c3d386fe4869b7ef2baadc5ffb47b8e69bccf7f2d4f3"
+    }
+  },
   "alpn_version": 1,
   "nim": "2.2.12",
   "nim_memory_manager": "arc",

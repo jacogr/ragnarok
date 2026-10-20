@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 
-CORPORA = CorpusGroup()
+# This feature owns its shared-build execution position and additional fixture inputs.
+CORPORA = CorpusGroup(order=20)
 
 # Run this independently declared corpus with its original checks and dependencies.
 @CORPORA.case

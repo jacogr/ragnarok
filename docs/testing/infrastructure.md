@@ -159,7 +159,9 @@ rules for `src/`, `native/`, `tools/`, `tests/`, `spec/` and CI workflows, plus 
 `tests/fixtures/` and `vectors/`. The result is sorted and deduplicated before hashing. Build
 outputs, Python caches, hidden artifacts and Cargo target directories are excluded. The Makefile
 and existing required native fixture paths remain mandatory. Selected upstream documents/corpora
-retain precise paths. JAM/Bandersnatch fixture membership comes from the existing
+come from `spec/crypto-pins.json` (Wycheproof member/license paths) and
+`spec/quic-proof-pins.json` → `networking_source` (dependency path and document hashes).
+JAM/Bandersnatch fixture membership comes from the existing
 `spec/pins.json` → `vectors.files` and `spec/bandersnatch-pins.json` → `fixture_files` tables.
 All declared entries join the shared expansion without additional runner filename lists or a
 vendor-directory sweep. Duplicate JSON keys, conflicting pins, malformed tables and escaping paths fail
@@ -211,7 +213,11 @@ missing, duplicate, replaced and failed cases, even when a replacement preserves
 
 Each independent corpus is a named callable registered in its owning module's `CorpusGroup`.
 The function name supplies its single report identity; the scheduler publishes its returned
-verdict. `corpus_catalog.py` composes groups in the existing shared-build dependency order.
+verdict. `corpus_catalog.py` discovers `corpus_*.py` modules and their `CorpusGroup` instances.
+Each group owns a unique numeric `order` preserving shared-build dependencies, plus ordered
+`resources` names when it needs generated fixtures. Discovery rejects empty groups, duplicate
+orders/task names and unknown/repeated resources before execution; adding a feature needs no
+central import or scheduling-list entry.
 Registration runs no oracle or native process. Expected corpus identities exist before execution;
 missing/duplicate verdicts and duplicate task/report keys are errors. All independent expected
 values, trace coverage predicates, build refusals and exact output/hash comparisons remain in

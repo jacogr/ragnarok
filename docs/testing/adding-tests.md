@@ -71,7 +71,9 @@ appropriate `tools/corpus_*.py` module; preserve request hashes, build profiles,
 comparison and explicit scheduling. Register a named `<feature>_corpus` callable with the owning
 module's `@CORPORA.case`; return its verdict instead of separately assigning a report key. The
 registration supplies both scheduling and completeness expectations. Preserve shared-build
-dependencies in the feature/task order.
+dependencies in the feature/task order. New `corpus_*.py` modules are discovered automatically;
+declare `CorpusGroup(order=<unique rank>)` locally, with `resources` for generated fixture inputs.
+Leave gaps between dependency ranks to allow insertion without renumbering other features.
 
 ## E2E tasks and shared provenance
 
