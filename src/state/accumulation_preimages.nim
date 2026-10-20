@@ -94,7 +94,7 @@ proc prepareAccumulationPreimages*(source: PreparedAccumulationActivity,
     return AccumulationPreimageResult[PreparedAccumulationPreimages](
       status: AccumulationPreimageError.LimitExceeded) # Compare actual full-width payload work without narrowing ceilings.
   let finalized = retained.value.accumulationValidatorsSource.value.accumulationTimesStatistics.value.statisticsSource.value
-  let admission = finalized.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value.accumulationAdmission.value
+  let admission = finalized.finalAccumulationAdmission.value
   let binding = admission.reportBlockStage.value.value.admitted
   let slot = binding.admittedHeader.headerInfo.value.unsigned.slot
   var working = forkStateStore(source.accumulationActivityState.value).value

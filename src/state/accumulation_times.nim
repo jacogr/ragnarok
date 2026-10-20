@@ -196,7 +196,7 @@ proc prepareAccumulationTimes*(source: PreparedAccumulationRecent,
   for index in 0..<count:
     services[index] = statistics.value.statisticsAt(StatisticsServiceIndex(uint64(
         index))).value.service
-  let queue = finalized.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value
+  let queue = finalized.finalAccumulationQueue.value
   let binding = queue.accumulationAdmission.value.reportBlockStage.value.value.admitted
   let slot = AccountSlot(uint32(binding.admittedHeader.headerInfo.value.unsigned.slot))
   let prior = source.accumulationRecentState.value

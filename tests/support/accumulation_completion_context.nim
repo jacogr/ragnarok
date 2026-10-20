@@ -17,7 +17,8 @@ proc completionLimits*(): AccumulationCompletionLimits =
   AccumulationCompletionLimits(
     finalization: AccumulationOutputHistoryLimits(rounds: ElementLimit(8), executions: ElementLimit(
         16), log: outputs),
-    history: AccumulationHistoryConfig(reports: ElementLimit(8), queues: executionQueueConfig(
+    composition: AccumulationCompositionLimits(history: AccumulationHistoryConfig(
+        reports: ElementLimit(8), queues: executionQueueConfig(
     ).queues),
     ready: AccumulationReadyConfig(items: ElementLimit(128), dependencies: ElementLimit(1024),
         queues: executionQueueConfig().queues),
@@ -41,7 +42,7 @@ proc completionLimits*(): AccumulationCompletionLimits =
     authorization: AccumulationAuthorizationLimits(guarantees: ElementLimit(8),
         inputHashes: ElementLimit(160), inputBytes: ByteLimit(10000), outputHashes: ElementLimit(
         32), outputBytes: ByteLimit(2000)),
-    consensus: AccumulationConsensusLimits(chapterBytes: ByteLimit(10000), totalBytes: ByteLimit(50000)))
+    consensus: AccumulationConsensusLimits(chapterBytes: ByteLimit(10000), totalBytes: ByteLimit(50000))))
 
 proc completionDriverLimits*(): AccumulationDriverLimits =
   ## Bounded policies cover both idle continuations and the authored seven-report reentry history.

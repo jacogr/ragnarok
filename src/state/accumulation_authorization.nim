@@ -120,7 +120,7 @@ proc prepareAccumulationAuthorization*(source: PreparedAccumulationPreimages,
   if retained.error != AccumulationPreimageError.None:
     fail(AccumulationAuthorizationError.InvalidSource) # Default owners cannot stand for initialized empty blocks.
   let finalized = retained.value.accumulationActivitySource.value.accumulationValidatorsSource.value.accumulationTimesStatistics.value.statisticsSource.value
-  let admission = finalized.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value.accumulationAdmission.value
+  let admission = finalized.finalAccumulationAdmission.value
   let stage = admission.reportBlockStage.value
   let binding = stage.value.admitted
   let cores = stage.blockTransitionProfile.cores

@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Finalize a genuine stopped driver result through every supported private accumulation/state chapter phase.
-## Returns the existing consensus candidate only after complete success; caller publication remains separate.
+## Compose state phases from one immutable finalized execution successor.
+## The stopped convenience entry finalizes once; caller publication remains separate after complete state success.
 
 import ./[accumulation_driver, accumulation_finalization, accumulation_outputs,
   accumulation_history, accumulation_ready, accumulation_recent, accumulation_times,
@@ -10,8 +10,7 @@ import ./[accumulation_driver, accumulation_finalization, accumulation_outputs,
   accumulation_authorization, accumulation_consensus]
 
 type
-  AccumulationCompletionLimits* = object ## Independent resource ceilings for each existing bounded phase, never replacement source/state values.
-    finalization*: AccumulationOutputHistoryLimits ## Finalization preparation policy; underlying nominal domains and limits remain enforced.
+  AccumulationCompositionLimits* = object ## State-only phase ceilings; finalized execution and original block authority are supplied by one immutable successor.
     history*: AccumulationHistoryConfig ## History preparation policy; underlying nominal domains and limits remain enforced.
     ready*: AccumulationReadyConfig ## Ready preparation policy; underlying nominal domains and limits remain enforced.
     recent*: AccumulationRecentConfig ## Recent preparation policy; underlying nominal domains and limits remain enforced.
@@ -21,6 +20,9 @@ type
     preimages*: AccumulationPreimageLimits ## Preimages preparation policy; underlying nominal domains and limits remain enforced.
     authorization*: AccumulationAuthorizationLimits ## Authorization preparation policy; underlying nominal domains and limits remain enforced.
     consensus*: AccumulationConsensusLimits ## Consensus preparation policy; underlying nominal domains and limits remain enforced.
+  AccumulationCompletionLimits* = object ## Convenience stopped execution/state policy with explicit ownership of each phase group.
+    finalization*: AccumulationOutputHistoryLimits ## Execution-side output/history finalization budget.
+    composition*: AccumulationCompositionLimits ## State-side composition budgets; no execution or finalization replay.
   AccumulationCompletionError* {.pure.} = enum ## Defaults/refusals retain no earlier successful phase or partially composed map.
     Uninitialized, None, InvalidSource, FinalizationFailure, HistoryFailure, ReadyFailure,
       RecentFailure, TimesFailure, ValidatorsFailure, ActivityFailure, PreimagesFailure,
@@ -115,20 +117,12 @@ func consensusFailure*(outcome: AccumulationCompletionResult):
   ## Inspect only the actual failed consensus result and its existing guarded child reasons.
   outcome.consensusReason
 
-proc prepareStoppedAccumulation*(source: StoppedAccumulation,
-    limits: AccumulationCompletionLimits): AccumulationCompletionResult =
-  ## Derive every candidate chapter from this stopped source; retain no partial success on any refusal.
-  if source.stoppedKind == StoppedAccumulationKind.Uninitialized:
-    return AccumulationCompletionResult(status: AccumulationCompletionError.InvalidSource) # Reject before any hashing or phase work.
-  let finalization = if source.stoppedKind == StoppedAccumulationKind.Continuation:
-    prepareFinalAccumulation(source.stoppedContinuation, limits.finalization)
-  else:
-    prepareFinalAccumulation(source.stoppedReentry,
-        limits.finalization) # Only the genuine stopped reentry alternative remains.
-  if finalization.error != AccumulationFinalizationError.None:
-    return AccumulationCompletionResult(status: AccumulationCompletionError.FinalizationFailure,
-      finalizationReason: finalization) # Earlier successful phases remain private and are released.
-  let history = prepareAccumulationHistory(finalization.value, limits.history)
+proc prepareAccumulationComposition*(source: PreparedFinalAccumulation,
+    limits: AccumulationCompositionLimits): AccumulationCompletionResult =
+  ## Compose existing state phases from one immutable execution successor, without finalizing or replaying guests.
+  if source.finalAccumulationInfo.error != AccumulationFinalizationError.None:
+    return AccumulationCompletionResult(status: AccumulationCompletionError.InvalidSource) # Defaults authorize no state work or hashing.
+  let history = prepareAccumulationHistory(source, limits.history)
   if history.error != AccumulationHistoryError.None:
     return AccumulationCompletionResult(status: AccumulationCompletionError.HistoryFailure,
       historyReason: history) # Earlier successful phases remain private and are released.
@@ -165,3 +159,15 @@ proc prepareStoppedAccumulation*(source: StoppedAccumulation,
     return AccumulationCompletionResult(status: AccumulationCompletionError.ConsensusFailure,
       consensusReason: consensus) # Earlier successful phases remain private and are released.
   AccumulationCompletionResult(status: AccumulationCompletionError.None, completed: consensus.value)
+
+
+proc prepareStoppedAccumulation*(source: StoppedAccumulation,
+    limits: AccumulationCompletionLimits): AccumulationCompletionResult =
+  ## Convenience orchestration finalizes execution once, then uses the sole state composition entry.
+  if source.stoppedKind == StoppedAccumulationKind.Uninitialized:
+    return AccumulationCompletionResult(status: AccumulationCompletionError.InvalidSource) # Keep the public default-source reason stable.
+  let finalization = prepareFinalAccumulation(source, limits.finalization)
+  if finalization.error != AccumulationFinalizationError.None:
+    return AccumulationCompletionResult(status: AccumulationCompletionError.FinalizationFailure,
+      finalizationReason: finalization) # No partially finalized source enters state composition.
+  prepareAccumulationComposition(finalization.value, limits.composition)

@@ -16,7 +16,12 @@ batch exactly once. Do not replay any prior batch. A stopped suffix can retain u
 reports; successful finalization does not claim that the original queue was exhausted.
 
 ## API and ownership
-
++
++The [shared successor contract](pvm-state-successor.md) also accepts the opaque
++`StoppedAccumulation` driver alternative, dispatching to those same finalizers.
++Read-only queue, authenticated admission and exact original-parent accessors keep
++state consumers independent of the execution graph's internal traversal shape.
++
 `prepareFinalAccumulation` accepts a stopped `CompletedAccumulationContinuation` or
 `CompletedAccumulationReentry` plus `AccumulationOutputHistoryLimits`. It refuses default sources
 and unfinished dispatched rounds before collecting outputs or hashing. Output preparation retains

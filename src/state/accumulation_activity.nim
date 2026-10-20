@@ -140,7 +140,7 @@ proc prepareAccumulationActivity*(source: PreparedAccumulationValidators,
     fail(AccumulationActivityError.InvalidSource) # Pure projections and default owners cannot authenticate a source graph.
   let statistics = retained.value.accumulationTimesStatistics.value
   let finalized = statistics.statisticsSource.value
-  let admission = finalized.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value.accumulationAdmission.value
+  let admission = finalized.finalAccumulationAdmission.value
   let stage = admission.reportBlockStage.value
   let profile = stage.blockTransitionProfile
   let body = stage.value.admitted.admittedBlock.blockExtrinsic.value

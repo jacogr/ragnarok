@@ -129,7 +129,7 @@ proc prepareAccumulationRecent*(source: PreparedAccumulationReady,
     fail(AccumulationRecentError.InvalidSource) # Default source cannot fabricate an initialized empty history.
   let finalized = accumulated.value.accumulationHistorySource.value
   let outputs = finalized.finalAccumulationOutputs.value
-  let queue = outputs.outputsSource.value.executionRound.value.roundBlockQueue.value
+  let queue = finalized.finalAccumulationQueue.value
   let admission = queue.accumulationAdmission.value
   let stage = admission.reportBlockStage.value
   if uint64(stage.blockTransitionProfile.cores) != uint64(config.history.cores):

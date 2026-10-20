@@ -10,6 +10,10 @@
     {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-finalization-state", "diagnostic": "outcome.status == None", "description": "Accumulation finalization state extraction guard"},
     {"identity": {"reason": "wrong-output"}, "arguments": ["wrong-output"], "name": "accumulation-finalization-wrong-output", "diagnostic": "outcome.status == OutputFailure", "description": "Accumulation finalization wrong-output extraction guard"},
     {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-finalization-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation finalization wrong-state extraction guard"},
-    {"identity": {"reason": "continuation"}, "arguments": ["continuation"], "name": "accumulation-finalization-continuation", "diagnostic": "outcome.status == None", "description": "Accumulation finalization continuation extraction guard"}
+    {"identity": {"reason": "continuation"}, "arguments": ["continuation"], "name": "accumulation-finalization-continuation", "diagnostic": "outcome.status == None", "description": "Accumulation finalization continuation extraction guard"},
+    {"identity": {"reason": "queue"}, "arguments": ["queue"], "name": "accumulation-finalization-queue", "diagnostic": "outcome.status == None", "description": "Accumulation finalization queue extraction guard"},
+    {"identity": {"reason": "admission"}, "arguments": ["admission"], "name": "accumulation-finalization-admission", "diagnostic": "outcome.status == None", "description": "Accumulation finalization admission extraction guard"},
+    {"identity": {"reason": "parent"}, "arguments": ["parent"], "name": "accumulation-finalization-parent", "diagnostic": "outcome.status == None", "description": "Accumulation finalization parent extraction guard"},
+    {"identity": {"reason": "stopped"}, "arguments": ["stopped"], "name": "accumulation-finalization-stopped", "diagnostic": "outcome.status == None", "description": "Accumulation finalization stopped extraction guard"}
   ]
 }

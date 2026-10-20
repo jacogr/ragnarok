@@ -11,7 +11,7 @@ import ./[accumulation_invocation, accumulation_service, accumulation_round, acc
 
 type
   AccumulationContextConfig* = object ## Explicit chain population and independent decoding/aggregate-copy ceilings.
-    validators*: ValidatorCount
+    validators*: ValidatorCount ## Active chain profile; C(7) has its own valid staging count within the core domain.
     queues*: AuthorizationConfig
     staging*: ValidatorStateConfig
     privileges*: PrivilegeConfig
@@ -181,9 +181,8 @@ proc prepareAccumulationContexts*(invocation: PreparedAccumulationInvocation,
     fail(AccumulationContextError.LimitExceeded) # Preserve caller ceilings separately from protocol shape.
   if staging.error != StateComponentError.None:
     fail(AccumulationContextError.MalformedState) # No malformed roster owner escapes.
-  if staging.value.consumed != values[1].byteLength or uint64(
-      staging.value.value.validatorCount.value) != population:
-    fail(AccumulationContextError.MalformedState) # A structurally valid different chain population still mismatches.
+  if staging.value.consumed != values[1].byteLength:
+    fail(AccumulationContextError.MalformedState) # C(7) must consume its complete canonical entry; its valid valcount may differ from active validators.
   let privileges = decodePrivilegeState(values[2].bytes, config.privileges)
   if privileges.error == PrivilegeError.LimitExceeded or privileges.error ==
       PrivilegeError.LengthOverflow:

@@ -189,7 +189,7 @@ proc prepareAccumulationHistory*(source: PreparedFinalAccumulation,
   if finalized.error != AccumulationFinalizationError.None:
     return AccumulationHistoryResult[PreparedAccumulationHistory](
         status: AccumulationHistoryError.InvalidSource) # No work on default sources.
-  let bound = source.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value
+  let bound = source.finalAccumulationQueue.value
   let profile = bound.accumulationAdmission.value.reportBlockStage.value.blockTransitionProfile
   if uint64(profile.cores) != uint64(config.queues.cores) or uint64(profile.epochSlots) != uint64(
       config.queues.epochSlots):

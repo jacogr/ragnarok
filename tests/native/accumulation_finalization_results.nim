@@ -5,10 +5,11 @@
 
 import std/cmdline
 import ../../src/state/[accumulation_finalization, accumulation_outputs,
-  accumulation_continuation_execution, accumulation_reentry]
+  accumulation_continuation_execution, accumulation_reentry, accumulation_driver]
 
 let argument = paramStr(1)
 let owner = default(PreparedFinalAccumulation)
+let stopped = default(StoppedAccumulation)
 let refused = prepareFinalAccumulation(default(CompletedAccumulationReentry),
   default(AccumulationOutputHistoryLimits))
 let outcome = if argument == "default": default(AccumulationFinalizationResult[PreparedFinalAccumulation])
@@ -18,6 +19,11 @@ of "default": discard outcome.value # Default is not success.
 of "info": discard owner.finalAccumulationInfo.value # No fabricated terminal progress.
 of "outputs": discard owner.finalAccumulationOutputs.value # No fabricated output union.
 of "state": discard owner.finalAccumulationState.value # No fabricated complete-map snapshot.
+of "queue": discard owner.finalAccumulationQueue.value # No fabricated original execution queue.
+of "admission": discard owner.finalAccumulationAdmission.value # No fabricated authenticated block/profile.
+of "parent": discard owner.finalAccumulationParent.value # No fabricated original complete-map parent.
+of "stopped": discard prepareFinalAccumulation(stopped, default(
+    AccumulationOutputHistoryLimits)).value
 of "wrong-output": discard refused.outputError # InvalidSource is not a selected output refusal.
 of "wrong-state": discard refused.stateError # InvalidSource is not a selected store refusal.
 of "continuation":

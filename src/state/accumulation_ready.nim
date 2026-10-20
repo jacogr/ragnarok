@@ -268,7 +268,7 @@ proc prepareAccumulationReady*(source: PreparedAccumulationHistory,
   let finalized = source.accumulationHistorySource
   if finalized.error != AccumulationHistoryError.None:
     fail(AccumulationReadyError.InvalidSource) # Defaults cannot fabricate block provenance.
-  let bound = finalized.value.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value
+  let bound = finalized.value.finalAccumulationQueue.value
   let stage = bound.accumulationAdmission.value.reportBlockStage.value
   let profile = stage.blockTransitionProfile
   if uint64(profile.cores) != uint64(config.queues.cores) or

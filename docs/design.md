@@ -31,6 +31,10 @@ in the corresponding `spec/<feature>.md`, not this index or an unrelated module'
 Protocol logic remains native Nim. Private acyclic ARC owners retain immutable snapshots;
 borrowed operations have explicit lifetimes, and failed/default results expose no success payload.
 Full and light modes retain separate storage contracts; see [state design](design/state.md).
++
++Accumulation execution hands an opaque finalized successor to state-owned block composition
++and publication. Original block authority travels with that immutable owner; callers cannot
++substitute detached maps or headers. See [the successor boundary](../spec/pvm-state-successor.md).
 
 All upstream sources are pinned submodules. Project-owned bridges contain primitive/transport
 integration, not hidden JAM codecs, PVM or state logic. Native dependency sources remain pristine.
