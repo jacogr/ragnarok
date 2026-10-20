@@ -28,12 +28,8 @@ class DownloadLoadHarness(unittest.TestCase):
         return SimpleNamespace(compiler=folder/'compiler', crypto=folder/'crypto',
             bs=folder/'bs', quic=folder/'quic', certificates=folder, checks=checks)
 
-    def test_exact_success_and_rejected_observations(self):
-        """An error exit, partial marker, extra output or mismatched counts cannot pass."""
-        cases = [(0, 'DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1\n', True),
-                 (1, 'DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1\n', False),
-                 (0, '', False), (0, 'DOWNLOAD_LOAD cancelled=31 resets=32 adopted=1\n', False),
-                 (0, 'DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1\nextra\n', False)]
+    def test_resource_verdict_controls_success(self):
+        """A native outcome marker cannot override a failed OS resource observation."""
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             fixture = folder/'report'
@@ -42,12 +38,14 @@ class DownloadLoadHarness(unittest.TestCase):
             manifest = {'application_download_loop': (None, {'RAGNAROK_STATE_REPORT': fixture},
                                                        ((fixture, digest),))}
             with patch('native_fixtures.unit_runtime_fixtures', return_value=manifest):
-                for exit_code, output, expected in cases:
-                    # The same fixture/build evidence must not turn an incomplete run into success.
-                    context = self.context(folder, exit_code, output)
-                    with self.subTest(exit_code=exit_code, output=output):
-                        self.assertIs(application_download_load(context)['passed'], expected)
-                        self.assertEqual(context.checks.command.call_count, 1)
+                for passed in (True, False):
+                    # The observer owns strict transcript, process exit and resource completeness checks.
+                    context = self.context(folder)
+                    with self.subTest(passed=passed), patch('application_download_resources.observe',
+                            return_value=dict(passed=passed)) as observed:
+                        self.assertIs(application_download_load(context)['passed'], passed)
+                        self.assertEqual(observed.call_count, 1)
+                        context.checks.command.assert_not_called()
 
     def test_build_and_fixture_refusals_never_execute(self):
         """A failed compiler or changed pinned input cannot execute a stale binary."""

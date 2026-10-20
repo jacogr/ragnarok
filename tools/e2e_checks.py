@@ -142,6 +142,7 @@ def application_download_load(context):
     import hashlib
     import os
     from native_fixtures import unit_runtime_fixtures
+    from application_download_resources import observe
     checks = context.checks
     compiled, binary = checks.build(context.compiler, ROOT/'tests/native/application_download_load.nim',
                                    'application-download-load', context.crypto,
@@ -158,11 +159,9 @@ def application_download_load(context):
         environment = dict(os.environ, **{name: str(path) for name, path in inputs.items()})
         directory = checks.folder/'download-load-work'
         directory.mkdir(exist_ok=True)
-        result = checks.command([binary], 'application-download-load-run', environment=environment,
-                                cwd=directory, timeout=180)
+        result = observe(binary, directory, environment)
         observed.update(run=result, fixtures={str(path): digest for path, digest in files},
-                        passed=result['exit_code'] == 0 and result['output'] ==
-                            'DOWNLOAD_LOAD cancelled=32 resets=32 adopted=1\n')
+                        passed=result['passed'])
     announce('signed download cancellation and native reset load', observed['passed'])
     return observed
 

@@ -117,3 +117,41 @@ and execution logs are under `build/download-load-*`. Two adapter tests reject f
 fixture changes, error exits and incomplete/extra/count-mismatched output. Four E2E-plan tests,
 inventory discovery, formatting and whitespace checks pass. This is selected local E2E evidence;
 other unchanged workloads retain prior evidence, and no remote CI was requested.
+
+## Joined resource observations
+
+Extend the same 32-cancellation/one-adoption E2E driver with an external gate after each round
+returns. At these barriers all round-local transports, workers and captured snapshots have
+retired; the same process and canonical Services owner stay alive. An independent OS observer
+records 33 RSS/thread/descriptor samples before releasing the next round. Test-only gate files
+are invocation-specific and have bounded waits. Failures always reap the child before writing
+evidence. The exact ordered idle-marker transcript, final outcome marker and zero exit remain
+required; missing or extra output cannot substitute for a successful native lifecycle.
+
+Use the existing E2E soak budgets: sampled RSS below 256 MiB and at most two sampled active
+threads, exactly one thread at every joined barrier, and post-warmup (eight rounds) RSS range
+at most 16 MiB and descriptor range at most two. Retain all samples and sampled high-water
+observations in `resources.json`. These finite OS observations include allocator/transport/native
+library caches; they are not thread-local ARC accounting, proof of leak freedom, an exhaustive
+peak sampler or a throughput comparison. Linux uses procfs, local macOS uses the existing ps/lsof
+observer. Normal entry point remains `make check-e2e`.
+
+The stack now includes merged PR #316. Worker and lease static dependencies are declared as
+`fixtures: [state_report]` in their owning requirements; no central consumer registry is restored.
+Protocol/runtime sources and pins remain unchanged. M1 framing is complete; full serialization,
+JAM parity and persistent full/light stores remain open. Next: host responsiveness and cancellation
+while a genuinely longer-running guest is executing.
+
+Local verification on 2026-10-20, macOS arm64, pinned checked ARC/Clang/LTO and production native
+libraries: the resource-observed E2E workload passes all 33 joined samples and the original
+32 cancellation/reset rounds plus final adoption. After eight warmup rounds, sampled idle RSS
+range is 327680 bytes (320 KiB), descriptor range is zero, and every idle thread count is one.
+Five resource/adapter tests and four E2E-plan tests pass, including a parked-child timeout/reaping
+witness and malformed/error-exit transcripts. Formatting, inventory and whitespace checks pass.
+Evidence: `build/download-resources-e2e/results.json` and `download-load-work/resources.json`,
+with scoped logs under `build/download-resources-*`. These are local finite observations, not
+canonical Linux CI or a long-running memory guarantee. No remote CI was requested.
+
+The #316 restack additionally passes 56 native harness tests, 13 fixture-contract tests and both
+`application_preparation_worker` / `application_preparation_lease` native suites. Its unchanged
+runtime-source and layer-patch checks are recorded in `build/pr316-restack-evidence.json`.
