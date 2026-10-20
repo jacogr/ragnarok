@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "application_block_download"}
+# @@Verification={"arc": "application_block_download_arc_release"}
 
 ## Independent CE 128 framing, real QUIC transfer and deferred state adoption preserve selected-head authority.
 

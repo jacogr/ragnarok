@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "application_chain"}
+# @@Verification={"arc": "application_chain_arc_release"}
 
 ## Public application ownership and RPC joining through real ephemeral loopback WebSocket clients.
 

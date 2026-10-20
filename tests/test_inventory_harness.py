@@ -21,6 +21,22 @@ from failure_checks import FAILURE_SUITES, load_suites
 
 # Exercise invalid declarations and real command wiring without substituting native verdicts.
 class InventoryPreflight(unittest.TestCase):
+    # Both a new ARC key and a new failure family must fail preflight when their report keys collide.
+    def test_arc_failure_report_key_collision(self):
+        from unittest.mock import patch
+        from check_inventory import validate_inventory
+        from verification_inventory import ARC_SUITES
+        from failure_plans import FAILURE_COUNTS
+        failure_key = next(iter(FAILURE_COUNTS))
+        with patch('verification_inventory.ARC_SUITES', {'example': failure_key}):
+            with self.assertRaisesRegex(ValueError, 'ARC report keys overlap.*'+failure_key):
+                validate_inventory()
+        arc_key = next(iter(ARC_SUITES.values()))
+        with patch('failure_plans.FAILURE_COUNTS', {**FAILURE_COUNTS, arc_key: 1}):
+            # Previously valid ARC metadata must not become ambiguous when contract coverage grows.
+            with self.assertRaisesRegex(ValueError, 'ARC report keys overlap.*'+arc_key):
+                validate_inventory()
+
     # Misspellings, missing sources and unsupported profiles must fail even when case counts still match.
     def test_invalid_suite_fields_and_profiles(self):
         valid = FAILURE_SUITES['validator_rotation']

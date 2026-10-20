@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "rpc_accumulation"}
+# @@Verification={"arc": "rpc_accumulation_arc_release"}
 
 ## Signed dispatcher adoption with real nonblocking sockets, ordered notifications and atomic failure isolation.
 

@@ -17,8 +17,9 @@ Declare the suite's source directory, library order, observer flags and fixture 
 existing requirements; no central unit/link registration is needed. Keep independent profile fields
 alphabetical and retain ordered link options. If the suite must produce ARC evidence, declare its
 report key in the source header with `# @@Verification={"arc": "example_arc_release"}`. The existing
-ARC helper and fresh-evidence checks remain required. Fixtures use the feature adapters and shared
-preparation described in [infrastructure](infrastructure.md).
+ARC helper and fresh-evidence checks remain required. Use a distinct report key such as
+`<suite>_arc_release`; preflight rejects keys that overlap runtime failure families. Fixtures use
+the feature adapters and shared preparation described in [infrastructure](infrastructure.md).
 
 Compiler rejection sources belong under `tests/native/compile_fail/`, with one source-local header:
 
