@@ -7,9 +7,9 @@ import ../../src/state/[computed_finalization, accumulation_completion]
 import ../../src/codec/[bounded, assurances]
 import ./[pvm_computed_finalization, accumulation_completion_context]
 
-proc compositionFixture*(withComposition = true): FinalizedComputedAccumulation =
+proc compositionFixture*(withComposition = true, withChain = false): FinalizedComputedAccumulation =
   ## Author original statistics before computation, then genuinely execute and stop the historical work.
-  let source = finalizationFixture(withComposition = withComposition)
+  let source = finalizationFixture(withComposition = withComposition, withChain = withChain)
   finalizeComputedAccumulation(source, computedFinalizationConfig()).value
 proc computedCompositionLimits*(): AccumulationCompositionLimits =
   ## Adapt only the actual three-core domains and independent aggregate reporter/queue resource ceilings.

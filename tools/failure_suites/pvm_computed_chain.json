@@ -1,0 +1,319 @@
+{
+  "source": "tests/native/pvm_computed_chain.nim",
+  "build_name": "pvm-computed-chain",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-chain-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-chain-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain source"
+    },
+    {
+      "identity": {
+        "origin": "stale"
+      },
+      "arguments": [
+        "stale"
+      ],
+      "name": "pvm-computed-chain-stale",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain stale"
+    },
+    {
+      "identity": {
+        "origin": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "pvm-computed-chain-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain state"
+    },
+    {
+      "identity": {
+        "origin": "view"
+      },
+      "arguments": [
+        "view"
+      ],
+      "name": "pvm-computed-chain-view",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain view"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-computed-chain-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain parameters"
+    },
+    {
+      "identity": {
+        "origin": "capture"
+      },
+      "arguments": [
+        "capture"
+      ],
+      "name": "pvm-computed-chain-capture",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain capture"
+    },
+    {
+      "identity": {
+        "origin": "child"
+      },
+      "arguments": [
+        "child"
+      ],
+      "name": "pvm-computed-chain-child",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain child"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-chain-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain owner"
+    },
+    {
+      "identity": {
+        "origin": "block"
+      },
+      "arguments": [
+        "block"
+      ],
+      "name": "pvm-computed-chain-block",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed chain block"
+    },
+    {
+      "identity": {
+        "origin": "stateError-default"
+      },
+      "arguments": [
+        "stateError-default"
+      ],
+      "name": "pvm-computed-chain-stateError-default",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed chain stateError-default"
+    },
+    {
+      "identity": {
+        "origin": "stateError-success"
+      },
+      "arguments": [
+        "stateError-success"
+      ],
+      "name": "pvm-computed-chain-stateError-success",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed chain stateError-success"
+    },
+    {
+      "identity": {
+        "origin": "stateError-source"
+      },
+      "arguments": [
+        "stateError-source"
+      ],
+      "name": "pvm-computed-chain-stateError-source",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed chain stateError-source"
+    },
+    {
+      "identity": {
+        "origin": "publicationFailure-default"
+      },
+      "arguments": [
+        "publicationFailure-default"
+      ],
+      "name": "pvm-computed-chain-publicationFailure-default",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Computed chain publicationFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "publicationFailure-success"
+      },
+      "arguments": [
+        "publicationFailure-success"
+      ],
+      "name": "pvm-computed-chain-publicationFailure-success",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Computed chain publicationFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "publicationFailure-source"
+      },
+      "arguments": [
+        "publicationFailure-source"
+      ],
+      "name": "pvm-computed-chain-publicationFailure-source",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Computed chain publicationFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "headerError-default"
+      },
+      "arguments": [
+        "headerError-default"
+      ],
+      "name": "pvm-computed-chain-headerError-default",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Computed chain headerError-default"
+    },
+    {
+      "identity": {
+        "origin": "headerError-success"
+      },
+      "arguments": [
+        "headerError-success"
+      ],
+      "name": "pvm-computed-chain-headerError-success",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Computed chain headerError-success"
+    },
+    {
+      "identity": {
+        "origin": "headerError-source"
+      },
+      "arguments": [
+        "headerError-source"
+      ],
+      "name": "pvm-computed-chain-headerError-source",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Computed chain headerError-source"
+    },
+    {
+      "identity": {
+        "origin": "captureError-default"
+      },
+      "arguments": [
+        "captureError-default"
+      ],
+      "name": "pvm-computed-chain-captureError-default",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Computed chain captureError-default"
+    },
+    {
+      "identity": {
+        "origin": "captureError-success"
+      },
+      "arguments": [
+        "captureError-success"
+      ],
+      "name": "pvm-computed-chain-captureError-success",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Computed chain captureError-success"
+    },
+    {
+      "identity": {
+        "origin": "captureError-source"
+      },
+      "arguments": [
+        "captureError-source"
+      ],
+      "name": "pvm-computed-chain-captureError-source",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Computed chain captureError-source"
+    },
+    {
+      "identity": {
+        "origin": "viewError-default"
+      },
+      "arguments": [
+        "viewError-default"
+      ],
+      "name": "pvm-computed-chain-viewError-default",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Computed chain viewError-default"
+    },
+    {
+      "identity": {
+        "origin": "viewError-success"
+      },
+      "arguments": [
+        "viewError-success"
+      ],
+      "name": "pvm-computed-chain-viewError-success",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Computed chain viewError-success"
+    },
+    {
+      "identity": {
+        "origin": "viewError-source"
+      },
+      "arguments": [
+        "viewError-source"
+      ],
+      "name": "pvm-computed-chain-viewError-source",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Computed chain viewError-source"
+    },
+    {
+      "identity": {
+        "origin": "state-capture"
+      },
+      "arguments": [
+        "state-capture"
+      ],
+      "name": "pvm-computed-chain-state-capture",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed chain state-capture"
+    },
+    {
+      "identity": {
+        "origin": "capture-view"
+      },
+      "arguments": [
+        "capture-view"
+      ],
+      "name": "pvm-computed-chain-capture-view",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Computed chain capture-view"
+    },
+    {
+      "identity": {
+        "origin": "view-capture"
+      },
+      "arguments": [
+        "view-capture"
+      ],
+      "name": "pvm-computed-chain-view-capture",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Computed chain view-capture"
+    }
+  ]
+}

@@ -8,10 +8,11 @@ import ../../src/state/[computed_execution, computed_finalization, accumulation_
 import ../../src/codec/[bounded, state_outputs]
 import ./[pvm_computed_execution, accumulation_execution_context]
 
-proc finalizationFixture*(withReady = true, withComposition = false): ExecutedComputedAccumulation =
+proc finalizationFixture*(withReady = true, withComposition = false,
+    withChain = false): ExecutedComputedAccumulation =
   ## Execute the actual selected guest before any stopped-history/final-state construction.
   executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
-      withComposition = withComposition), computedExecutionLimits()).value
+      withComposition = withComposition, withChain = withChain), computedExecutionLimits()).value
 proc computedFinalizationConfig*(): ComputedFinalizationConfig =
   ## Only an idle continuation is needed for this exhausted queue; retained history still counts both actual rounds.
   ComputedFinalizationConfig(driver: AccumulationDriverLimits(
