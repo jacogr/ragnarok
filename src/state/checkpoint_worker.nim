@@ -6,7 +6,8 @@
 
 import std/[locks, rawthreads]
 import ./[checkpoint_bank, checkpoint_head, checkpoint_transfer, checkpoint]
-import ../codec/bounded
+import ./store
+import ../codec/[bounded, state_trie]
 
 type
   CheckpointWorkerPhase* {.pure.} = enum ## Done retains capacity until explicit collection; Staged has not begun I/O.
@@ -16,7 +17,7 @@ type
   CheckpointWorkerError* {.pure.} = enum ## Refused admission never consumes the caller's sole prepared owner.
     Uninitialized, None, Closed, Busy, NotReady, InvalidHead, LimitExceeded, Exhausted
   CheckpointRequest {.pure.} = enum ## Internal read requests cannot be submitted through the buffer-publication API.
-    Bootstrap, Advance, ReadHead
+    Bootstrap, Advance, ReadHead, Verify
   WorkerIdentity = ref object ## Host-only namespace is never accessed by the native I/O thread.
     marker: uint8
   CheckpointTicket* = object ## Identity plus nonwrapping local generation prevent foreign/stale completion access.
@@ -52,6 +53,8 @@ type
     operation: CheckpointRequest
     expected: CheckpointHead
     limit: ByteLimit
+    trustedRoot: StateRoot
+    restoreLimits: StateStoreLimits
     outcome: CheckpointBankResult[CheckpointHead]
 
 proc `=wasMoved`*(worker: var CheckpointWorker) {.nodestroy, inline,
@@ -104,6 +107,9 @@ proc execute(worker: ptr CheckpointWorker) =
         worker.limit) # The bank rechecks/resynchronizes the actual visible selector.
   of CheckpointRequest.ReadHead:
     worker.outcome = worker.bank.selectedHead() # Checksummed metadata remains untrusted until independently verified.
+  of CheckpointRequest.Verify:
+    worker.outcome = worker.bank.verify(worker.trustedRoot, worker.restoreLimits,
+        worker.limit) # All decoded bytes and complete-map ARC owners retire on this thread before Done.
 proc run(raw: pointer) =
   ## A condition-driven single thread performs only ordered bank I/O, with no canonical adoption or dispatcher callbacks.
   let worker = cast[ptr CheckpointWorker](raw)
@@ -133,6 +139,8 @@ proc start*(worker: var CheckpointWorker, prefix: string): CheckpointBankError {
   worker.operation = CheckpointRequest.Bootstrap
   worker.expected = default(CheckpointHead)
   worker.limit = ByteLimit(0)
+  worker.trustedRoot = default(StateRoot)
+  worker.restoreLimits = default(StateStoreLimits)
   worker.outcome = default(CheckpointBankResult[CheckpointHead])
   worker.prepared = default(PreparedCheckpoint)
   try:
@@ -196,6 +204,30 @@ proc stageHead*(worker: var CheckpointWorker): CheckpointAdmission =
   worker.operation = CheckpointRequest.ReadHead
   worker.expected = default(CheckpointHead)
   worker.limit = ByteLimit(0)
+  worker.trustedRoot = default(StateRoot)
+  worker.restoreLimits = default(StateStoreLimits)
+  worker.outcome = default(CheckpointBankResult[CheckpointHead])
+  worker.phase = CheckpointWorkerPhase.Staged
+  CheckpointAdmission(status: CheckpointWorkerError.None,
+    ticket: CheckpointTicket(owner: worker.identity, generation: worker.next))
+proc stageVerification*(worker: var CheckpointWorker, expected: StateRoot,
+    limits: StateStoreLimits, limit: ByteLimit): CheckpointAdmission =
+  ## Admit independent root trust and scalar recovery budgets without reading disk or retaining a caller's complete map.
+  if not worker.started: return CheckpointAdmission(status: CheckpointWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if worker.phase != CheckpointWorkerPhase.Idle:
+    return CheckpointAdmission(status: CheckpointWorkerError.Busy) # Verification shares the same single acknowledgement slot as publication.
+  if worker.next == high(uint64):
+    return CheckpointAdmission(status: CheckpointWorkerError.Exhausted) # Every request kind uses the same nonwrapping ticket namespace.
+  inc worker.next
+  worker.prepared = default(PreparedCheckpoint)
+  worker.cancelled = false
+  worker.operation = CheckpointRequest.Verify
+  worker.expected = default(CheckpointHead)
+  worker.trustedRoot = expected
+  worker.restoreLimits = limits
+  worker.limit = limit
   worker.outcome = default(CheckpointBankResult[CheckpointHead])
   worker.phase = CheckpointWorkerPhase.Staged
   CheckpointAdmission(status: CheckpointWorkerError.None,
