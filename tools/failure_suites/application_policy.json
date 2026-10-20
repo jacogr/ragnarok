@@ -1,0 +1,10 @@
+{
+  "source": "tests/native/application_policy_results.nim",
+  "build_name": "application-policy-results",
+  "cases": [
+    {"identity": {"reason": "default-count"}, "arguments": ["default-count"], "name": "application-policy-default-count", "diagnostic": "options.parsed", "description": "Application policy selected accessor guard default-count"},
+    {"identity": {"reason": "default-bytes"}, "arguments": ["default-bytes"], "name": "application-policy-default-bytes", "diagnostic": "options.parsed", "description": "Application policy selected accessor guard default-bytes"},
+    {"identity": {"reason": "disabled-count"}, "arguments": ["disabled-count"], "name": "application-policy-disabled-count", "diagnostic": "options.state", "description": "Application policy selected accessor guard disabled-count"},
+    {"identity": {"reason": "disabled-bytes"}, "arguments": ["disabled-bytes"], "name": "application-policy-disabled-bytes", "diagnostic": "options.state", "description": "Application policy selected accessor guard disabled-bytes"}
+  ]
+}

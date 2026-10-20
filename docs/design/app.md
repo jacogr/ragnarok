@@ -12,7 +12,9 @@ execution, block import, consensus or validator operation.
 
 `app/options.nim` validates trailing service switches/configuration atomically. Private fields
 have read-only accessors; a failed/default result cannot start a session. Endpoint configuration
-alone does not enable services, and UI implies RPC. Repeated parses have independent ownership.
+alone does not enable services, and UI implies RPC. Canonical state requires `--with-state`,
+a chain file and both explicit mutation budgets; it does not enable listeners. Repeated parses
+have independent ownership.
 
 `app/services.nim` owns one non-copyable aggregate of RPC, UI, telemetry and an optional canonical application chain. It captures one
 bounded chain-file snapshot for RPC parameter/genesis setup and telemetry registration, starts
@@ -27,8 +29,8 @@ opaque finalized successors through state-owned adoption. Enabled RPC joins only
 retained history, state ownership, parameter tuple and finality selection; subscriber work
 starts after all handles agree. Configured seed provisioning requires an explicit complete-state
 policy. Services can opt into that policy, share the exact seed with RPC and retire
-canonical ownership on close/restart; executable policy selection and live import scheduling
-remain application integration work. See [the handoff contract](../../spec/application-chain.md).
+canonical ownership on close/restart. Both executable peer shapes select this path from
+validated state options; live import scheduling remains application integration work. See [the handoff contract](../../spec/application-chain.md).
 
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate

@@ -156,14 +156,17 @@ proc execution(owner: var Services, context: SeedFixture): PreparedFinalAccumula
 
 const SeedPath = "application-services-chain.json"
 
-proc configured(port = 0'u16): Options =
+proc configured(port = 0'u16, withState = false): Options =
   ## Telemetry-only options exercise disabled RPC without making a collector connection.
   result = default(Options)
   var arguments = @["server", "--chain", SeedPath]
-  if port == 0:
+  if withState:
+    for value in ["--with-state", "--state-writes", "1000", "--state-write-bytes", "1000000"]:
+      arguments.add(value) # Canonical ownership is explicit even with all listeners disabled.
+  if port == 0 and not withState:
     for value in ["--with-telemetry", "--telemetry", "127.0.0.1:1"]:
       arguments.add(value) # The pinned sequence API appends individual owned values.
-  else:
+  elif port != 0:
     for value in ["--with-rpc", "--rpc-port", $port]:
       arguments.add(value) # Preserve the validated explicit listener port.
   assert parseOptions(arguments, result)
@@ -178,12 +181,14 @@ proc reservation(): tuple[fd: cint, port: uint16] =
   assert socketName(probe, addr selected, addr size) == 0
   (probe, hostPort(selected.sin_port))
 
-proc listener(owner: var Services): uint16 {.raises.} =
+proc listener(owner: var Services, viaCli = false): uint16 {.raises.} =
   ## Retry only the bounded release/bind race; each successful listener uses explicit state policy.
   for attempt in 0..<8:
     let reserved = reservation()
     discard posix.close(reserved.fd)
-    if owner.start(configured(reserved.port), "test", policy()): return reserved.port
+    let options = configured(reserved.port, viaCli)
+    let started = if viaCli: owner.start(options, "test") else: owner.start(options, "test", policy())
+    if started: return reserved.port # Return only the port owned by the successful startup path.
   assert false, "ephemeral Services startup failed"
   0'u16
 
@@ -237,7 +242,7 @@ proc rpc(context: SeedFixture) {.raises.} =
   discard initApplicationChain(context.text, policy()).value
   let cost = hashCalls()
   failHash(0)
-  let port = listener(owner)
+  let port = listener(owner, true)
   assert hashCalls() == cost, "RPC reuses the seed without another map/header hash"
   let before = owner.stateSnapshot.value
   let peer = client(port)
@@ -319,6 +324,43 @@ proc refusals(context: SeedFixture) {.raises.} =
   failHash(0)
   owner.close()
 
+proc cli(context: SeedFixture) {.raises.} =
+  ## The executable's shared three-argument startup selects canonical state with no RPC or telemetry activation.
+  writeFile(SeedPath, context.text)
+  var owner = default(Services)
+  assert owner.start(configured(withState = true), "test")
+  let old = owner.stateSnapshot.value
+  let final = execution(owner, context)
+  assert owner.applyAccumulation(final, completionLimits().composition).error ==
+      ApplicationChainError.None
+  assert not sameStateSnapshot(old, owner.stateSnapshot.value)
+  owner.close()
+  var readonly = default(Options)
+  assert parseOptions(@["server", "--with-state", "--chain", SeedPath,
+    "--state-writes", "0", "--state-write-bytes", "0"], readonly)
+  assert owner.start(readonly, "test")
+  var branch = forkStateStore(owner.stateSnapshot.value).value
+  assert branch.apply([StateWrite(key: chapterKey(StateChapter(249)), kind: StateWriteKind.Put,
+    value: @[1'u8])]).error == StateStoreError.LimitExceeded
+  owner.close()
+  for selected in ["--state-writes", "--state-write-bytes"]:
+    var arguments = @["server", "--with-state", "--chain", SeedPath]
+    for field in ["--state-writes", "--state-write-bytes"]:
+      arguments.add(field)
+      arguments.add(if field == selected: "1" else: "1000") # Check exact propagation of each independent budget.
+    var limited = default(Options)
+    assert parseOptions(arguments, limited)
+    assert owner.start(limited, "test")
+    var branch = forkStateStore(owner.stateSnapshot.value).value
+    let writes = [StateWrite(key: chapterKey(StateChapter(248)), kind: StateWriteKind.Put, value: @[1'u8]),
+      StateWrite(key: chapterKey(StateChapter(249)), kind: StateWriteKind.Put, value: @[2'u8])]
+    assert branch.apply(writes).error == StateStoreError.LimitExceeded
+    assert branch.apply([writes[0]]).error == StateStoreError.None
+    owner.close()
+  writeFile(SeedPath, "{}")
+  assert not owner.start(configured(withState = true), "test")
+  assert owner.stateSnapshot.error == StateStoreError.Uninitialized
+
 proc cycle(options: Options, explicitClose: bool) {.raises.} =
   ## Both explicit idempotent close and implicit destruction retire the complete seed/text graph.
   var owner = default(Services)
@@ -338,6 +380,7 @@ proc main() {.raises.} =
   local(context)
   rpc(context)
   refusals(context)
+  cli(context)
   writeFile(SeedPath, context.text)
   let options = configured()
   cycle(options, true)
