@@ -12,6 +12,7 @@
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
+import ../json_writer
 import ../version
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]
@@ -72,13 +73,8 @@ type
     parameters*: ParameterResult # Optional immutable startup configuration; never read from disk per request.
 
 proc quote*(text: string): string =
-  ## JSON quoting preserves UTF-8 while escaping ASCII controls and delimiters.
-  result = "\""
-  for c in text: # Every control character is escaped independently of its printable representation.
-    if c == '"' or c == '\\': result.add('\\'); result.add(c)
-    elif ord(c) < 32: result.add("\\u00" & toHex(ord(c), 2))
-    else: result.add(c) # Valid UTF-8 is preserved byte-for-byte.
-  result.add('"')
+  ## Compatibility helper for callers needing a quoted JSON string.
+  $json(text)
 
 # Reject lexical extensions accepted by the pinned stdlib; structure and decoding belong to JsonParser.
 # This allocation-free pass does not parse values. Its input is already size-limited and valid UTF-8.
@@ -276,9 +272,14 @@ proc serviceNumber(token: Value, output: var uint32): bool =
   true
 
 # Render a copied genesis descriptor using JIP-2's Base64 identity and numeric slot.
-proc descriptor(value: Genesis): string =
-  "{\"header_hash\":" & quote(base64.encode(array[32, byte](value.blockHash))) & ",\"slot\":" &
-      $value.slot & "}"
+proc descriptor(value: Genesis): JsonValue =
+  jsonObject([("header_hash", json(base64.encode(array[32, byte](value.blockHash)))),
+    ("slot", json(value.slot))])
+
+## Attach one complete value to a block descriptor without splicing serialized object text.
+proc descriptorValue(value: Genesis, payload: JsonValue): JsonValue =
+  jsonObject([("header_hash", json(base64.encode(array[32, byte](value.blockHash)))),
+    ("slot", json(value.slot)), ("value", payload)])
 
 proc configuredParameters*(text: string): ParameterResult =
   ## Extract one strict JIP-4 parameter field from a bounded startup file. Genesis data is not imported.
@@ -319,7 +320,7 @@ proc resolveBlock(chain: ChainView, text: string, parent = false): GenesisResult
 
 # Map the immutable GP fetch tuple to JIP-2 V1 without machine signed/float conversions.
 # Captured C(8)/C(4) supply population, erasure geometry and ticket attempts; missing state uses zero.
-proc parameterObject(parameters: Parameters, genesis: GenesisResult): string =
+proc parameterObject(parameters: Parameters, genesis: GenesisResult): JsonValue =
   const Names: array[Parameter, string] = [
     "deposit_per_item", "deposit_per_byte", "deposit_per_account", "core_count",
     "min_turnaround_period", "epoch_period", "max_accumulate_gas", "max_is_authorized_gas",
@@ -328,10 +329,9 @@ proc parameterObject(parameters: Parameters, genesis: GenesisResult): string =
     "slot_period_sec", "auth_queue_len", "rotation_period", "max_extrinsics",
     "availability_timeout", "max_authorizer_code_size", "max_input", "max_service_code_size",
     "max_imports", "max_report_elective_data", "transfer_memo_size", "max_exports", "epoch_tail_start"]
-  result = "{\"V1\":{"
-  for field in low(Parameter)..high(Parameter): # Width-limited uint64 values serialize as exact decimal Numbers.
-    if field != low(Parameter): result.add(',')
-    result.add(quote(Names[field]) & ":" & $parameters.get(field))
+  var fields = JsonObject()
+  for field in low(Parameter)..high(Parameter):
+    fields.add(Names[field], json(parameters.get(field))) # Preserve unsigned widths exactly.
   var validators = 0
   var attempts = 0'u64
   var pieceBytes = 0'u64
@@ -341,13 +341,26 @@ proc parameterObject(parameters: Parameters, genesis: GenesisResult): string =
     attempts = uint64(genesis.value.ticketAttempts)
     pieceBytes = uint64(genesis.value.basicPieceLength)
     pieces = uint64(genesis.value.segmentPieces)
-  result.add(",\"tickets_attempts_number\":" & $attempts & ",\"val_count\":" & $validators)
-  result.add(",\"basic_piece_len\":" & $pieceBytes & ",\"segment_piece_count\":" & $pieces & "}}")
+  fields.add("tickets_attempts_number", json(attempts))
+  fields.add("val_count", json(validators))
+  fields.add("basic_piece_len", json(pieceBytes))
+  fields.add("segment_piece_count", json(pieces))
+  jsonObject([("V1", json(fields))])
 
-# Construct a JSON-RPC error; id is already a validated JSON scalar, never arbitrary caller text.
+## Build a response envelope; id is one validated scalar from the strict request parser.
+proc success(id: string, value: JsonValue): string =
+  $jsonObject([("jsonrpc", json("2.0")), ("id", trustedJson(id)), ("result", value)])
+
+## Construct an error using a validated ID, numeric code and escaped message.
 proc error(id: string, code: int, message: string): string =
-  "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":" & $code & ",\"message\":" & quote(
-      message) & "}}"
+  $jsonObject([("jsonrpc", json("2.0")), ("id", trustedJson(id)),
+    ("error", jsonObject([("code", json(code)), ("message", json(message))]))])
+
+## Include the unavailable resource identity in a complete error object.
+proc unavailable(id: string, code: int, message, hash: string): string =
+  $jsonObject([("jsonrpc", json("2.0")), ("id", trustedJson(id)),
+    ("error", jsonObject([("code", json(code)), ("message", json(message)),
+      ("data", json(hash))]))])
 
 ## Build a JIP-2 notification with either a complete result or a terminal human-readable error.
 proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure: string): string =
@@ -357,17 +370,21 @@ proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure
     elif kind == SubscriptionKind.ServiceData: "subscribeServiceData" elif kind ==
         SubscriptionKind.ServiceValue: "subscribeServiceValue" elif kind ==
             SubscriptionKind.ServicePreimage: "subscribeServicePreimage" else: "subscribeServiceRequest"
-  let payload = if failure.len == 0: "\"result\":" & value else: "\"error\":" & quote(failure)
-  "{\"jsonrpc\":\"2.0\",\"method\":" & quote(methodName) & ",\"params\":{\"subscription\":" &
-    $uint32(identity) & "," & payload & "}}"
+  var params = JsonObject()
+  params.add("subscription", json(uint32(identity)))
+  if failure.len == 0:
+    params.add("result", trustedJson(value)) # Only complete internally encoded payloads reach here.
+  else:
+    params.add("error", json(failure)) # Terminal errors are strings, never raw JSON.
+  $jsonObject([("jsonrpc", json("2.0")), ("method", json(methodName)),
+    ("params", json(params))])
 
 ## Encode validated C(13) once per publication/session; failures never expose a partial result.
 proc statisticsUpdate(head: BlockSnapshot): string =
   let found = statistics.statistics(head, ByteLimit(MaxBlobReplyBytes))
   if found.error != StatisticsReadError.None:
     return "" # Missing, malformed and oversized statistics all terminate this subscription family.
-  let blockInfo = descriptor(head)
-  blockInfo[0..^2] & ",\"value\":" & quote(base64.encode(found.value.bytes)) & "}"
+  $descriptorValue(head, json(base64.encode(found.value.bytes)))
 
 ## Encode a validated account, storage value or hash-verified preimage; missing is null, while present empty remains a Blob.
 ## The private key is borrowed only for the synchronous read; no state map or value owner is retained.
@@ -380,38 +397,39 @@ proc serviceUpdate(head: BlockSnapshot, service: ServiceIndex, kind: Subscriptio
           MaxBlobReplyBytes)) # Verify bounded bytes against their identity.
     else: services.serviceData(head, service, ByteLimit(
         MaxBlobReplyBytes))   # All readers validate account metadata.
-  var value = "null"
+  var value = jsonNull()
   if found.error == ServiceReadError.None:
-    value = quote(base64.encode(found.value.bytes)) # Exact bytes use the existing query validators and size ceiling.
+    value = json(base64.encode(found.value.bytes)) # Exact bytes use the existing query validators and size ceiling.
   elif found.error != ServiceReadError.Missing:
     return "" # Missing is a valid update; malformed, unsupported or unreadable records are failures.
-  let blockInfo = descriptor(head)
-  blockInfo[0..^2] & ",\"value\":" & value & "}"
+  $descriptorValue(head, value)
 
 ## Serialize a validated fixed history as a JIP-2 slot array, preserving full uint32 values.
-proc requestSlots(history: RequestHistory): string =
-  var slots = ""
+proc requestSlots(history: RequestHistory): JsonValue =
+  var slots = JsonArray()
   case history.state
   of RequestState.Requested: discard # A requested but unprovided preimage has no timestamps.
-  of RequestState.Available: slots = $uint32(history.since) # Supplied-at slot.
+  of RequestState.Available:
+    slots.add(json(uint32(history.since))) # Supplied-at slot.
   of RequestState.Unavailable:
-    slots = $uint32(history.availableFrom) & "," & $uint32(history.unavailableFrom) # Supplied then forgotten.
+    slots.add(json(uint32(history.availableFrom))) # Supplied then forgotten.
+    slots.add(json(uint32(history.unavailableFrom)))
   of RequestState.Reavailable:
-    slots = $uint32(history.originalFrom) & "," & $uint32(history.removedAt) & "," & $uint32(
-        history.restoredAt) # Requested again.
-  "[" & slots & "]"
+    slots.add(json(uint32(history.originalFrom))) # Requested again after removal.
+    slots.add(json(uint32(history.removedAt)))
+    slots.add(json(uint32(history.restoredAt)))
+  json(slots)
 
 ## Read one fixed request history; absence is null and malformed or ambiguous state is a failure.
 proc requestUpdate(head: BlockSnapshot, service: ServiceIndex, hash: ServicePreimageHash,
     length: RequestLength): string =
   let found = services.serviceRequest(head, service, hash, length)
-  var value = "null"
+  var value = jsonNull()
   if found.error == ServiceReadError.None:
     value = requestSlots(found.value) # Only validated histories expose timestamp fields.
   elif found.error != ServiceReadError.Missing:
     return "" # Namespace ambiguity and malformed histories cannot become absence.
-  let blockInfo = descriptor(head)
-  blockInfo[0..^2] & ",\"value\":" & value & "}"
+  $descriptorValue(head, value)
 
 ## Append an already sized notification; callers reserve both a FIFO slot and its serialized bytes.
 proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: string) =
@@ -438,7 +456,7 @@ proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult,
     return false # Caller disconnects the slow consumer without rejecting chain publication.
   if count == 0:
     return true # Unsubscribed connections do no state decoding or JSON work.
-  let blockInfo = descriptor(head.value)
+  let blockInfo = $descriptor(head.value)
   let activity = if wantsStatistics: statisticsUpdate(head.value) else: ""
   var messages = default(array[MaxSubscriptions, string])
   var failed = default(array[MaxSubscriptions, bool])
@@ -554,7 +572,7 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
       elif kind in [SubscriptionKind.ServiceData, SubscriptionKind.ServiceValue,
           SubscriptionKind.ServicePreimage]:
         serviceUpdate(head.value, ServiceIndex(service), kind, key, hash)
-      else: descriptor(head.value) # Initial values use the same validation as publication updates.
+      else: $descriptor(head.value) # Initial values use the same validation as publication updates.
     if value.len == 0:
       let failure = if kind == SubscriptionKind.ServiceData: "Invalid or unavailable service data"
         elif kind == SubscriptionKind.ServiceValue: "Invalid, unavailable or oversized service value"
@@ -570,7 +588,7 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
     session.active[free] = Subscription(identity: identity, kind: kind, finalized: finalized,
         service: ServiceIndex(service), key: key, hash: hash, length: RequestLength(length))
     session.enqueueUpdate(identity, message)
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $session.lastId & "}"
+    return success(id, json(session.lastId))
   var number = 0'u32
   if parameters < 0 or values[parameters].next != parameters + 2 or
       not serviceNumber(values[parameters + 1], number):
@@ -592,11 +610,11 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
     for index in kept..<session.pendingCount:
       session.pending[index] = default(SubscriptionUpdate) # Release vacated tail ownership after compaction.
     session.pendingCount = kept
-  "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & $found & "}"
+  success(id, json(found))
 
 ## Snapshot connection-local subscription usage without draining queues or retaining selectors.
 ## Pending bytes count serialized notification JSON only, excluding transport output and WS framing.
-proc subscriptionUsage(session: RpcSession): string =
+proc subscriptionUsage(session: RpcSession): JsonValue =
   var best = 0
   var finalized = 0
   for item in session.active:
@@ -605,36 +623,46 @@ proc subscriptionUsage(session: RpcSession): string =
         inc finalized # Count only occupied finalized-source selectors.
       else:
         inc best # All other occupied selectors follow best-head publication.
-  "{\"active\":" & $(best + finalized) & ",\"best\":" & $best &
-    ",\"finalized\":" & $finalized & ",\"pendingUpdates\":" & $session.pendingCount &
-    ",\"pendingBytes\":" & $session.pendingBytes & "}"
+  jsonObject([("active", json(best + finalized)), ("best", json(best)),
+    ("finalized", json(finalized)), ("pendingUpdates", json(session.pendingCount)),
+    ("pendingBytes", json(session.pendingBytes))])
 
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
-proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): string =
-  result = "{\"name\":\"Ragnarok\",\"version\":" & quote(AppVersion)
-  result.add(",\"revision\":" & quote(AppRevision) & ",\"implementation\":\"Nimony\"")
-  result.add(",\"compilerVersion\":" & quote(CompilerVersion))
-  result.add(",\"compilerRevision\":" & quote(CompilerRevision) & ",\"grayPaperVersion\":\"0.8.0\"")
-  result.add(",\"buildTimestamp\":" & quote(BuildTimestamp))
-  result.add(",\"os\":" & quote(Platform) & ",\"architecture\":" & quote(Architecture))
-  result.add(",\"role\":" & quote(info.role) & ",\"uptimeMs\":" & $info.uptimeMs)
-  result.add(",\"connectedPeers\":" & $info.peers)
-  result.add(",\"memory\":{\"occupiedBytes\":" & $info.occupiedBytes)
-  result.add(",\"reservedBytes\":" & $info.reservedBytes & "}")
-  result.add(",\"chain\":null,\"bestBlock\":" & (if info.chain.bestBlock.error ==
-      GenesisError.None: descriptor(info.chain.bestBlock.value) else: "null") &
-          ",\"finalizedBlock\":" & (if info.chain.finalizedBlock.error == GenesisError.None:
-    descriptor(info.chain.finalizedBlock.value) else: "null"))
-  result.add(",\"rpc\":{\"transport\":\"websocket\",\"address\":\"127.0.0.1\"")
-  result.add(",\"port\":" & $info.port & ",\"methods\":[\"ragnarok_clientInfo\",\"parameters\",\"bestBlock\",\"finalizedBlock\",\"parent\",\"stateRoot\",\"serviceData\",\"serviceValue\",\"servicePreimage\",\"serviceRequest\",\"statistics\",\"listServices\",\"beefyRoot\",\"workReport\",\"ragnarok_stateValue\",\"ragnarok_stateKeys\",\"ragnarok_header\"" &
-      (if stateful: ",\"subscribeBestBlock\",\"unsubscribeBestBlock\",\"subscribeFinalizedBlock\",\"unsubscribeFinalizedBlock\",\"subscribeStatistics\",\"unsubscribeStatistics\",\"subscribeServiceData\",\"unsubscribeServiceData\",\"subscribeServiceValue\",\"unsubscribeServiceValue\",\"subscribeServicePreimage\",\"unsubscribeServicePreimage\",\"subscribeServiceRequest\",\"unsubscribeServiceRequest\"" else: "") & "]")
-  result.add(",\"subscriptions\":" & $stateful & ",\"maxMessageBytes\":16384,\"maxBatchRequests\":16")
-  result.add(",\"maxReplyBytes\":" & $MaxReplyBytes & ",\"maxBlobReplyBytes\":" &
-      $MaxBlobReplyBytes)
-  result.add(",\"maxSubscriptions\":" & $MaxSubscriptions & ",\"maxPendingUpdates\":" &
-      $MaxSubscriptionUpdates)
-  result.add(",\"maxPendingBytes\":" & $MaxSubscriptionQueueBytes & ",\"subscriptionState\":" &
-    (if stateful: subscriptionUsage(session) else: "null") & "}}")
+proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValue =
+  var methods = JsonArray()
+  for name in ["ragnarok_clientInfo", "parameters", "bestBlock", "finalizedBlock", "parent",
+      "stateRoot", "serviceData", "serviceValue", "servicePreimage", "serviceRequest",
+      "statistics", "listServices", "beefyRoot", "workReport", "ragnarok_stateValue",
+      "ragnarok_stateKeys", "ragnarok_header"]:
+    methods.add(json(name)) # Query methods are available to every request context.
+  if stateful:
+    for name in ["subscribeBestBlock", "unsubscribeBestBlock", "subscribeFinalizedBlock",
+        "unsubscribeFinalizedBlock", "subscribeStatistics", "unsubscribeStatistics",
+        "subscribeServiceData", "unsubscribeServiceData", "subscribeServiceValue",
+        "unsubscribeServiceValue", "subscribeServicePreimage", "unsubscribeServicePreimage",
+        "subscribeServiceRequest", "unsubscribeServiceRequest"]:
+      methods.add(json(name)) # Subscriptions require connection-local state.
+  let best = if info.chain.bestBlock.error == GenesisError.None:
+    descriptor(info.chain.bestBlock.value) else: jsonNull()
+  let finalized = if info.chain.finalizedBlock.error == GenesisError.None:
+    descriptor(info.chain.finalizedBlock.value) else: jsonNull()
+  let usage = if stateful: subscriptionUsage(session) else: jsonNull()
+  jsonObject([("name", json("Ragnarok")), ("version", json(AppVersion)),
+    ("revision", json(AppRevision)), ("implementation", json("Nimony")),
+    ("compilerVersion", json(CompilerVersion)), ("compilerRevision", json(CompilerRevision)),
+    ("grayPaperVersion", json("0.8.0")), ("buildTimestamp", json(BuildTimestamp)),
+    ("os", json(Platform)), ("architecture", json(Architecture)), ("role", json(info.role)),
+    ("uptimeMs", json(info.uptimeMs)), ("connectedPeers", json(info.peers)),
+    ("memory", jsonObject([("occupiedBytes", json(info.occupiedBytes)),
+      ("reservedBytes", json(info.reservedBytes))])),
+    ("chain", jsonNull()), ("bestBlock", best), ("finalizedBlock", finalized),
+    ("rpc", jsonObject([("transport", json("websocket")), ("address", json("127.0.0.1")),
+      ("port", json(info.port)), ("methods", json(methods)), ("subscriptions", json(stateful)),
+      ("maxMessageBytes", json(MaxMessage)), ("maxBatchRequests", json(16)),
+      ("maxReplyBytes", json(MaxReplyBytes)), ("maxBlobReplyBytes", json(MaxBlobReplyBytes)),
+      ("maxSubscriptions", json(MaxSubscriptions)), ("maxPendingUpdates", json(
+          MaxSubscriptionUpdates)),
+      ("maxPendingBytes", json(MaxSubscriptionQueueBytes)), ("subscriptionState", usage)]))])
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
 proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: int,
@@ -704,23 +732,19 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         for index in 0..<31: key[index] = keyBytes[index] # Decoding proved the complete extent.
         start = int(view.keyAfter(StateKey(key)))
       let finish = start + min(int(count), view.keyCount - start)
-      var keys = "["
-      var last = "null"
+      var keys = JsonArray()
+      var last = jsonNull()
       let budget = max(0, allowance - id.len - 256)
       for index in start..<finish:
         # Encode fixed key copies only; enumeration never reads or copies state values.
-        let encoded = quote(base64.encode(array[31, byte](view.keyAt(StateKeyIndex(index)))))
-        if keys.len + encoded.len + 2 > budget:
+        let encoded = json(base64.encode(array[31, byte](view.keyAt(StateKeyIndex(index)))))
+        if keys.len + ($encoded).len + 1 > budget:
           return error(id, 0, ReplyBudgetError) # No misleading partial page or skipped continuation.
-        if index > start: keys.add(',') # Separate keys after the first item.
         keys.add(encoded)
         last = encoded
-      keys.add(']')
-      if finish == view.keyCount: last = "null" # No continuation when the end was reached exactly.
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":{\"keys\":" & keys &
-          ",\"next\":" & last & "}}"
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
-        quote(hash) & "}}"
+      if finish == view.keyCount: last = jsonNull() # No continuation when the end was reached exactly.
+      return success(id, jsonObject([("keys", json(keys)), ("next", last)]))
+    return unavailable(id, 1, "Block unavailable", hash)
   if methodName == "ragnarok_stateValue":
     if parameters < 0: return error(id, -32602, "Expected header hash and state key") # Both identities are mandatory.
     let argument = parameters + 1
@@ -741,17 +765,15 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
       for index in 0..<31: key[index] = keyBytes[index] # Exact key width was proved above.
       let found = view.lookup(StateKey(key))
       if found.error == StateStoreError.MissingKey:
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
-            ",\"result\":null}" # Missing differs from a present empty blob.
+        return success(id, jsonNull()) # Missing differs from a present empty blob.
       if found.error != StateStoreError.None:
         return error(id, 0, "Unreadable state value") # Failed owners never expose bytes.
       let budget = min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3))
       if found.value.byteLength > budget:
         return error(id, 0, ReplyBudgetError) # Reject before copying or Base64 allocation.
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-          found.value.bytes)) & "}"
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
-        quote(hash) & "}}"
+      return success(id, json(base64.encode(
+          found.value.bytes)))
+    return unavailable(id, 1, "Block unavailable", hash)
   if methodName == "workReport":
     if parameters < 0: return error(id, -32602, "Expected one report hash") # Hash is mandatory.
     let argument = parameters + 1
@@ -774,13 +796,12 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         var bytes = newSeq[byte](metadata.value.consumed)
         if encodeOwnedReport(found.value, bytes).error != OwnershipError.None:
           return error(id, 0, "Invalid report owner") # Never publish a partial re-encoding.
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(bytes)) & "}"
+        return success(id, json(base64.encode(bytes)))
       if found.error == ReportReadError.LimitExceeded:
         return error(id, 0, ReplyBudgetError) # Bounded lookup or reply refused; no truncation.
       if found.error != ReportReadError.Missing:
         return error(id, 0, "Invalid or unreadable work reports") # Malformed state is not ordinary absence.
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":2,\"message\":\"Work-report unavailable\",\"data\":" &
-        quote(hash) & "}}"
+    return unavailable(id, 2, "Work-report unavailable", hash)
   if methodName in ["serviceData", "serviceValue", "servicePreimage", "serviceRequest"]:
     let count = if methodName == "serviceData": 2 elif methodName == "serviceRequest": 4 else: 3
     if parameters < 0: return error(id, -32602, "Expected service query arguments") # Hash and service are mandatory.
@@ -806,9 +827,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     let hash = values[first].text
     let selected = resolveBlock(info.chain, hash)
     if selected.error != GenesisError.None:
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
-          ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" & quote(hash) &
-          "}}" # Unknown blocks cannot yield a false absence verdict.
+      return unavailable(id, 1, "Block unavailable", hash) # Unknown blocks cannot yield a false absence verdict.
     let view = selected.value
     if methodName == "serviceRequest":
       var identity = default(array[32, byte])
@@ -816,13 +835,12 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
       let request = services.serviceRequest(view, ServiceIndex(service), ServicePreimageHash(
           identity), RequestLength(length))
       if request.error == ServiceReadError.Missing:
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
-            ",\"result\":null}" # Absence differs from an outstanding empty history.
+        return success(id, jsonNull()) # Absence differs from an outstanding empty history.
       if request.error == ServiceReadError.AmbiguousNamespace:
         return error(id, 0, "Request namespace ambiguous under pinned GP 0.8.0") # Do not interpret storage/preimage bytes as slots.
       if request.error != ServiceReadError.None:
         return error(id, 0, "Invalid or unreadable service request") # Malformed state never becomes null or [].
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & requestSlots(request.value) & "}"
+      return success(id, requestSlots(request.value))
     # Reserve the envelope and exact quoted ID before converting the remaining budget to raw bytes.
     let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
     var found = default(ServiceReadResult)
@@ -836,14 +854,13 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
       for j in 0..<32: identity[j] = key[j]
       found = services.servicePreimage(view, ServiceIndex(service), ServicePreimageHash(identity), budget)
     if found.error == ServiceReadError.Missing:
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id &
-          ",\"result\":null}" # Absence differs from a present empty blob.
+      return success(id, jsonNull()) # Absence differs from a present empty blob.
     if found.error == ServiceReadError.LimitExceeded: return error(id, 0,
         ReplyBudgetError) # Never truncate a stored value.
     if found.error != ServiceReadError.None: return error(id, 0,
         "Invalid or unreadable service state") # Do not publish malformed imported state.
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-        found.value.bytes)) & "}"
+    return success(id, json(base64.encode(
+        found.value.bytes)))
   if methodName in ["parent", "stateRoot", "statistics", "listServices", "beefyRoot",
       "ragnarok_header"]:
     if parameters < 0: return error(id, -32602, "Expected one header hash") # Hash lookup always needs an argument.
@@ -857,8 +874,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     if selected.error == GenesisError.None:
       let view = selected.value
       if methodName == "parent":
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(view) &
-            "}" # Only provider-backed parents succeed.
+        return success(id, descriptor(view)) # Only provider-backed parents succeed.
       if methodName == "ragnarok_header":
         # Retain the canonical sealed header; its bytes are exactly those hashed at genesis capture.
         let owner = view.header
@@ -871,27 +887,25 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         var bytes = newSeq[byte](metadata.value.consumed)
         if encodeOwnedHeader(owner, bytes).error != HeaderError.None:
           return error(id, 0, "Unreadable header") # Never publish partial encodings.
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-            bytes)) & "}"
+        return success(id, json(base64.encode(
+            bytes)))
       if methodName == "listServices":
         # Retained scalar IDs are already sorted; never rescan or decode the map per request.
-        var ids = "["
+        var ids = JsonArray()
         let budget = max(0, allowance - id.len - 256)
         for index in 0..<view.serviceCount:
-          let item = $uint32(view.serviceAt(ServiceListIndex(index)))
-          if ids.len + item.len + 2 > budget:
+          let item = json(uint32(view.serviceAt(ServiceListIndex(index))))
+          if ids.len + ($item).len + 1 > budget:
             return error(id, 0, ReplyBudgetError) # Reserve comma/closing bracket; never return a partial list.
-          if index > 0: ids.add(',') # The first member needs no separator.
           ids.add(item)
-        ids.add(']')
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & ids & "}"
+        return success(id, json(ids))
       if methodName == "beefyRoot":
         # The fixed commitment comes from the complete matching history, not a guessed empty root.
         let found = beefy.beefyRoot(view)
         if found.error != BeefyReadError.None:
           return error(id, 0, "Invalid or unavailable BEEFY history") # No root is exposed on failure.
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-          array[32, byte](found.value))) & "}"
+        return success(id, json(base64.encode(
+          array[32, byte](found.value))))
       if methodName == "statistics":
         # Use the same raw-value and aggregate reply ceilings as service blobs.
         let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
@@ -900,30 +914,30 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
           return error(id, 0, ReplyBudgetError) # A complete value must fit; no truncation.
         if found.error != StatisticsReadError.None:
           return error(id, 0, "Invalid or unavailable activity statistics") # Missing chapters are not empty statistics.
-        return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(
-            found.value.bytes)) & "}"
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & quote(base64.encode(array[32,
-          byte](view.stateRoot))) & "}"
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"error\":{\"code\":1,\"message\":\"Block unavailable\",\"data\":" &
-        quote(hash) & "}}" # No parent or unknown block data exists in this genesis-only view.
+        return success(id, json(base64.encode(
+            found.value.bytes)))
+      return success(id, json(base64.encode(array[32,
+          byte](view.stateRoot))))
+    return unavailable(id, 1, "Block unavailable",
+        hash) # No parent or unknown block data exists in this genesis-only view.
   if methodName in ["ragnarok_clientInfo", "parameters", "bestBlock", "finalizedBlock"]:
     if parameters >= 0 and values[parameters].next != parameters + 1: return error(id, -32602, "Expected no parameters")
     if methodName == "finalizedBlock":
       let selected = info.chain.finalizedBlock
       if selected.error != GenesisError.None:
         return error(id, 0, "Finalized chain view unavailable") # Never substitute genesis or the current best head.
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(selected.value) & "}"
+      return success(id, descriptor(selected.value))
     if methodName == "bestBlock":
       if info.chain.bestBlock.error != GenesisError.None: return error(id, 0,
           "Genesis chain view unavailable") # No configured head exists.
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & descriptor(
-          info.chain.bestBlock.value) & "}"
+      return success(id, descriptor(
+          info.chain.bestBlock.value))
     if methodName == "parameters":
       if not info.parameters.ok: return error(id, 0, "Chain parameters unavailable; configure --chain")
-      return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & parameterObject(
-          info.parameters.value, info.chain.bestBlock) & "}"
-    return "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"result\":" & clientInfo(info, stateful,
-        session) & "}"
+      return success(id, parameterObject(
+          info.parameters.value, info.chain.bestBlock))
+    return success(id, clientInfo(info, stateful,
+        session))
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 
 # Determine the exact encoded ID length for output reservation; invalid envelopes may reserve excess.
@@ -971,16 +985,17 @@ proc respondImpl(text: string, info: ClientInfo, session: var RpcSession, statef
     i = values[i].next
   if starts.len == 0: return error("null", -32600, "Invalid batch size") # Empty arrays are invalid requests.
   if available < 0: return error("null", 0, ReplyBudgetError) # Defensive guard if input/ID policies change.
-  result = ""
+  var replies = JsonArray()
+  var hasReplies = false
   # Each reply can spend only free space plus its own reservation; later request IDs stay representable.
   for index, start in starts:
     let allowance = available + reserves[index]
     let response = dispatch(values, start, info, session, stateful, allowance)
     available = allowance - response.len
     if response.len > 0:
-      if result.len > 0: result.add(',') # Notifications contribute neither a reply nor a separator.
-      result.add(response)
-  if result.len > 0: result = "[" & result & "]" # Notification-only batches produce no frame.
+      replies.add(trustedJson(response)) # Each dispatcher result is one complete internally encoded value.
+      hasReplies = true
+  result = if hasReplies: $json(replies) else: "" # Notification-only batches produce no frame.
 
 proc respond*(text: string, info: ClientInfo, session: var RpcSession): string =
   ## Dispatch with a connection-owned session; notifications may mutate subscriptions without replying.
