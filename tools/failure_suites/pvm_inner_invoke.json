@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/pvm_inner_invoke_results.nim",
+  "build_name": "pvm-inner-invoke-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "engine"
+      },
+      "arguments": [
+        "engine"
+      ],
+      "name": "pvm-inner-invoke-engine",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner invoke engine"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-inner-invoke-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner invoke owner"
+    },
+    {
+      "identity": {
+        "origin": "memory"
+      },
+      "arguments": [
+        "memory"
+      ],
+      "name": "pvm-inner-invoke-memory",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner invoke memory"
+    },
+    {
+      "identity": {
+        "origin": "debt"
+      },
+      "arguments": [
+        "debt"
+      ],
+      "name": "pvm-inner-invoke-debt",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner invoke debt"
+    },
+    {
+      "identity": {
+        "origin": "success-reason"
+      },
+      "arguments": [
+        "success-reason"
+      ],
+      "name": "pvm-inner-invoke-success-reason",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Inner invoke success-reason"
+    },
+    {
+      "identity": {
+        "origin": "owner-reason"
+      },
+      "arguments": [
+        "owner-reason"
+      ],
+      "name": "pvm-inner-invoke-owner-reason",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Inner invoke owner-reason"
+    },
+    {
+      "identity": {
+        "origin": "default-reason"
+      },
+      "arguments": [
+        "default-reason"
+      ],
+      "name": "pvm-inner-invoke-default-reason",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Inner invoke default-reason"
+    }
+  ]
+}

@@ -31,7 +31,7 @@ checkStage(refused, RefinementInvocationError.InvalidBootstrap)
 let capture = runRefinementInvocation(source, [], default(RefinementInputs), ExportOffset(7),
     refinementLimits())
 checkStage(capture, RefinementInvocationError.BootstrapFailure)
-let host = run(refinementFixture([@[10'u8, 13], halt]))
+let host = run(refinementFixture([@[10'u8, 9], halt]))
 checkStage(host, RefinementInvocationError.HostFailure)
 var limited = refinementLimits()
 limited.steps = ExecutionStepLimit(0)
@@ -47,7 +47,7 @@ case paramStr(1)
 of "default": discard missing.value # Default results have no selected owner.
 of "refused": discard refused.value # Missing bootstrap never becomes protocol BAD.
 of "capture": discard capture.value # Input capture failure carries no partial execution.
-of "host": discard host.value # Unsupported host cannot become protocol panic.
+of "host": discard host.value # Local host refusal cannot become protocol panic.
 of "engine": discard engine.value # Local instruction budget cannot become guest OOG.
 of "output": discard outputRefusal.value # Output policy cannot expose truncated bytes.
 of "wrong-bootstrap": discard engine.bootstrapError # Engine failure cannot fabricate a capture reason.

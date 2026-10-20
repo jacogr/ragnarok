@@ -48,6 +48,7 @@ type
     copyLimit: MemoryByteLimit
     exportLimits: ExportLimits
     machines: InnerMachines
+    innerFailure: StepError
 
 func error*[T](outcome: RefinementDispatchResult[T]): RefinementDispatchError =
   ## Inspect the alternative without writable tag access.
@@ -160,7 +161,7 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       return hostSuccess[RefinementDispatchError](selected.response)
     hostFailure(if exported.error == RefinementExportError.LimitExceeded: RefinementDispatchError.LimitExceeded
       else: RefinementDispatchError.InvalidContext) # No partially appended output on local failure.
-  of 9..12, 14:
+  of 9..14:
     let changed = if uint64(stopped.hostCall) == 9:
       createInnerMachine(context.machines, cpu.gas, cpu.registers, memory)
     elif uint64(stopped.hostCall) == 10:
@@ -169,17 +170,20 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       innerPokeResponse(context.machines, cpu.gas, cpu.registers, memory, context.copyLimit)
     elif uint64(stopped.hostCall) == 12:
       innerPagesResponse(context.machines, cpu.gas, cpu.registers, memory)
+    elif uint64(stopped.hostCall) == 13:
+      innerInvokeResponse(context.machines, cpu.gas, cpu.registers, memory)
     else:
       expungeInnerMachine(context.machines, cpu.gas, cpu.registers,
           memory) # Every implemented inner host uses one invocation-local map.
+    if changed.error == InnerMachineError.ExecutionFailure:
+      context.innerFailure = changed.executionError
+      return hostFailure(RefinementDispatchError.ExecutionFailure) # Stage the exact enum reason beside this run's private context.
     if changed.error == InnerMachineError.None:
       context.machines = changed.value.machines
       return hostSuccess[RefinementDispatchError](
           changed.value.response) # Response and immutable map move together.
     hostFailure(if changed.error == InnerMachineError.LimitExceeded: RefinementDispatchError.LimitExceeded
       else: RefinementDispatchError.InvalidContext) # A local capture refusal cannot become protocol HUH/FULL.
-  of 13:
-    hostFailure(RefinementDispatchError.UnsupportedHostCall) # Known inner-machine hosts are not protocol-unknown identifiers.
   else:
     hostSuccess[RefinementDispatchError](unknownHostResponse(cpu.gas, cpu.registers,
         memory)) # Includes accumulation-only IDs.
@@ -194,7 +198,8 @@ proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: Memory
       status: RefinementDispatchError.InvalidContext)
   let empty = captureRefinementExports(data.offset)
   var context = DispatchContext(source: data, exports: empty, copyLimit: copyLimit,
-      exportLimits: exportLimits, machines: captureInnerMachines(inner))
+      exportLimits: exportLimits, machines: captureInnerMachines(inner),
+          innerFailure: StepError.Uninitialized)
   let evaluated = executeWithHost(data.machine, context, dispatch, steps, calls, cycles)
   case evaluated.error
   of HostExecutionError.None:
@@ -206,6 +211,10 @@ proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: Memory
     RefinementDispatchResult[RefinementOutcome](status: RefinementDispatchError.ExecutionFailure,
       reason: evaluated.executionError) # Preserve the exact local budget/instruction reason.
   of HostExecutionError.HostFailure:
+    if evaluated.hostError == RefinementDispatchError.ExecutionFailure:
+      return RefinementDispatchResult[RefinementOutcome](
+        status: RefinementDispatchError.ExecutionFailure,
+        reason: context.innerFailure) # Preserve nested StepError without exposing callback progress or confusing it with protocol OOG.
     RefinementDispatchResult[RefinementOutcome](status: evaluated.hostError) # Scratch exports die with this run.
   else:
     RefinementDispatchResult[RefinementOutcome](status: RefinementDispatchError.InvalidContext)

@@ -44,6 +44,6 @@ exact compiler privacy/nominal rejections, verification inventory, nineteen
 inventory/provenance Python tests and pinned formatting pass. These are local
 macOS results; exact-head Linux CI remains independent.
 
-Nested invoke remains gated. Next: invoke, then work-package report integration.
+Nested invoke follows [the bounded invocation contract](pvm-inner-invoke.md). Next: work-package report integration.
 State composition/publication ownership is unchanged. M1 framing is complete;
 full state serialization and complete refinement remain open.

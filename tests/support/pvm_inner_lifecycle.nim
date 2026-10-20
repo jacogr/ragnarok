@@ -3,12 +3,13 @@
 
 ## Original literal inner blobs and bounded lifecycle fixtures shared by unit and strict misuse probes.
 
-import ../../src/pvm/[inner_machines, machine, program]
+import ../../src/pvm/[inner_machines, machine, program, step, gas]
 
 proc innerLimits*(): InnerMachineLimits =
   ## Independent local budgets permit the protocol's whole 63-slot map with tiny original programs.
   InnerMachineLimits(items: InnerMachineLimit(63), program: ProgramByteLimit(8192),
-    total: InnerProgramLimit(65536), jumps: JumpCountLimit(32), pages: PageLimit(4))
+    total: InnerProgramLimit(65536), jumps: JumpCountLimit(32), pages: PageLimit(4),
+        steps: ExecutionStepLimit(100), cycles: GasCycleLimit(1000))
 proc innerBlob*(): seq[byte] =
   ## Empty jump table, two code bytes (jump_ind r0) and a single marked opcode, all authored literally.
   @[0'u8, 0, 2, 50, 0, 1]

@@ -38,7 +38,7 @@ metadata/envelope/program bootstrap gates remain local. Work-package I's Oversiz
 BadExports and zero-segment replacement belong to report construction, not this
 normalizer. No report publication, input/state-freshness authentication, light-state
 support or state composition change is implied. Inner-machine lifecycle hosts 9/14
-now run with explicit local policies; host 12 maps [inner pages](pvm-inner-pages.md); hosts 10/11 perform [inner transfers](pvm-inner-transfer.md); host 13 remains gated. See
+now run with explicit local policies; host 12 maps [inner pages](pvm-inner-pages.md); hosts 10/11 perform [inner transfers](pvm-inner-transfer.md); host 13 follows [bounded inner invocation](pvm-inner-invoke.md). See
 [the lifecycle contract](pvm-inner-lifecycle.md).
 
 Completion: real bound guests for halt/readability/empty/panic/page-fault/host and
@@ -54,6 +54,6 @@ nine compiler privacy/nominal/source rejections, verification inventory,
 19 inventory/provenance Python tests and pinned formatting pass. These are local
 macOS results; exact-head Linux CI remains independent.
 
-Next: remaining inner-machine hosts and work-package/report result integration.
+Next: work-package/report result integration after the bounded inner hosts.
 M1 framing is complete; full state serialization, complete refinement and whole-block
 parity remain open.

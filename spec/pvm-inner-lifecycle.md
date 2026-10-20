@@ -41,8 +41,8 @@ outcome regression guards and five exact compiler privacy/nominal rejections pas
 Verification inventory, nineteen inventory/provenance Python tests and pinned
 formatting pass. These are local macOS results; exact-head Linux CI is independent.
 
-Host 12 now follows [the page-management contract](pvm-inner-pages.md).
-Hosts 10/11 now follow [the transfer contract](pvm-inner-transfer.md); invoke remains gated. No nested execution,
-report construction, state composition or publication changes. Next: inner memory
-transfer/page management, then invoke and work-package report integration.
+Host 12 follows [the page-management contract](pvm-inner-pages.md), hosts 10/11
+follow [the transfer contract](pvm-inner-transfer.md), and host 13 follows
+[bounded invocation](pvm-inner-invoke.md). Report construction, state composition
+and publication remain outside this lifecycle contract. Next: report integration.
 M1 framing is complete; full state serialization and complete refinement remain open.
