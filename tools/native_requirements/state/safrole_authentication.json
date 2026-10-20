@@ -13,5 +13,6 @@
   "observers": [
     "verify"
   ],
-  "prepared": true
+  "prepared": true,
+  "provider": "authentication"
 }

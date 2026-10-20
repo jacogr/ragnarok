@@ -17,6 +17,7 @@ from harness_fixtures import temporary_folder
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import native_preparation
+import native_fixtures
 
 
 # Both supported entry points rely on these preparation contracts and propagate all provider failures.
@@ -89,19 +90,22 @@ class NativePreparationHarness(unittest.TestCase):
                 'signing_domain_fixture', 'entropy_stf_fixture', 'validator_stf_fixture',
                 'ticket_stf_fixture', 'sealer_stf_fixture')
         order = []
+        plan = native_preparation.PROVIDERS.plan('root')
         with ExitStack() as stack:
             runtime = stack.enter_context(patch.object(native_preparation, 'unit_runtime_fixtures', return_value={'runtime': 'manifest'}))
-            for name in names:
-                # Each provider returns distinct manifest/evidence objects; assembly must retain both.
-                def prepare(folder, name=name):
+            for provider in plan:
+                # Mock every declared stage, including newly added ones, so this never invokes real generators.
+                def prepare(folder, name=provider.name):
                     order.append(name)
                     return {name: folder/name}, {'fixture_sha256': name}
-                stack.enter_context(patch.object(native_preparation, 'unit_'+name+'_fixture', side_effect=prepare))
+                stack.enter_context(patch.object(native_fixtures, provider.function, side_effect=prepare))
             fixtures, evidence = native_preparation.prepare_unit_fixtures(Path('/fixture'), 'certs', 'wires', 'reload')
         runtime.assert_called_once_with('certs', 'wires', 'reload')
-        self.assertEqual(order, list(names))
-        self.assertEqual(list(fixtures), ['runtime', *names])
-        self.assertEqual(evidence, {key: {'fixture_sha256': name} for key, name in zip(keys, names)})
+        self.assertEqual([name for name in order if name in names], list(names))
+        self.assertEqual(list(fixtures), ['runtime', *order])
+        self.assertEqual({key: evidence[key] for key in keys},
+                         {key: {'fixture_sha256': name} for key, name in zip(keys, names)})
+        self.assertEqual(set(evidence), {provider.evidence[0] for provider in plan})
 
     # Required profiles select provider families before native builds and expose only requested library names.
     def test_selected_library_providers(self):
@@ -138,25 +142,25 @@ class NativePreparationHarness(unittest.TestCase):
     def test_selected_fixture_coverage_and_isolation(self):
         import native_fixtures
         from native_requirements import NATIVE_REQUIREMENTS
-        actual = [suite for suites in native_preparation.SELECTED_FIXTURE_GROUPS.values() for suite in suites]
-        expected = {suite for suite, profile in NATIVE_REQUIREMENTS.items() if profile['prepared']}
-        self.assertEqual(len(actual), len(set(actual)))
-        self.assertEqual(set(actual) | {'application_block_download', 'quic_transport', 'quic_integration'}, expected)
-        for group, suites in native_preparation.SELECTED_FIXTURE_GROUPS.items():
-            for suite in suites:
-                # The chosen provider may share sibling fixtures but only the requested manifest escapes.
-                with self.subTest(suite=suite), ExitStack() as stack:
-                    providers = {name: stack.enter_context(patch.object(native_fixtures, 'unit_'+name+'_fixture'))
-                                 for name in native_preparation.SELECTED_FIXTURE_GROUPS}
-                    manifests = {name: ('env', Path('/fixture')/name, ()) for name in suites}
-                    providers[group].return_value = manifests, {'sha': suite}
-                    recorded = []
-                    fixtures, evidence = native_preparation.prepare_selected_fixture(Path('/fixture'), suite,
-                        record=lambda name, value: recorded.append((name, value)))
-                    self.assertEqual(fixtures, {suite: manifests[suite]})
-                    self.assertEqual(evidence, {'sha': suite})
-                    self.assertEqual(recorded, [('selected_unit_fixture', evidence)])
-                    self.assertEqual([name for name, provider in providers.items() if provider.called], [group])
+        selected = {suite: profile for suite, profile in NATIVE_REQUIREMENTS.items() if profile['prepared']}
+        for suite, profile in selected.items():
+            # Every requirement resolves to exactly its named provider, without an independent consumer list.
+            with self.subTest(suite=suite), ExitStack() as stack:
+                providers = {name: stack.enter_context(patch.object(native_fixtures, entry.function))
+                             for name, entry in native_preparation.PROVIDERS.providers.items()}
+                manifests = {name: ('env', Path('/fixture')/name, ())
+                             for name, record in selected.items() if record['provider'] == profile['provider']}
+                providers[profile['provider']].return_value = manifests, {'sha': suite}
+                stack.enter_context(patch.object(native_preparation, 'prepare_integration',
+                                                return_value=('wires', 'reload', {'sha': suite})))
+                recorded = []
+                fixtures, evidence = native_preparation.prepare_selected_fixture(Path('/fixture'), suite,
+                    certificates='certs', record=lambda name, value: recorded.append((name, value)))
+                self.assertEqual(fixtures, {suite: manifests[suite]})
+                self.assertEqual(evidence, {'sha': suite})
+                self.assertEqual(recorded, [('selected_unit_fixture', evidence)])
+                self.assertEqual([name for name, provider in providers.items() if provider.called],
+                                 [profile['provider']])
 
     # Omitted providers and missing returned manifests cannot reuse an unrelated or stale fixture.
     def test_selected_fixture_refusal(self):
@@ -187,13 +191,13 @@ class NativePreparationHarness(unittest.TestCase):
     # A partition reuses already-prepared integration bytes instead of rebuilding the same CE driver.
     def test_partition_integration_reuse(self):
         manifest = (None, {}, ())
-        with patch.object(native_preparation, 'unit_runtime_fixtures',
-                          return_value={'quic_integration': manifest}) as runtime, patch.object(
-                native_preparation, '_selected_fixture_provider') as provider:
+        with patch.object(native_fixtures, 'unit_integration_fixture',
+                          return_value=({'quic_integration': manifest}, {'files': {}})) as provider, patch.object(
+                native_preparation, 'prepare_integration') as prepare:
             fixtures, _ = native_preparation.prepare_partition_fixtures(
                 Path('/fixture'), ['quic_integration'], integration=('wires', 'reload'))
-        runtime.assert_called_once_with(None, 'wires', 'reload', suite='quic_integration')
-        provider.assert_not_called()
+        provider.assert_called_once_with(Path('/fixture'), integration=('wires', 'reload'))
+        prepare.assert_not_called()
         self.assertEqual(fixtures, {'quic_integration': manifest})
 
     # QUIC transport hashes only certificates, while integration hashes all original/reload children without certificates.

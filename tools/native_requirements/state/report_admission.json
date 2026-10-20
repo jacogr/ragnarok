@@ -17,5 +17,7 @@
     "commit",
     "ring_verify"
   ],
-  "prepared": true
+  "prepared": true,
+  "provider": "admission",
+  "variant": "report"
 }

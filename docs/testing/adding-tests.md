@@ -25,8 +25,14 @@ Static fixture dependencies belong in the same per-suite requirements file, for 
 alphabetical and unique. Each ID is discovered from a `*.fixture.json` descriptor beside its
 input data under `tests/fixtures/`. A descriptor owns its environment variable, target and exact
 member SHA-256 pins; adding a fixture or consumer requires no runner registration. Generated
-fixtures continue to use the feature adapters and shared preparation described in
-[infrastructure](infrastructure.md).
+fixtures declare a `"provider"` ID in the same requirements file, with an optional semantic
+`"variant"` (defaulting to `"default"`). Keep `"prepared": true` for these consumers; preflight
+checks the flag and provider/variant together. Provider IDs come from decorated `unit_<id>_fixture`
+callables in `tools/native_fixtures.py`; there is no consumer alias table. Providers return variant
+contracts, which the wrapper binds to suites from their requirements. The decorator declares
+execution group/rank, required resources and any historical evidence key/filename. Add a provider
+at its definition and its consumers in their own requirements; no runner dispatch or pipeline-list
+edit is needed. See [infrastructure](infrastructure.md) for lifecycle and evidence details.
 
 Compiler rejection sources belong under `tests/native/compile_fail/`, with one source-local header:
 

@@ -106,19 +106,20 @@ class NativeRequirementsHarness(unittest.TestCase):
         order = []
         names = ('schedule', 'markers', 'authentication', 'transition', 'commitment',
                  'preimage_transition', 'accumulation_credit', 'accumulation_context', 'accumulation_invocation', 'accumulation_service', 'accumulation_round', 'accumulation_inputs', 'accumulation_operands', 'accumulation_queue', 'admission', 'disputes', 'availability', 'guarantors', 'guarantee_credentials', 'report_policy', 'report_anchors', 'report_packages', 'report_assignments')
+        plan = native_fixtures.PROVIDERS.plan('sealer')
         with ExitStack() as stack:
-            for name in names:
-                # Fresh evidence dictionaries catch accidental cross-feature mutation or lost fields.
-                def prepare(folder, name=name):
+            for provider in plan:
+                # Include newly declared features automatically while retaining historical relative-order checks.
+                def prepare(folder, name=provider.name):
                     order.append(name)
                     return {name: ('fixture', folder, ())}, {'fixture_sha256': name}
-                stack.enter_context(patch.object(native_fixtures, 'unit_'+name+'_fixture', side_effect=prepare))
+                stack.enter_context(patch.object(native_fixtures, provider.function, side_effect=prepare))
             fixtures, evidence = native_fixtures.unit_sealer_fixture(Path('/fixture'))
-        self.assertEqual(order, list(names))
-        self.assertEqual(list(fixtures), list(names))
-        self.assertEqual(list(evidence), ['fixture_sha256', *reversed(names[1:])])
+        self.assertEqual([name for name in order if name in names], list(names))
+        self.assertEqual(list(fixtures), order)
+        self.assertEqual(list(evidence), ['fixture_sha256', *reversed(order[1:])])
         self.assertEqual(evidence, {'fixture_sha256': 'schedule',
-                                   **{name: {'fixture_sha256': name} for name in names[1:]}})
+                                   **{name: {'fixture_sha256': name} for name in order[1:]}})
 
     # Feature entry points call only their own independent oracle and retain its exact bytes/hash.
     def test_feature_isolation(self):
