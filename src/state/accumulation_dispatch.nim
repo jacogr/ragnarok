@@ -7,7 +7,7 @@
 ## Outcome normalization and state publication are separate operations.
 
 import ../chain/parameters
-import ../pvm/[machine, step, gas, host_gas, host_fetch]
+import ../pvm/[machine, step, gas, host_gas, host_fetch, host_heap]
 import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
     state_requests, state_privileges, state_authorization, work_report, state_safrole, assurances,
     c2_records, bounded]
@@ -59,42 +59,16 @@ func executionError*(outcome: AccumulationDispatchResult): StepError {.inline,
   ## Inspect the original execution-budget or instruction refusal without a fabricated guest result.
   outcome.reason
 
-# Apply adopted GP #533 gas/result ordering and #538 envelope-derived stack reservation.
+# Translate only the shared heap primitive's local errors into this invocation's failure domain.
 proc heapResponse(context: DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
-  let counted = memory.writablePageCount(context.heap.first, context.heap.past)
-  if counted.error != MachineError.None:
-    return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid memory owner supplies a synthetic endpoint.
-  let first = uint64(uint32(context.heap.first))
-  let past = uint64(uint32(context.heap.past))
-  let count = uint64(uint32(counted.value))
-  if first > past or count > past-first:
-    return hostFailure(AccumulationDispatchError.InvalidContext) # Prove the endpoint addition before performing it.
-  let current = first+count
-  let requested = uint64(cpu.registers[7])
-  var returned = current
-  var cost = 275'u64
-  if requested > current and requested <= past:
-    # Both endpoints are <=2^20; the bounded difference times 121 plus 275 fits uint64.
-    cost += (requested-current)*121
-    returned = requested
-  if uint64(cpu.gas) < cost:
-    # #533 drains remaining credit and preserves registers/memory/context before row mutations; no signed debt.
-    return hostSuccess[AccumulationDispatchError](HostResponse(action: HostAction.OutOfGas,
-      gas: MachineGas(0), gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory))
-  let grown = memory.withWritablePages(context.heap.first, PageIndex(uint32(returned)))
-  case grown.error
-  of MachineError.None:
-    discard # Mapping preflight succeeded and all retained bytes/outside access remain immutable.
-  of MachineError.LimitExceeded:
-    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local allocation capacity is distinct from protocol gas.
-  else:
-    return hostFailure(AccumulationDispatchError.InvalidContext) # No partial memory response escapes invariant failure.
-  var response = HostResponse(action: HostAction.Continue,
-    gas: MachineGas(uint64(cpu.gas)-cost), gasDeficit: GasDeficit(0),
-    registers: cpu.registers, memory: grown.value)
-  response.registers[7] = RegisterValue(returned)
-  hostSuccess[AccumulationDispatchError](response)
+  let grown = growHeapResponse(context.heap.first, context.heap.past, cpu.gas, cpu.registers, memory)
+  if grown.kind == HostResultKind.Response:
+    return hostSuccess[AccumulationDispatchError](
+        grown.value) # Preserve every protocol gas/register/memory outcome.
+  let reason = if grown.failure == HeapHostError.LimitExceeded: AccumulationDispatchError.LimitExceeded
+    else: AccumulationDispatchError.InvalidContext
+  hostFailure(reason)
 
 ## Charge checkpoint/yield before reading memory or changing implications; debt preserves exact magnitude.
 ## Effects are callback-local immutable versions, discarded if later execution refuses locally.
