@@ -204,3 +204,22 @@ and root domains; successor construction changes slots and checks uint64 exhaust
 before incrementing. Encoding checks the fixed byte ceiling before allocating. Native
 checks include a Python hashlib known-answer checksum, every prefix and every octet
 corrupted, zero/max generations, retained output and 1,000 ARC cycles.
+
+## Locked exact-slot recovery
+
+`CheckpointBank` owns `prefix.head.lock` through a private raw file writer and an
+independent copied slot prefix. Explicit close and an independently checked
+noncopyable composite contract apply. Every cooperating bank holds this one lock
+across selector and slot reads; one host thread serializes methods and preserves
+the directory namespace. A head selects exactly `prefix.0` or `prefix.1`.
+
+`selectedHead` inspects at most 89 bytes and grants no chain authority. `restore`
+first checks that selected metadata agrees with an independently trusted caller
+root, then strictly decodes only the selected complete-map file against that root
+and caller resource ceilings. Missing/corrupt head, missing/wrong selected slot,
+other intact slots and temporary siblings never trigger an implicit fallback.
+Default/closed owners expose no candidate; all format reasons remain guarded.
+Successful restored maps survive later disk changes and are not retained by the bank.
+This read-only increment does not initialize or advance a bank; durable two-file
+publication and explicit recovery decisions follow. Native tests cover each refusal,
+contention/reopen, copied paths and 1,000 lock/read/restore ARC cycles.

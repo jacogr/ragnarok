@@ -1,0 +1,73 @@
+{
+  "build_name": "state-checkpoint-bank-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Checkpoint bank lifecycle unclosed",
+      "diagnostic": "not writer.active",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "state-checkpoint-bank-unclosed"
+    },
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Checkpoint bank lifecycle default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-checkpoint-bank-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Checkpoint bank lifecycle refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "state-checkpoint-bank-refused"
+    },
+    {
+      "arguments": [
+        "head-reason"
+      ],
+      "description": "Checkpoint bank lifecycle head-reason",
+      "diagnostic": "outcome.status == InvalidHead",
+      "identity": {
+        "reason": "head-reason"
+      },
+      "name": "state-checkpoint-bank-head-reason"
+    },
+    {
+      "arguments": [
+        "state-reason"
+      ],
+      "description": "Checkpoint bank lifecycle state-reason",
+      "diagnostic": "outcome.status == InvalidCheckpoint",
+      "identity": {
+        "reason": "state-reason"
+      },
+      "name": "state-checkpoint-bank-state-reason"
+    },
+    {
+      "arguments": [
+        "closed"
+      ],
+      "description": "Checkpoint bank lifecycle closed",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "closed"
+      },
+      "name": "state-checkpoint-bank-closed"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_checkpoint_bank_results.nim"
+}
